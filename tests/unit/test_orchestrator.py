@@ -489,7 +489,7 @@ class TestRunStageExtract:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            _ = run_stage(
+            result = run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
@@ -529,7 +529,7 @@ class TestRunStageAnalyze:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
 
-            _ = run_stage(
+            result = run_stage(
                 "analyze",
                 db_session,
                 project_id=sample_project.id,
@@ -601,7 +601,7 @@ class TestRunStageAnnotate:
                 notes="平静的开头",
             )
 
-            _ = run_stage(
+            result = run_stage(
                 "annotate",
                 db_session,
                 project_id=sample_project.id,
@@ -650,7 +650,7 @@ class TestRunStageEdit:
 
             mock_pipeline.run.return_value = mock_result
 
-            _ = run_stage(
+            result = run_stage(
                 "edit",
                 db_session,
                 paragraph_id=sample_paragraph.id,
@@ -705,7 +705,7 @@ class TestRunStageAudioPostProcess:
                 sfx_tags=[],
             )
 
-            _ = run_stage(
+            result = run_stage(
                 "audio_postprocess",
                 db_session,
                 project_id=sample_project.id,
@@ -740,7 +740,7 @@ class TestRunStageSynthesize:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
 
-            _ = run_stage(
+            result = run_stage(
                 "synthesize",
                 db_session,
                 project_id=sample_project.id,
@@ -828,7 +828,7 @@ class TestRunStageWithFeedbackCollector:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            _ = run_stage(
+            result = run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
@@ -858,7 +858,7 @@ class TestRunStageWithFeedbackCollector:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
 
-            _ = run_stage(
+            result = run_stage(
                 "analyze",
                 db_session,
                 project_id=sample_project.id,
@@ -927,7 +927,7 @@ class TestRunStageWithFeedbackCollector:
                 notes="平静的开头",
             )
 
-            _ = run_stage(
+            result = run_stage(
                 "annotate",
                 db_session,
                 project_id=sample_project.id,
@@ -973,7 +973,7 @@ class TestRunStageWithFeedbackCollector:
 
             mock_pipeline.run.return_value = mock_result
 
-            _ = run_stage(
+            result = run_stage(
                 "edit",
                 db_session,
                 project_id=sample_paragraph.project_id,
@@ -1026,7 +1026,7 @@ class TestRunStageWithFeedbackCollector:
                 sfx_tags=[],
             )
 
-            _ = run_stage(
+            result = run_stage(
                 "audio_postprocess",
                 db_session,
                 project_id=sample_project.id,
@@ -1059,7 +1059,7 @@ class TestRunStageWithFeedbackCollector:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
 
-            _ = run_stage(
+            result = run_stage(
                 "synthesize",
                 db_session,
                 project_id=sample_project.id,
@@ -1119,7 +1119,7 @@ class TestRunStageWithFeedbackCollector:
                 contract_version=1,
             )
 
-            _ = run_stage(
+            result = run_stage(
                 "quality",
                 db_session,
                 project_id=sample_project.id,
@@ -1147,7 +1147,7 @@ class TestRunStageWithFeedbackCollector:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            _ = run_stage(
+            result = run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
