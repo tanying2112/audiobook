@@ -307,7 +307,8 @@ class Orchestrator:
                 "file_path": file_path,
                 "error": error,
             }
-            logger.exception("Mock pipeline failed")
+            # 同样替换为 logging.exception
+            logging.exception("Mock pipeline failed")
 
             return PipelineRunResult(
                 task_id=task_id,
