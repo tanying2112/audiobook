@@ -1,0 +1,91 @@
+{
+  "session_start": "2026-06-15T08:33:05.587234",
+  "report_generated": "2026-06-15T08:33:05.589643",
+  "total_records": 600,
+  "overall_compliance_rate": 0.99,
+  "contract_version_distribution": {
+    "1": 600
+  },
+  "stage_summaries": {
+    "extract": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    },
+    "analyze": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    },
+    "annotate": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    },
+    "edit": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    },
+    "synthesize": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    },
+    "quality": {
+      "total_calls": 100,
+      "compliant_calls": 99,
+      "compliance_rate": 0.99,
+      "avg_latency_ms": 0.0,
+      "avg_cost_usd": 0.0,
+      "avg_quality_score": 0.9455000000000017,
+      "error_counts": {},
+      "contract_versions": {
+        "1": 100
+      }
+    }
+  },
+  "recent_failures": [
+    {
+      "stage": "quality",
+      "timestamp": "2026-06-15T08:33:05.589562",
+      "errors": [],
+      "quality_score": 0.5
+    }
+  ]
+}

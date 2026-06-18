@@ -1,0 +1,11 @@
+{
+  "id": "edit_for_tts_case_3",
+  "description": "Mock case 3 for edit_for_tts",
+  "input": {
+    "text": "This is a test input for edit_for_tts case 3."
+  },
+  "expected_output": {
+    "status": "success",
+    "length": 50
+  }
+}

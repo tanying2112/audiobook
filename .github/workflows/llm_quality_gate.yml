@@ -1,0 +1,201 @@
+# LLM Quality Gate
+#
+# Runs golden dataset validation and LLM pipeline tests to ensure
+# structured output quality meets targets.
+# Triggered on PRs to develop/main and on a weekly schedule.
+
+name: LLM Quality Gate
+
+on:
+  pull_request:
+    branches: [ develop, main ]
+    paths:
+      - 'src/audiobook_studio/llm/**'
+      - 'src/audiobook_studio/pipeline/**'
+      - 'src/audiobook_studio/schemas/**'
+      - 'prompts/**'
+      - 'tests/golden/**'
+  schedule:
+    # Weekly: every Monday 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  golden-dataset-validation:
+    name: Golden Dataset Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run golden dataset tests (mock LLM)
+        run: |
+          python -m pytest tests/golden/test_golden_dataset.py \
+            -v \
+            --tb=short \
+            --junit-xml=golden-results.xml
+
+      - name: Validate schema compliance target
+        run: |
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('golden-results.xml')
+          root = tree.getroot()
+          failures = int(root.get('failures', 0))
+          errors = int(root.get('errors', 0))
+          total = int(root.get('tests', 0))
+          print(f'Tests: {total}, Failures: {failures}, Errors: {errors}')
+          if failures > 0 or errors > 0:
+              print('❌ Golden dataset validation failed')
+              exit(1)
+          print('✅ Golden dataset validation passed')
+          "
+
+      - name: Upload golden test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-test-results
+          path: golden-results.xml
+
+  prompt-template-validation:
+    name: Prompt Template Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jinja2 pyyaml
+
+      - name: Validate Jinja2 templates compile
+        run: |
+          python -c "
+          from pathlib import Path
+          from jinja2 import Environment, BaseLoader
+          import sys
+
+          env = Environment()
+          errors = []
+          prompts_dir = Path('prompts')
+          for j2_file in prompts_dir.rglob('*.j2'):
+              try:
+                  with open(j2_file, 'r') as f:
+                      env.parse(f.read())
+                  print(f'  ✅ {j2_file}')
+              except Exception as e:
+                  errors.append(f'  ❌ {j2_file}: {e}')
+
+          if errors:
+              print('Template validation errors:')
+              for e in errors:
+                  print(e)
+              sys.exit(1)
+          print('All templates valid')
+          "
+
+      - name: Validate YAML prompt configs
+        run: |
+          python -c "
+          from pathlib import Path
+          import yaml
+          import sys
+
+          errors = []
+          for yaml_file in Path('prompts').rglob('*.yaml'):
+              try:
+                  with open(yaml_file, 'r') as f:
+                      yaml.safe_load(f)
+                  print(f'  ✅ {yaml_file}')
+              except Exception as e:
+                  errors.append(f'  ❌ {yaml_file}: {e}')
+
+          if errors:
+              print('YAML validation errors:')
+              for e in errors:
+                  print(e)
+              sys.exit(1)
+          print('All YAML configs valid')
+          "
+
+  structured-output-schema:
+    name: Structured Output Schema Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Validate all Pydantic schemas load
+        run: |
+          python -c "
+          from src.audiobook_studio.schemas import (
+              ExtractionInput,
+              ExtractionResult,
+              BookAnalysisOutput,
+              ChapterAnalysis,
+              CharacterInfo,
+              EmotionSnapshot,
+              ParagraphAnnotation,
+              QualityReport,
+              TtsRoutingInput,
+              TtsRoutingDecision,
+          )
+          print('✅ All schemas load correctly')
+          "
+
+      - name: Validate contract versions
+        run: |
+          python -c "
+          import importlib
+          import pkgutil
+          import sys
+
+          sys.path.insert(0, 'src')
+          from pathlib import Path
+
+          # Check all schema files have contract_version field
+          schemas_dir = Path('src/audiobook_studio/schemas')
+          for py_file in sorted(schemas_dir.rglob('*.py')):
+              if py_file.name.startswith('_'):
+                  continue
+              with open(py_file) as f:
+                  content = f.read()
+                  if 'contract_version' in content:
+                      print(f'  ✅ {py_file.name} has contract_version')
+                  else:
+                      print(f'  ⚠️  {py_file.name} missing contract_version')
+
+          print('Contract version check complete')
+          "

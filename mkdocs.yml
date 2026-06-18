@@ -1,0 +1,37 @@
+site_name: Audiobook Studio 文档
+site_description: 一站式有声书制作平台文档站点
+repo_url: https://github.com/audiobook-studio/audiobook
+repo_name: audiobook
+
+nav:
+  - 首页: index.md
+  - 项目概述: architecture.md
+  - 快速开始: quick_start.md
+  - API 参考: api.md
+  - Agent 规范:
+      - 总览: agents.md
+      - 多 Agent 协作: agents/collaboration.md
+      - 角色说明: agents/roles.md
+      - 任务队列: agents/task-queue.md
+      - 交接记录: agents/handoff.md
+      - 执行日志: agents/agent-log.md
+  - LLM 马具规范: harness_specifications.md
+  - 贡献指南: contributing.md
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - footnotes
+  - meta
+  - toc:
+      permalink: true

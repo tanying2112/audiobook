@@ -1,0 +1,96 @@
+# Contract Versions Configuration
+# Tracks schema contract versions for all HARNESS pipeline stages
+# Used for version compatibility checks and migration planning
+
+# Global contract version
+global:
+  current: 1
+  min_compatible: 1
+  schema: "HARNESS_v1"
+
+# Per-stage contract versions
+stages:
+  extract:
+    current: 1
+    min_compatible: 1
+    input_schema: "ExtractionInput"
+    output_schema: "ExtractionResult"
+    last_changed: "2025-06-10"
+    changelog: |
+      v1: Initial contract with raw_text, language, page_count, has_ocr, ocr_page_ratio, warnings
+
+  analyze_structure:
+    current: 1
+    min_compatible: 1
+    input_schema: "BookAnalysisInput"
+    output_schema: "BookAnalysisOutput"
+    last_changed: "2025-06-11"
+    changelog: |
+      v1: Initial contract with book_meta, character_voice_map, emotion_snapshots, story_line_summary, global_style_notes
+
+  annotate_paragraph:
+    current: 1
+    min_compatible: 1
+    input_schema: "ParagraphAnnotationInput"
+    output_schema: "ParagraphAnnotation"
+    last_changed: "2025-06-12"
+    changelog: |
+      v1: Initial contract with speaker_canonical_name, emotion, speech_rate, pitch_shift_semitones, pause_before_ms, pause_after_ms, confidence, difficulty (A/B/C), needs_sfx, sfx_tags, notes
+
+  edit_for_tts:
+    current: 1
+    min_compatible: 1
+    input_schema: "TtsEditInput"
+    output_schema: "TtsEditOutput"
+    last_changed: "2025-06-12"
+    changelog: |
+      v1: Initial contract with paragraph_text, paragraph_annotation, difficulty (A/B/C/D), forbid_edit, edited_text, changes_made, forbidden_content_removed, confidence, rationale
+
+  tts_routing:
+    current: 1
+    min_compatible: 1
+    input_schema: "TtsRoutingInput"
+    output_schema: "TtsRoutingDecision"
+    last_changed: "2025-06-12"
+    changelog: |
+      v1: Initial contract with segment_id, engine_choice (kokoro/edge/human_clone), voice_id, prosody_overrides, fallback_engine, reasoning, estimated_cost_usd, estimated_duration_ms
+
+  synthesize:
+    current: 1
+    min_compatible: 1
+    input_schema: "TtsRoutingInput + TtsRoutingDecision"
+    output_schema: "AudioSegment"
+    last_changed: "2025-06-12"
+    changelog: |
+      v1: Initial contract with segment_id, file_path, duration_ms, engine, voice_id, text_hash
+
+  quality_check:
+    current: 1
+    min_compatible: 1
+    input_schema: "AudioAnalysisResult + ParagraphAnnotation + TtsRoutingDecision + reference_text"
+    output_schema: "QualityJudgment"
+    last_changed: "2025-06-12"
+    changelog: |
+      v1: Initial contract with segment_id, speaker_clarity, emotion_match, prosody_naturalness, text_audio_alignment, overall_score, issues, fix_suggestions, needs_regeneration
+
+# Version compatibility rules
+compatibility:
+  # Major version changes break compatibility
+  # Minor version changes are backward compatible
+  # Patch version changes are fully compatible
+  version_format: "major.minor.patch"
+  breaking_on_major_change: true
+  warn_on_minor_change: true
+
+# Deprecation policy
+deprecation:
+  cycles_before_removal: 3
+  warn_on_deprecated_use: true
+  migration_guide_url: "docs/migration_guide.md"
+
+# Contract validation settings
+validation:
+  strict_mode: true  # Fail on unknown fields
+  coerce_types: true  # Allow type coercion where safe
+  validate_enum_values: true
+  min_compliance_rate: 0.99  # 99% schema compliance required

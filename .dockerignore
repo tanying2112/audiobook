@@ -1,0 +1,22 @@
+# Exclude unnecessary files from Docker build context
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+*.md
+*.txt
+*.yml
+*.yaml
+*.json
+*.env
+*.git
+*.gitignore
+*.github
+*.vscode
+*.idea
+*.DS_Store
+site/
+docs/
+tests/
+scripts/
+*.sh

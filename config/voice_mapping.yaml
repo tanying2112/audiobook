@@ -1,0 +1,149 @@
+# Audiobook Studio — 声音映射配置
+# 定义 gender+age_range → voice_id 的默认映射关系
+# 用于角色管理面板的默认声音预览和自动绑定
+
+voice_mapping:
+  # 男性声音映射
+  male_child:      # 0-12岁
+    voice_id: "male_child_001"
+    description: "男童声"
+    language: "zh-CN"
+
+  male_teenager:   # 13-17岁
+    voice_id: "male_teen_001"
+    description: "男青少年声"
+    language: "zh-CN"
+
+  male_young:      # 18-35岁
+    voice_id: "male_young_001"
+    description: "男青年声"
+    language: "zh-CN"
+
+  male_middle:     # 36-55岁
+    voice_id: "male_middle_001"
+    description: "男中年声"
+    language: "zh-CN"
+
+  male_elder:      # 56岁以上
+    voice_id: "male_elder_001"
+    description: "男老年声"
+    language: "zh-CN"
+
+  # 女性声音映射
+  female_child:    # 0-12岁
+    voice_id: "female_child_001"
+    description: "女童声"
+    language: "zh-CN"
+
+  female_teenager: # 13-17岁
+    voice_id: "female_teen_001"
+    description: "女青少年声"
+    language: "zh-CN"
+
+  female_young:    # 18-35岁
+    voice_id: "female_young_001"
+    description: "女青年声"
+    language: "zh-CN"
+
+  female_middle:   # 36-55岁
+    voice_id: "female_middle_001"
+    description: "女中年声"
+    language: "zh-CN"
+
+  female_elder:    # 56岁以上
+    voice_id: "female_elder_001"
+    description: "女老年声"
+    language: "zh-CN"
+
+  # 中性/特殊声音映射
+  neutral_narrator: # 旁白/叙述者
+    voice_id: "neutral_narrator_001"
+    description: "中性旁白声"
+    language: "zh-CN"
+
+  special_elderly_wiseman: # 智慧老人型角色
+    voice_id: "special_wiseman_001"
+    description: "智慧老人声"
+    language: "zh-CN"
+
+  special_robot:     # 机器人/AI角色
+    voice_id: "special_robot_001"
+    description: "机器人声"
+    language: "zh-CN"
+
+  special_monster:   # 怪物/妖魔角色
+    voice_id: "special_monster_001"
+    description: "怪物声"
+    language: "zh-CN"
+
+# 英文声音映射（用于多语言配音）
+voice_mapping_en:
+  male_child:
+    voice_id: "male_child_en_001"
+    description: "Boy voice"
+    language: "en-US"
+
+  male_teenager:
+    voice_id: "male_teen_en_001"
+    description: "Teenage boy voice"
+    language: "en-US"
+
+  male_young:
+    voice_id: "male_young_en_001"
+    description: "Young man voice"
+    language: "en-US"
+
+  male_middle:
+    voice_id: "male_middle_en_001"
+    description: "Middle-aged man voice"
+    language: "en-US"
+
+  male_elder:
+    voice_id: "male_elder_en_001"
+    description: "Elderly man voice"
+    language: "en-US"
+
+  female_child:
+    voice_id: "female_child_en_001"
+    description: "Girl voice"
+    language: "en-US"
+
+  female_teenager:
+    voice_id: "female_teen_en_001"
+    description: "Teenage girl voice"
+    language: "en-US"
+
+  female_young:
+    voice_id: "female_young_en_001"
+    description: "Young woman voice"
+    language: "en-US"
+
+  female_middle:
+    voice_id: "female_middle_en_001"
+    description: "Middle-aged woman voice"
+    language: "en-US"
+
+  female_elder:
+    voice_id: "female_elder_en_001"
+    description: "Elderly woman voice"
+    language: "en-US"
+
+  neutral_narrator:
+    voice_id: "neutral_narrator_en_001"
+    description: "Neutral narrator voice"
+    language: "en-US"
+
+  special_elderly_wiseman:
+    voice_id: "special_wiseman_en_001"
+    description: "Wise old man voice"
+    language: "en-US"
+
+  special_robot:
+    voice_id: "special_robot_en_001"
+    description: "Robot voice"
+    language: "en-US"
+
+  special_monster:
+    voice_id: "special_monster_en_001"
+    description: "Monster voice"
+    language: "en-US"

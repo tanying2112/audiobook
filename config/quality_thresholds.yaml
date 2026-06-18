@@ -1,0 +1,37 @@
+# Quality Thresholds Configuration
+# Externalized quality detection thresholds for easy tuning without code changes
+
+# Overall quality thresholds
+overall:
+  min_acceptable_score: 0.7          # Below this triggers regeneration
+  excellent_score: 0.9               # Above this is considered excellent
+  schema_compliance_rate: 0.99       # Target schema compliance rate (≥99%)
+
+# Individual dimension thresholds (0-1 scale)
+dimensions:
+  speaker_clarity: 0.85              # Role identification accuracy
+  emotion_match: 0.80                # Emotion alignment
+  prosody_naturalness: 0.75          # Rhythm naturalness
+  text_audio_alignment: 0.80         # Text-audio synchronization
+
+# Error count thresholds (absolute values)
+errors:
+  max_silent_segments: 0             # Silent segments not allowed
+  max_stuttering_issues: 0           # Stuttering/cutting issues
+  max_truncation_issues: 0           # Truncation issues
+  max_sensitive_content_hits: 0      # Sensitive content not allowed
+
+# Feedback loop triggers
+feedback:
+  wrong_speaker_consecutive: 3       # Consecutive wrong speaker triggers voice binding review
+  emotion_mismatch_ratio: 0.20       # >20% emotion mismatch triggers prompt version upgrade
+  low_quality_regeneration_ratio: 0.3 # If >30% segments need regeneration, investigate
+
+# Audio analysis thresholds (for rule-based checks)
+audio:
+  silence_threshold_db: -40          # Silence detection threshold
+  clipping_threshold_percent: 0.1    # >0.1% clipped samples is an issue
+  duration_match_threshold_percent: 30 # Duration mismatch >30% is problematic
+  volume_normalization_target_db: -20 # Target RMS for normalization
+  low_volume_threshold_db: -30       # Low volume warning threshold
+  high_volume_threshold_db: -1       # High volume warning threshold

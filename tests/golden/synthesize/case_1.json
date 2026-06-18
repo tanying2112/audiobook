@@ -1,0 +1,11 @@
+{
+  "id": "synthesize_case_1",
+  "description": "Mock case 1 for synthesize",
+  "input": {
+    "text": "This is a test input for synthesize case 1."
+  },
+  "expected_output": {
+    "status": "success",
+    "length": 50
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "quality_check_case_1",
+  "description": "Mock case 1 for quality_check",
+  "input": {
+    "text": "This is a test input for quality_check case 1."
+  },
+  "expected_output": {
+    "status": "success",
+    "length": 50
+  }
+}

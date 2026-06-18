@@ -1,0 +1,76 @@
+# Constitutional Rules for Audiobook Studio
+# Fundamental principles that guide all LLM outputs and system behaviors
+# These rules are hot-reloadable - changes take effect without restarting the system
+
+# Safety and Ethical Guidelines
+safety:
+  prohibited_content:
+    - "极端主义宣传"
+    - "暴力恐怖主义"
+    - "色情低俗内容"
+    - "欺诈诈骗信息"
+    - "侵犯隐私的个人信息"
+  required_disclaimers: []
+  age_appropriate_threshold: 12  # Minimum age for unrestricted content
+
+# Quality and Style Principles
+quality:
+  min_narrative_coherence: 0.8     # Story flow must maintain coherence
+  character_voice_consistency: 0.9 # Same character must have consistent voice
+  emotional_authenticity: 0.85     # Emotions must match context and be authentic
+  pacing_appropriateness: 0.8      # Speech rate must match content tension
+
+  # Language standards
+  language_purity:
+    chinese:
+      avoid_english_mixing: true   # Prefer pure Chinese expressions
+      classical_modern_balance: 0.3 # Allow up to 30% classical expressions
+    english:
+      avoid_chinese_pinyin: true   # Avoid unnecessary pinyin in English
+      formality_match_context: true # Formal/informal must match scene
+
+# Copyright and Legal Compliance
+legal:
+  copyright_protection:
+    prohibit_full_text_reproduction: true  # For works not in public domain
+    allow_fair_use_quotation: true         # Limited quotation for commentary
+    attribution_required: true             # Credit original sources
+  privacy_protection:
+    anonymize_personal_data: true          # Remove/obfuscate PII
+    prohibit_non_consensual_recording: true # No recording without consent
+
+# Technical and Operational Rules
+technical:
+  # Token and cost management
+  max_tokens_per_segment: 2000         # Hard limit to prevent runaway costs
+  cost_warning_threshold_usd: 0.50     # Warn when segment cost exceeds this
+  prefer_local_processing: true        # Prefer local models over API when possible
+
+  # Performance requirements
+  max_segment_latency_ms: 5000         # Maximum acceptable processing time
+  retry_failed_components: true        # Automatically retry transient failures
+  fallback_to_simpler_models: true     # Use simpler models when primary fails
+
+# Content Adaptation Guidelines
+adaptation:
+  # Translation and localization
+  preserve_cultural_references: true   # Keep idioms, metaphors, cultural touchstones
+  adapt_measurements_to_locale: true   # Convert units to local standards
+  localize_proper_nouns: false         # Generally keep original names
+
+  # Accessibility
+  describe_visual_elements: true       # Describe important visuals for visually impaired
+  indicate_speaker_changes: true       # Clear markers when dialogue switches speakers
+  emotion_intensity_calibration: true  # Match emotion intensity to target audience
+
+# Version Control and Evolution
+evolution:
+  # Rule updates require:
+  backward_compatibility_preferred: true # New rules should not break existing workflows
+  deprecation_period_cycles: 3         # Rules deprecated for 3 cycles before removal
+  community_review_required: true      # Major changes need team review
+
+  # Experimentation
+  allow_a_b_testing: true              # Permit controlled experiments
+  experiment_approval_required: true   # Experiments need explicit approval
+  max_experiment_duration_days: 7      # Experiments auto-expire after 1 week

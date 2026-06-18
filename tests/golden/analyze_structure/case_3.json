@@ -1,0 +1,11 @@
+{
+  "id": "analyze_structure_case_3",
+  "description": "Mock case 3 for analyze_structure",
+  "input": {
+    "text": "This is a test input for analyze_structure case 3."
+  },
+  "expected_output": {
+    "status": "success",
+    "length": 50
+  }
+}

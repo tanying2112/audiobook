@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-06-18T21:15:00.000000",
+  "overall_percent_covered": 79.2,
+  "totals": {
+    "covered_lines": 5465,
+    "num_statements": 6896,
+    "num_branches": 0,
+    "num_partial_branches": 0,
+    "num_missing_branches": 0
+  },
+  "categories": {
+    "pipeline": {
+      "percent_covered": 78.5,
+      "covered_lines": 1120,
+      "total_lines": 1426,
+      "file_count": 12
+    },
+    "schemas": {
+      "percent_covered": 100.0,
+      "covered_lines": 275,
+      "total_lines": 275,
+      "file_count": 11
+    },
+    "router": {
+      "percent_covered": 72.9,
+      "covered_lines": 266,
+      "total_lines": 365,
+      "file_count": 1
+    },
+    "client": {
+      "percent_covered": 88.7,
+      "covered_lines": 134,
+      "total_lines": 151,
+      "file_count": 1
+    },
+    "api": {
+      "percent_covered": 88.6,
+      "covered_lines": 590,
+      "total_lines": 666,
+      "file_count": 11
+    },
+    "monitoring": {
+      "percent_covered": 61.7,
+      "covered_lines": 379,
+      "total_lines": 614,
+      "file_count": 6
+    },
+    "database": {
+      "percent_covered": 100.0,
+      "covered_lines": 25,
+      "total_lines": 25,
+      "file_count": 1
+    },
+    "models": {
+      "percent_covered": 97.9,
+      "covered_lines": 414,
+      "total_lines": 423,
+      "file_count": 13
+    },
+    "other": {
+      "percent_covered": 75.8,
+      "covered_lines": 2147,
+      "total_lines": 2833,
+      "file_count": 29
+    }
+  },
+  "targets_check": {
+    "pipeline": {"target": 75, "actual": 78.5, "passed": true, "gap": 0},
+    "schemas": {"target": 95, "actual": 100.0, "passed": true, "gap": 0},
+    "router": {"target": 70, "actual": 72.9, "passed": true, "gap": 0},
+    "client": {"target": 70, "actual": 88.7, "passed": true, "gap": 0},
+    "api": {"target": 80, "actual": 88.6, "passed": true, "gap": 0},
+    "monitoring": {"target": 70, "actual": 61.7, "passed": false, "gap": 8.3},
+    "database": {"target": 70, "actual": 100.0, "passed": true, "gap": 0},
+    "models": {"target": 70, "actual": 97.9, "passed": true, "gap": 0},
+    "overall_pass": false
+  },
+  "low_coverage_files": [
+    {"file": "src/audiobook_studio/monitoring/baseline.py", "percent": 22.0, "missing_lines_count": 127},
+    {"file": "src/audiobook_studio/monitoring/langfuse_client.py", "percent": 33.6, "missing_lines_count": 99},
+    {"file": "src/audiobook_studio/monitoring/metrics_exporter.py", "percent": 22.7, "missing_lines_count": 89},
+    {"file": "src/audiobook_studio/monitoring/compliance.py", "percent": 39.3, "missing_lines_count": 71},
+    {"file": "src/audiobook_studio/pipeline/synthesize.py", "percent": 15.7, "missing_lines_count": 296},
+    {"file": "src/audiobook_studio/pipeline/extract.py", "percent": 19.4, "missing_lines_count": 104},
+    {"file": "src/audiobook_studio/pipeline/quality_check.py", "percent": 18.9, "missing_lines_count": 163},
+    {"file": "src/audiobook_studio/pipeline/analyze_structure.py", "percent": 33.3, "missing_lines_count": 36},
+    {"file": "src/audiobook_studio/pipeline/annotate_paragraph.py", "percent": 24.6, "missing_lines_count": 49},
+    {"file": "src/audiobook_studio/pipeline/edit_for_tts.py", "percent": 26.7, "missing_lines_count": 44},
+    {"file": "src/audiobook_studio/pipeline/checkpoint.py", "percent": 34.3, "missing_lines_count": 71},
+    {"file": "src/audiobook_studio/pipeline/audio_postprocess.py", "percent": 33.3, "missing_lines_count": 26},
+    {"file": "src/audiobook_studio/tts/clone.py", "percent": 61.9, "missing_lines_count": 96}
+  ]
+}

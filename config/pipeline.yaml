@@ -1,0 +1,547 @@
+# Audiobook Studio Pipeline Configuration
+# Central configuration for quality thresholds, constitutional rules, difficulty weights,
+# voice mapping, and promotion thresholds. Supports hot-reload - changes take effect without restart.
+
+# =============================================================================
+# Alert Thresholds
+# Thresholds for triggering alerts across the pipeline
+# =============================================================================
+alert_thresholds:
+  # Kill switch - triggered when critical pipeline failure occurs
+  killswitch_triggered:
+    enabled: true
+    severity: "critical"
+
+  # Provider quota exhausted
+  provider_quota_exhausted:
+    enabled: true
+    severity: "high"
+    # Alert when provider reports quota exceeded
+    trigger_on_error: true
+
+  # Quality score degradation
+  quality_score_degraded:
+    enabled: true
+    severity: "medium"
+    # Alert when quality score drops below this threshold
+    min_quality_score: 0.70
+    # Alert when quality score drops by this percentage from baseline
+    degradation_pct: 15.0
+    # Minimum samples before checking
+    min_samples: 10
+
+  # Synthesis failure rate high
+  synthesis_failure_rate_high:
+    enabled: true
+    severity: "high"
+    # Alert when failure rate exceeds this percentage
+    max_failure_rate_pct: 10.0
+    # Time window in minutes to evaluate
+    window_minutes: 15
+    # Minimum samples in window
+    min_samples: 5
+
+  # Cost budget exceeded
+  cost_budget_exceeded:
+    enabled: true
+    severity: "high"
+    # Alert when daily cost exceeds this percentage of budget
+    budget_pct_threshold: 80.0
+    # Alert when projected monthly cost exceeds budget
+    projected_monthly_threshold: 90.0
+    # Daily budget in USD (overridable by env)
+    daily_budget_usd: 50.0
+
+  # Latency regression
+  latency_regression:
+    enabled: true
+    severity: "medium"
+    # Alert when latency exceeds this percentage above baseline p95
+    latency_pct_above_p95: 50.0
+    # Minimum samples before checking
+    min_samples: 10
+
+  # Schema compliance drop
+  schema_compliance_drop:
+    enabled: true
+    severity: "high"
+    # Alert when compliance rate drops below this threshold
+    min_compliance_rate: 0.95
+    # Time window in minutes
+    window_minutes: 30
+    min_samples: 20
+
+# =============================================================================
+# Alert Notification Channels
+# Configuration for where alerts are sent
+# =============================================================================
+alert_channels:
+  # Console logging (always available)
+  console:
+    enabled: true
+    level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+  # Webhook notifications (Slack, Discord, PagerDuty, generic)
+  webhooks:
+    enabled: false
+    # Slack webhook URL (set via ALERT_SLACK_WEBHOOK env var)
+    slack_webhook_url: "${ALERT_SLACK_WEBHOOK}"
+    # Discord webhook URL (set via ALERT_DISCORD_WEBHOOK env var)
+    discord_webhook_url: "${ALERT_DISCORD_WEBHOOK}"
+    # PagerDuty Events API v2 integration key (set via ALERT_PAGERDUTY_KEY env var)
+    pagerduty_integration_key: "${ALERT_PAGERDUTY_KEY}"
+    # Generic webhook URL (set via ALERT_GENERIC_WEBHOOK env var)
+    generic_webhook_url: "${ALERT_GENERIC_WEBHOOK}"
+    # Custom headers for generic webhook (JSON string)
+    generic_webhook_headers: "{}"
+    # Timeout for webhook requests in seconds
+    timeout_seconds: 10
+    # Retry configuration
+    max_retries: 3
+    retry_backoff_base: 2.0
+
+  # Email notifications (SMTP)
+  email:
+    enabled: false
+    smtp_host: "${ALERT_SMTP_HOST}"
+    smtp_port: 587
+    smtp_username: "${ALERT_SMTP_USERNAME}"
+    smtp_password: "${ALERT_SMTP_PASSWORD}"
+    from_email: "${ALERT_FROM_EMAIL}"
+    to_emails: ["${ALERT_TO_EMAIL}"]
+    use_tls: true
+    # Timeout for SMTP connection in seconds
+    timeout_seconds: 30
+    # Retry configuration
+    max_retries: 3
+    retry_backoff_base: 2.0
+
+# =============================================================================
+# Alert Deduplication
+# Configuration to prevent alert spam
+# =============================================================================
+alert_deduplication:
+  enabled: true
+  # Time window in seconds to deduplicate identical alerts
+  window_seconds: 300
+  # Maximum number of identical alerts to keep in history
+  max_history: 1000
+  # Group alerts by these fields for deduplication
+  group_by: ["alert_type", "provider", "stage"]
+
+# =============================================================================
+# Alert Retry Logic
+# Configuration for retry with exponential backoff
+# =============================================================================
+alert_retry:
+  max_retries: 3
+  base_backoff_seconds: 2.0
+  max_backoff_seconds: 60.0
+  backoff_multiplier: 2.0
+  # Jitter factor (0.0-1.0) to add randomness to backoff
+  jitter_factor: 0.1
+
+# =============================================================================
+# Quality Thresholds
+# Audio quality detection thresholds for rule-based checks
+# =============================================================================
+quality_thresholds:
+  # Silence detection threshold in dB (below this is considered silence)
+  silence_threshold_db: -40
+
+  # Clipping threshold as ratio (0.0-1.0). > this ratio of samples at max amplitude = clipping
+  clipping_threshold: 0.001
+
+  # Minimum segment duration in milliseconds (segments shorter than this are flagged)
+  min_duration_ms: 100
+
+  # Maximum segment duration in milliseconds
+  max_duration_ms: 30000
+
+  # Volume normalization target in dB RMS
+  volume_normalization_target_db: -20
+
+  # Low volume warning threshold in dB
+  low_volume_threshold_db: -30
+
+  # High volume warning threshold in dB
+  high_volume_threshold_db: -1
+
+  # Duration match threshold percentage (generated vs expected)
+  duration_match_threshold_percent: 30
+
+  # Sample rate for audio analysis
+  sample_rate: 22050
+
+  # Acceptable noise floor in dB
+  noise_floor_db: -50
+
+
+# =============================================================================
+# Constitutional Rules
+# Fundamental principles guiding all LLM outputs and system behaviors
+# These are hot-reloadable - changes take effect without restarting the system
+# =============================================================================
+constitutional_rules:
+  # Character consistency enforcement
+  character_consistency:
+    # Minimum consistency score for same character across segments (0-1)
+    min_consistency_score: 0.9
+    # Enable voice binding verification
+    verify_voice_binding: true
+    # Consecutive wrong speaker detections before triggering review
+    wrong_speaker_consecutive_threshold: 3
+    # Allowable voice drift per chapter (0-1)
+    max_voice_drift_per_chapter: 0.05
+
+  # Emotion coherence enforcement
+  emotion_coherence:
+    # Minimum emotion match score (0-1)
+    min_emotion_match: 0.80
+    # Maximum allowed emotion mismatch ratio before triggering prompt upgrade
+    max_mismatch_ratio: 0.20
+    # Require emotion context continuity
+    require_context_continuity: true
+    # Allowed emotion intensity deviation (0-1)
+    max_intensity_deviation: 0.15
+
+  # Text normalization rules
+  text_norms:
+    # Chinese language standards
+    chinese:
+      # Avoid mixing English in Chinese text
+      avoid_english_mixing: true
+      # Allow classical Chinese expressions (ratio 0-1)
+      classical_modern_balance: 0.3
+      # Normalize punctuation to full-width
+      normalize_punctuation: true
+      # Convert traditional to simplified
+      traditional_to_simplified: true
+
+    # English language standards
+    english:
+      # Avoid unnecessary pinyin in English text
+      avoid_chinese_pinyin: true
+      # Formal/informal must match scene context
+      formality_match_context: true
+      # Normalize contractions based on formality
+      normalize_contractions: true
+
+    # General text processing
+    general:
+      # Maximum consecutive repeated characters
+      max_consecutive_repeats: 3
+      # Remove zero-width characters
+      strip_zero_width: true
+      # Normalize whitespace
+      normalize_whitespace: true
+      # Maximum segment length in characters
+      max_segment_chars: 500
+      # Minimum segment length in characters
+      min_segment_chars: 10
+
+
+# =============================================================================
+# Difficulty Weights
+# Weights for calculating paragraph/chapter difficulty scores
+# Used for routing, cost estimation, and quality expectations
+# =============================================================================
+difficulty_weights:
+  # Character count weight (normalized by log scale)
+  char_count_weight: 0.30
+
+  # Dialect/slang ratio weight (0-1 ratio of non-standard tokens)
+  dialect_ratio_weight: 0.25
+
+  # Terminology density weight (specialized terms per 100 chars)
+  term_density_weight: 0.20
+
+  # Emotion complexity weight (number of distinct emotions)
+  emotion_complexity_weight: 0.15
+
+  # Speaker count weight (number of distinct speakers in segment)
+  speaker_count_weight: 0.10
+
+  # Base difficulty offset (added to weighted sum)
+  base_difficulty: 0.1
+
+  # Difficulty tier thresholds
+  difficulty_tiers:
+    easy: 0.3      # Below this: simple narration
+    medium: 0.5    # Below this: standard dialogue
+    hard: 0.7      # Below this: complex multi-speaker
+    expert: 1.0    # Above this: expert-only content
+
+
+# =============================================================================
+# Voice Mapping
+# Maps gender + age_range combinations to voice_id for TTS synthesis
+# Used for character management panel defaults and auto-binding
+# =============================================================================
+voice_mapping:
+  # Male voices
+  male_child:      # 0-12 years
+    voice_id: "male_child_001"
+    description: "男童声"
+    language: "zh-CN"
+    age_range: [0, 12]
+    gender: "male"
+
+  male_teenager:   # 13-17 years
+    voice_id: "male_teen_001"
+    description: "男青少年声"
+    language: "zh-CN"
+    age_range: [13, 17]
+    gender: "male"
+
+  male_young:      # 18-35 years
+    voice_id: "male_young_001"
+    description: "男青年声"
+    language: "zh-CN"
+    age_range: [18, 35]
+    gender: "male"
+
+  male_middle:     # 36-55 years
+    voice_id: "male_middle_001"
+    description: "男中年声"
+    language: "zh-CN"
+    age_range: [36, 55]
+    gender: "male"
+
+  male_elder:      # 56+ years
+    voice_id: "male_elder_001"
+    description: "男老年声"
+    language: "zh-CN"
+    age_range: [56, 120]
+    gender: "male"
+
+  # Female voices
+  female_child:    # 0-12 years
+    voice_id: "female_child_001"
+    description: "女童声"
+    language: "zh-CN"
+    age_range: [0, 12]
+    gender: "female"
+
+  female_teenager: # 13-17 years
+    voice_id: "female_teen_001"
+    description: "女青少年声"
+    language: "zh-CN"
+    age_range: [13, 17]
+    gender: "female"
+
+  female_young:    # 18-35 years
+    voice_id: "female_young_001"
+    description: "女青年声"
+    language: "zh-CN"
+    age_range: [18, 35]
+    gender: "female"
+
+  female_middle:   # 36-55 years
+    voice_id: "female_middle_001"
+    description: "女中年声"
+    language: "zh-CN"
+    age_range: [36, 55]
+    gender: "female"
+
+  female_elder:    # 56+ years
+    voice_id: "female_elder_001"
+    description: "女老年声"
+    language: "zh-CN"
+    age_range: [56, 120]
+    gender: "female"
+
+  # Neutral/Special voices
+  neutral_narrator:         # Narrator/Storyteller
+    voice_id: "neutral_narrator_001"
+    description: "中性旁白声"
+    language: "zh-CN"
+    age_range: [25, 50]
+    gender: "neutral"
+
+  special_elderly_wiseman:  # Wise elder archetype
+    voice_id: "special_wiseman_001"
+    description: "智慧老人声"
+    language: "zh-CN"
+    age_range: [60, 100]
+    gender: "male"
+
+  special_robot:            # Robot/AI character
+    voice_id: "special_robot_001"
+    description: "机器人声"
+    language: "zh-CN"
+    age_range: [0, 999]
+    gender: "neutral"
+
+  special_monster:          # Monster/Demon character
+    voice_id: "special_monster_001"
+    description: "怪物声"
+    language: "zh-CN"
+    age_range: [0, 999]
+    gender: "neutral"
+
+  # English voice mappings (for multilingual dubbing)
+  voice_mapping_en:
+    male_child:
+      voice_id: "male_child_en_001"
+      description: "Boy voice"
+      language: "en-US"
+      age_range: [0, 12]
+      gender: "male"
+
+    male_teenager:
+      voice_id: "male_teen_en_001"
+      description: "Teenage boy voice"
+      language: "en-US"
+      age_range: [13, 17]
+      gender: "male"
+
+    male_young:
+      voice_id: "male_young_en_001"
+      description: "Young man voice"
+      language: "en-US"
+      age_range: [18, 35]
+      gender: "male"
+
+    male_middle:
+      voice_id: "male_middle_en_001"
+      description: "Middle-aged man voice"
+      language: "en-US"
+      age_range: [36, 55]
+      gender: "male"
+
+    male_elder:
+      voice_id: "male_elder_en_001"
+      description: "Elderly man voice"
+      language: "en-US"
+      age_range: [56, 120]
+      gender: "male"
+
+    female_child:
+      voice_id: "female_child_en_001"
+      description: "Girl voice"
+      language: "en-US"
+      age_range: [0, 12]
+      gender: "female"
+
+    female_teenager:
+      voice_id: "female_teen_en_001"
+      description: "Teenage girl voice"
+      language: "en-US"
+      age_range: [13, 17]
+      gender: "female"
+
+    female_young:
+      voice_id: "female_young_en_001"
+      description: "Young woman voice"
+      language: "en-US"
+      age_range: [18, 35]
+      gender: "female"
+
+    female_middle:
+      voice_id: "female_middle_en_001"
+      description: "Middle-aged woman voice"
+      language: "en-US"
+      age_range: [36, 55]
+      gender: "female"
+
+    female_elder:
+      voice_id: "female_elder_en_001"
+      description: "Elderly woman voice"
+      language: "en-US"
+      age_range: [56, 120]
+      gender: "female"
+
+    neutral_narrator:
+      voice_id: "neutral_narrator_en_001"
+      description: "Neutral narrator voice"
+      language: "en-US"
+      age_range: [25, 50]
+      gender: "neutral"
+
+    special_elderly_wiseman:
+      voice_id: "special_wiseman_en_001"
+      description: "Wise old man voice"
+      language: "en-US"
+      age_range: [60, 100]
+      gender: "male"
+
+    special_robot:
+      voice_id: "special_robot_en_001"
+      description: "Robot voice"
+      language: "en-US"
+      age_range: [0, 999]
+      gender: "neutral"
+
+    special_monster:
+      voice_id: "special_monster_en_001"
+      description: "Monster voice"
+      language: "en-US"
+      age_range: [0, 999]
+      gender: "neutral"
+
+
+# =============================================================================
+# Promotion Thresholds
+# Criteria for promoting models/voices to production based on quality metrics
+# =============================================================================
+promotion_thresholds:
+  # Minimum quality score delta required for promotion (vs current production)
+  # Positive value means new model must be better by this margin
+  quality_score_delta: 0.02
+
+  # Golden dataset regression baseline
+  # New model must not regress more than this on golden dataset
+  golden_regression_baseline:
+    # Maximum allowed regression in overall quality score (0-1)
+    max_quality_regression: 0.01
+    # Maximum allowed regression in speaker clarity (0-1)
+    max_speaker_clarity_regression: 0.02
+    # Maximum allowed regression in emotion match (0-1)
+    max_emotion_match_regression: 0.02
+    # Maximum allowed regression in prosody naturalness (0-1)
+    max_prosody_regression: 0.02
+    # Maximum allowed regression in text-audio alignment (0-1)
+    max_alignment_regression: 0.02
+    # Maximum allowed increase in error rate (0-1)
+    max_error_rate_increase: 0.005
+    # Minimum sample size for golden dataset evaluation
+    min_evaluation_samples: 50
+
+  # Cost efficiency thresholds
+  cost_efficiency:
+    # Maximum allowed cost increase ratio for promotion (1.0 = no increase allowed)
+    max_cost_increase_ratio: 1.1
+    # Minimum cost savings required for "cost-optimized" promotion
+    min_cost_savings_ratio: 0.85
+
+  # Latency thresholds
+  latency:
+    # Maximum allowed latency increase ratio for promotion
+    max_latency_increase_ratio: 1.2
+    # Target latency for "fast" tier (ms)
+    fast_tier_target_ms: 2000
+    # Target latency for "quality" tier (ms)
+    quality_tier_target_ms: 5000
+
+  # Stability requirements
+  stability:
+    # Minimum success rate for promotion (0-1)
+    min_success_rate: 0.99
+    # Maximum consecutive failures allowed
+    max_consecutive_failures: 2
+    # Required evaluation period in hours before promotion
+    evaluation_period_hours: 24
+
+  # A/B testing thresholds
+  ab_testing:
+    # Minimum traffic percentage for canary
+    min_canary_traffic_pct: 5
+    # Maximum traffic percentage for canary
+    max_canary_traffic_pct: 50
+    # Minimum experiment duration in hours
+    min_experiment_duration_hours: 4
+    # Statistical significance threshold (p-value)
+    significance_threshold: 0.05
+    # Minimum detectable effect size
+    min_effect_size: 0.01

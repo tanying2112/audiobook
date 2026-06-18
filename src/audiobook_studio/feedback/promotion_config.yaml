@@ -1,0 +1,75 @@
+# Promotion Gate Configuration
+# Externalized thresholds for the Promotion Gate evaluation
+# This file allows adjusting promotion criteria without code changes
+
+# Format Compliance Gate
+format_compliance:
+  enabled: true
+  threshold: 0.99  # 99% format compliance required
+  checks:
+    - unclosed_variables
+    - unclosed_blocks
+    - excessive_empty_lines
+    - trailing_empty_lines
+
+# Golden Dataset Gate
+golden_dataset:
+  enabled: true
+  threshold: 0.95  # 95% golden dataset pass rate required
+  min_samples: 10
+  require_all_stages: false
+
+# Quality Improvement Gate
+quality_improvement:
+  enabled: true
+  threshold: 1.02  # New version must be 102% of old version quality
+  min_improvement_pct: 2.0
+  comparison_metric: "overall_score"
+
+# Human Sample Gate
+human_sample:
+  enabled: true
+  threshold: 0.80  # 80% human sample approval required
+  min_samples: 5
+  max_samples: 50
+
+# Global Promotion Settings
+global:
+  min_total_samples: 10
+  max_promotion_version_gap: 5  # Max versions between promotions
+  auto_promote_on_all_pass: true
+  require_human_approval: false
+
+# Stage-specific overrides (optional)
+stages:
+  edit_for_tts:
+    golden_dataset:
+      threshold: 0.95
+    quality_improvement:
+      threshold: 1.02
+    human_sample:
+      threshold: 0.80
+      
+  quality_judge:
+    golden_dataset:
+      threshold: 0.90
+    quality_improvement:
+      threshold: 1.01
+    human_sample:
+      threshold: 0.75
+      
+  analyze_structure:
+    golden_dataset:
+      threshold: 0.90
+    quality_improvement:
+      threshold: 1.01
+    human_sample:
+      threshold: 0.75
+
+  annotate_paragraph:
+    golden_dataset:
+      threshold: 0.95
+    quality_improvement:
+      threshold: 1.02
+    human_sample:
+      threshold: 0.80

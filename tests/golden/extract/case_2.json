@@ -1,0 +1,11 @@
+{
+  "id": "extract_case_2",
+  "description": "Mock case 2 for extract",
+  "input": {
+    "text": "This is a test input for extract case 2."
+  },
+  "expected_output": {
+    "status": "success",
+    "length": 50
+  }
+}

@@ -1,0 +1,9 @@
+# Git LFS for large model files
+models/kokoro-onnx/*.onnx filter=lfs diff=lfs merge=lfs -text
+models/kokoro-onnx/*.bin filter=lfs diff=diff=diff=lfs merge=lfs -text
+models/**/*.onnx filter=lfs diff=lfs merge=lfs -text
+models/**/*.bin filter=lfs diff=lfs merge=lfs -text
+
+# Also track voice samples and outputs if they get large
+voices/**/*.wav filter=lfs diff=lfs merge=lfs -text
+output/**/*.m4b filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,77 @@
+{
+  "book_id": "hongloumeng",
+  "book_title": "Mock Title",
+  "total_text_chars": 120000,
+  "total_paragraphs": 886,
+  "stages": [
+    {
+      "stage_name": "extract",
+      "duration_ms": 61.21087074279785,
+      "success": true,
+      "input_size": 330188,
+      "output_size": 120000,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "analyze_structure",
+      "duration_ms": 34.78503227233887,
+      "success": true,
+      "input_size": 120000,
+      "output_size": 124,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "annotate_paragraph",
+      "duration_ms": 303.79509925842285,
+      "success": true,
+      "input_size": 2305,
+      "output_size": 20,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "edit_for_tts",
+      "duration_ms": 309.5872402191162,
+      "success": true,
+      "input_size": 2305,
+      "output_size": 2305,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "synthesize",
+      "duration_ms": 26.91364288330078,
+      "success": true,
+      "input_size": 20,
+      "output_size": 60000,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "quality_check",
+      "duration_ms": 67.2597885131836,
+      "success": true,
+      "input_size": 20,
+      "output_size": 20,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    }
+  ],
+  "total_duration_ms": 803.5516738891602,
+  "total_mock_cost_usd": 0.0,
+  "quality_summary": {
+    "avg_overall_score": 0.94,
+    "total_issues": 0,
+    "needs_regeneration_count": 0,
+    "score_distribution": {
+      "speaker_clarity": 0.95,
+      "emotion_match": 0.93,
+      "prosody_naturalness": 0.92,
+      "text_audio_alignment": 0.96
+    }
+  },
+  "timestamp": "2026-06-14T08:31:05.633055",
+  "passed": true
+}

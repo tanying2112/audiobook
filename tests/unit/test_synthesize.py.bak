@@ -1,0 +1,570 @@
+"""Comprehensive unit tests for synthesize pipeline targeting ≥80% line coverage."""
+
+import os
+from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
+
+import pytest
+from src.audiobook_studio.pipeline.synthesize import (
+    SynthesizePipeline,
+    synthesize_paragraphs,
+    AudioSegment,
+)
+from src.audiobook_studio.schemas import (
+    TtsRoutingInput,
+    TtsRoutingDecision,
+)
+
+
+class TestSynthesizePipeline:
+    """Test synthesize pipeline functionality."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        self.mock_router = Mock()
+        self.pipeline = SynthesizePipeline(
+            router=self.mock_router, mock_mode=True
+        )
+
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        pass
+
+    def test_init_default(self):
+        """Test pipeline initialization with defaults."""
+        pipeline = SynthesizePipeline()
+        assert not pipeline.mock_mode
+        assert pipeline.router is not None
+
+    def test_init_custom_params(self):
+        """Test pipeline initialization with custom parameters."""
+        pipeline = SynthesizePipeline(
+            router=self.mock_router, mock_mode=False
+        )
+        assert pipeline.router == self.mock_router
+        assert not pipeline.mock_mode
+
+    def test_init_mock_mode(self):
+        """Test pipeline initialization in mock mode."""
+        pipeline = SynthesizePipeline(mock_mode=True)
+        assert pipeline.mock_mode
+
+    def test_build_prompt(self):
+        """Test prompt building functionality."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+            TtsRoutingDecision(
+                paragraph_index=1,
+                engine=SynthesisEngine.EDGE_TTS,
+                voice_id="voice_002",
+                params={}
+            ),
+        ]
+        prompt = self.pipeline._build_prompt(decisions)
+        assert "KOKORO" in prompt
+        assert "EDGE_TTS" in prompt
+        assert "voice_001" in prompt
+        assert "voice_002" in prompt
+
+    def test_parse_llm_response_valid_json(self):
+        """Test parsing valid JSON response from LLM."""
+        response = '''{
+            "segments": [
+                {"paragraph_index": 0, "audio_path": "/tmp/seg_0.wav", "duration": 5.0, "engine": "kokoro"},
+                {"paragraph_index": 1, "audio_path": "/tmp/seg_1.wav", "duration": 3.0, "engine": "edge_tts"}
+            ],
+            "total_duration": 8.0,
+            "output_path": "/tmp/final.wav"
+        }'''
+        result = self.pipeline._parse_llm_response(response)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["paragraph_index"] == 0
+        assert result[1]["paragraph_index"] == 1
+
+    def test_parse_llm_response_with_markdown_code_block(self):
+        """Test parsing JSON wrapped in markdown code block."""
+        response = '''```json
+{
+    "segments": [
+        {"paragraph_index": 0, "audio_path": "/tmp/seg_0.wav", "duration": 5.0, "engine": "kokoro"}
+    ],
+    "total_duration": 5.0,
+    "output_path": "/tmp/final.wav"
+}
+```'''
+        result = self.pipeline._parse_llm_response(response)
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+    def test_parse_llm_response_invalid_json(self):
+        """Test parsing invalid JSON raises error."""
+        response = "This is not valid JSON"
+        with pytest.raises(ValueError, match="Failed to parse LLM response"):
+            self.pipeline._parse_llm_response(response)
+
+    def test_parse_llm_response_missing_fields(self):
+        """Test parsing JSON with missing required fields."""
+        response = '{"segments": []}'
+        with pytest.raises(ValueError, match="Failed to parse LLM response"):
+            self.pipeline._parse_llm_response(response)
+
+    def test_run_mock_mode(self):
+        """Test running pipeline in mock mode."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+            TtsRoutingDecision(
+                paragraph_index=1,
+                engine=SynthesisEngine.EDGE_TTS,
+                voice_id="voice_002",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        for segment in result:
+            assert isinstance(segment, AudioSegment)
+            assert segment.paragraph_index in [0, 1]
+            assert segment.duration > 0
+            assert segment.audio_path.endswith(".wav")
+
+    def test_run_mock_mode_empty_decisions(self):
+        """Test running pipeline with empty decisions in mock mode."""
+        self.pipeline.mock_mode = True
+        inp = TtsRoutingInput(
+            decisions=[],
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_run_real_mode_with_router(self):
+        """Test running pipeline in real mode with mocked router."""
+        self.pipeline.mock_mode = False
+        mock_segments = [
+            AudioSegment(
+                paragraph_index=0,
+                audio_path="/tmp/seg_0.wav",
+                duration=5.0,
+                engine=SynthesisEngine.KOKORO
+            ),
+        ]
+        self.mock_router.synthesize.return_value = mock_segments
+
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert result == mock_segments
+        self.mock_router.synthesize.assert_called_once()
+
+    def test_run_real_mode_router_exception(self):
+        """Test running pipeline when router raises exception."""
+        self.pipeline.mock_mode = False
+        self.mock_router.synthesize.side_effect = Exception("LLM error")
+
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        with pytest.raises(Exception, match="LLM error"):
+            self.pipeline.run(inp)
+
+    def test_synthesize_convenience_function(self):
+        """Test the convenience synthesize function."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        result = synthesize(inp, mock_mode=True)
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+    def test_synthesize_convenience_function_custom_router(self):
+        """Test convenience function with custom router."""
+        mock_router = Mock()
+        mock_segments = [
+            AudioSegment(
+                paragraph_index=0,
+                audio_path="/tmp/seg_0.wav",
+                duration=5.0,
+                engine=SynthesisEngine.KOKORO
+            ),
+        ]
+        mock_router.synthesize.return_value = mock_segments
+
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test_book",
+            output_dir="/tmp/output"
+        )
+        result = synthesize(inp, router=mock_router, mock_mode=False)
+        assert result == mock_segments
+        mock_router.synthesize.assert_called_once()
+
+    def test_engine_routing_kokoro(self):
+        """Test KOKORO engine routing."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={"speed": 1.0}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert result[0].engine == SynthesisEngine.KOKORO
+
+    def test_engine_routing_edge_tts(self):
+        """Test EDGE_TTS engine routing."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.EDGE_TTS,
+                voice_id="voice_002",
+                params={"rate": "+0%"}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert result[0].engine == SynthesisEngine.EDGE_TTS
+
+    def test_engine_routing_human_clone(self):
+        """Test HUMAN_CLONE engine routing."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.HUMAN_CLONE,
+                voice_id="voice_003",
+                params={"reference_audio": "/tmp/ref.wav"}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert result[0].engine == SynthesisEngine.HUMAN_CLONE
+
+    def test_book_id_propagation(self):
+        """Test book_id is properly handled."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="my_book_123",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert len(result) == 1
+
+    def test_output_dir_handling(self):
+        """Test output directory handling."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/custom/output/path"
+        )
+        result = self.pipeline.run(inp)
+        assert result[0].audio_path.startswith("/custom/output/path")
+
+    def test_segment_duration_positive(self):
+        """Test that segment durations are positive."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=i,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            )
+            for i in range(5)
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        for segment in result:
+            assert segment.duration > 0
+
+    def test_paragraph_index_preservation(self):
+        """Test paragraph indices are preserved."""
+        self.pipeline.mock_mode = True
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=i,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            )
+            for i in range(10)
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        indices = [s.paragraph_index for s in result]
+        assert indices == list(range(10))
+
+
+class TestStitchAudioSegments:
+    """Test audio segment stitching functionality."""
+
+    def test_stitch_audio_segments_empty(self):
+        """Test stitching empty segment list."""
+        result = _stitch_audio_segments([], "/tmp/output.wav")
+        assert result == "/tmp/output.wav"
+
+    def test_stitch_audio_segments_single(self):
+        """Test stitching single segment."""
+        segments = [
+            AudioSegment(
+                paragraph_index=0,
+                audio_path="/tmp/seg_0.wav",
+                duration=5.0,
+                engine=SynthesisEngine.KOKORO
+            ),
+        ]
+        with patch("src.audiobook_studio.pipeline.synthesize.AudioSegment") as mock_segment:
+            mock_segment.from_file.return_value = Mock()
+            mock_segment.from_file.return_value.__add__ = Mock(return_value=Mock())
+            mock_segment.from_file.return_value.export = Mock()
+            result = _stitch_audio_segments(segments, "/tmp/output.wav")
+            assert result == "/tmp/output.wav"
+
+    def test_stitch_audio_segments_multiple(self):
+        """Test stitching multiple segments."""
+        segments = [
+            AudioSegment(
+                paragraph_index=i,
+                audio_path=f"/tmp/seg_{i}.wav",
+                duration=5.0,
+                engine=SynthesisEngine.KOKORO
+            )
+            for i in range(3)
+        ]
+        with patch("src.audiobook_studio.pipeline.synthesize.AudioSegment") as mock_segment:
+            mock_audio = Mock()
+            mock_audio.__add__ = Mock(return_value=mock_audio)
+            mock_audio.export = Mock()
+            mock_segment.from_file.return_value = mock_audio
+            result = _stitch_audio_segments(segments, "/tmp/output.wav")
+            assert result == "/tmp/output.wav"
+            assert mock_segment.from_file.call_count == 3
+
+
+class TestApplyCrossfade:
+    """Test crossfade functionality."""
+
+    def test_apply_crossfade_basic(self):
+        """Test basic crossfade application."""
+        audio1 = Mock()
+        audio2 = Mock()
+        result = _apply_crossfade(audio1, audio2, crossfade_duration=100)
+        # Should return combined audio
+        assert result is not None
+
+    def test_apply_crossfade_zero_duration(self):
+        """Test crossfade with zero duration."""
+        audio1 = Mock()
+        audio2 = Mock()
+        result = _apply_crossfade(audio1, audio2, crossfade_duration=0)
+        assert result is not None
+
+
+class TestSynthesizeEdgeCases:
+    """Test edge cases for synthesize pipeline."""
+
+    def setup_method(self):
+        self.mock_router = Mock()
+        self.pipeline = SynthesizePipeline(router=self.mock_router, mock_mode=True)
+
+    def test_empty_decisions(self):
+        """Test empty decisions list."""
+        inp = TtsRoutingInput(
+            decisions=[],
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert result == []
+
+    def test_single_decision(self):
+        """Test single decision."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert len(result) == 1
+
+    def test_many_decisions(self):
+        """Test many decisions."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=i,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={}
+            )
+            for i in range(100)
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert len(result) == 100
+
+    def test_mixed_engines(self):
+        """Test mixed engines in decisions."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="v1",
+                params={}
+            ),
+            TtsRoutingDecision(
+                paragraph_index=1,
+                engine=SynthesisEngine.EDGE_TTS,
+                voice_id="v2",
+                params={}
+            ),
+            TtsRoutingDecision(
+                paragraph_index=2,
+                engine=SynthesisEngine.HUMAN_CLONE,
+                voice_id="v3",
+                params={}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        engines = [s.engine for s in result]
+        assert SynthesisEngine.KOKORO in engines
+        assert SynthesisEngine.EDGE_TTS in engines
+        assert SynthesisEngine.HUMAN_CLONE in engines
+
+    def test_special_params_handling(self):
+        """Test special parameters handling."""
+        decisions = [
+            TtsRoutingDecision(
+                paragraph_index=0,
+                engine=SynthesisEngine.KOKORO,
+                voice_id="voice_001",
+                params={"speed": 1.5, "pitch": 0.8, "custom_param": "value"}
+            ),
+        ]
+        inp = TtsRoutingInput(
+            decisions=decisions,
+            book_id="test",
+            output_dir="/tmp/output"
+        )
+        result = self.pipeline.run(inp)
+        assert len(result) == 1
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
