@@ -5,7 +5,7 @@ import threading
 import uuid
 import logging
 from datetime import datetime
-from .database import get_db
+from .database import SessionLocal
 from .models import TaskRecord
 
 T = TypeVar('T')
@@ -59,16 +59,28 @@ class AbstractAgent:
         
     def _handle_failure(self, error: Exception):
         """Common error handling for all agents"""
-        db = next(get_db())
-        task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
-        if task_record:
-            task_record.status = "FAILED"
+        db = SessionLocal()
+        task_id = self.context.task_id if self.context is not None else str(uuid.uuid4())
+        try:
+            task_record = db.query(TaskRecord).filter_by(id=task_id).first()
+            if task_record is None:
+                task_record = TaskRecord(id=task_id, status="FAILED")
+                db.add(task_record)
+            else:
+                task_record.status = "FAILED"
+
             task_record.output_data = {
                 'error': str(error),
                 'error_type': type(error).__name__
             }
             task_record.completed_at = datetime.utcnow()
             db.commit()
+        except Exception as db_error:
+            db.rollback()
+            self.logger.error(f"Failed to persist task failure: {db_error}", exc_info=True)
+        finally:
+            db.close()
+
         self.logger.error(f"Task failed: {error}", exc_info=True)
 
 class Orchestrator:
