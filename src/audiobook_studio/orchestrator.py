@@ -11,6 +11,8 @@ from datetime import datetime
 from .database import SessionLocal
 from .models import TaskRecord
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T")
 
 
@@ -228,6 +230,9 @@ class Orchestrator:
             # does not call a real LLM. If the mock router still fails, fall back
             # to a minimal valid analysis result built from the extracted text.
             stages.append("analyze")
+            # 提前导入需要的 Schema
+            from .schemas import BookAnalysisInput
+
             try:
                 analysis_pipeline = AnalyzeStructurePipeline(mock_mode=True)
                 analysis_result = analysis_pipeline.run(
@@ -239,11 +244,11 @@ class Orchestrator:
                     )
                 )
             except Exception as exc:
-                logger.warning(
+                # 使用 logging.warning 替代未定义的 logger.warning
+                logging.warning(
                     "Mock structure analysis failed, using fallback analysis: %s",
                     exc,
                 )
-                from .schemas import BookAnalysisInput
 
                 analysis_pipeline = AnalyzeStructurePipeline(mock_mode=True)
                 analysis_result = analysis_pipeline.run(
