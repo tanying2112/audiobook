@@ -310,10 +310,15 @@ def _write_quality(
     para: Paragraph,
     result: QualityJudgment,
 ) -> Quality:
-    """Create a Quality record and update Paragraph with quality scores."""
-    # Find the latest TTSEdit for this paragraph
+    """Create a Quality record and update Paragraph with quality scores.
+    
+    Ensures tts_edit_id is never NULL by:
+    1. Finding the latest TTSEdit for this paragraph
+    2. If none exists, creating a dummy TTSEdit with edited_text=""
+    """
     from ..models import TTSEdit
 
+    # Find the latest TTSEdit for this paragraph
     tts_edit = (
         db.query(TTSEdit)
         .filter(TTSEdit.paragraph_id == para.id)
@@ -321,26 +326,25 @@ def _write_quality(
         .first()
     )
     
-    # If no TTSEdit exists, create a minimal one from the paragraph's edited_text
-    # This ensures the NOT NULL constraint on Quality.tts_edit_id is satisfied
-    if tts_edit is None and para.edited_text:
+    # If no TTSEdit exists, create a dummy one to satisfy NOT NULL constraint
+    if tts_edit is None:
         tts_edit = TTSEdit(
             project_id=project_id,
             chapter_id=chapter.id,
             paragraph_id=para.id,
-            edited_text=para.edited_text,
+            edited_text=para.edited_text or "",
             changes_made=None,
             forbidden_content_removed=None,
             confidence=para.edit_confidence or 1.0,
-            rationale="Auto-created for quality check",
+            rationale="Auto-created for quality check (no prior edit)",
             difficulty=para.edit_difficulty or "B",
             forbid_edit=para.edit_forbid_edit or False,
         )
         db.add(tts_edit)
         db.flush()  # Get the ID without committing
-        logger.info("Created TTSEdit id=%s for quality check on Paragraph %d", tts_edit.id, para.index)
+        logger.info("Created dummy TTSEdit id=%s for quality check on Paragraph %d", tts_edit.id, para.index)
     
-    tts_edit_id = tts_edit.id if tts_edit else None
+    tts_edit_id = tts_edit.id
 
     quality = Quality(
         project_id=project_id,

@@ -150,8 +150,49 @@ class LLMClient:
                 with open(file) as f:
                     self._mock_cache[file.stem] = json.load(f)
 
-    def call(self, prompt: str, response_model: Type[T], **kwargs) -> LLMCallResult:
-        """Call LLM with structured output parsing."""
+    def call(self, *args, **kwargs) -> LLMCallResult:
+        """
+        Call LLM with structured output parsing.
+        
+        Compatible calling conventions:
+        - call(prompt, response_model, **kwargs)  # positional
+        - call(prompt="...", response_model=..., **kwargs)  # keyword prompt
+        - call(text="...", response_model=..., **kwargs)    # keyword text
+        - call(content="...", response_model=..., **kwargs) # keyword content
+        
+        The prompt is extracted from the first positional arg or from
+        prompt=, text=, or content= keyword arguments.
+        """
+        # Extract prompt from various possible sources
+        prompt = None
+        response_model = None
+        
+        # Handle positional arguments: (prompt, response_model, ...)
+        if args:
+            prompt = args[0]
+            if len(args) > 1:
+                response_model = args[1]
+        
+        # Handle keyword arguments (override positional if provided)
+        if "prompt" in kwargs:
+            prompt = kwargs.pop("prompt")
+        elif "text" in kwargs:
+            prompt = kwargs.pop("text")
+        elif "content" in kwargs:
+            prompt = kwargs.pop("content")
+        
+        if "response_model" in kwargs:
+            response_model = kwargs.pop("response_model")
+        
+        # Validate required parameters
+        if prompt is None:
+            raise ValueError(
+                "prompt is required (pass as first positional arg, "
+                "or use prompt=, text=, or content= keyword argument)"
+            )
+        if response_model is None:
+            raise ValueError("response_model is required")
+        
         if self.config.mock_mode:
             return self._mock_call(prompt, response_model)
 
