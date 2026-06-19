@@ -226,6 +226,26 @@ def _write_quality(
         .order_by(TTSEdit.version.desc())
         .first()
     )
+    
+    # If no TTSEdit exists, create a minimal one from the paragraph's edited_text
+    # This ensures the NOT NULL constraint on Quality.tts_edit_id is satisfied
+    if tts_edit is None and para.edited_text:
+        tts_edit = TTSEdit(
+            project_id=project_id,
+            chapter_id=chapter.id,
+            paragraph_id=para.id,
+            edited_text=para.edited_text,
+            changes_made=None,
+            forbidden_content_removed=None,
+            confidence=para.edit_confidence or 1.0,
+            rationale="Auto-created for quality check",
+            difficulty=para.edit_difficulty or "B",
+            forbid_edit=para.edit_forbid_edit or False,
+        )
+        db.add(tts_edit)
+        db.flush()  # Get the ID without committing
+        logger.info("Created TTSEdit id=%s for quality check on Paragraph %d", tts_edit.id, para.index)
+    
     tts_edit_id = tts_edit.id if tts_edit else None
 
     quality = Quality(

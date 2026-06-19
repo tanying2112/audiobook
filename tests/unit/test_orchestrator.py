@@ -105,6 +105,31 @@ def sample_paragraph(db_session, sample_project, sample_chapter):
 
 
 @pytest.fixture
+def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
+    """Create a sample paragraph with edited_text for quality testing."""
+    para = Paragraph(
+        project_id=sample_project.id,
+        chapter_id=sample_chapter.id,
+        index=0,
+        chapter_index=1,
+        text="这是测试段落内容。",
+        speaker="旁白",
+        is_dialogue=False,
+        emotion="neutral",
+        emotion_intensity=0.5,
+        status="edited",
+        edited_text="这是编辑后的测试段落文本内容。",
+        edit_confidence=0.9,
+        edit_difficulty="B",
+        edit_forbid_edit=False,
+    )
+    db_session.add(para)
+    db_session.commit()
+    db_session.refresh(para)
+    return para
+
+
+@pytest.fixture
 def mock_extraction_result():
     """Create a valid ExtractionResult for testing."""
     from src.audiobook_studio.schemas import ExtractionResult
@@ -441,14 +466,82 @@ class TestWriteSynthesize:
 class TestWriteQuality:
     """Test _write_quality function."""
 
-    @pytest.mark.skip(
-        reason="Production bug: _write_quality doesn't set tts_edit_id (NOT NULL constraint)"
-    )
-    def test_write_quality_updates_paragraph(
-        self, db_session, sample_project, sample_chapter, sample_paragraph
+    def test_write_quality_creates_quality_record_with_existing_tts_edit(
+        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
     ):
-        """Test _write_quality updates paragraph quality fields."""
-        pass
+        """Test _write_quality works when TTSEdit already exists."""
+        # Create a TTSEdit first
+        tts_edit = TTSEdit(
+            project_id=sample_project.id,
+            chapter_id=sample_chapter.id,
+            paragraph_id=sample_paragraph.id,
+            edited_text="编辑后文本",
+            changes_made=[],
+            confidence=0.9,
+        )
+        db_session.add(tts_edit)
+        db_session.commit()
+        db_session.refresh(tts_edit)
+
+        quality = _write_quality(
+            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+        )
+
+        assert quality is not None
+        assert quality.tts_edit_id == tts_edit.id
+        assert quality.overall_score == 0.9
+
+        # Check paragraph was updated
+        db_session.refresh(sample_paragraph)
+        assert sample_paragraph.quality_overall_score == 0.9
+        assert sample_paragraph.status == "quality_checked"
+
+    def test_write_quality_creates_tts_edit_if_missing(
+        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+    ):
+        """Test _write_quality auto-creates TTSEdit when none exists but paragraph has edited_text."""
+        # Ensure no TTSEdit exists
+        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph_with_edit.id).delete()
+        db_session.commit()
+
+        quality = _write_quality(
+            db_session, sample_project.id, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+        )
+
+        assert quality is not None
+        assert quality.tts_edit_id is not None
+
+        # Verify a TTSEdit was created
+        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        assert created_tts_edit is not None
+        assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
+        assert created_tts_edit.rationale == "Auto-created for quality check"
+
+        # Check paragraph was updated
+        db_session.refresh(sample_paragraph_with_edit)
+        assert sample_paragraph_with_edit.quality_overall_score == 0.9
+        assert sample_paragraph_with_edit.status == "quality_checked"
+
+    def test_write_quality_handles_missing_edited_text(
+        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
+    ):
+        """Test _write_quality handles case where no TTSEdit exists and no edited_text."""
+        # Ensure no TTSEdit exists and paragraph has no edited_text
+        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph.id).delete()
+        sample_paragraph.edited_text = None
+        db_session.commit()
+
+        quality = _write_quality(
+            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+        )
+
+        assert quality is not None
+        assert quality.tts_edit_id is None  # Should be None when no TTSEdit can be created
+
+        # Check paragraph was still updated
+        db_session.refresh(sample_paragraph)
+        assert sample_paragraph.quality_overall_score == 0.9
+        assert sample_paragraph.status == "quality_checked"
 
 
 class TestWriteAudioPostProcess:
@@ -905,14 +998,63 @@ class TestRunPipelineMockSynthesize:
 class TestRunStageQuality:
     """Test run_stage for quality stage."""
 
-    @pytest.mark.skip(
-        reason="Production bug: _write_quality doesn't set tts_edit_id (NOT NULL constraint)"
-    )
     def test_run_stage_quality(
-        self, db_session, sample_project, sample_chapter, sample_paragraph
+        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit
     ):
         """Test run_stage with quality stage."""
-        pass
+        with patch(
+            "src.audiobook_studio.pipeline.orchestrator.QualityCheckPipeline"
+        ) as MockPipeline:
+            mock_pipeline = MockPipeline.return_value
+            from src.audiobook_studio.schemas import QualityJudgment
+
+            mock_pipeline.run.return_value = QualityJudgment(
+                segment_id="test_book_ch1_p0",
+                speaker_clarity=0.9,
+                emotion_match=0.85,
+                prosody_naturalness=0.9,
+                text_audio_alignment=0.95,
+                overall_score=0.9,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
+                contract_version=1,
+            )
+
+            result = run_stage(
+                "quality",
+                db_session,
+                project_id=sample_project.id,
+                chapter_index=1,
+                paragraph_index=0,
+                mock_mode=True,
+                segment_id="test_book_ch1_p0",
+                audio_path="/tmp/test.mp3",
+                text="测试文本",
+                annotation=None,
+            )
+
+            assert result.overall_score == 0.9
+            mock_pipeline.run.assert_called_once()
+
+            # Check quality record was created
+            quality = (
+                db_session.query(Quality)
+                .filter(
+                    Quality.project_id == sample_project.id,
+                    Quality.chapter_id == sample_chapter.id,
+                    Quality.paragraph_id == sample_paragraph_with_edit.id,
+                )
+                .first()
+            )
+            assert quality is not None
+            assert quality.overall_score == 0.9
+            assert quality.tts_edit_id is not None
+
+            # Check paragraph was updated
+            db_session.refresh(sample_paragraph_with_edit)
+            assert sample_paragraph_with_edit.quality_overall_score == 0.9
+            assert sample_paragraph_with_edit.status == "quality_checked"
 
 
 class TestRunStageErrors:
@@ -1210,24 +1352,9 @@ class TestRunStageWithFeedbackCollector:
             mock_capture.set_llm_output.assert_called_once()
 
     def test_run_stage_quality_with_feedback(
-        self, db_session, sample_project, sample_chapter, sample_paragraph
+        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit
     ):
         """Test run_stage quality stage captures feedback with quality_judge source."""
-        # Create a TTSEdit record first (required by Quality model)
-        from src.audiobook_studio.models import TTSEdit
-
-        tts_edit = TTSEdit(
-            project_id=sample_project.id,
-            chapter_id=sample_chapter.id,
-            paragraph_id=sample_paragraph.id,
-            edited_text="编辑后文本",
-            changes_made=[],
-            confidence=0.9,
-        )
-        db_session.add(tts_edit)
-        db_session.commit()
-        db_session.refresh(tts_edit)
-
         mock_collector = MagicMock(spec=FeedbackCollector)
         mock_capture = MagicMock()
         mock_capture._disabled = False
