@@ -13,7 +13,7 @@ Usage::
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,100 @@ from .synthesize import SynthesizePipeline
 
 logger = logging.getLogger(__name__)
 
+
+# ── Monitoring / Feedback Hooks (Observer Pattern) ──────────────────────────
+# Non-invasive callbacks for observability. Called at stage boundaries.
+# Extremely lightweight: fire-and-forget, exceptions swallowed, no blocking.
+
+# Internal hook registry
+_stage_hooks: List[Callable[..., None]] = []
+_pipeline_hooks: List[Callable[..., None]] = []
+
+
+def register_stage_hook(hook: Callable[..., None]) -> None:
+    """Register a stage lifecycle hook.
+
+    Hook signature:
+        hook(event: str, stage: str, context: dict, result: Any = None, error: Exception = None)
+
+    Events:
+        - "stage_enter": Before stage execution
+        - "stage_exit": After stage execution (success or error)
+
+    Hooks MUST be non-blocking. Exceptions are caught and logged only.
+    """
+    if hook not in _stage_hooks:
+        _stage_hooks.append(hook)
+        logger.debug("Registered stage hook: %s", hook)
+
+
+def register_pipeline_hook(hook: Callable[..., None]) -> None:
+    """Register a pipeline-level lifecycle hook.
+
+    Hook signature:
+        hook(event: str, context: dict, result: Any = None, error: Exception = None)
+
+    Events:
+        - "pipeline_start": Before entire pipeline (when running multiple stages)
+        - "pipeline_end": After entire pipeline
+    """
+    if hook not in _pipeline_hooks:
+        _pipeline_hooks.append(hook)
+        logger.debug("Registered pipeline hook: %s", hook)
+
+
+def _emit_stage_enter(stage: str, context: Dict[str, Any]) -> None:
+    """Fire stage-enter hooks (non-blocking)."""
+    for h in _stage_hooks:
+        try:
+            h("stage_enter", stage, context, None, None)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Stage hook error (enter): %s", e)
+
+
+def _emit_stage_exit(
+    stage: str, context: Dict[str, Any], result: Any = None, error: Exception | None = None
+) -> None:
+    """Fire stage-exit hooks (non-blocking)."""
+    for h in _stage_hooks:
+        try:
+            h("stage_exit", stage, context, result, error)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Stage hook error (exit): %s", e)
+
+
+def _emit_pipeline_start(context: Dict[str, Any]) -> None:
+    """Fire pipeline-start hooks (non-blocking)."""
+    for h in _pipeline_hooks:
+        try:
+            h("pipeline_start", context, None, None)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Pipeline hook error (start): %s", e)
+
+
+def _emit_pipeline_end(
+    context: Dict[str, Any], result: Any = None, error: Exception | None = None
+) -> None:
+    """Fire pipeline-end hooks (non-blocking)."""
+    for h in _pipeline_hooks:
+        try:
+            h("pipeline_end", context, result, error)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Pipeline hook error (end): %s", e)
+
+
+# Placeholder logger.info hooks for observability (can be overridden by external registration)
+def _default_stage_hook(event: str, stage: str, context: dict, result: Any = None, error: Exception | None = None) -> None:
+    """Default logging hook - logs stage lifecycle events at INFO level."""
+    if event == "stage_enter":
+        logger.info("[HOOK] ▶ Stage ENTER: %s | ctx_keys=%s", stage, list(context.keys()))
+    elif event == "stage_exit":
+        status = "ERROR" if error else "OK"
+        logger.info("[HOOK] ■ Stage EXIT: %s [%s] | result_type=%s", stage, status, type(result).__name__)
+
+
+# Auto-register default logger hook (can be disabled by clearing _stage_hooks)
+_stage_hooks.append(_default_stage_hook)
 
 # ── Stage → DB mapping ────────────────────────────────────────────────────────
 
@@ -414,6 +508,9 @@ def run_stage(
             input_snapshot=input_snapshot,
         )
 
+    # ── Hook: Stage Enter ────────────────────────────────────────────────
+    _emit_stage_enter(stage, input_snapshot)
+
     # ── Stage dispatch ────────────────────────────────────────────────────
     try:
         if stage == "extract":
@@ -434,6 +531,8 @@ def run_stage(
                 feedback_capture.set_llm_output(result.model_dump())
                 # Note: corrected_output and rationale would be set externally when human provides feedback
 
+            # Hook: Stage Exit (success)
+            _emit_stage_exit(stage, input_snapshot, result, None)
             return result
 
         elif stage == "analyze":
@@ -445,6 +544,7 @@ def run_stage(
             if feedback_capture:
                 feedback_capture.set_llm_output(result.model_dump())
 
+            _emit_stage_exit(stage, input_snapshot, result, None)
             return result
 
         elif stage == "annotate":
@@ -463,6 +563,7 @@ def run_stage(
             if feedback_capture:
                 feedback_capture.set_llm_output(result.model_dump())
 
+            _emit_stage_exit(stage, input_snapshot, result, None)
             return result
 
         elif stage == "edit":
@@ -474,6 +575,7 @@ def run_stage(
             if feedback_capture:
                 feedback_capture.set_llm_output(result.model_dump())
 
+            _emit_stage_exit(stage, input_snapshot, result, None)
             return result
 
         elif stage == "audio_postprocess":
@@ -518,6 +620,7 @@ def run_stage(
             if feedback_capture:
                 feedback_capture.set_llm_output(params.model_dump())
 
+            _emit_stage_exit(stage, input_snapshot, params, None)
             return params
 
         elif stage == "synthesize":
@@ -553,6 +656,7 @@ def run_stage(
                     }
                 )
 
+            _emit_stage_exit(stage, input_snapshot, segments, None)
             return segments
 
         elif stage == "quality":
@@ -566,6 +670,7 @@ def run_stage(
                 # For quality stage, source is typically "quality_judge"
                 feedback_capture.set_source("quality_judge")
 
+            _emit_stage_exit(stage, input_snapshot, result, None)
             return result
 
         else:
@@ -576,6 +681,86 @@ def run_stage(
         logger.error("Stage %s failed: %s", stage, e)
         if feedback_capture:
             feedback_capture.set_llm_output({"error": str(e)})
+        # Hook: Stage Exit (error)
+        _emit_stage_exit(stage, input_snapshot, None, e)
+        raise
+
+
+def run_pipeline(
+    stages: List[str],
+    db: Session,
+    *,
+    project_id: Optional[int] = None,
+    chapter_index: Optional[int] = None,
+    chapter_id: Optional[int] = None,
+    paragraph_index: Optional[int] = None,
+    paragraph_id: Optional[int] = None,
+    mock_mode: bool = False,
+    feedback_collector: Optional[FeedbackCollector] = None,
+    **kwargs,
+) -> List[Any]:
+    """Run multiple pipeline stages sequentially with hooks.
+
+    Parameters
+    ----------
+    stages:
+        List of stage names to execute in order.
+    db:
+        SQLAlchemy session for persistence.
+    project_id:
+        Required for stages that create/update Project-level records.
+    chapter_index:
+        1-based chapter number (required for extract, analyze).
+    chapter_id:
+        DB primary key of the Chapter.
+    paragraph_index:
+        1-based paragraph index.
+    paragraph_id:
+        DB primary key of the Paragraph.
+    mock_mode:
+        Passed through to the pipeline stage.
+    feedback_collector:
+        Optional FeedbackCollector for capturing LLM inputs/outputs.
+    **kwargs:
+        Forwarded to each stage's ``run()`` method.
+
+    Returns
+    -------
+    List of results from each stage in order.
+    """
+    pipeline_context = {
+        "stages": stages,
+        "project_id": project_id,
+        "chapter_index": chapter_index,
+        "chapter_id": chapter_id,
+        "paragraph_index": paragraph_index,
+        "paragraph_id": paragraph_id,
+        "mock_mode": mock_mode,
+        "kwargs": _sanitize_kwargs(kwargs),
+    }
+
+    _emit_pipeline_start(pipeline_context)
+    results = []
+
+    try:
+        for stage in stages:
+            result = run_stage(
+                stage,
+                db,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                chapter_id=chapter_id,
+                paragraph_index=paragraph_index,
+                paragraph_id=paragraph_id,
+                mock_mode=mock_mode,
+                feedback_collector=feedback_collector,
+                **kwargs,
+            )
+            results.append(result)
+        _emit_pipeline_end(pipeline_context, results, None)
+        return results
+    except Exception as e:
+        _emit_pipeline_end(pipeline_context, None, e)
         raise
 
 
