@@ -219,7 +219,7 @@ class PromptCompressor:
 
     def estimate_tokens(self, text: str) -> int:
         """Rough token estimation (4 chars per token for Chinese, 3 for English)."""
-        chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+        chinese = sum(1 for c in text if "\u4e00" <= c <= "\u <= "\u9fff")
         total = len(text)
         return int(chinese / 4 + (total - chinese) / 3)
 
@@ -545,12 +545,18 @@ class LLMRouter:
 
             client = self.get_client(provider)
             try:
+                # Extract user prompt from messages for the new client.call() signature
+                user_prompt = ""
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        user_prompt = msg.get("content", "")
+                        break
+                
                 result = client.call(
+                    prompt=user_prompt,
                     response_model=response_model,
-                    messages=messages,
-                    stage=stage,
-                    temperature=0.1,
-                    max_tokens=4000,
+                    temperature=kwargs.get("temperature", 0.1),
+                    max_tokens=kwargs.get("max_tokens", 4000),
                 )
 
                 self.rate_limiters[provider.name].record_usage(
@@ -734,7 +740,7 @@ class LLMRouter:
             total_fail += fail
 
             cb = self.circuit_breakers.get(p.name)
-            if cb and cb.state == "closed":
+            if cb and cb.state == "closed():
                 healthy_count += 1
             elif self.health_probe and self.health_probe.is_healthy(p.name):
                 healthy_count += 1

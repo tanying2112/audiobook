@@ -515,7 +515,7 @@ class TestWriteQuality:
         created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
-        assert created_tts_edit.rationale == "Auto-created for quality check"
+        assert created_tts_edit.rationale == "Auto-created for quality check (no prior edit)"
 
         # Check paragraph was updated
         db_session.refresh(sample_paragraph_with_edit)
@@ -525,7 +525,7 @@ class TestWriteQuality:
     def test_write_quality_handles_missing_edited_text(
         self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
     ):
-        """Test _write_quality handles case where no TTSEdit exists and no edited_text."""
+        """Test _write_quality creates dummy TTSEdit even when no edited_text exists."""
         # Ensure no TTSEdit exists and paragraph has no edited_text
         db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph.id).delete()
         sample_paragraph.edited_text = None
@@ -536,7 +536,12 @@ class TestWriteQuality:
         )
 
         assert quality is not None
-        assert quality.tts_edit_id is None  # Should be None when no TTSEdit can be created
+        assert quality.tts_edit_id is not None  # Should create dummy TTSEdit
+
+        # Verify a TTSEdit was created with empty edited_text
+        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        assert created_tts_edit is not None
+        assert created_tts_edit.edited_text == ""
 
         # Check paragraph was still updated
         db_session.refresh(sample_paragraph)
@@ -1050,6 +1055,8 @@ class TestRunStageQuality:
             assert quality is not None
             assert quality.overall_score == 0.9
             assert quality.tts_edit_id is not None
+
+            # Should be set since paragraph has edited_text
 
             # Check paragraph was updated
             db_session.refresh(sample_paragraph_with_edit)
