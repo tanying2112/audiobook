@@ -472,3 +472,339 @@ class LLMRouter:
                     speech_rate=1.0,
                     pitch_shift_semitones=0,
                     confidence=0.2,
+                    difficulty="B",
+                    needs_sfx=False,
+                    sfx_tags=[],
+                    notes="heuristic_fallback_no_llm_available",
+                )
+            elif stage == "edit":
+                result = TtsEditOutput(
+                    edited_text="",
+                    changes_made=["heuristic_fallback_no_llm_available"],
+                    forbidden_content_removed=[],
+                    confidence=0.2,
+                    rationale="All LLM providers unavailable, using heuristic",
+                )
+            elif stage == "judge":
+                result = QualityJudgment(
+                    segment_id="heuristic",
+                    speaker_clarity=0.5,
+                    emotion_match=0.5,
+                    prosody_naturalness=0.5,
+                    text_audio_alignment=0.5,
+                    overall_score=0.5,
+                    issues=["wrong_speaker"],
+                    fix_suggestions=[],
+                    needs_regeneration=True,
+                )
+            else:
+                result = None
+
+            if s:
+                s.update(metadata={"fallback_used": result is not None})
+            return result
+
+    @_lazy_trace_function(stage="llm")
+    def call(self, stage: str, response_model, messages: list, **kwargs):
+        stage_enum = StageName(stage)
+        providers = self.config.get_providers_for_stage(stage_enum)
+
+        if not providers:
+            if self.mock_mode:
+                return self._create_mock_result(response_model, stage)
+            raise ValueError(f"No providers configured for stage: {stage}")
+
+        # Build and compress prompt
+        prompt = messages[-1]["content"] if messages else ""
+        compressed_prompt, estimated_tokens = self.prompt_compressor.compress(
+            prompt, self._get_schema_json(response_model), ""
+        )
+
+        # Try each provider in priority order
+        for provider in providers:
+            if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
+                logger.warning(f"Rate limit near for {provider.name}, skipping")
+                continue
+
+            if self.cost_tracker.is_limit_exceeded(provider.name):
+                logger.warning(f"Daily cost limit exceeded for {provider.name}")
+                continue
+
+            # Circuit breaker check
+            cb = self.circuit_breakers.get(provider.name)
+            if cb and not cb.can_proceed():
+                logger.warning(f"Circuit breaker open for {provider.name}, skipping")
+                continue
+
+            # Health probe check
+            if self.health_probe and not self.health_probe.is_healthy(provider.name):
+                logger.warning(
+                    f"Health probe reports {provider.name} unhealthy, skipping"
+                )
+                continue
+
+            client = self.get_client(provider)
+            try:
+                # Extract user prompt from messages for the new client.call() signature
+                user_prompt = ""
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        user_prompt = msg.get("content", "")
+                        break
+                
+                result = client.call(
+                    prompt=user_prompt,
+                    response_model=response_model,
+                    temperature=kwargs.get("temperature", 0.1),
+                    max_tokens=kwargs.get("max_tokens", 4000),
+                )
+
+                self.rate_limiters[provider.name].record_usage(
+                    result.tokens_in + result.tokens_out
+                )
+                self.cost_tracker.add_cost(provider.name, result.cost_usd)
+
+                # Record success for circuit breaker
+                if cb:
+                    cb.record_success()
+
+                # Track free tier usage
+                if provider.max_daily_cost_usd == 0:
+                    self._free_quota_success[provider.name] += 1
+
+                # Langfuse tracing - lazy import
+                if self._is_langfuse_enabled():
+                    try:
+                        from ..monitoring.langfuse_client import observe_llm_call
+                        observe_llm_call(
+                            stage=stage,
+                            model=result.model,
+                            provider=provider.name,
+                            prompt_tokens=result.tokens_in,
+                            completion_tokens=result.tokens_out,
+                            total_tokens=result.tokens_in + result.tokens_out,
+                            cost_usd=result.cost_usd,
+                            latency_ms=result.latency_ms,
+                            metadata={
+                                "schema_compliance": result.schema_compliance,
+                                "contract_version": result.contract_version,
+                            },
+                        )
+                    except Exception as e:
+                        logger.debug(f"Langfuse observe failed: {e}")
+
+                logger.info(
+                    f"LLM call [{stage}] provider={provider.name} "
+                    f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
+                    f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
+                    f"schema_ok={result.schema_compliance}"
+                )
+
+                return result
+            except Exception as e:
+                logger.warning(
+                    f"Provider {provider.name} failed for stage {stage}: {e}"
+                )
+                # Record failure for circuit breaker
+                if cb:
+                    cb.record_failure()
+                # Record failure for free tier tracking
+                if provider.max_daily_cost_usd == 0:
+                    self._free_quota_fail[provider.name] += 1
+                continue
+
+        # All providers failed — Kill Switch heuristic fallback
+        fallback = self._heuristic_fallback(stage, response_model)
+        if fallback:
+            return LLMCallResult(
+                output=fallback,
+                model="heuristic_fallback",
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                latency_ms=0,
+                schema_compliance=False,
+                raw_response=fallback,
+            )
+
+        raise RuntimeError(f"All providers failed for stage {stage}")
+
+    def _create_mock_result(self, response_model, stage: str):
+        # Create appropriate mock result based on response_model type
+        if response_model == ParagraphAnnotation:
+            mock_output = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+                notes="Mock annotation for testing",
+            )
+        elif response_model == BookAnalysisOutput:
+            from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+
+            mock_output = BookAnalysisOutput(
+                book_meta=BookMeta(
+                    title="Test Book",
+                    author="Test Author",
+                    genre="小说",
+                    difficulty="B",
+                    language="zh",
+                    era="现代",
+                    total_chapters_estimated=10,
+                ),
+                character_voice_map=[
+                    CharacterVoiceBinding(
+                        canonical_name="旁白",
+                        aliases=[],
+                        gender="neutral",
+                        age_range="adult",
+                        suggested_voice_id="v1",
+                        sample_quote="这是一个测试样本。",
+                    )
+                ],
+                emotion_snapshots=[
+                    EmotionSnapshot(
+                        chapter=1,
+                        dominant_emotion="neutral",
+                        intensity=0.5,
+                        notes="测试情感快照",
+                    )
+                ],
+                story_line_summary="这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。",
+                global_style_notes="测试全局文风备注：保持平实叙述风格，对话自然流畅。",
+            )
+        elif response_model == ExtractionResult:
+            mock_output = ExtractionResult(
+                raw_text="Test extraction text",
+                language="zh",
+                page_count=1,
+            )
+        elif response_model == TtsEditOutput:
+            mock_output = TtsEditOutput(
+                paragraph_text="Test paragraph",
+                phonemes=["t", "e", "s", "t"],
+                pitch_contour=[0],
+                energy_contour=[0.5],
+                duration_ms=1000,
+                ssml_markup="<speak>Test paragraph</speak>",
+            )
+        elif response_model == QualityJudgment:
+            mock_output = QualityJudgment(
+                overall_score=0.8,
+                issues=[],
+                suggestions=["No issues found"],
+                passes_quality_gate=True,
+            )
+        else:
+            # For any other response model, try to create a default instance
+            try:
+                mock_output = response_model()
+            except Exception:
+                # If we can't create an instance, return None to indicate failure
+                return None
+
+        return LLMCallResult(
+            output=mock_output,
+            model="mock-model",
+            tokens_in=10,
+            tokens_out=10,
+            cost_usd=0.0,
+            latency_ms=100,
+            schema_compliance=True,
+            contract_version=1,
+            raw_response=None,
+        )
+
+    def get_free_tier_health(self) -> dict:
+        """Expose free tier health status for Promotion Gate and monitoring."""
+        enabled = self.config.get_all_enabled()
+        free_providers = [p for p in enabled if p.max_daily_cost_usd == 0]
+
+        healthy_count = 0
+        total_success = 0
+        total_fail = 0
+
+        for p in free_providers:
+            success = self._free_quota_success.get(p.name, 0)
+            fail = self._free_quota_fail.get(p.name, 0)
+            total_success += success
+            total_fail += fail
+
+            cb = self.circuit_breakers.get(p.name)
+            if cb and cb.state == "closed":
+                healthy_count += 1
+            elif self.health_probe and self.health_probe.is_healthy(p.name):
+                healthy_count += 1
+
+        total = total_success + total_fail
+        success_rate = total_success / total if total > 0 else 1.0
+
+        # Check local model availability
+        local_available = any(
+            p.provider == ProviderType.OLLAMA and p.enabled for p in enabled
+        )
+
+        # Overall health assessment
+        if success_rate >= 0.95 and healthy_count >= len(free_providers) * 0.5:
+            overall = "green"
+        elif success_rate >= 0.8:
+            overall = "yellow"
+        else:
+            overall = "red"
+
+        return {
+            "total_free_providers": len(free_providers),
+            "healthy_free_providers": healthy_count,
+            "free_quota_success_rate": round(success_rate, 4),
+            "free_quota_success": total_success,
+            "free_quota_fail": total_fail,
+            "local_model_available": local_available,
+            "overall_health": overall,
+            "circuit_breaker_states": {
+                name: cb.get_status()
+                for name, cb in self.circuit_breakers.items()
+                if name in [p.name for p in free_providers]
+            },
+        }
+
+    def get_cost_status(self):
+        return self.cost_tracker.get_status()
+
+    @property
+    def stage_configs(self) -> Dict[str, StageRoutingConfig]:
+        """Backward compatibility: expose stage configs as StageRoutingConfig."""
+        configs = {}
+        for stage in StageName:
+            providers = self.config.get_providers_for_stage(stage)
+            if providers:
+                configs[stage.value] = StageRoutingConfig(
+                    stage=stage.value,
+                    models=[
+                        ModelConfig(
+                            name=p.name,
+                            priority=p.priority,
+                            enabled=p.enabled,
+                            max_daily_cost_usd=p.max_daily_cost_usd,
+                            temperature=0.1,
+                            max_tokens=4000,
+                        )
+                        for p in providers
+                    ],
+                    fallback_model=providers[-1].name if providers else None,
+                )
+        return configs
+
+
+def create_router(mock_mode: bool = None, config_path: str = None) -> LLMRouter:
+    if mock_mode is None:
+        mock_mode = os.getenv("MOCK_LLM", "false").lower() == "true"
+    return LLMRouter(mock_mode=mock_mode, config_path=config_path)
