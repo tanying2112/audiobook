@@ -827,7 +827,7 @@ class TestRunStageSynthesize:
         sample_paragraph,
         mock_audio_segments,
     ):
-        """Test run_stage with synthesize stage."""
+        """Test run_stage with synthesize stage with synthesize stage."""
         with patch(
             "src.audiobook_studio.pipeline.orchestrator.SynthesizePipeline"
         ) as MockPipeline:
@@ -944,11 +944,11 @@ class TestRunPipelineMockSynthesize:
         }
 
         with patch(
-            "src.audiobook_studio.orchestrator.ExtractPipeline"
+            "src.audiobook_studio.pipeline.orchestrator.ExtractPipeline"
         ) as mock_extract_cls, patch(
-            "src.audiobook_studio.orchestrator.AnalyzeStructurePipeline"
+            "src.audiobook_studio.pipeline.orchestrator.AnalyzeStructurePipeline"
         ) as mock_analyze_cls, patch(
-            "src.audiobook_studio.orchestrator.SynthesizePipeline"
+            "src.audiobook_studio.pipeline.orchestrator.SynthesizePipeline"
         ) as mock_synthesize_cls:
             mock_extract_cls.return_value.run.return_value = extraction_result
             mock_analyze_cls.return_value.run.return_value = analysis_payload
