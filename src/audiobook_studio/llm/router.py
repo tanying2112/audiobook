@@ -499,8 +499,8 @@ class LLMRouter:
                             notes="启发式兜底：无法获取LLM分析结果",
                         )
                     ],
-                    story_line_summary="启发式兜底：无法获取LLM分析结果，使用默认故事大纲。",
-                    global_style_notes="启发式兜底：使用默认文风备注。",
+                    story_line_summary="启发式兜底：无法获取LLM分析结果，使用默认故事大纲。这是一个关于主角在未知世界中探索冒险、克服重重困难、最终实现自我成长与超越的励志故事。故事包含丰富的情感变化、生动的场景描写和深刻的主题内涵，适合有声书演绎。",
+                    global_style_notes="启发式兜底：使用默认文风备注，保持平实叙述风格，对话自然流畅。",
                 )
             elif stage == "annotate":
                 result = ParagraphAnnotation(

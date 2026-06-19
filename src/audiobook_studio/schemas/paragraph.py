@@ -2,7 +2,7 @@
 
 包含：
 - ParagraphAnnotationInput: 环节③输入 (单段文本 + 上帝视角上下文)
-- ParagraphAnnotation: 环节③输出 (单段完整参数标注)
+- ParagraphAnnotation: 环节③输出 (单段完整参数参数参数标注)
 
 Hard Rules (违反即解析失败):
 1. speaker_canonical_name 必须命中 character_voice_map 或为 "_narrator_"
@@ -13,7 +13,7 @@ Hard Rules (违反即解析失败):
 6. confidence < 0.6 需 UI 高亮提示人工复核
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field, confloat, conint
 from typing_extensions import TypedDict
@@ -59,7 +59,10 @@ class ParagraphAnnotation(BaseModel):
     每个字段都有严格约束，确保 TTS 合成可直接使用。
     """
 
+    paragraph_id: Optional[int] = Field(default=None, description="段落数据库主键 ID")
+    chapter_id: Optional[int] = Field(default=None, description="章节数据库主键 ID")
     paragraph_index: int = Field(..., ge=0, description="段落索引")
+    text: str = Field(default="", description="段落文本内容")
     speaker_canonical_name: str = Field(
         ...,
         min_length=1,
