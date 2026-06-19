@@ -275,11 +275,17 @@ class LLMRouter:
         self.prompt_compressor = PromptCompressor(self.config)
 
         # Initialize Langfuse tracing - lazy import to avoid circular dependency
-        self.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-        self.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-        self.langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-        self._langfuse_initialized = False
-        self._init_langfuse()
+        if not mock_mode:
+            self.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+            self.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+            self.langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+            self._langfuse_initialized = False
+            self._init_langfuse()
+        else:
+            self.langfuse_public_key = None
+            self.langfuse_secret_key = None
+            self.langfuse_host = None
+            self._langfuse_initialized = True  # Skip initialization in mock mode
 
         # Circuit breakers per provider
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
