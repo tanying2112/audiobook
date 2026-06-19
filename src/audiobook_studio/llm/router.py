@@ -388,11 +388,14 @@ class LLMRouter:
     def _build_messages(
         self, stage: StageName, prompt: str, schema_json: str, few_shot: str
     ) -> list:
+        """Build messages with explicit JSON output requirement."""
+        system_content = (
+            f"你是专业的有声书{stage.value}专家。"
+            f"请严格按照 JSON Schema 输出，不要包含任何额外文本、解释或代码块标记。"
+            f"输出必须是有效的 JSON 对象。"
+        )
         return [
-            {
-                "role": "system",
-                "content": f"你是专业的有声书{stage.value}专家。请严格按照 JSON Schema 输出。",
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ]
 
@@ -454,7 +457,10 @@ class LLMRouter:
             return None
 
     def _heuristic_fallback(self, stage: str, response_model) -> Optional[Any]:
-        """Kill Switch: pure rule-based fallback when ALL LLM providers fail."""
+        """Kill Switch: pure rule-based fallback when ALL LLM providers fail.
+        
+        Returns a valid instance matching the response_model for each stage.
+        """
         from ..monitoring.langfuse_client import span
 
         with span("router.heuristic_fallback", metadata={"stage": stage}) as s:
@@ -462,7 +468,41 @@ class LLMRouter:
                 f"All LLM providers failed for stage {stage}, using heuristic fallback"
             )
 
-            if stage == "annotate":
+            if stage == "analyze":
+                # Return a valid BookAnalysisOutput for analyze stage
+                from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+                result = BookAnalysisOutput(
+                    book_meta=BookMeta(
+                        title="Unknown Book",
+                        author="Unknown Author",
+                        genre="小说",
+                        difficulty="B",
+                        language="zh",
+                        era="现代",
+                        total_chapters_estimated=10,
+                    ),
+                    character_voice_map=[
+                        CharacterVoiceBinding(
+                            canonical_name="旁白",
+                            aliases=[],
+                            gender="neutral",
+                            age_range="adult",
+                            suggested_voice_id="kokoro_narrator",
+                            sample_quote="这是旁白的样本文本。",
+                        )
+                    ],
+                    emotion_snapshots=[
+                        EmotionSnapshot(
+                            chapter=1,
+                            dominant_emotion="neutral",
+                            intensity=0.5,
+                            notes="启发式兜底：无法获取LLM分析结果",
+                        )
+                    ],
+                    story_line_summary="启发式兜底：无法获取LLM分析结果，使用默认故事大纲。",
+                    global_style_notes="启发式兜底：使用默认文风备注。",
+                )
+            elif stage == "annotate":
                 result = ParagraphAnnotation(
                     paragraph_index=0,
                     speaker_canonical_name="_narrator_",
@@ -520,6 +560,9 @@ class LLMRouter:
             prompt, self._get_schema_json(response_model), ""
         )
 
+        # Rebuild messages with compressed prompt and explicit JSON requirement
+        messages = self._build_messages(stage_enum, compressed_prompt, "", "")
+
         # Try each provider in priority order
         for provider in providers:
             if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
@@ -558,6 +601,11 @@ class LLMRouter:
                     temperature=kwargs.get("temperature", 0.1),
                     max_tokens=kwargs.get("max_tokens", 4000),
                 )
+
+                # Validate the result matches expected model
+                if result.output is None:
+                    logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
+                    raise ValueError("LLM returned None output")
 
                 self.rate_limiters[provider.name].record_usage(
                     result.tokens_in + result.tokens_out
