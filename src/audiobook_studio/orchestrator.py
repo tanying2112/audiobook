@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path

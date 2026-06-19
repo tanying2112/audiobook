@@ -10,6 +10,7 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 import pytest
@@ -767,6 +768,138 @@ class TestRunStageSynthesize:
             )
             assert audio is not None
             assert audio.file_path == "/tmp/test_segment_0.mp3"
+
+
+class TestRunPipelineMockSynthesize:
+    """Test Orchestrator.run_pipeline_mock synthesis routing inputs."""
+
+    def test_run_pipeline_mock_passes_valid_synthesize_routing_inputs(
+        self, tmp_path
+    ):
+        """Test mock pipeline synthesis receives field-validated routing inputs."""
+        from src.audiobook_studio.orchestrator import Orchestrator
+
+        source_path = tmp_path / "mock_book.txt"
+        source_path.write_text(
+            "这是第一段旁白文本。\n\n这是第二段角色A文本。",
+            encoding="utf-8",
+        )
+
+        extraction_result = SimpleNamespace(
+            raw_text=(
+                "这是第一段旁白文本，内容足够用于 mock pipeline 合成。\n\n"
+                "这是第二段角色A文本，用于验证合成阶段路由输入。"
+            )
+        )
+
+        analysis_payload = {
+            "book_meta": {
+                "title": "Mock Book",
+                "author": "Mock Author",
+                "genre": "小说",
+                "difficulty": "B",
+                "language": "zh",
+                "era": "现代",
+                "total_chapters_estimated": 1,
+            },
+            "character_voice_map": [
+                {
+                    "canonical_name": "旁白",
+                    "aliases": [],
+                    "gender": "neutral",
+                    "age_range": "adult",
+                    "suggested_voice_id": "zh-CN-XiaoxiaoNeural",
+                    "sample_quote": "这是第一段旁白文本。",
+                },
+                {
+                    "canonical_name": "角色A",
+                    "aliases": [],
+                    "gender": "neutral",
+                    "age_range": "adult",
+                    "suggested_voice_id": "zh-CN-YunxiNeural",
+                    "sample_quote": "这是第二段角色A文本。",
+                },
+            ],
+            "paragraphs": [
+                {
+                    "id": 1,
+                    "chapter_id": 1,
+                    "chapter_index": 1,
+                    "paragraph_index": 1,
+                    "text": "这是第一段旁白文本，内容足够用于 mock pipeline 合成。",
+                    "speaker_canonical_name": "旁白",
+                    "is_dialogue": False,
+                    "emotion": "neutral",
+                    "emotion_intensity": 0.5,
+                    "speech_rate": 1.0,
+                    "pitch_shift_semitones": 0,
+                },
+                {
+                    "id": 2,
+                    "chapter_id": 1,
+                    "chapter_index": 1,
+                    "paragraph_index": 2,
+                    "text": "这是第二段角色A文本，用于验证合成阶段路由输入。",
+                    "speaker_canonical_name": "角色A",
+                    "is_dialogue": True,
+                    "emotion": "curious",
+                    "emotion_intensity": 0.7,
+                    "speech_rate": 1.0,
+                    "pitch_shift_semitones": 1,
+                },
+            ],
+        }
+
+        with patch(
+            "src.audiobook_studio.orchestrator.ExtractPipeline"
+        ) as mock_extract_cls, patch(
+            "src.audiobook_studio.orchestrator.AnalyzeStructurePipeline"
+        ) as mock_analyze_cls, patch(
+            "src.audiobook_studio.orchestrator.SynthesizePipeline"
+        ) as mock_synthesize_cls:
+            mock_extract_cls.return_value.run.return_value = extraction_result
+            mock_analyze_cls.return_value.run.return_value = analysis_payload
+            mock_synthesize_cls.return_value.run.return_value = [
+                SimpleNamespace(file_path="segment_1.mp3"),
+                SimpleNamespace(file_path="segment_2.mp3"),
+            ]
+
+            result = Orchestrator().run_pipeline_mock(
+                file_path=str(source_path),
+                output_dir=str(tmp_path / "output"),
+            )
+
+            assert result.status == "completed"
+            assert result.error is None
+            assert result.stages == ["extract", "analyze", "synthesize"]
+            assert len(result.audio_segments) == 2
+
+            mock_extract_cls.return_value.run.assert_called_once()
+            mock_analyze_cls.return_value.run.assert_called_once()
+            mock_synthesize_cls.assert_called_once()
+            mock_synthesize_cls.return_value.run.assert_called_once()
+
+            # 获取合成阶段的调用参数
+            call_args = mock_synthesize_cls.return_value.run.call_args.args[0]
+
+            # 基础长度校验
+            assert len(call_args) >= 2
+
+            # --- 验证第 1 段 (旁白) ---
+            p1 = call_args[0]
+            assert p1.paragraph_annotation.notes == "Mock annotation"
+            assert p1.character_voice_map[0].canonical_name == "旁白"
+            assert p1.character_voice_map[0].suggested_voice_id == "zh-CN-XiaoxiaoNeural"
+            assert p1.character_voice_map[0].aliases == []
+            assert p1.character_voice_map[0].gender == "neutral"
+
+            # --- 验证第 2 段 (角色A) ---
+            p2 = call_args[1]
+            assert p2.paragraph_annotation.notes == "Mock annotation"
+            assert p2.character_voice_map[1].canonical_name == "角色A"
+            assert p2.character_voice_map[1].suggested_voice_id == "zh-CN-YunxiNeural"
+            assert p2.character_voice_map[1].aliases == []
+            assert p2.character_voice_map[1].gender == "neutral"
 
 
 class TestRunStageQuality:
