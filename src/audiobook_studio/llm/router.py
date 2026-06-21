@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
+    FeedbackAnalysis,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
@@ -39,6 +40,7 @@ from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
 from .health_probe import HealthProbe, HealthStatus
 from .key_pool import KeyPoolManager
+from .quota_registry import QuotaRegistry, get_quota_registry
 
 # Langfuse monitoring - use lazy import to avoid circular dependency
 from typing import TYPE_CHECKING
@@ -54,6 +56,7 @@ if TYPE_CHECKING:
 
 # Runtime imports will be done in functions
 
+from .utils import LLMParseError, validate_and_parse_llm_response
 
 
 def _lazy_trace_function(stage: str):
@@ -71,6 +74,9 @@ def _lazy_trace_function(stage: str):
         return wrapper
     return decorator
 
+
+# Hardware profile integration
+from ..config.hardware_profile import get_hardware_profile, HardwareProfile
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -264,7 +270,7 @@ class PromptCompressor:
 
 
 class LLMRouter:
-    def __init__(self, mock_mode: bool = False, config_path: str = None):
+    def __init__(self, mock_mode: bool = False, config_path: str = None, hardware_profile: Optional[HardwareProfile] = None):
         self.mock_mode = mock_mode
         self.clients = {}
         self.rate_limiters = {}
@@ -272,6 +278,10 @@ class LLMRouter:
 
         # Load provider config
         self.config = LLMProvidersConfig.load(config_path)
+        
+        # Hardware profile integration for stage-specific model routing
+        self.hardware_profile = hardware_profile or get_hardware_profile()
+        
         self.prompt_compressor = PromptCompressor(self.config)
 
         # Initialize Langfuse tracing - lazy import to avoid circular dependency
@@ -296,7 +306,10 @@ class LLMRouter:
         # Key pool manager
         self.key_pool = KeyPoolManager()
 
-        # Free tier tracking
+        # Quota registry for free-tier management
+        self.quota_registry = get_quota_registry()
+
+        # Free tier tracking (legacy, kept for backward compatibility)
         self._free_quota_success: Dict[str, int] = defaultdict(int)
         self._free_quota_fail: Dict[str, int] = defaultdict(int)
 
@@ -405,6 +418,53 @@ class LLMRouter:
     def _get_schema_json(self, response_model) -> str:
         return json.dumps(response_model.model_json_schema(), ensure_ascii=False)
 
+    def _apply_hardware_profile_routing(
+        self, stage: str, providers: List[ProviderConfig], stage_models: List[Dict[str, Any]]
+    ) -> List[ProviderConfig]:
+        """Reorder and filter providers based on hardware profile stage model map.
+
+        Args:
+            stage: Pipeline stage name
+            providers: Available providers from config
+            stage_models: Hardware profile model mapping for this stage (list of dicts with provider, model, priority)
+
+        Returns:
+            Reordered and filtered list of providers
+        """
+        if not stage_models:
+            return providers
+
+        # Build a mapping of provider name -> config for quick lookup
+        provider_map = {p.name: p for p in providers}
+
+        # Build ordered list based on hardware profile priority
+        ordered = []
+        seen = set()
+
+        for model_config in stage_models:
+            provider_name = model_config.get("provider")
+            model_name = model_config.get("model")
+            priority = model_config.get("priority", 999)
+
+            if provider_name in provider_map and provider_name not in seen:
+                provider = provider_map[provider_name]
+                # Update the model if specified in hardware profile
+                if model_name:
+                    # We can't easily change the model at runtime with LiteLLM
+                    # But we can note the preferred model
+                    provider.extra_params = provider.extra_params or {}
+                    provider.extra_params["hardware_profile_model"] = model_name
+                    provider.extra_params["hardware_profile_priority"] = priority
+                ordered.append(provider)
+                seen.add(provider_name)
+
+        # Add remaining providers not in hardware profile (lower priority)
+        for p in providers:
+            if p.name not in seen:
+                ordered.append(p)
+
+        return ordered
+
     def _select_provider(
         self, providers: List[ProviderConfig], estimated_tokens: int
     ) -> Optional[ProviderConfig]:
@@ -436,7 +496,17 @@ class LLMRouter:
                     )
                     continue
 
-                # Layer 5: Free quota prediction (for free-tier providers)
+                # Layer 5: Quota registry check (for free-tier providers)
+                quota_status = self.quota_registry.get_quota_status(provider.name)
+                if quota_status.get("configured", False) and not quota_status.get("healthy", True):
+                    logger.debug(
+                        f"Quota exhausted or unhealthy for {provider.name}: "
+                        f"daily_pct={quota_status['daily']['requests_pct']}%, "
+                        f"minute_pct={quota_status['minute']['requests_pct']}%"
+                    )
+                    continue
+
+                # Layer 6: Free quota prediction (legacy, kept for backward compatibility)
                 if provider.max_daily_cost_usd == 0:
                     success = self._free_quota_success.get(provider.name, 0)
                     fail = self._free_quota_fail.get(provider.name, 0)
@@ -456,16 +526,22 @@ class LLMRouter:
                 s.update(metadata={"selected_provider": None})
             return None
 
-    def _heuristic_fallback(self, stage: str, response_model) -> Optional[Any]:
+    def _heuristic_fallback(self, stage: str, response_model, segment_id: str, **context) -> Optional[Any]:
         """Kill Switch: pure rule-based fallback when ALL LLM providers fail.
-        
+
         Returns a valid instance matching the response_model for each stage.
+
+        Args:
+            stage: Pipeline stage name
+            response_model: Pydantic model class for the expected output
+            segment_id: The segment ID being processed (REQUIRED for judge stage)
+            **context: Additional context
         """
         from ..monitoring.langfuse_client import span
 
-        with span("router.heuristic_fallback", metadata={"stage": stage}) as s:
+        with span("router.heuristic_fallback", metadata={"stage": stage, "segment_id": segment_id}) as s:
             logger.warning(
-                f"All LLM providers failed for stage {stage}, using heuristic fallback"
+                f"All LLM providers failed for stage {stage} (segment_id={segment_id}), using heuristic fallback"
             )
 
             if stage == "analyze":
@@ -526,8 +602,9 @@ class LLMRouter:
                     rationale="All LLM providers unavailable, using heuristic",
                 )
             elif stage == "judge":
+                # segment_id is now a REQUIRED parameter
                 result = QualityJudgment(
-                    segment_id="heuristic",
+                    segment_id=segment_id,
                     speaker_clarity=0.5,
                     emotion_match=0.5,
                     prosody_naturalness=0.5,
@@ -536,6 +613,9 @@ class LLMRouter:
                     issues=["wrong_speaker"],
                     fix_suggestions=[],
                     needs_regeneration=True,
+                    contract_version=1,
+                    judge_model="heuristic_fallback",
+                    judge_prompt_version="heuristic_v1",
                 )
             else:
                 result = None
@@ -547,20 +627,33 @@ class LLMRouter:
     @_lazy_trace_function(stage="llm")
     def call(self, stage: str, response_model, messages: list, **kwargs):
         stage_enum = StageName(stage)
+        
+        # Get providers from config
         providers = self.config.get_providers_for_stage(stage_enum)
+        
+        # Apply hardware profile stage model mapping if available
+        if self.hardware_profile:
+            stage_models = self.hardware_profile.get_llm_stage_models(stage)
+            if stage_models:
+                # Filter and reorder providers based on hardware profile priority
+                providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
 
         if not providers:
             if self.mock_mode:
-                return self._create_mock_result(response_model, stage)
+                return self._create_mock_result(response_model, stage, **kwargs)
             raise ValueError(f"No providers configured for stage: {stage}")
 
-        # Build and compress prompt
-        prompt = messages[-1]["content"] if messages else ""
+        # Mock mode short-circuit: return mock result immediately without trying real providers
+        if self.mock_mode:
+            return self._create_mock_result(response_model, stage, **kwargs)
+
+        # Build and compress prompt - preserve system message for JSON enforcement
+        user_prompt = messages[-1]["content"] if messages else ""
         compressed_prompt, estimated_tokens = self.prompt_compressor.compress(
-            prompt, self._get_schema_json(response_model), ""
+            user_prompt, self._get_schema_json(response_model), ""
         )
 
-        # Rebuild messages with compressed prompt and explicit JSON requirement
+        # Rebuild messages with compressed prompt - preserves system message
         messages = self._build_messages(stage_enum, compressed_prompt, "", "")
 
         # Try each provider in priority order
@@ -586,17 +679,16 @@ class LLMRouter:
                 )
                 continue
 
+            # Quota registry check before making request
+            if not self.quota_registry.can_make_request(provider.name, estimated_tokens):
+                logger.warning(f"Quota exceeded for {provider.name}, skipping")
+                continue
+
             client = self.get_client(provider)
             try:
-                # Extract user prompt from messages for the new client.call() signature
-                user_prompt = ""
-                for msg in messages:
-                    if msg.get("role") == "user":
-                        user_prompt = msg.get("content", "")
-                        break
-                
+                # Pass full messages list to preserve system message (JSON enforcement)
                 result = client.call(
-                    prompt=user_prompt,
+                    prompt=messages,
                     response_model=response_model,
                     temperature=kwargs.get("temperature", 0.1),
                     max_tokens=kwargs.get("max_tokens", 4000),
@@ -606,6 +698,18 @@ class LLMRouter:
                 if result.output is None:
                     logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
                     raise ValueError("LLM returned None output")
+
+                # Defensive JSON parsing validation
+                # The raw_response should be validated before Pydantic validation
+                if hasattr(result, 'raw_response') and result.raw_response is not None:
+                    from .client import validate_and_parse_llm_response
+                    try:
+                        validate_and_parse_llm_response(
+                            result.raw_response, response_model, stage
+                        )
+                    except LLMParseError as e:
+                        logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
+                        raise
 
                 self.rate_limiters[provider.name].record_usage(
                     result.tokens_in + result.tokens_out
@@ -619,6 +723,13 @@ class LLMRouter:
                 # Track free tier usage
                 if provider.max_daily_cost_usd == 0:
                     self._free_quota_success[provider.name] += 1
+
+                # Record quota usage
+                self.quota_registry.record_request(
+                    provider.name,
+                    tokens_used=result.tokens_in + result.tokens_out,
+                    success=True
+                )
 
                 # Langfuse tracing - lazy import
                 if self._is_langfuse_enabled():
@@ -659,10 +770,21 @@ class LLMRouter:
                 # Record failure for free tier tracking
                 if provider.max_daily_cost_usd == 0:
                     self._free_quota_fail[provider.name] += 1
+                # Record quota failure
+                self.quota_registry.record_request(
+                    provider.name,
+                    tokens_used=0,
+                    success=False
+                )
                 continue
 
         # All providers failed — Kill Switch heuristic fallback
-        fallback = self._heuristic_fallback(stage, response_model)
+        # Pass segment_id for judge stage (required)
+        segment_id = "unknown"
+        if stage == "judge":
+            # Try to extract segment_id from kwargs
+            segment_id = kwargs.get("segment_id", "unknown")
+        fallback = self._heuristic_fallback(stage, response_model, segment_id=segment_id)
         if fallback:
             return LLMCallResult(
                 output=fallback,
@@ -677,8 +799,9 @@ class LLMRouter:
 
         raise RuntimeError(f"All providers failed for stage {stage}")
 
-    def _create_mock_result(self, response_model, stage: str):
+    def _create_mock_result(self, response_model, stage: str, **kwargs):
         # Create appropriate mock result based on response_model type
+        # Pass kwargs (e.g., segment_id) to mock creation
         if response_model == ParagraphAnnotation:
             mock_output = ParagraphAnnotation(
                 paragraph_index=0,
@@ -747,10 +870,27 @@ class LLMRouter:
             )
         elif response_model == QualityJudgment:
             mock_output = QualityJudgment(
+                segment_id=kwargs.get("segment_id", "mock_segment"),
+                speaker_clarity=0.8,
+                emotion_match=0.8,
+                prosody_naturalness=0.8,
+                text_audio_alignment=0.8,
                 overall_score=0.8,
                 issues=[],
-                suggestions=["No issues found"],
-                passes_quality_gate=True,
+                fix_suggestions=[],
+                needs_regeneration=False,
+                contract_version=1,
+                judge_model="mock-model",
+                judge_prompt_version="mock_v1",
+            )
+        elif response_model == FeedbackAnalysis:
+            mock_output = FeedbackAnalysis(
+                pattern_tags=["dialogue_attribution"],
+                semantic_summary="[Mock] LLM 错误标注了对话归属，修正后明确了说话人身份。",
+                severity="medium",
+                actionable_instruction="标注对话时必须从上下文推断说话人，若引号内无明确主语则检查前文对话。",
+                root_cause="prompt 缺少对话归属推断的明确规则",
+                confidence=0.85,
             )
         else:
             # For any other response model, try to create a default instance
@@ -824,6 +964,20 @@ class LLMRouter:
             },
         }
 
+    def get_quota_status(self, provider_name: str = None) -> dict:
+        """Get quota registry status for all or a specific provider."""
+        if provider_name:
+            return self.quota_registry.get_quota_status(provider_name)
+        return self.quota_registry.get_all_statuses()
+
+    def get_quota_healthy_providers(self) -> List[str]:
+        """Get list of providers with available quota."""
+        return self.quota_registry.get_healthy_providers()
+
+    def get_quota_health_score(self, provider_name: str) -> float:
+        """Get health score for a provider based on quota availability."""
+        return self.quota_registry.get_quota_health_score(provider_name)
+
     def get_cost_status(self):
         return self.cost_tracker.get_status()
 
@@ -852,7 +1006,7 @@ class LLMRouter:
         return configs
 
 
-def create_router(mock_mode: bool = None, config_path: str = None) -> LLMRouter:
+def create_router(mock_mode: bool = None, config_path: str = None, hardware_profile: Optional[HardwareProfile] = None) -> LLMRouter:
     if mock_mode is None:
         mock_mode = os.getenv("MOCK_LLM", "false").lower() == "true"
-    return LLMRouter(mock_mode=mock_mode, config_path=config_path)
+    return LLMRouter(mock_mode=mock_mode, config_path=config_path, hardware_profile=hardware_profile)

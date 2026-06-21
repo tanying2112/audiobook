@@ -21,6 +21,9 @@ from tenacity import (
     wait_exponential,
 )
 
+import instructor
+from litellm import completion
+
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
@@ -31,6 +34,9 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Import shared validation utilities
+from .utils import LLMParseError, validate_and_parse_llm_response
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -117,8 +123,6 @@ class LLMClient:
     def _init_client(self):
         """Initialize LiteLLM + Instructor client."""
         if not self.config.mock_mode:
-            import instructor
-            from litellm import completion
             self._client = instructor.from_litellm(completion)
         else:
             self._client = None
@@ -146,9 +150,20 @@ class LLMClient:
         import json
         mock_dir = Path(self.config.mock_data_dir)
         if mock_dir.exists():
-            for file in mock_dir.glob("*.json"):
+            # Look for both .json and .jsonl files
+            for file in mock_dir.rglob("*.json"):
                 with open(file) as f:
                     self._mock_cache[file.stem] = json.load(f)
+            for file in mock_dir.rglob("*.jsonl"):
+                with open(file) as f:
+                    for line in f:
+                        if line.strip():
+                            data = json.loads(line)
+                            # Use the expected_output as mock data
+                            if "expected_output" in data:
+                                self._mock_cache[file.stem] = data["expected_output"]
+                            else:
+                                self._mock_cache[file.stem] = data
 
     def call(self, *args, **kwargs) -> LLMCallResult:
         """
@@ -180,10 +195,17 @@ class LLMClient:
             prompt = kwargs.pop("text")
         elif "content" in kwargs:
             prompt = kwargs.pop("content")
-        
+        elif "messages" in kwargs:
+            prompt = kwargs.pop("messages")
+
         if "response_model" in kwargs:
             response_model = kwargs.pop("response_model")
-        
+
+        # If prompt is a list (messages), convert to string for mock lookup
+        prompt_str = prompt
+        if isinstance(prompt, list):
+            prompt_str = " ".join(str(m.get("content", "")) for m in prompt)
+
         # Validate required parameters
         if prompt is None:
             raise ValueError(
@@ -192,29 +214,68 @@ class LLMClient:
             )
         if response_model is None:
             raise ValueError("response_model is required")
-        
+
         if self.config.mock_mode:
-            return self._mock_call(prompt, response_model)
+            return self._mock_call(prompt_str, response_model)
 
         start = time.time()
         try:
+            # Accept either a string prompt or a full messages list
+            # If prompt is a list, use it as the messages directly
+            if isinstance(prompt, list):
+                messages = prompt
+            else:
+                # Default to user message only (backward compatibility)
+                messages = [{"role": "user", "content": prompt}]
+
+            call_kwargs = dict(kwargs)
+            if self.config.api_base:
+                call_kwargs["api_base"] = self.config.api_base
             result = self._client.chat.completions.create(
                 model=self.config.model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 response_model=response_model,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                **kwargs
+                **call_kwargs
             )
             latency_ms = int((time.time() - start) * 1000)
+
+            # Get raw response for validation
+            raw_response = getattr(result, '_raw_response', None) or getattr(result, 'model_dump', lambda: {})()
+
+            # Extract token usage from raw response
+            tokens_in = 0
+            tokens_out = 0
+            if isinstance(raw_response, dict) and "usage" in raw_response:
+                usage = raw_response["usage"]
+                tokens_in = usage.get("prompt_tokens", 0)
+                tokens_out = usage.get("completion_tokens", 0)
+
+            # Defensive JSON parsing validation
+            try:
+                validate_and_parse_llm_response(raw_response, response_model, "unknown")
+            except LLMParseError as e:
+                logger.warning(f"LLM returned invalid JSON: {e}")
+                raise
+
+            # Calculate cost
+            cost_usd = 0.0
+            model_pricing = MODEL_PRICING.get(self.config.model, {"input": 0, "output": 0})
+            if tokens_in > 0:
+                cost_usd += (tokens_in / 1_000_000) * model_pricing.get("input", 0)
+            if tokens_out > 0:
+                cost_usd += (tokens_out / 1_000_000) * model_pricing.get("output", 0)
+
             return LLMCallResult(
                 output=result,
                 model=self.config.model,
-                tokens_in=0,  # TODO: track from response
-                tokens_out=0,
-                cost_usd=0.0,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=cost_usd,
                 latency_ms=latency_ms,
                 schema_compliance=True,
+                raw_response=raw_response,
             )
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
@@ -234,22 +295,101 @@ class LLMClient:
                     cost_usd=0.0,
                     latency_ms=1,
                     schema_compliance=True,
+                    raw_response=data,
                 )
-        # Return minimal valid mock
+        # Return minimal valid mock based on response_model type
+        from ..schemas import (
+            BookAnalysisOutput, ExtractionResult, ParagraphAnnotation,
+            QualityJudgment, TtsEditOutput, TtsRoutingDecision
+        )
+        if response_model == BookAnalysisOutput:
+            from ..schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
+            mock_output = BookAnalysisOutput(
+                book_meta=BookMeta(
+                    title='Test Book', author='Test Author', genre='小说',
+                    difficulty='B', language='zh', era='现代', total_chapters_estimated=10
+                ),
+                character_voice_map=[
+                    CharacterVoiceBinding(
+                        canonical_name='旁白', aliases=[], gender='neutral',
+                        age_range='adult', suggested_voice_id='v1',
+                        sample_quote='这是一个测试样本。'
+                    ),
+                    CharacterVoiceBinding(
+                        canonical_name='主角', aliases=[], gender='male',
+                        age_range='adult', suggested_voice_id='v2',
+                        sample_quote='主角的测试台词。'
+                    ),
+                ],
+                emotion_snapshots=[
+                    EmotionSnapshot(chapter=1, dominant_emotion='neutral', intensity=0.5, notes='测试情感快照')
+                ],
+                story_line_summary='这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。',
+                global_style_notes='测试全局文风备注：保持平实叙述风格，对话自然流畅。'
+            )
+        elif response_model == ExtractionResult:
+            from ..schemas import ExtractionResult
+            mock_output = ExtractionResult(
+                raw_text='Mock extracted text', language='zh', page_count=1,
+                has_ocr=False, ocr_page_ratio=0.0, warnings=[]
+            )
+        elif response_model == ParagraphAnnotation:
+            from ..schemas import ParagraphAnnotation
+            mock_output = ParagraphAnnotation(
+                paragraph_index=0, speaker_canonical_name='旁白', is_dialogue=False,
+                emotion='neutral', emotion_intensity=0.5, speech_rate=1.0,
+                pitch_shift_semitones=0, needs_sfx=False, sfx_tags=[],
+                pause_before_ms=0, pause_after_ms=0, confidence=0.9,
+                difficulty='B', notes=''
+            )
+        elif response_model == QualityJudgment:
+            from ..schemas import QualityJudgment
+            mock_output = QualityJudgment(
+                segment_id='mock_seg', speaker_clarity=0.9, emotion_match=0.9,
+                prosody_naturalness=0.9, text_audio_alignment=0.9,
+                overall_score=0.9, issues=[], fix_suggestions=[],
+                needs_regeneration=False
+            )
+        elif response_model == TtsEditOutput:
+            from ..schemas import TtsEditOutput
+            mock_output = TtsEditOutput(
+                edited_text='Mock edited text', changes_made=[],
+                forbidden_content_removed=[], confidence=0.9, rationale='Mock rationale'
+            )
+        elif response_model == TtsRoutingDecision:
+            from ..schemas import TtsRoutingDecision
+            mock_output = TtsRoutingDecision(
+                segment_id='mock_seg', engine_choice='kokoro', voice_id='v1',
+                prosody_overrides=None, fallback_engine='edge', reasoning='Mock',
+                estimated_cost_usd=0.0, estimated_duration_ms=1000
+            )
+        else:
+            # Try to create a default instance, but handle list types gracefully
+            try:
+                mock_output = response_model()
+            except (TypeError, Exception):
+                # For types that can't be instantiated without arguments (like list),
+                # or Pydantic models with required fields, return None
+                mock_output = None
         return LLMCallResult(
-            output=response_model(),
+            output=mock_output,
             model=self.config.model,
             tokens_in=0,
             tokens_out=0,
             cost_usd=0.0,
             latency_ms=1,
             schema_compliance=True,
+            raw_response=mock_output.model_dump() if hasattr(mock_output, 'model_dump') else {},
         )
 
 
 def create_client(
     model: str,
     mock_mode: bool = False,
+    temperature: float = 0.1,
+    max_tokens: int = 4000,
+    max_retries: int = 3,
+    timeout: int = 60,
     api_base: Optional[str] = None,
     langfuse_public_key: Optional[str] = None,
     langfuse_secret_key: Optional[str] = None,
@@ -260,6 +400,10 @@ def create_client(
     config = LLMClientConfig(
         model=model,
         mock_mode=mock_mode,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        max_retries=max_retries,
+        timeout=timeout,
         api_base=api_base,
         langfuse_public_key=langfuse_public_key,
         langfuse_secret_key=langfuse_secret_key,

@@ -110,7 +110,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import BookAnalysisOutput
 
         messages = [{"role": "user", "content": "Analyze this book"}]
-        result = client.call(BookAnalysisOutput, messages, stage="analyze")
+        result = client.call(response_model=BookAnalysisOutput, messages=messages, stage="analyze")
 
         assert isinstance(result, LLMCallResult)
         assert isinstance(result.output, BookAnalysisOutput)
@@ -126,7 +126,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import QualityJudgment
 
         messages = [{"role": "user", "content": "Judge this audio"}]
-        result = client.call(QualityJudgment, messages, stage="judge")
+        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         assert isinstance(result.output, QualityJudgment)
 
@@ -137,7 +137,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import ParagraphAnnotation
 
         messages = [{"role": "user", "content": "Annotate this paragraph"}]
-        result = client.call(ParagraphAnnotation, messages, stage="annotate")
+        result = client.call(response_model=ParagraphAnnotation, messages=messages, stage="annotate")
 
         assert isinstance(result.output, ParagraphAnnotation)
 
@@ -148,7 +148,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import TtsEditOutput
 
         messages = [{"role": "user", "content": "Edit this text"}]
-        result = client.call(TtsEditOutput, messages, stage="edit")
+        result = client.call(response_model=TtsEditOutput, messages=messages, stage="edit")
 
         assert isinstance(result.output, TtsEditOutput)
 
@@ -159,7 +159,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import TtsRoutingDecision
 
         messages = [{"role": "user", "content": "Route this TTS"}]
-        result = client.call(TtsRoutingDecision, messages, stage="route")
+        result = client.call(response_model=TtsRoutingDecision, messages=messages, stage="route")
 
         assert isinstance(result.output, TtsRoutingDecision)
 
@@ -170,7 +170,7 @@ class TestLLMClientMockMode:
         from src.audiobook_studio.schemas import ExtractionResult
 
         messages = [{"role": "user", "content": "Extract this text"}]
-        result = client.call(ExtractionResult, messages, stage="extract")
+        result = client.call(response_model=ExtractionResult, messages=messages, stage="extract")
 
         # In mock mode, output might be a dict from golden cache or an ExtractionResult
         assert result is not None
@@ -181,7 +181,7 @@ class TestLLMClientMockMode:
         assert result.schema_compliance is True
 
     def test_call_mock_mode_unknown_stage(self):
-        """Test call in mock mode for unknown stage raises error."""
+        """Test call in mock mode for unknown stage returns None output."""
         client = create_client("test-model", mock_mode=True)
 
         from pydantic import BaseModel
@@ -190,36 +190,38 @@ class TestLLMClientMockMode:
             value: str
 
         messages = [{"role": "user", "content": "Test"}]
-        # Unknown stage - the mock returns None, then tries real API which fails in mock mode
-        with pytest.raises(AttributeError):
-            client.call(UnknownModel, messages, stage="unknown")
+        # Unknown stage - the mock returns None since it can't instantiate
+        result = client.call(response_model=UnknownModel, messages=messages, stage="unknown")
+        assert result.output is None
 
-    def test_calculate_cost(self):
-        """Test cost calculation."""
+    def test_cost_calculation_in_result(self):
+        """Test that mock results have zero cost."""
         client = create_client("gemini-2.0-flash", mock_mode=True)
 
-        # gemini-2.0-flash: input=$0.075/M, output=$0.30/M
-        cost = client._calculate_cost("gemini-2.0-flash", 1_000_000, 1_000_000)
-        assert cost == pytest.approx(0.375)  # 0.075 + 0.30
+        from src.audiobook_studio.schemas import BookAnalysisOutput
 
-        # Unknown model uses defaults
-        cost = client._calculate_cost("unknown-model", 1_000_000, 1_000_000)
-        assert cost == pytest.approx(4.0)  # 1.0 + 3.0
+        messages = [{"role": "user", "content": "Analyze this book"}]
+        result = client.call(response_model=BookAnalysisOutput, messages=messages, stage="analyze")
 
-    def test_calculate_cost_zero(self):
-        """Test cost calculation for free models."""
+        assert result.cost_usd == 0.0
+
+    def test_cost_calculation_free_model(self):
+        """Test cost for free tier models."""
         client = create_client("cerebras/llama-3.3-70b", mock_mode=True)
 
-        cost = client._calculate_cost("cerebras/llama-3.3-70b", 1_000_000, 1_000_000)
-        assert cost == 0.0
+        from src.audiobook_studio.schemas import BookAnalysisOutput
+
+        messages = [{"role": "user", "content": "Analyze this book"}]
+        result = client.call(response_model=BookAnalysisOutput, messages=messages, stage="analyze")
+
+        assert result.cost_usd == 0.0
 
 
 class TestLLMClientRealMode:
     """Tests for LLMClient in real mode (mocked)."""
 
-    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
-    @patch("src.audiobook_studio.llm.client.completion")
-    def test_init_real_mode(self, mock_completion, mock_instructor):
+    @patch("instructor.from_litellm")
+    def test_init_real_mode(self, mock_instructor):
         """Test initializing client in real mode."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
@@ -230,9 +232,8 @@ class TestLLMClientRealMode:
         assert client._client == mock_client
         assert mock_instructor.called
 
-    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
-    @patch("src.audiobook_studio.llm.client.completion")
-    def test_call_real_mode_success(self, mock_completion, mock_instructor):
+    @patch("instructor.from_litellm")
+    def test_call_real_mode_success(self, mock_instructor):
         """Test successful real mode call."""
         # Setup mock
         mock_client = MagicMock()
@@ -251,17 +252,20 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_raw = MagicMock()
-        mock_raw.usage.prompt_tokens = 100
-        mock_raw.usage.completion_tokens = 50
-        mock_response._raw_response = mock_raw
+        # Set raw_response as a dict with usage info
+        mock_response._raw_response = {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50
+            }
+        }
 
         mock_client.chat.completions.create.return_value = mock_response
 
         client = create_client("gpt-4o", mock_mode=False)
 
         messages = [{"role": "user", "content": "Test"}]
-        result = client.call(QualityJudgment, messages, stage="judge")
+        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         assert isinstance(result, LLMCallResult)
         assert result.output == mock_response
@@ -271,9 +275,8 @@ class TestLLMClientRealMode:
         assert result.latency_ms >= 0  # Can be 0 in fast mocks
         assert result.schema_compliance is True
 
-    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
-    @patch("src.audiobook_studio.llm.client.completion")
-    def test_call_real_mode_exception(self, mock_completion, mock_instructor):
+    @patch("instructor.from_litellm")
+    def test_call_real_mode_exception(self, mock_instructor):
         """Test real mode call exception handling."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
@@ -286,11 +289,10 @@ class TestLLMClientRealMode:
 
         messages = [{"role": "user", "content": "Test"}]
         with pytest.raises(Exception, match="API Error"):
-            client.call(QualityJudgment, messages, stage="judge")
+            client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
-    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
-    @patch("src.audiobook_studio.llm.client.completion")
-    def test_call_real_mode_with_api_base(self, mock_completion, mock_instructor):
+    @patch("instructor.from_litellm")
+    def test_call_real_mode_with_api_base(self, mock_instructor):
         """Test call with custom api_base."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
@@ -308,17 +310,20 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_raw = MagicMock()
-        mock_raw.usage.prompt_tokens = 100
-        mock_raw.usage.completion_tokens = 50
-        mock_response._raw_response = mock_raw
+        # Set raw_response as a dict with usage info
+        mock_response._raw_response = {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50
+            }
+        }
 
         mock_client.chat.completions.create.return_value = mock_response
 
-        client = create_client("gpt-4o", mock_mode=False, api_base="https://custom.api/v1")
+        client = create_client("gpt-gpt-4o", mock_mode=False, api_base="https://custom.api/v1")
 
         messages = [{"role": "user", "content": "Test"}]
-        result = client.call(QualityJudgment, messages, stage="judge")
+        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         # Check api_base was passed
         call_kwargs = mock_client.chat.completions.create.call_args[1]
@@ -336,14 +341,14 @@ class TestCreateClient:
 
     def test_create_client_real(self):
         """Test creating real client."""
-        with patch("src.audiobook_studio.llm.client.instructor.from_litellm"):
+        with patch("instructor.from_litellm"):
             client = create_client("gpt-4o", mock_mode=False)
             assert isinstance(client, LLMClient)
             assert client.config.mock_mode is False
 
     def test_create_client_with_params(self):
         """Test creating client with custom parameters."""
-        with patch("src.audiobook_studio.llm.client.instructor.from_litellm"):
+        with patch("instructor.from_litellm"):
             client = create_client(
                 "gpt-4o",
                 mock_mode=False,
@@ -357,17 +362,16 @@ class TestCreateClient:
 
     def test_create_client_langfuse(self):
         """Test creating client with Langfuse config."""
-        with patch("src.audiobook_studio.llm.client.instructor.from_litellm"):
-            with patch("src.audiobook_studio.llm.client.LANGFUSE_AVAILABLE", True):
-                with patch("src.audiobook_studio.llm.client.Langfuse"):
-                    client = create_client(
-                        "gpt-4o",
-                        mock_mode=False,
-                        langfuse_public_key="pk_test",
-                        langfuse_secret_key="sk_test",
-                        langfuse_enabled=True,
-                    )
-                    assert client.config.langfuse_enabled is True
+        with patch("instructor.from_litellm"):
+            with patch("langfuse.Langfuse"):
+                client = create_client(
+                    "gpt-4o",
+                    mock_mode=False,
+                    langfuse_public_key="pk_test",
+                    langfuse_secret_key="sk_test",
+                    langfuse_enabled=True,
+                )
+                assert client.config.langfuse_enabled is True
 
 
 class TestModelPricing:

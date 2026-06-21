@@ -19,10 +19,10 @@ repos:
           - --max-line-length=120
           - --extend-ignore=E203,W503,E501,F401,F811,B008,E402
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: [--baseline, audiobook/.secrets.baseline]
+        args: [--baseline, .secrets.baseline]
         pass_filenames: false
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.7
@@ -30,3 +30,10 @@ repos:
       - id: bandit
         args: [-r, src, --severity-level=high, --skip=B101]
         pass_filenames: false
+  - repo: local
+    hooks:
+      - id: check-hardcoded-keys
+        name: Check hardcoded API keys in yaml
+        entry: bash -c 'grep -qE "api_key_env:\s*(sk-|hf_|AIza|nvapi-|b0BC)" "$@" && exit 1 || exit 0' --
+        language: system
+        files: '\.yaml$'
