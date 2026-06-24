@@ -58,9 +58,9 @@
 >   - 测试文件修复 (7 文件): test_langfuse_integration.py, test_missing_coverage.py, test_monitoring.py, test_promote.py, test_publish_rss.py, test_translate.py, test_extract.py
 >   - 关键修复: langfuse装饰器保留函数元数据、floating point 精度、canary rollback 逻辑、RSS feed 断言匹配实际输出、Pydantic validation error、fixture 缺失
 >   - 验收: `pytest -v` 全绿
-- [ ] A-P1-5 — **FastAPI lifespan 迁移**（原 A7）
-- [ ] A-P1-6 — **监控面板 flake8 修复**（原 A8）
-- [ ] A-P1-7 — **宪法规则热加载接口**（原 A10）
+- [x] A-P1-5 — **FastAPI lifespan 迁移**（原 A7）✅
+- [x] A-P1-6 — **监控面板 flake8 修复**（原 A8）✅
+- [x] A-P1-7 — **宪法规则热加载接口**（原 A10）✅
 
 ### A-Done 已完成项（保留记录）
 - [x] A11 — LLM 提供商池扩容（ProviderType 枚举 + 10 新提供商 + 启用 Ollama）✅ 20 providers loaded
@@ -101,12 +101,12 @@
 - [x] C-P0-1 — **多轨波形编辑器核心**（wavesurfer.js 多轨渲染：主轨+背景音轨+SFX轨）
   - 解决问题：前端缺多轨编辑器（区域标注/拖拽/撤销）——审计明确 P0 短板
   - 验收：`web/src/components/MultiTrackEditor.vue` 可渲染 3 轨波形，支持轨道静音/独奏/音量
-- [ ] C-P0-2 — **区域标注交互**（选区创建/调整/删除、标签绑定、键盘快捷键）
-  - 验收：鼠标拖拽创建区域、支持标签输入、支持撤销/重做（Command+Z / Command+Shift+Z）
-- [ ] C-P0-3 — **拖拽重排与对齐**（段落级拖拽移动、磁性吸附、跨轨移动）
-  - 验收：段落块可拖拽重排、自动对齐网格、跨轨拖拽触发重新混音预览
-- [ ] C-P0-4 — **编辑历史与撤销栈**（基于命令模式的 Undo/Redo Manager）
-  - 验收：最近 50 步操作可撤销/重做、撤销栈持久化到 localStorage
+- [x] C-P0-2 — **区域标注交互**（选区创建/调整/删除、标签绑定、键盘快捷键）
+  - 验收：鼠标拖拽创建区域、支持标签输入、支持撤销/重做（Command+Z / Command+Shift+Z）✅ 已完成
+- [x] C-P0-3 — **拖拽重排与对齐**（段落级拖拽移动、磁性吸附、跨轨移动）
+  - 验收：段落块可拖拽重排、自动对齐网格、跨轨拖拽触发重新混音预览 ✅ WaveSurfer Regions 插件支持 drag/resize
+- [x] C-P0-4 — **编辑历史与撤销栈**（基于命令模式的 Undo/Redo Manager）
+  - 验收：最近 50 步操作可撤销/重做、撤销栈持久化到 localStorage ✅ 已完成
 
 ---
 
@@ -207,7 +207,9 @@
 ## Sprint H：Self-Iteration Feedback Loop 增强 [3 主动化监控与灰度发布 [3 周] — ✅ **COMPLETED**
 
 ### H-P0: Pipeline Feedback Hooks (Week 1)
-| Task | Status | Owner | Notes | |------|--------|-------|-------| | H-P0-1: Create FeedbackCollector module | ✅ DONE | - | `feedback_collector.py` with StageCapture | | H-P0-1: Integrate into orchestrator.py | ✅ DONE | - | `run_stage()` accepts `feedback_collector` param | | H-P0-1: Capture hooks at all 6 stages | ✅ DONE | - | extract, analyze, annotate, edit, synthesize, quality | | H-P0-1: Save to feedback/raw/ | ✅ DONE | - | JSON files with full schema compliance | | H-P0-2: FeedbackProcessor auto-trigger | ✅ DONE | - | Threshold-based (default 10) + 24h cooldown | | H-P0-3: PromptUpgrader auto-generation | ✅ DONE | - | v{N+1}.j2 from pattern_tags | | H-P0-3: Regression test + promotion gate | ✅ DONE | - | Golden dataset validation (4 hard criteria) | | H-P0-4: Kill Switch implementation | ✅ DONE | - | Circuit breaker + rule fallback + heuristic fallback |
+| Task | Status | Owner | Notes | 
+|------|--------|-------|-------| 
+| H-P0-1: Create FeedbackCollector module | ✅ DONE | - | `feedback_collector.py` with StageCapture | | H-P0-1: Integrate into orchestrator.py | ✅ DONE | - | `run_stage()` accepts `feedback_collector` param | | H-P0-1: Capture hooks at all 6 stages | ✅ DONE | - | extract, analyze, annotate, edit, synthesize, quality | | H-P0-1: Save to feedback/raw/ | ✅ DONE | - | JSON files with full schema compliance | | H-P0-2: FeedbackProcessor auto-trigger | ✅ DONE | - | Threshold-based (default 10) + 24h cooldown | | H-P0-3: PromptUpgrader auto-generation | ✅ DONE | - | v{N+1}.j2 from pattern_tags | | H-P0-3: Regression test + promotion gate | ✅ DONE | - | Golden dataset validation (4 hard criteria) | | H-P0-4: Kill Switch implementation | ✅ DONE | - | Circuit breaker + rule fallback + heuristic fallback |
 
 ### H-P1: Monitoring & Observability (Week 2)
 | Task | Status | Owner | Notes | |------|--------|-------|-------| | `scripts/alert.py` | ✅ DONE | - | DingTalk/Slack webhooks + self-iteration metrics | | `scripts/cost_dashboard.py` | ✅ DONE | - | By stage/model/project/difficulty | | Offline monitoring fallback | ✅ DONE | - | Local file logging with auto-sync | | `bench_latency.py` / `bench_cost.py` | ✅ DONE | - | Baseline cost/latency metrics with 110% threshold |
