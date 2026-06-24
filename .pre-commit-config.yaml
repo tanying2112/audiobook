@@ -30,8 +30,36 @@ repos:
       - id: bandit
         args: [-r, src, --severity-level=high, --skip=B101]
         pass_filenames: false
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy - static type checker
+        args: [--config-file=mypy.ini]
+        additional_dependencies: [pydantic>=2.7,<3.0, pydantic-settings>=2.0, sqlalchemy>=2.0]
   - repo: local
     hooks:
+      - id: docs-guard
+        name: Docs Guard - Check documentation updates
+        entry: python scripts/docs_guard.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: mkdocs-build-check
+        name: MkDocs build check
+        entry: mkdocs build --strict
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: schema-sync-check
+        name: Check ORM-Schema synchronization
+        entry: .venv/bin/python -m src.audiobook_studio.schemas.schema_validator
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
       - id: check-hardcoded-keys
         name: Check hardcoded API keys in yaml
         entry: bash -c 'grep -qE "api_key_env:\s*(sk-|hf_|AIza|nvapi-|b0BC)" "$@" && exit 1 || exit 0' --
