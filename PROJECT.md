@@ -708,8 +708,39 @@
 - `PROJECT.md`: 本 Task #9 完成记录
 
 ### 待办事项：
-- Task #6: Sprint C 前端多轨编辑器交互完善 (C-P0-2 至 C-P0-4: 区域标注/拖拽/撤销)
 - 持续维护 mypy --strict 零错误状态
+- Issue 1.5: 平台发布去 Mock (Audiobookshelf 真实 API 对接)
+
+## 2026-06-24 (Task #6: Sprint C 前端多轨编辑器交互完善)
+
+### 完成的工作：Task #6 — 多轨编辑器交互完善 (C-P0-2 至 C-P0-4)
+- **C-P0-2: 区域标注交互** [COMPLETED]
+  - 实现选区创建/调整/删除功能
+  - 标签绑定与键盘快捷键支持
+  - 验收：鼠标拖拽创建区域、支持标签输入、支持撤销/重做 (⌘Z/⇧⌘Z) ✅
+- **C-P0-3: 拖拽重排与对齐** [COMPLETED]
+  - WaveSurfer Regions 插件集成支持 drag/resize
+  - 验收：段落块可拖拽重排、自动对齐网格、跨轨拖拽触发重新混音预览 ✅
+- **C-P0-4: 编辑历史与撤销栈** [COMPLETED]
+  - 基于命令模式的 Undo/Redo Manager
+  - 验收：最近 50 步操作可撤销/重做、撤销栈持久化到 localStorage ✅
+
+### 技术实现
+- 集成 `wavesurfer.js` + `RegionsPlugin`
+- 命令模式 Undo/Redo Manager (50 步上限)
+- localStorage 状态持久化
+- 快捷键支持 (⌘Z, ⇧⌘Z, Delete, Space, +/-)
+
+### 文件修改
+- `web/src/components/MultiTrackEditor.vue`: 完整重写，新增区域标注/拖拽/撤销功能
+
+### 验收结果
+- ✅ C-P0-2 区域标注交互完成
+- ✅ C-P0-3 拖拽重排与对齐完成
+- ✅ C-P0-4 编辑历史与撤销栈完成
+- ✅ Sprint C-P0 全部完成
+
+### 待办事项：
 - Issue 1.5: 平台发布去 Mock (Audiobookshelf 真实 API 对接)
 
 ## 2026-06-24 (Issue 2.1: SyntheticCritic 三元架构)
