@@ -546,3 +546,241 @@ pytest tests/pipeline/test_orchestrator.py -v --cov=src/audiobook_studio/pipelin
 ### 待办事项
 - Task #6: Sprint C 前端多轨编辑器交互完善 (C-P0-2 至 C-P0-4)
 - 持续维护 mypy --strict 零错误状态
+
+---
+
+## 🚀 Phase 0 测试修复攻坚 — 双 Agent 协作任务分解（2026-06-25 恢复版）
+
+> **执行周期**: 第 1-2 周（测试修复与覆盖率补齐）
+> **参与 Agent**: Agent A（后端/测试基础设施）、Agent B（Pipeline 业务逻辑）
+> **总体目标**: 全量测试通过率 ≥95%，核心 Pipeline 模块覆盖率 ≥75%
+
+### 👥 双 Agent 同步协作策略
+
+| 维度 | Agent A（后端/基础设施） | Agent B（Pipeline/业务逻辑） |
+|------|--------------------------|------------------------------|
+| **职责范围** | 测试基础设施、Fixtures、mock 策略、CI 集成、E2E 脚本 | Pipeline 核心模块测试、非 mock 测试、Prompt 模板、黄金数据集 |
+| **技术栈** | pytest fixtures、conftest.py、MOCK_LLM 策略、GitHub Actions | Pipeline 类、LLM Router、Schema 验证、Jinja2 模板 |
+| **交付物** | 可复用的测试基架、CI 闸门配置、E2E 报告 | 高覆盖率测试文件、Prompt 模板、黄金数据集用例 |
+
+**并行说明**: 虽然依赖图看似线性，但以下任务可并行：
+- A0.1 和 B0.1 可同时开始（无依赖）
+- A0.2 和 B0.2/B0.3 可同时进行
+- A0.3 可在 B0.4 完成后立即配置，同时 B0.5 并行执行
+
+---
+
+## 📋 Phase 0 任务清单（双 Agent 并行执行）
+
+### Agent A 执行任务（后端/基础设施）
+
+#### Issue A0.1: 测试基础设施修复 [预估 4 小时] [优先级：P0]
+- **描述**: 修复 conftest.py、fixtures、mock 策略，为后续测试修复提供基架
+- **子任务**:
+  - [ ] 修复 `tests/conftest.py` 中的 DI 容器重置逻辑
+  - [ ] 修复 `tests/fixtures.py` 中的样本数据生成器
+  - [ ] 统一 mock 策略（MOCK_LLM 环境变量 vs mock_mode 参数）
+- **验收标准**:
+  - `pytest tests/conftest.py tests/fixtures.py -v` 全绿
+  - 所有 fixtures 可被其他测试正常引用
+- **依赖关系**: 无
+- **相关文件**: `tests/conftest.py`, `tests/fixtures.py`
+
+#### Issue A0.2: monitoring/feedback 模块测试修复 [预估 6 小时] [优先级：P0]
+- **描述**: 修复 monitoring 和 feedback 模块的测试失败
+- **子任务**:
+  - [ ] 修复 `test_langfuse_integration.py`
+  - [ ] 修复 `test_monitoring.py`
+  - [ ] 修复 `test_feedback_processor.py`
+- **验收标准**:
+  - `pytest tests/monitoring/ tests/feedback/ -v` 全绿
+- **依赖关系**: 依赖 A0.1
+- **相关文件**: `tests/monitoring/test_langfuse_integration.py`, `tests/monitoring/test_monitoring.py`, `tests/feedback/`
+
+#### Issue A0.3: CI 质量闸门配置 [预估 4 小时] [优先级：P1]
+- **描述**: 配置 CI 覆盖率闸门、黄金数据集回归、契约合规率校验
+- **子任务**:
+  - [ ] `.github/workflows/ci.yml` 新增 `coverage-gate` job
+  - [ ] 集成 `pytest tests/golden/ -v` 到 CI
+  - [ ] 集成 `scripts/contract_compliance_check.py` 到 CI
+- **验收标准**:
+  - CI 运行 `pytest --cov=src --cov-fail-under=75` 失败时阻断 PR
+  - 黄金数据集任一用例失败时阻断 PR
+- **依赖关系**: 依赖 B0.4（黄金数据集）
+- **相关文件**: `.github/workflows/ci.yml`, `scripts/contract_compliance_check.py`
+
+#### Issue A0.4: E2E 长书验证脚本修复 [预估 4 小时] [优先级：P0]
+- **描述**: 修复 `scripts/e2e_long_book.py` 使其能跑通全流程
+- **子任务**:
+  - [ ] 修复导入错误和参数传递
+  - [ ] 确保 6 个 Pipeline 环节全部跑通
+  - [ ] 生成完整报告（质量/成本/时长）
+- **验收标准**:
+  - `python scripts/e2e_long_book.py data/long_novel/hongloumeng.txt` 成功执行
+  - 输出 `reports/e2e_*.json` 含质量分、成本、合规率
+- **依赖关系**: 依赖 B0.1-B0.3（Pipeline 修复）
+- **相关文件**: `scripts/e2e_long_book.py`, `tests/e2e/e2e_long_book.py`
+
+---
+
+### Agent B 执行任务（Pipeline/业务逻辑）
+
+#### Issue B0.1: ExtractPipeline 测试修复 [预估 6 小时] [优先级：P0]
+- **描述**: 修复 `test_extract.py` 的失败测试
+- **问题根因**: `ExtractPipeline.__init__()` 参数签名变更，测试未同步
+- **子任务**:
+  - [ ] 检查 `src/audiobook_studio/pipeline/extract.py` 的 `__init__` 签名
+  - [ ] 同步更新测试中的实例化调用
+  - [ ] 修复依赖注入相关测试
+- **验收标准**:
+  - `pytest tests/test_extract.py -v` 全绿
+- **依赖关系**: 依赖 A0.1（fixtures）
+- **相关文件**: `tests/test_extract.py`, `src/audiobook_studio/pipeline/extract.py`
+
+#### Issue B0.2: QualityCheckPipeline 测试修复 [预估 6 小时] [优先级：P0]
+- **描述**: 修复 `test_quality_check.py` 的失败测试
+- **问题根因**: `QualityCheckPipeline` 初始化问题、参数不匹配
+- **子任务**:
+  - [ ] 检查 `src/audiobook_studio/pipeline/quality_check.py` 的 `__init__` 签名
+  - [ ] 修复测试中的 mock 策略
+  - [ ] 修复 Schema 验证相关测试
+- **验收标准**:
+  - `pytest tests/test_quality_check.py -v` 全绿
+- **依赖关系**: 依赖 A0.1
+- **相关文件**: `tests/test_quality_check.py`, `src/audiobook_studio/pipeline/quality_check.py`
+
+#### Issue B0.3: SynthesizePipeline 测试修复 [预估 8 小时] [优先级：P0]
+- **描述**: 修复 `test_synthesize.py` 的失败/错误
+- **问题根因**: 参数签名/依赖注入问题、TTS Backend mock 策略
+- **子任务**:
+  - [ ] 修复 `SynthesizePipeline` 的 DI 容器依赖
+  - [ ] 修复 TTS Backend mock 策略（MOCK_LLM 环境变量）
+  - [ ] 修复音频输出相关测试
+- **验收标准**:
+  - `pytest tests/test_synthesize.py -v` 全绿
+- **依赖关系**: 依赖 A0.1
+- **相关文件**: `tests/test_synthesize.py`, `src/audiobook_studio/pipeline/synthesize.py`, `src/audiobook_studio/tts/`
+
+#### Issue B0.4: 非 mock 测试与覆盖率提升 [预估 12 小时] [优先级：P0]
+- **描述**: 为 Pipeline 模块添加非 mock 路径测试，提升覆盖率至 ≥75%
+- **子任务**:
+  - [ ] 为 `synthesize.py` 添加非 mock 测试（目标覆盖率 ≥75%）
+  - [ ] 为 `quality_check.py` 添加非 mock 测试（目标覆盖率 ≥75%）
+  - [ ] 为 `extract.py` 添加边界用例测试
+  - [ ] 为 `analyze_structure.py` 添加边界用例测试
+- **验收标准**:
+  - `pytest --cov=src/audiobook_studio/pipeline --cov-report=term-missing` 核心模块 ≥75%
+  - 非 mock 路径测试覆盖真实 LLM 调用（使用 MOCK_LLM=false）
+- **依赖关系**: 依赖 B0.1-B0.3
+- **相关文件**: `tests/test_*.py`, `src/audiobook_studio/pipeline/*.py`
+
+#### Issue B0.5: Prompt 模板与黄金数据集补全 [预估 6 小时] [优先级：P0]
+- **描述**: 补全 quality_judge/tts_routing 的 Prompt 模板，扩展黄金数据集
+- **子任务**:
+  - [ ] 补全 `prompts/quality_judge/v1.j2` + `few_shot.jsonl`
+  - [ ] 补全 `prompts/tts_routing/v1.j2` + `few_shot.jsonl`
+  - [ ] 扩展黄金数据集至 6 环节各≥3 用例
+- **验收标准**:
+  - Jinja2 渲染测试通过
+  - `tests/golden/` 下 6 个环节各≥3 个 `.json` 用例
+- **依赖关系**: 无
+- **相关文件**: `prompts/quality_judge/`, `prompts/tts_routing/`, `tests/golden/`
+
+---
+
+## 🔄 双 Agent 同步执行建议
+
+### 并行执行策略
+
+| 时间窗口 | Agent A 任务 | Agent B 任务 | 同步点 |
+|----------|--------------|--------------|--------|
+| **Day 1 AM** | A0.1 测试基础设施修复 | B0.1 ExtractPipeline 修复 | 共享 fixtures 验证 |
+| **Day 1 PM** | A0.1 收尾 | B0.1 收尾 | 合并验证 A0.1+B0.1 |
+| **Day 2** | A0.2 monitoring/feedback 测试 | B0.2 QualityCheckPipeline 修复 | 独立推进 |
+| **Day 3** | A0.2 收尾 | B0.3 SynthesizePipeline 修复 | 独立推进 |
+| **Day 4** | 等待 B0.3 完成 | B0.3 收尾 | B0.3 完成后 A0.4 启动 |
+| **Day 5** | A0.4 E2E 脚本修复 | B0.4 非 mock 测试 | B0.4 进行中 |
+| **Day 6** | A0.3 CI 闸门配置 | B0.4 收尾 + B0.5 Prompt 模板 | 合并验证 |
+
+### 依赖关系图
+
+```
+A0.1 ──→ A0.2 ──→ A0.3
+  │                ↑
+  └────→ B0.1 ──→ B0.2 ──→ B0.3 ──→ B0.4 ──→ B0.5
+                    │
+                    └────→ A0.4 (E2E 验证)
+```
+
+### 每日站会同步清单
+
+1. **失败测试数量变化**: `pytest -v 2>&1 | grep -E "FAILED|ERROR"`
+2. **覆盖率进展**: `python scripts/coverage_check.py` 的 pipeline 覆盖率
+3. **阻塞点**: 是否有依赖对方的任务尚未完成
+4. **今日目标**: 明确当天要攻克的 Issue
+
+---
+
+## 📊 验收总清单（Phase 0 完成标志）
+
+| # | 验收项 | 验证命令 | 目标值 |
+|---|--------|----------|--------|
+| 1 | ExtractPipeline 测试 | `pytest tests/test_extract.py -v` | 全绿 |
+| 2 | QualityCheckPipeline 测试 | `pytest tests/test_quality_check.py -v` | 全绿 |
+| 3 | SynthesizePipeline 测试 | `pytest tests/test_synthesize.py -v` | 全绿 |
+| 4 | monitoring/feedback 测试 | `pytest tests/monitoring/ tests/feedback/ -v` | 全绿 |
+| 5 | Pipeline 覆盖率 | `pytest --cov=src/audiobook_studio/pipeline --cov-report=term-missing` | ≥75% |
+| 6 | 全量测试通过率 | `pytest -v 2>&1 | tail -5` | ≥95% |
+| 7 | E2E 长书验证 | `python scripts/e2e_long_book.py data/long_novel/hongloumeng.txt` | 成功输出报告 |
+| 8 | CI 质量闸门 | `.github/workflows/ci.yml` 配置 | 覆盖率/黄金数据集/合规率闸门生效 |
+| 9 | Prompt 模板 | `ls prompts/quality_judge/ prompts/tts_routing/` | v1.j2 + few_shot.jsonl 存在 |
+| 10 | 黄金数据集 | `ls tests/golden/*/` | 6 环节各≥3 用例 |
+
+---
+
+## ⚠️ 执行红线
+
+1. **冻结新功能**: P2 级功能（G1-G5）全部暂停，任何非 Phase 0 的改动需经审批
+2. **测试先行**: 任何修复必须先写测试，防止回归
+3. **Mock 策略统一**: 使用 `MOCK_LLM` 环境变量而非 mock_mode 参数
+4. **每日覆盖率检查**: 运行 `python scripts/coverage_check.py` 确保覆盖率稳步提升
+5. **每 Issue 一提交**: 每个 Issue 完成后立即 commit，便于回滚
+
+---
+
+## 📌 快速命令参考
+
+```bash
+# 查看当前测试失败详情
+pytest tests/test_extract.py -v --tb=short  # B0.1
+pytest tests/test_quality_check.py -v --tb=short  # B0.2
+pytest tests/test_synthesize.py -v --tb=short  # B0.3
+pytest tests/monitoring/ -v --tb=short  # A0.2
+
+# 查看覆盖率进展（每日检查）
+python scripts/coverage_check.py
+
+# 运行 E2E 长书验证（B0.1-B0.3 + A0.2 完成后）
+python scripts/e2e_long_book.py data/long_novel/hongloumeng.txt
+
+# 验证 CI 闸门配置（A0.3 完成后）
+cat .github/workflows/ci.yml | grep -A 20 coverage-gate
+```
+
+---
+
+## 2026-06-25 双 Agent 协作说明
+
+**为什么双 Agent 仍有价值？**
+
+虽然依赖关系图看似线性，但双 Agent 协作仍有以下优势：
+
+1. **上下文隔离**: Agent A 专注于基础设施，Agent B 专注于业务逻辑，各自维护不同的知识上下文
+2. **并行验证**: A0.1 完成后，A 可继续 A0.2，同时 B 开始 B0.1， two streams of progress
+3. **交叉 Review**: A 完成的基础设施可供 B 验证，B 修复的 Pipeline 可供 A 通过 E2E 验证
+4. **故障隔离**: 如果一个 Agent 遇到阻塞，另一个可继续推进其他任务
+
+**关键同步点**:
+- A0.1 ↔ B0.1: 共享 fixtures 和 mock 策略
+- B0.3 完成 → A0.4 启动: E2E 验证需要 Pipeline 修复完成
+- B0.4 完成 → A0.3 启动: CI 闸门需要黄金数据集
