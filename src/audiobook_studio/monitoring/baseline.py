@@ -4,6 +4,7 @@ Tracks key metrics over time to establish baselines and detect regressions.
 """
 
 import json
+import logging
 import os
 import threading
 import time
@@ -12,6 +13,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -417,10 +420,10 @@ if __name__ == "__main__":
 
     # Calculate and show baselines
     baseline = recorder.get_performance_baseline("synthesize", lookback_hours=24)
-    print("Synthesize baseline:", json.dumps(baseline, indent=2))
+    logger.info("Synthesize baseline:", json.dumps(baseline, indent=2))
 
     growth = recorder.get_growth_baseline("books_processed", lookback_hours=24)
-    print("Books processed baseline:", json.dumps(growth, indent=2))
+    logger.info("Books processed baseline:", json.dumps(growth, indent=2))
 
     # Check for regression
     current_metric = PerformanceMetric(
@@ -440,10 +443,10 @@ if __name__ == "__main__":
         "synthesize", current_metric, threshold_pct=20.0
     )
     if regression:
-        print("\nREGRESSION DETECTED:")
-        print(json.dumps(regression, indent=2))
+        logger.info("\nREGRESSION DETECTED:")
+        logger.info(json.dumps(regression, indent=2))
     else:
-        print("\nNo regression detected")
+        logger.info("\nNo regression detected")
 
     recorder.save_baselines()
-    print(f"\nRecorder summary: {json.dumps(recorder.get_summary(), indent=2)}")
+    logger.info(f"\nRecorder summary: {json.dumps(recorder.get_summary(), indent=2)}")

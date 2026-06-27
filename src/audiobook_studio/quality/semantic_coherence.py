@@ -6,11 +6,12 @@ Audiobook Studio — 语义连贯性检查器
 阈值从 config/quality_thresholds.yaml 读取。
 """
 
-import yaml
-import numpy as np
-from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
 import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class SemanticCoherenceChecker:
     def _load_config(self) -> Dict[str, Any]:
         """加载质量阈值配置."""
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
             logger.info(f"✅ 已加载质量阈值配置: {self.config_path}")
             return config
@@ -48,7 +49,7 @@ class SemanticCoherenceChecker:
         return {
             "audio": {
                 "semantic_coherence_threshold": 0.75,
-                "emotional_coherence_threshold": 0.80
+                "emotional_coherence_threshold": 0.80,
             }
         }
 
@@ -57,8 +58,11 @@ class SemanticCoherenceChecker:
         try:
             # 尝试导入sentence-transformers
             from sentence_transformers import SentenceTransformer
+
             # 使用多语言模型以支持中英文等多语言场景
-            self.semantic_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            self.semantic_model = SentenceTransformer(
+                "paraphrase-multilingual-MiniLM-L12-v2"
+            )
             logger.info("✅ 已加载 Sentence-BERT 多语言模型")
         except ImportError:
             logger.warning("⚠️ sentence-transformers 未安装，将使用简化的语义检查")
@@ -71,7 +75,7 @@ class SemanticCoherenceChecker:
         self,
         paragraphs: List[str],
         check_emotional_curve: bool = True,
-        reference_paragraphs: Optional[List[str]] = None
+        reference_paragraphs: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         检查段落之间的语义和情感连贯性.
@@ -90,7 +94,7 @@ class SemanticCoherenceChecker:
                 "score": 1.0,
                 "semantic_score": 1.0,
                 "emotional_score": 1.0,
-                "issues": ["段落数量不足，无法进行连贯性检查"]
+                "issues": ["段落数量不足，无法进行连贯性检查"],
             }
 
         issues = []
@@ -110,7 +114,9 @@ class SemanticCoherenceChecker:
             semantic_scores.append(semantic_similarity)
 
             # 检查是否低于阈值
-            threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
+            threshold = self.config.get("audio", {}).get(
+                "semantic_coherence_threshold", 0.75
+            )
             if semantic_similarity < threshold:
                 issues.append(
                     f"段落 {i+1}-{i+2} 语义连贯性不足: {semantic_similarity:.3f} < {threshold}"
@@ -121,7 +127,9 @@ class SemanticCoherenceChecker:
             emotional_scores = self._check_emotional_curve_continuity(paragraphs)
             for i, score in enumerate(emotional_scores):
                 if score < 1.0:  # 情感曲线不连续
-                    threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
+                    threshold = self.config.get("audio", {}).get(
+                        "emotional_coherence_threshold", 0.80
+                    )
                     issues.append(
                         f"段落 {i+1}-{i+2} 情感强度曲线不连续: {score:.3f} < {threshold}"
                     )
@@ -138,7 +146,9 @@ class SemanticCoherenceChecker:
                 translation_scores.append(similarity)
 
                 # 检查翻译语义保持度
-                threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
+                threshold = self.config.get("audio", {}).get(
+                    "semantic_coherence_threshold", 0.75
+                )
                 if similarity < threshold:
                     issues.append(
                         f"段落 {i+1} 翻译语义保持度不足: {similarity:.3f} < {threshold}"
@@ -154,7 +164,11 @@ class SemanticCoherenceChecker:
 
         # 计算总体得分
         semantic_score = np.mean(semantic_scores) if semantic_scores else 1.0
-        emotional_score = np.mean(emotional_scores) if emotional_scores and check_emotional_curve else 1.0
+        emotional_score = (
+            np.mean(emotional_scores)
+            if emotional_scores and check_emotional_curve
+            else 1.0
+        )
 
         # 综合得分（可以根据需要调整权重）
         if check_emotional_curve:
@@ -163,27 +177,36 @@ class SemanticCoherenceChecker:
             overall_score = semantic_score
 
         # 检查是否通过所有阈值
-        semantic_threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
-        emotional_threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
+        semantic_threshold = self.config.get("audio", {}).get(
+            "semantic_coherence_threshold", 0.75
+        )
+        emotional_threshold = self.config.get("audio", {}).get(
+            "emotional_coherence_threshold", 0.80
+        )
 
-        passed = (
-            semantic_score >= semantic_threshold and
-            (not check_emotional_curve or emotional_score >= emotional_threshold)
+        passed = semantic_score >= semantic_threshold and (
+            not check_emotional_curve or emotional_score >= emotional_threshold
         )
 
         result = {
             "passed": passed,
             "score": float(overall_score),
             "semantic_score": float(semantic_score),
-            "emotional_score": float(emotional_score) if check_emotional_curve else None,
-            "translation_quality": float(translation_quality) if translation_quality is not None else None,
-            "issues": issues
+            "emotional_score": (
+                float(emotional_score) if check_emotional_curve else None
+            ),
+            "translation_quality": (
+                float(translation_quality) if translation_quality is not None else None
+            ),
+            "issues": issues,
         }
 
         if passed:
             logger.info(f"✅ 语义连贯性检查通过: 得分 {overall_score:.3f}")
         else:
-            logger.warning(f"⚠️ 语义连贯性检查失败: 得分 {overall_score:.3f}, 问题 {len(issues)} 个")
+            logger.warning(
+                f"⚠️ 语义连贯性检查失败: 得分 {overall_score:.3f}, 问题 {len(issues)} 个"
+            )
 
         return result
 
@@ -288,31 +311,65 @@ class SemanticCoherenceChecker:
 
         # 简单的基于标点和情感词的启发式方法
         emotion_words = {
-            'positive': ['高兴', '快乐', '愉快', '兴奋', '喜悦', '欢乐', 'happy', 'joy', 'excited', 'pleased'],
-            'negative': ['悲伤', '难过', '痛苦', '愤怒', '生气', '害怕', '恐惧', 'sad', 'angry', 'afraid', 'fear'],
-            'intense': ['非常', '极其', '特别', '十分', '巨く', 'very', 'extremely', 'really', 'so']
+            "positive": [
+                "高兴",
+                "快乐",
+                "愉快",
+                "兴奋",
+                "喜悦",
+                "欢乐",
+                "happy",
+                "joy",
+                "excited",
+                "pleased",
+            ],
+            "negative": [
+                "悲伤",
+                "难过",
+                "痛苦",
+                "愤怒",
+                "生气",
+                "害怕",
+                "恐惧",
+                "sad",
+                "angry",
+                "afraid",
+                "fear",
+            ],
+            "intense": [
+                "非常",
+                "极其",
+                "特别",
+                "十分",
+                "巨く",
+                "very",
+                "extremely",
+                "really",
+                "so",
+            ],
         }
 
         text_lower = text.lower()
         score = 0.0
 
         # 检查感叹号和问号（表示强烈情感）
-        exclamation_count = text.count('!') + text.count('！')
-        question_count = text.count('?') + text.count('？')
+        exclamation_count = text.count("!") + text.count("！")
+        question_count = text.count("?") + text.count("？")
         score += min(0.3, (exclamation_count + question_count) * 0.1)
 
         # 检查情感词汇
         for category, words in emotion_words.items():
             for word in words:
                 if word in text_lower:
-                    if category == 'intense':
+                    if category == "intense":
                         score += 0.2
                     else:
                         score += 0.15
 
         # 检查重复字符或夸张表达
         import re
-        repeated_chars = len(re.findall(r'(.)\1{2,}', text))  # 如aaa、hhh等
+
+        repeated_chars = len(re.findall(r"(.)\1{2,}", text))  # 如aaa、hhh等
         score += min(0.2, repeated_chars * 0.05)
 
         # 归一化到0-1范围
@@ -321,7 +378,7 @@ class SemanticCoherenceChecker:
 
 def main():
     """主函数 - 演示语义连贯性检查器."""
-    print("=== Audiobook Studio 语义连贯性检查器演示 ===\n")
+    logger.info("=== Audiobook Studio 语义连贯性检查器演示 ===\n")
 
     # 创建检查器
     checker = SemanticCoherenceChecker()
@@ -331,35 +388,35 @@ def main():
         "今天真是个美好的日子！阳光明媚，鸟儿歌唱。",
         "我决定去公园散步，享受这难得的好天气。",
         "突然，天空变得阴沉起来，远处传来雷声。",
-        "我急忙跑回家，躲进了屋子里等待雨停。"
+        "我急忙跑回家，躲进了屋子里等待雨停。",
     ]
 
-    print("📋 输入段落:")
+    logger.info("📋 输入段落:")
     for i, para in enumerate(paragraphs, 1):
-        print(f"   {i}. {para}")
+        logger.info(f"   {i}. {para}")
 
-    print("\n" + "="*50)
+    logger.info("\n" + "=" * 50)
 
     # 检查语义连贯性
-    print("\n🔍 检查语义连贯性...")
+    logger.info("\n🔍 检查语义连贯性...")
     result = checker.check_coherence(paragraphs, check_emotional_curve=True)
 
-    print(f"   总体得分: {result['score']:.3f}")
-    print(f"   语义得分: {result['semantic_score']:.3f}")
-    print(f"   情感得分: {result['emotional_score']:.3f}")
-    print(f"   是否通过: {'✅ 是' if result['passed'] else '❌ 否'}")
+    logger.info(f"   总体得分: {result['score']:.3f}")
+    logger.info(f"   语义得分: {result['semantic_score']:.3f}")
+    logger.info(f"   情感得分: {result['emotional_score']:.3f}")
+    logger.info(f"   是否通过: {'✅ 是' if result['passed'] else '❌ 否'}")
 
-    if result['issues']:
-        print(f"   发现问题 ({len(result['issues'])} 个):")
-        for issue in result['issues'][:5]:  # 只显示前5个问题
-            print(f"     - {issue}")
-        if len(result['issues']) > 5:
-            print(f"     - 以及其他 {len(result['issues']) - 5} 个问题...")
+    if result["issues"]:
+        logger.info(f"   发现问题 ({len(result['issues'])} 个):")
+        for issue in result["issues"][:5]:  # 只显示前5个问题
+            logger.info(f"     - {issue}")
+        if len(result["issues"]) > 5:
+            logger.info(f"     - 以及其他 {len(result['issues']) - 5} 个问题...")
     else:
-        print("   未发现问题")
+        logger.info("   未发现问题")
 
-    print("\n" + "="*50)
-    print("🎉 演示完成")
+    logger.info("\n" + "=" * 50)
+    logger.info("🎉 演示完成")
 
 
 if __name__ == "__main__":

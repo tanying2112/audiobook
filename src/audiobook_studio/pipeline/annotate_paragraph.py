@@ -27,7 +27,11 @@ class AnnotateParagraphPipeline:
         prompt_dir=None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        self.mock_mode = (
+            mock_mode
+            if mock_mode is not None
+            else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        )
 
         # Create router (mock mode controlled by MOCK_LLM env var)
         if router is None:
@@ -99,6 +103,7 @@ class AnnotateParagraphPipeline:
             f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})"
         )
 
+        # MOCK: 待真实实现
         # Mock mode: return simulated annotation
         if self.mock_mode:
             return ParagraphAnnotation(
@@ -217,4 +222,4 @@ if __name__ == "__main__":  # pragma: no cover
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("AnnotateParagraphPipeline ready")
+    logger.info("AnnotateParagraphPipeline ready")

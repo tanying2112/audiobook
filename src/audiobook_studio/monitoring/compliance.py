@@ -7,11 +7,11 @@ compliance across all pipeline stages. Supports HARNESS §3 evaluation layer.
 import json
 import logging
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComplianceRecord:
     """Single compliance check record."""
+
     stage: str
     timestamp: str
     schema_compliance: bool
@@ -32,6 +33,7 @@ class ComplianceRecord:
 @dataclass
 class StageComplianceSummary:
     """Aggregated compliance summary for a pipeline stage."""
+
     stage: str
     total_calls: int = 0
     compliant_calls: int = 0
@@ -51,7 +53,9 @@ class StageComplianceSummary:
 
     @property
     def avg_quality_score(self) -> float:
-        return self.total_quality_score / self.total_calls if self.total_calls > 0 else 0.0
+        return (
+            self.total_quality_score / self.total_calls if self.total_calls > 0 else 0.0
+        )
 
     @property
     def avg_cost_usd(self) -> float:
@@ -66,7 +70,9 @@ class ComplianceMonitor:
     """
 
     def __init__(self, storage_path: Optional[str] = None):
-        self.storage_path = Path(storage_path) if storage_path else Path("./reports/compliance")
+        self.storage_path = (
+            Path(storage_path) if storage_path else Path("./reports/compliance")
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.records: List[ComplianceRecord] = []
@@ -208,7 +214,8 @@ class ComplianceMonitor:
                     "errors": r.errors,
                     "quality_score": r.quality_score,
                 }
-                for r in self.records[-20:] if not r.schema_compliance
+                for r in self.records[-20:]
+                if not r.schema_compliance
             ],
         }
 
@@ -284,10 +291,10 @@ if __name__ == "__main__":
             errors=["schema_validation_failed"],
         )
 
-    print(f"Overall compliance: {monitor.get_overall_compliance_rate():.1%}")
+    logger.info(f"Overall compliance: {monitor.get_overall_compliance_rate():.1%}")
     thresholds = monitor.check_thresholds()
-    print(f"Thresholds met: {thresholds['overall_pass']}")
-    print(json.dumps(thresholds, ensure_ascii=False, indent=2))
+    logger.info(f"Thresholds met: {thresholds['overall_pass']}")
+    logger.info(json.dumps(thresholds, ensure_ascii=False, indent=2))
 
     report_path = monitor.export_report()
-    print(f"Report saved to: {report_path}")
+    logger.info(f"Report saved to: {report_path}")

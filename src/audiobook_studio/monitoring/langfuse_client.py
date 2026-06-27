@@ -4,13 +4,13 @@ Provides observability for Audiobook Studio pipeline operations.
 Integrates with Langfuse SDK v3+/v4+ for tracing, metrics, and debugging.
 """
 
-import os
-import logging
 import atexit
+import logging
+import os
 from contextlib import contextmanager
-from functools import wraps
-from typing import Any, Dict, Optional, Callable, Union, Generator
 from datetime import datetime
+from functools import wraps
+from typing import Any, Callable, Dict, Generator, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ def init_langfuse(
 
     try:
         from langfuse import Langfuse
+
         _langfuse_client = Langfuse(
             public_key=public_key,
             secret_key=secret_key,
@@ -255,11 +256,15 @@ def observe_llm_call(
             "latency_ms": latency_ms,
             **(metadata or {}),
         },
-        usage_details={
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-        } if total_tokens > 0 else None,
+        usage_details=(
+            {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            }
+            if total_tokens > 0
+            else None
+        ),
         cost_details={"total": cost_usd} if cost_usd > 0 else None,
     )
     # We need to enter and exit the context manager to record the observation
@@ -402,6 +407,7 @@ def trace_function(
             return traced_func()
 
         return wrapper
+
     return decorator
 
 
@@ -473,7 +479,7 @@ if __name__ == "__main__":
     with trace("demo.trace", metadata={"test": True}) as t:
         with span("demo.span", t, metadata={"input": 5}) as s:
             result = demo_func(5)
-            print(f"Result: {result}")
+            logger.info(f"Result: {result}")
 
     flush_langfuse()
-    print("Demo complete")
+    logger.info("Demo complete")

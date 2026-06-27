@@ -14,7 +14,7 @@ Usage::
     cp = CheckpointManager(project_id=1)
     cp.mark_stage_done("extract", chapter_index=1)
     if cp.is_stage_done("extract", chapter_index=1):
-        print("Already extracted, skipping")
+        logger.info("Already extracted, skipping")
 """
 
 import json
@@ -130,9 +130,7 @@ class CheckpointManager:
         done = set(self._chapter(chapter_index).get("paragraphs_done", []))
         return paragraph_indices.issubset(done)
 
-    def mark_paragraph_done(
-        self, chapter_index: int, paragraph_index: int
-    ) -> None:
+    def mark_paragraph_done(self, chapter_index: int, paragraph_index: int) -> None:
         """Mark a single paragraph as processed."""
         ch = self._chapter(chapter_index)
         pd_list: List[int] = ch.setdefault("paragraphs_done", [])
@@ -152,9 +150,7 @@ class CheckpointManager:
         self._dirty = True
         self._flush()
 
-    def get_pending_paragraphs(
-        self, chapter_index: int, total: int
-    ) -> List[int]:
+    def get_pending_paragraphs(self, chapter_index: int, total: int) -> List[int]:
         """Return 0-based paragraph indices that haven't been processed yet."""
         done = set(self._chapter(chapter_index).get("paragraphs_done", []))
         return [i for i in range(total) if i not in done]

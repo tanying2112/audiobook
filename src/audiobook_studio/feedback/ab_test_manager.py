@@ -7,13 +7,13 @@ Audiobook Studio — A/B 测试框架
 生成可视化对比报告（JSON + HTML）。
 """
 
-import logging
 import json
+import logging
 import uuid
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ABTestConfig:
     """A/B 测试配置"""
+
     test_id: str
     name: str
     description: str
@@ -35,6 +36,7 @@ class ABTestConfig:
 @dataclass
 class ABTestResult:
     """A/B 测试结果"""
+
     test_id: str
     variant_a_score: float  # A 版本平均得分 (0-1)
     variant_b_score: float  # B 版本平均得分 (0-1)
@@ -68,7 +70,7 @@ class ABTestManager:
         proposed_prompt: str,
         test_name: str = "unnamed_test",
         test_segments: Optional[List[str]] = None,
-        judge_criteria: Optional[List[str]] = None
+        judge_criteria: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         运行 A/B 比较测试 (v1 vs v2 提示词并行).
@@ -90,7 +92,7 @@ class ABTestManager:
                 "她微微一笑，说：'今天真是个好日子。'",
                 "突然，一声巨响打破了夜晚的寂静。",
                 "多年以后，他还记得那个阳光明媚的下午。",
-                " Apesar dos desafios, eles persistiram no objetivo."
+                " Apesar dos desafios, eles persistiram no objetivo.",
             ]
 
         # 使用默认判断标准（如果未提供）
@@ -100,11 +102,13 @@ class ABTestManager:
                 "流畅度：语言是否自然易懂",
                 "情感表达：是否准确传达了情感",
                 "角色一致性：角色行为是否符合设定",
-                "整体质量：生成内容的整体质量"
+                "整体质量：生成内容的整体质量",
             ]
 
         logger.info(f"Starting A/B test: {test_name}")
-        logger.info(f"Testing {len(test_segments)} segments with {len(judge_criteria)} criteria")
+        logger.info(
+            f"Testing {len(test_segments)} segments with {len(judge_criteria)} criteria"
+        )
 
         # 创建测试配置
         test_config = ABTestConfig(
@@ -116,7 +120,7 @@ class ABTestManager:
             test_segments=test_segments,
             judge_criteria=judge_criteria,
             sample_size=3,  # 演示用较小样本
-            confidence_threshold=0.8
+            confidence_threshold=0.8,
         )
 
         # 执行测试
@@ -128,28 +132,42 @@ class ABTestManager:
         # 添加到历史
         self.test_history.append(result)
 
-        logger.info(f"A/B test completed: {result.winner} wins with {result.confidence:.2%} confidence")
+        logger.info(
+            f"A/B test completed: {result.winner} wins with {result.confidence:.2%} confidence"
+        )
 
         # 返回结果字典（供 self_iteration_loop.py 使用）
         return {
             "test_id": result.test_id,
             "test_name": result.test_id,  # 使用 test_id 作为名称
             "variant_a": {
-                "prompt": current_prompt[:100] + "..." if len(current_prompt) > 100 else current_prompt,
-                "score": result.variant_a_score
+                "prompt": (
+                    current_prompt[:100] + "..."
+                    if len(current_prompt) > 100
+                    else current_prompt
+                ),
+                "score": result.variant_a_score,
             },
             "variant_b": {
-                "prompt": proposed_prompt[:100] + "..." if len(proposed_prompt) > 100 else proposed_prompt,
-                "score": result.variant_b_score
+                "prompt": (
+                    proposed_prompt[:100] + "..."
+                    if len(proposed_prompt) > 100
+                    else proposed_prompt
+                ),
+                "score": result.variant_b_score,
             },
             "winner": result.winner,
             "confidence": result.confidence,
             "passed_quality_gate": result.passed_quality_gate,
             "details": {
                 "p_value": result.p_value,
-                "sample_size": len(test_segments) * result.details.__len__() if result.details else 0,
-                "judge_criteria": judge_criteria
-            }
+                "sample_size": (
+                    len(test_segments) * result.details.__len__()
+                    if result.details
+                    else 0
+                ),
+                "judge_criteria": judge_criteria,
+            },
         }
 
     def _execute_ab_test(self, config: ABTestConfig) -> ABTestResult:
@@ -194,14 +212,21 @@ class ABTestManager:
             variant_a_scores.append(score_a)
             variant_b_scores.append(score_b)
 
-            detailed_results.append({
-                "segment_id": i,
-                "segment_preview": segment[:50] + ("..." if len(segment) > 50 else ""),
-                "variant_a_score": round(score_a, 3),
-                "variant_b_score": round(score_b, 3),
-                "winner": "A" if score_a > score_b else "B" if score_b > score_a else "TIE",
-                "score_difference": round(abs(score_b - score_a), 3)
-            })
+            detailed_results.append(
+                {
+                    "segment_id": i,
+                    "segment_preview": segment[:50]
+                    + ("..." if len(segment) > 50 else ""),
+                    "variant_a_score": round(score_a, 3),
+                    "variant_b_score": round(score_b, 3),
+                    "winner": (
+                        "A"
+                        if score_a > score_b
+                        else "B" if score_b > score_a else "TIE"
+                    ),
+                    "score_difference": round(abs(score_b - score_a), 3),
+                }
+            )
 
         # 计算平均得分
         avg_score_a = sum(variant_a_scores) / len(variant_a_scores)
@@ -217,8 +242,16 @@ class ABTestManager:
 
         # 计算置信度（基于得分差异和一致性）
         score_diff = abs(avg_score_b - avg_score_a)
-        consistency_a = 1.0 - (max(variant_a_scores) - min(variant_a_scores)) if len(variant_a_scores) > 1 else 1.0
-        consistency_b = 1.0 - (max(variant_b_scores) - min(variant_b_scores)) if len(variant_b_scores) > 1 else 1.0
+        consistency_a = (
+            1.0 - (max(variant_a_scores) - min(variant_a_scores))
+            if len(variant_a_scores) > 1
+            else 1.0
+        )
+        consistency_b = (
+            1.0 - (max(variant_b_scores) - min(variant_b_scores))
+            if len(variant_b_scores) > 1
+            else 1.0
+        )
         avg_consistency = (consistency_a + consistency_b) / 2
 
         # 置信度基于得分差异和一致性
@@ -230,9 +263,9 @@ class ABTestManager:
 
         # 判断是否通过质量门禁（这里使用简单规则：B 版本必须显著优于 A 才算通过）
         passed_quality_gate = (
-            winner == "B" and  # B 版本获胜
-            score_diff > 0.1 and  # 有足够的改进幅度
-            confidence > 0.75  # 有足够的置信度
+            winner == "B"
+            and score_diff > 0.1  # B 版本获胜
+            and confidence > 0.75  # 有足够的改进幅度  # 有足够的置信度
         )
 
         result = ABTestResult(
@@ -244,7 +277,7 @@ class ABTestManager:
             p_value=round(p_value, 3),
             details=detailed_results,
             timestamp=datetime.now(),
-            passed_quality_gate=passed_quality_gate
+            passed_quality_gate=passed_quality_gate,
         )
 
         logger.info(
@@ -260,7 +293,7 @@ class ABTestManager:
         try:
             # 保存 JSON 结果
             json_file = self.results_dir / f"ab_test_{result.test_id}.json"
-            with open(json_file, 'w', encoding='utf-8') as f:
+            with open(json_file, "w", encoding="utf-8") as f:
                 json.dump(asdict(result), f, indent=2, ensure_ascii=False, default=str)
 
             # 生成简单的 HTML 报告
@@ -363,7 +396,7 @@ class ABTestManager:
 </html>
 """
         try:
-            with open(html_file, 'w', encoding='utf-8') as f:
+            with open(html_file, "w", encoding="utf-8") as f:
                 f.write(html_content)
         except Exception as e:
             logger.error(f"Failed to generate HTML report: {e}")
@@ -379,7 +412,7 @@ class ABTestManager:
                 "variant_b_score": r.variant_b_score,
                 "winner": r.winner,
                 "confidence": r.confidence,
-                "passed_quality_gate": r.passed_quality_gate
+                "passed_quality_gate": r.passed_quality_gate,
             }
             for r in recent
         ]
@@ -390,28 +423,32 @@ class ABTestManager:
             "results_dir": str(self.results_dir),
             "tests_run": len(self.test_history),
             "recent_tests": self.get_recent_tests(5),
-            "description": "A/B Test Manager for comparing prompt variants"
+            "description": "A/B Test Manager for comparing prompt variants",
         }
 
 
 def main():
     """主函数 - 演示 A/B 测试框架."""
-    print("=== Audiobook Studio A/B Test Manager Demo ===\n")
+    logger.info("=== Audiobook Studio A/B Test Manager Demo ===\n")
 
     # 创建 A/B 测试管理器
     ab_test_manager = ABTestManager()
 
     # 定义测试用的提示词
-    current_prompt = ("你是一个专业的有声书内容分析助手。请分析以下文本，"
-                     "识别角色、情感、语速和音高信息。")
+    current_prompt = (
+        "你是一个专业的有声书内容分析助手。请分析以下文本，"
+        "识别角色、情感、语速和音高信息。"
+    )
 
-    proposed_prompt = ("你是一个专业的有声书内容分析助手。请分析以下文本，"
-                      "识别角色、情感、语速和音高信息。\n\n"
-                      "特别注意：确保所有事实信息的准确性，不要添加或推断文本中没有明确提到的信息。")
+    proposed_prompt = (
+        "你是一个专业的有声书内容分析助手。请分析以下文本，"
+        "识别角色、情感、语速和音高信息。\n\n"
+        "特别注意：确保所有事实信息的准确性，不要添加或推断文本中没有明确提到的信息。"
+    )
 
     # 运行比较测试
-    print("Running A/B test: Current Prompt vs Proposed Prompt")
-    print("-" * 50)
+    logger.info("Running A/B test: Current Prompt vs Proposed Prompt")
+    logger.info("-" * 50)
 
     result = ab_test_manager.run_comparison_test(
         current_prompt=current_prompt,
@@ -420,26 +457,29 @@ def main():
         judge_criteria=[
             "准确性：内容是否忠实于原文",
             "流畅度：语言是否自然易懂",
-            "情感表达：是否准确传达了情感"
-        ]
+            "情感表达：是否准确传达了情感",
+        ],
     )
 
     # 显示结果
-    print(f"Test Results:")
-    print(f"  Variant A (Current) Score: {result['variant_a']['score']:.3f}")
-    print(f"  Variant B (Proposed) Score: {result['variant_b']['score']:.3f}")
-    print(f"  Winner: {result['winner']}")
-    print(f"  Confidence: {result['confidence']:.2%}")
-    print(f"  Passed Quality Gate: {'YES' if result['passed_quality_gate'] else 'NO'}")
-    print(f"  P-value: {result['details']['p_value']:.3f}")
+    logger.info("Test Results:")
+    logger.info(f"  Variant A (Current) Score: {result['variant_a']['score']:.3f}")
+    logger.info(f"  Variant B (Proposed) Score: {result['variant_b']['score']:.3f}")
+    logger.info(f"  Winner: {result['winner']}")
+    logger.info(f"  Confidence: {result['confidence']:.2%}")
+    logger.info(
+        f"  Passed Quality Gate: {'YES' if result['passed_quality_gate'] else 'NO'}"
+    )
+    logger.info(f"  P-value: {result['details']['p_value']:.3f}")
 
-    print("\n" + "="*50)
-    print("Demo Complete - Check ./ab_test_results/ for detailed reports")
-    print("="*50)
+    logger.info("\n" + "=" * 50)
+    logger.info("Demo Complete - Check ./ab_test_results/ for detailed reports")
+    logger.info("=" * 50)
 
     return 0
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

@@ -9,12 +9,15 @@ Usage:
 
 import argparse
 import json
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== 补全模块所需的明细模型 ====================
@@ -42,9 +45,7 @@ def generate_cost_report(*args, **kwargs) -> Dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio Cost Dashboard"
-    )
+    parser = argparse.ArgumentParser(description="Audiobook Studio Cost Dashboard")
     parser.add_argument(
         "--hours",
         type=int,
@@ -123,7 +124,9 @@ def enrich_records_with_context(records: List[Dict[str, Any]]) -> List[Dict[str,
 
         # For retry detection, we could look for patterns in stage names or errors
         # For now, we'll mark records with errors as potential retries
-        enriched_record["is_retry"] = not record.get("success", True) or bool(record.get("error"))
+        enriched_record["is_retry"] = not record.get("success", True) or bool(
+            record.get("error")
+        )
 
         enriched.append(enriched_record)
 
@@ -197,14 +200,24 @@ def compute_cost_breakdown(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             "cost_per_1k_chars_usd": round(cost_per_1k_chars, 4),
             "retry_cost_usd": round(retry_cost, 4),
             "retry_count": retry_count,
-            "retry_rate": round(retry_count / len(enriched_records) if enriched_records else 0, 4)
+            "retry_rate": round(
+                retry_count / len(enriched_records) if enriched_records else 0, 4
+            ),
         },
         "by_stage": {
             stage: {
                 "cost_usd": round(data["cost_usd"], 4),
                 "count": data["count"],
-                "cost_per_1k_chars_usd": round(data["cost_usd"] / data["chars"] * 1000, 4) if data["chars"] > 0 else 0,
-                "avg_cost_per_record": round(data["cost_usd"] / data["count"], 6) if data["count"] > 0 else 0
+                "cost_per_1k_chars_usd": (
+                    round(data["cost_usd"] / data["chars"] * 1000, 4)
+                    if data["chars"] > 0
+                    else 0
+                ),
+                "avg_cost_per_record": (
+                    round(data["cost_usd"] / data["count"], 6)
+                    if data["count"] > 0
+                    else 0
+                ),
             }
             for stage, data in sorted(by_stage.items())
         },
@@ -212,8 +225,16 @@ def compute_cost_breakdown(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             model: {
                 "cost_usd": round(data["cost_usd"], 4),
                 "count": data["count"],
-                "cost_per_1k_chars_usd": round(data["cost_usd"] / data["chars"] * 1000, 4) if data["chars"] > 0 else 0,
-                "avg_cost_per_record": round(data["cost_usd"] / data["count"], 6) if data["count"] > 0 else 0
+                "cost_per_1k_chars_usd": (
+                    round(data["cost_usd"] / data["chars"] * 1000, 4)
+                    if data["chars"] > 0
+                    else 0
+                ),
+                "avg_cost_per_record": (
+                    round(data["cost_usd"] / data["count"], 6)
+                    if data["count"] > 0
+                    else 0
+                ),
             }
             for model, data in sorted(by_model.items())
         },
@@ -221,8 +242,16 @@ def compute_cost_breakdown(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             provider: {
                 "cost_usd": round(data["cost_usd"], 4),
                 "count": data["count"],
-                "cost_per_1k_chars_usd": round(data["cost_usd"] / data["chars"] * 1000, 4) if data["chars"] > 0 else 0,
-                "avg_cost_per_record": round(data["cost_usd"] / data["count"], 6) if data["count"] > 0 else 0
+                "cost_per_1k_chars_usd": (
+                    round(data["cost_usd"] / data["chars"] * 1000, 4)
+                    if data["chars"] > 0
+                    else 0
+                ),
+                "avg_cost_per_record": (
+                    round(data["cost_usd"] / data["count"], 6)
+                    if data["count"] > 0
+                    else 0
+                ),
             }
             for provider, data in sorted(by_provider.items())
         },
@@ -230,11 +259,19 @@ def compute_cost_breakdown(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             diff: {
                 "cost_usd": round(data["cost_usd"], 4),
                 "count": data["count"],
-                "cost_per_1k_chars_usd": round(data["cost_usd"] / data["chars"] * 1000, 4) if data["chars"] > 0 else 0,
-                "avg_cost_per_record": round(data["cost_usd"] / data["count"], 6) if data["count"] > 0 else 0
+                "cost_per_1k_chars_usd": (
+                    round(data["cost_usd"] / data["chars"] * 1000, 4)
+                    if data["chars"] > 0
+                    else 0
+                ),
+                "avg_cost_per_record": (
+                    round(data["cost_usd"] / data["count"], 6)
+                    if data["count"] > 0
+                    else 0
+                ),
             }
             for diff, data in sorted(by_difficulty.items())
-        }
+        },
     }
 
     return breakdown
@@ -245,9 +282,7 @@ def format_table(breakdown: Dict[str, Any]) -> str:
     lines = []
     lines.append("=" * 80)
     lines.append("  Audiobook Studio — 成本看板")
-    lines.append(
-        f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    )
+    lines.append(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("=" * 80)
     lines.append("")
 
@@ -311,7 +346,9 @@ def format_table(breakdown: Dict[str, Any]) -> str:
 
     provider_total = breakdown["overall"]["total_cost_usd"]
     for provider, data in breakdown["by_provider"].items():
-        percentage = (data["cost_usd"] / provider_total * 100) if provider_total > 0 else 0
+        percentage = (
+            (data["cost_usd"] / provider_total * 100) if provider_total > 0 else 0
+        )
         lines.append(
             f"{provider:<25} {data['count']:>8} "
             f"${data['cost_usd']:>10.4f} "
@@ -333,19 +370,19 @@ def main():
     log_records = collect_logs(logs_dir, args.hours)
 
     if not log_records:
-        print("警告: 未找到性能记录数据")
+        logger.warning("警告: 未找到性能记录数据")
         if args.format == "json":
-            print(json.dumps({"error": "No data found"}, indent=2))
+            logger.error(json.dumps({"error": "No data found"}, indent=2))
         else:
-            print("暂无数据可显示。请先运行一些管线任务以生成监控数据。")
+            logger.info("暂无数据可显示。请先运行一些管线任务以生成监控数据。")
         return
 
     breakdown = compute_cost_breakdown(log_records)
 
     if args.format == "json":
-        print(json.dumps(breakdown, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(breakdown, indent=2, ensure_ascii=False))
     else:
-        print(format_table(breakdown))
+        logger.info(format_table(breakdown))
 
 
 if __name__ == "__main__":

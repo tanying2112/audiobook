@@ -16,22 +16,21 @@ from typing import List, Optional
 
 import numpy as np
 
+from ..config.hardware_profile import HardwareProfile, get_hardware_profile
+from ..config.loader import load_quality_thresholds
+from ..llm import LLMJudge, LLMRouter, create_judge, create_router
+from ..monitoring import record_stage_performance
 from ..monitoring.langfuse_client import (
     is_enabled,
     observe_quality_check,
     trace_function,
 )
-
-from ..config.hardware_profile import get_hardware_profile, HardwareProfile
-from ..config.loader import load_quality_thresholds
-from ..llm import LLMJudge, LLMRouter, create_judge, create_router
-from ..monitoring import record_stage_performance
 from ..quality import (
-    QualityCheckSuite,
-    QualityCheckResult,
     DNSMOSResult,
-    WERResult,
+    QualityCheckResult,
+    QualityCheckSuite,
     SpeakerSimilarityResult,
+    WERResult,
 )
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 from ..utils.ffmpeg_probe import (
@@ -144,15 +143,16 @@ class QualityCheckPipeline:
             - speaker_sim: torch + SpeechBrain for speaker embeddings
         """
         features: dict = {
-            "ffmpeg": True,       # Always available — core dependency
-            "dnsmos": False,      # ONNX Runtime for DNSMOS scoring
-            "asr": False,         # FunASR or faster-whisper for WER
+            "ffmpeg": True,  # Always available — core dependency
+            "dnsmos": False,  # ONNX Runtime for DNSMOS scoring
+            "asr": False,  # FunASR or faster-whisper for WER
             "speaker_sim": False,  # torch + SpeechBrain for speaker embeddings
         }
 
         # Check ONNX Runtime (for DNSMOS)
         try:
             import onnxruntime  # noqa: F401
+
             features["dnsmos"] = True
         except ImportError:
             pass
@@ -160,14 +160,17 @@ class QualityCheckPipeline:
         # Check ASR backends (FunASR or faster-whisper)
         try:
             import funasr  # noqa: F401
+
             features["asr"] = True
         except ImportError:
             try:
                 import faster_whisper  # noqa: F401
+
                 features["asr"] = True
             except ImportError:
                 try:
                     import whisper  # openai-whisper fallback
+
                     features["asr"] = True
                 except ImportError:
                     pass
@@ -176,6 +179,7 @@ class QualityCheckPipeline:
         try:
             import torch  # noqa: F401
             from speechbrain.inference.speaker import EncoderClassifier  # noqa: F401
+
             features["speaker_sim"] = True
         except (ImportError, Exception):
             pass
@@ -186,9 +190,9 @@ class QualityCheckPipeline:
         """Apply quality check settings from hardware profile."""
         if not self.hardware_profile:
             return
-        
+
         qc = self.hardware_profile.quality_check
-        
+
         # Override thresholds from hardware profile if enabled
         if qc.dnsmos_enabled and "thresholds" in qc.__dict__:
             # Store hardware profile thresholds for use in judgment
@@ -199,7 +203,7 @@ class QualityCheckPipeline:
             self._hw_dnsmos_min = None
             self._hw_asr_wer_max = None
             self._hw_speaker_sim_min = None
-        
+
         # Store feature flags
         self._hw_dnsmos_enabled = qc.dnsmos_enabled
         self._hw_asr_enabled = qc.asr_enabled
@@ -215,17 +219,29 @@ class QualityCheckPipeline:
 
     def _get_threshold(self, *keys, default=None):
         """Get nested threshold value from config.
-        
+
         Hardware profile thresholds take precedence over file config.
         """
         # Check hardware profile thresholds first
-        if keys == ("audio", "dnsmos_min") and hasattr(self, "_hw_dnsmos_min") and self._hw_dnsmos_min is not None:
+        if (
+            keys == ("audio", "dnsmos_min")
+            and hasattr(self, "_hw_dnsmos_min")
+            and self._hw_dnsmos_min is not None
+        ):
             return self._hw_dnsmos_min
-        if keys == ("audio", "asr_wer_max") and hasattr(self, "_hw_asr_wer_max") and self._hw_asr_wer_max is not None:
+        if (
+            keys == ("audio", "asr_wer_max")
+            and hasattr(self, "_hw_asr_wer_max")
+            and self._hw_asr_wer_max is not None
+        ):
             return self._hw_asr_wer_max
-        if keys == ("audio", "speaker_sim_min") and hasattr(self, "_hw_speaker_sim_min") and self._hw_speaker_sim_min is not None:
+        if (
+            keys == ("audio", "speaker_sim_min")
+            and hasattr(self, "_hw_speaker_sim_min")
+            and self._hw_speaker_sim_min is not None
+        ):
             return self._hw_speaker_sim_min
-            
+
         value = self.quality_thresholds
         for key in keys:
             if isinstance(value, dict):
@@ -243,6 +259,7 @@ class QualityCheckPipeline:
 
         Uses the ffmpeg_probe utility for Python 3.14+ compatibility.
         """
+        # MOCK: 待真实实现
         # Mock mode: return defaults without actual analysis
         if self.mock_mode:
             return AudioAnalysisResult(
@@ -416,7 +433,6 @@ class QualityCheckPipeline:
             desc += f"，时长与预期不符(预期{analysis.duration_ms}ms)"
         return desc
 
-
     def _encode_audio_base64(self, audio_path: Path) -> Optional[str]:
         """Encode audio file to base64 for multimodal LLM."""
         try:
@@ -450,19 +466,25 @@ class QualityCheckPipeline:
         """
         # Check hardware profile for multimodal capability
         if not self._should_use_multimodal_judge():
-            logger.debug("Multimodal judge skipped: not enabled in current hardware profile")
+            logger.debug(
+                "Multimodal judge skipped: not enabled in current hardware profile"
+            )
             return None
-        
+
         try:
             audio_b64 = self._encode_audio_base64(audio_path)
             if not audio_b64:
-                logger.warning(f"Could not encode audio for multimodal judge: {audio_path}")
+                logger.warning(
+                    f"Could not encode audio for multimodal judge: {audio_path}"
+                )
                 return None
-            
-            prompt = self._build_multimodal_prompt(segment_id, annotation, reference_text, audio_b64)
-            
+
+            prompt = self._build_multimodal_prompt(
+                segment_id, annotation, reference_text, audio_b64
+            )
+
             from ..schemas import QualityJudgment
-            
+
             messages = [
                 {
                     "role": "system",
@@ -472,25 +494,30 @@ class QualityCheckPipeline:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "audio", "source": {"data": audio_b64, "mime_type": "audio/mp3"}}
-                    ]
-                }
+                        {
+                            "type": "audio",
+                            "source": {"data": audio_b64, "mime_type": "audio/mp3"},
+                        },
+                    ],
+                },
             ]
-            
+
             result = self.router.call(
                 stage="quality",
                 response_model=QualityJudgment,
                 messages=messages,
             )
-            
+
             if result and result.output:
-                logger.info(f"Multimodal quality judge completed for {segment_id}: score={result.output.overall_score:.2f}")
+                logger.info(
+                    f"Multimodal quality judge completed for {segment_id}: score={result.output.overall_score:.2f}"
+                )
                 return result.output
-            
+
         except Exception as e:
             logger.warning(f"Multimodal quality judge failed for {segment_id}: {e}")
             return None
-        
+
         return None
 
     def _build_multimodal_prompt(
@@ -508,7 +535,9 @@ class QualityCheckPipeline:
         lines.append(f"- 片段ID: {segment_id}")
         lines.append(f"- 说话人: {annotation.speaker_canonical_name}")
         lines.append(f"- 是否对话: {annotation.is_dialogue}")
-        lines.append(f"- 期望情感: {annotation.emotion} (强度: {annotation.emotion_intensity})")
+        lines.append(
+            f"- 期望情感: {annotation.emotion} (强度: {annotation.emotion_intensity})"
+        )
         lines.append(f"- 期望语速: {annotation.speech_rate}x")
         lines.append(f"- 期望音高偏移: {annotation.pitch_shift_semitones} 半音")
         lines.append(f"- 参考文本: {reference_text[:200]}...")
@@ -550,9 +579,13 @@ class QualityCheckPipeline:
         rather than failing the entire check.
         """
         # If no hard metric deps are available, skip entirely
-        any_available = any(self._available_features.get(k) for k in ("dnsmos", "asr", "speaker_sim"))
+        any_available = any(
+            self._available_features.get(k) for k in ("dnsmos", "asr", "speaker_sim")
+        )
         if not any_available:
-            logger.info("No hard metric dependencies available — skipping DNSMOS/ASR/SpeakerSim")
+            logger.info(
+                "No hard metric dependencies available — skipping DNSMOS/ASR/SpeakerSim"
+            )
             return QualityCheckResult(
                 passed=True,
                 overall_message="Hard metrics skipped (no optional dependencies available)",
@@ -589,7 +622,9 @@ class QualityCheckPipeline:
 
             # Record rule-based quality check observation
             rule_passed = len(analysis.issues) == 0
-            rule_score = 1.0 if rule_passed else max(0.0, 1.0 - len(analysis.issues) * 0.2)
+            rule_score = (
+                1.0 if rule_passed else max(0.0, 1.0 - len(analysis.issues) * 0.2)
+            )
             observe_quality_check(
                 stage="rule_based",
                 passed=rule_passed,
@@ -598,9 +633,11 @@ class QualityCheckPipeline:
                 latency_ms=rule_latency_ms,
             )
 
+            # MOCK: 待真实实现
             # Mock mode: return simulated judgment after rule-based analysis
             if self.mock_mode:
                 from ..schemas.quality import FixSuggestion
+
                 # Determine if regeneration is needed based on rule-based issues
                 needs_regeneration = len(analysis.issues) > 0
                 # Call judge in mock mode to get the mock judgment
@@ -614,12 +651,14 @@ class QualityCheckPipeline:
                 if analysis.issues:
                     judgment.issues = list(analysis.issues) + list(judgment.issues)
                     judgment.needs_regeneration = True
-                    judgment.fix_suggestions = [FixSuggestion(
-                        suggestion_type="content_edit",
-                        target_text=reference_text[:50] if reference_text else "",
-                        suggested_value="重新合成以修复音频质量问题",
-                        rationale=f"Rule-based issues: {analysis.issues}",
-                    )]
+                    judgment.fix_suggestions = [
+                        FixSuggestion(
+                            suggestion_type="content_edit",
+                            target_text=reference_text[:50] if reference_text else "",
+                            suggested_value="重新合成以修复音频质量问题",
+                            rationale=f"Rule-based issues: {analysis.issues}",
+                        )
+                    ]
                 judgments.append(judgment)
                 continue
 
@@ -628,7 +667,7 @@ class QualityCheckPipeline:
             hard_result = self._run_hard_quality_checks(
                 audio_path=Path(audio_path),
                 reference_text=reference_text,
-                speaker_id=getattr(annotation, 'speaker_canonical_name', None),
+                speaker_id=getattr(annotation, "speaker_canonical_name", None),
             )
             hard_latency_ms = (time.time() - hard_start_time) * 1000
 
@@ -650,7 +689,9 @@ class QualityCheckPipeline:
             if hard_result.wer and hard_result.wer.success:
                 audio_description += f"，ASR WER={hard_result.wer.wer:.1%}"
             if hard_result.speaker_sim and hard_result.speaker_sim.success:
-                audio_description += f"，声纹相似度={hard_result.speaker_sim.similarity:.3f}"
+                audio_description += (
+                    f"，声纹相似度={hard_result.speaker_sim.similarity:.3f}"
+                )
 
             # Start timing for LLM judgment
             judgment_start_time = time.time()
@@ -677,18 +718,24 @@ class QualityCheckPipeline:
                 # Incorporate hard quality check results into judgment
                 if not hard_result.passed:
                     judgment.needs_regeneration = True
-                    judgment.issues.append(f"Hard quality check failed: {hard_result.overall_message}")
+                    judgment.issues.append(
+                        f"Hard quality check failed: {hard_result.overall_message}"
+                    )
                     judgment.fix_suggestions.append("重新合成以通过硬质检门禁")
 
                 # Adjust scores based on hard checks
                 if hard_result.dnsmos and hard_result.dnsmos.success:
                     # DNSMOS 映射到 1-5 -> 0-1
                     dnsmos_score = hard_result.dnsmos.mos_ovr / 5.0
-                    judgment.speaker_clarity = (judgment.speaker_clarity + dnsmos_score) / 2
+                    judgment.speaker_clarity = (
+                        judgment.speaker_clarity + dnsmos_score
+                    ) / 2
 
                 if hard_result.speaker_sim and hard_result.speaker_sim.success:
                     # Speaker similarity directly maps to clarity
-                    judgment.speaker_clarity = (judgment.speaker_clarity + hard_result.speaker_sim.similarity) / 2
+                    judgment.speaker_clarity = (
+                        judgment.speaker_clarity + hard_result.speaker_sim.similarity
+                    ) / 2
 
                 logger.info(
                     f"Quality judgment: overall={judgment.overall_score:.2f} "
@@ -774,4 +821,4 @@ if __name__ == "__main__":  # pragma: no cover
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("QualityCheckPipeline ready")
+    logger.info("QualityCheckPipeline ready")

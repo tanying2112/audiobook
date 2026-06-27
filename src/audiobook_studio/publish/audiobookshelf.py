@@ -3,21 +3,23 @@
 import base64
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
-logger = __import__('logging').getLogger(__name__)
+logger = __import__("logging").getLogger(__name__)
 
 
 @dataclass
 class AudiobookMetadata:
     """有声书元数据"""
+
     title: str
     author: str
     narrator: str
@@ -39,6 +41,7 @@ class AudiobookMetadata:
 @dataclass
 class AudiobookFile:
     """有声书音频文件"""
+
     file_path: Path
     size_bytes: int
     duration_seconds: float
@@ -52,6 +55,7 @@ class AudiobookFile:
 @dataclass
 class AudiobookshelfConfig:
     """Audiobookshelf 配置"""
+
     api_url: str  # 例如: http://localhost:8080
     api_key: str  # API 密钥（Bearer token）
     library_id: str  # 目标库的 ID
@@ -68,12 +72,12 @@ class AudiobookshelfPublisher:
     def __init__(self, config: AudiobookshelfConfig):
         self.config = config
         self.supported_formats = set(config.supported_formats)
-        self.base_url = config.api_url.rstrip('/')
+        self.base_url = config.api_url.rstrip("/")
         self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
         if not self.mock_mode:
             self.client = httpx.Client(
                 timeout=httpx.Timeout(300.0, connect=30.0),
-                headers={"Authorization": f"Bearer {config.api_key}"}
+                headers={"Authorization": f"Bearer {config.api_key}"},
             )
         else:
             self.client = None
@@ -85,9 +89,7 @@ class AudiobookshelfPublisher:
             self.client.close()
 
     def publish_audiobook(
-        self,
-        metadata: AudiobookMetadata,
-        audio_file: AudiobookFile
+        self, metadata: AudiobookMetadata, audio_file: AudiobookFile
     ) -> Tuple[bool, str, Optional[Dict]]:
         """
         将有声书发布到 Audiobookshelf
@@ -107,7 +109,9 @@ class AudiobookshelfPublisher:
         response = self._real_api_call(upload_data, audio_file)
 
         if response.get("success"):
-            success_msg = f"有声书已成功发布到 Audiobookshelf (ID: {response.get('item_id')})"
+            success_msg = (
+                f"有声书已成功发布到 Audiobookshelf (ID: {response.get('item_id')})"
+            )
             logger.info(f"✅ {success_msg}")
             return True, success_msg, response
         else:
@@ -116,9 +120,7 @@ class AudiobookshelfPublisher:
             return False, error_msg, response
 
     def _prepare_audiobook(
-        self,
-        metadata: AudiobookMetadata,
-        audio_file: AudiobookFile
+        self, metadata: AudiobookMetadata, audio_file: AudiobookFile
     ) -> Tuple[bool, str, Optional[Dict]]:
         """
         准备有声书元数据和文件以供发布
@@ -171,7 +173,9 @@ class AudiobookshelfPublisher:
         if not metadata.narrator.strip():
             return False, "朗读者不能为空"
 
-        if metadata.publication_year and (metadata.publication_year < 1000 or metadata.publication_year > 2100):
+        if metadata.publication_year and (
+            metadata.publication_year < 1000 or metadata.publication_year > 2100
+        ):
             return False, f"出版年份不合理: {metadata.publication_year}"
 
         return True, "元数据验证通过"
@@ -187,12 +191,18 @@ class AudiobookshelfPublisher:
         # 检查文件大小
         actual_size = audio_file.file_path.stat().st_size
         if actual_size != audio_file.size_bytes:
-            return False, f"文件大小不匹配: 声明 {audio_file.size_bytes} 字节, 实际 {actual_size} 字节"
+            return (
+                False,
+                f"文件大小不匹配: 声明 {audio_file.size_bytes} 字节, 实际 {actual_size} 字节",
+            )
 
         # 检查文件格式
-        file_ext = audio_file.file_path.suffix.lower().lstrip('.')
+        file_ext = audio_file.file_path.suffix.lower().lstrip(".")
         if file_ext != audio_file.format:
-            return False, f"文件扩展名 (.{file_ext}) 与指定格式 ({audio_file.format}) 不匹配"
+            return (
+                False,
+                f"文件扩展名 (.{file_ext}) 与指定格式 ({audio_file.format}) 不匹配",
+            )
 
         # 检查 MIME 类型
         mime_type, _ = mimetypes.guess_type(str(audio_file.file_path))
@@ -200,18 +210,23 @@ class AudiobookshelfPublisher:
             "m4b": "audio/mp4",
             "mp3": "audio/mpeg",
             "wav": "audio/wav",
-            "flac": "audio/flac"
+            "flac": "audio/flac",
         }.get(audio_file.format)
 
-        if expected_mime and mime_type and not mime_type.startswith(expected_mime.split('/')[0]):
-            return False, f"文件 MIME 类型不匹配: 期望 {expected_mime}, 实际 {mime_type}"
+        if (
+            expected_mime
+            and mime_type
+            and not mime_type.startswith(expected_mime.split("/")[0])
+        ):
+            return (
+                False,
+                f"文件 MIME 类型不匹配: 期望 {expected_mime}, 实际 {mime_type}",
+            )
 
         return True, "音频文件验证通过"
 
     def _prepare_upload_data(
-        self,
-        metadata: AudiobookMetadata,
-        audio_file: AudiobookFile
+        self, metadata: AudiobookMetadata, audio_file: AudiobookFile
     ) -> Dict:
         """准备上传到 Audiobookshelf 的数据"""
         logger.debug("📋 准备 Audiobookshelf 上传数据")
@@ -221,7 +236,7 @@ class AudiobookshelfPublisher:
         if metadata.cover_image_path and metadata.cover_image_path.exists():
             try:
                 with open(metadata.cover_image_path, "rb") as f:
-                    cover_data = base64.b64encode(f.read()).decode('utf-8')
+                    cover_data = base64.b64encode(f.read()).decode("utf-8")
             except Exception as e:
                 logger.warning(f"⚠️ 封面图片读取失败: {e}")
 
@@ -229,11 +244,13 @@ class AudiobookshelfPublisher:
         chapters = audio_file.chapters
         if not chapters and audio_file.duration_seconds > 0:
             # 如果没有提供章节但有时长，创建一个默认章节
-            chapters = [{
-                "title": metadata.title,
-                "start": 0,
-                "end": int(audio_file.duration_seconds)
-            }]
+            chapters = [
+                {
+                    "title": metadata.title,
+                    "start": 0,
+                    "end": int(audio_file.duration_seconds),
+                }
+            ]
 
         upload_data = {
             # 基本信息
@@ -246,23 +263,19 @@ class AudiobookshelfPublisher:
             "publisher": metadata.publisher,
             "genres": metadata.genres,
             "tags": metadata.tags,
-
             # 系列信息
             "series": metadata.series,
             "seriesIndex": metadata.series_index,
-
             # 文件信息
             "fileName": audio_file.file_path.name,
             "size": audio_file.size_bytes,
             "duration": int(audio_file.duration_seconds),
             "bitrate": audio_file.bitrate_kbps * 1000,  # 转换为 bps
             "format": audio_file.format,
-
             # 封面图片
             "coverImage": cover_data,
-
             # 章节
-            "chapters": chapters
+            "chapters": chapters,
         }
 
         return upload_data
@@ -281,11 +294,12 @@ class AudiobookshelfPublisher:
 
         # 模拟偶尔的失败（例如网络问题或重复书籍）
         import random
+
         if random.random() < 0.1:  # 10% 的失败率用于演示
             return {
                 "success": False,
                 "message": "网络连接超时，请稍后重试",
-                "book_id": None
+                "book_id": None,
             }
 
         # 检查是否是重复书籍（简化逻辑）
@@ -294,7 +308,7 @@ class AudiobookshelfPublisher:
                 "success": False,
                 "message": f"书籍已存在: 《{upload_data.get('title')}》 by {upload_data.get('author')}",
                 "book_id": book_id,
-                "is_duplicate": True
+                "is_duplicate": True,
             }
 
         # 成功响应
@@ -302,7 +316,9 @@ class AudiobookshelfPublisher:
             "success": True,
             "message": "书籍已成功导入",
             "book_id": book_id,
-            "import_id": hashlib.md5(f"{book_id}{datetime.now()}".encode()).hexdigest()[:16],
+            "import_id": hashlib.md5(f"{book_id}{datetime.now()}".encode()).hexdigest()[
+                :16
+            ],
             "book": {
                 "id": book_id,
                 "title": upload_data.get("title"),
@@ -310,8 +326,8 @@ class AudiobookshelfPublisher:
                 "narrator": upload_data.get("narrator"),
                 "duration": upload_data.get("duration"),
                 "addedAt": datetime.now().isoformat(),
-                "updatedAt": datetime.now().isoformat()
-            }
+                "updatedAt": datetime.now().isoformat(),
+            },
         }
 
     def _real_api_call(self, upload_data: Dict, audio_file: AudiobookFile) -> Dict:
@@ -321,11 +337,7 @@ class AudiobookshelfPublisher:
         # 获取库 ID 和 API 密钥
         library_id = self.config.library_id
         if not library_id:
-            return {
-                "success": False,
-                "message": "库 ID 未配置",
-                "book_id": None
-            }
+            return {"success": False, "message": "库 ID 未配置", "book_id": None}
 
         # 第一步：获取库信息以获取文件夹 ID（用于上传）
         folder_id: Optional[str] = None
@@ -335,13 +347,13 @@ class AudiobookshelfPublisher:
                 return {
                     "success": False,
                     "message": f"库 {library_id} 不存在",
-                    "book_id": None
+                    "book_id": None,
                 }
             elif resp.status_code != 200:
                 return {
                     "success": False,
                     "message": f"无法访问库 ({resp.status_code}): {resp.text}",
-                    "book_id": None
+                    "book_id": None,
                 }
 
             library_info = resp.json()
@@ -357,13 +369,13 @@ class AudiobookshelfPublisher:
                 return {
                     "success": False,
                     "message": f"库 {library_id} 没有配置任何文件夹",
-                    "book_id": None
+                    "book_id": None,
                 }
         except Exception as e:
             return {
                 "success": False,
                 "message": f"获取库信息失败: {str(e)}",
-                "book_id": None
+                "book_id": None,
             }
 
         # 第二步：准备上传文件列表
@@ -381,93 +393,109 @@ class AudiobookshelfPublisher:
             total_size += audio_file.file_path.stat().st_size
 
         if not audio_files:
-            return {
-                "success": False,
-                "message": "未找到音频文件",
-                "book_id": None
-            }
+            return {"success": False, "message": "未找到音频文件", "book_id": None}
 
         # 第三步：上传文件
         upload_results: List[Dict[str, Any]] = []
         successful_uploads = 0
 
         # 如果配置了 base_path（本地库），直接复制文件
-        base_path = getattr(self.config, 'base_path', None)
+        base_path = getattr(self.config, "base_path", None)
         if base_path:
             # 本地库：将文件复制到库存储路径下的作者/书名目录
             library_audio_path = Path(base_path) / author / book_title
             try:
                 library_audio_path.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                upload_results.append({
-                    "file": "directory_creation",
-                    "success": False,
-                    "error": str(e),
-                })
+                upload_results.append(
+                    {
+                        "file": "directory_creation",
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
 
             for audio_file_path in audio_files:
                 dest_path = library_audio_path / audio_file_path.name
                 try:
                     import shutil
+
                     shutil.copy2(audio_file_path, dest_path)
-                    upload_results.append({
-                        "file": audio_file_path.name,
-                        "success": True,
-                        "server_path": str(dest_path),
-                    })
+                    upload_results.append(
+                        {
+                            "file": audio_file_path.name,
+                            "success": True,
+                            "server_path": str(dest_path),
+                        }
+                    )
                     successful_uploads += 1
                 except Exception as e:
-                    upload_results.append({
-                        "file": audio_file_path.name,
-                        "success": False,
-                        "error": str(e),
-                    })
+                    upload_results.append(
+                        {
+                            "file": audio_file_path.name,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
         else:
             # 远程库：使用 POST /api/upload
             for audio_file_path in audio_files:
                 try:
                     with open(audio_file_path, "rb") as f:
                         files = {
-                            'file': (audio_file_path.name, f.read(),
-                                     self._get_mime_type(audio_file_path))
+                            "file": (
+                                audio_file_path.name,
+                                f.read(),
+                                self._get_mime_type(audio_file_path),
+                            )
                         }
                         data = {
-                            'library': library_id,
-                            'folder': folder_id,
-                            'title': book_title,
-                            'author': author
+                            "library": library_id,
+                            "folder": folder_id,
+                            "title": book_title,
+                            "author": author,
                         }
-                        resp = self.client.post(f"{self.base_url}/api/upload", data=data, files=files)
+                        resp = self.client.post(
+                            f"{self.base_url}/api/upload", data=data, files=files
+                        )
                     if resp.status_code in (200, 201):
-                        upload_results.append({
-                            "file": audio_file_path.name,
-                            "success": True,
-                        })
+                        upload_results.append(
+                            {
+                                "file": audio_file_path.name,
+                                "success": True,
+                            }
+                        )
                         successful_uploads += 1
                     else:
-                        upload_results.append({
+                        upload_results.append(
+                            {
+                                "file": audio_file_path.name,
+                                "success": False,
+                                "error": f"HTTP {resp.status_code}: {resp.text}",
+                            }
+                        )
+                except Exception as e:
+                    upload_results.append(
+                        {
                             "file": audio_file_path.name,
                             "success": False,
-                            "error": f"HTTP {resp.status_code}: {resp.text}",
-                        })
-                except Exception as e:
-                    upload_results.append({
-                        "file": audio_file_path.name,
-                        "success": False,
-                        "error": str(e),
-                    })
+                            "error": str(e),
+                        }
+                    )
 
         if successful_uploads == 0:
             return {
                 "success": False,
                 "message": "所有文件上传失败",
                 "book_id": None,
-                "upload_results": upload_results
+                "upload_results": upload_results,
             }
 
         # 第四步：触发库扫描
         try:
-            scan_resp = self.client.post(f"{self.base_url}/api/libraries/{library_id}/scan")
+            scan_resp = self.client.post(
+                f"{self.base_url}/api/libraries/{library_id}/scan"
+            )
             if scan_resp.status_code not in (200, 201):
                 logger.warning(f"触发扫描返回状态码 {scan_resp.status_code}")
         except Exception as e:
@@ -478,12 +506,13 @@ class AudiobookshelfPublisher:
         max_retries = 10
         poll_interval = 3  # 秒
         import time
+
         for _ in range(max_retries):
             time.sleep(poll_interval)
             try:
                 resp = self.client.get(
                     f"{self.base_url}/api/libraries/{library_id}/search",
-                    params={"q": book_title}
+                    params={"q": book_title},
                 )
                 if resp.status_code == 200:
                     results = resp.json()
@@ -524,7 +553,12 @@ class AudiobookshelfPublisher:
             if lang:
                 # 转换语言代码（例如 zh -> zh-CN）
                 if len(lang) == 2:
-                    lang_map = {"zh": "zh-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR"}
+                    lang_map = {
+                        "zh": "zh-CN",
+                        "en": "en-US",
+                        "ja": "ja-JP",
+                        "ko": "ko-KR",
+                    }
                     lang = lang_map.get(lang, lang)
                 metadata_payload["metadata"]["language"] = lang
             series = upload_data.get("series")
@@ -544,11 +578,12 @@ class AudiobookshelfPublisher:
 
             try:
                 resp = self.client.patch(
-                    f"{self.base_url}/api/items/{item_id}/media",
-                    json=metadata_payload
+                    f"{self.base_url}/api/items/{item_id}/media", json=metadata_payload
                 )
                 if resp.status_code not in (200, 204):
-                    logger.warning(f"更新元数据返回状态码 {resp.status_code}: {resp.text}")
+                    logger.warning(
+                        f"更新元数据返回状态码 {resp.status_code}: {resp.text}"
+                    )
             except Exception as e:
                 logger.warning(f"更新元数据失败: {e}")
 
@@ -558,27 +593,34 @@ class AudiobookshelfPublisher:
                 try:
                     # cover_data 是 base64 字符串
                     import base64
+
                     cover_bytes = base64.b64decode(cover_path)
-                    files = {
-                        'cover': ('cover.jpg', cover_bytes, 'image/jpeg')
-                    }
-                    resp = self.client.post(f"{self.base_url}/api/items/{item_id}/cover", files=files)
+                    files = {"cover": ("cover.jpg", cover_bytes, "image/jpeg")}
+                    resp = self.client.post(
+                        f"{self.base_url}/api/items/{item_id}/cover", files=files
+                    )
                     if resp.status_code not in (200, 201):
-                        logger.warning(f"上传封面返回状态码 {resp.status_code}: {resp.text}")
+                        logger.warning(
+                            f"上传封面返回状态码 {resp.status_code}: {resp.text}"
+                        )
                 except Exception as e:
                     logger.warning(f"处理封面图片失败: {e}")
 
         # 构建返回结果
         return {
             "success": successful_uploads > 0,
-            "message": f"成功上传 {successful_uploads}/{len(audio_files)} 个文件" if item_id else "文件上传成功，但未能确认项目 ID",
+            "message": (
+                f"成功上传 {successful_uploads}/{len(audio_files)} 个文件"
+                if item_id
+                else "文件上传成功，但未能确认项目 ID"
+            ),
             "book_id": item_id,
             "item_id": item_id,
             "uploaded_files": successful_uploads,
             "total_files": len(audio_files),
             "total_size_bytes": total_size,
             "upload_results": upload_results,
-            "library_id": library_id
+            "library_id": library_id,
         }
 
     def _get_mime_type(self, path: Path) -> str:
@@ -589,7 +631,7 @@ class AudiobookshelfPublisher:
             ".wav": "audio/wav",
             ".flac": "audio/flac",
             ".ogg": "audio/ogg",
-            ".aac": "audio/aac"
+            ".aac": "audio/aac",
         }.get(path.suffix.lower(), "application/octet-stream")
 
     def get_library_status(self) -> Dict:
@@ -604,7 +646,7 @@ class AudiobookshelfPublisher:
                 "total_duration_hours": 0,
                 "supported_formats": list(self.supported_formats),
                 "status": "online",
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
             }
 
         url = f"{self.base_url}/api/libraries/{self.config.library_id}"
@@ -618,7 +660,7 @@ class AudiobookshelfPublisher:
                     "total_duration_hours": data.get("duration", 0) / 3600,
                     "supported_formats": list(self.supported_formats),
                     "status": "online",
-                    "last_updated": datetime.now().isoformat()
+                    "last_updated": datetime.now().isoformat(),
                 }
         except Exception as e:
             logger.warning(f"获取库状态失败: {e}")
@@ -630,13 +672,13 @@ class AudiobookshelfPublisher:
             "supported_formats": list(self.supported_formats),
             "status": "offline",
             "last_updated": datetime.now().isoformat(),
-            "error": "无法连接到 Audiobookshelf"
+            "error": "无法连接到 Audiobookshelf",
         }
 
 
 def main():
     """主函数 - 演示 Audiobookshelf 集成"""
-    print("=== Audiobook Studio Audiobookshelf 集成演示 ===\n")
+    logger.info("=== Audiobook Studio Audiobookshelf 集成演示 ===\n")
 
     # 配置 Audiobookshelf 连接
     config = AudiobookshelfConfig(
@@ -645,22 +687,22 @@ def main():
         library_id="main_library",
         supported_formats=["m4b", "mp3"],
         auto_convert=True,
-        preferred_format="m4b"
+        preferred_format="m4b",
     )
 
     # 创建发布器
     publisher = AudiobookshelfPublisher(config)
 
-    print("🔧 配置 Audiobookshelf 连接:")
-    print(f"   API 地址: {config.api_url}")
-    print(f"   库 ID: {config.library_id}")
-    print(f"   支持格式: {', '.join(config.supported_formats)}")
-    print(f"   自动转换: {'✅ 是' if config.auto_convert else '❌ 否'}")
+    logger.info("🔧 配置 Audiobookshelf 连接:")
+    logger.info(f"   API 地址: {config.api_url}")
+    logger.info(f"   库 ID: {config.library_id}")
+    logger.info(f"   支持格式: {', '.join(config.supported_formats)}")
+    logger.info(f"   自动转换: {'✅ 是' if config.auto_convert else '❌ 否'}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 准备有声书元数据
-    print("\n📚 准备有声书元数据...")
+    logger.info("\n📚 准备有声书元数据...")
     metadata = AudiobookMetadata(
         title="三体",
         author="刘慈欣",
@@ -673,18 +715,18 @@ def main():
         tags=["刘慈欣", "三体 Trilogy", "硬科幻"],
         series="三体 Trilogy",
         series_index=1.0,
-        cover_image_path=Path("./covers/saneti_cover.jpg")  # 假设存在
+        cover_image_path=Path("./covers/saneti_cover.jpg"),  # 假设存在
     )
 
-    print(f"   标题: {metadata.title}")
-    print(f"   作者: {metadata.author}")
-    print(f"   朗读者: {metadata.narrator}")
-    print(f"   描述: {metadata.description[:50]}...")
+    logger.info(f"   标题: {metadata.title}")
+    logger.info(f"   作者: {metadata.author}")
+    logger.info(f"   朗读者: {metadata.narrator}")
+    logger.info(f"   描述: {metadata.description[:50]}...")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 准备音频文件信息
-    print("\n🔊 准备音频文件信息...")
+    logger.info("\n🔊 准备音频文件信息...")
     # 模拟一个实际的 M4B 文件
     audio_file_path = Path("./audiobooks/saneti_full.m4b")
     # 在实际使用中，这个文件 zou 是由之前的流程生成的
@@ -693,83 +735,79 @@ def main():
     audio_file = AudiobookFile(
         file_path=audio_file_path,
         size_bytes=457283092,  # ~436 MB
-        duration_seconds=21*60*60 + 45*60 + 30,  # 21小时45分30秒
+        duration_seconds=21 * 60 * 60 + 45 * 60 + 30,  # 21小时45分30秒
         format="m4b",
         bitrate_kbps=64,
         checksum_md5="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",  # 假设的MD5
         chapters=[
-            {
-                "title": "第一章 文化大革命",
-                "start": 0,
-                "end": 1800  # 30分钟
-            },
-            {
-                "title": "第二章 红岸基地",
-                "start": 1800,
-                "end": 5400  # 1.5小时
-            },
+            {"title": "第一章 文化大革命", "start": 0, "end": 1800},  # 30分钟
+            {"title": "第二章 红岸基地", "start": 1800, "end": 5400},  # 1.5小时
             # 省略中间章节...
             {
                 "title": "章节二十九  szerTranslator",
                 "start": 75600,
-                "end": 77400  # 最后30分钟
-            }
-        ]
+                "end": 77400,  # 最后30分钟
+            },
+        ],
     )
 
-    print(f"   文件名: {audio_file.file_path.name}")
-    print(f"   文件大小: {audio_file.size_bytes / (1024*1024):.1f} MB")
-    print(f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}")
-    print(f"   格式: {audio_file.format}")
-    print(f"   比特率: {audio_file.bitrate_kbps} kbps")
-    print(f"   章节数: {len(audio_file.chapters)}")
+    logger.info(f"   文件名: {audio_file.file_path.name}")
+    logger.info(f"   文件大小: {audio_file.size_bytes / (1024*1024):.1f} MB")
+    logger.info(
+        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"
+    )
+    logger.info(f"   格式: {audio_file.format}")
+    logger.info(f"   比特率: {audio_file.bitrate_kbps} kbps")
+    logger.info(f"   章节数: {len(audio_file.chapters)}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 验证准备工作
-    print("\n🔍 验证有声书信息...")
+    logger.info("\n🔍 验证有声书信息...")
     valid, message, upload_data = publisher._prepare_audiobook(metadata, audio_file)
     if valid:
-        print("   ✅ 有声书信息验证通过")
-        print(f"   📊 准备上传的数据字段: {len(upload_data)} 项")
+        logger.info("   ✅ 有声书信息验证通过")
+        logger.info(f"   📊 准备上传的数据字段: {len(upload_data)} 项")
     else:
-        print(f"   ❌ 验证失败: {message}")
+        logger.error(f"   ❌ 验证失败: {message}")
         return
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 发布到 Audiobookshelf (Mock 模式)
-    print("\n🚀 发布到 Audiobookshelf (Mock 模式)...")
+    logger.info("\n🚀 发布到 Audiobookshelf (Mock 模式)...")
     success, message, response = publisher.publish_audiobook(metadata, audio_file)
 
     if success:
-        print(f"   ✅ {message}")
+        logger.info(f"   ✅ {message}")
         if response:
-            print(f"   📖 书籍 ID: {response.get('book_id')}")
-            print(f"   🆔 导入 ID: {response.get('import_id')}")
-            if 'book' in response:
-                book_info = response['book']
-                print(f"   📅 添加时间: {book_info.get('addedAt')}")
+            logger.info(f"   📖 书籍 ID: {response.get('book_id')}")
+            logger.info(f"   🆔 导入 ID: {response.get('import_id')}")
+            if "book" in response:
+                book_info = response["book"]
+                logger.info(f"   📅 添加时间: {book_info.get('addedAt')}")
     else:
-        print(f"   ❌ {message}")
-        if response and response.get('is_duplicate'):
-            print(f"   💡 提示: 这可能是一本重复的书籍，您可以选择更新现有条目或跳过")
+        logger.error(f"   ❌ {message}")
+        if response and response.get("is_duplicate"):
+            logger.info(
+                "   💡 提示: 这可能是一本重复的书籍，您可以选择更新现有条目或跳过"
+            )
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 显示库状态
-    print("\n📊 Audiobookshelf 库状态:")
+    logger.info("\n📊 Audiobookshelf 库状态:")
     status = publisher.get_library_status()
-    print(f"   库 ID: {status['library_id']}")
-    print(f"   图书总数: {status['total_books']} 本")
-    print(f"   时长总计: {status['total_duration_hours']} 小时")
-    print(f"   支持格式: {', '.join(status['supported_formats'])}")
-    print(f"   服务器状态: {status['status']}")
-    print(f"   最后更新: {status['last_updated']}")
+    logger.info(f"   库 ID: {status['library_id']}")
+    logger.info(f"   图书总数: {status['total_books']} 本")
+    logger.info(f"   时长总计: {status['total_duration_hours']} 小时")
+    logger.info(f"   支持格式: {', '.join(status['supported_formats'])}")
+    logger.info(f"   服务器状态: {status['status']}")
+    logger.info(f"   最后更新: {status['last_updated']}")
 
-    print("\n" + "="*60)
-    print("🎉 Audiobookshelf 集成演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 Audiobookshelf 集成演示完成")
+    logger.info("=" * 60)
 
     publisher.close()
 

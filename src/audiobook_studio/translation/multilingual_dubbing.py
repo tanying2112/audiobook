@@ -6,15 +6,19 @@ Audiobook Studio — 多语言翻译配音系统
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 
 class EmotionType(Enum):
     """情感类型枚举"""
+
     NEUTRAL = "neutral"
     HAPPY = "happy"
     SAD = "sad"
@@ -28,6 +32,7 @@ class EmotionType(Enum):
 @dataclass
 class CharacterVoice:
     """角色声音配置"""
+
     name: str
     language: str
     voice_id: str
@@ -40,16 +45,18 @@ class CharacterVoice:
 @dataclass
 class EmotionMapping:
     """情感到声音参数的映射"""
+
     emotion: EmotionType
     pitch_shift: float  # 半音
-    speed_rate: float   # 倍率
-    volume: float       # 音量
-    energy: float       # 能量 (0-1)
+    speed_rate: float  # 倍率
+    volume: float  # 音量
+    energy: float  # 能量 (0-1)
 
 
 @dataclass
 class Segment:
     """音频片段"""
+
     id: str
     text: str
     character: str
@@ -90,57 +97,57 @@ class MultilingualDubbingManager:
                 pitch_shift=0.0,
                 speed_rate=1.0,
                 volume=1.0,
-                energy=0.5
+                energy=0.5,
             ),
             EmotionType.HAPPY: EmotionMapping(
                 emotion=EmotionType.HAPPY,
-                pitch_shift=2.0,    # 提高音调
-                speed_rate=1.1,     # 略快
-                volume=1.05,        # 稍 loud
-                energy=0.8
+                pitch_shift=2.0,  # 提高音调
+                speed_rate=1.1,  # 略快
+                volume=1.05,  # 稍 loud
+                energy=0.8,
             ),
             EmotionType.SAD: EmotionMapping(
                 emotion=EmotionType.SAD,
-                pitch_shift=-3.0,   # 降低音调
-                speed_rate=0.9,     # 放慢
-                volume=0.9,         # 更轻
-                energy=0.3
+                pitch_shift=-3.0,  # 降低音调
+                speed_rate=0.9,  # 放慢
+                volume=0.9,  # 更轻
+                energy=0.3,
             ),
             EmotionType.ANGRY: EmotionMapping(
                 emotion=EmotionType.ANGRY,
-                pitch_shift=1.0,    # 轻微提高
-                speed_rate=1.2,     # 更快
-                volume=1.3,         # 更 loud
-                energy=0.9
+                pitch_shift=1.0,  # 轻微提高
+                speed_rate=1.2,  # 更快
+                volume=1.3,  # 更 loud
+                energy=0.9,
             ),
             EmotionType.FEARFUL: EmotionMapping(
                 emotion=EmotionType.FEARFUL,
                 pitch_shift=-1.0,
                 speed_rate=1.1,
                 volume=0.8,
-                energy=0.7
+                energy=0.7,
             ),
             EmotionType.SURPRISED: EmotionMapping(
                 emotion=EmotionType.SURPRISED,
                 pitch_shift=3.0,
                 speed_rate=1.15,
                 volume=1.1,
-                energy=0.85
+                energy=0.85,
             ),
             EmotionType.DISGUSTED: EmotionMapping(
                 emotion=EmotionType.DISGUSTED,
                 pitch_shift=-2.0,
                 speed_rate=0.95,
                 volume=0.9,
-                energy=0.4
+                energy=0.4,
             ),
             EmotionType.OTHER: EmotionMapping(
                 emotion=EmotionType.OTHER,
                 pitch_shift=0.0,
                 speed_rate=1.0,
                 volume=1.0,
-                energy=0.5
-            )
+                energy=0.5,
+            ),
         }
 
     def _init_sample_character_voices(self):
@@ -150,7 +157,7 @@ class MultilingualDubbingManager:
             "zh-CN": CharacterVoice("旁白", "zh-CN", "zh-CN-XiaoyiNeural", "neutral"),
             "en-US": CharacterVoice("旁白", "en-US", "en-US-JennyNeural", "neutral"),
             "es-ES": CharacterVoice("旁白", "es-ES", "es-ES-ElviraNeural", "neutral"),
-            "ja-JP": CharacterVoice("旁白", "ja-JP", "ja-JP-NanamiNeural", "neutral")
+            "ja-JP": CharacterVoice("旁白", "ja-JP", "ja-JP-NanamiNeural", "neutral"),
         }
 
         # 主角角色
@@ -158,7 +165,7 @@ class MultilingualDubbingManager:
             "zh-CN": CharacterVoice("主角", "zh-CN", "zh-CN-YunyangNeural", "friendly"),
             "en-US": CharacterVoice("主角", "en-US", "en-US-GuyNeural", "friendly"),
             "es-ES": CharacterVoice("主角", "es-ES", "es-ES-AlvaroNeural", "friendly"),
-            "ja-JP": CharacterVoice("主角", "ja-JP", "ja-JP-KeitaNeural", "friendly")
+            "ja-JP": CharacterVoice("主角", "ja-JP", "ja-JP-KeitaNeural", "friendly"),
         }
 
         # 反派角色
@@ -166,10 +173,12 @@ class MultilingualDubbingManager:
             "zh-CN": CharacterVoice("反派", "zh-CN", "zh-CN-YunxiNeural", "evil"),
             "en-US": CharacterVoice("反派", "en-US", "en-US-DavisNeural", "evil"),
             "es-ES": CharacterVoice("反派", "es-ES", "es-ES-PabloNeural", "evil"),
-            "ja-JP": CharacterVoice("反派", "ja-JP", "ja-JP-TakehitoNeural", "evil")
+            "ja-JP": CharacterVoice("反派", "ja-JP", "ja-JP-TakehitoNeural", "evil"),
         }
 
-    def add_character_voice(self, character: str, language: str, voice_config: CharacterVoice):
+    def add_character_voice(
+        self, character: str, language: str, voice_config: CharacterVoice
+    ):
         """添加角色声音配置"""
         if character not in self.character_voices:
             self.character_voices[character] = {}
@@ -179,12 +188,16 @@ class MultilingualDubbingManager:
         """添加或更新情感映射"""
         self.emotion_mappings[emotion] = mapping
 
-    def set_translation_quality(self, source_lang: str, target_lang: str, quality: float):
+    def set_translation_quality(
+        self, source_lang: str, target_lang: str, quality: float
+    ):
         """设置语言对之间的翻译质量评分 (0-1)"""
         self.translation_quality[(source_lang, target_lang)] = quality
         self.translation_quality[(target_lang, source_lang)] = quality  # 假设对称
 
-    def get_character_voice(self, character: str, language: str) -> Optional[CharacterVoice]:
+    def get_character_voice(
+        self, character: str, language: str
+    ) -> Optional[CharacterVoice]:
         """获取指定角色在指定语言中的声音配置"""
         if character in self.character_voices:
             return self.character_voices[character].get(language)
@@ -192,14 +205,16 @@ class MultilingualDubbingManager:
 
     def get_emotion_mapping(self, emotion: EmotionType) -> EmotionMapping:
         """获取情感映射"""
-        return self.emotion_mappings.get(emotion, self.emotion_mappings[EmotionType.NEUTRAL])
+        return self.emotion_mappings.get(
+            emotion, self.emotion_mappings[EmotionType.NEUTRAL]
+        )
 
     def translate_text_preserving_markup(
         self,
         text: str,
         source_lang: str,
         target_lang: str,
-        character_emotion_pairs: List[Tuple[str, str]] = None
+        character_emotion_pairs: List[Tuple[str, str]] = None,
     ) -> str:
         """
         翻译文本同时保留角色和情感标记
@@ -220,33 +235,39 @@ class MultilingualDubbingManager:
         placeholders = {}
 
         # 保护角色标记
-        char_pattern = r'\[character:([^\]]+)\](.*?)\[/character\]'
+        char_pattern = r"\[character:([^\]]+)\](.*?)\[/character\]"
+
         def char_replace(match):
             char_name = match.group(1)
             content = match.group(2)
             placeholder = f"__CHAR_PLACEHOLDER_{len(placeholders)}__"
-            placeholders[placeholder] = (char_name, content, 'character')
+            placeholders[placeholder] = (char_name, content, "character")
             return placeholder
 
-        protected_text = re.sub(char_pattern, char_replace, protected_text, flags=re.DOTALL)
+        protected_text = re.sub(
+            char_pattern, char_replace, protected_text, flags=re.DOTALL
+        )
 
         # 保护情感标记
-        emotion_pattern = r'\(emotion:([^)]+)\)(.*?)\(/emotion\)'
+        emotion_pattern = r"\(emotion:([^)]+)\)(.*?)\(/emotion\)"
+
         def emotion_replace(match):
             emotion_name = match.group(1)
             content = match.group(2)
             placeholder = f"__EMOTION_PLACEHOLDER_{len(placeholders)}__"
-            placeholders[placeholder] = (emotion_name, content, 'emotion')
+            placeholders[placeholder] = (emotion_name, content, "emotion")
             return placeholder
 
-        protected_text = re.sub(emotion_pattern, emotion_replace, protected_text, flags=re.DOTALL)
+        protected_text = re.sub(
+            emotion_pattern, emotion_replace, protected_text, flags=re.DOTALL
+        )
 
         # 在这里进行实际翻译（模拟）
         translated_text = self._mock_translate(protected_text, source_lang, target_lang)
 
         # 恢复占位符
         for placeholder, (name, content, tag_type) in placeholders.items():
-            if tag_type == 'character':
+            if tag_type == "character":
                 replacement = f"[character:{name}]{content}[/character]"
             else:  # emotion
                 replacement = f"(emotion:{name}){content}(/emotion)"
@@ -263,7 +284,7 @@ class MultilingualDubbingManager:
             "es-ES": "Español",
             "ja-JP": "日本語",
             "fr-FR": "Français",
-            "de-DE": "Deutsch"
+            "de-DE": "Deutsch",
         }
 
         source_name = lang_names.get(source_lang, source_lang)
@@ -277,9 +298,7 @@ class MultilingualDubbingManager:
             return text
 
     def check_emotional_continuity(
-        self,
-        original_segments: List[Segment],
-        translated_segments: List[Segment]
+        self, original_segments: List[Segment], translated_segments: List[Segment]
     ) -> Tuple[bool, List[str]]:
         """
         检查翻译后的音频片段在情感上是否连续
@@ -290,7 +309,9 @@ class MultilingualDubbingManager:
         issues = []
 
         if len(original_segments) != len(translated_segments):
-            issues.append(f"片段数量不匹配: 原始 {len(original_segments)} vs 翻译 {len(translated_segments)}")
+            issues.append(
+                f"片段数量不匹配: 原始 {len(original_segments)} vs 翻译 {len(translated_segments)}"
+            )
             return False, issues
 
         for i, (orig, trans) in enumerate(zip(original_segments, translated_segments)):
@@ -322,7 +343,7 @@ class MultilingualDubbingManager:
         self,
         source_segments: List[Segment],
         target_language: str,
-        quality_threshold: float = 0.8
+        quality_threshold: float = 0.8,
     ) -> Tuple[List[Segment], Dict[str, any]]:
         """
         处理多语言翻译配音流程
@@ -330,7 +351,9 @@ class MultilingualDubbingManager:
         Returns:
             (翻译后的片段列表, 处理报告)
         """
-        print(f"🌍 开始多语言翻译配音: {len(source_segments)} 片段 → {target_language}")
+        logger.info(
+            f"🌍 开始多语言翻译配音: {len(source_segments)} 片段 → {target_language}"
+        )
 
         translated_segments = []
         report = {
@@ -340,14 +363,16 @@ class MultilingualDubbingManager:
             "failed_translations": 0,
             "warnings": [],
             "emotional_continuity_passed": False,
-            "continuity_issues": []
+            "continuity_issues": [],
         }
 
         # 翻译每个片段
         for segment in source_segments:
             try:
                 # 获取目标语言的角色声音
-                target_voice = self.get_character_voice(segment.character, target_language)
+                target_voice = self.get_character_voice(
+                    segment.character, target_language
+                )
                 if not target_voice:
                     # 如果没有特定角色的声音，使用默认声音
                     report["warnings"].append(
@@ -357,7 +382,7 @@ class MultilingualDubbingManager:
                         segment.character,
                         target_language,
                         f"{target_language}-default",
-                        "neutral"
+                        "neutral",
                     )
 
                 # 翻译文本（保留标记）
@@ -365,7 +390,7 @@ class MultilingualDubbingManager:
                     segment.text,
                     segment.language,
                     target_language,
-                    [(segment.character, segment.emotion.value)]
+                    [(segment.character, segment.emotion.value)],
                 )
 
                 # 获取情感映射并应用到声音参数
@@ -383,7 +408,7 @@ class MultilingualDubbingManager:
                     voice_id=target_voice.voice_id,
                     pitch_shift=target_voice.pitch_shift + emotion_mapping.pitch_shift,
                     speed_rate=target_voice.speed_rate * emotion_mapping.speed_rate,
-                    volume=target_voice.volume * emotion_mapping.volume
+                    volume=target_voice.volume * emotion_mapping.volume,
                 )
 
                 translated_segments.append(translated_segment)
@@ -401,33 +426,34 @@ class MultilingualDubbingManager:
                     emotion=segment.emotion,
                     language=target_language,
                     start_time=segment.start_time,
-                    end_time=segment.end_time
+                    end_time=segment.end_time,
                 )
                 translated_segments.append(failed_segment)
 
         # 检查情感连续性
         continuity_passed, continuity_issues = self.check_emotional_continuity(
-            source_segments,
-            translated_segments
+            source_segments, translated_segments
         )
         report["emotional_continuity_passed"] = continuity_passed
         report["continuity_issues"] = continuity_issues
 
         if continuity_passed:
-            print("✅ 情感连续性检查通过")
+            logger.info("✅ 情感连续性检查通过")
         else:
-            print(f"⚠️ 情感连续性检查失败: {len(continuity_issues)} 个问题")
+            logger.warning(f"⚠️ 情感连续性检查失败: {len(continuity_issues)} 个问题")
             for issue in continuity_issues[:3]:  # 只显示前3个问题
-                print(f"   - {issue}")
+                logger.info(f"   - {issue}")
 
-        print(f"📊 翻译完成: {report['successful_translations']} 成功, {report['failed_translations']} 失败")
+        logger.error(
+            f"📊 翻译完成: {report['successful_translations']} 成功, {report['failed_translations']} 失败"
+        )
 
         return translated_segments, report
 
 
 def main():
     """主函数 - 演示多语言翻译配音系统"""
-    print("=== Audiobook Studio 多语言翻译配音演示 ===\n")
+    logger.info("=== Audiobook Studio 多语言翻译配音演示 ===\n")
 
     # 创建管理器
     dubbing_manager = MultilingualDubbingManager()
@@ -446,7 +472,7 @@ def main():
             emotion=EmotionType.NEUTRAL,
             language="zh-CN",
             start_time=0.0,
-            end_time=5.0
+            end_time=5.0,
         ),
         Segment(
             id="seg_002",
@@ -455,7 +481,7 @@ def main():
             emotion=EmotionType.HAPPY,
             language="zh-CN",
             start_time=5.0,
-            end_time=12.0
+            end_time=12.0,
         ),
         Segment(
             id="seg_003",
@@ -464,7 +490,7 @@ def main():
             emotion=EmotionType.ANGRY,
             language="zh-CN",
             start_time=12.0,
-            end_time=18.0
+            end_time=18.0,
         ),
         Segment(
             id="seg_004",
@@ -473,56 +499,66 @@ def main():
             emotion=EmotionType.NEUTRAL,  # 注意：这里故意设置为NEUTRAL来测试
             language="zh-CN",
             start_time=18.0,
-            end_time=25.0
-        )
+            end_time=25.0,
+        ),
     ]
 
-    print("📋 原始片段:")
+    logger.info("📋 原始片段:")
     for seg in sample_segments:
-        print(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:30]}...")
+        logger.info(
+            f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:30]}..."
+        )
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 翻译到英文
-    print("\n🔄 翻译到英语 (en-US)...")
+    logger.info("\n🔄 翻译到英语 (en-US)...")
     en_segments, en_report = dubbing_manager.process_multilingual_dubbing(
-        sample_segments,
-        "en-US"
+        sample_segments, "en-US"
     )
 
-    print("\n📋 英文翻译结果:")
+    logger.info("\n📋 英文翻译结果:")
     for seg in en_segments:
         if "_FAILED" not in seg.id:
-            print(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}...")
-            print(f"      声音: {seg.voice_id}, 音调: {seg.pitch_shift:+.1f}半音, "
-                  f"速度: {seg.speed_rate:.2f}x, 音量: {seg.volume:.2f}")
+            logger.info(
+                f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}..."
+            )
+            logger.info(
+                f"      声音: {seg.voice_id}, 音调: {seg.pitch_shift:+.1f}半音, "
+                f"速度: {seg.speed_rate:.2f}x, 音量: {seg.volume:.2f}"
+            )
 
-    print("\n📊 英文翻译报告:")
-    print(f"   情感连续性: {'✅ 通过' if en_report['emotional_continuity_passed'] else '❌ 失败'}")
-    if not en_report['emotional_continuity_passed']:
-        for issue in en_report['continuity_issues'][:2]:
-            print(f"   - {issue}")
+    logger.info("\n📊 英文翻译报告:")
+    logger.info(
+        f"   情感连续性: {'✅ 通过' if en_report['emotional_continuity_passed'] else '❌ 失败'}"
+    )
+    if not en_report["emotional_continuity_passed"]:
+        for issue in en_report["continuity_issues"][:2]:
+            logger.info(f"   - {issue}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 翻译到西班牙语
-    print("\n🔄 翻译到西班牙语 (es-ES)...")
+    logger.info("\n🔄 翻译到西班牙语 (es-ES)...")
     es_segments, es_report = dubbing_manager.process_multilingual_dubbing(
-        sample_segments,
-        "es-ES"
+        sample_segments, "es-ES"
     )
 
-    print("\n📋 西班牙语翻译结果:")
+    logger.info("\n📋 西班牙语翻译结果:")
     for seg in es_segments:
         if "_FAILED" not in seg.id:
-            print(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}...")
+            logger.info(
+                f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}..."
+            )
 
-    print("\n📊 西班牙语翻译报告:")
-    print(f"   情感连续性: {'✅ 通过' if es_report['emotional_continuity_passed'] else '❌ 失败'}")
+    logger.info("\n📊 西班牙语翻译报告:")
+    logger.info(
+        f"   情感连续性: {'✅ 通过' if es_report['emotional_continuity_passed'] else '❌ 失败'}"
+    )
 
-    print("\n" + "="*60)
-    print("🎉 多语言翻译配音演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 多语言翻译配音演示完成")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

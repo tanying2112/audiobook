@@ -5,18 +5,22 @@ Audiobook Studio — 团队协作系统
 实现评论/审批/任务状态/变更历史的团队协作功能。
 """
 
+import hashlib
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
-import hashlib
+
+logger = logging.getLogger(__name__)
 
 
 class CommentType(Enum):
     """评论类型"""
+
     COMMENT = "comment"
     SUGGESTION = "suggestion"
     QUESTION = "question"
@@ -25,6 +29,7 @@ class CommentType(Enum):
 
 class TaskStatus(Enum):
     """任务状态"""
+
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     REVIEW = "review"
@@ -34,6 +39,7 @@ class TaskStatus(Enum):
 
 class ApprovalStatus(Enum):
     """审批状态"""
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -42,6 +48,7 @@ class ApprovalStatus(Enum):
 
 class ChangeType(Enum):
     """变更类型"""
+
     CREATE = "create"
     UPDATE = "update"
     DELETE = "delete"
@@ -51,6 +58,7 @@ class ChangeType(Enum):
 @dataclass
 class TeamMember:
     """团队成员"""
+
     id: str
     name: str
     email: str
@@ -65,6 +73,7 @@ class TeamMember:
 @dataclass
 class Comment:
     """评论"""
+
     id: str
     content: str
     author_id: str
@@ -85,6 +94,7 @@ class Comment:
 @dataclass
 class Task:
     """任务"""
+
     id: str
     title: str
     description: str
@@ -109,6 +119,7 @@ class Task:
 @dataclass
 class ApprovalRequest:
     """审批请求"""
+
     id: str
     title: str
     description: str
@@ -130,6 +141,7 @@ class ApprovalRequest:
 @dataclass
 class ApprovalResponse:
     """审批响应"""
+
     approver_id: str
     status: ApprovalStatus
     commented_at: datetime
@@ -139,6 +151,7 @@ class ApprovalResponse:
 @dataclass
 class ChangeRecord:
     """变更记录"""
+
     id: str
     change_type: ChangeType
     entity_type: str  # 如 "task", "comment", "file", "approval"
@@ -182,12 +195,16 @@ class CollaborationManager:
                     for member_id, member_data in data.items():
                         # 转换datetime字段
                         if "created_at" in member_data:
-                            member_data["created_at"] = datetime.fromisoformat(member_data["created_at"])
+                            member_data["created_at"] = datetime.fromisoformat(
+                                member_data["created_at"]
+                            )
                         if "updated_at" in member_data:
-                            member_data["updated_at"] = datetime.fromisoformat(member_data["updated_at"])
+                            member_data["updated_at"] = datetime.fromisoformat(
+                                member_data["updated_at"]
+                            )
                         self.team_members[member_id] = TeamMember(**member_data)
             except Exception as e:
-                print(f"⚠️ 加载团队成员数据失败: {e}")
+                logger.warning(f"⚠️ 加载团队成员数据失败: {e}")
 
         # 可以继续加载其他数据类型...
         # 为简化演示，这里只加载团队成员
@@ -207,14 +224,14 @@ class CollaborationManager:
                     "is_active": member.is_active,
                     "avatar_url": member.avatar_url,
                     "skills": member.skills,
-                    "languages": member.languages
+                    "languages": member.languages,
                 }
                 data[member_id] = member_dict
             with open(members_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            print(f"💾 保存了 {len(self.team_members)} 个团队成员数据")
+            logger.info(f"💾 保存了 {len(self.team_members)} 个团队成员数据")
         except Exception as e:
-            print(f"⚠️ 保存团队成员数据失败: {e}")
+            logger.warning(f"⚠️ 保存团队成员数据失败: {e}")
 
         # 可以继续保存其他数据类型...
         # 为简化演示，这里只保存团队成员
@@ -226,7 +243,7 @@ class CollaborationManager:
 
         # 设置时间戳
         now = datetime.now()
-        if not hasattr(member, 'created_at') or not member.created_at:
+        if not hasattr(member, "created_at") or not member.created_at:
             member.created_at = now
         member.updated_at = now
 
@@ -240,7 +257,7 @@ class CollaborationManager:
             member.id,
             member.id,  # 在简单实现中，entity_id 就是成员ID
             None,  # 没有旧状态
-            member
+            member,
         )
 
         return member.id
@@ -260,12 +277,7 @@ class CollaborationManager:
 
         # 记录变更
         self._record_change(
-            ChangeType.CREATE,
-            "comment",
-            comment.id,
-            comment.id,
-            None,
-            comment
+            ChangeType.CREATE, "comment", comment.id, comment.id, None, comment
         )
 
         return comment.id
@@ -284,18 +296,13 @@ class CollaborationManager:
         self._save_data()
 
         # 记录变更
-        self._record_change(
-            ChangeType.CREATE,
-            "task",
-            task.id,
-            task.id,
-            None,
-            task
-        )
+        self._record_change(ChangeType.CREATE, "task", task.id, task.id, None, task)
 
         return task.id
 
-    def update_task_status(self, task_id: str, new_status: TaskStatus, updated_by: str) -> bool:
+    def update_task_status(
+        self, task_id: str, new_status: TaskStatus, updated_by: str
+    ) -> bool:
         """更新任务状态"""
         if task_id not in self.tasks:
             return False
@@ -317,9 +324,9 @@ class CollaborationManager:
             entity_id=task_id,
             changed_by=updated_by,
             changed_at=datetime.now(),
-            old_state=f"{{\"status\": \"{old_status.value}\"}}",
-            new_state=f"{{\"status\": \"{new_status.value}\"}}",
-            description=f"将任务 '{task.title}' 状态从 {old_status.value} 更改为 {new_status.value}"
+            old_state=f'{{"status": "{old_status.value}"}}',
+            new_state=f'{{"status": "{new_status.value}"}}',
+            description=f"将任务 '{task.title}' 状态从 {old_status.value} 更改为 {new_status.value}",
         )
         self.change_history.append(change_record)
         self._save_data()
@@ -333,7 +340,7 @@ class CollaborationManager:
         requester_id: str,
         approver_ids: List[str],
         task_id: Optional[str] = None,
-        artifact_path: Optional[str] = None
+        artifact_path: Optional[str] = None,
     ) -> str:
         """创建审批请求"""
         approval_request = ApprovalRequest(
@@ -346,7 +353,7 @@ class CollaborationManager:
             created_at=datetime.now(),
             updated_at=datetime.now(),
             task_id=task_id,
-            artifact_path=artifact_path
+            artifact_path=artifact_path,
         )
 
         self.approval_requests[approval_request.id] = approval_request
@@ -359,7 +366,7 @@ class CollaborationManager:
             approval_request.id,
             approval_request.id,
             None,
-            approval_request
+            approval_request,
         )
 
         return approval_request.id
@@ -369,7 +376,7 @@ class CollaborationManager:
         approval_request_id: str,
         approver_id: str,
         status: ApprovalStatus,
-        comment: Optional[str] = None
+        comment: Optional[str] = None,
     ) -> bool:
         """响应审批请求"""
         if approval_request_id not in self.approval_requests:
@@ -386,7 +393,7 @@ class CollaborationManager:
             approver_id=approver_id,
             status=status,
             commented_at=datetime.now(),
-            comment=comment
+            comment=comment,
         )
 
         approval_request.updated_at = datetime.now()
@@ -404,9 +411,9 @@ class CollaborationManager:
             entity_id=approval_request_id,
             changed_by=approver_id,
             changed_at=datetime.now(),
-            old_state=f"{{\"approvals_count\": {len(approval_request.approvals) - 1}}}",
-            new_state=f"{{\"approvals_count\": {len(approval_request.approvals)}}}",
-            description=f"审批者 {approver_id} 对请求 '{approval_request.title}' 进行了 {status.value} 评价"
+            old_state=f'{{"approvals_count": {len(approval_request.approvals) - 1}}}',
+            new_state=f'{{"approvals_count": {len(approval_request.approvals)}}}',
+            description=f"审批者 {approver_id} 对请求 '{approval_request.title}' 进行了 {status.value} 评价",
         )
         self.change_history.append(change_record)
         self._save_data()
@@ -420,15 +427,18 @@ class CollaborationManager:
             return
 
         approved_count = sum(
-            1 for resp in approval_request.approvals.values()
+            1
+            for resp in approval_request.approvals.values()
             if resp.status == ApprovalStatus.APPROVED
         )
         rejected_count = sum(
-            1 for resp in approval_request.approvals.values()
+            1
+            for resp in approval_request.approvals.values()
             if resp.status == ApprovalStatus.REJECTED
         )
         needs_changes_count = sum(
-            1 for resp in approval_request.approvals.values()
+            1
+            for resp in approval_request.approvals.values()
             if resp.status == ApprovalStatus.NEEDS_CHANGES
         )
 
@@ -436,7 +446,10 @@ class CollaborationManager:
         if rejected_count > 0:
             approval_request.status = ApprovalStatus.REJECTED
         # 如果达到所需批准数且没有人拒绝，则批准
-        elif approved_count >= approval_request.required_approvals and rejected_count == 0:
+        elif (
+            approved_count >= approval_request.required_approvals
+            and rejected_count == 0
+        ):
             approval_request.status = ApprovalStatus.APPROVED
         # 如果有人需要修改，则标记为需要修改
         elif needs_changes_count > 0:
@@ -448,23 +461,18 @@ class CollaborationManager:
     def get_task_comments(self, task_id: str) -> List[Comment]:
         """获取任务的所有评论"""
         return [
-            comment for comment in self.comments.values()
-            if comment.task_id == task_id
+            comment for comment in self.comments.values() if comment.task_id == task_id
         ]
 
     def get_approval_requests_for_task(self, task_id: str) -> List[ApprovalRequest]:
         """获取任务的所有审批请求"""
         return [
-            req for req in self.approval_requests.values()
-            if req.task_id == task_id
+            req for req in self.approval_requests.values() if req.task_id == task_id
         ]
 
     def get_member_tasks(self, member_id: str) -> List[Task]:
         """获取成员分配的所有任务"""
-        return [
-            task for task in self.tasks.values()
-            if task.assignee_id == member_id
-        ]
+        return [task for task in self.tasks.values() if task.assignee_id == member_id]
 
     def _record_change(
         self,
@@ -473,7 +481,7 @@ class CollaborationManager:
         entity_id: str,
         changed_by: str,
         old_state: Optional[object],
-        new_state: Optional[object]
+        new_state: Optional[object],
     ):
         """记录变更历史"""
         change_record = ChangeRecord(
@@ -483,9 +491,13 @@ class CollaborationManager:
             entity_id=entity_id,
             changed_by=changed_by,
             changed_at=datetime.now(),
-            old_state=json.dumps(old_state, default=str) if old_state is not None else None,
-            new_state=json.dumps(new_state, default=str) if new_state is not None else None,
-            description=f"{change_type.value} {entity_type} {entity_id}"
+            old_state=(
+                json.dumps(old_state, default=str) if old_state is not None else None
+            ),
+            new_state=(
+                json.dumps(new_state, default=str) if new_state is not None else None
+            ),
+            description=f"{change_type.value} {entity_type} {entity_id}",
         )
         self.change_history.append(change_record)
 
@@ -493,9 +505,7 @@ class CollaborationManager:
         """获取最近的变更记录"""
         # 按时间倒序排序
         sorted_changes = sorted(
-            self.change_history,
-            key=lambda c: c.changed_at,
-            reverse=True
+            self.change_history, key=lambda c: c.changed_at, reverse=True
         )
         return sorted_changes[:limit]
 
@@ -505,15 +515,15 @@ class CollaborationManager:
         task_status_counts = {}
         for status in TaskStatus:
             task_status_counts[status.value] = sum(
-                1 for task in self.tasks.values()
-                if task.status == status
+                1 for task in self.tasks.values() if task.status == status
             )
 
         # 评论类型统计
         comment_type_counts = {}
         for comment_type in CommentType:
             comment_type_counts[comment_type.value] = sum(
-                1 for comment in self.comments.values()
+                1
+                for comment in self.comments.values()
                 if comment.comment_type == comment_type
             )
 
@@ -521,8 +531,7 @@ class CollaborationManager:
         approval_status_counts = {}
         for status in ApprovalStatus:
             approval_status_counts[status.value] = sum(
-                1 for req in self.approval_requests.values()
-                if req.status == status
+                1 for req in self.approval_requests.values() if req.status == status
             )
 
         return {
@@ -534,18 +543,18 @@ class CollaborationManager:
             "comments_by_type": comment_type_counts,
             "total_approval_requests": len(self.approval_requests),
             "approvals_by_status": approval_status_counts,
-            "total_changes": len(self.change_history)
+            "total_changes": len(self.change_history),
         }
 
 
 def main():
     """主函数 - 演示团队协作系统"""
-    print("=== Audiobook Studio 团队协作系统演示 ===\n")
+    logger.info("=== Audiobook Studio 团队协作系统演示 ===\n")
 
     # 创建协作管理器
     collab_manager = CollaborationManager(Path("./collaboration_demo"))
 
-    print("👥 初始化团队成员...\n")
+    logger.info("👥 初始化团队成员...\n")
 
     # 添加团队成员
     members = [
@@ -555,7 +564,7 @@ def main():
             email="zhang.yifan@audiobookstudio.example.com",
             role="translator",
             skills=["translation", "proofreading"],
-            languages=["zh-CN", "en-US", "ja-JP"]
+            languages=["zh-CN", "en-US", "ja-JP"],
         ),
         TeamMember(
             id="",
@@ -563,7 +572,7 @@ def main():
             email="li.yingong@audiobookstudio.example.com",
             role="narrator",
             skills=["voice_acting", "audio_editing"],
-            languages=["zh-CN"]
+            languages=["zh-CN"],
         ),
         TeamMember(
             id="",
@@ -571,7 +580,7 @@ def main():
             email="wang.bianji@audiobookstudio.example.com",
             role="editor",
             skills=["editing", "qa", "proofreading"],
-            languages=["zh-CN", "en-US"]
+            languages=["zh-CN", "en-US"],
         ),
         TeamMember(
             id="",
@@ -579,21 +588,21 @@ def main():
             email="zhao.jingli@audiobookstudio.example.com",
             role="manager",
             skills=["project_management", "coordination"],
-            languages=["zh-CN"]
-        )
+            languages=["zh-CN"],
+        ),
     ]
 
     member_ids = []
     for member in members:
         member_id = collab_manager.add_team_member(member)
         member_ids.append(member_id)
-        print(f"   ✅ 添加成员: {member.name} ({member.role})")
+        logger.info(f"   ✅ 添加成员: {member.name} ({member.role})")
 
-    print(f"\n📊 团队成员总数: {len(collab_manager.team_members)}")
+    logger.info(f"\n📊 团队成员总数: {len(collab_manager.team_members)}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📋 创建任务...\n")
+    logger.info("\n📋 创建任务...\n")
 
     # 创建一些任务
     tasks_data = [
@@ -604,7 +613,7 @@ def main():
             "reporter_id": member_ids[3],  # 赵经理
             "tags": ["translation", "chapter-1", "en-US"],
             "priority": 4,
-            "estimated_hours": 5.0
+            "estimated_hours": 5.0,
         },
         {
             "title": "录制第一章英文旁白",
@@ -613,7 +622,7 @@ def main():
             "reporter_id": member_ids[0],  # 张译文 (翻译完成后交给配音)
             "tags": ["narration", "chapter-1", "en-US"],
             "priority": 3,
-            "estimated_hours": 3.0
+            "estimated_hours": 3.0,
         },
         {
             "title": "审校第一章英文翻译",
@@ -622,7 +631,7 @@ def main():
             "reporter_id": member_ids[0],  # 张译文
             "tags": ["proofreading", "chapter-1", "en-US"],
             "priority": 4,
-            "estimated_hours": 2.0
+            "estimated_hours": 2.0,
         },
         {
             "title": "制作第一章试听样本",
@@ -631,8 +640,8 @@ def main():
             "reporter_id": member_ids[2],  # 王编辑
             "tags": ["production", "sample", "chapter-1"],
             "priority": 3,
-            "estimated_hours": 1.5
-        }
+            "estimated_hours": 1.5,
+        },
     ]
 
     task_ids = []
@@ -646,20 +655,22 @@ def main():
             reporter_id=task_data["reporter_id"],
             tags=task_data["tags"],
             priority=task_data["priority"],
-            estimated_hours=task_data["estimated_hours"]
+            estimated_hours=task_data["estimated_hours"],
         )
         task_id = collab_manager.add_task(task)
         task_ids.append(task_id)
-        print(f"   ✅ 创建任务: {task.title}")
-        print(f"      负责人: {collab_manager.team_members[task.assignee_id].name if task.assignee_id else '未分配'}")
-        print(f"      优先级: {task.priority}/5")
-        print(f"      估算工时: {task.estimated_hours} 小时")
+        logger.info(f"   ✅ 创建任务: {task.title}")
+        logger.info(
+            f"      负责人: {collab_manager.team_members[task.assignee_id].name if task.assignee_id else '未分配'}"
+        )
+        logger.info(f"      优先级: {task.priority}/5")
+        logger.info(f"      估算工时: {task.estimated_hours} 小时")
 
-    print(f"\n📊 任务总数: {len(collab_manager.tasks)}")
+    logger.info(f"\n📊 任务总数: {len(collab_manager.tasks)}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n💬 添加评论和讨论...\n")
+    logger.info("\n💬 添加评论和讨论...\n")
 
     # 为任务添加一些评论
     comments_data = [
@@ -667,26 +678,26 @@ def main():
             "task_id": task_ids[0],  # 翻译任务
             "content": "我在翻译的时候发现《三体》中有些科幻概念很难直译，可能需要加注或者使用意译。例如『智子』这个概念，直接翻译为 'Sophon' 可能让西方读者不太理解其含义。",
             "comment_type": CommentType.SUGGESTION,
-            "author_id": member_ids[0]  # 张译文
+            "author_id": member_ids[0],  # 张译文
         },
         {
             "task_id": task_ids[0],  # 翻译任务
             "content": "建议我们保留原文『智子』，并在注释或制作特别的音频注释来解释其含义。这样既保持了原著的风格，又帮助了听众理解。",
             "comment_type": CommentType.COMMENT,
-            "author_id": member_ids[2]  # 王编辑
+            "author_id": member_ids[2],  # 王编辑
         },
         {
             "task_id": task_ids[1],  # 配音任务
             "content": "我已经查看了翻译稿，准备开始录音。建议旁白的语速稍微快一点，因为英文表达通常比中文简洁。",
             "comment_type": CommentType.COMMENT,
-            "author_id": member_ids[1]  # 李音工
+            "author_id": member_ids[1],  # 李音工
         },
         {
             "task_id": task_ids[2],  # 审校任务
             "content": "我发现第3段有一处翻译错误：原文说『宇宙的黑暗森林假设』被翻译成了『宇宙的黑森林假设』，漏掉了『的』字。",
             "comment_type": CommentType.ISSUE,
-            "author_id": member_ids[2]  # 王编辑
-        }
+            "author_id": member_ids[2],  # 王编辑
+        },
     ]
 
     comment_ids = []
@@ -696,23 +707,25 @@ def main():
             content=comment_data["content"],
             author_id=comment_data["author_id"],
             comment_type=comment_data["comment_type"],
-            task_id=comment_data["task_id"]
+            task_id=comment_data["task_id"],
         )
         comment_id = collab_manager.add_comment(comment)
         comment_ids.append(comment_id)
-        print(f"   ✅ 添加评论: [{comment_data['comment_type'].value}] {comment_data['content'][:30]}...")
+        logger.info(
+            f"   ✅ 添加评论: [{comment_data['comment_type'].value}] {comment_data['content'][:30]}..."
+        )
 
-    print(f"\n💬 评论总数: {len(collab_manager.comments)}")
+    logger.info(f"\n💬 评论总数: {len(collab_manager.comments)}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📋 更新任务状态...\n")
+    logger.info("\n📋 更新任务状态...\n")
 
     # 更新一些任务状态
     status_updates = [
         (task_ids[0], TaskStatus.IN_PROGRESS, member_ids[0]),  # 张译文开始翻译
-        (task_ids[0], TaskStatus.REVIEW, member_ids[2]),       # 王评开始审校翻译
-        (task_ids[0], TaskStatus.DONE, member_ids[2]),         # 翻译完成审校
+        (task_ids[0], TaskStatus.REVIEW, member_ids[2]),  # 王评开始审校翻译
+        (task_ids[0], TaskStatus.DONE, member_ids[2]),  # 翻译完成审校
         (task_ids[1], TaskStatus.IN_PROGRESS, member_ids[1]),  # 李音工开始录音
     ]
 
@@ -721,13 +734,15 @@ def main():
         if success:
             updater_name = collab_manager.team_members[updater_id].name
             task_title = collab_manager.tasks[task_id].title
-            print(f"   ✅ {updater_name} 将任务 '{task_title}' 状态更新为 {new_status.value}")
+            logger.info(
+                f"   ✅ {updater_name} 将任务 '{task_title}' 状态更新为 {new_status.value}"
+            )
         else:
-            print(f"   ❌ 更新任务状态失败")
+            logger.error("   ❌ 更新任务状态失败")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📋 创建审批请求...\n")
+    logger.info("\n📋 创建审批请求...\n")
 
     # 创建一个审批请求（例如，翻译完成后需要经理审批）
     approval_id = collab_manager.create_approval_request(
@@ -735,16 +750,16 @@ def main():
         description="请审批第一章的英文翻译，确认可以进入配音阶段。",
         requester_id=member_ids[2],  # 王编辑 (翻译完成后请求审批)
         approver_ids=[member_ids[3]],  # 赵经理 (需要经理批准)
-        task_id=task_ids[0],           # 关联到翻译任务
-        artifact_path="./translations/chapter_01_en.txt"
+        task_id=task_ids[0],  # 关联到翻译任务
+        artifact_path="./translations/chapter_01_en.txt",
     )
-    print(f"   ✅ 创建审批请求: '批准第一章英文翻译发布'")
-    print(f"      请求人: {collab_manager.team_members[member_ids[2]].name}")
-    print(f"      审批人: {collab_manager.team_members[member_ids[3]].name}")
+    logger.info("   ✅ 创建审批请求: '批准第一章英文翻译发布'")
+    logger.info(f"      请求人: {collab_manager.team_members[member_ids[2]].name}")
+    logger.info(f"      审批人: {collab_manager.team_members[member_ids[3]].name}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📋 处理审批响应...\n")
+    logger.info("\n📋 处理审批响应...\n")
 
     # 模拟审批响应
     approval_request = collab_manager.approval_requests[approval_id]
@@ -755,83 +770,111 @@ def main():
         approval_id,
         approver_id,
         ApprovalStatus.APPROVED,
-        "翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。"
+        "翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。",
     )
     if success:
         approver_name = collab_manager.team_members[approver_id].name
-        print(f"   ✅ {approver_name} 批准了审批请求")
-        print(f"      批注: '翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。'")
+        logger.info(f"   ✅ {approver_name} 批准了审批请求")
+        logger.info(
+            f"      批注: '翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。'"
+        )
     else:
-        print(f"   ❌ 处理审批响应失败")
+        logger.error("   ❌ 处理审批响应失败")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📊 查看协作统计信息...\n")
+    logger.info("\n📊 查看协作统计信息...\n")
 
     stats = collab_manager.get_collaboration_stats()
-    print(f"👥 团队成员: {stats['team_members']} 人 (活跃: {stats['active_members']})")
-    print(f"📋 任务总数: {stats['total_tasks']}")
-    for status, count in stats['tasks_by_status'].items():
+    logger.info(
+        f"👥 团队成员: {stats['team_members']} 人 (活跃: {stats['active_members']})"
+    )
+    logger.info(f"📋 任务总数: {stats['total_tasks']}")
+    for status, count in stats["tasks_by_status"].items():
         if count > 0:
-            print(f"   - {status}: {count}")
-    print(f"💬 评论总数: {stats['total_comments']}")
-    for ctype, count in stats['comments_by_type'].items():
+            logger.info(f"   - {status}: {count}")
+    logger.info(f"💬 评论总数: {stats['total_comments']}")
+    for ctype, count in stats["comments_by_type"].items():
         if count > 0:
-            print(f"   - {ctype}: {count}")
-    print(f"📋 审批请求总数: {stats['total_approval_requests']}")
-    for status, count in stats['approvals_by_status'].items():
+            logger.info(f"   - {ctype}: {count}")
+    logger.info(f"📋 审批请求总数: {stats['total_approval_requests']}")
+    for status, count in stats["approvals_by_status"].items():
         if count > 0:
-            print(f"   - {status}: {count}")
+            logger.info(f"   - {status}: {count}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n📜 查看最近的变更历史...\n")
+    logger.info("\n📜 查看最近的变更历史...\n")
 
     recent_changes = collab_manager.get_recent_changes(10)
-    print(f"最近 {len(recent_changes)} 条变更记录:")
+    logger.info(f"最近 {len(recent_changes)} 条变更记录:")
     for change in recent_changes:
         changer_name = "未知"
         if change.changed_by in collab_manager.team_members:
             changer_name = collab_manager.team_members[change.changed_by].name
-        print(f"   [{change.changed_at.strftime('%H:%M:%S')}] {changer_name} {change.description}")
+        logger.info(
+            f"   [{change.changed_at.strftime('%H:%M:%S')}] {changer_name} {change.description}"
+        )
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
-    print("\n🎯 查看特定任务的详细信息...\n")
+    logger.info("\n🎯 查看特定任务的详细信息...\n")
 
     # 查看第一章翻译任务的详情
     translation_task = collab_manager.tasks[task_ids[0]]
-    print(f"任务: {translation_task.title}")
-    print(f"   状态: {translation_task.status.value}")
-    print(f"   负责人: {collab_manager.team_members[translation_task.assignee_id].name if translation_task.assignee_id else '未分配'}")
-    print(f"   创建时间: {translation_task.created_at.strftime('%Y-%m-%d %H:%M')}")
-    print(f"   更新时间: {translation_task.updated_at.strftime('%Y-%m-%d %H:%M')}")
-    print(f"   标签: {', '.join(translation_task.tags)}")
-    print(f"   优先级: {translation_task.priority}/5")
+    logger.info(f"任务: {translation_task.title}")
+    logger.info(f"   状态: {translation_task.status.value}")
+    logger.info(
+        f"   负责人: {collab_manager.team_members[translation_task.assignee_id].name if translation_task.assignee_id else '未分配'}"
+    )
+    logger.info(
+        f"   创建时间: {translation_task.created_at.strftime('%Y-%m-%d %H:%M')}"
+    )
+    logger.info(
+        f"   更新时间: {translation_task.updated_at.strftime('%Y-%m-%d %H:%M')}"
+    )
+    logger.info(f"   标签: {', '.join(translation_task.tags)}")
+    logger.info(f"   优先级: {translation_task.priority}/5")
     if translation_task.estimated_hours:
-        print(f"   估算工时: {translation_task.estimated_hours} 小时")
+        logger.info(f"   估算工时: {translation_task.estimated_hours} 小时")
 
     # 查看该任务的评论
     task_comments = collab_manager.get_task_comments(task_ids[0])
-    print(f"\n   评论 ({len(task_comments)} 条):")
+    logger.info(f"\n   评论 ({len(task_comments)} 条):")
     for comment in task_comments:
-        author_name = collab_manager.team_members[comment.author_id].name if comment.author_id in collab_manager.team_members else "未知"
-        print(f"      [{comment.comment_type.value}] {author_name}: {comment.content[:50]}...")
+        author_name = (
+            collab_manager.team_members[comment.author_id].name
+            if comment.author_id in collab_manager.team_members
+            else "未知"
+        )
+        logger.info(
+            f"      [{comment.comment_type.value}] {author_name}: {comment.content[:50]}..."
+        )
 
     # 查看该任务的审批请求
     task_approvals = collab_manager.get_approval_requests_for_task(task_ids[0])
-    print(f"\n   审批请求 ({len(task_approvals)} 项):")
+    logger.info(f"\n   审批请求 ({len(task_approvals)} 项):")
     for approval in task_approvals:
-        requester_name = collab_manager.team_members[approval.requester_id].name if approval.requester_id in collab_manager.team_members else "未知"
-        print(f"      '{approval.title}' (请求人: {requester_name}, 状态: {approval.status.value})")
+        requester_name = (
+            collab_manager.team_members[approval.requester_id].name
+            if approval.requester_id in collab_manager.team_members
+            else "未知"
+        )
+        logger.info(
+            f"      '{approval.title}' (请求人: {requester_name}, 状态: {approval.status.value})"
+        )
         if approval.approvals:
             for approver_id, response in approval.approvals.items():
-                approver_name = collab_manager.team_members[approver_id].name if approver_id in collab_manager.team_members else "未知"
-                print(f"         - {approver_name}: {response.status.value}")
+                approver_name = (
+                    collab_manager.team_members[approver_id].name
+                    if approver_id in collab_manager.team_members
+                    else "未知"
+                )
+                logger.info(f"         - {approver_name}: {response.status.value}")
 
-    print("\n" + "="*60)
-    print("🎉 团队协作系统演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 团队协作系统演示完成")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

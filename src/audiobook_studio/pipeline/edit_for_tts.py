@@ -27,7 +27,11 @@ class EditForTtsPipeline:
         prompt_dir=None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        self.mock_mode = (
+            mock_mode
+            if mock_mode is not None
+            else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        )
 
         # Create router (mock mode controlled by MOCK_LLM env var)
         if router is None:
@@ -103,6 +107,7 @@ class EditForTtsPipeline:
                 rationale="Difficulty A or forbid_edit=true: preserved original text per hard rule",
             )
 
+        # MOCK: 待真实实现
         # Mock mode: return original text without LLM call
         if self.mock_mode:
             return TtsEditOutput(
@@ -192,4 +197,4 @@ if __name__ == "__main__":  # pragma: no cover
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("EditForTtsPipeline ready")
+    logger.info("EditForTtsPipeline ready")

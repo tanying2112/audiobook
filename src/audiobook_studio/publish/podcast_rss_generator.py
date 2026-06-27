@@ -5,18 +5,22 @@ Audiobook Studio — Podcast RSS Feed 生成器
 实现将有声书章节转换为 Podcast RSS Feed（每章一集）。
 """
 
-import json
 import hashlib
+import json
+import logging
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PodcastEpisode:
     """Podcast 节目（对应有声书的一章）"""
+
     title: str
     description: str
     audio_file_path: Path
@@ -45,7 +49,9 @@ class PodcastEpisode:
                 return hashlib.sha256(hash_input.encode()).hexdigest()
             else:
                 # 如果文件不存在，基于路径和标题生成
-                hash_input = f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
+                hash_input = (
+                    f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
+                )
                 return hashlib.sha256(hash_input.encode()).hexdigest()
         except Exception:
             # 后备方案：基于标题和时间
@@ -56,6 +62,7 @@ class PodcastEpisode:
 @dataclass
 class PodcastFeed:
     """Podcast RSS Feed"""
+
     title: str
     description: str
     link: str  # 网站 URL
@@ -96,9 +103,13 @@ class PodcastRSSGenerator:
     def _reassign_episode_numbers(self):
         """重新分配 épisode 编号（基于发布顺序）"""
         # 只为没有手动设置编号的 épisode 重新分配
-        episodes_without_number = [ep for ep in self.feed.episodes if ep.episode_number is None]
+        episodes_without_number = [
+            ep for ep in self.feed.episodes if ep.episode_number is None
+        ]
         for i, episode in enumerate(episodes_without_number, 1):
-            episode.episode_number = len(self.feed.episodes) - len(episodes_without_number) + i
+            episode.episode_number = (
+                len(self.feed.episodes) - len(episodes_without_number) + i
+            )
 
     def generate_rss_xml(self) -> str:
         """生成 RSS XML 内容"""
@@ -125,7 +136,7 @@ class PodcastRSSGenerator:
         self.feed.last_build_date = datetime.now()
 
         # 生成XML字符串
-        rough_string = ET.tostring(rss, encoding='unicode')
+        rough_string = ET.tostring(rss, encoding="unicode")
         # 为了美观，我们可以使用minidom来格式化，但这里保持简单
         return rough_string
 
@@ -141,10 +152,16 @@ class PodcastRSSGenerator:
             ET.SubElement(channel, "author").text = self.feed.author
 
         if self.feed.owner_name and self.feed.owner_email:
-            ET.SubElement(channel, "managingEditor").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
-            ET.SubElement(channel, "webMaster").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
+            ET.SubElement(channel, "managingEditor").text = (
+                f"{self.feed.owner_email} ({self.feed.owner_name})"
+            )
+            ET.SubElement(channel, "webMaster").text = (
+                f"{self.feed.owner_email} ({self.feed.owner_name})"
+            )
 
-        ET.SubElement(channel, "lastBuildDate").text = self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(channel, "lastBuildDate").text = (
+            self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        )
         ET.SubElement(channel, "generator").text = self.feed.generator
 
         # 添加分类
@@ -166,7 +183,9 @@ class PodcastRSSGenerator:
         if self.feed.itunes_owner_name and self.feed.itunes_owner_email:
             owner_elem = ET.SubElement(channel, "itunes:owner")
             ET.SubElement(owner_elem, "itunes:name").text = self.feed.itunes_owner_name
-            ET.SubElement(owner_elem, "itunes:email").text = self.feed.itunes_owner_email
+            ET.SubElement(owner_elem, "itunes:email").text = (
+                self.feed.itunes_owner_email
+            )
 
         ET.SubElement(channel, "itunes:explicit").text = self.feed.itunes_explicit
 
@@ -195,12 +214,23 @@ class PodcastRSSGenerator:
         ET.SubElement(item, "description").text = episode.description
         ET.SubElement(item, "guid").text = episode.guid
         ET.SubElement(item, "guid").set("isPermaLink", "false")
-        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime(
+            "%a, %d %b %Y %H:%M:%S %Z"
+        )
 
         # Enclosure (音频文件)
         enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set("url", str(episode.audio_file_path))  # 在实际应用中，这 zou 是可访问的URL
-        enclosure.set("length", str(episode.enclosure_length or episode.audio_file_path.stat().st_size if episode.audio_file_path.exists() else 0))
+        enclosure.set(
+            "url", str(episode.audio_file_path)
+        )  # 在实际应用中，这 zou 是可访问的URL
+        enclosure.set(
+            "length",
+            str(
+                episode.enclosure_length or episode.audio_file_path.stat().st_size
+                if episode.audio_file_path.exists()
+                else 0
+            ),
+        )
         enclosure.set("type", episode.enclosure_type)
 
         # 可选元素
@@ -209,7 +239,9 @@ class PodcastRSSGenerator:
         if episode.season_number is not None:
             ET.SubElement(item, "itunes:season").text = str(episode.season_number)
         ET.SubElement(item, "itunes:episodeType").text = episode.episode_type
-        ET.SubElement(item, "itunes:explicit").text = "yes" if episode.explicit else "no"
+        ET.SubElement(item, "itunes:explicit").text = (
+            "yes" if episode.explicit else "no"
+        )
 
     def save_to_file(self, file_path: Path) -> Tuple[bool, str]:
         """将RSS Feed保存到文件"""
@@ -264,10 +296,10 @@ class PodcastRSSGenerator:
 
 def main():
     """主函数 - 演示 Podcast RSS Feed 生成"""
-    print("=== Audiobook Studio Podcast RSS Feed 生成演示 ===\n")
+    logger.info("=== Audiobook Studio Podcast RSS Feed 生成演示 ===\n")
 
     # 创建Podcast Feed
-    print("📻 创建Podcast Feed...")
+    logger.info("📻 创建Podcast Feed...")
     feed = PodcastFeed(
         title="三体有声书",
         description="刘慈欣科幻巨作《三体》有声书版本，每章节对应一集节目。",
@@ -286,22 +318,22 @@ def main():
         itunes_categories=[
             ("Arts", "Books"),
             ("Technology", "Podcasting"),
-            ("Society & Culture", "Philosophy")
-        ]
+            ("Society & Culture", "Philosophy"),
+        ],
     )
 
-    print(f"   标题: {feed.title}")
-    print(f"   描述: {feed.description}")
-    print(f"   链接: {feed.link}")
-    print(f"   语言: {feed.language}")
+    logger.info(f"   标题: {feed.title}")
+    logger.info(f"   描述: {feed.description}")
+    logger.info(f"   链接: {feed.link}")
+    logger.info(f"   语言: {feed.language}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 创建生成器
     generator = PodcastRSSGenerator(feed)
 
     # 模拟有声书章节（对应每章一集）
-    print("\n📖 添加有声书章节作为Podcast节目...")
+    logger.info("\n📖 添加有声书章节作为Podcast节目...")
 
     # 假设我们有一个有声书，包含若干章节
     chapters_data = [
@@ -310,36 +342,36 @@ def main():
             "description": "在这个动荡的时代，一个秘密的军事项目《红岸工程》正在酝酿之中。",
             "audio_file": Path("./episodes/chapter_01_cultural_revolution.mp3"),
             "duration": 1800,  # 30分钟
-            "days_offset": 0
+            "days_offset": 0,
         },
         {
             "title": "第二章 红岸基地的建立",
             "description": "叶文洁在红岸基地经历了人生中最黑暗的时刻，却意外打开了通往宇宙的窗口。",
             "audio_file": Path("./episodes/chapter_02_red_coast_base.mp3"),
             "duration": 2100,  # 35分钟
-            "days_offset": 1
+            "days_offset": 1,
         },
         {
             "title": "第三章 三体世界的初次接触",
             "description": "叶文洁向太空发送了第一条信息，并在遥远的三体世界得到了回应。",
             "audio_file": Path("./episodes/chapter_03_third_contact.mp3"),
             "duration": 2400,  # 40分钟
-            "days_offset": 2
+            "days_offset": 2,
         },
         {
             "title": "第四章 地球三体运动的成立",
             "description": "汪淼 découvertes 了一个神秘的组织——地球三体运动，并开始了他的调查。",
             "audio_file": Path("./episodes/chapter_04_eto.mp3"),
             "duration": 1950,  # 32.5分钟
-            "days_offset": 3
+            "days_offset": 3,
         },
         {
             "title": "第五章 三体游戏与现实的交汇",
             "description": "汪淼进入了《三体》游戏，在地球上和虚拟世界之间寻找平衡。",
             "audio_file": Path("./episodes/chapter_05_the_game.mp3"),
             "duration": 2200,  # 36分40秒
-            "days_offset": 4
-        }
+            "days_offset": 4,
+        },
     ]
 
     base_date = datetime.now() - timedelta(days=len(chapters_data))
@@ -354,67 +386,75 @@ def main():
             audio_file_path=chapter_data["audio_file"],
             duration_seconds=chapter_data["duration"],
             pub_date=pub_date,
-            episode_number=i+1,  # 明确设置集数
-            season_number=1,     # 第一季
-            explicit=False
+            episode_number=i + 1,  # 明确设置集数
+            season_number=1,  # 第一季
+            explicit=False,
         )
 
         generator.add_episode(episode)
-        print(f"   第{i+1}集: {chapter_data['title']}")
-        print(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")
-        print(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
+        logger.info(f"   第{i+1}集: {chapter_data['title']}")
+        logger.info(
+            f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒"
+        )
+        logger.info(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 验证Feed
-    print("\n🔍 验证Podcast Feed...")
+    logger.info("\n🔍 验证Podcast Feed...")
     is_valid, errors = generator.validate_feed()
     if is_valid:
-        print("   ✅ Feed验证通过")
+        logger.info("   ✅ Feed验证通过")
     else:
-        print("   ❌ Feed验证失败:")
+        logger.error("   ❌ Feed验证失败:")
         for error in errors:
-            print(f"      - {error}")
+            logger.error(f"      - {error}")
         # 继续演示，即使验证失败
 
     # 生成并保存RSS Feed
-    print("\n📄 生成RSS Feed XML...")
+    logger.info("\n📄 生成RSS Feed XML...")
     rss_xml = generator.generate_rss_xml()
 
     # 显示前几行以演示
-    xml_lines = rss_xml.split('\n')
-    print("   RSS Feed 前10行:")
+    xml_lines = rss_xml.split("\n")
+    logger.info("   RSS Feed 前10行:")
     for line in xml_lines[:10]:
-        print(f"      {line}")
+        logger.info(f"      {line}")
     if len(xml_lines) > 10:
-        print("      ...")
+        logger.info("      ...")
 
     # 保存到文件
     output_path = Path("./feeds/saneti_podcast.rss")
     success, message = generator.save_to_file(output_path)
 
     if success:
-        print(f"\n   ✅ {message}")
+        logger.info(f"\n   ✅ {message}")
         # 显示文件大小
         if output_path.exists():
             size_kb = output_path.stat().st_size / 1024
-            print(f"   📁 文件大小: {size_kb:.1f} KB")
+            logger.info(f"   📁 文件大小: {size_kb:.1f} KB")
     else:
-        print(f"\n   ❌ {message}")
+        logger.error(f"\n   ❌ {message}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 显示统计信息
-    print("\n📈 Feed统计信息:")
-    print(f"   节目总数: {len(generator.feed.episodes)} 集")
+    logger.info("\n📈 Feed统计信息:")
+    logger.info(f"   节目总数: {len(generator.feed.episodes)} 集")
     total_duration = sum(ep.duration_seconds for ep in generator.feed.episodes)
-    print(f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}")
-    print(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
-    print(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
+    logger.info(
+        f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}"
+    )
+    logger.info(
+        f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}"
+    )
+    logger.info(
+        f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}"
+    )
 
-    print("\n" + "="*60)
-    print("🎉 Podcast RSS Feed 生成演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 Podcast RSS Feed 生成演示完成")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

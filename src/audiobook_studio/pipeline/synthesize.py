@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from ..config.hardware_profile import HardwareProfile, get_hardware_profile
+from ..di import get_app_container
 from ..llm import LLMRouter, create_router
-from ..config.hardware_profile import get_hardware_profile, HardwareProfile
 from ..monitoring import record_stage_performance
 from ..monitoring.langfuse_client import (
     is_enabled,
@@ -29,14 +30,8 @@ from ..schemas import (
     TtsRoutingDecision,
     TtsRoutingInput,
 )
+from ..tts import EngineRegistry, SynthesisResult, TTSEngine, VoiceInfo
 from ..utils.ffmpeg_probe import get_duration_sync
-from ..tts import (
-    TTSEngine,
-    VoiceInfo,
-    SynthesisResult,
-    EngineRegistry,
-)
-from ..di import get_app_container
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +61,11 @@ class SynthesizePipeline:
         mock_mode: Optional[bool] = None,
         hardware_profile: Optional[HardwareProfile] = None,
     ):
-        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if self.mock_mode:
-                os.environ["MOCK_LLM"] = "true"
             self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
         else:
             self.router = router
 
@@ -246,10 +234,6 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Kokoro-ONNX (local). Falls back to Edge-TTS if unavailable."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy kokoro")
-            return 3000
 
         # kokoro-onnx is optional; fall back to edge-tts if not installed
         try:
@@ -271,10 +255,6 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Edge-TTS (cloud). Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy edge")
-            return 2800
 
         try:
             import asyncio
@@ -322,27 +302,27 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Azure Cognitive Services TTS. Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy azure")
-            return 2800
 
         # Check for Azure credentials
         azure_key = os.getenv("AZURE_TTS_KEY") or os.getenv("AZURE_SPEECH_KEY")
         azure_region = os.getenv("AZURE_TTS_REGION") or os.getenv("AZURE_SPEECH_REGION")
 
         if not azure_key or not azure_region:
-            logger.warning("Azure TTS credentials not configured (AZURE_TTS_KEY, AZURE_TTS_REGION)")
+            logger.warning(
+                "Azure TTS credentials not configured (AZURE_TTS_KEY, AZURE_TTS_REGION)"
+            )
             raise RuntimeError("Azure TTS not configured")
 
         try:
             import azure.cognitiveservices.speech as speechsdk
 
-            speech_config = speechsdk.SpeechConfig(subscription=azure_key, region=azure_region)
+            speech_config = speechsdk.SpeechConfig(
+                subscription=azure_key, region=azure_region
+            )
             speech_config.set_speech_synthesis_output_format(
                 speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
             )
-            
+
             # Resolve voice name - use the short form for Azure
             azure_voice = voice_id
             if voice_id in self.AZURE_VOICE_MAP:
@@ -357,7 +337,7 @@ class SynthesizePipeline:
                     region = parts[0]
                     name = parts[1].capitalize()
                     azure_voice = f"Microsoft Server Speech Text to Speech Voice ({region}, {name})"
-            
+
             speech_config.speech_synthesis_voice_name = azure_voice
 
             # Apply prosody via SSML if provided
@@ -377,24 +357,30 @@ class SynthesizePipeline:
                 </speak>"""
 
             audio_config = speechsdk.audio.AudioOutputConfig(filename=str(output_path))
-            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-            
+            synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=speech_config, audio_config=audio_config
+            )
+
             result = synthesizer.speak_ssml_async(ssml).get()
-            
+
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 logger.info(f"Azure TTS synthesis completed: {output_path}")
                 duration = get_duration_sync(output_path)
                 return duration
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation = result.cancellation_details
-                logger.error(f"Azure TTS canceled: {cancellation.reason} - {cancellation.error_details}")
+                logger.error(
+                    f"Azure TTS canceled: {cancellation.reason} - {cancellation.error_details}"
+                )
                 raise RuntimeError(f"Azure TTS canceled: {cancellation.error_details}")
             else:
                 logger.error(f"Azure TTS failed: {result.reason}")
                 raise RuntimeError(f"Azure TTS failed: {result.reason}")
 
         except ImportError:
-            logger.error("azure-cognitiveservices-speech not installed. Run: pip install azure-cognitiveservices-speech")
+            logger.error(
+                "azure-cognitiveservices-speech not installed. Run: pip install azure-cognitiveservices-speech"
+            )
             raise
         except Exception as e:
             logger.error(f"Azure TTS synthesis failed: {e}")
@@ -404,15 +390,13 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Google Cloud TTS. Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy gcp")
-            return 2800
 
         # Check for GCP credentials
         gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if not gcp_creds or not Path(gcp_creds).exists():
-            logger.warning("GCP credentials not configured (GOOGLE_APPLICATION_CREDENTIALS)")
+            logger.warning(
+                "GCP credentials not configured (GOOGLE_APPLICATION_CREDENTIALS)"
+            )
             raise RuntimeError("GCP TTS not configured")
 
         try:
@@ -424,7 +408,7 @@ class SynthesizePipeline:
             gcp_voice = voice_id
             if voice_id in self.GCP_VOICE_MAP:
                 gcp_voice = self.GCP_VOICE_MAP[voice_id]
-            
+
             # Parse language code and voice name
             # Format: "cmn-CN-Neural2-A" -> language_code="cmn-CN", name="cmn-CN-Neural2-A"
             if "-" in gcp_voice and gcp_voice.startswith(("cmn-", "en-")):
@@ -466,7 +450,9 @@ class SynthesizePipeline:
                 raise RuntimeError("GCP TTS returned empty audio content")
 
         except ImportError:
-            logger.error("google-cloud-texttospeech not installed. Run: pip install google-cloud-texttospeech")
+            logger.error(
+                "google-cloud-texttospeech not installed. Run: pip install google-cloud-texttospeech"
+            )
             raise
         except Exception as e:
             logger.error(f"GCP TTS synthesis failed: {e}")
@@ -474,11 +460,6 @@ class SynthesizePipeline:
 
     def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Stitch segments with crossfade using ffmpeg filter_complex. Returns total duration_ms."""
-        # Mock mode: return sum of durations
-        if self.mock_mode:
-            total_duration = sum(s.duration_ms for s in segments)
-            output_path.write_bytes(b"MP3 dummy crossfade")
-            return total_duration
 
         if not segments:
             logger.warning("No segments to stitch")
@@ -568,12 +549,15 @@ class SynthesizePipeline:
             if is_enabled():
                 from ..monitoring.langfuse_client import trace
 
-                with trace("pipeline.synthesize.crossfade_stitch", metadata={
-                    "stage": "synthesize_stitch",
-                    "segment_count": len(valid_segments),
-                    "crossfade_ms": crossfade_ms,
-                    "output_duration_ms": duration,
-                }):
+                with trace(
+                    "pipeline.synthesize.crossfade_stitch",
+                    metadata={
+                        "stage": "synthesize_stitch",
+                        "segment_count": len(valid_segments),
+                        "crossfade_ms": crossfade_ms,
+                        "output_duration_ms": duration,
+                    },
+                ):
                     pass  # Context manager handles the trace
 
             return duration
@@ -627,37 +611,6 @@ class SynthesizePipeline:
         """Synthesize multiple paragraphs incrementally."""
         logger.info(f"Synthesizing {len(inputs)} paragraphs")
 
-        # Mock mode: return simulated segments without actual synthesis
-        if self.mock_mode:
-            segments = []
-            for inp in inputs:
-                decision = self._make_routing_decision(inp)
-                segment_id = decision.segment_id
-                text_hash = self._text_hash(inp.text)
-
-                # Check if already cached (incremental mode)
-                if segment_id in self.existing_segments:
-                    existing = self.existing_segments[segment_id]
-                    if existing.text_hash == text_hash:
-                        logger.info(f"Segment {segment_id} unchanged, skipping")
-                        segments.append(existing)
-                        continue
-
-                self._mock_segment_counter += 1
-                file_path = self.output_dir / f"{decision.segment_id}.mp3"
-                file_path.write_bytes(b"MP3 dummy data")
-                segment = AudioSegment(
-                    segment_id=decision.segment_id,
-                    file_path=str(file_path),
-                    duration_ms=decision.estimated_duration_ms or 5000,
-                    engine=decision.engine_choice or "kokoro",
-                    voice_id=decision.voice_id,
-                    text_hash=text_hash,
-                )
-                self.existing_segments[segment_id] = segment
-                segments.append(segment)
-            return segments
-
         segments = []
 
         for inp in inputs:
@@ -703,7 +656,10 @@ class SynthesizePipeline:
 
                 # Get reference audio if available (for voice anchoring)
                 reference_audio = None
-                if decision.prosody_overrides and "reference_audio" in decision.prosody_overrides:
+                if (
+                    decision.prosody_overrides
+                    and "reference_audio" in decision.prosody_overrides
+                ):
                     reference_audio = decision.prosody_overrides.pop("reference_audio")
 
                 duration, actual_engine = self._try_synthesize_with_fallback(
@@ -711,7 +667,7 @@ class SynthesizePipeline:
                     decision.voice_id,
                     decision.prosody_overrides or {},
                     output_path,
-                    engine
+                    engine,
                 )
                 engine = actual_engine
                 synthesis_latency_ms = (time.time() - start_time) * 1000
@@ -804,10 +760,10 @@ class SynthesizePipeline:
         """Get TTS engine configuration from hardware profile."""
         if not self.hardware_profile:
             return {"engine": "kokoro", "fallback_chain": []}
-        
+
         tts = self.hardware_profile.tts
         fallback_chain = self.hardware_profile.get_tts_fallback_chain()
-        
+
         return {
             "engine": tts.engine,
             "model_path": tts.model_path,
@@ -825,10 +781,12 @@ class SynthesizePipeline:
             "kv_cache_reuse": tts.kv_cache_reuse,
         }
 
-    def _get_engine_for_synthesis(self, engine_name: str, config: dict) -> Optional[TTSEngine]:
+    def _get_engine_for_synthesis(
+        self, engine_name: str, config: dict
+    ) -> Optional[TTSEngine]:
         """Get or create TTS engine instance via DI container."""
         # Check if already cached
-        if not hasattr(self, '_engine_cache'):
+        if not hasattr(self, "_engine_cache"):
             self._engine_cache = {}
 
         if engine_name in self._engine_cache:
@@ -837,6 +795,7 @@ class SynthesizePipeline:
         # Get or create engine from DI container registry
         try:
             from ..di import get_app_container
+
             registry = get_app_container().get(EngineRegistry)
 
             # Try to get existing engine from registry
@@ -848,24 +807,32 @@ class SynthesizePipeline:
             # Create engine based on name
             engine = None
             if engine_name == "kokoro":
+                import asyncio
+
                 from ..tts import KokoroBackend, create_kokoro_backend
-                import asyncio
-                engine = asyncio.run(create_kokoro_backend(
-                    model_path=config.get("model_path"),
-                    voices_path=config.get("voices_path"),
-                    providers=config.get("providers"),
-                    session_options=config.get("session_options"),
-                ))
+
+                engine = asyncio.run(
+                    create_kokoro_backend(
+                        model_path=config.get("model_path"),
+                        voices_path=config.get("voices_path"),
+                        providers=config.get("providers"),
+                        session_options=config.get("session_options"),
+                    )
+                )
             elif engine_name == "voxcpmp2":
-                from ..tts import VoxCPM2Backend, create_voxcpmp2_backend
                 import asyncio
-                engine = asyncio.run(create_voxcpmp2_backend(
-                    model_path=config.get("model_path"),
-                    dtype=config.get("dtype", "float16"),
-                    batch_size=config.get("batch_size", 4),
-                    kv_cache_reuse=config.get("kv_cache_reuse", True),
-                    compile_model=config.get("compile", True),
-                ))
+
+                from ..tts import VoxCPM2Backend, create_voxcpmp2_backend
+
+                engine = asyncio.run(
+                    create_voxcpmp2_backend(
+                        model_path=config.get("model_path"),
+                        dtype=config.get("dtype", "float16"),
+                        batch_size=config.get("batch_size", 4),
+                        kv_cache_reuse=config.get("kv_cache_reuse", True),
+                        compile_model=config.get("compile", True),
+                    )
+                )
             elif engine_name in ("edge", "azure", "gcp"):
                 # Cloud engines - use legacy methods for now
                 pass
@@ -885,16 +852,16 @@ class SynthesizePipeline:
         return None
 
     async def _synthesize_with_engine(
-        self, engine: TTSEngine, text: str, voice_id: str, prosody: dict,
-        output_path: Path, reference_audio: Optional[str] = None
+        self,
+        engine: TTSEngine,
+        text: str,
+        voice_id: str,
+        prosody: dict,
+        output_path: Path,
+        reference_audio: Optional[str] = None,
     ) -> int:
         """Synthesize using a TTSEngine instance."""
         import hashlib
-
-        # Mock mode: return simulated value
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy engine")
-            return 2800
 
         try:
             result = await engine.synthesize(
@@ -914,8 +881,10 @@ class SynthesizePipeline:
     ) -> tuple[int, str]:
         """Try synthesis with fallback chain from hardware profile."""
         config = self._get_tts_engine_config()
-        engines_to_try = [engine] + [f.get("engine") for f in config.get("fallback_chain", [])]
-        
+        engines_to_try = [engine] + [
+            f.get("engine") for f in config.get("fallback_chain", [])
+        ]
+
         for eng in engines_to_try:
             if not eng:
                 continue
@@ -925,23 +894,35 @@ class SynthesizePipeline:
                     tts_engine = self._get_engine_for_synthesis(eng, config)
                     if tts_engine:
                         import asyncio
-                        duration = asyncio.run(self._synthesize_with_engine(
-                            tts_engine, text, voice_id, prosody, output_path
-                        ))
+
+                        duration = asyncio.run(
+                            self._synthesize_with_engine(
+                                tts_engine, text, voice_id, prosody, output_path
+                            )
+                        )
                         return duration, eng
                 elif eng == "edge":
-                    return self._synthesize_edge(text, voice_id, prosody, output_path), eng
+                    return (
+                        self._synthesize_edge(text, voice_id, prosody, output_path),
+                        eng,
+                    )
                 elif eng == "azure":
-                    return self._synthesize_azure(text, voice_id, prosody, output_path), eng
+                    return (
+                        self._synthesize_azure(text, voice_id, prosody, output_path),
+                        eng,
+                    )
                 elif eng == "gcp":
-                    return self._synthesize_gcp(text, voice_id, prosody, output_path), eng
+                    return (
+                        self._synthesize_gcp(text, voice_id, prosody, output_path),
+                        eng,
+                    )
                 elif eng == "cosyvoice":
                     logger.warning("CosyVoice not yet implemented, falling back")
                     continue
             except Exception as e:
                 logger.warning(f"Engine {eng} failed: {e}, trying next...")
                 continue
-        
+
         raise RuntimeError("All TTS engines in fallback chain failed")
 
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
@@ -971,7 +952,7 @@ class SynthesizePipeline:
                 "pitch": f"{inp.paragraph_annotation.pitch_shift_semitones}st",
             },
             fallback_engine="edge",
-            reasoning="Mock mode: simulated routing decision" if self.mock_mode else "Auto routing: local preferred for Chinese, Edge for English",
+            reasoning="Auto routing: local preferred for Chinese, Edge for English",
             estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
             estimated_duration_ms=3000,
         )
@@ -990,4 +971,4 @@ if __name__ == "__main__":  # pragma: no cover
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("SynthesizePipeline ready")
+    logger.info("SynthesizePipeline ready")

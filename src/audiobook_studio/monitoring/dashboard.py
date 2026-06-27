@@ -9,11 +9,14 @@ Usage:
 
 import argparse
 import json
+import logging
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -292,9 +295,9 @@ def main():
     summary = compute_summary(log_records)
 
     if args.json:
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(summary, indent=2, ensure_ascii=False))
     else:
-        print(format_dashboard(summary, args.hours))
+        logger.info(format_dashboard(summary, args.hours))
 
     # Return exit code based on health
     anomalies = detect_anomalies(summary)
@@ -312,6 +315,8 @@ class MonitoringDashboard:
 
     def run(self, *args, **kwargs):
         pass
+
+
 # ============================================================
 
 

@@ -54,10 +54,7 @@ def export_circuit_breaker_metrics(
     circuit_breakers: Dict[str, CircuitBreaker],
 ) -> Dict[str, Any]:
     """Export circuit breaker metrics for all providers."""
-    return {
-        name: cb.get_status()
-        for name, cb in circuit_breakers.items()
-    }
+    return {name: cb.get_status() for name, cb in circuit_breakers.items()}
 
 
 def export_health_probe_metrics(health_probe: Optional[HealthProbe]) -> Dict[str, Any]:
@@ -66,10 +63,7 @@ def export_health_probe_metrics(health_probe: Optional[HealthProbe]) -> Dict[str
         return {"error": "Health probe not initialized"}
 
     statuses = health_probe.get_all_statuses()
-    return {
-        name: status.to_dict()
-        for name, status in statuses.items()
-    }
+    return {name: status.to_dict() for name, status in statuses.items()}
 
 
 def export_key_pool_metrics(key_pool: KeyPoolManager) -> Dict[str, Any]:
@@ -141,9 +135,13 @@ def export_fallback_rate(
             "free_quota_success_rate": success_rate,
             "free_quota_success": free_tier_health.get("free_quota_success", 0),
             "free_quota_fail": free_tier_health.get("free_quota_fail", 0),
-            "local_model_available": free_tier_health.get("local_model_available", False),
+            "local_model_available": free_tier_health.get(
+                "local_model_available", False
+            ),
             "overall_health": free_tier_health.get("overall_health", "unknown"),
-            "circuit_breaker_states": free_tier_health.get("circuit_breaker_states", {}),
+            "circuit_breaker_states": free_tier_health.get(
+                "circuit_breaker_states", {}
+            ),
         }
     else:
         fallback_data = {
@@ -156,7 +154,9 @@ def export_fallback_rate(
     metrics["fallback_rate"] = fallback_data
     _write_metrics(file_path, metrics)
 
-    logger.info(f"Fallback rate exported: {fallback_data.get('fallback_rate_pct', 'N/A')}%")
+    logger.info(
+        f"Fallback rate exported: {fallback_data.get('fallback_rate_pct', 'N/A')}%"
+    )
     return fallback_data
 
 
@@ -210,7 +210,9 @@ def export_compliance_rate(
     metrics["compliance_rate"] = compliance_data
     _write_metrics(file_path, metrics)
 
-    logger.info(f"Compliance rate exported: {compliance_data['overall_compliance_pct']}%")
+    logger.info(
+        f"Compliance rate exported: {compliance_data['overall_compliance_pct']}%"
+    )
     return compliance_data
 
 
@@ -283,7 +285,9 @@ def export_all_metrics(
     # Export router metrics
     if router is not None:
         metrics["router"] = export_router_metrics(router)
-        metrics["circuit_breakers"] = export_circuit_breaker_metrics(router.circuit_breakers)
+        metrics["circuit_breakers"] = export_circuit_breaker_metrics(
+            router.circuit_breakers
+        )
         metrics["health_probe"] = export_health_probe_metrics(router.health_probe)
         metrics["key_pool"] = export_key_pool_metrics(router.key_pool)
 
@@ -319,11 +323,21 @@ def get_metrics_for_ci() -> Dict[str, Any]:
     metrics = _read_existing_metrics(file_path)
 
     return {
-        "fallback_rate_pct": metrics.get("fallback_rate", {}).get("fallback_rate_pct", 0.0),
-        "overall_compliance_rate": metrics.get("compliance_rate", {}).get("overall_compliance_rate", 0.0),
-        "overall_compliance_pct": metrics.get("compliance_rate", {}).get("overall_compliance_pct", 0.0),
-        "contract_version_distribution": metrics.get("contract_version", {}).get("contract_version_distribution", {}),
-        "latest_contract_version": metrics.get("contract_version", {}).get("latest_version", 1),
+        "fallback_rate_pct": metrics.get("fallback_rate", {}).get(
+            "fallback_rate_pct", 0.0
+        ),
+        "overall_compliance_rate": metrics.get("compliance_rate", {}).get(
+            "overall_compliance_rate", 0.0
+        ),
+        "overall_compliance_pct": metrics.get("compliance_rate", {}).get(
+            "overall_compliance_pct", 0.0
+        ),
+        "contract_version_distribution": metrics.get("contract_version", {}).get(
+            "contract_version_distribution", {}
+        ),
+        "latest_contract_version": metrics.get("contract_version", {}).get(
+            "latest_version", 1
+        ),
         "exported_at": metrics.get("exported_at", datetime.now().isoformat()),
     }
 
@@ -355,9 +369,9 @@ if __name__ == "__main__":
 
     # Export all metrics
     all_metrics = export_all_metrics(router=router, monitor=monitor)
-    print(json.dumps(all_metrics, indent=2, ensure_ascii=False))
+    logger.info(json.dumps(all_metrics, indent=2, ensure_ascii=False))
 
     # Get CI metrics
     ci_metrics = get_metrics_for_ci()
-    print("\n--- CI Metrics ---")
-    print(json.dumps(ci_metrics, indent=2, ensure_ascii=False))
+    logger.info("\n--- CI Metrics ---")
+    logger.info(json.dumps(ci_metrics, indent=2, ensure_ascii=False))

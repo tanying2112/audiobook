@@ -23,7 +23,8 @@ async def _run_ffprobe(
 ) -> subprocess.CompletedProcess:
     """Run ffprobe asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
-        "ffprobe", *args,
+        "ffprobe",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -46,7 +47,8 @@ async def _run_ffmpeg(
 ) -> subprocess.CompletedProcess:
     """Run ffmpeg asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", *args,
+        "ffmpeg",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -73,12 +75,16 @@ async def get_duration(path: Path) -> int:
     Returns:
         Duration in milliseconds
     """
-    result = await _run_ffprobe([
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        str(path),
-    ])
+    result = await _run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            str(path),
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr}")
@@ -103,12 +109,19 @@ async def detect_silence(
     Returns:
         List of (start_ms, end_ms) tuples for silence regions
     """
-    result = await _run_ffmpeg([
-        "-v", "error",
-        "-i", str(path),
-        "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration_ms/1000}",
-        "-f", "null", "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-af",
+            f"silencedetect=noise={threshold_db}dB:d={min_duration_ms/1000}",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg silencedetect failed: {result.stderr}")
@@ -151,12 +164,19 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
     Returns:
         Tuple of (rms_db, peak_db)
     """
-    result = await _run_ffmpeg([
-        "-v", "error",
-        "-i", str(path),
-        "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:key=lavfi.astats.Overall.Peak_level",
-        "-f", "null", "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-af",
+            "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:key=lavfi.astats.Overall.Peak_level",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg astats failed: {result.stderr}")
@@ -179,12 +199,19 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
 
     # If astats didn't work, fallback to volumedetect
     if rms_db == -60.0 and peak_db == -60.0:
-        result = await _run_ffmpeg([
-            "-v", "error",
-            "-i", str(path),
-            "-af", "volumedetect",
-            "-f", "null", "-",
-        ])
+        result = await _run_ffmpeg(
+            [
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-af",
+                "volumedetect",
+                "-f",
+                "null",
+                "-",
+            ]
+        )
 
         if result.returncode == 0:
             stderr = result.stderr
@@ -212,13 +239,17 @@ async def get_audio_info(path: Path) -> dict:
     Returns:
         Dictionary with format and stream info
     """
-    result = await _run_ffprobe([
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        str(path),
-    ])
+    result = await _run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr}")
@@ -226,7 +257,9 @@ async def get_audio_info(path: Path) -> dict:
     return json.loads(result.stdout)
 
 
-async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
+async def read_pcm_samples(
+    path: Path, sample_rate: int = 16000, channels: int = 1
+) -> np.ndarray:
     """Read raw PCM samples from audio file using ffmpeg.
 
     Args:
@@ -237,20 +270,32 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
     Returns:
         NumPy array of float32 samples
     """
-    result = await _run_ffmpeg([
-        "-v", "quiet",
-        "-i", str(path),
-        "-f", "f32le",
-        "-acodec", "pcm_f32le",
-        "-ar", str(sample_rate),
-        "-ac", str(channels),
-        "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-v",
+            "quiet",
+            "-i",
+            str(path),
+            "-f",
+            "f32le",
+            "-acodec",
+            "pcm_f32le",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-",
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")
 
-    raw_bytes = result.stdout.encode("latin-1") if isinstance(result.stdout, str) else result.stdout
+    raw_bytes = (
+        result.stdout.encode("latin-1")
+        if isinstance(result.stdout, str)
+        else result.stdout
+    )
     if not raw_bytes:
         return np.array([], dtype=np.float32)
 
@@ -283,7 +328,9 @@ def get_audio_info_sync(path: Path) -> dict:
     return asyncio.run(get_audio_info(path))
 
 
-def read_pcm_samples_sync(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
+def read_pcm_samples_sync(
+    path: Path, sample_rate: int = 16000, channels: int = 1
+) -> np.ndarray:
     """Synchronous wrapper for read_pcm_samples."""
     return asyncio.run(read_pcm_samples(path, sample_rate, channels))
 
@@ -296,10 +343,10 @@ if __name__ == "__main__":  # pragma: no cover
     if len(sys.argv) > 1:
         test_path = Path(sys.argv[1])
         if test_path.exists():
-            print(f"Duration: {get_duration_sync(test_path)}ms")
-            print(f"Silence regions: {detect_silence_sync(test_path)}")
-            print(f"RMS/Peak: {get_rms_peak_sync(test_path)}")
+            logger.info(f"Duration: {get_duration_sync(test_path)}ms")
+            logger.info(f"Silence regions: {detect_silence_sync(test_path)}")
+            logger.info(f"RMS/Peak: {get_rms_peak_sync(test_path)}")
         else:
-            print(f"File not found: {test_path}")
+            logger.info(f"File not found: {test_path}")
     else:
-        print("Usage: python -m audiobook_studio.utils.ffmpeg_probe <audio_file>")
+        logger.info("Usage: python -m audiobook_studio.utils.ffmpeg_probe <audio_file>")

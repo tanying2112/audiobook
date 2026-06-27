@@ -7,12 +7,14 @@ Audiobook Studio — 离线监控降级机制
 """
 
 import json
+import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
-from typing import Any
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class OfflineMonitor:
@@ -36,14 +38,14 @@ class OfflineMonitor:
         metrics_with_timestamp = {
             **metrics,
             "timestamp": datetime.now().isoformat(),
-            "logged_at": datetime.now().isoformat()
+            "logged_at": datetime.now().isoformat(),
         }
 
         # 尝试发送到外部监控服务（这里用 Langfuse 为例）
         try:
             return self._send_to_external(metrics_with_timestamp)
         except Exception as e:
-            print(f"警告: 外部监控服务不可用，降级到离线存储: {e}")
+            logger.warning(f"警告: 外部监控服务不可用，降级到离线存储: {e}")
             return self._save_to_offline(metrics_with_timestamp)
 
     def _send_to_external(self, metrics: Dict[str, Any]) -> bool:
@@ -51,8 +53,11 @@ class OfflineMonitor:
         # 在实际实现中，这里会发送到 Langfuse、Prometheus 等
         # 为演示目的，我们随机模拟成功/失败
         import random
+
         if random.random() < 0.7:  # 70% 的时间成功
-            print(f"✅ 性能数据已发送到外部监控: {metrics.get('stage', 'unknown')}")
+            logger.info(
+                f"✅ 性能数据已发送到外部监控: {metrics.get('stage', 'unknown')}"
+            )
             return True
         else:
             raise ConnectionError("外部监控服务暂时不可用")
@@ -68,10 +73,10 @@ class OfflineMonitor:
             with open(offline_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(metrics, ensure_ascii=False) + "\n")
 
-            print(f"💾 性能数据已保存到离线存储: {offline_file}")
+            logger.info(f"💾 性能数据已保存到离线存储: {offline_file}")
             return True
         except Exception as e:
-            print(f"错误: 无法保存到离线存储: {e}")
+            logger.error(f"错误: 无法保存到离线存储: {e}")
             return False
 
     def sync_offline_data(self) -> int:
@@ -119,17 +124,17 @@ class OfflineMonitor:
                     offline_file.unlink()
 
             except Exception as e:
-                print(f"错误: 同步离线文件 {offline_file} 失败: {e}")
+                logger.error(f"错误: 同步离线文件 {offline_file} 失败: {e}")
 
         if synced_count > 0:
-            print(f"🔄 已同步 {synced_count} 条离线监控数据到外部服务")
+            logger.info(f"🔄 已同步 {synced_count} 条离线监控数据到外部服务")
 
         return synced_count
 
 
 def main() -> None:
     """主函数 - 演示离线监控降级机制"""
-    print("=== Audiobook Studio 离线监控降级演示 ===")
+    logger.info("=== Audiobook Studio 离线监控降级演示 ===")
 
     monitor = OfflineMonitor()
 
@@ -140,14 +145,14 @@ def main() -> None:
             "latency_ms": 25.3,
             "cost_usd": 0.001,
             "success": True,
-            "provider": "mock"
+            "provider": "mock",
         },
         {
             "stage": "synthesize",
             "latency_ms": 450.2,
             "cost_usd": 0.009,
             "success": True,
-            "provider": "kokoro"
+            "provider": "kokoro",
         },
         {
             "stage": "quality_check",
@@ -155,31 +160,41 @@ def main() -> None:
             "cost_usd": 0.005,
             "success": False,
             "error": "模型响应超时",
-            "provider": "llm_judge"
-        }
+            "provider": "llm_judge",
+        },
     ]
 
-    print("\n正在记录性能指标...")
+    logger.info("\n正在记录性能指标...")
     for metrics in test_metrics:
         success = monitor.log_performance(metrics)
-        print(f"  {metrics['stage']}: {'✅ 成功' if success else '❌ 失败'}")
+        logger.info(f"  {metrics['stage']}: {'✅ 成功' if success else '❌ 失败'}")
 
-    print("\n尝试同步离线数据...")
+    logger.info("\n尝试同步离线数据...")
     synced = monitor.sync_offline_data()
-    print(f"同步完成，处理了 {synced} 条记录")
+    logger.info(f"同步完成，处理了 {synced} 条记录")
 
-    print("\n✅ 离线监控降级机制演示完成")
+    logger.info("\n✅ 离线监控降级机制演示完成")
 
 
 # ==================== 补全缺失的离线监控工厂函数 ====================
 class DummyOfflineMonitor:
-    def __init__(self, *args: Any, **kwargs: Any) -> None: pass
-    def start(self, *args: Any, **kwargs: Any) -> None: pass
-    def stop(self, *args: Any, **kwargs: Any) -> None: pass
-    def analyze(self, *args: Any, **kwargs: Any) -> None: pass
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def start(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def stop(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def analyze(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
 
 def create_offline_monitor(*args: Any, **kwargs: Any) -> DummyOfflineMonitor:
     return DummyOfflineMonitor()
+
+
 # ==================================================================
 
 

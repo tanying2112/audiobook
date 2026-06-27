@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 class ExtractPipeline:
     """Pipeline for text extraction from various formats."""
 
-    def __init__(self, router: Optional[LLMRouter] = None, mock_mode: Optional[bool] = None):
+    def __init__(
+        self, router: Optional[LLMRouter] = None, mock_mode: Optional[bool] = None
+    ):
         # Default mock_mode from environment if not specified
         if mock_mode is None:
             self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
@@ -153,9 +155,12 @@ class ExtractPipeline:
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
 
+        # MOCK: 待真实实现
         # Mock mode: return simulated result
         if self.mock_mode:
-            mock_text = "用于测试的模拟提取文本。这是模拟数据，用于测试 extract 功能。" * 10
+            mock_text = (
+                "用于测试的模拟提取文本。这是模拟数据，用于测试 extract 功能。" * 10
+            )
 
             # Record mock performance
             record_stage_performance(
@@ -279,11 +284,11 @@ if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
 
     if len(sys.argv) < 3:
-        print("Usage: python extract.py <file_path> <mime_type>")
+        logger.info("Usage: python extract.py <file_path> <mime_type>")
         sys.exit(1)
 
     result = extract_text(sys.argv[1], sys.argv[2])
-    print(f"Language: {result.language}")
-    print(f"Pages: {result.page_count}")
-    print(f"OCR: {result.has_ocr} ({result.ocr_page_ratio:.1%})")
-    print(f"Text preview: {result.raw_text[:200]}...")
+    logger.info(f"Language: {result.language}")
+    logger.info(f"Pages: {result.page_count}")
+    logger.info(f"OCR: {result.has_ocr} ({result.ocr_page_ratio:.1%})")
+    logger.info(f"Text preview: {result.raw_text[:200]}...")

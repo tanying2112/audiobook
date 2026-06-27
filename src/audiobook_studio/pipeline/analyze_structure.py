@@ -28,7 +28,11 @@ class AnalyzeStructurePipeline:
         prompt_dir: Optional[str] = None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        self.mock_mode = (
+            mock_mode
+            if mock_mode is not None
+            else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        )
 
         # Create router (mock mode controlled by MOCK_LLM env var)
         if router is None:
@@ -197,7 +201,7 @@ if __name__ == "__main__":  # pragma: no cover
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(output_json)
         else:
-            print(output_json)
+            logger.info(output_json)
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         sys.exit(1)

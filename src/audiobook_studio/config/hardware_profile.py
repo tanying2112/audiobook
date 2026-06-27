@@ -6,6 +6,7 @@ Three-tier architecture:
 - pro_studio: GPU + VoxCPM2/CosyVoice + DSPy evolution
 """
 
+import logging
 import os
 import platform
 import subprocess
@@ -16,6 +17,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class HardwareSpecs:
@@ -78,7 +81,11 @@ class HardwareSpecs:
                 timeout=5,
             )
             return True
-        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (
+            FileNotFoundError,
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+        ):
             return False
 
     @staticmethod
@@ -87,7 +94,11 @@ class HardwareSpecs:
         try:
             # Get GPU name and VRAM
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -225,7 +236,9 @@ class HardwareProfileConfig(BaseSettings):
     routing: RoutingProfileConfig
     cost_control: CostControlProfileConfig
     dspy: DSPyProfileConfig = Field(default_factory=DSPyProfileConfig)
-    voice_anchor: VoiceAnchorProfileConfig = Field(default_factory=VoiceAnchorProfileConfig)
+    voice_anchor: VoiceAnchorProfileConfig = Field(
+        default_factory=VoiceAnchorProfileConfig
+    )
 
 
 class HardwareProfile:
@@ -267,7 +280,9 @@ class HardwareProfile:
         if auto_detect.get("enabled", True) and not os.getenv("HARDWARE_PROFILE"):
             recommended = self._auto_recommend_profile()
             if recommended != self._active_profile_name:
-                print(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
+                logger.info(
+                    f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})"
+                )
 
     def _parse_profile(self, name: str, data: Dict[str, Any]) -> HardwareProfileConfig:
         """Parse profile data into typed config objects."""
@@ -317,7 +332,9 @@ class HardwareProfile:
 
     @property
     def quality_check(self) -> QualityCheckProfileConfig:
-        return self._config.quality_check if self._config else QualityCheckProfileConfig()
+        return (
+            self._config.quality_check if self._config else QualityCheckProfileConfig()
+        )
 
     @property
     def routing(self) -> RoutingProfileConfig:
@@ -405,15 +422,17 @@ def is_pro_studio_mode() -> bool:
 if __name__ == "__main__":
     # Test auto-detection
     specs = HardwareSpecs.detect()
-    print("Detected Hardware:")
-    print(f"  CPU: {specs.cpu_cores} cores ({specs.cpu_arch})")
-    print(f"  RAM: {specs.ram_gb:.1f} GB")
-    print(f"  GPU: {specs.gpu_enabled} ({specs.gpu_name}, VRAM: {specs.vram_gb:.1f} GB)")
+    logger.info("Detected Hardware:")
+    logger.info(f"  CPU: {specs.cpu_cores} cores ({specs.cpu_arch})")
+    logger.info(f"  RAM: {specs.ram_gb:.1f} GB")
+    logger.info(
+        f"  GPU: {specs.gpu_enabled} ({specs.gpu_name}, VRAM: {specs.vram_gb:.1f} GB)"
+    )
 
     # Load profile
     profile = get_hardware_profile()
-    print(f"\nActive Profile: {profile.active_profile}")
-    print(f"  LLM Backend: {profile.llm.backend}")
-    print(f"  TTS Engine: {profile.tts.engine}")
-    print(f"  Quality DNSMOS: {profile.quality_check.dnsmos_enabled}")
-    print(f"  Voice Anchor: {profile.voice_anchor.enabled}")
+    logger.info(f"\nActive Profile: {profile.active_profile}")
+    logger.info(f"  LLM Backend: {profile.llm.backend}")
+    logger.info(f"  TTS Engine: {profile.tts.engine}")
+    logger.info(f"  Quality DNSMOS: {profile.quality_check.dnsmos_enabled}")
+    logger.info(f"  Voice Anchor: {profile.voice_anchor.enabled}")

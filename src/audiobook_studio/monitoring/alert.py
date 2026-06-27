@@ -16,16 +16,20 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from enum import Enum
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
 
 # ==================== 补全模块所需的类定义 ====================
 class AlertLevel(str, Enum):
@@ -33,9 +37,11 @@ class AlertLevel(str, Enum):
     WARNING = "WARNING"
     CRITICAL = "CRITICAL"
 
+
 class AlertConfig(BaseModel):
     threshold: float = 0.8
     enabled: bool = True
+
 
 class AlertRecord(BaseModel):
     level: AlertLevel
@@ -43,19 +49,23 @@ class AlertRecord(BaseModel):
     timestamp: float
     context: Optional[Dict[str, Any]] = None
 
+
 class AlertManager:
     def __init__(self, config: Optional[AlertConfig] = None):
         self.config = config or AlertConfig()
 
-    def trigger_alert(self, level: AlertLevel, message: str, context: Optional[Dict[str, Any]] = None):
-        print(f"[{level}] ALERT: {message} | Context: {context}")
+    def trigger_alert(
+        self, level: AlertLevel, message: str, context: Optional[Dict[str, Any]] = None
+    ):
+        logger.info(f"[{level}] ALERT: {message} | Context: {context}")
         return True
+
+
 # ============================================================
 
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio 异常告警系统"
-    )
+    parser = argparse.ArgumentParser(description="Audiobook Studio 异常告警系统")
     parser.add_argument(
         "--hours",
         type=int,
@@ -165,7 +175,7 @@ def compute_self_iteration_metrics(records: List[Dict[str, Any]]) -> Dict[str, A
             "promotion_rate": 0.0,
             "avg_feedback_per_iteration": 0.0,
             "system_health_score": 100.0,
-            "alerts": []
+            "alerts": [],
         }
 
     total_iterations = len(records)
@@ -176,10 +186,14 @@ def compute_self_iteration_metrics(records: List[Dict[str, Any]]) -> Dict[str, A
 
     # Average feedback per iteration
     feedback_counts = [r.get("feedback_count", 0) for r in records]
-    avg_feedback = sum(feedback_counts) / len(feedback_counts) if feedback_counts else 0.0
+    avg_feedback = (
+        sum(feedback_counts) / len(feedback_counts) if feedback_counts else 0.0
+    )
 
     # System health score (from canary validation)
-    health_scores = [r.get("system_health_score", 100) for r in records if "system_health_score" in r]
+    health_scores = [
+        r.get("system_health_score", 100) for r in records if "system_health_score" in r
+    ]
     avg_health = sum(health_scores) / len(health_scores) if health_scores else 100.0
 
     # Check alert conditions
@@ -187,44 +201,52 @@ def compute_self_iteration_metrics(records: List[Dict[str, Any]]) -> Dict[str, A
 
     # 1. Low promotion rate (might indicate quality issues)
     if promotion_rate < 0.3 and total_iterations >= 5:
-        alerts.append({
-            "type": "low_promotion_rate",
-            "severity": "warning",
-            "message": f"自迭代提升率过低: {promotion_rate:.1%} (近 {total_iterations} 次迭代)",
-            "value": promotion_rate,
-            "threshold": 0.3
-        })
+        alerts.append(
+            {
+                "type": "low_promotion_rate",
+                "severity": "warning",
+                "message": f"自迭代提升率过低: {promotion_rate:.1%} (近 {total_iterations} 次迭代)",
+                "value": promotion_rate,
+                "threshold": 0.3,
+            }
+        )
 
     # 2. No feedback being collected
     if avg_feedback < 1.0:
-        alerts.append({
-            "type": "insufficient_feedback",
-            "severity": "warning",
-            "message": f"反馈收集不足: 平均 {avg_feedback:.1f} 条/次迭代",
-            "value": avg_feedback,
-            "threshold": 1.0
-        })
+        alerts.append(
+            {
+                "type": "insufficient_feedback",
+                "severity": "warning",
+                "message": f"反馈收集不足: 平均 {avg_feedback:.1f} 条/次迭代",
+                "value": avg_feedback,
+                "threshold": 1.0,
+            }
+        )
 
     # 3. System health degradation
     if avg_health < 50:
-        alerts.append({
-            "type": "system_health_degraded",
-            "severity": "critical" if avg_health < 30 else "warning",
-            "message": f"系统健康度下降: {avg_health:.1f}/100 (阈值: ≥50)",
-            "value": avg_health,
-            "threshold": 50
-        })
+        alerts.append(
+            {
+                "type": "system_health_degraded",
+                "severity": "critical" if avg_health < 30 else "warning",
+                "message": f"系统健康度下降: {avg_health:.1f}/100 (阈值: ≥50)",
+                "value": avg_health,
+                "threshold": 50,
+            }
+        )
 
     return {
         "total_iterations": total_iterations,
         "promotion_rate": promotion_rate,
         "avg_feedback_per_iteration": avg_feedback,
         "system_health_score": avg_health,
-        "alerts": alerts
+        "alerts": alerts,
     }
 
 
-def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[str, Any]:
+def compute_metrics(
+    records: List[Dict[str, Any]], hours: float = 1.0
+) -> Dict[str, Any]:
     """Compute metrics for alerting."""
     if not records:
         return {
@@ -232,23 +254,25 @@ def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[s
             "schema_compliance_rate": 0.0,
             "fallback_rate": 0.0,
             "total_cost_usd": 0.0,
-            "alerts": []
+            "alerts": [],
         }
 
     total_records = len(records)
 
     # Schema compliance rate
     schema_compliant = sum(
-        1 for r in records
-        if r.get("schema_compliance", False) is True
+        1 for r in records if r.get("schema_compliance", False) is True
     )
-    schema_compliance_rate = schema_compliant / total_records if total_records > 0 else 0.0
+    schema_compliance_rate = (
+        schema_compliant / total_records if total_records > 0 else 0.0
+    )
 
     # Fallback rate (heuristic_fallback or fallback in model name)
     fallback_count = sum(
-        1 for r in records
+        1
+        for r in records
         if "fallback" in r.get("model", "").lower()
-           or "heuristic" in r.get("model", "").lower()
+        or "heuristic" in r.get("model", "").lower()
     )
     fallback_rate = fallback_count / total_records if total_records > 0 else 0.0
 
@@ -260,23 +284,27 @@ def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[s
 
     # 1. Schema compliance < 99%
     if schema_compliance_rate < 0.99:
-        alerts.append({
-            "type": "schema_compliance",
-            "severity": "warning" if schema_compliance_rate >= 0.95 else "critical",
-            "message": f"LLM格式合规率过低: {schema_compliance_rate:.2%} (阈值: ≥99%)",
-            "value": schema_compliance_rate,
-            "threshold": 0.99
-        })
+        alerts.append(
+            {
+                "type": "schema_compliance",
+                "severity": "warning" if schema_compliance_rate >= 0.95 else "critical",
+                "message": f"LLM格式合规率过低: {schema_compliance_rate:.2%} (阈值: ≥99%)",
+                "value": schema_compliance_rate,
+                "threshold": 0.99,
+            }
+        )
 
     # 2. Fallback rate > 5%
     if fallback_rate > 0.05:
-        alerts.append({
-            "type": "fallback_rate",
-            "severity": "warning" if fallback_rate <= 0.10 else "critical",
-            "message": f"LLM降级使用率过高: {fallback_rate:.2%} (阈值: ≤5%)",
-            "value": fallback_rate,
-            "threshold": 0.05
-        })
+        alerts.append(
+            {
+                "type": "fallback_rate",
+                "severity": "warning" if fallback_rate <= 0.10 else "critical",
+                "message": f"LLM降级使用率过高: {fallback_rate:.2%} (阈值: ≤5%)",
+                "value": fallback_rate,
+                "threshold": 0.05,
+            }
+        )
 
     # 3. Cost check (would need daily aggregate, simplified here)
     # In production, this would check against daily limit from config
@@ -286,13 +314,19 @@ def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[s
     daily_limit = 10.0  # From config/llm_providers.yaml
 
     if estimated_daily_cost > daily_limit:
-        alerts.append({
-            "type": "cost_overrun",
-            "severity": "warning" if estimated_daily_cost <= daily_limit * 1.5 else "critical",
-            "message": f"预估日成本超阈值: ${estimated_daily_cost:.2f} (阈值: ≤${daily_limit})",
-            "value": estimated_daily_cost,
-            "threshold": daily_limit
-        })
+        alerts.append(
+            {
+                "type": "cost_overrun",
+                "severity": (
+                    "warning"
+                    if estimated_daily_cost <= daily_limit * 1.5
+                    else "critical"
+                ),
+                "message": f"预估日成本超阈值: ${estimated_daily_cost:.2f} (阈值: ≤${daily_limit})",
+                "value": estimated_daily_cost,
+                "threshold": daily_limit,
+            }
+        )
 
     return {
         "total_records": total_records,
@@ -300,7 +334,7 @@ def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[s
         "fallback_rate": fallback_rate,
         "total_cost_usd": total_cost,
         "estimated_daily_cost": estimated_daily_cost,
-        "alerts": alerts
+        "alerts": alerts,
     }
 
 
@@ -309,29 +343,25 @@ def send_dingtalk_alert(webhook_url: str, message: str) -> bool:
     try:
         payload = {
             "msgtype": "text",
-            "text": {
-                "content": f"🚨 Audiobook Studio 告警\n{message}"
-            }
+            "text": {"content": f"🚨 Audiobook Studio 告警\n{message}"},
         }
         response = requests.post(webhook_url, json=payload, timeout=10)
         response.raise_for_status()
         return True
     except Exception as e:
-        print(f"Failed to send Dingtalk alert: {e}", file=sys.stderr)
+        logger.error(f"Failed to send Dingtalk alert: {e}")
         return False
 
 
 def send_slack_alert(webhook_url: str, message: str) -> bool:
     """Send alert to Slack via webhook."""
     try:
-        payload = {
-            "text": f":warning: *Audiobook Studio 告警*\n{message}"
-        }
+        payload = {"text": f":warning: *Audiobook Studio 告警*\n{message}"}
         response = requests.post(webhook_url, json=payload, timeout=10)
         response.raise_for_status()
         return True
     except Exception as e:
-        print(f"Failed to send Slack alert: {e}", file=sys.stderr)
+        logger.error(f"Failed to send Slack alert: {e}")
         return False
 
 
@@ -343,14 +373,12 @@ def format_alert_message(metrics: Dict[str, Any]) -> str:
         f"🔄 降级使用率: {metrics['fallback_rate']:.2%}",
         f"💰 预估日成本: ${metrics['estimated_daily_cost']:.2f}",
         "",
-        "⚠️ 触发的告警:"
+        "⚠️ 触发的告警:",
     ]
 
     for alert in metrics["alerts"]:
         severity_emoji = "🔴" if alert["severity"] == "critical" else "🟡"
-        lines.append(
-            f"  {severity_emoji} {alert['message']}"
-        )
+        lines.append(f"  {severity_emoji} {alert['message']}")
 
     return "\n".join(lines)
 
@@ -380,44 +408,48 @@ def main():
         all_alerts.extend(si_metrics["alerts"])
 
     if not log_records and not self_iteration_records:
-        print("警告: 未找到性能记录数据")
+        logger.warning("警告: 未找到性能记录数据")
         if args.check_only:
-            print(json.dumps({"error": "No data found"}, indent=2, ensure_ascii=False))
+            logger.error(
+                json.dumps({"error": "No data found"}, indent=2, ensure_ascii=False)
+            )
         return
 
     # Always print metrics
-    print("=== Audiobook Studio 异常检测 ===")
-    print(f"监控时间窗口: 最近 {args.hours} 小时")
-    print()
+    logger.info("=== Audiobook Studio 异常检测 ===")
+    logger.info(f"监控时间窗口: 最近 {args.hours} 小时")
+    logger.info("")
 
     if "llm_metrics" in all_metrics:
         m = all_metrics["llm_metrics"]
-        print("--- LLM Pipeline Metrics ---")
-        print(f"总记录数: {m['total_records']}")
-        print(f"格式合规率: {m['schema_compliance_rate']:.2%} (阈值: ≥99.00%)")
-        print(f"降级使用率: {m['fallback_rate']:.2%} (阈值: ≤5.00%)")
-        print(f"当前小时成本: ${m['total_cost_usd']:.4f}")
-        print(f"预估日成本: ${m['estimated_daily_cost']:.2f} (阈值: ≤$10.00)")
-        print()
+        logger.info("--- LLM Pipeline Metrics ---")
+        logger.info(f"总记录数: {m['total_records']}")
+        logger.info(f"格式合规率: {m['schema_compliance_rate']:.2%} (阈值: ≥99.00%)")
+        logger.info(f"降级使用率: {m['fallback_rate']:.2%} (阈值: ≤5.00%)")
+        logger.info(f"当前小时成本: ${m['total_cost_usd']:.4f}")
+        logger.info(f"预估日成本: ${m['estimated_daily_cost']:.2f} (阈值: ≤$10.00)")
+        logger.info("")
 
     if "self_iteration_metrics" in all_metrics:
         m = all_metrics["self_iteration_metrics"]
-        print("--- Self-Iteration Metrics ---")
-        print(f"总迭代次数: {m['total_iterations']}")
-        print(f"提升通过率: {m['promotion_rate']:.1%} (阈值: ≥30%)")
-        print(f"平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f} (阈值: ≥1.0)")
-        print(f"系统健康度: {m['system_health_score']:.1f}/100 (阈值: ≥50)")
-        print()
+        logger.info("--- Self-Iteration Metrics ---")
+        logger.info(f"总迭代次数: {m['total_iterations']}")
+        logger.info(f"提升通过率: {m['promotion_rate']:.1%} (阈值: ≥30%)")
+        logger.info(
+            f"平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f} (阈值: ≥1.0)"
+        )
+        logger.info(f"系统健康度: {m['system_health_score']:.1f}/100 (阈值: ≥50)")
+        logger.info("")
 
     if all_alerts:
-        print("🚨 检测到异常:")
+        logger.info("🚨 检测到异常:")
         for alert in all_alerts:
             severity = alert["severity"].upper()
-            print(f"  [{severity}] {alert['message']}")
-        print()
+            logger.info(f"  [{severity}] {alert['message']}")
+        logger.info("")
     else:
-        print("✅ 所有指标正常")
-        print()
+        logger.info("✅ 所有指标正常")
+        logger.info("")
 
     # Send alerts if not check-only and alerts exist
     if not args.check_only and all_alerts:
@@ -426,21 +458,25 @@ def main():
 
         if "llm_metrics" in all_metrics:
             m = all_metrics["llm_metrics"]
-            alert_message_lines.extend([
-                f"📊 LLM Pipeline: {m['total_records']} 条记录",
-                f"📈 格式合规率: {m['schema_compliance_rate']:.2%}",
-                f"🔄 降级使用率: {m['fallback_rate']:.2%}",
-                f"💰 预估日成本: ${m['estimated_daily_cost']:.2f}",
-            ])
+            alert_message_lines.extend(
+                [
+                    f"📊 LLM Pipeline: {m['total_records']} 条记录",
+                    f"📈 格式合规率: {m['schema_compliance_rate']:.2%}",
+                    f"🔄 降级使用率: {m['fallback_rate']:.2%}",
+                    f"💰 预估日成本: ${m['estimated_daily_cost']:.2f}",
+                ]
+            )
 
         if "self_iteration_metrics" in all_metrics:
             m = all_metrics["self_iteration_metrics"]
-            alert_message_lines.extend([
-                f"🔄 自迭代: {m['total_iterations']} 次迭代",
-                f"📈 提升通过率: {m['promotion_rate']:.1%}",
-                f"💬 平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f}",
-                f"🏥 系统健康度: {m['system_health_score']:.1f}/100",
-            ])
+            alert_message_lines.extend(
+                [
+                    f"🔄 自迭代: {m['total_iterations']} 次迭代",
+                    f"📈 提升通过率: {m['promotion_rate']:.1%}",
+                    f"💬 平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f}",
+                    f"🏥 系统健康度: {m['system_health_score']:.1f}/100",
+                ]
+            )
 
         alert_message_lines.append("")
         alert_message_lines.append("⚠️ 触发的告警:")
@@ -454,20 +490,20 @@ def main():
         dingtalk_webhook = args.dingtalk_webhook or os.getenv("DINGTALK_WEBHOOK")
         if dingtalk_webhook:
             if send_dingtalk_alert(dingtalk_webhook, alert_message):
-                print("✅ Dingtalk告警已发送")
+                logger.info("✅ Dingtalk告警已发送")
             else:
-                print("❌ Dingtalk告警发送失败")
+                logger.error("❌ Dingtalk告警发送失败")
 
         # Send to Slack if webhook provided
         slack_webhook = args.slack_webhook or os.getenv("SLACK_WEBHOOK")
         if slack_webhook:
             if send_slack_alert(slack_webhook, alert_message):
-                print("✅ Slack告警已发送")
+                logger.info("✅ Slack告警已发送")
             else:
-                print("❌ Slack告警发送失败")
+                logger.error("❌ Slack告警发送失败")
     elif args.check_only:
         # Output JSON for programmatic consumption
-        print(json.dumps(all_metrics, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(all_metrics, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
