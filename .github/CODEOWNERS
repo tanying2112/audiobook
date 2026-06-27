@@ -1,0 +1,64 @@
+# =============================================================================
+# Audiobook Studio — Agent Territory CODEOWNERS
+# =============================================================================
+# 每个 Agent 拥有各自的"领地"，修改领地外文件需要 @human-architect 硬签。
+# 对齐 AGENT_ISOLATION_POLICY.md 中的领地拓扑。
+#
+# 用法：
+#   Agent A (后端核心)     → agent/A/* 分支
+#   Agent B (前端基建)     → agent/B/* 分支
+#   Agent C (跨端胶水)     → agent/C/* 分支
+#   人类架构师             → 任何文件均可审批
+# =============================================================================
+
+# ── 默认：根目录 & 全局配置，仅人类架构师可审批 ──────────────────────────────
+*                                       @guwj
+*.yml                                   @guwj
+*.yaml                                  @guwj
+*.toml                                  @guwj
+*.json                                  @guwj
+*.md                                    @guwj
+Makefile                                @guwj
+Dockerfile                              @guwj
+docker-compose.yml                      @guwj
+
+# ── Agent A：后端核心 — pipeline / quality / utils / llm / tts / schemas ─────
+# 分支前缀：agent/A/*
+/src/audiobook_studio/pipeline/         @guwj
+/src/audiobook_studio/quality/          @guwj
+/src/audiobook_studio/utils/            @guwj
+/src/audiobook_studio/llm/              @guwj
+/src/audiobook_studio/tts/              @guwj
+/src/audiobook_studio/schemas/          @guwj
+/src/audiobook_studio/models/           @guwj
+/src/audiobook_studio/feedback/         @guwj
+/tests/unit/                            @guwj
+
+# ── Agent B：前端基建 — web/ 视图、组件、状态管理、样式 ──────────────────────
+# 分支前缀：agent/B/*
+/web/                                   @guwj
+/web/src/views/                         @guwj
+/web/src/components/                    @guwj
+/web/src/stores/                        @guwj
+/web/src/composables/                   @guwj
+/web/src/router/                        @guwj
+/web/src/types/                         @guwj
+/web/src/assets/                        @guwj
+
+# ── Agent C：跨端胶水 — API / SSE / 监控 / 发布 / 认证 ─────────────────────
+# 分支前缀：agent/C/*
+/src/audiobook_studio/api/              @guwj
+/src/audiobook_studio/monitoring/       @guwj
+/src/audiobook_studio/publish/          @guwj
+/src/audiobook_studio/auth/             @guwj
+/src/audiobook_studio/middleware/        @guwj
+/src/audiobook_studio/config/           @guwj
+/src/audiobook_studio/main.py           @guwj
+/web/src/api/                           @guwj
+
+# ── 配置与脚本：仅人类架构师 ─────────────────────────────────────────────────
+/.github/                               @guwj
+/scripts/                               @guwj
+/prompts/                               @guwj
+/config/                                @guwj
+/alembic/                               @guwj

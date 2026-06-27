@@ -432,3 +432,44 @@ class TestEstimateSNR:
         data = np.array([], dtype=np.float32)
         snr = engine._estimate_snr(data, 24000)
         assert snr == 0.0
+
+
+# ── main() ──────────────────────────────────────────────────────────────────
+
+class TestMain:
+    def test_main(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["clone.py"])
+        from src.audiobook_studio.tts.clone import main
+        main()
+
+
+# ── Additional coverage tests ────────────────────────────────────────────────
+
+class TestEstimateSNREdgeCases:
+    def test_uniform_data(self, engine):
+        """All same values → noise_floor=0 → return 50.0."""
+        data = np.ones(1000, dtype=np.float32) * 0.5
+        snr = engine._estimate_snr(data, 24000)
+        assert snr == 50.0
+
+    def test_silence_then_speech(self, engine):
+        """Quiet beginning, loud end."""
+        data = np.concatenate([
+            np.zeros(100, dtype=np.float32),
+            np.ones(900, dtype=np.float32),
+        ])
+        snr = engine._estimate_snr(data, 24000)
+        assert snr >= 0
+
+    def test_single_sample(self, engine):
+        data = np.array([1.0], dtype=np.float32)
+        snr = engine._estimate_snr(data, 24000)
+        assert snr >= 0
+
+
+class TestMainFunction:
+    def test_main_runs(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from src.audiobook_studio.tts.clone import main
+        main()

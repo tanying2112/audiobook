@@ -1,8 +1,10 @@
 import sys
 import os
+import tempfile
 from unittest.mock import MagicMock, patch, AsyncMock
 import unittest
 import asyncio
+import numpy as np
 from pathlib import Path
 
 # Add the src directory to the path so we can import the module as a package
@@ -233,6 +235,192 @@ class TestSynthesizePipeline(unittest.TestCase):
         # In a full test, we would properly handle the async nature
         self.assertTrue(hasattr(self.pipeline, '_make_routing_decision'))
         self.assertTrue(hasattr(self.pipeline, '_synthesize_with_engine'))
+
+    def test_run_with_mock_mode(self):
+        """Test run method in mock mode which generates simulated segments."""
+        # Mock mode returns simulated segments
+        test_input = self._create_mock_tts_input("Hello world", "narrator")
+        result = self.pipeline.run([test_input])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].segment_id, "test_book_ch1_p1")
+
+    def test_make_routing_decision(self):
+        """Test routing decision creation."""
+        test_input = self._create_mock_tts_input("Hello world", "narrator")
+        decision = self.pipeline._make_routing_decision(test_input)
+        self.assertEqual(decision.segment_id, "test_book_ch1_p1")
+        self.assertEqual(decision.voice_id, "test_voice")
+
+    def test_make_routing_decision_with_prefer_local(self):
+        """Test routing decision prefers local engine."""
+        test_input = self._create_mock_tts_input("Hello world", "narrator")
+        test_input.prefer_local = True
+        decision = self.pipeline._make_routing_decision(test_input)
+        self.assertEqual(decision.engine_choice, "kokoro")
+
+    def test_metadata_path(self):
+        """Test metadata path generation."""
+        path = self.pipeline._metadata_path("test_segment")
+        self.assertTrue(str(path).endswith("test_segment.json"))
+
+    def test_synthesize_kokoro_mock_mode(self):
+        """Test kokoro synthesis in mock mode."""
+        output_path = Path("/tmp/test_kokoro.wav")
+        duration = self.pipeline._synthesize_kokoro("test text", "test_voice", {}, output_path)
+        self.assertEqual(duration, 3000)
+        self.assertTrue(output_path.exists())
+
+    def test_synthesize_edge_mock_mode(self):
+        """Test edge synthesis in mock mode."""
+        output_path = Path("/tmp/test_edge.wav")
+        duration = self.pipeline._synthesize_edge("test text", "test_voice", {}, output_path)
+        self.assertEqual(duration, 2800)
+        self.assertTrue(output_path.exists())
+
+    def test_synthesize_azure_mock_mode(self):
+        """Test azure synthesis in mock mode."""
+        output_path = Path("/tmp/test_azure.wav")
+        duration = self.pipeline._synthesize_azure("test text", "test_voice", {}, output_path)
+        self.assertEqual(duration, 2800)
+        self.assertTrue(output_path.exists())
+
+    def test_synthesize_gcp_mock_mode(self):
+        """Test gcp synthesis in mock mode."""
+        output_path = Path("/tmp/test_gcp.wav")
+        duration = self.pipeline._synthesize_gcp("test text", "test_voice", {}, output_path)
+        self.assertEqual(duration, 2800)
+        self.assertTrue(output_path.exists())
+
+    def test_get_tts_engine_config_no_profile(self):
+        """Test TTS engine config with no hardware profile."""
+        # When hardware_profile is None
+        self.pipeline.hardware_profile = None
+        config = self.pipeline._get_tts_engine_config()
+        self.assertEqual(config["engine"], "kokoro")
+
+    def test_persist_segment_metadata(self):
+        """Test segment metadata persistence."""
+        segment = AudioSegment(
+            segment_id="test_seg",
+            file_path="/tmp/test_seg.mp3",
+            duration_ms=1000,
+            engine="kokoro",
+            voice_id="test_voice",
+            text_hash="abc123"
+        )
+        self.pipeline._persist_segment_metadata(segment)
+        # Check metadata file was created
+        metadata_path = self.pipeline._metadata_path("test_seg")
+        self.assertTrue(metadata_path.exists())
+        # Clean up
+        metadata_path.unlink()
+
+    def test_load_existing_segment_from_disk(self):
+        """Test loading existing segment from disk."""
+        # First create a segment and persist it
+        segment = AudioSegment(
+            segment_id="load_test",
+            file_path="/tmp/load_test.mp3",
+            duration_ms=1000,
+            engine="kokoro",
+            voice_id="test_voice",
+            text_hash="hash123"
+        )
+        Path("/tmp/load_test.mp3").write_bytes(b"dummy")
+        self.pipeline._persist_segment_metadata(segment)
+
+        # Now try to load it
+        loaded = self.pipeline._load_existing_segment_from_disk("load_test", "hash123")
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.segment_id, "load_test")
+
+        # Clean up
+        Path("/tmp/load_test.mp3").unlink()
+        self.pipeline._metadata_path("load_test").unlink()
+
+    def test_load_existing_segment_mismatch_hash(self):
+        """Test loading segment with mismatched text hash."""
+        loaded = self.pipeline._load_existing_segment_from_disk("nonexistent", "wrong_hash")
+        self.assertIsNone(loaded)
+
+    def test_existing_segments_cache(self):
+        """Test existing segments caching in run method."""
+        # Add a cached segment
+        cached_segment = AudioSegment(
+            segment_id="cached_seg",
+            file_path="/tmp/cached.mp3",
+            duration_ms=2000,
+            engine="kokoro",
+            voice_id="test_voice",
+            text_hash="same_hash"
+        )
+        Path("/tmp/cached.mp3").write_bytes(b"dummy")
+        self.pipeline.existing_segments["cached_seg"] = cached_segment
+
+        test_input = self._create_mock_tts_input("Hello world", "narrator")
+        test_input.book_id = "cached_book"
+        test_input.paragraph_index = 0
+        # Set the segment_id to match our cached one
+        # We need to mock _make_routing_decision to return matching segment_id
+        with patch.object(self.pipeline, '_make_routing_decision') as mock_decision:
+            mock_decision.return_value = TtsRoutingDecision(
+                segment_id="cached_seg",
+                engine_choice="kokoro",
+                voice_id="test_voice",
+                fallback_engine="edge",
+                reasoning="test"
+            )
+            result = self.pipeline.run([test_input])
+            # Should return cached segment
+            self.assertEqual(len(result), 1)
+
+        # Clean up
+        Path("/tmp/cached.mp3").unlink()
+
+    def test_resolve_edge_voice_full_format(self):
+        """Test voice already in full format."""
+        full_voice = "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
+        result = self.pipeline._resolve_edge_voice(full_voice)
+        self.assertEqual(result, full_voice)
+
+    def test_resolve_edge_voice_dynamic(self):
+        """Test dynamic voice resolution."""
+        result = self.pipeline._resolve_edge_voice("zh-CN-TestNeural")
+        self.assertIn("Microsoft Server Speech Text to Speech Voice", result)
+        self.assertIn("Test", result)
+
+    def test_try_synthesize_with_fallback(self):
+        """Test fallback synthesis chain."""
+        output_path = Path("/tmp/fallback_test.wav")
+
+        # Test fallback when kokoro is unavailable
+        with patch.object(self.pipeline, '_get_tts_engine_config') as mock_config:
+            mock_config.return_value = {"engine": "kokoro", "fallback_chain": [{"engine": "edge"}]}
+            with patch.object(self.pipeline, '_get_engine_for_synthesis', return_value=None):
+                with patch.object(self.pipeline, '_synthesize_edge', return_value=2800):
+                    duration, engine = self.pipeline._try_synthesize_with_fallback(
+                        "test", "voice", {}, output_path, "kokoro"
+                    )
+                    self.assertEqual(engine, "edge")
+
+    def test_init_with_router(self):
+        """Test initialization with custom router."""
+        mock_router = MagicMock()
+        pipeline = SynthesizePipeline(router=mock_router, mock_mode=True)
+        self.assertEqual(pipeline.router, mock_router)
+
+    def test_init_mock_mode_from_env(self):
+        """Test mock_mode respects MOCK_LLM env var."""
+        old_val = os.environ.get("MOCK_LLM")
+        os.environ["MOCK_LLM"] = "true"
+        try:
+            pipeline = SynthesizePipeline(output_dir="./test_output")
+            self.assertTrue(pipeline.mock_mode)
+        finally:
+            if old_val:
+                os.environ["MOCK_LLM"] = old_val
+            else:
+                os.environ.pop("MOCK_LLM", None)
 
 
 if __name__ == '__main__':

@@ -35,9 +35,9 @@ jobs:
         run: |
           pytest --cov=src --cov-report=xml -q
 
-      - name: Coverage gate (F-P0-1: core modules ≥ targets, overall ≥75%)
+      - name: Coverage gate (F-P0-1: core modules ≥ targets, overall ≥80%)
         run: |
-          python scripts/coverage_check.py --fail-under 75
+          python scripts/coverage_check.py --fail-under 80
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

@@ -299,6 +299,7 @@ class TestPipelineWebsocket:
 
         with patch("src.audiobook_studio.api.websocket.manager") as mock_manager:
             mock_manager.connect = AsyncMock()
+            mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
 
             # Simulate WebSocketDisconnect on first receive
@@ -311,9 +312,9 @@ class TestPipelineWebsocket:
             mock_manager.disconnect.assert_called_once_with(websocket)
 
             # Check initial connection message
-            websocket.send_text.assert_awaited()
-            call_args = websocket.send_text.call_args[0][0]
-            response = json.loads(call_args)
+            mock_manager.send_to_connection.assert_awaited()
+            call_args = mock_manager.send_to_connection.call_args[0][1]
+            response = call_args
             assert response["type"] == "connected"
             assert response["project_id"] == 1
             assert "timestamp" in response
@@ -326,6 +327,7 @@ class TestPipelineWebsocket:
 
         with patch("src.audiobook_studio.api.websocket.manager") as mock_manager:
             mock_manager.connect = AsyncMock()
+            mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
             with patch("src.audiobook_studio.api.websocket.handle_client_message") as mock_handler:
                 # First message: a client message
@@ -352,6 +354,7 @@ class TestPipelineWebsocket:
 
         with patch("src.audiobook_studio.api.websocket.manager") as mock_manager:
             mock_manager.connect = AsyncMock()
+            mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
             with patch("src.audiobook_studio.api.websocket.asyncio.wait_for") as mock_wait_for:
                 # First call: timeout (to trigger keepalive)
@@ -364,13 +367,12 @@ class TestPipelineWebsocket:
                 await pipeline_websocket(websocket, project_id)
 
                 # Should have sent keepalive message
-                websocket.send_text.assert_any_await()
+                mock_manager.send_to_connection.assert_awaited()
                 # Check for keepalive message
-                call_args_list = [call[0][0] for call in websocket.send_text.call_args_list]
+                call_args_list = [call[0][1] for call in mock_manager.send_to_connection.call_args_list]
                 keepalive_found = any(
-                    json.loads(arg)["type"] == "keepalive"
+                    arg["type"] == "keepalive"
                     for arg in call_args_list
-                    if arg.startswith('{')
                 )
                 assert keepalive_found
 
@@ -382,6 +384,7 @@ class TestPipelineWebsocket:
 
         with patch("src.audiobook_studio.api.websocket.manager") as mock_manager:
             mock_manager.connect = AsyncMock()
+            mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
             websocket.receive_text.side_effect = Exception("Test error")
 

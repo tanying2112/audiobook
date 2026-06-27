@@ -1,0 +1,143 @@
+# =============================================================================
+# Agent Scope Isolation Check — 越界拦截流水线
+# =============================================================================
+# 当 PR 分支名以 agent/A/*, agent/B/*, agent/C/* 开头时，
+# 自动检测修改文件是否超出该 Agent 的领地范围。
+# 越界则直接 Fail Build，拒绝合并。
+# =============================================================================
+
+name: "🔒 Agent Scope Isolation Check"
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-bounds:
+    name: "Detect Agent Territory Violations"
+    runs-on: ubuntu-latest
+    steps:
+      # ── Step 1: Checkout ──────────────────────────────────────────────────
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史以比对 diff
+
+      # ── Step 2: 检测变更文件并验证领地边界 ────────────────────────────────
+      - name: Detect Changed Files & Verify Bounds
+        run: |
+          set -euo pipefail
+
+          BRANCH_NAME="${{ github.head_ref }}"
+          echo "🔹 Current Branch: $BRANCH_NAME"
+
+          # 获取当前 PR 相对于目标分支修改的所有文件
+          TARGET="${{ github.base_ref }}"
+          CHANGED_FILES=$(git diff --name-only "origin/$TARGET...HEAD" || echo "")
+          echo "🔹 Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          # ── 人类架构师分支或未定义 Agent 分支 → 放行 ─────────────────────
+          if [[ ! "$BRANCH_NAME" =~ ^agent/[A-C]/ ]]; then
+            echo "ℹ️  人类架构师分支或未定义 Agent 分支，跳过领地检查。"
+            echo "🟢 PASS — 常规分支，放行。"
+            exit 0
+          fi
+
+          # ── 提取 Agent 标识 ──────────────────────────────────────────────
+          AGENT_ID=$(echo "$BRANCH_NAME" | grep -oE '^agent/[A-C]' | cut -d'/' -f2)
+          echo "🔹 Agent ID: $AGENT_ID"
+          echo ""
+
+          VIOLATIONS=0
+
+          # ── Agent A：后端核心领地 ────────────────────────────────────────
+          if [[ "$AGENT_ID" == "A" ]]; then
+            echo "====== [Agent A 领地审查] ======"
+            echo "领地范围：src/audiobook_studio/{pipeline,quality,utils,llm,tts,schemas,models,feedback}/ tests/unit/"
+            echo ""
+            for file in $CHANGED_FILES; do
+              # 允许的路径白名单
+              ALLOWED=false
+              [[ "$file" =~ ^src/audiobook_studio/pipeline/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/quality/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/utils/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/llm/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/tts/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/schemas/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/models/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/feedback/ ]] && ALLOWED=true
+              [[ "$file" =~ ^tests/unit/ ]] && ALLOWED=true
+
+              if [[ "$ALLOWED" == "false" ]]; then
+                echo "🚨 [越界警报]: Agent A 无权修改文件: $file"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            done
+
+          # ── Agent B：前端基建领地 ────────────────────────────────────────
+          elif [[ "$AGENT_ID" == "B" ]]; then
+            echo "====== [Agent B 领地审查] ======"
+            echo "领地范围：web/src/{views,components,stores,composables,router,types,assets}/"
+            echo ""
+            for file in $CHANGED_FILES; do
+              ALLOWED=false
+              [[ "$file" =~ ^web/src/views/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/components/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/stores/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/composables/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/router/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/types/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/assets/ ]] && ALLOWED=true
+              # 允许修改前端共享配置
+              [[ "$file" == "web/package.json" ]] && ALLOWED=true
+              [[ "$file" == "web/vite.config.ts" ]] && ALLOWED=true
+              [[ "$file" == "web/tsconfig.json" ]] && ALLOWED=true
+
+              if [[ "$ALLOWED" == "false" ]]; then
+                echo "🚨 [越界警报]: Agent B 无权修改文件: $file"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            done
+
+          # ── Agent C：跨端胶水领地 ────────────────────────────────────────
+          elif [[ "$AGENT_ID" == "C" ]]; then
+            echo "====== [Agent C 领地审查] ======"
+            echo "领地范围：src/audiobook_studio/{api,monitoring,publish,auth,middleware,config}/ main.py web/src/api/"
+            echo ""
+            for file in $CHANGED_FILES; do
+              ALLOWED=false
+              [[ "$file" =~ ^src/audiobook_studio/api/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/monitoring/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/publish/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/auth/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/middleware/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/config/ ]] && ALLOWED=true
+              [[ "$file" == "src/audiobook_studio/main.py" ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/api/ ]] && ALLOWED=true
+              [[ "$file" == ".env.example" ]] && ALLOWED=true
+
+              if [[ "$ALLOWED" == "false" ]]; then
+                echo "🚨 [越界警报]: Agent C 无权修改文件: $file"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            done
+          fi
+
+          echo ""
+
+          # ── 汇总判定 ────────────────────────────────────────────────────
+          if [[ $VIOLATIONS -gt 0 ]]; then
+            echo "❌ [隔离拦截] Agent $AGENT_ID 共越界修改了 $VIOLATIONS 个文件！"
+            echo "   请将越界文件的修改移到正确的 Agent 分支，或升级为人类架构师分支。"
+            echo "   参见：docs/AGENT_ISOLATION_POLICY.md"
+            exit 1
+          fi
+
+          echo "🟢 [验证通过]: Agent $AGENT_ID 未发生任何越界越权行为，准予进入后续检查。"

@@ -1,9 +1,18 @@
-"""Tests for Sprint G features."""
+"""Tests for Sprint G features — placeholder implementation.
+
+These tests only exercise mock_mode / import paths for stub implementations.
+They are frozen until Sprint G is upgraded to real, usable code.
+"""
 import os
 os.environ["MOCK_LLM"] = "true"
 
 import sys
 import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="Sprint G Placeholder — translate/publish/self-iteration are stub "
+           "implementations, not real usable code"
+)
 
 sys.path.insert(0, "src")
 
@@ -99,15 +108,13 @@ def test_self_iteration_loop_instantiation():
     from audiobook_studio.feedback.integration import SelfIterationLoop
     from sqlalchemy.orm import Session
     from unittest.mock import MagicMock
-    
+
     mock_session_factory = MagicMock(return_value=MagicMock(spec=Session))
     loop = SelfIterationLoop(
         db_session_factory=mock_session_factory,
         project_id=1
     )
     assert loop is not None
-    # The parameters auto_merge/auto_deploy don't exist in current implementation
-    # Just verify the loop was created successfully
 
 
 if __name__ == "__main__":

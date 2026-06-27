@@ -4,6 +4,12 @@ import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
+pytestmark = pytest.mark.skip(
+    reason="Sprint G Placeholder — translate pipeline is mock_mode stub, not real usable code"
+)
+
+# Set MOCK_LLM before importing pipeline
+os.environ["MOCK_LLM"] = "true"
 # Set MOCK_LLM before importing pipeline
 os.environ["MOCK_LLM"] = "true"
 

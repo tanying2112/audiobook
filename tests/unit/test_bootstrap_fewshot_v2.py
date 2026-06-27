@@ -281,7 +281,7 @@ class TestOptimizer:
     @patch("src.audiobook_studio.feedback.bootstrap_fewshot.GEPA")
     def test_optimize_with_examples(self, mock_gepa_cls):
         mock_gepa = MagicMock()
-        mock_gepa.compile.return_value = MagicMock()
+        mock_gepa.compile.return_value = MagicMock(spec=[])
         mock_gepa_cls.return_value = mock_gepa
         opt = BootstrapFewShotOptimizer(stage="test", budget_limit=10)
         examples = [

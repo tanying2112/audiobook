@@ -11,7 +11,7 @@
  *
  * 版本: v1.0-draft
  * 日期: 2026-06-25
- * 关联: docs/frontend-feature-list.md
+ * 关联: docs/PROJECT_STATUS.md
  *
  * @module audiobook-studio-types
  */
@@ -1454,7 +1454,7 @@ export interface PanelLayout {
 //  Part 10: 数据清洗层类型签名
 // ============================================================================
 // 核心原则: 后端"脏状态"在进入 UI 之前全部洗净，UI 组件只接触标准化数据。
-// 对应: docs/frontend-feature-list.md 策略 A
+// 对应: docs/PROJECT_STATUS.md 策略 A
 
 /** 标准化的单阶段状态（UI 组件唯一消费的类型） */
 export interface NormalizedStageState {
@@ -1505,7 +1505,7 @@ export const PARAGRAPH_STATUS_FLOW: ParagraphStatus[] = [
 
 /**
  * 全局 API 配置（mock/real 模式切换）。
- * 对应: docs/frontend-feature-list.md 策略 B
+ * 对应: docs/PROJECT_STATUS.md 策略 B
  */
 export interface ApiConfig {
   /** 基础 URL，默认 '/api'，开发环境可切换为 '/api/mock' */
@@ -1522,7 +1522,7 @@ export interface ApiConfig {
 
 /**
  * WebSocket 连接状态。
- * 对应: docs/frontend-feature-list.md 策略 C
+ * 对应: docs/PROJECT_STATUS.md 策略 C
  */
 export type WSConnectionState = "connecting" | "connected" | "polling" | "disconnected";
 
@@ -1536,7 +1536,7 @@ export interface WSConnectionStatus {
 
 /**
  * i18n 字典条目类型。
- * 对应: docs/frontend-feature-list.md 策略 F
+ * 对应: docs/PROJECT_STATUS.md 策略 F
  */
 export type I18nDict = Record<string, string>;
 export type SupportedLocale = "zh" | "en";
@@ -1578,7 +1578,7 @@ export interface EnumDisplayMaps {
 // ============================================================================
 //  Part 11: AI 智能工作台类型（P0-AI）
 // ============================================================================
-// 对应: docs/frontend-feature-list.md 的 P0-AI-1 ~ P0-AI-7
+// 对应: docs/PROJECT_STATUS.md 的 P0-AI-1 ~ P0-AI-7
 // 核心理念: 把 HARNESS 马具系统（LLM 全链路参与 + 自我迭代）变为前端可对话、
 //           可干预、可反哺的智能工作台。
 
