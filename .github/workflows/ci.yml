@@ -35,7 +35,7 @@ jobs:
         run: |
           pytest --cov=src --cov-report=xml -q
 
-      - name: "Coverage gate (F-P0-1: core modules ≥ targets, overall ≥80%)"
+      - name: "Coverage gate (F-P0-1: core modules >= targets, overall >=80%)"
         run: |
           python scripts/coverage_check.py --fail-under 80
 
