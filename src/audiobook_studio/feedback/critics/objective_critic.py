@@ -11,12 +11,17 @@ ObjectiveCritic (客观派) - 基于硬指标 DNSMOS、ASR WER、Speaker Similar
 
 import json
 import logging
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ...quality.metrics import (
+    DNSMOSMetric,
+    ASRWerMetric,
+    SpeakerSimilarityMetric,
+    QualityCheckSuite,
+)
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
 from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
 
@@ -107,61 +112,72 @@ class ObjectiveCritic(BaseCritic):
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, float]:
         """计算客观音频指标.
-        
-        实际部署中应调用 DNSMOS、ASR、Speaker Embedding 模型。
-        这里提供模拟实现，实际使用时需替换为真实模型调用。
+
+        Delegates to QualityCheckSuite which wires real models:
+        - DNSMOS: ONNX Runtime scoring (DNSMOS@v1.1.0)
+        - ASR WER: FunASR (SenseVoice) / faster-whisper transcription
+        - Speaker Similarity: SpeechBrain ECAPA-TDNN / WavLM embeddings
+
+        Falls back to safe defaults when optional deps are unavailable.
         """
-        metrics = {}
-        
-        # 1. DNSMOS - 音频自然度评分
-        # 实际应调用: python -m dnsmos.run_dnsmos --audio {audio_path}
-        try:
-            metrics["dnsmos"] = self._run_dnsmos(audio_path)
-        except Exception as e:
-            logger.warning(f"DNSMOS computation failed: {e}")
-            metrics["dnsmos"] = 3.5  # Default fallback
-        
-        # 2. ASR WER - 词错误率
-        # 实际应调用: Whisper/SenseVoice 进行语音识别，计算 WER
-        try:
-            metrics["wer"] = self._run_asr_wer(audio_path, reference_text)
-        except Exception as e:
-            logger.warning(f"ASR WER computation failed: {e}")
-            metrics["wer"] = 0.1  # Default fallback
-        
-        # 3. Speaker Similarity - 声纹相似度
-        # 实际应提取参考音频 embedding，与目标音频对比
-        try:
-            metrics["speaker_sim"] = self._run_speaker_similarity(audio_path, context)
-        except Exception as e:
-            logger.warning(f"Speaker similarity computation failed: {e}")
-            metrics["speaker_sim"] = 0.8  # Default fallback
-        
+        metrics: Dict[str, float] = {}
+
+        # Build a QualityCheckSuite with our thresholds
+        suite = QualityCheckSuite(
+            config={
+                "quality_check": {
+                    "dnsmos_enabled": True,
+                    "asr_enabled": True,
+                    "speaker_similarity_enabled": True,
+                },
+                "thresholds": {
+                    "dnsmos_min": self.dnsmos_threshold,
+                    "asr_wer_max": self.wer_threshold,
+                    "speaker_sim_min": self.speaker_sim_threshold,
+                },
+            }
+        )
+
+        # Resolve speaker reference from context
+        ref_speaker_id = (context or {}).get("speaker_canonical_name")
+        ref_speaker_audio = (context or {}).get("reference_speaker_audio")
+        if isinstance(ref_speaker_audio, str):
+            ref_speaker_audio = Path(ref_speaker_audio) if ref_speaker_audio else None
+
+        # Register reference speaker if audio path is available
+        if ref_speaker_id and ref_speaker_audio and ref_speaker_audio.exists():
+            suite.register_speaker(ref_speaker_id, ref_speaker_audio)
+
+        result = suite.check_all(
+            audio_path=audio_path,
+            reference_text=reference_text,
+            reference_speaker_id=ref_speaker_id,
+            reference_speaker_audio=ref_speaker_audio,
+        )
+
+        # Extract metrics from QualityCheckResult, using safe defaults on failure
+        if result.dnsmos and result.dnsmos.success:
+            metrics["dnsmos"] = result.dnsmos.mos_ovr
+        else:
+            metrics["dnsmos"] = 3.5
+            if result.dnsmos:
+                logger.warning("DNSMOS failed: %s", result.dnsmos.error)
+
+        if result.wer and result.wer.success:
+            metrics["wer"] = result.wer.wer
+        else:
+            metrics["wer"] = 0.1
+            if result.wer:
+                logger.warning("ASR WER failed: %s", result.wer.error)
+
+        if result.speaker_sim and result.speaker_sim.success:
+            metrics["speaker_sim"] = result.speaker_sim.similarity
+        else:
+            metrics["speaker_sim"] = 0.8
+            if result.speaker_sim:
+                logger.warning("Speaker similarity failed: %s", result.speaker_sim.error)
+
         return metrics
-    
-    def _run_dnsmos(self, audio_path: Path) -> float:
-        """运行 DNSMOS 评分."""
-        # Simulate DNSMOS call
-        # In production: use dnsmos package or ONNX model
-        import random
-        # Return realistic DNSMOS score (typically 3.0-4.5 for TTS)
-        return round(3.5 + random.uniform(-0.3, 0.5), 2)
-    
-    def _run_asr_wer(self, audio_path: Path, reference_text: str) -> float:
-        """运行 ASR 并计算 WER."""
-        # Simulate ASR + WER computation
-        # In production: use faster-whisper or SenseVoice
-        import random
-        # Return realistic WER (0.01-0.15 for good TTS)
-        return round(random.uniform(0.01, 0.08), 3)
-    
-    def _run_speaker_similarity(self, audio_path: Path, context: Optional[Dict[str, Any]]) -> float:
-        """运行说话人声纹相似度计算."""
-        # Simulate speaker embedding comparison
-        # In production: use speechbrain ECAPA-TDNN or WavLM
-        import random
-        # Return realistic speaker similarity (0.7-0.95)
-        return round(0.8 + random.uniform(-0.1, 0.1), 2)
     
     def _evaluate_metrics(self, metrics: Dict[str, float]) -> tuple:
         """根据指标评估得分."""
