@@ -233,9 +233,6 @@ async def apply_template(
             detail="Template not confirmed. Please confirm template first."
         )
 
-    # Get target paragraphs
-    # TODO: Implement paragraph filtering based on scope
-    # For now, return placeholder task ID
     task_id = f"apply_{project_id}_{request.template_id}_{int(datetime.now().timestamp())}"
 
     # Schedule background task
@@ -325,13 +322,44 @@ async def _apply_template_background(
         if scope == "chapter":
             if chapter_ids:
                 query = query.filter(Paragraph.chapter_id.in_(chapter_ids))
-            else:
-                # No chapter IDs specified, treat as all
-                pass
+            # else: no chapter_ids → treat as "all" for that scope
         elif scope == "pattern":
-            # For now, we don't have pattern tags on paragraphs, so apply to all
-            # TODO: Implement pattern matching if paragraph pattern tags are added
-            pass
+            # Match paragraphs whose annotation fields overlap with
+            # the template's pattern_tags (e.g. "dialogue", "sfx",
+            # "emotion:anger", "speaker:Narrator").
+            if pattern_filter:
+                pattern_tags = [t.strip() for t in pattern_filter.split(",") if t.strip()]
+            else:
+                pattern_tags = template.pattern_tags or []
+
+            if not pattern_tags:
+                # No tags available — fall back to matching all paragraphs
+                pass
+            else:
+                from sqlalchemy import or_
+                tag_filters = []
+                for tag in pattern_tags:
+                    tag_lower = tag.lower()
+                    if tag_lower in ("dialogue", "dialog"):
+                        tag_filters.append(Paragraph.is_dialogue == True)  # noqa: E712
+                    elif tag_lower in ("narration", "narrative"):
+                        tag_filters.append(Paragraph.is_dialogue == False)  # noqa: E712
+                    elif tag_lower.startswith("emotion:"):
+                        emotion_val = tag_lower.split(":", 1)[1]
+                        tag_filters.append(Paragraph.emotion.ilike(f"%{emotion_val}%"))
+                    elif tag_lower in ("sfx", "sound_effect", "sound-effects"):
+                        tag_filters.append(Paragraph.needs_sfx == True)  # noqa: E712
+                    elif tag_lower.startswith("speaker:"):
+                        speaker_val = tag.split(":", 1)[1]
+                        tag_filters.append(
+                            Paragraph.speaker_canonical_name.ilike(f"%{speaker_val}%")
+                        )
+                    else:
+                        # Fallback: keyword search in notes column
+                        tag_filters.append(Paragraph.notes.ilike(f"%{tag}%"))
+                # A paragraph matches if it satisfies ANY of the tag conditions (OR logic)
+                if tag_filters:
+                    query = query.filter(or_(*tag_filters))
         # else scope == "all": no additional filter
 
         paragraphs = query.all()
