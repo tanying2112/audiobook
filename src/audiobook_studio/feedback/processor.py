@@ -21,6 +21,23 @@ from ..models import FeedbackRecord as FeedbackRecordModel
 
 logger = logging.getLogger(__name__)
 
+# ── LLM 语义分析器（懒加载，避免循环导入）────────────────────────────────────
+_llm_analyzer = None
+
+
+def _get_llm_analyzer():
+    """懒加载 LLMFeedbackAnalyzer，避免初始化时强制创建 router."""
+    global _llm_analyzer
+    if _llm_analyzer is None:
+        try:
+            from .llm_analyzer import LLMFeedbackAnalyzer
+            _llm_analyzer = LLMFeedbackAnalyzer()
+            logger.info("LLMFeedbackAnalyzer 初始化成功")
+        except Exception as e:
+            logger.warning(f"LLMFeedbackAnalyzer 初始化失败，将使用关键词匹配降级: {e}")
+            _llm_analyzer = False  # 标记为不可用
+    return _llm_analyzer if _llm_analyzer is not False else None
+
 # ── Known pattern tag taxonomy ────────────────────────────────────────────────
 
 PATTERN_TAXONOMY = {
@@ -60,6 +77,13 @@ class DiffAnalysisResult:
     diff_summary: str
     similarity_score: float  # 0-1, lower = more difference
     key_differences: List[str]
+    # ── LLM 语义分析扩展字段 ──
+    semantic_summary: Optional[str] = None
+    root_cause: Optional[str] = None
+    actionable_instruction: Optional[str] = None
+    severity: Optional[str] = None  # "high" | "medium" | "low"
+    confidence: Optional[float] = None  # 0-1
+    analysis_source: str = "keyword"  # "llm" | "keyword"
 
 
 @dataclass 
@@ -126,34 +150,38 @@ def _infer_pattern_tags(
     tags: List[str] = []
     rationale_lower = rationale.lower()
 
-    # Check rationale keywords for pattern matching
-    if stage == "edit_for_tts":
-        if any(kw in rationale_lower for kw in ["对话", "dialogue", "归属", "角色"]):
-            tags.append("dialogue_attribution")
-        if any(kw in rationale_lower for kw in ["情感", "情绪", "感情"]):
-            cor_emotion = corrected_output.get("emotion", "")
-            llm_emotion = llm_output.get("emotion", "")
-            if "强烈" in rationale or "不足" in rationale:
-                tags.append("emotion_too_mild")
-            elif "过度" in rationale or "过强" in rationale:
-                tags.append("emotion_too_strong")
-            else:
-                tags.append("emotion_wrong")
-        if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker"]):
-            tags.append("speaker_wrong")
-        if any(kw in rationale_lower for kw in ["停顿", "pause"]):
-            if "缺少" in rationale or "加" in rationale:
-                tags.append("pause_missing")
-            else:
-                tags.append("pause_too_long")
-        if any(kw in rationale_lower for kw in ["音效", "sfx", "场景"]):
-            if "缺少" in rationale or "加" in rationale:
-                tags.append("sfx_missing")
-            else:
-                tags.append("sfx_wrong")
-        if any(kw in rationale_lower for kw in ["口语", "书面", "自然"]):
-            llm_text = str(llm_output.get("edited_text", ""))
-            cor_text = str(corrected_output.get("edited_text", ""))
+    # Universal patterns (apply to all stages)
+    if any(kw in rationale_lower for kw in ["对话", "dialogue", "归属", "角色"]):
+        tags.append("dialogue_attribution")
+    if any(kw in rationale_lower for kw in ["情感", "情绪", "感情"]):
+        if "强烈" in rationale_lower or "不足" in rationale_lower or "太淡" in rationale_lower:
+            tags.append("emotion_too_mild")
+        elif "过度" in rationale_lower or "过强" in rationale_lower or "太强" in rationale_lower:
+            tags.append("emotion_too_strong")
+        else:
+            tags.append("emotion_wrong")
+    if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker", "旁白"]):
+        tags.append("speaker_wrong")
+    if any(kw in rationale_lower for kw in ["停顿", "pause", "停顿"]):
+        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
+            tags.append("pause_missing")
+        else:
+            tags.append("pause_too_long")
+    if any(kw in rationale_lower for kw in ["音效", "sfx", "场景"]):
+        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
+            tags.append("sfx_missing")
+        else:
+            tags.append("sfx_wrong")
+    if any(kw in rationale_lower for kw in ["机器人", "机械", "不自然", "生硬"]):
+        tags.append("prosody_robotic")
+    if any(kw in rationale_lower for kw in ["平淡", "flat", "单调"]):
+        tags.append("prosody_flat")
+
+    # Stage-specific patterns
+    if stage in ("edit_for_tts", "annotate", "translate"):
+        if any(kw in rationale_lower for kw in ["口语", "书面", "自然", "翻译"]):
+            llm_text = str(llm_output.get("edited_text", llm_output.get("text", "")))
+            cor_text = str(corrected_output.get("edited_text", corrected_output.get("text", "")))
             if len(llm_text) > len(cor_text):
                 tags.append("text_colloquial")
             else:
@@ -168,10 +196,6 @@ def _infer_pattern_tags(
             tags.append("low_volume")
         if any(kw in rationale_lower for kw in ["时长", "duration"]):
             tags.append("duration_mismatch")
-        if any(kw in rationale_lower for kw in ["机器人", "机械", "不自然"]):
-            tags.append("prosody_robotic")
-        if any(kw in rationale_lower for kw in ["平淡", "flat"]):
-            tags.append("prosody_flat")
 
     # Deduplicate
     return list(set(tags))
@@ -180,7 +204,10 @@ def _infer_pattern_tags(
 def analyze_single_feedback(
     record: FeedbackRecordModel,
 ) -> DiffAnalysisResult:
-    """分析单条反馈记录."""
+    """分析单条反馈记录.
+
+    优先使用 LLM 语义分析（LLMFeedbackAnalyzer），失败时降级到关键词匹配（_infer_pattern_tags）。
+    """
     llm_output = record.llm_output or {}
     corrected_output = record.corrected_output or {}
 
@@ -198,14 +225,53 @@ def analyze_single_feedback(
 
     avg_similarity = sum(similarities) / len(similarities) if similarities else 1.0
 
-    # Infer pattern tags
-    pattern_tags = _infer_pattern_tags(
-        stage=record.stage,
-        llm_output=llm_output,
-        corrected_output=corrected_output,
-        rationale=record.rationale or "",
-        key_diffs=key_diffs,
-    )
+    # ── 优先尝试 LLM 语义分析 ──────────────────────────────────────────────
+    pattern_tags: List[str] = []
+    semantic_summary: Optional[str] = None
+    root_cause: Optional[str] = None
+    actionable_instruction: Optional[str] = None
+    severity: Optional[str] = None
+    confidence: Optional[float] = None
+    analysis_source = "keyword"  # 默认降级模式
+
+    analyzer = _get_llm_analyzer()
+    if analyzer is not None:
+        try:
+            fa = analyzer.analyze(
+                stage=record.stage,
+                llm_output=llm_output,
+                corrected_output=corrected_output,
+                rationale=record.rationale or "",
+                key_differences=key_diffs,
+            )
+            pattern_tags = fa.pattern_tags
+            semantic_summary = fa.semantic_summary
+            root_cause = fa.root_cause
+            actionable_instruction = fa.actionable_instruction
+            severity = fa.severity
+            confidence = fa.confidence
+            analysis_source = "llm"
+            logger.debug(f"LLM 语义分析成功: {record.feedback_id} → {pattern_tags}")
+        except Exception as e:
+            logger.warning(
+                f"LLM 语义分析失败，降级到关键词匹配: {record.feedback_id} — {e}"
+            )
+            pattern_tags = _infer_pattern_tags(
+                stage=record.stage,
+                llm_output=llm_output,
+                corrected_output=corrected_output,
+                rationale=record.rationale or "",
+                key_diffs=key_diffs,
+            )
+    else:
+        # LLM 分析器不可用，直接使用关键词匹配
+        pattern_tags = _infer_pattern_tags(
+            stage=record.stage,
+            llm_output=llm_output,
+            corrected_output=corrected_output,
+            rationale=record.rationale or "",
+            key_diffs=key_diffs,
+        )
 
     # Generate diff summary
     diff_summary_parts = [f"Stage: {record.stage}"]
@@ -214,6 +280,13 @@ def analyze_single_feedback(
         diff_summary_parts.extend(f"  - {d}" for d in key_diffs[:5])
     if pattern_tags:
         diff_summary_parts.append(f"Patterns: {', '.join(pattern_tags)}")
+    if semantic_summary:
+        diff_summary_parts.append(f"Summary: {semantic_summary}")
+    if root_cause:
+        diff_summary_parts.append(f"Root cause: {root_cause}")
+    if actionable_instruction:
+        diff_summary_parts.append(f"Action: {actionable_instruction}")
+    diff_summary_parts.append(f"Analysis source: {analysis_source}")
 
     diff_summary = "\n".join(diff_summary_parts)
 
@@ -224,6 +297,12 @@ def analyze_single_feedback(
         diff_summary=diff_summary,
         similarity_score=avg_similarity,
         key_differences=key_diffs,
+        semantic_summary=semantic_summary,
+        root_cause=root_cause,
+        actionable_instruction=actionable_instruction,
+        severity=severity,
+        confidence=confidence,
+        analysis_source=analysis_source,
     )
 
 

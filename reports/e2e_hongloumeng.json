@@ -1,0 +1,77 @@
+{
+  "book_id": "hongloumeng",
+  "book_title": "Unknown Book",
+  "total_text_chars": 155189,
+  "total_paragraphs": 1141,
+  "stages": [
+    {
+      "stage_name": "extract",
+      "duration_ms": 319.6990489959717,
+      "success": true,
+      "input_size": 427005,
+      "output_size": 155189,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "analyze_structure",
+      "duration_ms": 92.44585037231445,
+      "success": true,
+      "input_size": 155189,
+      "output_size": 106,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "annotate_paragraph",
+      "duration_ms": 6548.839092254639,
+      "success": true,
+      "input_size": 13027,
+      "output_size": 100,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "edit_for_tts",
+      "duration_ms": 7608.644008636475,
+      "success": true,
+      "input_size": 13027,
+      "output_size": 13027,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "synthesize",
+      "duration_ms": 140.578031539917,
+      "success": true,
+      "input_size": 100,
+      "output_size": 300000,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    },
+    {
+      "stage_name": "quality_check",
+      "duration_ms": 25307.065963745117,
+      "success": true,
+      "input_size": 100,
+      "output_size": 100,
+      "error_message": "",
+      "mock_cost_usd": 0.0
+    }
+  ],
+  "total_duration_ms": 40017.27199554443,
+  "total_mock_cost_usd": 0.0,
+  "quality_summary": {
+    "avg_overall_score": 0.5,
+    "total_issues": 100,
+    "needs_regeneration_count": 100,
+    "score_distribution": {
+      "speaker_clarity": 0.5,
+      "emotion_match": 0.5,
+      "prosody_naturalness": 0.5,
+      "text_audio_alignment": 0.5
+    }
+  },
+  "timestamp": "2026-06-26T04:32:30.112743",
+  "passed": true
+}

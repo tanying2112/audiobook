@@ -5,11 +5,15 @@ Target: >70% schema compliance rate per stage.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+# Set MOCK_LLM environment variable for mock mode testing
+os.environ["MOCK_LLM"] = "true"
 
 sys.path.insert(0, "src")
 
@@ -64,7 +68,7 @@ class TestGoldenDatasetExtract:
 
     @pytest.fixture(scope="class")
     def pipeline(self):
-        return ExtractPipeline(mock_mode=True)
+        return ExtractPipeline()
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("extract")
@@ -92,11 +96,11 @@ class TestGoldenDatasetAnalyzeStructure:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return AnalyzeStructurePipeline(router=router, mock_mode=True)
+        return AnalyzeStructurePipeline(router=router)
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("analyze_structure")
@@ -214,11 +218,11 @@ class TestGoldenDatasetAnnotateParagraph:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return AnnotateParagraphPipeline(router=router, mock_mode=True)
+        return AnnotateParagraphPipeline(router=router)
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("annotate_paragraph")
@@ -303,11 +307,11 @@ class TestGoldenDatasetEditForTts:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return EditForTtsPipeline(router=router, mock_mode=True)
+        return EditForTtsPipeline(router=router)
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("edit_for_tts")
@@ -355,7 +359,7 @@ class TestGoldenDatasetQualityJudge:
 
     @pytest.fixture(scope="class")
     def pipeline(self):
-        return QualityCheckPipeline(mock_mode=True)
+        return QualityCheckPipeline()
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("quality_judge")
@@ -423,11 +427,11 @@ class TestGoldenDatasetTtsRouting:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return SynthesizePipeline(router=router, mock_mode=True)
+        return SynthesizePipeline(router=router)
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("tts_routing")
@@ -496,11 +500,11 @@ class TestGoldenDatasetSynthesize:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return SynthesizePipeline(router=router, mock_mode=True)
+        return SynthesizePipeline(router=router)
 
     def test_mock_mode_returns_valid_segments(self, pipeline):
         """Test mock mode returns valid AudioSegment via run()."""
@@ -564,11 +568,11 @@ class TestLegacyAnalyzeStructure:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router(mock_mode=True)
+        return create_router()
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):
-        return AnalyzeStructurePipeline(router=router, mock_mode=True)
+        return AnalyzeStructurePipeline(router=router)
 
     @pytest.fixture(scope="class")
     def golden_samples(self):

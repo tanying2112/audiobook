@@ -1,7 +1,12 @@
 """Tests for TranslateAndDubPipeline (Stage 7 - Multilingual Translation Dubbing)."""
 
+import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+
+# Set MOCK_LLM before importing pipeline
+os.environ["MOCK_LLM"] = "true"
+
 from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 from src.audiobook_studio.models.audio_segment import AudioSegment
 from src.audiobook_studio.schemas import ParagraphAnnotation
@@ -12,19 +17,26 @@ class TestTranslateAndDubPipeline:
 
     def setup_method(self):
         """Setup test fixtures."""
-        self.pipeline = TranslateAndDubPipeline(mock_mode=True)
+        self.pipeline = TranslateAndDubPipeline()
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        pipeline = TranslateAndDubPipeline()
-        assert pipeline is not None
-        assert pipeline.mock_mode is False
-        assert pipeline.voice_cloning_manager is not None
-        assert pipeline.annotate_pipeline is not None
+        # Clear MOCK_LLM to test default (non-mock) mode
+        old_val = os.environ.get("MOCK_LLM")
+        os.environ.pop("MOCK_LLM", None)
+        try:
+            pipeline = TranslateAndDubPipeline()
+            assert pipeline is not None
+            assert pipeline.mock_mode is False
+            assert pipeline.voice_cloning_manager is not None
+            assert pipeline.annotate_pipeline is not None
+        finally:
+            if old_val is not None:
+                os.environ["MOCK_LLM"] = old_val
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        pipeline = TranslateAndDubPipeline(mock_mode=True)
+        pipeline = TranslateAndDubPipeline()
         assert pipeline.mock_mode is True
 
     def test_init_custom_managers(self):
@@ -34,7 +46,6 @@ class TestTranslateAndDubPipeline:
         pipeline = TranslateAndDubPipeline(
             voice_cloning_manager=mock_vc,
             annotate_pipeline=mock_ap,
-            mock_mode=True,
         )
         assert pipeline.voice_cloning_manager == mock_vc
         assert pipeline.annotate_pipeline == mock_ap
@@ -192,7 +203,7 @@ class TestTranslateAndDubPipeline:
                 voice_id="voice_1",
             )
         ]
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -219,7 +230,7 @@ class TestTranslateAndDubPipeline:
             )
             for i in range(3)
         ]
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -254,7 +265,7 @@ class TestTranslateAndDubPipeline:
         segments[0].annotation = annotation
         segments[0].text = "Original text"
 
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -278,7 +289,7 @@ class TestTranslateAndDubPipeline:
         ]
         # Mock pipeline's _translate_text to raise exception
         with patch.object(self.pipeline, '_translate_text', side_effect=Exception("Translation failed")):
-            with patch("scripts.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
+            with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
                 result_segments, report = self.pipeline.translate_and_dub(
                     segments, "en-US", "Test Book", "Test Author"
                 )
@@ -304,7 +315,7 @@ class TestTranslateAndDubPipeline:
             )
             for i in range(2)
         ]
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", side_effect=ImportError):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -340,7 +351,7 @@ class TestTranslateAndDubPipeline:
             "issues": []
         }
 
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -373,7 +384,7 @@ class TestTranslateAndDubPipeline:
             "issues": ["Emotional curve mismatch at segment 1"]
         }
 
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )
@@ -402,7 +413,7 @@ class TestTranslateAndDubPipeline:
         mock_checker = Mock()
         mock_checker.check_coherence.side_effect = Exception("Checker error")
 
-        with patch("scripts.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
+        with patch("src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker", return_value=mock_checker):
             result_segments, report = self.pipeline.translate_and_dub(
                 segments, "en-US", "Test Book", "Test Author"
             )

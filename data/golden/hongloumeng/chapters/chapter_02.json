@@ -1,0 +1,483 @@
+{
+  "book_id": "hongloumeng",
+  "chapter_index": 2,
+  "chapter_title": "第二章 危机四伏的继位之年",
+  "book_meta": {
+    "title": "智慧君主：Alexander 的治世传奇",
+    "author": "佚名",
+    "genre": "小说",
+    "difficulty": "B",
+    "language": "zh",
+    "era": "架空历史",
+    "total_chapters_estimated": 7,
+    "contract_version": 1
+  },
+  "character_voice_map": [
+    {
+      "canonical_name": "旁白",
+      "aliases": [
+        "叙述者"
+      ],
+      "gender": "neutral",
+      "age_range": "adult",
+      "suggested_voice_id": "v_narrator",
+      "sample_quote": "在遥远的洛林王国，有一个古老的预言流传了几百年",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Alexander",
+      "aliases": [
+        "亚历山大",
+        "陛下",
+        "国王"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_alexander",
+      "sample_quote": "我发现，世界其实充满了模式",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Thompson",
+      "aliases": [
+        "首席御医",
+        "Thompson"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_thompson",
+      "sample_quote": "像这样的婴儿，实在是太少见了",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "国王 Henry",
+      "aliases": [
+        "亨利国王",
+        "Henry"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_henry",
+      "sample_quote": "你说得对，Thompson，这孩子确实不普通",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Prince Nathan",
+      "aliases": [
+        "奈森王子",
+        "二弟"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_nathan",
+      "sample_quote": "陛下！您这是说笑话吧？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Pierre",
+      "aliases": [
+        "总管",
+        "Pierre"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_pierre",
+      "sample_quote": "我想，或者我们可以先不要动武？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "陈调查组长",
+      "aliases": [
+        "老陈",
+        "调查组长"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_chen",
+      "sample_quote": "与其把这些孩子都当作纯粹的坏人来处理",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老水手",
+      "aliases": [
+        "转型水手"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_sailor",
+      "sample_quote": "要不是陛下您当初给了我这个机会",
+      "contract_version": 1
+    }
+  ],
+  "emotion_snapshot": {
+    "chapter": 2,
+    "dominant_emotion": "tense",
+    "intensity": 0.8,
+    "notes": "多重危机爆发",
+    "contract_version": 1
+  },
+  "story_line_summary": "年轻国王 Alexander 在多重危机爆发之际登基，面对北方雪狼部落入侵、南方海盗劫掠、宫廷保守派倒逼等内外交困的严峻局面，他没有选择武力对抗，而是以智慧与仁爱为指导，通过谈判、调查、改革等一系列组合拳，逐一化解危机：建立宫廷联合委员会化解内部矛盾，派遣无武装使团与雪狼部落和谈，实施渔业复兴计划安置海盗，启动国土绿化行动振兴农业，兴建国家图书馆与综合大学提升文化软实力。二十年治世后，他将治国心得系统传授，确立以理解为基、以仁爱为根、以长远利益为指南针的治国传统，这一传统在其逝世后三十年依然指引新一代领导人化解内部挑战，成为王国永续发展的精神基石。",
+  "global_style_notes": "第三人称全知视角，夹叙夹议，中西文混排，包含历史感与哲理思考。",
+  "paragraphs": [
+    {
+      "paragraph_index": 0,
+      "text": "就在 Alexander 十八岁生日前夕，原本应该是欢庆成人的好日子里，王国却突然迎来了前所未有的多重危机。这三股力量几乎同时爆发，就像是有人故意安排好的考验般，直接冲击着这个年轻王子即将继承的王位。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 0,
+        "text": "就在 Alexander 十八岁生日前夕，原本应该是欢庆成人的好日子里，王国却突然迎来了前所未有的多重危机。这三股力量几乎同时爆发，就像是有人故意安排好的考验般，直接冲击着这个年轻王子即将继承的王位。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 0,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 1,
+      "text": "首先传来的是北边境的紧急军情：雪狼部落不仅 Констанция（规模）比往年大了将近一倍，而且他们的武器似乎也更新换代了，不少战士手里拿着的竟然是种前所未见的複合弓。更令人担忧的是，他们的目标明显不再只是掠夺牲畜那么简单，而是有一股明确的 westbound（ westward ） intención（意图），看来是想要一举突破防线，直击王国的腹地。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 1,
+        "text": "首先传来的是北边境的紧急军情：雪狼部落不仅 Констанция（规模）比往年大了将近一倍，而且他们的武器似乎也更新换代了，不少战士手里拿着的竟然是种前所未见的複合弓。更令人担忧的是，他们的目标明显不再只是掠夺牲畜那么简单，而是有一股明确的 westbound（ westward ） intención（意图），看来是想要一举突破防线，直击王国的腹地。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 2,
+      "text": "beinahe gleichzeitig（几乎同时），南海的情报站也拉响了警报。连续几天后，有七艘载满冬季储备粮食的商船在同样的海域失踪了，幸運（幸运）逃生的船長報告說，襲擊他們的海盗船隻速度极快，而且攻擊極其殘忍——不但劫掠財物，而且不分老幼，看到活口就殺。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 2,
+        "text": "beinahe gleichzeitig（几乎同时），南海的情报站也拉响了警报。连续几天后，有七艘载满冬季储备粮食的商船在同样的海域失踪了，幸運（幸运）逃生的船長報告說，襲擊他們的海盗船隻速度极快，而且攻擊極其殘忍——不但劫掠財物，而且不分老幼，看到活口就殺。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": true,
+        "sfx_tags": [
+          "ambient"
+        ],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 3,
+      "text": "就在外线吃緊的时候，皇宮內部卻傳來了更讓人揪心的消息。一派力量強大的保守大臣們在暗中 mobilisation（動員），他們認為現行政策太過軟弱，必須採取更鐵血的手段才能救國。更可怕的是，這些人其實早就看中了 Alexander 的二弟——Prince Nathan，因為這位弟弟從小就熱愛武術，而且主張對外採取強硬姿態。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 3,
+        "text": "就在外线吃緊的时候，皇宮內部卻傳來了更讓人揪心的消息。一派力量強大的保守大臣們在暗中 mobilisation（動員），他們認為現行政策太過軟弱，必須採取更鐵血的手段才能救國。更可怕的是，這些人其實早就看中了 Alexander 的二弟——Prince Nathan，因為這位弟弟從小就熱愛武術，而且主張對外採取強硬姿態。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 4,
+      "text": "就在危機感達到最高點的當天晚上，Alexander 在圖書館裡查閱邊防要塞的最新回報時，突然接獲了宮女的緊急通報：“陛下，不好了！西宮的護衛隊突然哨聲大作，看起來是發生了什麼異常！”\n \n第二章（续）危機四伏的繼位之年（續）",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 4,
+        "text": "就在危機感達到最高點的當天晚上，Alexander 在圖書館裡查閱邊防要塞的最新回報時，突然接獲了宮女的緊急通報：“陛下，不好了！西宮的護衛隊突然哨聲大作，看起來是發生了什麼異常！”\n \n第二章（续）危機四伏的繼位之年（續）",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 5,
+      "text": "當 Alexander 趕到西宮時，場面令他倒抽一口氣：原本應該是嚴守的宮門竟然大開著，地面上還散落著幾支看起來被拔掉了的箭羽。更讓人心驚的是，在那個通常空蕩蕩的廣場上，竟然橫七豎八地躺著好幾個宮廷侍衛——雖然他們都還在呼吸，但顯然都受了不輕的傷。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 5,
+        "text": "當 Alexander 趕到西宮時，場面令他倒抽一口氣：原本應該是嚴守的宮門竟然大開著，地面上還散落著幾支看起來被拔掉了的箭羽。更讓人心驚的是，在那個通常空蕩蕩的廣場上，竟然橫七豎八地躺著好幾個宮廷侍衛——雖然他們都還在呼吸，但顯然都受了不輕的傷。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 6,
+      "text": "就在 Alexander 正想發出組織反擊的號令時，一個熟悉的聲音從陰影裏傳出：“等等，陛下。”出來的是他們家的總管老 Pierre，這個在王宮裡干了四十多年的老人，此刻卻顯得異常的沈穩。“我想，或者我們可以先不要動武？看看他們到底想要什麼？”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 6,
+        "text": "就在 Alexander 正想發出組織反擊的號令時，一個熟悉的聲音從陰影裏傳出：“等等，陛下。”出來的是他們家的總管老 Pierre，這個在王宮裡干了四十多年的老人，此刻卻顯得異常的沈穩。“我想，或者我們可以先不要動武？看看他們到底想要什麼？”",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 7,
+      "text": "Alexander 這才注意到，在那些受傷的侍衛不遠處，其實站著幾個穿著簡約但顯然訓練有素的人——他們沒有舉 armi（武器），雙手懸空地垂著，一副想要談判的姿勢。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 7,
+        "text": "Alexander 這才注意到，在那些受傷的侍衛不遠處，其實站著幾個穿著簡約但顯然訓練有素的人——他們沒有舉 armi（武器），雙手懸空地垂著，一副想要談判的姿勢。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 8,
+      "text": "不等 Alexander 說話，為首的那個人先開口了：“我們不是來害人的。我們只是有些話想對陛下說，既然陛下願意出來見我們，那就說明陛下也是個願意聽取異聲的人。”他說著，從胸前的緞帶裡慢慢取出了一份文件。“這是我們的訴求書。其實我們並不是要造反，而是真的很擔心國策——因為如果按現在這樣下去，我們相信王國過不了多久就会出大問題。”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 8,
+        "text": "不等 Alexander 說話，為首的那個人先開口了：“我們不是來害人的。我們只是有些話想對陛下說，既然陛下願意出來見我們，那就說明陛下也是個願意聽取異聲的人。”他說著，從胸前的緞帶裡慢慢取出了一份文件。“這是我們的訴求書。其實我們並不是要造反，而是真的很擔心國策——因為如果按現在這樣下去，我們相信王國過不了多久就会出大問題。”",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 9,
+      "text": "接過文件的 Alexander 並沒有立即展開閱讀，而是先向受傷的侍衛們喊道：“把他們都撤下來接受治療！誰也不准再動 knife（刀子）！”待他們被押離現場後，他才在石凳上坐下，認真起來閱讀那份被稱為‘訴求書’的文件。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 9,
+        "text": "接過文件的 Alexander 並沒有立即展開閱讀，而是先向受傷的侍衛們喊道：“把他們都撤下來接受治療！誰也不准再動 knife（刀子）！”待他們被押離現場後，他才在石凳上坐下，認真起來閱讀那份被稱為‘訴求書’的文件。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 10,
+      "text": "文件寫得很平靜，但字裏行間透露出的擔心卻是真實可感的：他們擔心國庫長期赤字會導致貨幣貶值；擔心連續幾年的軍事開支會壓縮民生投資；更擔心的是，有些新政策雖然看起來有創意，但是卻缺乏足夠的試點和評估機制，一旦推廣開來可能會帶來系統性風險。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 10,
+        "text": "文件寫得很平靜，但字裏行間透露出的擔心卻是真實可感的：他們擔心國庫長期赤字會導致貨幣貶值；擔心連續幾年的軍事開支會壓縮民生投資；更擔心的是，有些新政策雖然看起來有創意，但是卻缺乏足夠的試點和評估機制，一旦推廣開來可能會帶來系統性風險。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 11,
+      "text": "“我 Beziehungsverstehen（理解）你們的擔心。”Alexander 在看完最後一頁後慢慢說道，“其實我以前也有過相同的想法。畢竟，作為即將繼位的國王，我可是天天都在思考這些問題啊。”他頓了頓，「但是卸甲論兵其實不是我們唯一的選擇。不如這樣如何：我們先成立一個聯合調查小組，由你們推薦的人選和我派出的代表各佔一半，共同來檢視這些問題——你們看這樣的安排怎麼樣？”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 11,
+        "text": "“我 Beziehungsverstehen（理解）你們的擔心。”Alexander 在看完最後一頁後慢慢說道，“其實我以前也有過相同的想法。畢竟，作為即將繼位的國王，我可是天天都在思考這些問題啊。”他頓了頓，「但是卸甲論兵其實不是我們唯一的選擇。不如這樣如何：我們先成立一個聯合調查小組，由你們推薦的人選和我派出的代表各佔一半，共同來檢視這些問題——你們看這樣的安排怎麼樣？”",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 12,
+      "text": "出乎意料的是，這個建議竟然得到了雙方的接受。就在當天晚上，這個前所未有的‘宮廷聯合委員會’就宣告成立了；接下來的几天裡，雙方不但沒有再發生任何肢體衝突，反而在諸如糧食儲備、邊防輪換和官員考核這些具體問題上，展現出了驚人的協商潛力。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 12,
+        "text": "出乎意料的是，這個建議竟然得到了雙方的接受。就在當天晚上，這個前所未有的‘宮廷聯合委員會’就宣告成立了；接下來的几天裡，雙方不但沒有再發生任何肢體衝突，反而在諸如糧食儲備、邊防輪換和官員考核這些具體問題上，展現出了驚人的協商潛力。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    }
+  ],
+  "annotated_by": "Agent B",
+  "annotated_at": "2026-06-21T10:08:38.267725",
+  "annotation_version": "v0.1",
+  "total_paragraphs": 13,
+  "verified_paragraphs": 13,
+  "overall_quality_score": 0.95,
+  "contract_version": 1
+}

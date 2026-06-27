@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Version manager CLI for Audiobook Studio pipeline runs.
 
+Thin CLI wrapper that delegates to src/audiobook_studio/version_manager.py
+
 Records and manages ProcessingRun snapshots, enabling version tracking,
 rollback, and diff across pipeline executions.
 
@@ -38,6 +40,9 @@ from sqlalchemy.orm import Session
 
 from src.audiobook_studio.database import SessionLocal
 from src.audiobook_studio.models import ProcessingRun
+from src.audiobook_studio.version_manager import (
+    save_run, list_runs, get_run, rollback_to_run, diff_runs, restore_state
+)
 
 # ── Terminal colours (macOS / modern terminals) ──────────────────────────────
 _GREEN = "\033[92m"
@@ -60,232 +65,88 @@ def _err(msg: str) -> None:
     print(f"{_RED}✗{_RESET} {msg}", file=sys.stderr)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _get_db() -> Session:
-    """Create a new DB session."""
-    return SessionLocal()
-
-
-def _find_run(db: Session, project_id: int, run_id: Optional[int] = None,
-              tag: Optional[str] = None) -> Optional[ProcessingRun]:
-    """Locate a processing run by id, tag, or latest for project."""
-    if run_id:
-        return db.query(ProcessingRun).filter(ProcessingRun.id == run_id).first()
-    if tag:
-        return (
-            db.query(ProcessingRun)
-            .filter(
-                ProcessingRun.project_id == project_id,
-                ProcessingRun.version_tag == tag,
-            )
-            .first()
-        )
-    # Latest for project
-    return (
-        db.query(ProcessingRun)
-        .filter(
-            ProcessingRun.project_id == project_id,
-            ProcessingRun.status == "completed",
-        )
-        .order_by(ProcessingRun.started_at.desc())
-        .first()
-    )
-
-
-def _collect_stages_config(db: Session, project_id: int) -> Dict[str, Any]:
-    """Gather current project processing state into a snapshot dict."""
-    from src.audiobook_studio.models import Chapter, Paragraph
-
-    chapters = (
-        db.query(Chapter)
-        .filter(Chapter.project_id == project_id)
-        .order_by(Chapter.index)
-        .all()
-    )
-    stages_set: set = set()
-    total_paragraphs = 0
-    processed_paragraphs = 0
-
-    for ch in chapters:
-        # Collect completed stages from chapter status fields
-        for stage_field, stage_name in [
-            ("extract_status", "extract"),
-            ("analyze_status", "analyze"),
-            ("annotate_status", "annotate"),
-            ("edit_status", "edit"),
-            ("synthesize_status", "synthesize"),
-            ("quality_status", "quality"),
-        ]:
-            val = getattr(ch, stage_field, "pending")
-            if val == "completed":
-                stages_set.add(stage_name)
-
-        # Count paragraphs
-        paras = (
-            db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id,
-                Paragraph.chapter_id == ch.id,
-            )
-            .count()
-        )
-        total_paragraphs += paras
-        processed_paragraphs += (
-            db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id,
-                Paragraph.chapter_id == ch.id,
-                Paragraph.status != "pending",
-            )
-            .count()
-        )
-
-    return {
-        "stages_completed": sorted(stages_set),
-        "total_paragraphs": total_paragraphs,
-        "processed_paragraphs": processed_paragraphs,
-        "chapter_count": len(chapters),
-    }
-
-
-# ── Commands ──────────────────────────────────────────────────────────────────
-
-
 def cmd_save(args: argparse.Namespace) -> None:
     """Save a new processing run snapshot."""
-    db = _get_db()
     try:
-        # Collect current state
-        state = _collect_stages_config(db, args.project)
-        config_snapshot = state.get("config_json", "{}")
-
-        run = ProcessingRun(
+        run = save_run(
             project_id=args.project,
-            config_json=config_snapshot if isinstance(config_snapshot, str) else json.dumps(config_snapshot),
-            prompt_versions=args.prompt_versions or {},
-            stages_completed=state["stages_completed"],
-            status="completed",
-            version_tag=args.tag,
-            commit_message=args.msg,
-            golden_score=args.score,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            tag=args.tag,
+            message=args.msg,
+            score=args.score,
+            parent_run_id=args.parent,
+            parent_tag=args.parent_tag,
+            prompt_versions=args.prompt_versions,
         )
-
-        # Link to parent if specified
-        if args.parent:
-            parent = db.query(ProcessingRun).filter(
-                ProcessingRun.id == args.parent,
-                ProcessingRun.project_id == args.project,
-            ).first()
-            if parent:
-                run.parent_run_id = parent.id
-            else:
-                _warn(f"Parent run {args.parent} not found, saving without parent")
-
-        elif args.parent_tag:
-            parent = (
-                db.query(ProcessingRun)
-                .filter(
-                    ProcessingRun.project_id == args.project,
-                    ProcessingRun.version_tag == args.parent_tag,
-                )
-                .first()
-            )
-            if parent:
-                run.parent_run_id = parent.id
-            else:
-                _warn(f"Parent tag '{args.parent_tag}' not found, saving without parent")
-
-        db.add(run)
-        db.commit()
-        db.refresh(run)
         _ok(f"Run #{run.id} saved for project {args.project}")
         if args.tag:
             print(f"   Tag: {args.tag}")
-        print(f"   Stages: {', '.join(state['stages_completed']) or '(none)'}")
-        print(f"   Chapters: {state['chapter_count']}, "
-              f"Paragraphs: {state['processed_paragraphs']}/{state['total_paragraphs']}")
-    finally:
-        db.close()
+        print(f"   Stages: {', '.join(run.stages_completed or []) or '(none)'}")
+    except Exception as e:
+        _err(f"Failed to save run: {e}")
+        sys.exit(1)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
     """List all processing runs for a project."""
-    db = _get_db()
-    try:
-        runs = (
-            db.query(ProcessingRun)
-            .filter(ProcessingRun.project_id == args.project)
-            .order_by(ProcessingRun.started_at.desc())
-            .all()
-        )
-        if not runs:
-            print(f"No processing runs found for project {args.project}")
-            return
+    runs = list_runs(args.project)
+    if not runs:
+        print(f"No processing runs found for project {args.project}")
+        return
 
-        print(f"\n{_BOLD}Processing runs for project {args.project}:{_RESET}")
-        print(f"{'ID':<5} {'Tag':<14} {'Status':<12} {'Score':<8} "
-              f"{'Stages':<30} {'Date':<22}")
-        print("-" * 90)
-        for r in runs:
-            tag = r.version_tag or "-"
-            score = f"{r.golden_score:.3f}" if r.golden_score is not None else "-"
-            stages = ", ".join(r.stages_completed or [])[:28]
-            date = r.started_at.strftime("%Y-%m-%d %H:%M") if r.started_at else "-"
-            print(f"{r.id:<5} {tag:<14} {r.status:<12} {score:<8} "
-                  f"{stages:<30} {date:<22}")
-        print()
-    finally:
-        db.close()
+    print(f"\n{_BOLD}Processing runs for project {args.project}:{_RESET}")
+    print(f"{'ID':<5} {'Tag':<14} {'Status':<12} {'Score':<8} "
+          f"{'Stages':<30} {'Date':<22}")
+    print("-" * 90)
+    for r in runs:
+        tag = r.version_tag or "-"
+        score = f"{r.golden_score:.3f}" if r.golden_score is not None else "-"
+        stages = ", ".join(r.stages_completed or [])[:28]
+        date = r.started_at.strftime("%Y-%m-%d %H:%M") if r.started_at else "-"
+        print(f"{r.id:<5} {tag:<14} {r.status:<12} {score:<8} "
+              f"{stages:<30} {date:<22}")
+    print()
 
 
 def cmd_show(args: argparse.Namespace) -> None:
     """Show detailed information for a processing run."""
-    db = _get_db()
-    try:
-        run = _find_run(db, args.project, run_id=args.run, tag=args.tag)
-        if not run:
-            _err(f"Run not found (project={args.project}, id={args.run}, tag={args.tag})")
-            sys.exit(1)
+    run = get_run(args.project, run_id=args.run, tag=args.tag)
+    if not run:
+        _err(f"Run not found (project={args.project}, id={args.run}, tag={args.tag})")
+        sys.exit(1)
 
-        print(f"\n{_BOLD}Processing Run #{run.id}{_RESET}")
-        print(f"  Project ID:     {run.project_id}")
-        print(f"  Status:         {run.status}")
-        print(f"  Version Tag:    {run.version_tag or '-'}")
-        print(f"  Golden Score:   {run.golden_score:.3f}" if run.golden_score is not None else "  Golden Score:   -")
-        print(f"  Commit Message: {run.commit_message or '-'}")
-        print(f"  Started:        {run.started_at}")
-        print(f"  Completed:      {run.completed_at or '-'}")
-        print(f"  Parent Run:     {run.parent_run_id or '-'}")
+    print(f"\n{_BOLD}Processing Run #{run.id}{_RESET}")
+    print(f"  Project ID:     {run.project_id}")
+    print(f"  Status:         {run.status}")
+    print(f"  Version Tag:    {run.version_tag or '-'}")
+    print(f"  Golden Score:   {run.golden_score:.3f}" if run.golden_score is not None else "  Golden Score:   -")
+    print(f"  Commit Message: {run.commit_message or '-'}")
+    print(f"  Started:        {run.started_at}")
+    print(f"  Completed:      {run.completed_at or '-'}")
+    print(f"  Parent Run:     {run.parent_run_id or '-'}")
 
-        print(f"\n  {_BOLD}Stages completed:{_RESET}")
-        for s in (run.stages_completed or []):
-            print(f"    ✓ {s}")
+    print(f"\n  {_BOLD}Stages completed:{_RESET}")
+    for s in (run.stages_completed or []):
+        print(f"    ✓ {s}")
 
-        print(f"\n  {_BOLD}Prompt versions:{_RESET}")
-        pv = run.prompt_versions or {}
-        if pv:
-            for stage, ver in pv.items():
-                print(f"    {stage}: {ver}")
-        else:
-            print("    (none)")
+    print(f"\n  {_BOLD}Prompt versions:{_RESET}")
+    pv = run.prompt_versions or {}
+    if pv:
+        for stage, ver in pv.items():
+            print(f"    {stage}: {ver}")
+    else:
+        print("    (none)")
 
-        # Print config summary (first 500 chars)
-        config = run.config_json
-        if config and config != "{}":
-            print(f"\n  {_BOLD}Config (truncated):{_RESET}")
-            config_str = config if isinstance(config, str) else json.dumps(config, indent=2)
-            if len(config_str) > 500:
-                config_str = config_str[:500] + "\n    ..."
-            for line in config_str.split("\n"):
-                print(f"    {line}")
+    # Print config summary (first 500 chars)
+    config = run.config_json
+    if config and config != "{}":
+        print(f"\n  {_BOLD}Config (truncated):{_RESET}")
+        config_str = config if isinstance(config, str) else json.dumps(config, indent=2)
+        if len(config_str) > 500:
+            config_str = config_str[:500] + "\n    ..."
+        for line in config_str.split("\n"):
+            print(f"    {line}")
 
-        print()
-    finally:
-        db.close()
+    print()
 
 
 def cmd_rollback(args: argparse.Namespace) -> None:
@@ -295,120 +156,44 @@ def cmd_rollback(args: argparse.Namespace) -> None:
     (e.g. reverting chapter/paragraph status fields) should be called
     with --apply in production.
     """
-    db = _get_db()
-    try:
-        target = _find_run(db, args.project, run_id=args.run, tag=args.tag)
-        if not target:
-            _err(f"Target run not found (project={args.project}, id={args.run}, tag={args.tag})")
-            sys.exit(1)
+    rollback_run = rollback_to_run(
+        project_id=args.project,
+        run_id=args.run,
+        tag=args.tag,
+        apply=args.apply,
+    )
 
-        # Get the current (latest) run for comparison
-        latest = (
-            db.query(ProcessingRun)
-            .filter(
-                ProcessingRun.project_id == args.project,
-                ProcessingRun.status == "completed",
-            )
-            .order_by(ProcessingRun.started_at.desc())
-            .first()
-        )
-
-        print(f"\n{_BOLD}Rollback Plan{_RESET}")
-        print(f"  Project:  {args.project}")
-        print(f"  Target:   Run #{target.id} ({target.version_tag or '-'}) "
-              f"from {target.started_at}")
-        if latest:
-            print(f"  Current:  Run #{latest.id} ({latest.version_tag or '-'}) "
-                  f"from {latest.started_at}")
+    if not rollback_run and args.apply:
+        _err("Rollback failed")
+        sys.exit(1)
+    elif not args.apply:
+        print("  Use --apply to record this rollback (dry-run mode)")
         print()
-
-        if args.apply:
-            # MVP: record rollback as a new run pointing to target as parent
-            rollback_run = ProcessingRun(
-                project_id=args.project,
-                parent_run_id=target.id,
-                config_json=target.config_json,
-                prompt_versions=target.prompt_versions or {},
-                stages_completed=list(target.stages_completed or []),
-                status="rollback",
-                version_tag=f"rollback_to_{target.version_tag or target.id}",
-                commit_message=f"Rollback to run #{target.id} ({target.version_tag or '-'})",
-                started_at=datetime.now(timezone.utc),
-                completed_at=datetime.now(timezone.utc),
-            )
-            db.add(rollback_run)
-            db.commit()
-            db.refresh(rollback_run)
-
-            # TODO: Full state restoration in production
-            # This would reset Chapter/Paragraph status fields and reprocess
-            _ok(f"Rollback recorded as Run #{rollback_run.id}")
-            _warn("Chapter/paragraph status fields NOT reverted (--apply-full for full restoration)")
-            print()
-            print("To reset status fields and reprocess from the target state:")
-            print(f"  python scripts/version_manager.py restore-state --project {args.project} --run {target.id}")
-        else:
-            print("  Use --apply to record this rollback (dry-run mode)")
-            print()
-
-    finally:
-        db.close()
 
 
 def cmd_diff(args: argparse.Namespace) -> None:
     """Show differences between two processing runs."""
-    db = _get_db()
-    try:
-        run_a = db.query(ProcessingRun).filter(ProcessingRun.id == args.run).first()
-        run_b = db.query(ProcessingRun).filter(ProcessingRun.id == args.other).first()
+    diff = diff_runs(args.run, args.other)
 
-        if not run_a or not run_b:
-            _err("One or both runs not found")
-            sys.exit(1)
+    if "error" in diff:
+        _err(diff["error"])
+        sys.exit(1)
 
-        print(f"\n{_BOLD}Diff: Run #{run_a.id} → Run #{run_b.id}{_RESET}\n")
+    print(f"\n{_BOLD}Diff: Run #{args.run} → Run #{args.other}{_RESET}\n")
 
-        # Status
-        if run_a.status != run_b.status:
-            print(f"  {'Status:':<20} {run_a.status} → {run_b.status}")
+    if not diff.get("differences"):
+        print("  (no significant differences)")
+        return
 
-        # Score
-        if run_a.golden_score != run_b.golden_score:
-            print(f"  {'Golden Score:':<20} {run_a.golden_score} → {run_b.golden_score}")
+    for key, value in diff["differences"].items():
+        if isinstance(value, dict) and "from" in value and "to" in value:
+            print(f"  {key:<20} {value['from']} → {value['to']}")
+        elif isinstance(value, list):
+            print(f"  {key:<20} {', '.join(map(str, value))}")
+        else:
+            print(f"  {key:<20} {value}")
 
-        # Stages
-        stages_a = set(run_a.stages_completed or [])
-        stages_b = set(run_b.stages_completed or [])
-        added = stages_b - stages_a
-        removed = stages_a - stages_b
-        if added:
-            print(f"  {'Stages added:':<20} {', '.join(sorted(added))}")
-        if removed:
-            print(f"  {'Stages removed:':<20} {', '.join(sorted(removed))}")
-
-        # Config (just show keys)
-        config_a = set()
-        config_b = set()
-        try:
-            ca = json.loads(run_a.config_json) if isinstance(run_a.config_json, str) else run_a.config_json
-            cb = json.loads(run_b.config_json) if isinstance(run_b.config_json, str) else run_b.config_json
-            config_a = set(ca.keys()) if isinstance(ca, dict) else set()
-            config_b = set(cb.keys()) if isinstance(cb, dict) else set()
-        except (json.JSONDecodeError, TypeError):
-            pass
-        config_added = config_b - config_a
-        config_removed = config_a - config_b
-        if config_added:
-            print(f"  {'Config keys added:':<20} {', '.join(sorted(config_added))}")
-        if config_removed:
-            print(f"  {'Config keys removed:':<20} {', '.join(sorted(config_removed))}")
-
-        if not added and not removed and run_a.status == run_b.status and run_a.golden_score == run_b.golden_score:
-            print("  (no significant differences)")
-
-        print()
-    finally:
-        db.close()
+    print()
 
 
 def cmd_restore_state(args: argparse.Namespace) -> None:
@@ -418,90 +203,21 @@ def cmd_restore_state(args: argparse.Namespace) -> None:
     fields of Chapters and Paragraphs so that only stages recorded
     in the target run show as completed.
     """
-    db = _get_db()
-    try:
-        target = _find_run(db, args.project, run_id=args.run)
-        if not target:
-            _err(f"Target run not found (project={args.project}, id={args.run})")
-            sys.exit(1)
-
-        if not args.force:
-            print(f"\n{_RED}{_BOLD}WARNING: This will modify chapter/paragraph status fields{_RESET}")
-            print(f"  Project: {args.project}")
+    if not args.force:
+        print(f"\n{_RED}{_BOLD}WARNING: This will modify chapter/paragraph status fields{_RESET}")
+        print(f"  Project: {args.project}")
+        target = get_run(args.project, run_id=args.run)
+        if target:
             print(f"  Target:  Run #{target.id} ({target.version_tag or '-'})")
             print(f"  Stages to preserve: {', '.join(target.stages_completed or [])}")
-            ans = input("\nContinue? [y/N]: ").strip().lower()
-            if ans != "y":
-                print("Aborted.")
-                return
+        ans = input("\nContinue? [y/N]: ").strip().lower()
+        if ans != "y":
+            print("Aborted.")
+            return
 
-        from src.audiobook_studio.models import Chapter, Paragraph
-
-        stages = set(target.stages_completed or [])
-
-        # Map stage names to chapter status fields
-        stage_field_map = {
-            "extract": "extract_status",
-            "analyze": "analyze_status",
-            "annotate": "annotate_status",
-            "edit": "edit_status",
-            "synthesize": "synthesize_status",
-            "quality": "quality_status",
-        }
-
-        chapters_updated = 0
-        paragraphs_updated = 0
-
-        chapters = (
-            db.query(Chapter)
-            .filter(Chapter.project_id == args.project)
-            .all()
-        )
-        for ch in chapters:
-            changed = False
-            for stage_name, field in stage_field_map.items():
-                current = getattr(ch, field, "pending")
-                if stage_name in stages:
-                    if current != "completed":
-                        setattr(ch, field, "completed")
-                        changed = True
-                else:
-                    if current != "pending":
-                        setattr(ch, field, "pending")
-                        changed = True
-            if changed:
-                chapters_updated += 1
-
-            # Paragraph status: reset to "pending" for stages not in target
-            paras = (
-                db.query(Paragraph)
-                .filter(
-                    Paragraph.project_id == args.project,
-                    Paragraph.chapter_id == ch.id,
-                )
-                .all()
-            )
-            for p in paras:
-                if p.status not in ("pending",) and p.status not in stages:
-                    # Map old paragraph status to stage names
-                    status_map = {
-                        "extracted": "extract",
-                        "analyzed": "analyze",
-                        "annotated": "annotate",
-                        "edited": "edit",
-                        "synthesized": "synthesize",
-                        "quality_checked": "quality",
-                    }
-                    mapped = status_map.get(p.status)
-                    if mapped and mapped not in stages:
-                        p.status = "pending"
-                        paragraphs_updated += 1
-
-        db.commit()
-        _ok(f"State restored: {chapters_updated} chapters, {paragraphs_updated} paragraphs updated")
-        print(f"  Active stages: {', '.join(stages)}")
-    finally:
-        db.close()
+    result = restore_state(args.project, args.run)
+    _ok(f"State restored: {result['chapters_updated']} chapters, {result['paragraphs_updated']} paragraphs updated")
+    print(f"  Active stages: {', '.join(result.get('stages', []))}")
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────

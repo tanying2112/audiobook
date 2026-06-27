@@ -55,8 +55,8 @@ export function useWaveSurfer(containerRef: Ref<HTMLElement | null>) {
       ws.on('pause', () => { isPlaying.value = false })
       ws.on('finish', () => { isPlaying.value = false })
 
-      ws.on('error', (err: string) => {
-        error.value = typeof err === 'string' ? err : err?.message || 'WaveSurfer error'
+      ws.on('error', (err: Error) => {
+        error.value = err?.message || 'WaveSurfer error'
       })
 
       wavesurfer.value = ws

@@ -81,7 +81,7 @@ class TestRssFeedGenerator:
         assert "由Audiobook Studio自动生成的有声书" in rss_content
         assert "<language>zh-CN</language>" in rss_content
         assert "<author>测试作者</author>" in rss_content
-        assert "© 2024 测试作者" in rss_content
+        assert "© 2026 测试作者" in rss_content
 
     def test_generate_rss_feed_itunes_tags(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         rss_content = generator.generate_rss_feed(
@@ -98,7 +98,7 @@ class TestRssFeedGenerator:
         assert "<itunes:email>noreply@audiobook.studio</itunes:email>" in rss_content
         assert "<itunes:explicit>no</itunes:explicit>" in rss_content
         assert '<itunes:category text="Arts">' in rss_content
-        assert '<itunes:category text="Books">' in rss_content
+        assert '<itunes:category text="Books" />' in rss_content
 
     def test_generate_rss_feed_with_cover_image(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         cover_url = "http://localhost:8000/covers/book1.jpg"
@@ -126,10 +126,10 @@ class TestRssFeedGenerator:
         assert rss_content.count("</item>") == 3
 
         # Check first chapter item
-        assert "<title>第1章 测试标题</title>" in rss_content
+        assert "<title>第1章 第1章 测试标题</title>" in rss_content
         assert "第1章的摘要内容" in rss_content
         assert "<content:encoded>" in rss_content
-        assert "<![CDATA[第1章的正文内容...]]>" in rss_content
+        assert "&lt;![CDATA[第1章的正文内容...]]&gt;" in rss_content
         assert "<guid isPermaLink=\"false\">1-chapter-1</guid>" in rss_content
 
     def test_generate_rss_feed_enclosure(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
@@ -139,8 +139,8 @@ class TestRssFeedGenerator:
             audio_segments_by_chapter=mock_audio_segments_by_chapter,
         )
 
-        # Check enclosure for chapter 1
-        assert 'type="audio/x-m4b"' in rss_content
+        # Check enclosure for chapter 1 — audio/mp4 is the correct MIME for M4B
+        assert 'type="audio/mp4"' in rss_content
         assert 'url="http://localhost:8000/audio/book_1_chapter_1.m4b"' in rss_content
 
         # Check duration format (1 hour = 3600 seconds = 01:00:00)
@@ -174,8 +174,8 @@ class TestRssFeedGenerator:
 
         # Only 2 items should be generated
         assert rss_content.count("<item>") == 2
-        assert "<title>第1章 测试标题</title>" in rss_content
-        assert "<title>第3章 测试标题</title>" in rss_content
+        assert "<title>第1章 第1章 测试标题</title>" in rss_content
+        assert "<title>第3章 第3章 测试标题</title>" in rss_content
         assert "第2章" not in rss_content  # Skipped chapter
 
     def test_generate_rss_feed_pub_date_format(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):

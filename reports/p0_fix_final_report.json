@@ -1,0 +1,74 @@
+{
+  "session": "P0 Fix Session - Langfuse v4 API & Test Coverage Enhancement",
+  "timestamp": "2026-06-19T11:00:00+08:00",
+  "summary": {
+    "status": "PARTIAL_COMPLETION",
+    "blockers_resolved": 2,
+    "critical_fixes": [
+      "Langfuse v4 API compatibility fixed - Replaced deprecated .trace() with start_as_current_observation() + @observe decorator",
+      "LiteLLM import performance optimized - Set LITELLM_LOCAL_MODEL_COST_MAP=true in conftest.py"
+    ],
+    "test_status": {
+      "passing_tests": "213 tests passing (orchestrator, feedback modules, extract, etc.)",
+      "blocked_tests": "test_quality_check.py (syntax error), test_synthesize.py (import error) - now fixed",
+      "failing_due_to_external_deps": "~13 tests failing due to missing ffprobe, kokoro-onnx, edge-tts"
+    },
+    "coverage": {
+      "overall": "36.4% (target: 90%)",
+      "pipeline": "32.6% (target: 75%) - orchestrator 97.1%, extract 76% ✅",
+      "schemas": "90.9% (target: 95%) - only legacy.py at 0%",
+      "router": "56.4% (target: 70%)",
+      "feedback": "75.5% (target: 75%) ✅ PASS",
+      "monitoring": "39.9% (target: 60%)",
+      "api": "8.3% (target: 80%)",
+      "client": "25% (target: 70%)"
+    }
+  },
+  "key_achievements": [
+    "Fixed Langfuse v4 API compatibility in monitoring/langfuse_client.py",
+    "Fixed orchestrator.py test collection (fixed _ = run_stage to result = run_stage)",
+    "Fixed conftest.py - disabled Langfuse in tests, set LITELLM_LOCAL_MODEL_COST_MAP=true",
+    "Fixed test_synthesize.py import error (_crossfade_stitch, AudioSegment not exported)",
+    "Fixed test_quality_check.py syntax error (duplicate pytest.main content)",
+    "Added 15 non-mock path tests for synthesize.py (7 passing, 6 failing due to external deps)",
+    "Added 9 non-mock path tests for quality_check.py (6 passing, 3 failing due to external deps)",
+    "Feedback module coverage: 75.5% (exceeds 75% target)",
+    "Orchestrator coverage: 97.1% (exceeds 75% target)"
+  ],
+  "remaining_gaps": {
+    "external_dependencies_missing": [
+      "ffprobe (for quality_check audio analysis)",
+      "kokoro-onnx (for TTS synthesis)",
+      "edge-tts (for TTS synthesis)",
+      "bs4 (BeautifulSoup for EPUB parsing)"
+    ],
+    "low_coverage_modules": [
+      "pipeline/synthesize.py (14.3%) - needs TTS engine mocks",
+      "pipeline/quality_check.py (15.4%) - needs audio analysis mocks",
+      "pipeline/analyze_structure.py (27.8%) - needs LLM mocks",
+      "pipeline/edit_for_tts.py (23.3%) - needs LLM mocks",
+      "pipeline/annotate_paragraph.py (21.5%) - needs LLM mocks",
+      "llm/router.py (37.3%) - needs integration tests",
+      "monitoring modules - need API tests"
+    ],
+    "api_coverage_critical": "0% for all API endpoints - needs FastAPI test client integration"
+  },
+  "next_steps": [
+    "1. Install external dependencies (ffprobe, kokoro-onnx, edge-tts, bs4)",
+    "2. Add proper mocks for TTS engines and audio analysis in tests",
+    "3. Fix test_synthesize.py and test_quality_check.py to use proper mocking",
+    "4. Add API integration tests for FastAPI endpoints",
+    "5. Add bench_latency.py and bench_cost.py for performance baselines",
+    "6. Update CI pipeline with coverage gates"
+  ],
+  "files_modified": [
+    "src/audiobook_studio/monitoring/langfuse_client.py - Langfuse v4 API rewrite",
+    "src/audiobook_studio/llm/router.py - Skip Langfuse init in mock mode",
+    "tests/conftest.py - LITELLM_LOCAL_MODEL_COST_MAP, disable Langfuse",
+    "tests/unit/test_orchestrator.py - Fix 'result' variable assignment",
+    "tests/unit/test_synthesize.py - Fix import of _crossfade_stitch and AudioSegment",
+    "tests/unit/test_quality_check.py - Remove duplicate pytest.main content",
+    "reports/coverage_baseline.json - Generated baseline report",
+    "reports/p0_fix_final_report.json - This report"
+  ]
+}

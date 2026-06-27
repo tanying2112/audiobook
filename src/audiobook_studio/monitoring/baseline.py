@@ -61,7 +61,7 @@ class BaselineRecorder:
         self._lock = threading.Lock()
         self._load_recent_data()
 
-    def _load_recent_data(self, hours: int = 24):
+    def _load_recent_data(self, hours: int = 24) -> None:
         """Load recent data into memory cache"""
         cutoff_time = time.time() - (hours * 3600)
 
@@ -92,19 +92,19 @@ class BaselineRecorder:
             with open(self.baseline_file, "r") as f:
                 self._baselines = json.load(f)
 
-    def record_performance(self, metric: PerformanceMetric):
+    def record_performance(self, metric: PerformanceMetric) -> None:
         """Record a performance metric"""
         with self._lock:
             self._performance_cache.append(metric)
             self._append_to_file(self.performance_file, asdict(metric))
 
-    def record_growth(self, metric: GrowthMetric):
+    def record_growth(self, metric: GrowthMetric) -> None:
         """Record a growth metric"""
         with self._lock:
             self._growth_cache.append(metric)
             self._append_to_file(self.growth_file, asdict(metric))
 
-    def _append_to_file(self, file_path: Path, data: Dict):
+    def _append_to_file(self, file_path: Path, data: Dict[str, Any]) -> None:
         """Append JSON line to file"""
         with open(file_path, "a") as f:
             f.write(json.dumps(data) + "\n")
@@ -148,7 +148,7 @@ class BaselineRecorder:
 
     def get_growth_baseline(
         self, metric_name: str, lookback_hours: int = 720
-    ) -> Dict[str, float]:  # 30 days default
+    ) -> Dict[str, Any]:  # 30 days default
         """Get baseline for a growth metric"""
         cutoff_time = time.time() - (lookback_hours * 3600)
 
@@ -163,7 +163,7 @@ class BaselineRecorder:
 
         return {
             "count": len(metric_values),
-            "latest": metric_values[-1] if metric_values else 0,
+            "latest": float(metric_values[-1]) if metric_values else 0.0,
             "avg": sum(metric_values) / len(metric_values),
             "min": min(metric_values),
             "max": max(metric_values),
@@ -273,9 +273,9 @@ class BaselineRecorder:
         else:
             return "stable"
 
-    def save_baselines(self):
+    def save_baselines(self) -> None:
         """Save calculated baselines to file"""
-        baselines = {}
+        baselines: Dict[str, Any] = {}
 
         # Calculate baselines for all stages
         stages = set(m.stage for m in self._performance_cache)
@@ -342,7 +342,7 @@ def record_stage_performance(
     difficulty: Optional[str] = None,
     schema_compliance: Optional[bool] = None,
     error: Optional[str] = None,
-):
+) -> PerformanceMetric:
     """Convenience function to record stage performance"""
     recorder = get_baseline_recorder()
     metric = PerformanceMetric(
@@ -367,7 +367,7 @@ def record_growth_metric(
     value: float,
     unit: str = "",
     tags: Optional[Dict[str, str]] = None,
-):
+) -> GrowthMetric:
     """Convenience function to record growth metric"""
     recorder = get_baseline_recorder()
     metric = GrowthMetric(
@@ -411,6 +411,7 @@ if __name__ == "__main__":
                 metric_name="books_processed",
                 value=10 + i * 2 + random.uniform(-1, 1),
                 unit="books",
+                tags={},
             )
         )
 

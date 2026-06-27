@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class CircuitBreaker:
             # half_open: allow limited calls
             return self.half_open_calls < self.half_open_max_calls
 
-    def record_success(self):
+    def record_success(self) -> None:
         """Record a successful call."""
         with self._lock:
             if self.state == "half_open":
@@ -63,7 +63,7 @@ class CircuitBreaker:
             elif self.state == "closed":
                 self.failure_count = max(0, self.failure_count - 1)
 
-    def record_failure(self):
+    def record_failure(self) -> None:
         """Record a failed call."""
         with self._lock:
             self.failure_count += 1
@@ -82,7 +82,7 @@ class CircuitBreaker:
                     f"CLOSED → OPEN ({self.failure_count} consecutive failures)"
                 )
 
-    def reset(self):
+    def reset(self) -> None:
         """Manually reset the circuit breaker to closed state."""
         with self._lock:
             self.state = "closed"
@@ -90,7 +90,7 @@ class CircuitBreaker:
             self.half_open_calls = 0
             logger.info(f"Circuit breaker [{self.provider_name}] manually reset to CLOSED")
 
-    def get_status(self) -> dict:
+    def get_status(self) -> Dict[str, Any]:
         """Get current circuit breaker status."""
         return {
             "provider": self.provider_name,

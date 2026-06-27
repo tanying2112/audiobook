@@ -264,9 +264,29 @@ main() {
     fi
 
     # =========================================================================
-    # 8. Docker 检查
+    # 8. Schema 同步检查 (full 模式)
     # =========================================================================
-    log_header "8. Docker 配置检查"
+    if [[ "$MODE" == "full" ]]; then
+        log_header "8. ORM-Schema 同步检查"
+
+        if python3 -c "from src.audiobook_studio.schemas.schema_validator import SchemaValidator; print('OK')" 2>&1; then
+            log_success "SchemaValidator 模块可用"
+
+            # 运行 schema 同步检查
+            if python3 -m src.audiobook_studio.schemas.schema_validator 2>&1; then
+                log_success "ORM-Schema 同步检查通过"
+            else
+                log_warn "ORM-Schema 存在差异，需要运行 Alembic migration"
+            fi
+        else
+            log_warn "SchemaValidator 模块不可用，跳过同步检查"
+        fi
+    fi
+
+    # =========================================================================
+    # 9. Docker 检查
+    # =========================================================================
+    log_header "9. Docker 配置检查"
 
     if [[ -f "Dockerfile" ]]; then
         log_success "Dockerfile 存在"

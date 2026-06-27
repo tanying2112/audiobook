@@ -6,6 +6,7 @@ ParagraphAnnotation with speaker, emotion, prosody, and SFX tags.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -24,10 +25,22 @@ class AnnotateParagraphPipeline:
         self,
         router=None,
         prompt_dir=None,
-        mock_mode=False,
+        mock_mode: Optional[bool] = None,
     ):
-        self.router = router or create_router(mock_mode=mock_mode)
-        self.mock_mode = mock_mode
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
 
         if prompt_dir is None:
             prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
@@ -86,13 +99,8 @@ class AnnotateParagraphPipeline:
             f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})"
         )
 
+        # Mock mode: return simulated annotation
         if self.mock_mode:
-            # Determine difficulty from book_meta if available, else default
-            difficulty = (
-                getattr(input_data.book_meta, "difficulty", "B")
-                if input_data.book_meta
-                else "B"
-            )
             return ParagraphAnnotation(
                 paragraph_index=input_data.paragraph_index,
                 speaker_canonical_name="旁白",
@@ -104,10 +112,10 @@ class AnnotateParagraphPipeline:
                 pause_before_ms=300,
                 pause_after_ms=500,
                 confidence=0.9,
-                difficulty=difficulty,
+                difficulty="B",
                 needs_sfx=False,
                 sfx_tags=[],
-                notes="Mock annotation",
+                notes="Mock annotation for testing",
             )
 
         prompt = self._build_prompt(input_data)
@@ -189,7 +197,7 @@ def annotate_paragraph(
     emotion_snapshot,
     story_line_summary,
     global_style_notes,
-    mock_mode=False,
+    mock_mode: bool = True,
 ):
     input_data = ParagraphAnnotationInput(
         paragraph_text=paragraph_text,

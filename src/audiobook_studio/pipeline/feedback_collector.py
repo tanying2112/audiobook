@@ -15,7 +15,7 @@ and can be processed by FeedbackProcessor for prompt improvement.
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -106,7 +106,7 @@ class FeedbackCollector:
         # Build the feedback record matching FeedbackRecord schema
         record = {
             "id": capture.feedback_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": capture.source or "human_edit",
             "stage": capture.stage,
             "project_id": self.project_id,

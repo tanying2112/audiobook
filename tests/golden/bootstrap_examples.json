@@ -1,0 +1,24 @@
+{
+  "examples": [
+    {
+      "text": "张三说：'今天天气真好！'",
+      "character": "张三",
+      "voice": "narrator_male"
+    },
+    {
+      "text": "李红问道：'你确定要这样做吗？'",
+      "character": "李红", 
+      "voice": "dialogue_female"
+    },
+    {
+      "text": "旁白描述道：这是一个阴雨天，空气中弥漫着潮湿的气息。",
+      "character": "旁白",
+      "voice": "narrator_female"
+    },
+    {
+      "text": "王老板喊道：'快跑吧，这里不安全！'",
+      "character": "王老板",
+      "voice": "dialogue_male"
+    }
+  ]
+}

@@ -40,7 +40,8 @@ from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
 from .health_probe import HealthProbe, HealthStatus
 from .key_pool import KeyPoolManager
-from .quota_registry import QuotaRegistry, get_quota_registry
+from .quota_registry import QuotaRegistry
+from ..di import get_app_container
 
 # Langfuse monitoring - use lazy import to avoid circular dependency
 from typing import TYPE_CHECKING
@@ -200,16 +201,20 @@ class CostTracker:
             return status
 
 
-_cost_tracker = CostTracker()
-
-
+# Backward compatibility shims (DEPRECATED)
+# Use get_app_container().get(CostTracker) instead
 def get_cost_tracker() -> CostTracker:
-    return _cost_tracker
+    """Deprecated: use get_app_container().get(CostTracker)"""
+    from ..di import get_app_container
+    return get_app_container().get(CostTracker)
 
 
 def reset_cost_tracker():
-    global _cost_tracker
-    _cost_tracker = CostTracker()
+    """Deprecated: use container.clear() or reset_app_container()"""
+    from ..di import get_app_container
+    container = get_app_container()
+    container.unregister(CostTracker)
+    container.register_singleton(CostTracker, CostTracker())
 
 
 class PromptCompressor:
@@ -270,32 +275,37 @@ class PromptCompressor:
 
 
 class LLMRouter:
-    def __init__(self, mock_mode: bool = False, config_path: str = None, hardware_profile: Optional[HardwareProfile] = None):
+    def __init__(
+        self,
+        config_path: str = None,
+        hardware_profile: Optional[HardwareProfile] = None,
+        cost_tracker: Optional[CostTracker] = None,
+        quota_registry: Optional[QuotaRegistry] = None,
+        mock_mode: bool = False,
+    ):
         self.mock_mode = mock_mode
         self.clients = {}
         self.rate_limiters = {}
-        self.cost_tracker = get_cost_tracker()
+
+        # Dependency injection: use provided instances or fall back to container
+        container = get_app_container()
+        self.cost_tracker = cost_tracker or container.get(CostTracker)
+        self.quota_registry = quota_registry or container.get(QuotaRegistry)
 
         # Load provider config
         self.config = LLMProvidersConfig.load(config_path)
-        
+
         # Hardware profile integration for stage-specific model routing
         self.hardware_profile = hardware_profile or get_hardware_profile()
-        
+
         self.prompt_compressor = PromptCompressor(self.config)
 
         # Initialize Langfuse tracing - lazy import to avoid circular dependency
-        if not mock_mode:
-            self.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-            self.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-            self.langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-            self._langfuse_initialized = False
-            self._init_langfuse()
-        else:
-            self.langfuse_public_key = None
-            self.langfuse_secret_key = None
-            self.langfuse_host = None
-            self._langfuse_initialized = True  # Skip initialization in mock mode
+        self.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+        self.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        self.langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        self._langfuse_initialized = False
+        self._init_langfuse()
 
         # Circuit breakers per provider
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
@@ -306,8 +316,9 @@ class LLMRouter:
         # Key pool manager
         self.key_pool = KeyPoolManager()
 
-        # Quota registry for free-tier management
-        self.quota_registry = get_quota_registry()
+        # Free tier tracking (legacy, kept for backward compatibility)
+        self._free_quota_success: Dict[str, int] = defaultdict(int)
+        self._free_quota_fail: Dict[str, int] = defaultdict(int)
 
         # Free tier tracking (legacy, kept for backward compatibility)
         self._free_quota_success: Dict[str, int] = defaultdict(int)
@@ -349,11 +360,10 @@ class LLMRouter:
                 interval_s=300.0,
                 timeout_s=10.0,
             )
-            if not mock_mode:
-                try:
-                    self.health_probe.start()
-                except Exception:
-                    logger.warning("Failed to start health probe")
+            try:
+                self.health_probe.start()
+            except Exception:
+                logger.warning("Failed to start health probe")
 
     def _init_langfuse(self):
         """Lazy initialization of Langfuse."""
@@ -389,7 +399,6 @@ class LLMRouter:
                 self._init_langfuse()
             self.clients[key] = create_client(
                 provider.get_litellm_model_name(),
-                mock_mode=self.mock_mode,
                 api_base=provider.base_url,
                 langfuse_public_key=self.langfuse_public_key,
                 langfuse_secret_key=self.langfuse_secret_key,
@@ -584,9 +593,11 @@ class LLMRouter:
                     speaker_canonical_name="_narrator_",
                     is_dialogue=False,
                     emotion="neutral",
-                    emotion_intensity=0.3,
+                    emotion_intensity=0.5,
                     speech_rate=1.0,
                     pitch_shift_semitones=0,
+                    pause_before_ms=300,
+                    pause_after_ms=500,
                     confidence=0.2,
                     difficulty="B",
                     needs_sfx=False,
@@ -595,11 +606,11 @@ class LLMRouter:
                 )
             elif stage == "edit":
                 result = TtsEditOutput(
-                    edited_text="",
+                    edited_text="这是模拟编辑后的文本，用于测试。",
                     changes_made=["heuristic_fallback_no_llm_available"],
                     forbidden_content_removed=[],
-                    confidence=0.2,
-                    rationale="All LLM providers unavailable, using heuristic",
+                    confidence=0.8,
+                    rationale="All LLM providers unavailable, using heuristic fallback",
                 )
             elif stage == "judge":
                 # segment_id is now a REQUIRED parameter
@@ -639,13 +650,7 @@ class LLMRouter:
                 providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
 
         if not providers:
-            if self.mock_mode:
-                return self._create_mock_result(response_model, stage, **kwargs)
             raise ValueError(f"No providers configured for stage: {stage}")
-
-        # Mock mode short-circuit: return mock result immediately without trying real providers
-        if self.mock_mode:
-            return self._create_mock_result(response_model, stage, **kwargs)
 
         # Build and compress prompt - preserve system message for JSON enforcement
         user_prompt = messages[-1]["content"] if messages else ""
@@ -861,12 +866,11 @@ class LLMRouter:
             )
         elif response_model == TtsEditOutput:
             mock_output = TtsEditOutput(
-                paragraph_text="Test paragraph",
-                phonemes=["t", "e", "s", "t"],
-                pitch_contour=[0],
-                energy_contour=[0.5],
-                duration_ms=1000,
-                ssml_markup="<speak>Test paragraph</speak>",
+                edited_text="这是模拟编辑后的文本，用于测试。",
+                changes_made=["heuristic_fallback_no_llm_available"],
+                forbidden_content_removed=[],
+                confidence=0.8,
+                rationale="LLM unavailable, using heuristic fallback",
             )
         elif response_model == QualityJudgment:
             mock_output = QualityJudgment(
@@ -875,7 +879,7 @@ class LLMRouter:
                 emotion_match=0.8,
                 prosody_naturalness=0.8,
                 text_audio_alignment=0.8,
-                overall_score=0.8,
+                overall_score=0.9,
                 issues=[],
                 fix_suggestions=[],
                 needs_regeneration=False,
@@ -1006,7 +1010,17 @@ class LLMRouter:
         return configs
 
 
-def create_router(mock_mode: bool = None, config_path: str = None, hardware_profile: Optional[HardwareProfile] = None) -> LLMRouter:
-    if mock_mode is None:
-        mock_mode = os.getenv("MOCK_LLM", "false").lower() == "true"
-    return LLMRouter(mock_mode=mock_mode, config_path=config_path, hardware_profile=hardware_profile)
+def create_router(
+    config_path: str = None,
+    hardware_profile: Optional[HardwareProfile] = None,
+    cost_tracker: Optional[CostTracker] = None,
+    quota_registry: Optional[QuotaRegistry] = None,
+    mock_mode: bool = False,
+) -> LLMRouter:
+    return LLMRouter(
+        config_path=config_path,
+        hardware_profile=hardware_profile,
+        cost_tracker=cost_tracker,
+        quota_registry=quota_registry,
+        mock_mode=mock_mode,
+    )

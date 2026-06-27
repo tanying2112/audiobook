@@ -1,0 +1,274 @@
+# Audiobook Studio - Hardware Profile Configuration
+# 用户只需修改 active_profile 一行即可切换全链路能力
+# 三档：potato (纯本地CPU) | cloud_hybrid (默认：免费云API+本地TTS) | pro_studio (显卡+重型模型)
+
+active_profile: "cloud_hybrid"
+
+profiles:
+  # ---------------------------------------------------------
+  # 一档：土豆模式 - 纯 CPU、全离线、零成本、零依赖
+  # ---------------------------------------------------------
+  potato:
+    description: "纯本地CPU运行，无需GPU、无需联网，靠 llama.cpp + Kokoro-82M-ONNX 闭环"
+    hardware:
+      gpu_enabled: false
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      cpu_cores_min: 4
+    llm:
+      # 文本分析/标注/编辑 全走本地 GGUF 模型
+      backend: "llama_cpp"
+      models:
+        extract: "qwen2.5-7b-instruct-q4_k_m.gguf"
+        analyze: "qwen2.5-7b-instruct-q4_k_m.gguf"
+        annotate: "qwen2.5-7b-instruct-q4_k_m.gguf"
+        edit: "qwen2.5-7b-instruct-q4_k_m.gguf"
+        judge: "qwen2.5-7b-instruct-q4_k_m.gguf"
+      context_window: 8192
+      n_threads: 4
+      n_batch: 512
+      temperature: 0.3
+      max_tokens: 2048
+    tts:
+      engine: "kokoro_onnx"
+      model_path: "models/kokoro-v1.0.onnx"
+      voices_path: "models/voices-v1.0.bin"
+      # 仅使用预设音色，不支持 Voice Design
+      voice_design_enabled: false
+      reference_audio_enabled: false
+      sample_rate: 24000
+      # CPU 推理优化
+      providers: ["CPUExecutionProvider"]
+      session_options:
+        intra_op_num_threads: 4
+        inter_op_num_threads: 2
+    quality_check:
+      # 仅启用轻量规则检测，关闭重型模型
+      dnsmos_enabled: false
+      asr_enabled: false
+      speaker_similarity_enabled: false
+      rules_only: true
+      checks:
+        - silence_detection
+        - clipping_detection
+        - duration_check
+    routing:
+      strategy: "local_only"
+      fallback_enabled: false
+    cost_control:
+      max_cost_per_chapter_usd: 0.0
+      budget_enforcement: "strict"
+
+  # ---------------------------------------------------------
+  # 二档：云端白嫖模式 - 默认档，免费API做大脑，本地TTS做嘴巴
+  # ---------------------------------------------------------
+  cloud_hybrid:
+    description: "默认推荐。20+ 免费API做文本智能，Kokoro-ONNX 本地合成，QuotaRegistry 智能调度"
+    hardware:
+      gpu_enabled: false
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      cpu_cores_min: 4
+    llm:
+      backend: "litellm_router"
+      # 阶段性模型选择：关键阶段用强模型，非关键用弱/免费模型
+      stage_model_map:
+        extract:
+          - provider: "gemini_flash"
+            model: "gemini-1.5-flash"
+            priority: 1
+          - provider: "groq_70b"
+            model: "llama-3.3-70b-versatile"
+            priority: 2
+        analyze:
+          - provider: "gemini_flash"
+            model: "gemini-1.5-flash"
+            priority: 1
+          - provider: "nvidia_nemotron"
+            model: "nvidia/nemotron-3-ultra"
+            priority: 2
+          - provider: "groq_70b"
+            model: "llama-3.3-70b-versatile"
+            priority: 3
+        annotate:
+          - provider: "opencode_zen"
+            model: "gpt-4o-mini"
+            priority: 1
+          - provider: "gemini_flash"
+            model: "gemini-1.5-flash"
+            priority: 2
+        edit:
+          - provider: "opencode_zen"
+            model: "gpt-4o-mini"
+            priority: 1
+        judge:
+          - provider: "groq_70b"
+            model: "llama-3.3-70b-versatile"
+            priority: 1
+          - provider: "gemini_flash"
+            model: "gemini-1.5-flash"
+            priority: 2
+      # 本地兜底（Ollama）
+      local_fallback:
+        enabled: true
+        provider: "ollama"
+        models:
+          - "qwen2.5:14b"
+          - "llama3.1:8b"
+      quota_registry:
+        enabled: true
+        config_path: "config/llm_providers.yaml"
+        circuit_breaker:
+          failure_threshold: 3
+          recovery_timeout_seconds: 60
+        health_probe_interval_seconds: 60
+    tts:
+      engine: "kokoro_onnx"
+      model_path: "models/kokoro-v1.0.onnx"
+      voices_path: "models/voices-v1.0.bin"
+      voice_design_enabled: false
+      reference_audio_enabled: true  # 支持 Reference Audio 锚定
+      sample_rate: 24000
+      providers: ["CPUExecutionProvider"]
+      session_options:
+        intra_op_num_threads: 4
+        inter_op_num_threads: 2
+      voice_presets: "config/voice_mapping.yaml"
+      fallback_chain:
+        - engine: "edge"
+        - engine: "azure"
+        - engine: "gcp"
+    quality_check:
+      dnsmos_enabled: true
+      asr_enabled: true
+      asr_model: "sensevoice_small"
+      speaker_similarity_enabled: true
+      speaker_embed_model: "ecapa_tdnn"
+      rules_enabled: true
+      thresholds:
+        dnsmos_min: 3.5
+        asr_wer_max: 0.05
+        speaker_sim_min: 0.85
+    routing:
+      strategy: "quota_aware"
+      priority_order: ["free_tier", "local_fallback"]
+      cost_aware: true
+    cost_control:
+      max_cost_per_chapter_usd: 0.0  # 全免费
+      budget_enforcement: "warn_only"
+
+  # ---------------------------------------------------------
+  # 三档：专业显卡模式 - 全功能：VoxCPM2、DSPy演进、声纹锚定、A/B测试
+  # ---------------------------------------------------------
+  pro_studio:
+    description: "专业显卡模式。高显存GPU跑 VoxCPM2/CosyVoice，启用 DSPy 自动演进、完整质检、声纹锚定"
+    hardware:
+      gpu_enabled: true
+      min_vram_gb: 16
+      recommended_vram_gb: 24
+      min_ram_gb: 32
+      cpu_cores_min: 8
+    llm:
+      backend: "litellm_router"
+      stage_model_map:
+        extract:
+          - provider: "gemini_pro"
+            model: "gemini-1.5-pro"
+            priority: 1
+        analyze:
+          - provider: "gemini_pro"
+            model: "gemini-1.5-pro"
+            priority: 1
+          - provider: "claude_sonnet"
+            model: "claude-3-5-sonnet"
+            priority: 2
+        annotate:
+          - provider: "opencode_zen"
+            model: "gpt-4o"
+            priority: 1
+          - provider: "gemini_pro"
+            model: "gemini-1.5-pro"
+            priority: 2
+        edit:
+          - provider: "opencode_zen"
+            model: "gpt-4o"
+            priority: 1
+        judge:
+          - provider: "claude_sonnet"
+            model: "claude-3-5-sonnet"
+            priority: 1
+          - provider: "gemini_pro"
+            model: "gemini-1.5-pro"
+            priority: 2
+      local_fallback:
+        enabled: true
+        provider: "ollama"
+        models:
+          - "qwen2.5:72b"
+          - "llama3.1:70b"
+      quota_registry:
+        enabled: true
+        config_path: "config/llm_providers.yaml"
+    tts:
+      engine: "voxcpmp2"
+      # VoxCPM2 配置
+      model_path: "models/VoxCPM2"
+      dtype: "float16"  # float16 | bfloat16 | int8
+      compile: true  # torch.compile 加速
+      voice_design_enabled: true
+      reference_audio_enabled: true
+      sample_rate: 48000
+      # 批处理优化
+      batch_size: 4
+      kv_cache_reuse: true
+      # 回退链
+      fallback_chain:
+        - engine: "cosyvoice"
+          model_path: "models/CosyVoice-300M"
+        - engine: "kokoro_onnx"
+          model_path: "models/kokoro-v1.0.onnx"
+    quality_check:
+      dnsmos_enabled: true
+      asr_enabled: true
+      asr_model: "sensevoice_large"
+      speaker_similarity_enabled: true
+      speaker_embed_model: "wavlm_large"
+      rules_enabled: true
+      thresholds:
+        dnsmos_min: 3.8
+        asr_wer_max: 0.03
+        speaker_sim_min: 0.90
+    routing:
+      strategy: "quality_first"
+      priority_order: ["premium_api", "local_heavy", "free_tier"]
+      cost_aware: false
+    dspy:
+      enabled: true
+      optimizer: "BootstrapFewShotWithRandomSearch"
+      metric_weights:
+        dnsmos: 0.4
+        asr_accuracy: 0.3
+        llm_semantic: 0.3
+      budget:
+        max_calls: 500
+        early_stopping_rounds: 3
+      target_modules:
+        - "role_identification"
+        - "voice_design_generation"
+    voice_anchor:
+      enabled: true
+      embedding_model: "wavlm_large"
+      similarity_threshold: 0.85
+      max_drift_alerts_per_chapter: 3
+
+# ---------------------------------------------------------
+# 运行时自动检测与推荐（不修改此处，由代码在启动时评估）
+# ---------------------------------------------------------
+auto_detect:
+  enabled: true
+  # 如果用户未显式设置 active_profile，启动时按硬件自动推荐
+  # 推荐逻辑：
+  # - 无 GPU / VRAM < 8GB / RAM < 16GB -> potato
+  # - 有 GPU / VRAM >= 8GB < 16GB -> cloud_hybrid
+  # - 有 GPU / VRAM >= 16GB / RAM >= 32GB -> pro_studio
+  fallback_on_error: "potato"

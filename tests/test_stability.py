@@ -1,10 +1,14 @@
 """Tests for CircuitBreaker, HealthProbe, ApiKeyPool, and enhanced Router."""
 
+import os
 import time
 import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Set MOCK_LLM environment variable for mock mode testing
+os.environ["MOCK_LLM"] = "true"
 
 from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
 from src.audiobook_studio.llm.health_probe import HealthProbe, HealthStatus
@@ -180,13 +184,13 @@ class TestKeyPoolManager:
 class TestEnhancedRouter:
     def test_router_initialization(self):
         from src.audiobook_studio.llm.router import LLMRouter
-        router = LLMRouter(mock_mode=True)
+        router = LLMRouter()
         assert len(router.circuit_breakers) > 0
         assert len(router.key_pool._pools) > 0
 
     def test_free_tier_health(self):
         from src.audiobook_studio.llm.router import LLMRouter
-        router = LLMRouter(mock_mode=True)
+        router = LLMRouter()
         health = router.get_free_tier_health()
         assert "total_free_providers" in health
         assert "overall_health" in health
@@ -195,7 +199,7 @@ class TestEnhancedRouter:
     def test_mock_call_annotation(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import ParagraphAnnotation
-        router = LLMRouter(mock_mode=True)
+        router = LLMRouter()
         result = router.call(
             "annotate",
             ParagraphAnnotation,
@@ -207,8 +211,8 @@ class TestEnhancedRouter:
     def test_heuristic_fallback(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import ParagraphAnnotation
-        router = LLMRouter(mock_mode=True)
-        fallback = router._heuristic_fallback("annotate", ParagraphAnnotation)
+        router = LLMRouter()
+        fallback = router._heuristic_fallback("annotate", ParagraphAnnotation, segment_id="test_segment")
         assert fallback is not None
         assert fallback.speaker_canonical_name == "_narrator_"
         assert fallback.confidence == 0.2
@@ -216,15 +220,15 @@ class TestEnhancedRouter:
     def test_heuristic_fallback_edit(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import TtsEditOutput
-        router = LLMRouter(mock_mode=True)
-        fallback = router._heuristic_fallback("edit", TtsEditOutput)
+        router = LLMRouter()
+        fallback = router._heuristic_fallback("edit", TtsEditOutput, segment_id="test_segment")
         assert fallback is not None
         assert "heuristic_fallback" in fallback.changes_made[0]
 
     def test_heuristic_fallback_judge(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import QualityJudgment
-        router = LLMRouter(mock_mode=True)
-        fallback = router._heuristic_fallback("judge", QualityJudgment)
+        router = LLMRouter()
+        fallback = router._heuristic_fallback("judge", QualityJudgment, segment_id="test_segment")
         assert fallback is not None
         assert fallback.needs_regeneration is True

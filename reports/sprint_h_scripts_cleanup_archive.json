@@ -1,0 +1,151 @@
+{
+  "sprint": "H",
+  "phase": "scripts_cleanup",
+  "name": "Sprint H Scripts Directory Cleanup & Archive",
+  "date_completed": "2026-06-19",
+  "status": "COMPLETED",
+  "summary": "Completed scripts/ directory cleanup: extracted reusable business logic to src/, archived superseded scripts, moved test utilities, kept only thin CLI entry points.",
+
+  "cleanup_actions": {
+    "extracted_to_src": [
+      {
+        "script": "scripts/promote.py (business logic)",
+        "target": "src/audiobook_studio/feedback/release.py",
+        "classes": ["PromotionGate", "CanaryRelease", "CanaryConfig", "CanaryMetrics", "VersionStore"],
+        "description": "Canary release, promotion gate, and version store logic"
+      },
+      {
+        "script": "scripts/version_manager.py (business logic)",
+        "target": "src/audiobook_studio/version_manager.py",
+        "functions": ["save_run", "list_runs", "get_run", "rollback_to_run", "diff_runs", "restore_state"],
+        "description": "ProcessingRun snapshot management with version tracking and rollback"
+      },
+      {
+        "script": "scripts/download_kokoro_model.py (business logic)",
+        "target": "src/audiobook_studio/tts/model_downloader.py",
+        "functions": ["ensure_models_available", "get_model_paths", "verify_models", "download_all_models"],
+        "constants": ["REQUIRED_FILES", "FALLBACK_FILES", "DEFAULT_MODEL_DIR"],
+        "description": "Kokoro-ONNX model downloader with resume, checksum, multi-threaded support"
+      }
+    ],
+    "archived_scripts": [
+      {
+        "source": "scripts/gradual_promotion.py",
+        "destination": "docs/archive/scripts/gradual_promotion.py",
+        "replaced_by": "scripts/promote.py (CanaryRelease class)"
+      },
+      {
+        "source": "scripts/self_iteration_loop.py",
+        "destination": "docs/archive/scripts/self_iteration_loop.py",
+        "replaced_by": "src/audiobook_studio/feedback/integration.py (SelfIterationLoop class)"
+      }
+    ],
+    "moved_to_tests": [
+      {
+        "source": "scripts/generate_golden_mocks.py",
+        "destination": "tests/utils/generate_golden_mocks.py"
+      },
+      {
+        "source": "scripts/e2e_long_book.py",
+        "destination": "tests/e2e/e2e_long_book.py"
+      }
+    ],
+    "retained_cli_wrappers": [
+      {
+        "script": "scripts/promote.py",
+        "delegates_to": "src.audiobook_studio.feedback.release",
+        "description": "Canary Release & Promotion Gate CLI"
+      },
+      {
+        "script": "scripts/version_manager.py",
+        "delegates_to": "src.audiobook_studio.version_manager",
+        "description": "ProcessingRun version management CLI"
+      },
+      {
+        "script": "scripts/download_kokoro_model.py",
+        "delegates_to": "src.audiobook_studio.tts.model_downloader",
+        "description": "Kokoro-ONNX model download CLI"
+      },
+      {
+        "script": "scripts/run_ab_test.py",
+        "delegates_to": "src.audiobook_studio.feedback.ab_test",
+        "description": "A/B testing CLI"
+      },
+      {
+        "script": "scripts/run_e2e_verification.py",
+        "delegates_to": "N/A (integration test)",
+        "description": "E2E verification CLI"
+      },
+      {
+        "script": "scripts/run_self_iteration.py",
+        "delegates_to": "src.audiobook_studio.feedback.integration",
+        "description": "Self-iteration loop CLI"
+      },
+      {
+        "script": "scripts/feedback_processor.py",
+        "delegates_to": "src.audiobook_studio.feedback.auto_processor",
+        "description": "Feedback processor CLI"
+      },
+      {
+        "script": "scripts/ci_performance_check.py",
+        "delegates_to": "N/A",
+        "description": "CI performance check"
+      },
+      {
+        "script": "scripts/contract_compliance_check.py",
+        "delegates_to": "N/A",
+        "description": "Contract compliance check"
+      },
+      {
+        "script": "scripts/coverage_check.py",
+        "delegates_to": "N/A",
+        "description": "Coverage baseline report"
+      },
+      {
+        "script": "scripts/clean_before_commit.sh",
+        "delegates_to": "N/A",
+        "description": "Code cleanup shell script"
+      },
+      {
+        "script": "scripts/generate_health_report.sh",
+        "delegates_to": "N/A",
+        "description": "Health report generation shell script"
+      }
+    ],
+    "documentation_created": [
+      {
+        "file": "docs/archive/scripts/README.md",
+        "description": "Migration guide with code examples, replacement mapping, and recovery instructions"
+      }
+    ]
+  },
+
+  "module_exports_updated": [
+    {
+      "module": "src/audiobook_studio/feedback/__init__.py",
+      "exports": ["PromotionGate", "CanaryRelease", "CanaryConfig", "CanaryMetrics", "VersionStore", "PromotionResult", "CanaryMetrics"]
+    },
+    {
+      "module": "src/audiobook_studio/tts/__init__.py",
+      "exports": ["ensure_models_available", "get_model_paths", "verify_models", "download_all_models", "REQUIRED_FILES", "FALLBACK_FILES", "DEFAULT_MODEL_DIR"]
+    }
+  ],
+
+  "imports_updated": [
+    {
+      "file": "scripts/run_e2e_verification.py",
+      "old_import": "from scripts.promote import PromotionGate, CanaryRelease, CanaryConfig, CanaryMetrics, VersionStore",
+      "new_import": "from src.audiobook_studio.feedback.release import PromotionGate, CanaryRelease, CanaryConfig, CanaryMetrics, VersionStore"
+    }
+  ],
+
+  "verification": {
+    "scripts_directory_count": 12,
+    "archived_scripts_count": 2,
+    "moved_to_tests_count": 2,
+    "extracted_modules_count": 3,
+    "archive_readme_created": true,
+    "all_cli_wrappers_functional": true,
+    "imports_updated": true
+  }
+}

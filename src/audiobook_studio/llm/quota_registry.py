@@ -355,20 +355,14 @@ class QuotaRegistry:
         return max(0, min(daily_score, minute_score) - failure_penalty)
 
 
-# Global instance
-_quota_registry: Optional[QuotaRegistry] = None
-
-
+# Backward compatibility shims (DEPRECATED)
+# Use get_app_container().get(QuotaRegistry) instead
 def get_quota_registry() -> QuotaRegistry:
-    """Get the global quota registry instance."""
-    global _quota_registry
-    if _quota_registry is None:
-        _quota_registry = QuotaRegistry()
-    return _quota_registry
+    """Deprecated: use get_app_container().get(QuotaRegistry)"""
+    from ..di import get_app_container
+    return get_app_container().get(QuotaRegistry)
 
 
 def init_quota_registry() -> QuotaRegistry:
-    """Initialize the global quota registry."""
-    global _quota_registry
-    _quota_registry = QuotaRegistry()
-    return _quota_registry
+    """Deprecated: container manages lifecycle"""
+    return get_quota_registry()

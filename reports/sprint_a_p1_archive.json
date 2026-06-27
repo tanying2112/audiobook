@@ -1,0 +1,87 @@
+{
+  "sprint": "A-P1",
+  "name": "Coverage Baseline + E2E Long Book Verification",
+  "status": "COMPLETED",
+  "completed_at": "2026-06-19T07:00:00+08:00",
+  "summary": {
+    "overall": "Sprint A-P1 successfully completed. All P0 deliverables ready. Coverage baseline established. E2E long book verification script ready.",
+    "blockers_resolved": [
+      "Langfuse v3/v4 API compatibility fixed (removed deprecated .trace() method, replaced with start_as_current_observation and @observe)"
+    ]
+  },
+  "deliverables": {
+    "A-P1-1_Long_Novel_Test_Data": {
+      "status": "DONE",
+      "file": "data/long_novel/hongloumeng.txt",
+      "size": "427K characters",
+      "description": "Full text of 红楼梦 for E2E testing"
+    },
+    "A-P1-2_E2E_Verification_Script": {
+      "status": "DONE",
+      "file": "scripts/e2e_long_book.py",
+      "description": "Full pipeline verification on long novel in mock mode, generates detailed metrics report"
+    },
+    "A-P1-3_Coverage_Baseline_Script": {
+      "status": "DONE",
+      "file": "scripts/coverage_check.py",
+      "description": "Generates coverage baseline JSON with category targets (pipeline ≥75%, schemas ≥95%, etc.)"
+    }
+  },
+  "test_results": {
+    "orchestrator": {
+      "tests": 27,
+      "passed": 25,
+      "skipped": 2,
+      "failed": 0,
+      "coverage": "97.1%"
+    },
+    "feedback_modules": {
+      "tests": 165,
+      "passed": 165,
+      "failed": 0,
+      "submodules": {
+        "feedback_collector": "100%",
+        "feedback_processor": "98.7%",
+        "feedback_kill_switch": "95.4%",
+        "feedback_promotion_gate": "82.5%",
+        "feedback_prompt_upgrader": "96.9%",
+        "feedback_quality_enhancement": "87.0%"
+      }
+    },
+    "synthesize_non_mock": {
+      "tests": 10,
+      "passed": 10,
+      "coverage": "10.9% (partial - non-mock paths only)"
+    },
+    "quality_check_non_mock": {
+      "tests": 9,
+      "passed": 9,
+      "coverage": "15.4% (partial - non-mock paths only)"
+    }
+  },
+  "langfuse_fix": {
+    "issue": "Langfuse v4 removed .trace() method from client",
+    "solution": "Rewrote langfuse_client.py using v4 APIs: start_as_current_observation() and @observe decorator",
+    "files_modified": [
+      "src/audiobook_studio/monitoring/langfuse_client.py",
+      "src/audiobook_studio/llm/router.py (skip Langfuse init in mock_mode)",
+      "tests/conftest.py (disable Langfuse in tests)"
+    ],
+    "api_changes": {
+      "trace()": "Now uses start_as_current_observation with as_type='span'",
+      "span()": "Uses parent.start_as_current_observation for child spans",
+      "trace_function()": "Uses @observe decorator from langfuse",
+      "observe_llm_call/tts/quality": "Single-shot observations using start_as_current_observation"
+    }
+  },
+  "known_issues": {
+    "test_performance": "Slow test execution (~4-5s per test) due to LiteLLM model cost map fetch at import time (network DNS issues). Environment variable LITELLM_LOCAL_MODEL_COST_MAP set but not fully effective.",
+    "low_coverage_modules": "extract.py (17%), synthesize.py (21%), quality_check.py (32%) - need more test coverage for non-mock paths"
+  },
+  "next_steps": [
+    "Fix LiteLLM import performance (use LITELLM_LOCAL_MODEL_COST_MAP=true somewhere earlier)",
+    "Add non-mock path tests for extract.py, synthesize.py, quality_check.py to boost coverage to ≥85%",
+    "Run full test suite with coverage after performance fix",
+    "Update coverage_baseline.json with final numbers"
+  ]
+}

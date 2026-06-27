@@ -1,7 +1,7 @@
 """Langfuse Client for LLM/TTS/Quality Tracing.
 
 Provides observability for Audiobook Studio pipeline operations.
-Integrates with Langfuse SDK for tracing, metrics, and debugging.
+Integrates with Langfuse SDK v3+/v4+ for tracing, metrics, and debugging.
 """
 
 import os
@@ -9,7 +9,7 @@ import logging
 import atexit
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, Union, Generator
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -52,12 +52,24 @@ def init_langfuse(
         _enabled = False
         return False
 
+    # Reject placeholder/example keys that would cause 401 errors
+    _placeholder_patterns = ("your-", "example", "changeme", "xxx", "TODO")
+    for _k_name, _k_val in [("public_key", public_key), ("secret_key", secret_key)]:
+        if any(_p in _k_val.lower() for _p in _placeholder_patterns):
+            logger.warning(
+                f"Langfuse {_k_name} looks like a placeholder ('{_k_val[:20]}...'), "
+                "tracing disabled. Set real keys in .env."
+            )
+            _enabled = False
+            return False
+
     try:
         from langfuse import Langfuse
         _langfuse_client = Langfuse(
             public_key=public_key,
             secret_key=secret_key,
             host=host,
+            tracing_enabled=True,
         )
         _enabled = True
         logger.info(f"Langfuse initialized: {host}")
@@ -95,6 +107,48 @@ def flush_langfuse() -> None:
             logger.warning(f"Failed to flush Langfuse: {e}")
 
 
+def _trace_context_manager(
+    name: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[list] = None,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> Generator[Any, None, None]:
+    """Internal context manager for creating a root trace span."""
+    if not is_enabled():
+        yield None
+        return
+
+    # Use start_as_current_observation to create root span
+    cm = _langfuse_client.start_as_current_observation(
+        name=name,
+        as_type="span",
+        metadata={
+            **(metadata or {}),
+            "tags": tags or [],
+            "user_id": user_id,
+            "session_id": session_id,
+        },
+    )
+
+    # Enter the context manager to get the actual observation
+    obs = cm.__enter__()
+    try:
+        yield obs
+    except Exception as e:
+        try:
+            obs.update(level="ERROR", status_message=str(e))
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            cm.__exit__(None, None, None)
+        except Exception:
+            pass
+        _langfuse_client.flush()
+
+
 @contextmanager
 def trace(
     name: str,
@@ -103,34 +157,13 @@ def trace(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ):
-    """Context manager for creating a trace.
+    """Context manager for creating a trace (Langfuse v4 compatible).
 
     Usage:
         with trace("pipeline.run", metadata={"project_id": 1}) as span:
             span.update(output="result")
     """
-    if not is_enabled():
-        yield None
-        return
-
-    trace_obj = _langfuse_client.trace(
-        name=name,
-        metadata=metadata or {},
-        tags=tags or [],
-        user_id=user_id,
-        session_id=session_id,
-    )
-
-    try:
-        yield trace_obj
-    except Exception as e:
-        trace_obj.update(
-            level="ERROR",
-            status_message=str(e),
-        )
-        raise
-    finally:
-        _langfuse_client.flush()
+    yield from _trace_context_manager(name, metadata, tags, user_id, session_id)
 
 
 @contextmanager
@@ -153,24 +186,31 @@ def span(
         yield None
         return
 
-    span_obj = trace_obj.span(
+    # trace_obj is the parent LangfuseSpan, create child observation
+    cm = trace_obj.start_as_current_observation(
         name=name,
+        as_type="span",
         metadata=metadata or {},
         input=input_data,
     )
 
+    obs = cm.__enter__()
     try:
-        yield span_obj
+        yield obs
     except Exception as e:
-        span_obj.update(
-            level="ERROR",
-            status_message=str(e),
-        )
+        try:
+            obs.update(level="ERROR", status_message=str(e))
+        except Exception:
+            pass
         raise
     finally:
-        if output_data is not None:
-            span_obj.update(output=output_data)
-        span_obj.end()
+        try:
+            if output_data is not None:
+                obs.update(output=output_data)
+            # The context manager exit will call end() automatically
+            cm.__exit__(None, None, None)
+        except Exception:
+            pass
         _langfuse_client.flush()
 
 
@@ -201,8 +241,9 @@ def observe_llm_call(
     if not is_enabled():
         return
 
-    _langfuse_client.generation(
+    cm = _langfuse_client.start_as_current_observation(
         name=f"llm.{stage}",
+        as_type="generation",
         model=model,
         metadata={
             "stage": stage,
@@ -214,7 +255,19 @@ def observe_llm_call(
             "latency_ms": latency_ms,
             **(metadata or {}),
         },
+        usage_details={
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        } if total_tokens > 0 else None,
+        cost_details={"total": cost_usd} if cost_usd > 0 else None,
     )
+    # We need to enter and exit the context manager to record the observation
+    obs = cm.__enter__()
+    try:
+        pass
+    finally:
+        cm.__exit__(None, None, None)
     _langfuse_client.flush()
 
 
@@ -239,8 +292,9 @@ def observe_tts_synthesis(
     if not is_enabled():
         return
 
-    _langfuse_client.generation(
+    cm = _langfuse_client.start_as_current_observation(
         name="tts.synthesis",
+        as_type="generation",
         model=backend,
         metadata={
             "voice_id": voice_id,
@@ -251,6 +305,11 @@ def observe_tts_synthesis(
             **(metadata or {}),
         },
     )
+    obs = cm.__enter__()
+    try:
+        pass
+    finally:
+        cm.__exit__(None, None, None)
     _langfuse_client.flush()
 
 
@@ -275,8 +334,9 @@ def observe_quality_check(
     if not is_enabled():
         return
 
-    _langfuse_client.event(
+    cm = _langfuse_client.start_as_current_observation(
         name=f"quality.{stage}",
+        as_type="span",
         metadata={
             "passed": passed,
             "score": score,
@@ -287,6 +347,11 @@ def observe_quality_check(
         },
         level="INFO" if passed else "WARNING",
     )
+    obs = cm.__enter__()
+    try:
+        pass
+    finally:
+        cm.__exit__(None, None, None)
     _langfuse_client.flush()
 
 
@@ -295,13 +360,15 @@ def trace_function(
     stage: Optional[str] = None,
     metadata_extractor: Optional[Callable] = None,
 ):
-    """Decorator to trace a function call.
+    """Decorator to trace a function call using Langfuse v4 @observe.
 
     Usage:
         @trace_function("llm.analyze", stage="analyze")
         def analyze_chapter(text):
             ...
     """
+    from langfuse import observe as langfuse_observe
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -319,24 +386,20 @@ def trace_function(
             if not is_enabled():
                 return func(*args, **kwargs)
 
-            with trace(trace_name, metadata=meta) as trace_obj:
-                with span(f"{trace_name}.exec", trace_obj) as span_obj:
-                    start = datetime.now()
-                    try:
-                        result = func(*args, **kwargs)
-                        span_obj.update(output={"success": True})
-                        return result
-                    except Exception as e:
-                        span_obj.update(
-                            level="ERROR",
-                            status_message=str(e),
-                            output={"success": False, "error": str(e)},
-                        )
-                        raise
-                    finally:
-                        latency_ms = (datetime.now() - start).total_seconds() * 1000
-                        if span_obj:
-                            span_obj.metadata = {**span_obj.metadata, "latency_ms": latency_ms}
+            # Use Langfuse v4 @observe decorator approach
+            @langfuse_observe(name=trace_name, as_type="span")
+            def traced_func():
+                start = datetime.now()
+                try:
+                    result = func(*args, **kwargs)
+                    return result
+                except Exception as e:
+                    raise
+                finally:
+                    latency_ms = (datetime.now() - start).total_seconds() * 1000
+                    meta["latency_ms"] = latency_ms
+
+            return traced_func()
 
         return wrapper
     return decorator
@@ -353,11 +416,19 @@ def score_trace(trace_obj: Any, score: float, comment: Optional[str] = None) -> 
     if not is_enabled() or trace_obj is None:
         return
 
-    trace_obj.score(
-        name="quality",
-        value=score,
-        comment=comment,
-    )
+    try:
+        trace_obj.score(
+            name="quality",
+            value=score,
+            comment=comment,
+        )
+    except Exception:
+        # Fallback to client level
+        _langfuse_client.create_score(
+            name="quality",
+            value=score,
+            comment=comment,
+        )
     _langfuse_client.flush()
 
 

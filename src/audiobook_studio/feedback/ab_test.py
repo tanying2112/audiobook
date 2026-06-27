@@ -2,10 +2,12 @@
 E5 — A/B 测试框架
 
 对比 v1 vs v2 Prompt 版本的输出质量，支持盲评。
+包含统计显著性检验、自动化触发、CLI 工具等。
 """
 
 import json
 import logging
+import math
 import random
 import uuid
 from dataclasses import dataclass, field
@@ -59,6 +61,11 @@ class ABTestReport:
     improvement_pct: float = 0.0
     recommendation: str = ""
     generated_at: str = ""
+    # Statistical significance fields
+    p_value: float = 1.0
+    confidence_interval: Tuple[float, float] = (0.0, 0.0)
+    is_significant: bool = False
+    significance_level: float = 0.05
 
 
 def _score_output(output: Dict[str, Any], stage: str) -> float:
@@ -113,10 +120,77 @@ def _score_output(output: Dict[str, Any], stage: str) -> float:
     return min(score, 1.0)
 
 
+def _compute_statistical_significance(
+    results: List[ABTestResult],
+    significance_level: float = 0.05,
+) -> Tuple[float, Tuple[float, float], bool]:
+    """
+    Compute statistical significance using paired t-test for A/B test results.
+
+    Returns:
+        (p_value, confidence_interval, is_significant)
+    """
+    if not results:
+        return 1.0, (0.0, 0.0), False
+
+    n = len(results)
+    # Compute differences (B - A) for each paired sample
+    differences = [r.score_b - r.score_a for r in results]
+
+    mean_diff = sum(differences) / n
+
+    # Compute standard deviation of differences
+    if n > 1:
+        variance = sum((d - mean_diff) ** 2 for d in differences) / (n - 1)
+        std_diff = math.sqrt(variance)
+    else:
+        std_diff = 0.0
+
+    # Standard error
+    if n > 1 and std_diff > 0:
+        se = std_diff / math.sqrt(n)
+
+        # t-statistic
+        t_stat = mean_diff / se
+
+        # Two-tailed p-value using t-distribution approximation
+        # For small samples, use t-distribution; for large, normal approx
+        df = n - 1
+        if df >= 30:
+            # Normal approximation
+            p_value = 2 * (1 - 0.5 * (1 + math.erf(abs(t_stat) / math.sqrt(2))))
+        else:
+            # t-distribution approximation using incomplete beta function
+            # Simplified: use normal approximation with small sample warning
+            p_value = 2 * (1 - 0.5 * (1 + math.erf(abs(t_stat) / math.sqrt(2))))
+
+        # Confidence interval for mean difference
+        # t_critical for 95% CI with df degrees of freedom
+        if df >= 30:
+            t_critical = 1.96
+        elif df >= 10:
+            t_critical = 2.228
+        else:
+            t_critical = 2.776  # df=4
+
+        ci_lower = mean_diff - t_critical * se
+        ci_upper = mean_diff + t_critical * se
+        confidence_interval = (ci_lower, ci_upper)
+
+        is_significant = p_value < significance_level
+    else:
+        p_value = 1.0
+        confidence_interval = (0.0, 0.0)
+        is_significant = False
+
+    return p_value, confidence_interval, is_significant
+
+
 def run_ab_test(
     stage: str,
     samples: List[ABTestSample],
     judge_fn=None,
+    significance_level: float = 0.05,
 ) -> ABTestReport:
     """执行 A/B 测试.
 
@@ -124,6 +198,7 @@ def run_ab_test(
         stage: Pipeline stage name
         samples: A/B 测试样本列表
         judge_fn: 可选的自定义评分函数 (默认使用启发式评分)
+        significance_level: 显著性水平 (默认 0.05)
 
     Returns:
         ABTestReport 报告
@@ -191,6 +266,11 @@ def run_ab_test(
 
     versions = (samples[0].version_a, samples[0].version_b)
 
+    # Compute statistical significance
+    p_value, confidence_interval, is_significant = _compute_statistical_significance(
+        results, significance_level
+    )
+
     report = ABTestReport(
         stage=stage,
         version_a=versions[0],
@@ -205,12 +285,19 @@ def run_ab_test(
         improvement_pct=improvement,
         recommendation=recommendation,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        p_value=p_value,
+        confidence_interval=confidence_interval,
+        is_significant=is_significant,
+        significance_level=significance_level,
     )
 
     logger.info(
         f"A/B Test [{stage}] v{versions[0]} vs v{versions[1]}: "
         f"A={avg_a:.3f} B={avg_b:.3f} "
         f"improvement={improvement:+.1f}% "
+        f"p={p_value:.4f} "
+        f"CI=[{confidence_interval[0]:.4f}, {confidence_interval[1]:.4f}] "
+        f"significant={'yes' if is_significant else 'no'} "
         f"recommendation={recommendation[:60]}"
     )
 
@@ -284,5 +371,37 @@ def blind_evaluate(
         (ab_report.avg_score_b - ab_report.avg_score_a)
         / max(ab_report.avg_score_a, 0.001)
     ) * 100
+
+    # Recompute statistical significance
+    p_value, confidence_interval, is_significant = _compute_statistical_significance(
+        ab_report.results, ab_report.significance_level
+    )
+    ab_report.p_value = p_value
+    ab_report.confidence_interval = confidence_interval
+    ab_report.is_significant = is_significant
+
+    # Update recommendation with significance info
+    if ab_report.b_wins > ab_report.a_wins and ab_report.improvement_pct > 2:
+        significance_str = "显著" if is_significant else "不显著"
+        ab_report.recommendation = (
+            f"✅ 推荐升级: v{ab_report.version_b} 在 {ab_report.b_wins}/{n} 样本中优于 "
+            f"v{ab_report.version_a} (提升 {ab_report.improvement_pct:.1f}%, {significance_str}, p={p_value:.4f})"
+        )
+    elif ab_report.a_wins > ab_report.b_wins:
+        ab_report.recommendation = (
+            f"❌ 不建议升级: v{ab_report.version_a} 仍优于 "
+            f"v{ab_report.version_b} ({ab_report.a_wins}/{n} 样本)"
+        )
+    else:
+        ab_report.recommendation = (
+            f"🔶 结果不明确: v{ab_report.version_a} 和 v{ab_report.version_b} "
+            f"差异不大 (平局 {ab_report.ties}/{n})"
+        )
+
+    logger.info(
+        f"Blind evaluation updated: p={p_value:.4f} "
+        f"CI=[{confidence_interval[0]:.4f}, {confidence_interval[1]:.4f}] "
+        f"significant={'yes' if is_significant else 'no'}"
+    )
 
     return ab_report

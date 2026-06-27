@@ -333,7 +333,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # Create mock router and monitor for demo
-    router = LLMRouter(mock_mode=True)
+    router = LLMRouter()
     monitor = ComplianceMonitor()
 
     # Add some mock compliance data

@@ -58,6 +58,9 @@ logs/*.log
 *.secret
 secrets.*
 
+# Real LLM provider config (contains env var references, but keep template tracked)
+config/llm_providers.yaml
+
 # Docker (不忽略 docker-compose.yml 和 Dockerfile)
 # docker-compose.yml
 # Dockerfile
@@ -101,3 +104,4 @@ check_output.txt
 
 # Performance baselines (auto-generated)
 baselines/
+.aider*

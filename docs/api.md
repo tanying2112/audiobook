@@ -665,7 +665,7 @@ GET /health
 
 ## 相关链接
 
-- [快速开始](../quick_start.md)
-- [系统架构](../architecture.md)
-- [HARNESS 规范](../harness_specifications.md)
+- [快速开始](quick_start.md)
+- [系统架构](architecture.md)
+- [HARNESS 规范](harness_specifications.md)
 - [OpenAPI JSON](http://localhost:8000/openapi.json)

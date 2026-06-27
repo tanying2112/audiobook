@@ -10,6 +10,7 @@ from . import (
     api,
     config,
     database,
+    exceptions,
     feedback,
     llm,
     models,
@@ -20,4 +21,20 @@ from . import (
     schemas,
     storage,
     tts,
+)
+
+# Export common exception classes for convenient access
+from .exceptions import (
+    AudiobookError,
+    DomainError,
+    ProviderError,
+    InfrastructureError,
+    PipelineError,
+    TTSError,
+    ValidationError,
+    SchemaComplianceError,
+    QuotaExceededError,
+    RateLimitError,
+    CircuitOpenError,
+    StageExecutionError,
 )

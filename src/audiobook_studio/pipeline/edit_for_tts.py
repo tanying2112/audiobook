@@ -6,6 +6,7 @@ punctuation cleanup, dialogue preservation. Outputs TtsEditOutput.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -24,10 +25,22 @@ class EditForTtsPipeline:
         self,
         router=None,
         prompt_dir=None,
-        mock_mode=False,
+        mock_mode: Optional[bool] = None,
     ):
-        self.router = router or create_router(mock_mode=mock_mode)
-        self.mock_mode = mock_mode
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
 
         if prompt_dir is None:
             prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
@@ -80,7 +93,7 @@ class EditForTtsPipeline:
             f"Editing paragraph {input_data.paragraph_annotation.paragraph_index} for TTS (difficulty={input_data.difficulty})"
         )
 
-        # Hard rule: difficulty A or forbid_edit -> return original
+        # Hard rule: difficulty A or forbid_edit -> return original (checked BEFORE mock_mode)
         if input_data.difficulty == "A" or input_data.forbid_edit:
             return TtsEditOutput(
                 edited_text=input_data.paragraph_text,
@@ -90,13 +103,14 @@ class EditForTtsPipeline:
                 rationale="Difficulty A or forbid_edit=true: preserved original text per hard rule",
             )
 
+        # Mock mode: return original text without LLM call
         if self.mock_mode:
             return TtsEditOutput(
                 edited_text=input_data.paragraph_text,
                 changes_made=["mock_mode_no_changes"],
                 forbidden_content_removed=[],
                 confidence=0.9,
-                rationale="Mock mode: no actual editing",
+                rationale="Mock mode: no LLM call made",
             )
 
         prompt = self._build_prompt(input_data)
@@ -162,7 +176,7 @@ def edit_for_tts(
     paragraph_annotation,
     difficulty,
     forbid_edit=False,
-    mock_mode=False,
+    mock_mode: bool = True,
 ):
     input_data = TtsEditInput(
         paragraph_text=paragraph_text,

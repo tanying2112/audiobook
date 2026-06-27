@@ -1,7 +1,8 @@
 """Pipeline Stage 6: Quality Check - Multi-dimensional audio quality assessment.
 
 Combines rule-based checks (silence, clipping, duration) with LLM-as-a-Judge
-for speaker/emotion/prosody evaluation. Triggers regeneration on failure.
+for speaker/emotion/prosody evaluation and hard quality metrics (DNSMOS/ASR/Speaker Sim).
+Triggers regeneration on failure.
 """
 
 import base64
@@ -21,9 +22,17 @@ from ..monitoring.langfuse_client import (
     trace_function,
 )
 
+from ..config.hardware_profile import get_hardware_profile, HardwareProfile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring import record_stage_performance
+from ..quality import (
+    QualityCheckSuite,
+    QualityCheckResult,
+    DNSMOSResult,
+    WERResult,
+    SpeakerSimilarityResult,
+)
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 from ..utils.ffmpeg_probe import (
     detect_silence_sync,
@@ -50,22 +59,151 @@ class AudioAnalysisResult:
 
 
 class QualityCheckPipeline:
-    """Pipeline for audio quality checking."""
+    """Pipeline for audio quality checking.
+
+    Uses ffmpeg exclusively (via ffmpeg_probe) for audio analysis — no pydub dependency.
+    Optional hard metrics (DNSMOS, ASR WER, Speaker Similarity) are conditionally
+    enabled based on available Python packages. Missing packages are gracefully
+    skipped rather than triggering mock mode.
+
+    Architecture:
+        1. Rule-based analysis (always runs, requires only ffmpeg)
+        2. Hard quality checks (DNSMOS/ASR/SpeakerSim, requires optional deps)
+        3. LLM-as-a-Judge (always runs, requires LLM API)
+    """
 
     def __init__(
         self,
         router=None,
         judge=None,
-        mock_mode=False,
+        mock_mode: Optional[bool] = None,
         config_path: str = "./config/quality_thresholds.yaml",
+        hardware_profile: Optional[HardwareProfile] = None,
     ):
-        self.router = router or create_router(mock_mode=mock_mode)
+        # mock_mode is ONLY for testing — production always uses real analysis.
+        # Default to False (real path); only set True via explicit parameter or MOCK_LLM env.
+        if mock_mode is not None:
+            self.mock_mode = mock_mode
+        else:
+            self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Check which optional hard-metric dependencies are available.
+        # This enables graceful degradation: missing deps skip their metric
+        # instead of forcing the entire pipeline into mock mode.
+        self._available_features = self._check_optional_dependencies()
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if self.mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
+
         self.judge = judge or create_judge(router=self.router)
-        self.mock_mode = mock_mode
+
+        # Hardware profile for quality check configuration
+        self.hardware_profile = hardware_profile or get_hardware_profile()
+
         # Load quality thresholds for compliance monitoring
         self.quality_thresholds = load_quality_thresholds(config_path)
         self._config_path = config_path
         self._last_config_modified = None
+
+        # Initialize hard quality check suite (DNSMOS + ASR WER + Speaker Sim)
+        self._quality_suite = QualityCheckSuite(
+            config=dict(self.quality_thresholds),
+            hardware_profile=self.hardware_profile.active_profile,
+        )
+
+        # Apply hardware profile quality check settings
+        self._apply_hardware_profile_quality_config()
+
+        # Log available features for diagnostics
+        enabled = [k for k, v in self._available_features.items() if v]
+        disabled = [k for k, v in self._available_features.items() if not v]
+        logger.info(f"Quality features — enabled: {enabled}, disabled: {disabled}")
+
+    @staticmethod
+    def _check_optional_dependencies() -> dict:
+        """Check availability of optional hard-metric dependencies.
+
+        Returns a dict mapping feature name to bool (available or not).
+        This allows graceful degradation: missing deps skip their metric
+        instead of forcing the entire pipeline into mock mode.
+
+        Features:
+            - ffmpeg: Always True (core dependency)
+            - dnsmos: ONNX Runtime for DNSMOS scoring
+            - asr: FunASR, faster-whisper, or openai-whisper for WER
+            - speaker_sim: torch + SpeechBrain for speaker embeddings
+        """
+        features: dict = {
+            "ffmpeg": True,       # Always available — core dependency
+            "dnsmos": False,      # ONNX Runtime for DNSMOS scoring
+            "asr": False,         # FunASR or faster-whisper for WER
+            "speaker_sim": False,  # torch + SpeechBrain for speaker embeddings
+        }
+
+        # Check ONNX Runtime (for DNSMOS)
+        try:
+            import onnxruntime  # noqa: F401
+            features["dnsmos"] = True
+        except ImportError:
+            pass
+
+        # Check ASR backends (FunASR or faster-whisper)
+        try:
+            import funasr  # noqa: F401
+            features["asr"] = True
+        except ImportError:
+            try:
+                import faster_whisper  # noqa: F401
+                features["asr"] = True
+            except ImportError:
+                try:
+                    import whisper  # openai-whisper fallback
+                    features["asr"] = True
+                except ImportError:
+                    pass
+
+        # Check Speaker Similarity (torch + speechbrain)
+        try:
+            import torch  # noqa: F401
+            from speechbrain.inference.speaker import EncoderClassifier  # noqa: F401
+            features["speaker_sim"] = True
+        except (ImportError, Exception):
+            pass
+
+        return features
+
+    def _apply_hardware_profile_quality_config(self):
+        """Apply quality check settings from hardware profile."""
+        if not self.hardware_profile:
+            return
+        
+        qc = self.hardware_profile.quality_check
+        
+        # Override thresholds from hardware profile if enabled
+        if qc.dnsmos_enabled and "thresholds" in qc.__dict__:
+            # Store hardware profile thresholds for use in judgment
+            self._hw_dnsmos_min = qc.thresholds.get("dnsmos_min", 3.5)
+            self._hw_asr_wer_max = qc.thresholds.get("asr_wer_max", 0.05)
+            self._hw_speaker_sim_min = qc.thresholds.get("speaker_sim_min", 0.85)
+        else:
+            self._hw_dnsmos_min = None
+            self._hw_asr_wer_max = None
+            self._hw_speaker_sim_min = None
+        
+        # Store feature flags
+        self._hw_dnsmos_enabled = qc.dnsmos_enabled
+        self._hw_asr_enabled = qc.asr_enabled
+        self._hw_speaker_sim_enabled = qc.speaker_similarity_enabled
 
     def _reload_config_if_changed(self):
         """Hot-reload quality thresholds if config file changed."""
@@ -76,7 +214,18 @@ class QualityCheckPipeline:
         )
 
     def _get_threshold(self, *keys, default=None):
-        """Get nested threshold value from config."""
+        """Get nested threshold value from config.
+        
+        Hardware profile thresholds take precedence over file config.
+        """
+        # Check hardware profile thresholds first
+        if keys == ("audio", "dnsmos_min") and hasattr(self, "_hw_dnsmos_min") and self._hw_dnsmos_min is not None:
+            return self._hw_dnsmos_min
+        if keys == ("audio", "asr_wer_max") and hasattr(self, "_hw_asr_wer_max") and self._hw_asr_wer_max is not None:
+            return self._hw_asr_wer_max
+        if keys == ("audio", "speaker_sim_min") and hasattr(self, "_hw_speaker_sim_min") and self._hw_speaker_sim_min is not None:
+            return self._hw_speaker_sim_min
+            
         value = self.quality_thresholds
         for key in keys:
             if isinstance(value, dict):
@@ -94,6 +243,7 @@ class QualityCheckPipeline:
 
         Uses the ffmpeg_probe utility for Python 3.14+ compatibility.
         """
+        # Mock mode: return defaults without actual analysis
         if self.mock_mode:
             return AudioAnalysisResult(
                 duration_ms=expected_duration_ms,
@@ -277,6 +427,16 @@ class QualityCheckPipeline:
             logger.error(f"Failed to encode audio {audio_path}: {e}")
             return None
 
+    def _should_use_multimodal_judge(self) -> bool:
+        """Check if multimodal judge should be used based on hardware profile."""
+        if not self.hardware_profile:
+            return False
+        # Only use multimodal in pro_studio or cloud_hybrid with good GPU
+        return (
+            self.hardware_profile.active_profile in ("pro_studio", "cloud_hybrid")
+            and self.hardware_profile.is_gpu_available()
+        )
+
     def _multimodal_judge_quality(
         self,
         segment_id: str,
@@ -288,7 +448,9 @@ class QualityCheckPipeline:
         Use multimodal LLM (Gemini 1.5 Flash) to directly listen to audio and judge quality.
         This provides true audio understanding unlike text-description-based LLM judge.
         """
-        if self.mock_mode:
+        # Check hardware profile for multimodal capability
+        if not self._should_use_multimodal_judge():
+            logger.debug("Multimodal judge skipped: not enabled in current hardware profile")
             return None
         
         try:
@@ -375,6 +537,34 @@ class QualityCheckPipeline:
         lines.append("}")
         return "\n".join(lines)
 
+    def _run_hard_quality_checks(
+        self,
+        audio_path: Path,
+        reference_text: str,
+        speaker_id: Optional[str] = None,
+        reference_speaker_audio: Optional[Path] = None,
+    ) -> QualityCheckResult:
+        """Run hard quality checks (DNSMOS + ASR WER + Speaker Similarity).
+
+        Gracefully skips metrics whose dependencies are unavailable,
+        rather than failing the entire check.
+        """
+        # If no hard metric deps are available, skip entirely
+        any_available = any(self._available_features.get(k) for k in ("dnsmos", "asr", "speaker_sim"))
+        if not any_available:
+            logger.info("No hard metric dependencies available — skipping DNSMOS/ASR/SpeakerSim")
+            return QualityCheckResult(
+                passed=True,
+                overall_message="Hard metrics skipped (no optional dependencies available)",
+            )
+
+        # Run the actual quality check suite
+        return self._quality_suite.check_all(
+            audio_path=audio_path,
+            reference_text=reference_text,
+            reference_speaker_id=speaker_id,
+            reference_speaker_audio=reference_speaker_audio,
+        )
 
     @trace_function(name="pipeline.quality_check.run", stage="quality")
     def run(self, inputs: List[tuple]) -> List[QualityJudgment]:
@@ -390,7 +580,7 @@ class QualityCheckPipeline:
         for audio_path, annotation, routing, reference_text in inputs:
             logger.info(f"Checking quality: {audio_path}")
 
-            # Rule-based analysis
+            # Rule-based analysis (runs in both mock and non-mock mode)
             rule_start_time = time.time()
             analysis = self._analyze_audio_rules(
                 Path(audio_path), routing.estimated_duration_ms
@@ -408,8 +598,59 @@ class QualityCheckPipeline:
                 latency_ms=rule_latency_ms,
             )
 
-            # Build audio description for LLM judge
+            # Mock mode: return simulated judgment after rule-based analysis
+            if self.mock_mode:
+                from ..schemas.quality import FixSuggestion
+                # Determine if regeneration is needed based on rule-based issues
+                needs_regeneration = len(analysis.issues) > 0
+                # Call judge in mock mode to get the mock judgment
+                judgment = self.judge.judge_quality(
+                    segment_id=routing.segment_id,
+                    paragraph_annotation=annotation,
+                    audio_description=f"Mock audio analysis: duration={analysis.duration_ms}ms, issues={analysis.issues}",
+                    reference_text=reference_text,
+                )
+                # Merge rule-based issues into judgment
+                if analysis.issues:
+                    judgment.issues = list(analysis.issues) + list(judgment.issues)
+                    judgment.needs_regeneration = True
+                    judgment.fix_suggestions = [FixSuggestion(
+                        suggestion_type="content_edit",
+                        target_text=reference_text[:50] if reference_text else "",
+                        suggested_value="重新合成以修复音频质量问题",
+                        rationale=f"Rule-based issues: {analysis.issues}",
+                    )]
+                judgments.append(judgment)
+                continue
+
+            # Non-mock mode: run hard quality checks (conditional) + LLM judge
+            hard_start_time = time.time()
+            hard_result = self._run_hard_quality_checks(
+                audio_path=Path(audio_path),
+                reference_text=reference_text,
+                speaker_id=getattr(annotation, 'speaker_canonical_name', None),
+            )
+            hard_latency_ms = (time.time() - hard_start_time) * 1000
+
+            # Record hard quality checks observation
+            observe_quality_check(
+                stage="hard_checks",
+                passed=hard_result.passed,
+                score=1.0 if hard_result.passed else 0.5,
+                issues=[hard_result.overall_message] if not hard_result.passed else [],
+                latency_ms=hard_latency_ms,
+            )
+
+            # Build audio description for LLM judge (always runs)
             audio_description = self._build_audio_description(analysis, annotation)
+
+            # Include hard check results in audio description (only if actually computed)
+            if hard_result.dnsmos and hard_result.dnsmos.success:
+                audio_description += f"，DNSMOS综合={hard_result.dnsmos.mos_ovr:.2f}"
+            if hard_result.wer and hard_result.wer.success:
+                audio_description += f"，ASR WER={hard_result.wer.wer:.1%}"
+            if hard_result.speaker_sim and hard_result.speaker_sim.success:
+                audio_description += f"，声纹相似度={hard_result.speaker_sim.similarity:.3f}"
 
             # Start timing for LLM judgment
             judgment_start_time = time.time()
@@ -433,6 +674,22 @@ class QualityCheckPipeline:
                         judgment.needs_regeneration = True
                         judgment.fix_suggestions.extend(["重新合成以修复音频质量问题"])
 
+                # Incorporate hard quality check results into judgment
+                if not hard_result.passed:
+                    judgment.needs_regeneration = True
+                    judgment.issues.append(f"Hard quality check failed: {hard_result.overall_message}")
+                    judgment.fix_suggestions.append("重新合成以通过硬质检门禁")
+
+                # Adjust scores based on hard checks
+                if hard_result.dnsmos and hard_result.dnsmos.success:
+                    # DNSMOS 映射到 1-5 -> 0-1
+                    dnsmos_score = hard_result.dnsmos.mos_ovr / 5.0
+                    judgment.speaker_clarity = (judgment.speaker_clarity + dnsmos_score) / 2
+
+                if hard_result.speaker_sim and hard_result.speaker_sim.success:
+                    # Speaker similarity directly maps to clarity
+                    judgment.speaker_clarity = (judgment.speaker_clarity + hard_result.speaker_sim.similarity) / 2
+
                 logger.info(
                     f"Quality judgment: overall={judgment.overall_score:.2f} "
                     f"speaker={judgment.speaker_clarity:.2f} emotion={judgment.emotion_match:.2f} "
@@ -453,21 +710,15 @@ class QualityCheckPipeline:
                 )
 
                 # Record performance metric for quality check
-                # Estimate token usage for LLM judgment
-                # Input: audio description + annotation + reference text
-                # Output: judgment (JSON-like)
                 input_chars = (
                     len(audio_description) + len(str(annotation)) + len(reference_text)
                 )
                 output_chars = len(str(judgment))
 
-                # Rough approximation: 1 token ≈ 4 characters
                 tokens_in = max(1, input_chars // 4)
                 tokens_out = max(1, output_chars // 4)
 
-                # Estimate cost (this would depend on the LLM provider used)
-                # For now, use a placeholder - in reality, this would come from the LLM router
-                cost_usd = 0.002  # Placeholder for LLM judgment cost
+                cost_usd = 0.002
 
                 record_stage_performance(
                     stage="quality_check",
@@ -475,17 +726,16 @@ class QualityCheckPipeline:
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     cost_usd=cost_usd,
-                    success=True,  # Quality check itself succeeded if we got here
-                    quality_score=judgment.overall_score,  # This is the key quality metric!
-                    provider="llm_judge",  # Could be made more specific
-                    model="unknown",  # Would ideally come from the judge
+                    success=True,
+                    quality_score=judgment.overall_score,
+                    provider="llm_judge",
+                    model="unknown",
                     schema_compliance=True,
                 )
 
                 judgments.append(judgment)
             except Exception as e:
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
-                # Record failure
                 record_stage_performance(
                     stage="quality_check",
                     latency_ms=judgment_latency_ms,
@@ -498,15 +748,15 @@ class QualityCheckPipeline:
                         )
                         // 4,
                     ),
-                    tokens_out=max(1, 0),  # no output on failure
-                    cost_usd=0.002,  # same placeholder
+                    tokens_out=max(1, 0),
+                    cost_usd=0.002,
                     success=False,
                     quality_score=None,
                     provider="llm_judge",
                     model="unknown",
                     schema_compliance=False,
                 )
-                raise  # Re-raise to propagate failure
+                raise
 
         return judgments
 

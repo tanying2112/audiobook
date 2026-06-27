@@ -196,8 +196,8 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text="First paragraph", character_name="Narrator"),
-                    MagicMock(id=2, order=2, text="Second paragraph", character_name="Character"),
+                    MagicMock(id=1, order=1, text="First paragraph", original_text=None, character_name="Narrator"),
+                    MagicMock(id=2, order=2, text="Second paragraph", original_text=None, character_name="Character"),
                 ],
                 "audio_segments": [
                     MagicMock(paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=3000),

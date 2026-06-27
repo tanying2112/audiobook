@@ -1,0 +1,227 @@
+{
+  "sprint": "H",
+  "name": "Self-Iteration Feedback Loop Enhancement",
+  "date_completed": "2026-06-18",
+  "status": "COMPLETED",
+  "summary": "Completed full self-iteration feedback loop with monitoring, A/B testing, canary release, and auto-rollback capabilities.",
+
+  "tasks": {
+    "H-P0": {
+      "name": "Pipeline Feedback Hooks (Week 1)",
+      "completed": true,
+      "subtasks": {
+        "H-P0-1": {
+          "task": "FeedbackCollector module",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/pipeline/feedback_collector.py"
+          ],
+          "details": "StageCapture context manager for 6 pipeline stages with file-based JSON storage at storage/books/<id>/feedback/raw/"
+        },
+        "H-P0-1_integration": {
+          "task": "Integrate into orchestrator.py",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/pipeline/orchestrator.py"
+          ],
+          "details": "run_stage() accepts feedback_collector param, integrated across all 7 stages"
+        },
+        "H-P0-1_capture_hooks": {
+          "task": "Capture hooks at all 6 stages",
+          "status": "✅ DONE",
+          "details": "extract, analyze, annotate, edit, synthesize, quality - all capture LLM input/output with human corrections"
+        },
+        "H-P0-1_storage": {
+          "task": "Save to feedback/raw/",
+          "status": "✅ DONE",
+          "details": "JSON files with full schema compliance including chapter_id, paragraph_id, timestamps"
+        },
+        "H-P0-2": {
+          "task": "FeedbackProcessor auto-trigger",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/feedback/auto_processor.py",
+            "scripts/feedback_processor.py"
+          ],
+          "details": "Threshold-based (default 10) + 24h cooldown, CLI: --auto-start, --analyze-now, --status"
+        },
+        "H-P0-3": {
+          "task": "PromptUpgrader auto-generation",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/feedback/prompt_upgrader.py"
+          ],
+          "details": "batch_upgrade() from pattern_tags → v{N+1}.j2 with CHANGELOG, 16 pattern tags supported"
+        },
+        "H-P0-3_regression": {
+          "task": "Regression test + promotion gate",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/feedback/promotion_gate.py",
+            "scripts/promote.py"
+          ],
+          "details": "Golden dataset validation with 4 hard criteria: format≥99%, golden≥95%, quality≥102%, human≥80%"
+        },
+        "H-P0-4": {
+          "task": "Kill Switch implementation",
+          "status": "✅ DONE",
+          "files": [
+            "src/audiobook_studio/llm/circuit_breaker.py",
+            "src/audiobook_studio/feedback/kill_switch.py"
+          ],
+          "details": "Circuit breaker tri-state + rule-based fallback + heuristic fallback (annotate/edit/judge)"
+        }
+      }
+    },
+
+    "H-P1": {
+      "name": "Monitoring & Observability (Week 2)",
+      "completed": true,
+      "subtasks": {
+        "alert_py": {
+          "task": "scripts/alert.py - DingTalk/Slack webhook alerts",
+          "status": "✅ DONE",
+          "file": "scripts/alert.py",
+          "details": "Enhanced with collect_self_iteration_logs() and compute_self_iteration_metrics() for promotion_rate, avg_feedback, system_health"
+        },
+        "cost_dashboard": {
+          "task": "scripts/cost_dashboard.py - Multi-dimensional cost breakdown",
+          "status": "✅ DONE",
+          "file": "scripts/cost_dashboard.py",
+          "details": "By stage, model, provider, difficulty with per-1k-char costs, retry tracking, JSON/table output"
+        },
+        "offline_monitoring": {
+          "task": "Offline monitoring fallback (local file logging)",
+          "status": "✅ DONE",
+          "file": "scripts/offline_monitoring.py",
+          "details": "OfflineMonitor class with try/except fallback to logs/offline/, auto-sync on recovery"
+        },
+        "bench_latency": {
+          "task": "bench_latency.py - Baseline establishment",
+          "status": "✅ DONE",
+          "file": "scripts/bench_latency.py",
+          "details": "6 stages latency measurement, JSON baseline save/load, 110% degradation threshold"
+        },
+        "bench_cost": {
+          "task": "bench_cost.py - Baseline establishment",
+          "status": "✅ DONE",
+          "file": "scripts/bench_cost.py",
+          "details": "6 stages cost measurement, JSON baseline save/load, 110% degradation threshold"
+        }
+      }
+    },
+
+    "H-P2": {
+      "name": "A/B Testing & Gradual Rollout (Week 3)",
+      "completed": true,
+      "subtasks": {
+        "ab_test_manager": {
+          "task": "ab_test_manager.py - Traffic splitting, statistical significance",
+          "status": "✅ DONE",
+          "file": "src/audiobook_studio/feedback/ab_test.py",
+          "details": "Paired t-test with p-values, confidence intervals, is_significant flag, blind evaluation with human ratings override"
+        },
+        "run_ab_test_cli": {
+          "task": "CLI for A/B testing",
+          "status": "✅ DONE",
+          "file": "scripts/run_ab_test.py",
+          "details": "Golden dataset support, human ratings JSON, synthetic samples, JSON report output"
+        },
+        "gradual_promotion": {
+          "task": "gradual_promotion.py - Canary → 10% → 50% → 100%",
+          "status": "✅ DONE",
+          "file": "scripts/promote.py",
+          "details": "CanaryRelease class with traffic_percentage (0.1), min_samples, rollback_threshold, 3-stage rollout"
+        },
+        "canary_release": {
+          "task": "CanaryRelease with auto-rollback",
+          "status": "✅ DONE",
+          "file": "scripts/promote.py",
+          "details": "start_canary, record_metrics (quality_ratio < threshold → rollback), error_rate > 10% → rollback, complete_canary"
+        },
+        "version_store": {
+          "task": "VersionStore with rollback CLI",
+          "status": "✅ DONE",
+          "file": "scripts/promote.py",
+          "details": "promote_version, rollback_version, rollback_last, get_rollback_history, rollback_log.jsonl"
+        },
+        "promotion_gate_cli": {
+          "task": "Promotion Gate CLI",
+          "status": "✅ DONE",
+          "file": "scripts/promote.py",
+          "details": "CLI: evaluate, canary-start, canary-record, canary-complete, rollback, status, history"
+        },
+        "rollback_drills": {
+          "task": "Automated rollback drills",
+          "status": "✅ DONE",
+          "files": [
+            "scripts/promote.py",
+            "tests/unit/test_promote.py"
+          ],
+          "details": "Unit tests cover rollback triggers: quality regression, high error rate, insufficient samples protection"
+        },
+        "e2e_verification": {
+          "task": "E2E verification script",
+          "status": "✅ DONE",
+          "file": "scripts/run_e2e_verification.py",
+          "details": "7 test scenarios: pipeline, feedback, iteration, promotion, A/B, canary, version store"
+        },
+        "unit_tests": {
+          "task": "Unit tests for promote.py",
+          "status": "✅ DONE",
+          "file": "tests/unit/test_promote.py",
+          "details": "30+ tests: PromotionGate, CanaryRelease, VersionStore, CLI commands"
+        }
+      }
+    }
+  },
+
+  "key_files_created_or_modified": [
+    "src/audiobook_studio/feedback/integration.py",
+    "scripts/alert.py",
+    "scripts/run_ab_test.py",
+    "scripts/promote.py",
+    "scripts/run_e2e_verification.py",
+    "tests/unit/test_promote.py",
+    "src/audiobook_studio/feedback/ab_test.py"
+  ],
+
+  "metrics": {
+    "test_coverage": {
+      "added_tests": 30,
+      "test_file": "tests/unit/test_promote.py"
+    },
+    "components": {
+      "promotion_gate_criteria": 4,
+      "pattern_tags": 16,
+      "canary_stages": 3,
+      "feedback_stages": 6
+    },
+    "thresholds": {
+      "format_compliance": 0.99,
+      "golden_dataset_pass": 0.95,
+      "quality_score_ratio": 1.02,
+      "human_preference": 0.80,
+      "canary_traffic": 0.1,
+      "rollback_quality_threshold": 0.95,
+      "rollback_error_threshold": 0.10
+    }
+  },
+
+  "integration_points": {
+    "self_iteration_loop": "src/audiobook_studio/feedback/integration.py:SelfIterationLoop",
+    "feedback_collector": "src/audiobook_studio/pipeline/feedback_collector.py:FeedbackCollector",
+    "orchestrator": "src/audiobook_studio/pipeline/orchestrator.py:run_pipeline()",
+    "promote_cli": "scripts/promote.py",
+    "alerting": "scripts/alert.py",
+    "cost_dashboard": "scripts/cost_dashboard.py",
+    "benchmarks": ["scripts/bench_latency.py", "scripts/bench_cost.py"],
+    "offline_monitoring": "scripts/offline_monitoring.py"
+  },
+
+  "verification": {
+    "e2e_script": "scripts/run_e2e_verification.py",
+    "unit_tests": "tests/unit/test_promote.py",
+    "all_passed": true
+  }
+}

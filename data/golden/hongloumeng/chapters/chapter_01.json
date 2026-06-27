@@ -1,0 +1,375 @@
+{
+  "book_id": "hongloumeng",
+  "chapter_index": 1,
+  "chapter_title": "第一章 国王的诞生与早期教育",
+  "book_meta": {
+    "title": "智慧君主：Alexander 的治世传奇",
+    "author": "佚名",
+    "genre": "小说",
+    "difficulty": "B",
+    "language": "zh",
+    "era": "架空历史",
+    "total_chapters_estimated": 7,
+    "contract_version": 1
+  },
+  "character_voice_map": [
+    {
+      "canonical_name": "旁白",
+      "aliases": [
+        "叙述者"
+      ],
+      "gender": "neutral",
+      "age_range": "adult",
+      "suggested_voice_id": "v_narrator",
+      "sample_quote": "在遥远的洛林王国，有一个古老的预言流传了几百年",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Alexander",
+      "aliases": [
+        "亚历山大",
+        "陛下",
+        "国王"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_alexander",
+      "sample_quote": "我发现，世界其实充满了模式",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Thompson",
+      "aliases": [
+        "首席御医",
+        "Thompson"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_thompson",
+      "sample_quote": "像这样的婴儿，实在是太少见了",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "国王 Henry",
+      "aliases": [
+        "亨利国王",
+        "Henry"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_henry",
+      "sample_quote": "你说得对，Thompson，这孩子确实不普通",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Prince Nathan",
+      "aliases": [
+        "奈森王子",
+        "二弟"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_nathan",
+      "sample_quote": "陛下！您这是说笑话吧？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Pierre",
+      "aliases": [
+        "总管",
+        "Pierre"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_pierre",
+      "sample_quote": "我想，或者我们可以先不要动武？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "陈调查组长",
+      "aliases": [
+        "老陈",
+        "调查组长"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_chen",
+      "sample_quote": "与其把这些孩子都当作纯粹的坏人来处理",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老水手",
+      "aliases": [
+        "转型水手"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_sailor",
+      "sample_quote": "要不是陛下您当初给了我这个机会",
+      "contract_version": 1
+    }
+  ],
+  "emotion_snapshot": {
+    "chapter": 1,
+    "dominant_emotion": "contemplative",
+    "intensity": 0.5,
+    "notes": "王子诞生与成长",
+    "contract_version": 1
+  },
+  "story_line_summary": "年轻国王 Alexander 在多重危机爆发之际登基，面对北方雪狼部落入侵、南方海盗劫掠、宫廷保守派倒逼等内外交困的严峻局面，他没有选择武力对抗，而是以智慧与仁爱为指导，通过谈判、调查、改革等一系列组合拳，逐一化解危机：建立宫廷联合委员会化解内部矛盾，派遣无武装使团与雪狼部落和谈，实施渔业复兴计划安置海盗，启动国土绿化行动振兴农业，兴建国家图书馆与综合大学提升文化软实力。二十年治世后，他将治国心得系统传授，确立以理解为基、以仁爱为根、以长远利益为指南针的治国传统，这一传统在其逝世后三十年依然指引新一代领导人化解内部挑战，成为王国永续发展的精神基石。",
+  "global_style_notes": "第三人称全知视角，夹叙夹议，中西文混排，包含历史感与哲理思考。",
+  "paragraphs": [
+    {
+      "paragraph_index": 0,
+      "text": "在遥远的洛林王国，有一个古老的预言流传了几百年：当王国陷入内忧外患、民生凋零的最黑暗时刻，一位既具备卓越智慧又充满仁爱之心的君主将会应运而生，带领国家走出困境，迎来新的繁荣时代。这个预言不仅在宫廷秘籍中有所记载，更是在民间广为传讲，老人们常把它当作睡前故事讲给孩子们听。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 0,
+        "text": "在遥远的洛林王国，有一个古老的预言流传了几百年：当王国陷入内忧外患、民生凋零的最黑暗时刻，一位既具备卓越智慧又充满仁爱之心的君主将会应运而生，带领国家走出困境，迎来新的繁荣时代。这个预言不仅在宫廷秘籍中有所记载，更是在民间广为传讲，老人们常把它当作睡前故事讲给孩子们听。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 0,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 1,
+      "text": "亚历山大这样的预言人物，终于在他母亲王后 Elizabeth 分娩的那个暴雨之夜降临人世了。那天正是立春前夕，天空乌云密布，狂风暴雨中夹杂着奇特的电闪雷鸣。宫中的御医还在为即将到来的种子节祈福时，突然听见产房传来不是婴儿啼哭，而是某种低沉而有力量的声音。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 1,
+        "text": "亚历山大这样的预言人物，终于在他母亲王后 Elizabeth 分娩的那个暴雨之夜降临人世了。那天正是立春前夕，天空乌云密布，狂风暴雨中夹杂着奇特的电闪雷鸣。宫中的御医还在为即将到来的种子节祈福时，突然听见产房传来不是婴儿啼哭，而是某种低沉而有力量的声音。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": true,
+        "sfx_tags": [
+          "ambient"
+        ],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 2,
+      "text": "“快产了！”值夜的宫女惊叫着跑进产房。场面让在场的所有人都屏住了呼吸——新生儿没有像普通婴儿那样哇哇大哭，而是安静地睁开了眼睛，那双眼神清澈而深邃， parecia estar observando（似乎在观察）周围的一切。更令人惊讶的是，在他 tiny little fist（幼小的拳头）中，竟然紧紧攥着一小片从未见过的草叶。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 2,
+        "text": "“快产了！”值夜的宫女惊叫着跑进产房。场面让在场的所有人都屏住了呼吸——新生儿没有像普通婴儿那样哇哇大哭，而是安静地睁开了眼睛，那双眼神清澈而深邃， parecia estar observando（似乎在观察）周围的一切。更令人惊讶的是，在他 tiny little fist（幼小的拳头）中，竟然紧紧攥着一小片从未见过的草叶。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "surprised",
+        "emotion_intensity": 0.8,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 3,
+      "text": "“像这样的婴儿，实在是太少见了。”首席御医老 Thompson 满脸惊讶地擦了擦额头上的汗水，“不仅是眼神这么特别，还有体态，看这头部的形状，这明显是个不 ordinary child（不寻常的孩子）啊。”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 3,
+        "text": "“像这样的婴儿，实在是太少见了。”首席御医老 Thompson 满脸惊讶地擦了擦额头上的汗水，“不仅是眼神这么特别，还有体态，看这头部的形状，这明显是个不 ordinary child（不寻常的孩子）啊。”",
+        "speaker_canonical_name": "老 Thompson",
+        "is_dialogue": true,
+        "emotion": "surprised",
+        "emotion_intensity": 0.8,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 4,
+      "text": "国王 Henry 听到消息后，急忙从策马奔腾的边防视察途中赶回宫里。当他看到儿子安静地躺在绣有金色龙纹的褥子上时，竟然热泪盈眶。“你说得对，Thompson，这孩子确实不普通。”他轻声说着，小心翼翼地把食指放在儿子的掌心，“你看，他甚至没有本能地握住我的手指，而是在看着我——这可是极少见的新生儿行为啊。”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 4,
+        "text": "国王 Henry 听到消息后，急忙从策马奔腾的边防视察途中赶回宫里。当他看到儿子安静地躺在绣有金色龙纹的褥子上时，竟然热泪盈眶。“你说得对，Thompson，这孩子确实不普通。”他轻声说着，小心翼翼地把食指放在儿子的掌心，“你看，他甚至没有本能地握住我的手指，而是在看着我——这可是极少见的新生儿行为啊。”",
+        "speaker_canonical_name": "老 Thompson",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 5,
+      "text": "从那天起，年仅十五岁就即位的年轻国王 Henry，就把儿子 Alexander 的教育看作是王国未来最高优先级的事务。他不仅亲自修改了皇家师范，还特别下旨：除了必修的骑射、兵法和经典之外，还要增加哲学、历史、外语和才艺等科目的学习。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 5,
+        "text": "从那天起，年仅十五岁就即位的年轻国王 Henry，就把儿子 Alexander 的教育看作是王国未来最高优先级的事务。他不仅亲自修改了皇家师范，还特别下旨：除了必修的骑射、兵法和经典之外，还要增加哲学、历史、外语和才艺等科目的学习。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 6,
+      "text": "小 Alexander 自童年起就展现出了与众不同的天赋。三岁的时候，他就能够坐着听完整章节的《国治论》而不走神；五岁那年，在宫廷乐师弹奏竖琴时，他竟然能够准确指出哪个音符走调；七岁的时候，他在花园里观察蚂蚁搬家的过程足足有两个小时，之后还能够滔滔不绝地描述出他看到的分工合作现象。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 6,
+        "text": "小 Alexander 自童年起就展现出了与众不同的天赋。三岁的时候，他就能够坐着听完整章节的《国治论》而不走神；五岁那年，在宫廷乐师弹奏竖琴时，他竟然能够准确指出哪个音符走调；七岁的时候，他在花园里观察蚂蚁搬家的过程足足有两个小时，之后还能够滔滔不绝地描述出他看到的分工合作现象。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 7,
+      "text": "“我发现，”八岁那年的 Alexander 在一次私密 Gespräch（谈话）中告诉他的私人导师，「世界其实充满了 pattern（模式）。就算是看似無序（杂乱）的东西，如果你仔细观察够长时间，总能找到一些规律性的东西在运作。」",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 7,
+        "text": "“我发现，”八岁那年的 Alexander 在一次私密 Gespräch（谈话）中告诉他的私人导师，「世界其实充满了 pattern（模式）。就算是看似無序（杂乱）的东西，如果你仔细观察够长时间，总能找到一些规律性的东西在运作。」",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 8,
+      "text": "这种观察力和思考深度，让宫里的老臣们都开始私下猜测：这会不会正是那个古老预言中所说的‘智慧君主’呢？",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 8,
+        "text": "这种观察力和思考深度，让宫里的老臣们都开始私下猜测：这会不会正是那个古老预言中所说的‘智慧君主’呢？",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    }
+  ],
+  "annotated_by": "Agent B",
+  "annotated_at": "2026-06-21T10:08:38.267191",
+  "annotation_version": "v0.1",
+  "total_paragraphs": 9,
+  "verified_paragraphs": 9,
+  "overall_quality_score": 0.95,
+  "contract_version": 1
+}

@@ -28,6 +28,16 @@ const router = createRouter({
       name: 'quality-report',
       component: () => import('../views/QualityReport.vue'),
     },
+    {
+      path: '/feedback',
+      name: 'feedback-editor',
+      component: () => import('../views/FeedbackEditor.vue'),
+    },
+    {
+      path: '/harness',
+      name: 'harness-dashboard',
+      component: () => import('../views/HarnessDashboard.vue'),
+    },
   ],
 })
 

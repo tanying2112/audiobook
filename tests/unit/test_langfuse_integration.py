@@ -223,13 +223,14 @@ class TestObserveLLMCall:
 
         client = LangfuseClient(enabled=False)
 
-        # Should not raise
-        client.trace(
+        # Should not raise - use as context manager
+        with client.trace(
             name="llm_call",
             input_data={"messages": [{"role": "user", "content": "hi"}]},
             metadata={"model": "gpt-4", "temperature": 0.7},
             tags=["llm", "chat"],
-        )
+        ):
+            pass
 
         # Verify local trace was recorded
         traces = client.get_local_traces()
@@ -322,11 +323,26 @@ class TestTraceFunctionDecorator:
     def test_trace_function_returns_original_when_disabled(self):
         """trace_function should return original function when disabled."""
         from src.audiobook_studio.observability.langfuse_client import trace_llm_call
+        from contextlib import contextmanager
 
         # Mock the global client to be disabled
         with patch("src.audiobook_studio.observability.langfuse_client._langfuse_client") as mock_client:
             mock_client.enabled = False
-            mock_client.trace = Mock()
+            
+            @contextmanager
+            def mock_trace(*args, **kwargs):
+                from src.audiobook_studio.observability.langfuse_client import LLMCallTrace
+                import uuid
+                trace = LLMCallTrace(
+                    trace_id=str(uuid.uuid4()),
+                    name=args[0] if args else "test",
+                    input_data=args[1] if len(args) > 1 else {},
+                    metadata=args[2] if len(args) > 2 else {},
+                    tags=args[3] if len(args) > 3 else [],
+                )
+                yield trace
+            
+            mock_client.trace.side_effect = mock_trace
 
             @trace_llm_call("test_func", {"input": "data"})
             def my_function(x, y):
@@ -460,7 +476,7 @@ class TestCostSummary:
         summary = client.get_cost_summary()
 
         assert summary["total_calls"] == 3
-        assert summary["total_cost_usd"] == 0.035
+        assert abs(summary["total_cost_usd"] - 0.035) < 1e-10
         assert summary["total_tokens"] == 350
         assert "gpt-4" in summary["by_group"]
         assert "gpt-3.5" in summary["by_group"]

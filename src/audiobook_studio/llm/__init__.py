@@ -16,12 +16,15 @@ from .router import (
     create_router,
     get_cost_tracker,
 )
+from .utils import LLMParseError, validate_and_parse_llm_response
 
 __all__ = [
     "LLMClient",
     "LLMCallResult",
     "LLMClientConfig",
     "create_client",
+    "LLMParseError",
+    "validate_and_parse_llm_response",
     "LLMRouter",
     "CostTracker",
     "ModelConfig",

@@ -1,5 +1,6 @@
 """Unit tests for audio quality check pipeline."""
 
+import os
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -32,6 +33,7 @@ class TestQualityCheckPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
+        os.environ["MOCK_LLM"] = "false"
         pipeline = QualityCheckPipeline()
         assert not pipeline.mock_mode
         assert pipeline.router is not None
@@ -48,7 +50,8 @@ class TestQualityCheckPipeline:
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        pipeline = QualityCheckPipeline(mock_mode=True)
+        os.environ["MOCK_LLM"] = "true"
+        pipeline = QualityCheckPipeline()
         assert pipeline.mock_mode
 
     def test_analyze_audio_rules_mock(self):
@@ -283,7 +286,7 @@ class TestQualityCheckPipeline:
 
             # Should have fix suggestions
             assert len(judgment.fix_suggestions) > 0
-            assert "重新合成以修复音频质量问题" in judgment.fix_suggestions
+            assert any("重新合成以修复音频质量问题" in s.suggested_value for s in judgment.fix_suggestions)
 
     def test_run_with_silence_issue_triggers_regeneration(self):
         """Test that silence issues can trigger regeneration."""
@@ -406,7 +409,7 @@ class TestQualityCheckPipeline:
         inputs = [(audio_path, annotation, routing, reference_text)]
 
         # Test with mock_mode=True to avoid needing real judge/router
-        judgments = quality_check(inputs=inputs, mock_mode=True)
+        judgments = quality_check(inputs=inputs)
 
         assert len(judgments) == 1
         # In mock_mode=True, it should create its own mock judge and return mock judgments
@@ -701,7 +704,8 @@ class TestQualityCheckNonMockPaths:
             # The function is called with keyword arguments
             recorded.update(kwargs)
 
-        self.pipeline.mock_mode = True
+        # Set mock_mode=False to test non-mock path that records performance
+        self.pipeline.mock_mode = False
         mock_judgment = QualityJudgment(
             segment_id="test_seg",
             overall_score=0.85,

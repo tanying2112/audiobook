@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projects'
 import { useChapterStore } from '../stores/chapters'
 import { Icon } from '@iconify/vue'
+import { useI18n } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const chapterStore = useChapterStore()
+const { t } = useI18n()
 
 const projectId = Number(route.params.id)
 
@@ -35,26 +37,26 @@ function viewQuality() {
     <div class="page-header">
       <button class="btn btn-ghost" @click="router.push('/')">
         <Icon icon="mdi:arrow-left" width="18" height="18" />
-        返回
+        {{ t('common.back') }}
       </button>
-      <h1>{{ projectStore.currentProject?.title || '项目详情' }}</h1>
+      <h1>{{ projectStore.currentProject?.title || t('project_detail.title') }}</h1>
       <div class="header-actions">
         <button class="btn btn-outline" @click="manageCharacters">
           <Icon icon="mdi:account-group" width="18" height="18" />
-          角色管理
+          {{ t('project_detail.characters') }}
         </button>
         <button class="btn btn-outline" @click="viewQuality">
           <Icon icon="mdi:chart-bar" width="18" height="18" />
-          质量报告
+          {{ t('project_detail.quality_report') }}
         </button>
       </div>
     </div>
 
-    <div v-if="projectStore.loading" class="loading">加载中...</div>
+    <div v-if="projectStore.loading" class="loading">{{ t('common.loading') }}</div>
     <template v-else>
       <section class="chapter-list">
-        <h2>章节列表</h2>
-        <div v-if="chapterStore.chapters.length === 0" class="empty">暂无章节</div>
+        <h2>{{ t('project_detail.chapters') }}</h2>
+        <div v-if="chapterStore.chapters.length === 0" class="empty">{{ t('common.no_data') }}</div>
         <div
           v-for="ch in chapterStore.chapters"
           :key="ch.id"
@@ -62,7 +64,7 @@ function viewQuality() {
           @click="openChapter(ch.id)"
         >
           <div class="chapter-info">
-            <h3>{{ ch.title || `第 ${ch.chapter_number || ch.id} 章` }}</h3>
+            <h3>{{ ch.title || t('project_detail.chapter_fallback', { number: ch.chapter_number || ch.id }) }}</h3>
             <span class="badge">{{ ch.status || 'pending' }}</span>
           </div>
           <Icon icon="mdi:chevron-right" width="24" height="24" class="chevron" />

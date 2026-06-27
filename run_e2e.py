@@ -8,7 +8,8 @@ import os
 sys.path.insert(0, "src")
 
 # Import and run the E2E script
-from scripts.e2e_long_book import run_e2e_long_book, save_report, print_summary
+sys.path.insert(0, "tests/e2e")
+from e2e_long_book import run_e2e_long_book, save_report, print_summary
 from pathlib import Path
 
 novel_path = Path("data/long_novel/hongloumeng.txt")

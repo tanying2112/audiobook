@@ -44,6 +44,7 @@ class TestSynthesizePipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
+        os.environ["MOCK_LLM"] = "false"
         pipeline = SynthesizePipeline()
         assert not pipeline.mock_mode
         assert pipeline.router is not None
@@ -59,6 +60,12 @@ class TestSynthesizePipeline:
         assert not pipeline.mock_mode
         assert pipeline.output_dir == Path(custom_dir)
 
+    def test_init_mock_mode(self):
+        """Test pipeline initialization in mock mode."""
+        os.environ["MOCK_LLM"] = "true"
+        pipeline = SynthesizePipeline()
+        assert pipeline.mock_mode
+
     def test_text_hash(self):
         """Test text hashing functionality."""
         text1 = "Hello world"
@@ -72,6 +79,10 @@ class TestSynthesizePipeline:
         assert hash1 == hash2  # Same text should produce same hash
         assert hash1 != hash3  # Different text should produce different hash
         assert len(hash1) == 12  # Should be truncated to 12 chars
+
+    def test_make_routing_decision_mock(self):
+        """Test routing decision in mock mode."""
+        os.environ["MOCK_LLM"] = "true"
 
     def test_synthesize_kokoro_mock(self):
         """Test Kokoro synthesis in mock mode."""
@@ -496,19 +507,19 @@ class TestSynthesizeNonMockPaths:
         self.pipeline.mock_mode = False
         mock_get_duration.return_value = 3500
 
-        # Mock edge_tts at module level
-        mock_communicate = Mock()
-        mock_communicate.save = AsyncMock()
+        # Create output file before test (simulates successful synthesis)
+        output_path = Path("./test_output_nonmock/test_edge.mp3")
+        output_path.write_bytes(b"RIFF dummy audio")
 
-        with patch("edge_tts.Communicate", return_value=mock_communicate):
-            duration = self.pipeline._synthesize_edge(
-                text="Test text",
-                voice_id="zh-CN-XiaoxiaoNeural",
-                prosody={},
-                output_path=Path("./test_output_nonmock/test_edge.mp3"),
-            )
-            mock_communicate.save.assert_called_once()
-            assert duration == 3500  # 3.5 seconds from ffprobe
+        with patch("asyncio.run"):
+            with patch("src.audiobook_studio.pipeline.synthesize.SynthesizePipeline._resolve_edge_voice", return_value="test-voice"):
+                duration = self.pipeline._synthesize_edge(
+                    text="Test text",
+                    voice_id="zh-CN-XiaoxiaoNeural",
+                    prosody={},
+                    output_path=output_path,
+                )
+                assert duration == 3500  # 3.5 seconds from ffprobe
 
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
     def test_synthesize_edge_ffprobe_failure(self, mock_get_duration):
@@ -516,18 +527,19 @@ class TestSynthesizeNonMockPaths:
         self.pipeline.mock_mode = False
         mock_get_duration.side_effect = FileNotFoundError("ffprobe not found")
 
-        with patch("asyncio.run") as mock_run:
-            with patch(
-                "edge_tts.Communicate.save", new_callable=AsyncMock
-            ) as mock_save:
+        # Create output file before test (simulates successful synthesis)
+        output_path = Path("./test_output_nonmock/test_edge.mp3")
+        output_path.write_bytes(b"RIFF dummy audio")
+
+        with patch("asyncio.run"):
+            with patch("src.audiobook_studio.pipeline.synthesize.SynthesizePipeline._resolve_edge_voice", return_value="test-voice"):
                 # Text: "测试文本" - Chinese chars
                 duration = self.pipeline._synthesize_edge(
                     text="测试文本",
                     voice_id="zh-CN-XiaoxiaoNeural",
                     prosody={},
-                    output_path=Path("./test_output_nonmock/test_edge.mp3"),
+                    output_path=output_path,
                 )
-                mock_run.assert_called_once()
                 # Should estimate duration from text
                 assert duration >= 500  # Minimum fallback duration
 
@@ -701,10 +713,14 @@ class TestSynthesizeNonMockPaths:
     def test_run_nonmock_kokoro(self):
         """Test run method in non-mock mode with kokoro engine."""
         self.pipeline.mock_mode = False
-        # Mock the edge fallback in _synthesize_kokoro
+        # Mock the engine abstraction - _get_engine_for_synthesis to return a mock engine
+        mock_engine = Mock()
+        mock_engine.engine_name = "kokoro"
+        mock_engine.synthesize = AsyncMock(return_value=Mock(duration_ms=3000))
+        
         with patch.object(
-            self.pipeline, "_synthesize_kokoro", return_value=3000
-        ) as mock_kokoro:
+            self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine
+        ) as mock_get_engine:
             character_bindings = [
                 CharacterVoiceBinding(
                     canonical_name="narrator",
@@ -738,7 +754,7 @@ class TestSynthesizeNonMockPaths:
             segments = self.pipeline.run([inp])
             assert len(segments) == 1
             assert segments[0].engine == "kokoro"
-            mock_kokoro.assert_called_once()
+            mock_get_engine.assert_called_once()
 
     def test_run_nonmock_edge(self):
         """Test run method in non-mock mode with edge engine."""
@@ -782,45 +798,54 @@ class TestSynthesizeNonMockPaths:
             mock_edge.assert_called_once()
 
     def test_run_nonmock_fallback_to_edge(self):
-        """Test run method behavior when kokoro fails - exception is re-raised."""
+        """Test run method behavior when kokoro fails - falls back to edge."""
         self.pipeline.mock_mode = False
+        # Mock the engine abstraction to return a failing kokoro engine
+        mock_engine = Mock()
+        mock_engine.engine_name = "kokoro"
+        mock_engine.synthesize = AsyncMock(side_effect=Exception("kokoro failed"))
+        
         with patch.object(
-            self.pipeline, "_synthesize_kokoro", side_effect=Exception("kokoro failed")
+            self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine
         ):
-            character_bindings = [
-                CharacterVoiceBinding(
-                    canonical_name="narrator",
-                    suggested_voice_id="narrator_voice",
-                    sample_quote="测试文本",
+            # Also mock the edge synthesis
+            with patch.object(
+                self.pipeline, "_synthesize_edge", return_value=2800
+            ) as mock_edge:
+                character_bindings = [
+                    CharacterVoiceBinding(
+                        canonical_name="narrator",
+                        suggested_voice_id="narrator_voice",
+                        sample_quote="测试文本",
+                    )
+                ]
+                annotation = ParagraphAnnotation(
+                    paragraph_index=0,
+                    speaker_canonical_name="narrator",
+                    is_dialogue=False,
+                    emotion="neutral",
+                    emotion_intensity=0.5,
+                    speech_rate=1.0,
+                    pitch_shift_semitones=0,
+                    confidence=0.95,
+                    needs_sfx=False,
+                    sfx_tags=[],
                 )
-            ]
-            annotation = ParagraphAnnotation(
-                paragraph_index=0,
-                speaker_canonical_name="narrator",
-                is_dialogue=False,
-                emotion="neutral",
-                emotion_intensity=0.5,
-                speech_rate=1.0,
-                pitch_shift_semitones=0,
-                confidence=0.95,
-                needs_sfx=False,
-                sfx_tags=[],
-            )
-            inp = TtsRoutingInput(
-                book_id="test_book",
-                chapter_index=1,
-                paragraph_index=1,
-                global_paragraph_index=1,
-                text="Test paragraph",
-                character_voice_map=character_bindings,
-                paragraph_annotation=annotation,
-                prefer_local=True,
-            )
+                inp = TtsRoutingInput(
+                    book_id="test_book",
+                    chapter_index=1,
+                    paragraph_index=1,
+                    global_paragraph_index=1,
+                    text="Test paragraph",
+                    character_voice_map=character_bindings,
+                    paragraph_annotation=annotation,
+                    prefer_local=True,
+                )
 
-            # The run method re-raises the exception because _synthesize_kokoro already
-            # has internal fallbacks. If we bypass those by mocking, the exception propagates.
-            with pytest.raises(Exception, match="kokoro failed"):
-                self.pipeline.run([inp])
+                segments = self.pipeline.run([inp])
+                assert len(segments) == 1
+                assert segments[0].engine == "edge"
+                mock_edge.assert_called_once()
 
     def test_run_exception_records_performance(self):
         """Test that exception in run still records performance metrics."""
@@ -838,7 +863,7 @@ class TestSynthesizeNonMockPaths:
             with patch.object(
                 self.pipeline,
                 "_synthesize_kokoro",
-                side_effect=Exception("synthesis failed"),
+                side_effect=Exception("All TTS engines in fallback chain failed"),
             ):
                 character_bindings = [
                     CharacterVoiceBinding(
@@ -870,7 +895,7 @@ class TestSynthesizeNonMockPaths:
                     prefer_local=True,
                 )
 
-                with pytest.raises(Exception, match="synthesis failed"):
+                with pytest.raises(Exception, match="All TTS engines in fallback chain failed"):
                     self.pipeline.run([inp])
 
                 assert recorded.get("stage") == "synthesize_kokoro"

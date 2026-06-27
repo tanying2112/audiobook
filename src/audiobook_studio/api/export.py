@@ -67,7 +67,9 @@ _export_jobs: dict[str, ExportJob] = {}
 
 
 @router.get("/", response_model=List[FormatInfo])
-def list_export_formats():
+def list_export_formats(
+    project_id: int,
+):
     """列出支持的导出格式."""
     return [
         FormatInfo(

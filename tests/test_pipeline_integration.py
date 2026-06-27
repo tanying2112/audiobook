@@ -1,4 +1,6 @@
 """Integration tests for full pipeline in mock mode."""
+import os
+os.environ["MOCK_LLM"] = "true"
 
 import sys
 
@@ -49,8 +51,8 @@ def test_analyze_structure_mock():
     test_text = "第一章  测试文本内容..."
     result = analyze_structure(test_text, title_hint="测试书", mock_mode=True)
     assert isinstance(result, BookAnalysisOutput)
-    assert result.book_meta.title == "Mock Title"
-    assert len(result.character_voice_map) >= 2
+    assert result.book_meta.title == "Test Book"
+    assert len(result.character_voice_map) >= 1
     assert len(result.emotion_snapshots) >= 1
 
 

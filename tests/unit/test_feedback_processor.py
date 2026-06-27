@@ -1,4 +1,6 @@
 """Tests for feedback/processor module."""
+import os
+os.environ["MOCK_LLM"] = "true"
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -314,5 +316,100 @@ class TestGetTrendReport:
         assert "clipping" in result["pattern_frequency"]
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestLLMFeedbackAnalyzer:
+    """Tests for LLMFeedbackAnalyzer mock mode and integration with processor."""
+
+    def test_llm_analyzer_mock_returns_feedback_analysis(self):
+        from src.audiobook_studio.feedback.llm_analyzer import LLMFeedbackAnalyzer
+
+        analyzer = LLMFeedbackAnalyzer()
+        result = analyzer.analyze_mock(
+            stage="edit_for_tts",
+            llm_output={"edited_text": "你好", "emotion": "neutral"},
+            corrected_output={"edited_text": "你好！", "emotion": "happy"},
+            rationale="情感不足，应更热情",
+            key_differences=["字段 emotion 值不同: neutral → happy"],
+        )
+
+        assert isinstance(result.pattern_tags, list)
+        assert result.severity in ("high", "medium", "low")
+        assert 0.0 <= result.confidence <= 1.0
+        assert "[Mock]" in result.semantic_summary
+
+    def test_analyze_single_feedback_prefers_llm_and_falls_back(self):
+        """当 LLM 分析器抛出异常时，processor 应降级到关键词匹配。"""
+        mock_record = MagicMock()
+        mock_record.feedback_id = "fb-llm-1"
+        mock_record.stage = "edit_for_tts"
+        mock_record.llm_output = {"emotion": "neutral", "text": "hello"}
+        mock_record.corrected_output = {"emotion": "happy", "text": "hello"}
+        mock_record.rationale = "情感不足，需要更强烈"
+
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.side_effect = RuntimeError("LLM service unavailable")
+
+        with patch(
+            "src.audiobook_studio.feedback.processor._get_llm_analyzer",
+            return_value=mock_analyzer,
+        ):
+            result = analyze_single_feedback(mock_record)
+
+        assert result.feedback_id == "fb-llm-1"
+        assert result.analysis_source == "keyword"
+        assert "emotion_too_mild" in result.pattern_tags
+        mock_analyzer.analyze.assert_called_once()
+
+    def test_analyze_single_feedback_uses_llm_when_available(self):
+        """当 LLM 分析器可用时，应使用 LLM 结果并标记 analysis_source='llm'。"""
+        from src.audiobook_studio.schemas import FeedbackAnalysis
+
+        mock_record = MagicMock()
+        mock_record.feedback_id = "fb-llm-2"
+        mock_record.stage = "edit_for_tts"
+        mock_record.llm_output = {"emotion": "neutral", "text": "hello"}
+        mock_record.corrected_output = {"emotion": "happy", "text": "hello"}
+        mock_record.rationale = "情感不足，需要更强烈"
+
+        mock_analysis = FeedbackAnalysis(
+            pattern_tags=["emotion_too_mild", "context_awareness_missing"],
+            semantic_summary="LLM 没有理解上下文，情感标注错误",
+            severity="medium",
+            actionable_instruction="标注情感时须结合上下文情绪",
+            root_cause="上下文不足",
+            confidence=0.88,
+        )
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = mock_analysis
+
+        with patch(
+            "src.audiobook_studio.feedback.processor._get_llm_analyzer",
+            return_value=mock_analyzer,
+        ):
+            result = analyze_single_feedback(mock_record)
+
+        assert result.analysis_source == "llm"
+        assert result.pattern_tags == ["emotion_too_mild", "context_awareness_missing"]
+        assert result.semantic_summary == "LLM 没有理解上下文，情感标注错误"
+        assert result.severity == "medium"
+        assert result.confidence == 0.88
+        assert result.actionable_instruction == "标注情感时须结合上下文情绪"
+        assert result.root_cause == "上下文不足"
+
+
+class TestRouterMockFeedbackAnalysis:
+    """Tests for router mock support of FeedbackAnalysis."""
+
+    def test_router_mock_creates_feedback_analysis(self):
+        """Test router._create_mock_result creates FeedbackAnalysis."""
+        from src.audiobook_studio.llm import create_router
+        from src.audiobook_studio.schemas import FeedbackAnalysis
+
+        # Test the _create_mock_result method directly for FeedbackAnalysis
+        router = create_router(mock_mode=True)
+        result = router._create_mock_result(FeedbackAnalysis, "analyze")
+
+        assert result is not None
+        assert result.output is not None
+        assert isinstance(result.output.pattern_tags, list)
+        assert result.output.severity in ("high", "medium", "low")
+        assert result.output.confidence >= 0.0

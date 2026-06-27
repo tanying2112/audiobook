@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..llm import LLMRouter, create_router
+from ..config.hardware_profile import get_hardware_profile, HardwareProfile
 from ..monitoring import record_stage_performance
 from ..monitoring.langfuse_client import (
     is_enabled,
@@ -29,6 +30,13 @@ from ..schemas import (
     TtsRoutingInput,
 )
 from ..utils.ffmpeg_probe import get_duration_sync
+from ..tts import (
+    TTSEngine,
+    VoiceInfo,
+    SynthesisResult,
+    EngineRegistry,
+)
+from ..di import get_app_container
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +63,33 @@ class SynthesizePipeline:
         self,
         router=None,
         output_dir="./output",
-        mock_mode=False,
+        mock_mode: Optional[bool] = None,
+        hardware_profile: Optional[HardwareProfile] = None,
     ):
-        self.router = router or create_router(mock_mode=mock_mode)
-        self.mock_mode = mock_mode
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if self.mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
+
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Hardware profile for TTS engine selection
+        self.hardware_profile = hardware_profile or get_hardware_profile()
+
         # Track existing segments for incremental synthesis
         self.existing_segments = {}
+        self._mock_segment_counter = 0
 
     # Common Edge-TTS voice mapping (short → full SSML format)
     EDGE_VOICE_MAP = {
@@ -220,8 +246,9 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Kokoro-ONNX (local). Falls back to Edge-TTS if unavailable."""
+        # Mock mode: create dummy file
         if self.mock_mode:
-            output_path.write_bytes(b"RIFF" + b"\x00" * 1000)
+            output_path.write_bytes(b"MP3 dummy kokoro")
             return 3000
 
         # kokoro-onnx is optional; fall back to edge-tts if not installed
@@ -244,8 +271,9 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Edge-TTS (cloud). Returns duration_ms."""
+        # Mock mode: create dummy file
         if self.mock_mode:
-            output_path.write_bytes(b"RIFF" + b"\x00" * 1500)
+            output_path.write_bytes(b"MP3 dummy edge")
             return 2800
 
         try:
@@ -259,6 +287,10 @@ class SynthesizePipeline:
                 await communicate.save(str(output_path))
 
             asyncio.run(_synthesize())
+
+            # If output file wasn't created (e.g., asyncio.run was mocked), use fallback
+            if not output_path.exists():
+                raise RuntimeError("Synthesis did not create output file")
 
             # Get duration using utility
             try:
@@ -278,7 +310,6 @@ class SynthesizePipeline:
                 f"Estimated duration from text: {estimated_ms}ms ({len(text)} chars)"
             )
             return estimated_ms
-            return estimated_ms
 
         except ImportError:
             logger.error("edge-tts not installed. Run: pip install edge-tts")
@@ -291,14 +322,15 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Azure Cognitive Services TTS. Returns duration_ms."""
+        # Mock mode: create dummy file
         if self.mock_mode:
-            output_path.write_bytes(b"RIFF" + b"" * 1500)
+            output_path.write_bytes(b"MP3 dummy azure")
             return 2800
 
         # Check for Azure credentials
         azure_key = os.getenv("AZURE_TTS_KEY") or os.getenv("AZURE_SPEECH_KEY")
         azure_region = os.getenv("AZURE_TTS_REGION") or os.getenv("AZURE_SPEECH_REGION")
-        
+
         if not azure_key or not azure_region:
             logger.warning("Azure TTS credentials not configured (AZURE_TTS_KEY, AZURE_TTS_REGION)")
             raise RuntimeError("Azure TTS not configured")
@@ -372,8 +404,9 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Google Cloud TTS. Returns duration_ms."""
+        # Mock mode: create dummy file
         if self.mock_mode:
-            output_path.write_bytes(b"RIFF" + b"" * 1500)
+            output_path.write_bytes(b"MP3 dummy gcp")
             return 2800
 
         # Check for GCP credentials
@@ -441,8 +474,11 @@ class SynthesizePipeline:
 
     def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Stitch segments with crossfade using ffmpeg filter_complex. Returns total duration_ms."""
+        # Mock mode: return sum of durations
         if self.mock_mode:
-            return sum(s.duration_ms for s in segments)
+            total_duration = sum(s.duration_ms for s in segments)
+            output_path.write_bytes(b"MP3 dummy crossfade")
+            return total_duration
 
         if not segments:
             logger.warning("No segments to stitch")
@@ -591,6 +627,37 @@ class SynthesizePipeline:
         """Synthesize multiple paragraphs incrementally."""
         logger.info(f"Synthesizing {len(inputs)} paragraphs")
 
+        # Mock mode: return simulated segments without actual synthesis
+        if self.mock_mode:
+            segments = []
+            for inp in inputs:
+                decision = self._make_routing_decision(inp)
+                segment_id = decision.segment_id
+                text_hash = self._text_hash(inp.text)
+
+                # Check if already cached (incremental mode)
+                if segment_id in self.existing_segments:
+                    existing = self.existing_segments[segment_id]
+                    if existing.text_hash == text_hash:
+                        logger.info(f"Segment {segment_id} unchanged, skipping")
+                        segments.append(existing)
+                        continue
+
+                self._mock_segment_counter += 1
+                file_path = self.output_dir / f"{decision.segment_id}.mp3"
+                file_path.write_bytes(b"MP3 dummy data")
+                segment = AudioSegment(
+                    segment_id=decision.segment_id,
+                    file_path=str(file_path),
+                    duration_ms=decision.estimated_duration_ms or 5000,
+                    engine=decision.engine_choice or "kokoro",
+                    voice_id=decision.voice_id,
+                    text_hash=text_hash,
+                )
+                self.existing_segments[segment_id] = segment
+                segments.append(segment)
+            return segments
+
         segments = []
 
         for inp in inputs:
@@ -627,47 +694,26 @@ class SynthesizePipeline:
 
             try:
                 start_time = time.time()
-                if decision.engine_choice == "kokoro":
-                    duration = self._synthesize_kokoro(
-                        inp.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        output_path,
-                    )
-                    engine = "kokoro"
-                elif decision.engine_choice == "edge":
-                    duration = self._synthesize_edge(
-                        inp.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        output_path,
-                    )
-                    engine = "edge"
-                elif decision.engine_choice == "azure":
-                    duration = self._synthesize_azure(
-                        inp.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        output_path,
-                    )
-                    engine = "azure"
-                elif decision.engine_choice == "gcp":
-                    duration = self._synthesize_gcp(
-                        inp.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        output_path,
-                    )
-                    engine = "gcp"
-                else:  # human_clone
-                    # Would use voice cloning model
-                    duration = self._synthesize_edge(  # fallback
-                        inp.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        output_path,
-                    )
-                    engine = "human_clone"
+                # Use hardware profile engine config
+                config = self._get_tts_engine_config()
+                primary_engine = config.get("engine", "kokoro")
+
+                # Override with routing decision if provided
+                engine = decision.engine_choice or primary_engine
+
+                # Get reference audio if available (for voice anchoring)
+                reference_audio = None
+                if decision.prosody_overrides and "reference_audio" in decision.prosody_overrides:
+                    reference_audio = decision.prosody_overrides.pop("reference_audio")
+
+                duration, actual_engine = self._try_synthesize_with_fallback(
+                    inp.text,
+                    decision.voice_id,
+                    decision.prosody_overrides or {},
+                    output_path,
+                    engine
+                )
+                engine = actual_engine
                 synthesis_latency_ms = (time.time() - start_time) * 1000
                 success = True
 
@@ -736,7 +782,7 @@ class SynthesizePipeline:
                 segment_id=segment_id,
                 file_path=str(output_path),
                 duration_ms=duration,
-                engine=decision.engine_choice,
+                engine=engine,  # Use actual engine after fallback
                 voice_id=decision.voice_id,
                 text_hash=text_hash,
             )
@@ -754,34 +800,151 @@ class SynthesizePipeline:
 
         return segments
 
-    def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
+    def _get_tts_engine_config(self) -> dict:
+        """Get TTS engine configuration from hardware profile."""
+        if not self.hardware_profile:
+            return {"engine": "kokoro", "fallback_chain": []}
+        
+        tts = self.hardware_profile.tts
+        fallback_chain = self.hardware_profile.get_tts_fallback_chain()
+        
+        return {
+            "engine": tts.engine,
+            "model_path": tts.model_path,
+            "voices_path": tts.voices_path,
+            "dtype": tts.dtype,
+            "compile": tts.compile,
+            "voice_design_enabled": tts.voice_design_enabled,
+            "reference_audio_enabled": tts.reference_audio_enabled,
+            "sample_rate": tts.sample_rate,
+            "providers": tts.providers,
+            "session_options": tts.session_options,
+            "voice_presets": tts.voice_presets,
+            "fallback_chain": fallback_chain,
+            "batch_size": tts.batch_size,
+            "kv_cache_reuse": tts.kv_cache_reuse,
+        }
+
+    def _get_engine_for_synthesis(self, engine_name: str, config: dict) -> Optional[TTSEngine]:
+        """Get or create TTS engine instance via DI container."""
+        # Check if already cached
+        if not hasattr(self, '_engine_cache'):
+            self._engine_cache = {}
+
+        if engine_name in self._engine_cache:
+            return self._engine_cache[engine_name]
+
+        # Get or create engine from DI container registry
+        try:
+            from ..di import get_app_container
+            registry = get_app_container().get(EngineRegistry)
+
+            # Try to get existing engine from registry
+            engine = registry.get(engine_name)
+            if engine:
+                self._engine_cache[engine_name] = engine
+                return engine
+
+            # Create engine based on name
+            engine = None
+            if engine_name == "kokoro":
+                from ..tts import KokoroBackend, create_kokoro_backend
+                import asyncio
+                engine = asyncio.run(create_kokoro_backend(
+                    model_path=config.get("model_path"),
+                    voices_path=config.get("voices_path"),
+                    providers=config.get("providers"),
+                    session_options=config.get("session_options"),
+                ))
+            elif engine_name == "voxcpmp2":
+                from ..tts import VoxCPM2Backend, create_voxcpmp2_backend
+                import asyncio
+                engine = asyncio.run(create_voxcpmp2_backend(
+                    model_path=config.get("model_path"),
+                    dtype=config.get("dtype", "float16"),
+                    batch_size=config.get("batch_size", 4),
+                    kv_cache_reuse=config.get("kv_cache_reuse", True),
+                    compile_model=config.get("compile", True),
+                ))
+            elif engine_name in ("edge", "azure", "gcp"):
+                # Cloud engines - use legacy methods for now
+                pass
+            else:
+                logger.warning(f"Unknown engine: {engine_name}")
+                return None
+
+            if engine:
+                # Register with DI container registry for reuse
+                registry.register(engine, set_as_default=(engine_name == "kokoro"))
+                self._engine_cache[engine_name] = engine
+                return engine
+        except Exception as e:
+            logger.error(f"Failed to create/get engine {engine_name}: {e}")
+            return None
+
+        return None
+
+    async def _synthesize_with_engine(
+        self, engine: TTSEngine, text: str, voice_id: str, prosody: dict,
+        output_path: Path, reference_audio: Optional[str] = None
+    ) -> int:
+        """Synthesize using a TTSEngine instance."""
+        import hashlib
+
+        # Mock mode: return simulated value
         if self.mock_mode:
-            from ..schemas import CharacterVoiceBinding, TtsRoutingDecision
+            output_path.write_bytes(b"MP3 dummy engine")
+            return 2800
 
-            char = next(
-                (
-                    c
-                    for c in inp.character_voice_map
-                    if c.canonical_name
-                    == inp.paragraph_annotation.speaker_canonical_name
-                ),
-                None,
-            )
-            voice_id = char.suggested_voice_id if char else "default"
-            return TtsRoutingDecision(
-                segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
-                engine_choice="kokoro",
+        try:
+            result = await engine.synthesize(
+                text=text,
                 voice_id=voice_id,
-                prosody_overrides={
-                    "rate": str(inp.paragraph_annotation.speech_rate),
-                    "pitch": f"{inp.paragraph_annotation.pitch_shift_semitones}st",
-                },
-                fallback_engine="edge",
-                reasoning="Mock mode: using Kokoro local engine",
-                estimated_cost_usd=0.0,
-                estimated_duration_ms=3000,
+                output_path=output_path,
+                prosody=prosody,
+                reference_audio=reference_audio,
             )
+            return result.duration_ms
+        except Exception as e:
+            logger.error(f"Engine {engine.engine_name} synthesis failed: {e}")
+            raise
 
+    def _try_synthesize_with_fallback(
+        self, text: str, voice_id: str, prosody: dict, output_path: Path, engine: str
+    ) -> tuple[int, str]:
+        """Try synthesis with fallback chain from hardware profile."""
+        config = self._get_tts_engine_config()
+        engines_to_try = [engine] + [f.get("engine") for f in config.get("fallback_chain", [])]
+        
+        for eng in engines_to_try:
+            if not eng:
+                continue
+            try:
+                if eng == "kokoro" or eng == "voxcpmp2":
+                    # Use new engine abstraction
+                    tts_engine = self._get_engine_for_synthesis(eng, config)
+                    if tts_engine:
+                        import asyncio
+                        duration = asyncio.run(self._synthesize_with_engine(
+                            tts_engine, text, voice_id, prosody, output_path
+                        ))
+                        return duration, eng
+                elif eng == "edge":
+                    return self._synthesize_edge(text, voice_id, prosody, output_path), eng
+                elif eng == "azure":
+                    return self._synthesize_azure(text, voice_id, prosody, output_path), eng
+                elif eng == "gcp":
+                    return self._synthesize_gcp(text, voice_id, prosody, output_path), eng
+                elif eng == "cosyvoice":
+                    logger.warning("CosyVoice not yet implemented, falling back")
+                    continue
+            except Exception as e:
+                logger.warning(f"Engine {eng} failed: {e}, trying next...")
+                continue
+        
+        raise RuntimeError("All TTS engines in fallback chain failed")
+
+    def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
         # Real routing via LLM
         # Build prompt for routing decision
         # ... (would use router.call with stage="route")
@@ -808,7 +971,7 @@ class SynthesizePipeline:
                 "pitch": f"{inp.paragraph_annotation.pitch_shift_semitones}st",
             },
             fallback_engine="edge",
-            reasoning="Auto routing: local preferred for Chinese, Edge for English",
+            reasoning="Mock mode: simulated routing decision" if self.mock_mode else "Auto routing: local preferred for Chinese, Edge for English",
             estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
             estimated_duration_ms=3000,
         )

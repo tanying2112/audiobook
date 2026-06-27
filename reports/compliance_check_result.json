@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "overall_compliance_rate": 0.99,
+  "stage_results": {
+    "extract": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    },
+    "analyze": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    },
+    "annotate": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    },
+    "edit": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    },
+    "synthesize": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    },
+    "quality": {
+      "pass": true,
+      "compliance_rate": 0.99,
+      "total_calls": 100,
+      "compliant_calls": 99
+    }
+  },
+  "threshold": 0.99
+}

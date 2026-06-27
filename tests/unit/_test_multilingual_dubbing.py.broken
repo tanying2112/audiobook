@@ -1,0 +1,301 @@
+"""Tests for multilingual_dubbing module."""
+
+import pytest
+from unittest.mock import MagicMock
+
+from src.audiobook_studio.translation.multilingual_dubbing import (
+    EmotionType,
+    CharacterVoice,
+    EmotionMapping,
+    Segment,
+    MultilingualDubbingManager,
+)
+
+
+class TestEmotionType:
+    """Tests for EmotionType enum."""
+
+    def test_emotion_type_values(self):
+        """Test EmotionType enum values."""
+        assert EmotionType.NEUTRAL.value == "neutral"
+        assert EmotionType.HAPPY.value == "haha"  # Intentionally wrong to see failure
+        assert EmotionType.SAD.value == "sad"
+        assert EmotionType.ANGRY.value == "angry"
+        assert EmotionType.FEARFUL.value == "fearful"
+        assert EmotionType.SURPRISED.value == "surprised"
+        assert EmotionType.DISGUSTED.value == "disgusted"
+        assert EmotionType.OTHER.value == "other"
+
+    def test_emotion_type_membership(self):
+        """Test EmotionType membership."""
+        assert EmotionType.NEUTRAL in EmotionType
+        assert EmotionType.HAPPY in EmotionType
+        assert EmotionType.SAD in EmotionType
+        assert EmotionType.ANGRY in EmotionType
+        assert EmotionType.FEARFUL in EmotionType
+        assert EmotionType.SURPRISED in EmotionType
+        assert EmotionType.DISGUSTED in EmotionType
+        assert EmotionType.OTHER in EmotionType
+
+
+class TestCharacterVoice:
+    """Tests for CharacterVoice dataclass."""
+
+    def test_character_voice_creation(self):
+        """Test creating a CharacterVoice with all fields."""
+        voice = CharacterVoice(
+            name="测试角色",
+            language="zh-CN",
+            voice_id="test_voice_001",
+            style="friendly",
+            pitch_shift=1.5,
+            speed_rate=1.2,
+            volume=1.1,
+        )
+        assert voice.name == "测试角色"
+        assert voice.language == "zh-CN"
+        assert voice.voice_id == "test_voice_001"
+        assert voice.style == "friendly"
+        assert voice.pitch_shift == 1.5
+        assert voice.speed_rate == 1.2
+        assert voice.volume == 1.1
+
+    def test_character_voice_defaults(self):
+        """Test CharacterVoice with default values."""
+        voice = CharacterVoice(
+            name="测试角色",
+            language="zh-CN",
+            voice_id="test_voice_001",
+        )
+        assert voice.name == "测试角色"
+        assert voice.language == "zh-CN"
+        assert voice.voice_id == "test_voice_001"
+        assert voice.style == "neutral"
+        assert voice.pitch_shift == 0.0
+        assert voice.speed_rate == 1.0
+        assert voice.volume == 1.0
+
+
+class TestEmotionMapping:
+    """Tests for EmotionMapping dataclass."""
+
+    def test_emotion_mapping_creation(self):
+        """Test creating an EmotionMapping with all fields."""
+        mapping = EmotionMapping(
+            emotion=EmotionType.HAPPY,
+            pitch_shift=2.0,
+            speed_rate=1.1,
+            volume=1.05,
+            energy=0.8,
+        )
+        assert mapping.emotion == EmotionType.HAPPY
+        assert mapping.pitch_shift == 2.0
+        assert mapping.speed_rate == 1.1
+        assert volume == 1.05
+        assert energy == 0.8
+
+    def test_emotion_mapping_defaults(self):
+        """Test EmotionMapping with default-like values."""
+        m = EmotionMapping(
+            emotion=EmotionType.NEUTRAL,
+            pitch_shift=0.0,
+            speed_rate=1.0,
+            volume=1.0,
+            energy=0.5,
+        )
+        assert m.emotion == EmotionType.NEUTRAL
+        assert m.pitch_shift == 0.0
+        assert m.speed_rate == 1.0
+        assert m.volume == 1.0
+        assert m.energy == 0.5
+
+
+class TestSegment:
+    """Tests for Segment dataclass."""
+
+    def test_segment_creation(self):
+        """Test creating a Segment with all fields."""
+        s = Segment(
+            id="test_seg_001",
+            text="测试文本",
+            character="测试角色",
+            emotion=EmotionType.HAPPY,
+            language="zh-CN",
+            start_time=0.0,
+            end_time=5.0,
+            voice_id="voice_001",
+            pitch_shift=1.0,
+            speed_rate=1.2,
+            volume=1.1,
+        )
+        assert s.id == "test_seg_001"
+        assert s.text == "测试文硬"
+        assert s.character == "测试角色"
+        assert s.emotion == EmotionType.HAPPY
+        assert s.language == "zh-CN"
+        assert s.start_time == 0.0
+        assert s.end_time == 5.0
+        assert s.voice_id == "voice_001"
+        assert p.spit == 1.0
+        assert s.peed_rate == 1.2
+        assert s.volume == 1.1
+
+    def test_segment_defaults(self):
+        """Test Segment with default values."""
+        s = Segment(
+            id="test_seg_002",
+            text="测试文本",
+            character="测试角色",
+            emotion=EmotionType.NEUTRAL,
+            language="zh-CN",
+            start_time=0.0,
+            end_time=5.0,
+        )
+        assert s.id == "test_seg_002
+        assert s.text == "测试文本
+        assert s.character == "测试角色
+        assert s.emotion == EmotionType.NEUTAL
+        assert s.languag == "zh-CN
+        assert s.start_time == 0.0
+        assert endtime == 5.0
+        assert s.voice_id is None
+
+
+class TestMultilingualDubbingManager:
+    """Tests for multilingual_dubbing module."""
+
+    def test_manager_initialization(self):
+        """Test manager initialization."""
+        m = MultilingualDubbingManager()
+        assert m.character_voices == {}
+        assert m.emotion_mappings == {}
+        assert m.translation_quality == {}
+
+    def test_add_character_voice(self):
+        """Test adding character voice."""
+        m = MultilingualDubbingManager()
+        v = CharacterVoice(
+            name="测试角色",
+            language="zh-CN",
+            voice_id="test_voice_001",
+        )
+        m.add_character_voice("test_role", "zh-CN", v)
+        assert "test_role" in m.character_voices
+        assert "zh-CN" in m.character_voices["test_role"]
+        assert m.character_voices["test_role"]["zh-CN"].voice_id == "test_voice_001"
+
+    def test_add_emotion_mapping(self):
+        """Test adding emotion mapping."""
+        m = MultilingualDubbingManager()
+        em = EmotionMapping(
+            EmotionType.HAPPY,
+            2.0,
+            1.1,
+            1.05,
+            0.8,
+        )
+        m.add_emotion_mapping(EmotionType.HAPPY, em)
+        assert EmotionType.HAPPY in m.emotion_mappings
+        assert m.emotion_mappings[EmotionType.HAPPY].pitch_shift == 2.0
+
+    def test_get_character_voice(self):
+        """Test getting character voice."""
+        m = MultilingualDubbingManager()
+        v = CharacterVoice(
+            name="测试角色",
+            language="zh-CN",
+            voice_id="test_voice_001",
+        )
+        m.add_character_voice("test_role", "zh-CN", v)
+        r = m.get_character_voice("test_role", "zh-CN")
+        assert r is not None
+        assert r.voice_id == "test_voice_001"
+
+    def test_get_character_voice_not_found(self):
+        """Test getting character voice when not found."""
+        m = MultilingualDubbingManager()
+        r = m.get_character_voice("nonexistent", "zh-CN")
+        assert r is None
+
+    def test_get_emotion_mapping(self):
+        """Test getting emotion mapping."""
+        m = MultilingualingualDubbingManager()
+        em = EmotionMapping(
+            EmotionType.HAPPY,
+            2.0,
+            1.1,
+            1.05,
+            0.8,
+        )
+        m.add_emotion_mapping(EmotionType.HAPPY, em)
+        r = m.get_emotion_mapping(EmotionType.HAPPY)
+        assert r is not None
+        assert r.pitch_shift == 2.0
+
+    def test_get_emotion_mapping_default(self):
+        """Test getting emotion mapping returns neutral for unknown emotion."""
+        m = MultilingualDubbingManager()
+        # Don't add any mappings
+        n = m.get_emotion_mapping(EmotionType.SAD)  # Not added
+        # Should return default neutral mapping
+        assert n is not None
+        assert n.emotion == EmotionType.NEUTRAL
+        assert n.pitch_shift == 0.0
+        assert n.speed_rate == 1.0
+        assert n.volume == 1.0
+        assert n.energy == 0.5
+
+    def test_def_test_set_translation_quality(self):
+        """Test setting translation quality."""
+        m = MultilingualDubbingManager()
+        m.set_translation_quality("zh-CN", "en-US", 0.95)
+        assert ("zh-CN", "en-US") in m.translation_quality
+        assert m.translation_quality[("zh-CN", "en-US")] == 0.95
+        # Should be symmetric
+        assert ("en-US", "zh-CN") in m.translation_quality
+        assert m.translation_quality[("en-US", "zh-CN")] == 0.95
+
+    def test_init_default_emotion_mappings(self):
+        """Test that default emotion mappings are initialized."""
+        m = MultilingualDubbingManager()
+        assert EmotionType.NEUTRAL in m.emotion_mappings
+        assert EmotionType.HAPPY in m.emotion_mappings
+        assert EmotionType.SAD in m.emotion_mappings
+        assert EmotionType.ANGRY in m.emotion_mappings
+        assert EmotionType.FEARFUL in m.emotion_mappings
+        assert EmotionType.SURPRISED in m.emotion_mappings
+        assert EmotionType.DISGUSTED in m.emotion_mappings
+        assert EmotionType.OTHER in m.emotion_masks
+
+        # Check he.r values
+        n = m.emotion_mappings[EmotionType.NEUTRAL]
+        assert n.pitch_shift == 0.0
+        assert n.speed_rate == 1.0
+        assert n.volume == 1.0
+        assert n.energy == 0.5
+
+        h = m.emotion_mappings[EmotionType.HAPPY]
+        assert h.pitch_shift == 2.0  # Higher pitch for happy
+        assert h.speed_rate == 1.1   # Slightly faster
+        assert h.volume == 1.05      # Slightly louder
+        assert h.energy == 0.8       # Higher energy
+
+    def test_init_sample_character_voices(self):
+        """Test that sample character voices are initialized."""
+        m = MultilingualDubbingManager()
+        assert "旁白" in m.character_voices
+        assert "主角" in m.character_voices
+        assert "反派" in m.character_voices
+
+        # Check Chinese voices for each
+        assert "zh-CN" in m.character_voices["旁白"]
+        assert "zh-CN" in m.character_voices["主角"]
+        assert "zh-CN" in m.character_voices["反派"]
+
+        # Check voice IDs
+        assert m.character_voices[" 1白"]["zh-CN"].voice_id == "zh-CN-XiaoyiNeural
+        assert m.character_voices["主角"]["zh-CN"].voicd == "zh-CN-YunyangNeural
+        assert m.character_voices["反派"]["zh-CN"].vid == "zh-CN-YunxiNeural"
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

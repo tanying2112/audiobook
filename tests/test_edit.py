@@ -5,6 +5,7 @@ convenience function, and error handling.
 Target coverage: >= 60%.
 """
 
+import os
 import sys
 
 import pytest
@@ -21,6 +22,7 @@ class TestEditForTtsPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
+        os.environ["MOCK_LLM"] = "false"
         pipeline = EditForTtsPipeline()
         assert pipeline is not None
         assert pipeline.mock_mode is False
@@ -28,7 +30,8 @@ class TestEditForTtsPipeline:
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        os.environ["MOCK_LLM"] = "true"
+        pipeline = EditForTtsPipeline()
         assert pipeline.mock_mode is True
 
     def test_init_custom_router(self, mock_router):
@@ -38,7 +41,7 @@ class TestEditForTtsPipeline:
 
     def test_run_mock_mode(self, sample_input):
         """Test run in mock mode returns expected result."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         result = pipeline.run(sample_input)
         assert isinstance(result, TtsEditOutput)
         assert "mock_mode_no_changes" in result.changes_made
@@ -47,7 +50,7 @@ class TestEditForTtsPipeline:
 
     def test_run_mock_mode_different_text(self):
         """Test mock mode with different input text."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         input_data = _make_input(paragraph_text="不同文本内容。")
         result = pipeline.run(input_data)
         assert result.edited_text == "不同文本内容。"
@@ -64,7 +67,7 @@ class TestEditForTtsPipeline:
 
     def test_forbid_edit_returns_original(self, sample_input):
         """Test forbid_edit=True preserves original text."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         input_data = _make_input(forbid_edit=True)
         result = pipeline.run(input_data)
         assert result.edited_text == "测试段落文本。"
@@ -154,20 +157,20 @@ class TestEditForTtsPipeline:
 
     def test_load_few_shot_exists(self):
         """Test _load_few_shot loads from golden dataset."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         result = pipeline._load_few_shot("edit_for_tts")
         assert "示例" in result
         assert "输入" in result
 
     def test_load_few_shot_missing(self):
         """Test _load_few_shot returns fallback for missing stage."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         result = pipeline._load_few_shot("nonexistent_stage")
         assert result == "(暂无示例)"
 
     def test_build_prompt(self, sample_input):
         """Test _build_prompt returns valid Jinja2-rendered prompt."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         prompt = pipeline._build_prompt(sample_input)
         assert isinstance(prompt, str)
         assert len(prompt) > 100
@@ -179,7 +182,7 @@ class TestEditForTtsPipeline:
 
     def test_difficulty_b_mock_mode(self):
         """Test difficulty B in mock mode uses mock path."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
+        pipeline = EditForTtsPipeline()
         input_data = _make_input(difficulty="B")
         result = pipeline.run(input_data)
         assert "mock_mode_no_changes" in result.changes_made

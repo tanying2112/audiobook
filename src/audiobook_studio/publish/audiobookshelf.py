@@ -1,16 +1,18 @@
 """Audiobookshelf 集成模块 - 将有声书发布到 Audiobookshelf 平台."""
 
+import base64
+import hashlib
 import json
-import logging
 import mimetypes
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import hashlib
+from typing import Dict, List, Optional, Tuple, Any
 
-logger = logging.getLogger(__name__)
+import httpx
+
+logger = __import__('logging').getLogger(__name__)
 
 
 @dataclass
@@ -50,8 +52,8 @@ class AudiobookFile:
 @dataclass
 class AudiobookshelfConfig:
     """Audiobookshelf 配置"""
-    api_url: str  # 例如: http://localhost:8080/api
-    api_key: str  # API 密钥
+    api_url: str  # 例如: http://localhost:8080
+    api_key: str  # API 密钥（Bearer token）
     library_id: str  # 目标库的 ID
     # 支持的格式
     supported_formats: List[str] = field(default_factory=lambda: ["m4b", "mp3"])
@@ -61,12 +63,26 @@ class AudiobookshelfConfig:
 
 
 class AudiobookshelfPublisher:
-    """Audiobookshelf 发布器"""
+    """Audiobookshelf 发布器 - 支持真实 API 调用和 Mock 模式"""
 
     def __init__(self, config: AudiobookshelfConfig):
         self.config = config
         self.supported_formats = set(config.supported_formats)
+        self.base_url = config.api_url.rstrip('/')
+        self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+        if not self.mock_mode:
+            self.client = httpx.Client(
+                timeout=httpx.Timeout(300.0, connect=30.0),
+                headers={"Authorization": f"Bearer {config.api_key}"}
+            )
+        else:
+            self.client = None
         logger.info("🔊 Audiobookshelf 发布器初始化完成")
+
+    def close(self):
+        """关闭 HTTP 客户端"""
+        if self.client:
+            self.client.close()
 
     def publish_audiobook(
         self,
@@ -87,26 +103,17 @@ class AudiobookshelfPublisher:
             logger.error(f"❌ 有声书准备失败: {message}")
             return False, message, None
 
-        # 在实际实现中，这里 zou 发送 HTTP 请求到 Audiobookshelf API
-        # 为演示目的，我们模拟这个过程
+        # 真实模式：调用真实 API
+        response = self._real_api_call(upload_data, audio_file)
 
-        try:
-            # 模拟API调用
-            response = self._mock_api_call(upload_data)
-
-            if response.get("success"):
-                success_msg = f"有声书已成功发布到 Audiobookshelf (ID: {response.get('book_id')})"
-                logger.info(f"✅ {success_msg}")
-                return True, success_msg, response
-            else:
-                error_msg = f"发布失败: {response.get('message', '未知错误')}"
-                logger.error(f"❌ {error_msg}")
-                return False, error_msg, response
-
-        except Exception as e:
-            error_msg = f"发布过程中出现网络错误: {str(e)}"
+        if response.get("success"):
+            success_msg = f"有声书已成功发布到 Audiobookshelf (ID: {response.get('item_id')})"
+            logger.info(f"✅ {success_msg}")
+            return True, success_msg, response
+        else:
+            error_msg = f"发布失败: {response.get('message', '未知错误')}"
             logger.error(f"❌ {error_msg}")
-            return False, error_msg, None
+            return False, error_msg, response
 
     def _prepare_audiobook(
         self,
@@ -187,7 +194,7 @@ class AudiobookshelfPublisher:
         if file_ext != audio_file.format:
             return False, f"文件扩展名 (.{file_ext}) 与指定格式 ({audio_file.format}) 不匹配"
 
-        # 检查MIME类型
+        # 检查 MIME 类型
         mime_type, _ = mimetypes.guess_type(str(audio_file.file_path))
         expected_mime = {
             "m4b": "audio/mp4",
@@ -197,7 +204,7 @@ class AudiobookshelfPublisher:
         }.get(audio_file.format)
 
         if expected_mime and mime_type and not mime_type.startswith(expected_mime.split('/')[0]):
-            return False, f"文件MIME类型不匹配: 期望 {expected_mime}, 实际 {mime_type}"
+            return False, f"文件 MIME 类型不匹配: 期望 {expected_mime}, 实际 {mime_type}"
 
         return True, "音频文件验证通过"
 
@@ -213,7 +220,6 @@ class AudiobookshelfPublisher:
         cover_data = None
         if metadata.cover_image_path and metadata.cover_image_path.exists():
             try:
-                import base64
                 with open(metadata.cover_image_path, "rb") as f:
                     cover_data = base64.b64encode(f.read()).decode('utf-8')
             except Exception as e:
@@ -262,11 +268,8 @@ class AudiobookshelfPublisher:
         return upload_data
 
     def _mock_api_call(self, upload_data: Dict) -> Dict:
-        """模拟 Audiobookshelf API 调用"""
+        """模拟 Audiobookshelf API 调用 (用于测试)"""
         logger.debug("📡 模拟 Audiobookshelf API 调用")
-
-        # 在实际实现中，这 zou 是一个 HTTP POST 请求到
-        # {self.config.api_url}/books 或者类似的端点
 
         # 检查是否已存在相同标题和作者的书籍（简化检查）
         book_title = upload_data.get("title", "").lower()
@@ -311,17 +314,323 @@ class AudiobookshelfPublisher:
             }
         }
 
+    def _real_api_call(self, upload_data: Dict, audio_file: AudiobookFile) -> Dict:
+        """真实的 Audiobookshelf API 调用"""
+        logger.debug("📡 真实 Audiobookshelf API 调用")
+
+        # 获取库 ID 和 API 密钥
+        library_id = self.config.library_id
+        if not library_id:
+            return {
+                "success": False,
+                "message": "库 ID 未配置",
+                "book_id": None
+            }
+
+        # 第一步：获取库信息以获取文件夹 ID（用于上传）
+        folder_id: Optional[str] = None
+        try:
+            resp = self.client.get(f"{self.base_url}/api/libraries/{library_id}")
+            if resp.status_code == 404:
+                return {
+                    "success": False,
+                    "message": f"库 {library_id} 不存在",
+                    "book_id": None
+                }
+            elif resp.status_code != 200:
+                return {
+                    "success": False,
+                    "message": f"无法访问库 ({resp.status_code}): {resp.text}",
+                    "book_id": None
+                }
+
+            library_info = resp.json()
+            folders = library_info.get("folders", [])
+            if folders:
+                folder_id = folders[0].get("id")
+                logger.info(f"使用文件夹: {folder_id} 在库 {library_id}")
+            else:
+                # 如果没有文件夹，我们仍然可以使用库 ID？上传需要 folder。
+                # 根据 API，upload endpoint 需要 library 和 folder 参数。
+                # 我们将尝试使用库 ID 作为 folder？但可能不行。
+                # 为了简单，我们假设至少有一个文件夹。
+                return {
+                    "success": False,
+                    "message": f"库 {library_id} 没有配置任何文件夹",
+                    "book_id": None
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"获取库信息失败: {str(e)}",
+                "book_id": None
+            }
+
+        # 第二步：准备上传文件列表
+        book_title = upload_data.get("title", f"Project {self.config.library_id}")
+        author = upload_data.get("author", "Unknown")
+
+        # 收集音频文件
+        audio_files: List[Path] = []
+        total_size = 0
+        # 注意：audio_file 参数是单个文件，但实际项目可能有多个文件（每章一个文件）。
+        # 然而，AudiobookFile 似乎代表单个音频文件（如合并的 m4b）。
+        # 为了兼容，我们将 audio_file 视为单个文件列表。
+        if audio_file.file_path.exists():
+            audio_files.append(audio_file.file_path)
+            total_size += audio_file.file_path.stat().st_size
+
+        if not audio_files:
+            return {
+                "success": False,
+                "message": "未找到音频文件",
+                "book_id": None
+            }
+
+        # 第三步：上传文件
+        upload_results: List[Dict[str, Any]] = []
+        successful_uploads = 0
+
+        # 如果配置了 base_path（本地库），直接复制文件
+        base_path = getattr(self.config, 'base_path', None)
+        if base_path:
+            # 本地库：将文件复制到库存储路径下的作者/书名目录
+            library_audio_path = Path(base_path) / author / book_title
+            try:
+                library_audio_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                upload_results.append({
+                    "file": "directory_creation",
+                    "success": False,
+                    "error": str(e),
+                })
+
+            for audio_file_path in audio_files:
+                dest_path = library_audio_path / audio_file_path.name
+                try:
+                    import shutil
+                    shutil.copy2(audio_file_path, dest_path)
+                    upload_results.append({
+                        "file": audio_file_path.name,
+                        "success": True,
+                        "server_path": str(dest_path),
+                    })
+                    successful_uploads += 1
+                except Exception as e:
+                    upload_results.append({
+                        "file": audio_file_path.name,
+                        "success": False,
+                        "error": str(e),
+                    })
+        else:
+            # 远程库：使用 POST /api/upload
+            for audio_file_path in audio_files:
+                try:
+                    with open(audio_file_path, "rb") as f:
+                        files = {
+                            'file': (audio_file_path.name, f.read(),
+                                     self._get_mime_type(audio_file_path))
+                        }
+                        data = {
+                            'library': library_id,
+                            'folder': folder_id,
+                            'title': book_title,
+                            'author': author
+                        }
+                        resp = self.client.post(f"{self.base_url}/api/upload", data=data, files=files)
+                    if resp.status_code in (200, 201):
+                        upload_results.append({
+                            "file": audio_file_path.name,
+                            "success": True,
+                        })
+                        successful_uploads += 1
+                    else:
+                        upload_results.append({
+                            "file": audio_file_path.name,
+                            "success": False,
+                            "error": f"HTTP {resp.status_code}: {resp.text}",
+                        })
+                except Exception as e:
+                    upload_results.append({
+                        "file": audio_file_path.name,
+                        "success": False,
+                        "error": str(e),
+                    })
+
+        if successful_uploads == 0:
+            return {
+                "success": False,
+                "message": "所有文件上传失败",
+                "book_id": None,
+                "upload_results": upload_results
+            }
+
+        # 第四步：触发库扫描
+        try:
+            scan_resp = self.client.post(f"{self.base_url}/api/libraries/{library_id}/scan")
+            if scan_resp.status_code not in (200, 201):
+                logger.warning(f"触发扫描返回状态码 {scan_resp.status_code}")
+        except Exception as e:
+            logger.warning(f"触发扫描失败: {e}")
+
+        # 第五步：轮询查找新创建的条目
+        item_id: Optional[str] = None
+        max_retries = 10
+        poll_interval = 3  # 秒
+        import time
+        for _ in range(max_retries):
+            time.sleep(poll_interval)
+            try:
+                resp = self.client.get(
+                    f"{self.base_url}/api/libraries/{library_id}/search",
+                    params={"q": book_title}
+                )
+                if resp.status_code == 200:
+                    results = resp.json()
+                    for item in results:
+                        media = item.get("media") or {}
+                        metadata_item = media.get("metadata") or {}
+                        item_title = metadata_item.get("title", "")
+                        if item_title.lower() == book_title.lower():
+                            item_id = item.get("id")
+                            break
+                if item_id:
+                    break
+            except Exception as e:
+                logger.debug(f"搜索出错: {e}")
+
+        # 第六步：更新元数据（如果找到 item_id）
+        if item_id:
+            metadata_payload = {
+                "metadata": {
+                    "title": book_title,
+                    "authorName": author,
+                }
+            }
+            # 添加可选字段
+            desc = upload_data.get("description")
+            if desc:
+                metadata_payload["metadata"]["description"] = desc
+            pub_year = upload_data.get("year")
+            if pub_year:
+                metadata_payload["metadata"]["publishedYear"] = pub_year
+            publisher = upload_data.get("publisher")
+            if publisher:
+                metadata_payload["metadata"]["publisher"] = publisher
+            genres = upload_data.get("genres")
+            if genres:
+                metadata_payload["metadata"]["genre"] = genres
+            lang = upload_data.get("language")
+            if lang:
+                # 转换语言代码（例如 zh -> zh-CN）
+                if len(lang) == 2:
+                    lang_map = {"zh": "zh-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR"}
+                    lang = lang_map.get(lang, lang)
+                metadata_payload["metadata"]["language"] = lang
+            series = upload_data.get("series")
+            if series:
+                metadata_payload["metadata"]["series"] = series
+            series_index = upload_data.get("seriesIndex")
+            if series_index is not None:
+                metadata_payload["metadata"]["seriesSequence"] = series_index
+            tags = upload_data.get("tags")
+            if tags:
+                metadata_payload["metadata"]["tags"] = tags
+            chapters = upload_data.get("chapters")
+            if chapters is not None:
+                # 注意：API 期望 chapters 列表，每个章节有 title, start, end
+                # 我们的 chapters 已经是这种格式
+                metadata_payload["metadata"]["chapters"] = chapters
+
+            try:
+                resp = self.client.patch(
+                    f"{self.base_url}/api/items/{item_id}/media",
+                    json=metadata_payload
+                )
+                if resp.status_code not in (200, 204):
+                    logger.warning(f"更新元数据返回状态码 {resp.status_code}: {resp.text}")
+            except Exception as e:
+                logger.warning(f"更新元数据失败: {e}")
+
+            # 第七步：上传封面图片（如果有）
+            cover_path = upload_data.get("coverImage")
+            if cover_path:
+                try:
+                    # cover_data 是 base64 字符串
+                    import base64
+                    cover_bytes = base64.b64decode(cover_path)
+                    files = {
+                        'cover': ('cover.jpg', cover_bytes, 'image/jpeg')
+                    }
+                    resp = self.client.post(f"{self.base_url}/api/items/{item_id}/cover", files=files)
+                    if resp.status_code not in (200, 201):
+                        logger.warning(f"上传封面返回状态码 {resp.status_code}: {resp.text}")
+                except Exception as e:
+                    logger.warning(f"处理封面图片失败: {e}")
+
+        # 构建返回结果
+        return {
+            "success": successful_uploads > 0,
+            "message": f"成功上传 {successful_uploads}/{len(audio_files)} 个文件" if item_id else "文件上传成功，但未能确认项目 ID",
+            "book_id": item_id,
+            "item_id": item_id,
+            "uploaded_files": successful_uploads,
+            "total_files": len(audio_files),
+            "total_size_bytes": total_size,
+            "upload_results": upload_results,
+            "library_id": library_id
+        }
+
+    def _get_mime_type(self, path: Path) -> str:
+        """根据文件扩展名返回 MIME 类型"""
+        return {
+            ".m4b": "audio/mp4",
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".flac": "audio/flac",
+            ".ogg": "audio/ogg",
+            ".aac": "audio/aac"
+        }.get(path.suffix.lower(), "application/octet-stream")
+
     def get_library_status(self) -> Dict:
-        """获取 Audiobookshelf 库状态（模拟）"""
+        """获取 Audiobookshelf 库状态"""
         logger.debug("📊 获取 Audiobookshelf 库状态")
-        # 在实际实现中，这 zou 是一个 GET 请求到 /library 端点
+
+        # Mock 模式：返回模拟状态
+        if self.mock_mode:
+            return {
+                "library_id": self.config.library_id,
+                "total_books": 0,
+                "total_duration_hours": 0,
+                "supported_formats": list(self.supported_formats),
+                "status": "online",
+                "last_updated": datetime.now().isoformat()
+            }
+
+        url = f"{self.base_url}/api/libraries/{self.config.library_id}"
+        try:
+            response = self.client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "library_id": self.config.library_id,
+                    "total_books": data.get("mediaCount", 0),
+                    "total_duration_hours": data.get("duration", 0) / 3600,
+                    "supported_formats": list(self.supported_formats),
+                    "status": "online",
+                    "last_updated": datetime.now().isoformat()
+                }
+        except Exception as e:
+            logger.warning(f"获取库状态失败: {e}")
+
         return {
             "library_id": self.config.library_id,
-            "total_books": 42,  # 模拟数据
-            "total_duration_hours": 127.5,
+            "total_books": 0,
+            "total_duration_hours": 0,
             "supported_formats": list(self.supported_formats),
-            "status": "online",
-            "last_updated": datetime.now().isoformat()
+            "status": "offline",
+            "last_updated": datetime.now().isoformat(),
+            "error": "无法连接到 Audiobookshelf"
         }
 
 
@@ -331,15 +640,15 @@ def main():
 
     # 配置 Audiobookshelf 连接
     config = AudiobookshelfConfig(
-        api_url="http://localhost:8080/api",
-        api_key="your_api_key_here",  # 在实际使用中应从环境变量或安全储存中读取
+        api_url="http://localhost:8080",
+        api_key=os.getenv("AUDIOBOOKSHELF_API_KEY", ""),  # 从环境变量读取
         library_id="main_library",
         supported_formats=["m4b", "mp3"],
         auto_convert=True,
         preferred_format="m4b"
     )
 
-    # 创建集成器
+    # 创建发布器
     publisher = AudiobookshelfPublisher(config)
 
     print("🔧 配置 Audiobookshelf 连接:")
@@ -429,8 +738,8 @@ def main():
 
     print("\n" + "="*60)
 
-    # 模拟发布到 Audiobookshelf
-    print("\n🚀 发布到 Audiobookshelf...")
+    # 发布到 Audiobookshelf (Mock 模式)
+    print("\n🚀 发布到 Audiobookshelf (Mock 模式)...")
     success, message, response = publisher.publish_audiobook(metadata, audio_file)
 
     if success:
@@ -461,6 +770,8 @@ def main():
     print("\n" + "="*60)
     print("🎉 Audiobookshelf 集成演示完成")
     print("="*60)
+
+    publisher.close()
 
 
 if __name__ == "__main__":

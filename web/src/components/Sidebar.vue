@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
+import { useI18n } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const navItems = [
-  { label: '项目列表', icon: 'mdi:bookshelf', route: '/' },
-  { label: '项目管理', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
+  { label: 'nav.projects', icon: 'mdi:bookshelf', route: '/' },
+  { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
+  { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback' },
+  { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness' },
 ]
 
 function isActive(path: string): boolean {
@@ -20,7 +24,7 @@ function isActive(path: string): boolean {
   <aside class="sidebar">
     <div class="sidebar-header">
       <Icon icon="mdi:microphone" width="28" height="28" />
-      <span class="sidebar-title">Audiobook Studio</span>
+      <span class="sidebar-title">{{ t('sidebar.title') }}</span>
     </div>
     <nav class="sidebar-nav">
       <button
@@ -30,12 +34,12 @@ function isActive(path: string): boolean {
         @click="router.push(item.route || '/')"
       >
         <Icon :icon="item.icon" width="20" height="20" />
-        <span>{{ item.label }}</span>
+        <span>{{ t(item.label) }}</span>
       </button>
     </nav>
     <div class="sidebar-footer">
       <Icon icon="mdi:cog-outline" width="20" height="20" />
-      <span>设置</span>
+      <span>{{ t('sidebar.settings') }}</span>
     </div>
   </aside>
 </template>

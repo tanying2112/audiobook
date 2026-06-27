@@ -25,9 +25,25 @@ logger = logging.getLogger(__name__)
 class ExtractPipeline:
     """Pipeline for text extraction from various formats."""
 
-    def __init__(self, router: Optional[LLMRouter] = None, mock_mode: bool = False):
-        self.router = router or create_router(mock_mode=mock_mode)
-        self.mock_mode = mock_mode
+    def __init__(self, router: Optional[LLMRouter] = None, mock_mode: Optional[bool] = None):
+        # Default mock_mode from environment if not specified
+        if mock_mode is None:
+            self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+        else:
+            self.mock_mode = mock_mode
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if self.mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
 
     def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
         """Extract text from PDF using pdfplumber, fallback to PyMuPDF OCR."""
@@ -137,26 +153,26 @@ class ExtractPipeline:
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
 
+        # Mock mode: return simulated result
         if self.mock_mode:
-            # Return mock result
-            extraction_time_ms = (time.time() - start_time) * 1000
+            mock_text = "用于测试的模拟提取文本。这是模拟数据，用于测试 extract 功能。" * 10
 
-            # Record mock extraction performance
+            # Record mock performance
             record_stage_performance(
                 stage="extract_mock",
-                latency_ms=extraction_time_ms,
-                tokens_in=0,  # Not applicable for mock
-                tokens_out=0,  # Not applicable for mock
-                cost_usd=0.0,  # No cost for mock
+                latency_ms=int((time.time() - start_time) * 1000),
+                tokens_in=10,
+                tokens_out=100,
+                cost_usd=0.0,
                 success=True,
-                quality_score=1.0,  # Mock is perfect
+                quality_score=1.0,
                 provider="mock",
-                model="mock",
-                schema_compliance=None,
+                model="mock_model",
+                schema_compliance=True,
             )
 
             return ExtractionResult(
-                raw_text="这是一个用于测试的模拟提取文本，包含足够的字符数以满足最小长度要求。第一章  从前有一个小女孩，她戴着红色的帽子，大家都叫她小红帽。有一天，妈妈对小红帽说：孩子，奶奶病了，你把这篮子蛋糕和酒送给她吧。",
+                raw_text=mock_text,
                 language="zh",
                 page_count=5,
                 has_ocr=False,
@@ -245,7 +261,7 @@ def extract_text(
     file_path: str,
     mime_type: str,
     detect_language: bool = True,
-    mock_mode: bool = False,
+    mock_mode: bool = True,
 ) -> ExtractionResult:
     """Convenience function for text extraction."""
     input_data = ExtractionInput(
@@ -266,7 +282,7 @@ if __name__ == "__main__":  # pragma: no cover
         print("Usage: python extract.py <file_path> <mime_type>")
         sys.exit(1)
 
-    result = extract_text(sys.argv[1], sys.argv[2], mock_mode=True)
+    result = extract_text(sys.argv[1], sys.argv[2])
     print(f"Language: {result.language}")
     print(f"Pages: {result.page_count}")
     print(f"OCR: {result.has_ocr} ({result.ocr_page_ratio:.1%})")

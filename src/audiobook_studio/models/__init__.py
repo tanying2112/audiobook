@@ -12,6 +12,10 @@
 - Quality: 质检记录
 - FeedbackRecord: 反馈记录 (自我迭代核心)
 - ProcessingRun: 管线运行记录 (版本追踪与回滚)
+- User: 用户认证模型
+- Role: RBAC 角色模型
+- Permission: RBAC 权限模型
+- ProjectPermission: 项目级权限模型
 """
 
 from .agent import AgentKnowledge, TaskRecord
@@ -26,6 +30,7 @@ from .processing_run import ProcessingRun
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
+from .user import User, Role, Permission, ProjectPermission
 
 __all__ = [
     "Project",
@@ -41,4 +46,8 @@ __all__ = [
     "ProcessingRun",
     "AgentKnowledge",
     "TaskRecord",
+    "User",
+    "Role",
+    "Permission",
+    "ProjectPermission",
 ]

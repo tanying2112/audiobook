@@ -2,15 +2,18 @@
 
 包含：
 - ParagraphAnnotationInput: 环节③输入 (单段文本 + 上帝视角上下文)
-- ParagraphAnnotation: 环节③输出 (单段完整参数参数参数标注)
+- ParagraphAnnotation: 环节③输出 (单段语义标注，声学参数由 AudioPostProcessor 生成)
 
 Hard Rules (违反即解析失败):
 1. speaker_canonical_name 必须命中 character_voice_map 或为 "_narrator_"
 2. canonical_name 全本唯一
 3. emotion 仅能从 14 枚举中选取
-4. speech_rate 仅能为 7 档离散值 {0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3}
-5. pitch_shift_semitones 为 -5 到 +5 整数
-6. confidence < 0.6 需 UI 高亮提示人工复核
+4. confidence < 0.6 需 UI 高亮提示人工复核
+
+Schema v2 (极简重构):
+- 仅保留语义层参数：speaker, emotion, is_dialogue, confidence, difficulty, notes
+- 声学参数由 AudioPostProcessor 基于 Voice Design 动态生成
+- 兼容 v1: 保留声学字段作为可选字段，供迁移期使用
 """
 
 from typing import Annotated, Literal, Optional
@@ -20,13 +23,14 @@ from typing_extensions import TypedDict
 
 from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
-# 类型别名：约束字段
-SpeechRate = Annotated[float, Field(ge=0.7, le=1.3)]
-PitchShift = Annotated[int, Field(ge=-5, le=5)]
 Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
 EmotionIntensity = Annotated[float, Field(ge=0.0, le=1.0)]
-PauseMs = Annotated[int, Field(ge=0, le=2000)]
 DifficultyLevel = Literal["A", "B", "C"]
+
+# v1 兼容字段（可选，用于迁移期）
+SpeechRate = Annotated[float, Field(ge=0.7, le=1.3)]
+PitchShift = Annotated[int, Field(ge=-5, le=5)]
+PauseMs = Annotated[int, Field(ge=0, le=2000)]
 
 
 class ParagraphAnnotationInput(BaseModel):
@@ -49,14 +53,15 @@ class ParagraphAnnotationInput(BaseModel):
     )
     global_style_notes: str = Field(..., description="全局文风备注")
     contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
+        default=2, description="契约版本号 v2: 极简语义标注"
     )
 
 
 class ParagraphAnnotation(BaseModel):
-    """环节③输出：单段完整参数标注.
+    """环节③输出：单段语义标注 (v2 极简版).
 
-    每个字段都有严格约束，确保 TTS 合成可直接使用。
+    仅保留语义层参数，声学参数由 AudioPostProcessor 动态生成。
+    v1 声学字段保留为可选，兼容迁移期代码。
     """
 
     paragraph_id: Optional[int] = Field(default=None, description="段落数据库主键 ID")
@@ -86,22 +91,22 @@ class ParagraphAnnotation(BaseModel):
         "sarcastic",
     ] = Field(..., description="情感标签 (14 枚举)")
     emotion_intensity: EmotionIntensity = Field(..., description="情感强度 0-1")
-    speech_rate: Literal[0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3] = Field(
-        ..., description="语速 (7 档离散值)"
-    )
-    pitch_shift_semitones: PitchShift = Field(..., description="音高偏移 半音 -5 到 +5")
-    needs_sfx: bool = Field(default=False, description="是否需要场景音效")
-    sfx_tags: list[str] = Field(default_factory=list, description="音效标签列表")
-    pause_before_ms: PauseMs = Field(default=0, description="前停顿毫秒")
-    pause_after_ms: PauseMs = Field(default=0, description="后停顿毫秒")
     confidence: Confidence = Field(..., description="置信度 0-1")
     difficulty: DifficultyLevel = Field(
         default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值"
     )
     notes: str | None = Field(default=None, description="备注/不确定性说明")
     contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
+        default=2, description="契约版本号 v2: 极简语义标注"
     )
+
+    # v1 兼容字段 (可选，迁移期保留)
+    speech_rate: Optional[SpeechRate] = Field(default=None, description="语速 (7 档离散值) - v1 兼容")
+    pitch_shift_semitones: Optional[PitchShift] = Field(default=None, description="音高偏移 半音 -5 到 +5 - v1 兼容")
+    needs_sfx: Optional[bool] = Field(default=None, description="是否需要场景音效 - v1 兼容")
+    sfx_tags: Optional[list[str]] = Field(default=None, description="音效标签列表 - v1 兼容")
+    pause_before_ms: Optional[PauseMs] = Field(default=None, description="前停顿毫秒 - v1 兼容")
+    pause_after_ms: Optional[PauseMs] = Field(default=None, description="后停顿毫秒 - v1 兼容")
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

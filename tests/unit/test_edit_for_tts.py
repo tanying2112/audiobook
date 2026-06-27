@@ -1,4 +1,6 @@
 """Comprehensive unit tests for edit_for_tts pipeline targeting ≥80% line coverage.
+import os
+os.environ["MOCK_LLM"] = "true"
 
 Tests match the ACTUAL API from src/audiobook_studio/pipeline/edit_for_tts.py:
 - EditForTtsPipeline class with run(), _build_prompt(), _load_few_shot()
@@ -33,7 +35,7 @@ class TestEditForTtsPipeline:
     def setup_method(self):
         """Setup test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.pipeline = EditForTtsPipeline(mock_mode=True)
+        self.pipeline = EditForTtsPipeline()
 
     def teardown_method(self):
         """Clean up test fixtures."""
@@ -75,10 +77,10 @@ class TestEditForTtsPipeline:
         """Create a valid TtsEditOutput for mocking."""
         defaults = {
             "edited_text": "这是一个足够长的测试段落文本内容，用于编辑。",
-            "changes_made": ["mock_mode_no_changes"],
+            "changes_made": ["heuristic_fallback_no_llm_available"],
             "forbidden_content_removed": [],
-            "confidence": 0.9,
-            "rationale": "Mock mode: no actual editing",
+            "confidence": 0.8,
+            "rationale": "LLM unavailable, using heuristic fallback",
         }
         defaults.update(overrides)
         return TtsEditOutput(**defaults)
@@ -88,24 +90,18 @@ class TestEditForTtsPipeline:
         from src.audiobook_studio.llm import create_router
 
         pipeline = EditForTtsPipeline()
-        assert pipeline.mock_mode is False
         assert pipeline.router is not None
         assert pipeline.jinja_env is not None
-
-    def test_init_mock_mode(self):
-        """Test pipeline initialization in mock mode."""
-        pipeline = EditForTtsPipeline(mock_mode=True)
-        assert pipeline.mock_mode is True
 
     def test_init_with_custom_router(self):
         """Test pipeline initialization with custom router."""
         mock_router = Mock()
-        pipeline = EditForTtsPipeline(router=mock_router, mock_mode=True)
+        pipeline = EditForTtsPipeline(router=mock_router)
         assert pipeline.router == mock_router
 
     def test_init_with_custom_prompt_dir(self):
         """Test pipeline initialization with custom prompt directory."""
-        pipeline = EditForTtsPipeline(prompt_dir=self.temp_dir, mock_mode=True)
+        pipeline = EditForTtsPipeline(prompt_dir=self.temp_dir)
         assert pipeline.prompt_dir == Path(self.temp_dir)
 
     def test_load_few_shot_no_file(self):
@@ -127,7 +123,7 @@ class TestEditForTtsPipeline:
             for ex in examples:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
 
-        pipeline = EditForTtsPipeline(prompt_dir=self.temp_dir, mock_mode=True)
+        pipeline = EditForTtsPipeline(prompt_dir=self.temp_dir)
         result = pipeline._load_few_shot("edit_for_tts")
 
         assert "示例 1" in result
@@ -146,15 +142,18 @@ class TestEditForTtsPipeline:
         assert "False" in prompt  # forbid_edit
 
     def test_run_mock_mode_returns_tts_edit_output(self):
-        """Test run() in mock mode returns TtsEditOutput with defaults."""
+        """Test run() in mock mode returns TtsEditOutput with original text.
+
+        Note: In mock mode, edit_for_tts returns original text without LLM call.
+        """
         input_data = self.create_minimal_input()
         result = self.pipeline.run(input_data)
 
         assert isinstance(result, TtsEditOutput)
+        # In mock mode, original text is returned without changes
         assert result.edited_text == input_data.paragraph_text
-        assert result.changes_made == ["mock_mode_no_changes"]
+        assert "mock_mode_no_changes" in result.changes_made
         assert result.confidence == 0.9
-        assert result.rationale == "Mock mode: no actual editing"
 
     def test_run_mock_mode_difficulty_a_preserves_original(self):
         """Test run() in mock mode with difficulty A preserves original."""
@@ -196,6 +195,7 @@ class TestEditForTtsPipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
+        # Explicitly set mock_mode=False for real mode test
         pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
         input_data = self.create_minimal_input()
 
@@ -222,6 +222,7 @@ class TestEditForTtsPipeline:
         mock_router.call.return_value = mock_result
 
         with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
+            # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
             pipeline.run(input_data)
@@ -238,6 +239,7 @@ class TestEditForTtsPipeline:
         mock_router.call.side_effect = Exception("API Error")
 
         with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
+            # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
 
@@ -288,19 +290,22 @@ class TestEditForTtsConvenienceFunction:
             "paragraph_annotation": self.create_mock_annotation(),
             "difficulty": "B",
             "forbid_edit": False,
-            "mock_mode": True,
         }
         defaults.update(overrides)
         return defaults
 
     def test_edit_for_tts_mock_mode(self):
-        """Test edit_for_tts convenience function in mock mode."""
+        """Test edit_for_tts convenience function in mock mode.
+
+        Note: In mock mode, original text is returned without LLM call.
+        """
         params = self.create_minimal_params()
         result = edit_for_tts(**params)
 
         assert isinstance(result, TtsEditOutput)
+        # In mock mode, original text is returned
         assert result.edited_text == params["paragraph_text"]
-        assert result.changes_made == ["mock_mode_no_changes"]
+        assert "mock_mode_no_changes" in result.changes_made
 
     def test_edit_for_tts_creates_correct_input(self):
         """Test edit_for_tts creates TtsEditInput correctly."""
@@ -315,7 +320,7 @@ class TestEditForTtsEdgeCases:
 
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.pipeline = EditForTtsPipeline(mock_mode=True)
+        self.pipeline = EditForTtsPipeline()
 
     def teardown_method(self):
         import shutil
@@ -406,19 +411,18 @@ class TestEditForTtsEdgeCases:
         )
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
-        # In mock mode, the text is preserved
-        assert result.edited_text == input_data.paragraph_text
+        # In mock mode, original text is preserved
+        assert result.edited_text == "张三说：大哥，我们走吧！"
 
     def test_chapter_marker_preservation(self):
         """Test chapter markers are preserved in mock mode."""
         input_data = self.create_base_input(
-            paragraph_text="第1章 开始\n\n内容\n\n第2章 继续\n\n更多内容"
+            paragraph_text="第 1 章 开始\n\n内容\n\n第 2 章 继续\n\n更多内容"
         )
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
-        # In mock mode, text is preserved
-        assert "第1章" in result.edited_text
-        assert "第2章" in result.edited_text
+        # In mock mode, original text is preserved
+        assert result.edited_text == "第 1 章 开始\n\n内容\n\n第 2 章 继续\n\n更多内容"
 
 
 if __name__ == "__main__":

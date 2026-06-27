@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { Icon } from '@iconify/vue'
 import type { Paragraph } from '../types'
 
 const props = defineProps<{
@@ -23,7 +22,7 @@ watch(
   () => props.paragraph,
   (p) => {
     if (p) {
-      editText.value = p.original_text || p.text || ''
+      editText.value = p.edited_text || p.text || ''
       editNotes.value = (p as any).notes || ''
       hasChanges.value = false
     }
@@ -40,7 +39,7 @@ async function handleSave() {
   isSaving.value = true
   try {
     emit('save', props.paragraph.id, {
-      original_text: editText.value,
+      edited_text: editText.value,
     } as any)
     hasChanges.value = false
   } finally {
@@ -59,31 +58,23 @@ function handleClose() {
 <template>
   <div v-if="paragraph" class="paragraph-editor">
     <div class="editor-header">
-      <h3>
-        <Icon icon="mdi: pencil-box-outline" width="18" height="18" />
-        段落编辑 — #{{ paragraph.id }}
-      </h3>
+      <h3>段落编辑 — #{{ paragraph.id }}</h3>
       <div class="editor-header-actions">
-        <span v-if="paragraph.character_name" class="role-badge">
-          <Icon icon="mdi:account-voice" width="14" height="14" />
-          {{ paragraph.character_name }}
+        <span v-if="paragraph.speaker_canonical_name" class="role-badge">
+          {{ paragraph.speaker_canonical_name }}
         </span>
         <button class="btn btn-primary btn-sm" :disabled="!hasChanges || isSaving" @click="handleSave">
-          <Icon icon="mdi:content-save" width="16" height="16" />
-          {{ isSaving ? '保存中...' : '保存' }}
+          保存
         </button>
         <button class="btn btn-ghost btn-sm" @click="handleClose">
-          <Icon icon="mdi:close" width="16" height="16" />
+          关闭
         </button>
       </div>
     </div>
 
     <div class="editor-body">
       <div class="editor-section">
-        <label class="editor-label">
-          <Icon icon="mdi:format-text" width="14" height="14" />
-          原文
-        </label>
+        <label class="editor-label">原文</label>
         <textarea
           v-model="editText"
           class="editor-textarea"
@@ -94,10 +85,7 @@ function handleClose() {
       </div>
 
       <div class="editor-section">
-        <label class="editor-label">
-          <Icon icon="mdi:note-text-outline" width="14" height="14" />
-          备注
-        </label>
+        <label class="editor-label">备注</label>
         <textarea
           v-model="editNotes"
           class="editor-textarea editor-notes"
@@ -117,7 +105,6 @@ function handleClose() {
   </div>
 
   <div v-else class="editor-empty">
-    <Icon icon="mdi: pencil-box-outline" width="48" height="48" />
     <p>选择一个段落以编辑</p>
   </div>
 </template>

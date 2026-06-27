@@ -43,6 +43,29 @@ from .langfuse_client import (
     trace_quality,
     score_trace,
 )
+from .alert import (
+    AlertLevel,
+    AlertConfig,
+    AlertRecord,
+    AlertManager,
+    send_dingtalk_alert,
+    send_slack_alert,
+)
+from .cost_dashboard import (
+    CostDashboard,
+    CostBreakdown,
+    generate_cost_report,
+)
+from .offline_monitoring import (
+    OfflineMonitor,
+    create_offline_monitor,
+)
+from .dashboard import (
+    MonitoringDashboard,
+    collect_logs,
+    compute_summary,
+    format_dashboard,
+)
 
 __all__ = [
     "BaselineRecorder",
@@ -79,4 +102,23 @@ __all__ = [
     "trace_synthesize",
     "trace_quality",
     "score_trace",
+    # Alerting
+    "AlertLevel",
+    "AlertConfig",
+    "AlertRecord",
+    "AlertManager",
+    "send_dingtalk_alert",
+    "send_slack_alert",
+    # Cost Dashboard
+    "CostDashboard",
+    "CostBreakdown",
+    "generate_cost_report",
+    # Offline Monitoring
+    "OfflineMonitor",
+    "create_offline_monitor",
+    # Dashboard
+    "MonitoringDashboard",
+    "collect_logs",
+    "compute_summary",
+    "format_dashboard",
 ]

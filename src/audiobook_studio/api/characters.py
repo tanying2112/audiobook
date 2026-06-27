@@ -129,7 +129,9 @@ async def create_character(
 
 
 @router.get("/voice-mapping", response_model=VoiceMappingResponse)
-async def get_voice_mapping():
+async def get_voice_mapping(
+    project_id: int,
+):
     """获取声音映射配置."""
     mapping = load_voice_mapping()
     return VoiceMappingResponse(

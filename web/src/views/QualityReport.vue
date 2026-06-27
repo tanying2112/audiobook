@@ -2,11 +2,13 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChapterStore } from '../stores/chapters'
+import { useI18n } from '../i18n'
 import { Icon } from '@iconify/vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useChapterStore()
+const { t } = useI18n()
 
 const projectId = Number(route.params.projectId)
 const filterStatus = ref<string>('all')
@@ -34,33 +36,33 @@ const stats = computed(() => {
   <div class="quality-report">
     <div class="page-header">
       <button class="btn btn-ghost" @click="router.push(`/projects/${projectId}`)">
-        <Icon icon="mdi:arrow-left" width="18" height="18" /> 返回
+        <Icon icon="mdi:arrow-left" width="18" height="18" /> {{ t('common.back') }}
       </button>
-      <h1>质量报告</h1>
+      <h1>{{ t('quality_report.title') }}</h1>
     </div>
 
     <section class="summary-cards">
       <div class="summary-card accent">
         <span class="summary-value">{{ stats.total }}</span>
-        <span class="summary-label">总章节</span>
+        <span class="summary-label">{{ t('quality_report.total_chapters') }}</span>
       </div>
       <div class="summary-card">
         <span class="summary-value success">{{ stats.completed }}</span>
-        <span class="summary-label">已完成</span>
+        <span class="summary-label">{{ t('quality_report.completed') }}</span>
       </div>
       <div class="summary-card">
         <span class="summary-value warning">{{ stats.pending }}</span>
-        <span class="summary-label">待检查</span>
+        <span class="summary-label">{{ t('quality_report.pending') }}</span>
       </div>
       <div class="summary-card">
         <span class="summary-value danger">{{ stats.error }}</span>
-        <span class="summary-label">异常</span>
+        <span class="summary-label">{{ t('quality_report.error') }}</span>
       </div>
     </section>
 
     <section class="completion-bar-section">
       <div class="completion-header">
-        <span>整体完成度</span>
+        <span>{{ t('quality_report.overall_completion') }}</span>
         <span class="completion-pct">{{ stats.completionRate }}%</span>
       </div>
       <div class="completion-track">
@@ -70,15 +72,15 @@ const stats = computed(() => {
 
     <section class="filter-bar">
       <button
-        v-for="opt in [['all', '全部'], ['completed', '已完成'], ['pending', '待处理'], ['error', '异常']]"
+        v-for="opt in [['all', 'common.all'], ['completed', 'quality_report.completed'], ['pending', 'quality_report.pending'], ['error', 'quality_report.error']]"
         :key="opt[0]"
         :class="['filter-btn', { active: filterStatus === opt[0] }]"
         @click="filterStatus = opt[0]"
-      >{{ opt[1] }}</button>
+      >{{ t(opt[1]) }}</button>
     </section>
 
     <section class="chapter-quality-list">
-      <div v-if="filteredChapters.length === 0" class="empty">暂无数据</div>
+      <div v-if="filteredChapters.length === 0" class="empty">{{ t('common.no_data') }}</div>
       <div
         v-for="ch in filteredChapters"
         :key="ch.id"
@@ -91,15 +93,15 @@ const stats = computed(() => {
             width="20"
             height="20"
           />
-          <span class="quality-row-title">{{ ch.title || `第 ${ch.chapter_number || ch.id} 章` }}</span>
+          <span class="quality-row-title">{{ ch.title || t('chapter_timeline.chapter_fallback', { id: ch.chapter_number || ch.id }) }}</span>
         </div>
         <div class="quality-row-meta">
-          <span :class="['badge', ch.status || 'pending']">{{ ch.status || 'pending' }}</span>
+          <span :class="['badge', ch.status || 'pending']">{{ t('quality_report.' + (ch.status || 'pending')) }}</span>
           <button
             class="btn btn-ghost btn-sm"
             @click="router.push(`/projects/${projectId}/chapters/${ch.id}`)"
           >
-            查看详情
+            {{ t('quality_report.view_details') }}
           </button>
         </div>
       </div>

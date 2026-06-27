@@ -1,0 +1,346 @@
+{
+  "book_id": "hongloumeng",
+  "chapter_index": 5,
+  "chapter_title": "第五章 农业的春天：從危機到希望的綠色革命",
+  "book_meta": {
+    "title": "智慧君主：Alexander 的治世传奇",
+    "author": "佚名",
+    "genre": "小说",
+    "difficulty": "B",
+    "language": "zh",
+    "era": "架空历史",
+    "total_chapters_estimated": 7,
+    "contract_version": 1
+  },
+  "character_voice_map": [
+    {
+      "canonical_name": "旁白",
+      "aliases": [
+        "叙述者"
+      ],
+      "gender": "neutral",
+      "age_range": "adult",
+      "suggested_voice_id": "v_narrator",
+      "sample_quote": "在遥远的洛林王国，有一个古老的预言流传了几百年",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Alexander",
+      "aliases": [
+        "亚历山大",
+        "陛下",
+        "国王"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_alexander",
+      "sample_quote": "我发现，世界其实充满了模式",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Thompson",
+      "aliases": [
+        "首席御医",
+        "Thompson"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_thompson",
+      "sample_quote": "像这样的婴儿，实在是太少见了",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "国王 Henry",
+      "aliases": [
+        "亨利国王",
+        "Henry"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_henry",
+      "sample_quote": "你说得对，Thompson，这孩子确实不普通",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "Prince Nathan",
+      "aliases": [
+        "奈森王子",
+        "二弟"
+      ],
+      "gender": "male",
+      "age_range": "young",
+      "suggested_voice_id": "v_nathan",
+      "sample_quote": "陛下！您这是说笑话吧？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老 Pierre",
+      "aliases": [
+        "总管",
+        "Pierre"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_pierre",
+      "sample_quote": "我想，或者我们可以先不要动武？",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "陈调查组长",
+      "aliases": [
+        "老陈",
+        "调查组长"
+      ],
+      "gender": "male",
+      "age_range": "adult",
+      "suggested_voice_id": "v_chen",
+      "sample_quote": "与其把这些孩子都当作纯粹的坏人来处理",
+      "contract_version": 1
+    },
+    {
+      "canonical_name": "老水手",
+      "aliases": [
+        "转型水手"
+      ],
+      "gender": "male",
+      "age_range": "elderly",
+      "suggested_voice_id": "v_sailor",
+      "sample_quote": "要不是陛下您当初给了我这个机会",
+      "contract_version": 1
+    }
+  ],
+  "emotion_snapshot": {
+    "chapter": 5,
+    "dominant_emotion": "contemplative",
+    "intensity": 0.6,
+    "notes": "海盗问题根源分析",
+    "contract_version": 1
+  },
+  "story_line_summary": "年轻国王 Alexander 在多重危机爆发之际登基，面对北方雪狼部落入侵、南方海盗劫掠、宫廷保守派倒逼等内外交困的严峻局面，他没有选择武力对抗，而是以智慧与仁爱为指导，通过谈判、调查、改革等一系列组合拳，逐一化解危机：建立宫廷联合委员会化解内部矛盾，派遣无武装使团与雪狼部落和谈，实施渔业复兴计划安置海盗，启动国土绿化行动振兴农业，兴建国家图书馆与综合大学提升文化软实力。二十年治世后，他将治国心得系统传授，确立以理解为基、以仁爱为根、以长远利益为指南针的治国传统，这一传统在其逝世后三十年依然指引新一代领导人化解内部挑战，成为王国永续发展的精神基石。",
+  "global_style_notes": "第三人称全知视角，夹叙夹议，中西文混排，包含历史感与哲理思考。",
+  "paragraphs": [
+    {
+      "paragraph_index": 0,
+      "text": "有了北境和南線的初步穩定後，Alexander 終於有餘力去處理另一個長期擔憂他們的問題——農業的落後狀況。經過多方實地考察後，他發現導致糧食產量偏低的實際原因並不是單一 factor（因素），而是幾個相互關聯的弱點同時發揮作用的結果。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 0,
+        "text": "有了北境和南線的初步穩定後，Alexander 終於有餘力去處理另一個長期擔憂他們的問題——農業的落後狀況。經過多方實地考察後，他發現導致糧食產量偏低的實際原因並不是單一 factor（因素），而是幾個相互關聯的弱點同時發揮作用的結果。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 0,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 1,
+      "text": "首先傳統耕作技術普遍落後。不少地區仍然堅持使用古老的犁耕方式，而且缺乏科學的輪作倒茬制度；其次是種子品種老化，不少農民還在用幾十年前就已經過時的老種子；第三個坑點則是水利設施的嚴重老舊——很多地方的灌溉渠不仅渠道淤塞嚴重，而且缺乏基本的防溢洪設施；最後還有所謂‘最后一公里’問題：即算是把水引到了田埂邊，卻因為缺乏有效的分水系統，導致實際能滴灌到作物根系的水量打了很大折扣。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 1,
+        "text": "首先傳統耕作技術普遍落後。不少地區仍然堅持使用古老的犁耕方式，而且缺乏科學的輪作倒茬制度；其次是種子品種老化，不少農民還在用幾十年前就已經過時的老種子；第三個坑點則是水利設施的嚴重老舊——很多地方的灌溉渠不仅渠道淤塞嚴重，而且缺乏基本的防溢洪設施；最後還有所謂‘最后一公里’問題：即算是把水引到了田埂邊，卻因為缺乏有效的分水系統，導致實際能滴灌到作物根系的水量打了很大折扣。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 2,
+      "text": "“有了這個診斷結果，”Alexander 在一次內部會議上說道，“我想我們可以從三個方向同時入手：一是推廣科學的耕作技術，二是更新優良種子資源，三是系統性地升級我們的水利網絡。”",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 2,
+        "text": "“有了這個診斷結果，”Alexander 在一次內部會議上說道，“我想我們可以從三個方向同時入手：一是推廣科學的耕作技術，二是更新優良種子資源，三是系統性地升級我們的水利網絡。”",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 3,
+      "text": "基於這個思路，Alexander 一下子啟動了份量驚人的‘國土綠化行動’（Green Land Initiative）。首先，他不但重新啟動了早在祖國時期就有的農業推廣站網絡，而且額外增加了經費和人員，使得每個推廣站不僅能夠邀請到當地最有實力的農專家來演示新技術（比如精確施肥、科學輪作和病蟲害綜合防治），而且還能夠發放試用裝備和種樣，讓農民們零風險嘗試新方法。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 3,
+        "text": "基於這個思路，Alexander 一下子啟動了份量驚人的‘國土綠化行動’（Green Land Initiative）。首先，他不但重新啟動了早在祖國時期就有的農業推廣站網絡，而且額外增加了經費和人員，使得每個推廣站不僅能夠邀請到當地最有實力的農專家來演示新技術（比如精確施肥、科學輪作和病蟲害綜合防治），而且還能夠發放試用裝備和種樣，讓農民們零風險嘗試新方法。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.5,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.9,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 4,
+      "text": "其次，在種子方面，Alexander 不但從幾個相鄰的友好國家引進了當時被譽為‘抗旱之王’的幾種優良品種，而且專門設立了國家級種子儲備和繁育中心——這不但保證了這些好種子的純度和質量，而且通過科學的繁育過程，成功培育出了更適合當地土壤和氣候條件的優良變種。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 4,
+        "text": "其次，在種子方面，Alexander 不但從幾個相鄰的友好國家引進了當時被譽為‘抗旱之王’的幾種優良品種，而且專門設立了國家級種子儲備和繁育中心——這不但保證了這些好種子的純度和質量，而且通過科學的繁育過程，成功培育出了更適合當地土壤和氣候條件的優良變種。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 5,
+      "text": "第三項工程則規模更大——全面鋪設與升級水利設施。Alexander 不但下令修復那些多年來被忽視的舊渠道，而且一口气規劃了幾十座中小型水庫，並配套建設了完善的分幹線和支渠網絡。更值得一提的是，針對 zuvor（以前） total neglect（完全忽視） 的防洪需求，這次水利工程特意留出了蓄洪空間，並設置了自動閘門系統，一旦水位超過警戒線，就能夠自動調節以減低下游沖擊力度。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 5,
+        "text": "第三項工程則規模更大——全面鋪設與升級水利設施。Alexander 不但下令修復那些多年來被忽視的舊渠道，而且一口气規劃了幾十座中小型水庫，並配套建設了完善的分幹線和支渠網絡。更值得一提的是，針對 zuvor（以前） total neglect（完全忽視） 的防洪需求，這次水利工程特意留出了蓄洪空間，並設置了自動閘門系統，一旦水位超過警戒線，就能夠自動調節以減低下游沖擊力度。",
+        "speaker_canonical_name": "Alexander",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 6,
+      "text": "在這套組合拳之下，效果竟然來得驚人的快。僅用了一年多的時間，曾經一片荒涼的國土南部地區，竟然出現了讓人眼前一亮的景象：金黃色的麥浪在陽光下閃閃發光；被科學 glyptic（灌溉） 好的田塍里，不但是穀物長得壯實，而且還有不少經濟作物在間作；而就在這些一派欣榮景象之間，則點綴著不少水面波光粼粼的小水塊——那些正是新建水庫和調節池真實寫照。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 6,
+        "text": "在這套組合拳之下，效果竟然來得驚人的快。僅用了一年多的時間，曾經一片荒涼的國土南部地區，竟然出現了讓人眼前一亮的景象：金黃色的麥浪在陽光下閃閃發光；被科學 glyptic（灌溉） 好的田塍里，不但是穀物長得壯實，而且還有不少經濟作物在間作；而就在這些一派欣榮景象之間，則點綴著不少水面波光粼粼的小水塊——那些正是新建水庫和調節池真實寫照。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    },
+    {
+      "paragraph_index": 7,
+      "text": "更重要的是，這種變化並不是瞬間的昙花一現。隨著更多農民親身體驗到科學耕作帶來的實惠——比如同塊地产量提升了三成以上，而且由于更好的抗病能力，減藥減肥的空間也大大打開——他們開始自發地成為新技術的傳播者和示範戶。",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 7,
+        "text": "更重要的是，這種變化並不是瞬間的昙花一現。隨著更多農民親身體驗到科學耕作帶來的實惠——比如同塊地产量提升了三成以上，而且由于更好的抗病能力，減藥減肥的空間也大大打開——他們開始自發地成為新技術的傳播者和示範戶。",
+        "speaker_canonical_name": "旁白",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.4,
+        "speech_rate": 1.0,
+        "pitch_shift_semitones": 0,
+        "needs_sfx": false,
+        "sfx_tags": [],
+        "pause_before_ms": 300,
+        "pause_after_ms": 500,
+        "confidence": 0.85,
+        "difficulty": "B",
+        "notes": "",
+        "contract_version": 1
+      },
+      "human_verified": true,
+      "human_notes": "人工标注验证",
+      "quality_score": 0.95
+    }
+  ],
+  "annotated_by": "Agent B",
+  "annotated_at": "2026-06-21T10:08:38.268816",
+  "annotation_version": "v0.1",
+  "total_paragraphs": 8,
+  "verified_paragraphs": 8,
+  "overall_quality_score": 0.95,
+  "contract_version": 1
+}

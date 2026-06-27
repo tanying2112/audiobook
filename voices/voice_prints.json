@@ -1,12 +1,12 @@
 {
-  "speaker_1": {
-    "speaker_id": "speaker_1",
-    "voice_hash": "a108df381f94637a1a70fbf76f5be473d0a13838dc3a9e80aec2180350e9248a",
+  "spk1": {
+    "speaker_id": "spk1",
+    "voice_hash": "eb39e7bd2cb17b324a3a11b1579c59e4d55c0e14e53b5713561d191af32a5a7f",
     "embedding": [
       0.5,
       0.6666666666666666,
       0.1,
-      0.399,
+      0.282,
       0.5,
       0.5,
       0.5,
@@ -15,26 +15,7 @@
     "quality": "excellent",
     "sample_count": 1,
     "avg_snr": 25.0,
-    "created_at": "2026-06-15T06:00:32.689784",
-    "updated_at": "2026-06-15T06:00:32.689789"
-  },
-  "测试者": {
-    "speaker_id": "测试者",
-    "voice_hash": "a108df381f94637a1a70fbf76f5be473d0a13838dc3a9e80aec2180350e9248a",
-    "embedding": [
-      0.5,
-      0.6666666666666666,
-      0.1,
-      0.166,
-      0.5,
-      0.5,
-      0.5,
-      0.5
-    ],
-    "quality": "excellent",
-    "sample_count": 1,
-    "avg_snr": 25.0,
-    "created_at": "2026-06-18T10:08:42.582100",
-    "updated_at": "2026-06-18T10:08:42.582270"
+    "created_at": "2026-06-27T10:15:14.098576",
+    "updated_at": "2026-06-27T10:15:14.268918"
   }
 }

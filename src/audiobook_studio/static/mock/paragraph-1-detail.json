@@ -1,0 +1,45 @@
+{
+  "id": 1,
+  "chapter_id": 1,
+  "paragraph_index": 0,
+  "original_text": "话说大荒山无稽崖青埂峰下，有一块顽石，自经锻炼，灵性已通。",
+  "edited_text": "话说大荒山无稽崖青埂峰下，有一块顽石，自经锻炼，灵性已通。",
+  "status": "quality_checked",
+  "embedded_data": {
+    "annotation": {
+      "speaker_canonical_name": "旁白",
+      "is_dialogue": false,
+      "emotion": "neutral",
+      "emotion_intensity": 0.5,
+      "speech_rate": 1.0,
+      "difficulty": "B",
+      "forbid_edit": false
+    },
+    "tts_edit": {
+      "changes_made": [],
+      "edited_text": null
+    },
+    "routing": {
+      "engine_choice": "kokoro",
+      "voice_id": "kokoro_narrator"
+    },
+    "quality": {
+      "overall_score": 0.85,
+      "needs_regeneration": false,
+      "issues": []
+    }
+  },
+  "annotation": {
+    "speaker_canonical_name": "旁白",
+    "emotion": "neutral"
+  },
+  "tts_edit": null,
+  "routing": {
+    "engine_choice": "kokoro",
+    "voice_id": "kokoro_narrator"
+  },
+  "quality": {
+    "overall_score": 0.85,
+    "needs_regeneration": false
+  }
+}

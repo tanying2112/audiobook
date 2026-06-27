@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, TypeVar
+from typing import Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass
 from enum import Enum
 import threading
@@ -26,13 +26,13 @@ class AgentContext:
     task_id: str
     book_id: str
     current_stage: str
-    shared_knowledge: dict
-    retry_count: int = 0  # 新增重试计数
+    shared_knowledge: Dict[str, Any]
+    retry_count: int = 0
 
 @dataclass
 class AgentMessage:
     sender: str
-    content: dict
+    content: Dict[str, Any]
     requires_response: bool = False
 
 class AbstractAgent:
@@ -40,16 +40,16 @@ class AbstractAgent:
         self.agent_id = f"{self.__class__.__name__}-{str(uuid.uuid4())[:8]}"
         self.capabilities = capabilities
         self.context: Optional[AgentContext] = None
-        self.message_queue = []
+        self.message_queue: List[AgentMessage] = []
         self.lock = threading.Lock()
         self.logger = logging.getLogger(self.agent_id)
 
     # --- 2. 优化：防爆的消息处理循环 ---
-    def receive_message(self, message: AgentMessage):
+    def receive_message(self, message: AgentMessage) -> None:
         with self.lock:
             self.message_queue.append(message)
 
-    def process_messages(self):
+    def process_messages(self) -> None:
         while True:
             msg = None
             with self.lock:
@@ -63,11 +63,11 @@ class AbstractAgent:
                 # 捕获处理逻辑中的所有异常
                 self._handle_failure(e, severity=ErrorSeverity.FATAL)
 
-    def _handle_message(self, message: AgentMessage):
+    def _handle_message(self, message: AgentMessage) -> None:
         raise NotImplementedError
 
     # --- 3. 增强：更智能的错误处理 ---
-    def _handle_failure(self, error: Exception, severity: ErrorSeverity = ErrorSeverity.FATAL):
+    def _handle_failure(self, error: Exception, severity: ErrorSeverity = ErrorSeverity.FATAL) -> None:
         """增强的错误处理：记录堆栈、分类级别，并上报"""
         error_msg = f"Agent {self.agent_id} failed: {str(error)}"
         self.logger.error(error_msg)
@@ -79,8 +79,17 @@ class AbstractAgent:
             self.logger.warning("Fatal error encountered, cleaning up resources...")
             # 可以在此执行 Agent 级别的清理工作
 
-    def acquire_context(self, context: AgentContext):
+    def acquire_context(self, context: Optional[AgentContext] = None) -> None:
         self.context = context
 
     def can_handle(self, capability: AgentCapability) -> bool:
         return capability in self.capabilities
+
+    def send_message(self, message: AgentMessage) -> None:
+        """Send a message to another agent."""
+        with self.lock:
+            self.message_queue.append(message)
+
+    def get_agent_id(self) -> str:
+        """Return the agent ID."""
+        return self.agent_id

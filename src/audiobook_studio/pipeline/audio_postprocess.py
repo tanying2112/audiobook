@@ -180,6 +180,6 @@ class AudioPostProcessor:
             pitch_shift_semitones=max(-5, min(5, pitch_shift)),
             needs_sfx=len(sfx_tags) > 0,
             sfx_tags=sfx_tags,
-            pause_before_ms=annotation.pause_before_ms,
-            pause_after_ms=annotation.pause_after_ms,
+            pause_before_ms=annotation.pause_before_ms or 0,
+            pause_after_ms=annotation.pause_after_ms or 0,
         )

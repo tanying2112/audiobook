@@ -14,16 +14,34 @@ Matches A-P1-3 requirements:
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
 
 
 def run_coverage():
-    """Run pytest with coverage and return parsed JSON."""
+    """Run pytest with coverage and return parsed JSON.
+
+    If coverage.json already exists (from a previous pytest run), use it directly
+    to avoid re-running tests and hitting coverage parser issues.
+    """
+    import os
+
+    # Check if coverage.json already exists and is recent (< 5 min old)
+    coverage_path = "coverage.json"
+    if os.path.exists(coverage_path):
+        mtime = os.path.getmtime(coverage_path)
+        if time.time() - mtime < 300:  # 5 minutes
+            try:
+                with open(coverage_path, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass  # Fall through to re-run
+
     result = subprocess.run(
         [
-            "pytest",
+            ".venv/bin/pytest",
             "--cov=src/audiobook_studio",
             "--cov-report=json",
             "--cov-report=term-missing",

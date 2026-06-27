@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .character import Character
     from .emotion_snapshot import EmotionSnapshot
     from .feedback_record import FeedbackRecord
+    from .user import ProjectPermission
     from .paragraph import Paragraph
     from .processing_run import ProcessingRun
 
@@ -106,4 +107,7 @@ class Project(Base):
     )
     processing_runs: Mapped[List[ProcessingRun]] = relationship(
         "ProcessingRun", back_populates="project", cascade="all, delete-orphan"
+    )
+    permissions: Mapped[List[ProjectPermission]] = relationship(
+        "ProjectPermission", back_populates="project"
     )

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import * as api from '../api'
 import type { Character } from '../types'
-import { Icon } from '@iconify/vue'
+import { useI18n } from '../i18n'
 
 const route = useRoute()
-const router = useRouter()
+const { t } = useI18n()
+
 const projectId = Number(route.params.projectId)
 
 const characters = ref<Character[]>([])
@@ -20,8 +21,6 @@ const formVoice = ref('')
 const formEmotion = ref('neutral')
 const formPitch = ref(0)
 const formSpeed = ref(1.0)
-
-const emotionOptions = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'whisper']
 
 onMounted(async () => {
   loading.value = true
@@ -43,11 +42,11 @@ async function addCharacter() {
 }
 
 function editCharacter(c: Character) {
-  formName.value = c.name || ''
-  formVoice.value = (c as any).suggested_voice_id || ''
-  formEmotion.value = (c as any).default_emotion || 'neutral'
-  formPitch.value = (c as any).pitch_shift || 0
-  formSpeed.value = (c as any).speech_rate || 1.0
+  formName.value = c.canonical_name || ''
+  formVoice.value = c.suggested_voice_id || ''
+  formEmotion.value = 'neutral'
+  formPitch.value = 0
+  formSpeed.value = 1.0
   editingChar.value = c
   showEditor.value = true
 }
@@ -55,11 +54,8 @@ function editCharacter(c: Character) {
 async function saveCharacter() {
   if (!formName.value.trim()) return
   const payload = {
-    name: formName.value.trim(),
+    canonical_name: formName.value.trim(),
     suggested_voice_id: formVoice.value || undefined,
-    default_emotion: formEmotion.value,
-    pitch_shift: formPitch.value,
-    speech_rate: formSpeed.value,
   } as any
 
   try {
@@ -73,22 +69,77 @@ async function saveCharacter() {
     }
     showEditor.value = false
   } catch (e: any) {
-    alert('保存失败: ' + (e.message || e))
+    alert(t('character_manager.save_failed') + (e.message || e))
   }
 }
 
 async function removeCharacter(id: number) {
-  if (!confirm('确定移除该角色？')) return
+  if (!confirm(t('character_manager.delete_confirm'))) return
   try {
     await api.deleteCharacter(projectId, id)
     characters.value = characters.value.filter((c) => c.id !== id)
   } catch (e: any) {
-    alert('删除失败: ' + (e.message || e))
+    alert(t('character_manager.delete_failed') + (e.message || e))
   }
 }
-
-function getVoicePreviewUrl(voicePreset?: string): string {
-  if (!voicePreset) return ''
-  return `/api/voices/${voicePreset}/preview`
-}
 </script>
+
+<template>
+  <div class="character-manager">
+    <div class="page-header">
+      <h1>{{ t('character_manager.title') }}</h1>
+      <button class="btn btn-primary" @click="addCharacter">{{ t('character_manager.add_character') }}</button>
+    </div>
+
+    <div v-if="loading" class="loading">{{ t('character_manager.loading') }}</div>
+
+    <div v-else class="character-list">
+      <div v-for="c in characters" :key="c.id" class="character-card">
+        <div class="character-name">{{ c.canonical_name }}</div>
+        <div class="character-actions">
+          <button class="btn btn-sm" @click="editCharacter(c)">{{ t('character_manager.edit') }}</button>
+          <button class="btn btn-sm btn-danger" @click="removeCharacter(c.id!)">{{ t('character_manager.delete') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showEditor" class="modal-overlay" @click.self="showEditor = false">
+      <div class="modal">
+        <h2>{{ editingChar ? t('character_manager.edit_character') : t('character_manager.add_character') }}</h2>
+        <div class="form-group">
+          <label>{{ t('character_manager.character_name') }}</label>
+          <input v-model="formName" type="text" class="form-control" :placeholder="t('character_manager.enter_character_name')" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('character_manager.voice_id') }}</label>
+          <input v-model="formVoice" type="text" class="form-control" :placeholder="t('character_manager.optional_voice_id')" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn" @click="saveCharacter">{{ t('common.save') }}</button>
+          <button class="btn btn-ghost" @click="showEditor = false">{{ t('common.cancel') }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.character-manager { max-width: 800px; margin: 0 auto; padding: 20px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-header h1 { margin: 0; font-size: 22px; }
+.character-list { display: flex; flex-direction: column; gap: 12px; }
+.character-card { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+.character-name { font-weight: 600; font-size: 16px; }
+.character-actions { display: flex; gap: 8px; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-danger { background: #fee2e2; color: #dc2626; }
+.btn-danger:hover { background: #fecaca; }
+.loading { text-align: center; padding: 60px; color: #64748b; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #fff; padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; }
+.modal h2 { margin: 0 0 20px; font-size: 18px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+.form-control { width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+</style>

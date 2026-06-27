@@ -1,0 +1,3178 @@
+[92m04:31:46 - LiteLLM:WARNING[0m: get_model_cost_map.py:271 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: The read operation timed out. Falling back to local backup.
+/Users/guwj/Desktop/AI_Lab/audiobook/.venv/lib/python3.14/site-packages/langfuse/api/core/pydantic_utilities.py:27: UserWarning: Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater.
+  from pydantic.v1.datetime_parse import parse_date as parse_date
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider gemini_flash failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider nvidia_nemotron failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_70b failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Health probe reports opencode_zen unhealthy, skipping
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider cerebras failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider alibaba_bailian failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider zhipu_glm failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider siliconcloud failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider openrouter failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider huggingface failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider github_models failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_qwen25 failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_llama31 failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_8b failed for stage analyze: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+All LLM providers failed for stage analyze (segment_id=unknown), using heuristic fallback
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [cerebras] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cerebras] status=403
+Health probe [siliconcloud] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_70b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider gemini_flash failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Health probe reports opencode_zen unhealthy, skipping
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider cerebras failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider nvidia_nemotron failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider alibaba_bailian failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider deepseek failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider zhipu_glm failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider siliconcloud failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider openrouter failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider github_models failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_qwen25 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_llama31 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_8b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p0), using heuristic fallback
+Health probe [siliconcloud] status=401
+Health probe [zhipu_glm] status=401
+Health probe [cerebras] status=403
+Health probe [alibaba_bailian] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [alibaba_bailian] status=401
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Health probe [zhipu_glm] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_70b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider gemini_flash failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Health probe reports opencode_zen unhealthy, skipping
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider cerebras failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider nvidia_nemotron failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider alibaba_bailian failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider deepseek failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider zhipu_glm failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider siliconcloud failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider openrouter failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider github_models failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_qwen25 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_llama31 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_8b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p1), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [siliconcloud] status=401
+Health probe [cerebras] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [siliconcloud] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_70b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [groq_70b] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider gemini_flash failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [gemini_flash] CLOSED → OPEN (3 consecutive failures)
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider nvidia_nemotron failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [nvidia_nemotron] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider alibaba_bailian failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [alibaba_bailian] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider deepseek failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [deepseek] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider zhipu_glm failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [zhipu_glm] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider siliconcloud failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [siliconcloud] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider openrouter failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [openrouter] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider github_models failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [github_models] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_qwen25 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [ollama_qwen25] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider ollama_llama31 failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [ollama_llama31] CLOSED → OPEN (3 consecutive failures)
+LLM call failed: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Provider groq_8b failed for stage judge: instructor.v2.core.client.Instructor.create() got multiple values for keyword argument 'temperature'
+Circuit breaker [groq_8b] CLOSED → OPEN (3 consecutive failures)
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p2), using heuristic fallback
+Health probe [alibaba_bailian] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [zhipu_glm] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p3), using heuristic fallback
+Health probe [siliconcloud] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p4), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p5), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p6), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p7), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p8), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p9), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p10), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p11), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p12), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p13), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p14), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p15), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p16), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p17), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p18), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p19), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p20), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p21), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p22), using heuristic fallback
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p23), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p24), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p25), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p26), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p27), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p28), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p29), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p30), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p31), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p32), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p33), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p34), using heuristic fallback
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p35), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p36), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p37), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p38), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=429
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p39), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p40), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p41), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p42), using heuristic fallback
+Health probe [baidu_qianfan] status=403
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=429
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p43), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p44), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [baidu_qianfan] status=403
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [baidu_qianfan] status=403
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p45), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [volcengine] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p46), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p47), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p48), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p49), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p50), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p51), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p52), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p53), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p54), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p55), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p56), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p57), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p58), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p59), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p60), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p61), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p62), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p63), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p64), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p65), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p66), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p67), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p68), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p69), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p70), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p71), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p72), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p73), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p74), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p75), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p76), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p77), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p78), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p79), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p80), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p81), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p82), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p83), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p84), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p85), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p86), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p87), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p88), using heuristic fallback
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Health probe [cloudflare_ai] status=401
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p89), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p90), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p91), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p92), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p93), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p94), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p95), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p96), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p97), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p98), using heuristic fallback
+Failed to export span batch code: 401, reason: Unauthorized
+Circuit breaker open for groq_70b, skipping
+Circuit breaker open for gemini_flash, skipping
+Health probe reports opencode_zen unhealthy, skipping
+Health probe reports cerebras unhealthy, skipping
+Circuit breaker open for nvidia_nemotron, skipping
+Circuit breaker open for alibaba_bailian, skipping
+Circuit breaker open for deepseek, skipping
+Circuit breaker open for zhipu_glm, skipping
+Circuit breaker open for siliconcloud, skipping
+Circuit breaker open for openrouter, skipping
+Circuit breaker open for github_models, skipping
+Circuit breaker open for ollama_qwen25, skipping
+Circuit breaker open for ollama_llama31, skipping
+Circuit breaker open for groq_8b, skipping
+All LLM providers failed for stage judge (segment_id=hongloumeng_ch1_p99), using heuristic fallback
+🚀 Starting E2E Long Book Verification: hongloumeng.txt
+   Book ID: hongloumeng
+   Max paragraphs to process: 100
+======================================================================
+
+📤 Stage 1: Text Extraction
+[HardwareProfile] Auto-detected: potato (config: cloud_hybrid)
+   ✅ 319.7ms | Input: 427005 bytes | Output: 155189 chars | Language: zh
+   📄 Found 1141 paragraphs
+
+🔍 Stage 2: Structure Analysis
+   ✅ 92.4ms | Characters: 1 | Emotions: 1
+
+🏷️  Stage 3: Paragraph Annotation (first 100 paragraphs)
+   ✅ 6548.8ms | Annotated: 100 paragraphs
+
+🎛️  Stage 4: TTS Editing (first 100 paragraphs)
+   ✅ 7608.6ms | Edited: 100 paragraphs
+
+🔊 Stage 5: Audio Synthesis (first 100 paragraphs)
+   ✅ 140.6ms | Segments: 100 | Total audio: 300000ms
+
+🔍 Stage 6: Quality Check (first 100 paragraphs)
+   ✅ 25307.1ms | Checked: 100 segments
+   📊 Avg Score: 0.500 | Issues: 100 | Regen needed: 100
+      speaker_clarity: 0.500
+      emotion_match: 0.500
+      prosody_naturalness: 0.500
+      text_audio_alignment: 0.500
+
+📝 Report saved to: reports/e2e_hongloumeng.json
+
+======================================================================
+📊 E2E LONG NOVEL VERIFICATION REPORT
+======================================================================
+📖 Book: Unknown Book (hongloumeng)
+📝 Total text: 155,189 characters
+📄 Total paragraphs: 1141
+⏱️  Total pipeline time: 40017.3ms
+💰 Mock total cost: $0.0000
+✅ Overall: PASSED
+🕐 Timestamp: 2026-06-26T04:32:30.112743
+
+📈 Stage Breakdown:
+----------------------------------------------------------------------
+  ✅ extract              |    319.7ms | in:  427005 | out:  155189
+  ✅ analyze_structure    |     92.4ms | in:  155189 | out:     106
+  ✅ annotate_paragraph   |   6548.8ms | in:   13027 | out:     100
+  ✅ edit_for_tts         |   7608.6ms | in:   13027 | out:   13027
+  ✅ synthesize           |    140.6ms | in:     100 | out:  300000
+  ✅ quality_check        |  25307.1ms | in:     100 | out:     100
+
+🎯 Quality Summary:
+   Overall Score: 0.500
+   Total Issues: 100
+   Needs Regeneration: 100
+   speaker_clarity: 0.500
+   emotion_match: 0.500
+   prosody_naturalness: 0.500
+   text_audio_alignment: 0.500
+======================================================================
+
+💡 Insights:
+   Slowest stage: quality_check (25307.1ms)
+   ⚠️  annotate_paragraph took 6548.8ms (unexpectedly slow for mock mode)
+   ⚠️  edit_for_tts took 7608.6ms (unexpectedly slow for mock mode)
+   ⚠️  quality_check took 25307.1ms (unexpectedly slow for mock mode)
+Failed to export span batch code: 401, reason: Unauthorized

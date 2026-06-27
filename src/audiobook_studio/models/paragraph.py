@@ -132,5 +132,22 @@ class Paragraph(Base):
             book_id=self.book_id or self.project_id,
             index=self.index,
             text=self.text,
-            speaker=self.speaker or self.speaker_canonical_name,
+        speaker=self.speaker or self.speaker_canonical_name,
         )
+
+    def to_annotation_dict(self) -> dict:
+        """Return annotation fields as a dict (aligned with ParagraphAnnotation schema)."""
+        return {
+            "speaker_canonical_name": self.speaker_canonical_name,
+            "is_dialogue": self.is_dialogue,
+            "emotion": self.emotion,
+            "emotion_intensity": self.emotion_intensity,
+            "speech_rate": self.speech_rate,
+            "pitch_shift_semitones": self.pitch_shift_semitones,
+            "needs_sfx": self.needs_sfx,
+            "sfx_tags": self.sfx_tags or [],
+            "pause_before_ms": self.pause_before_ms,
+            "pause_after_ms": self.pause_after_ms,
+            "confidence": self.confidence,
+            "notes": self.notes,
+        }

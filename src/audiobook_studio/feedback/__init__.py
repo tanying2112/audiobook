@@ -51,6 +51,55 @@ from .auto_processor import (
     create_auto_processor,
     run_feedback_analysis_cli,
 )
+from .integration import (
+    SelfIterationLoop,
+    create_self_iteration_loop,
+    collect_pipeline_feedback,
+    save_quality_feedback,
+    save_user_rating_feedback,
+)
+from .ab_test_manager import (
+    ABTestManager,
+    ABTestConfig,
+    ABTestResult,
+)
+from .release import (
+    PromotionGate,
+    PromotionGateResult,
+    PromotionMetrics,
+    CanaryRelease,
+    CanaryConfig,
+    CanaryMetrics,
+    VersionStore,
+)
+from .llm_analyzer import LLMFeedbackAnalyzer
+from .bootstrap_fewshot import (
+    BootstrapFewShotOptimizer,
+    OptimizationMetrics,
+    OptimizationResult,
+    MultiObjectiveLoss,
+    EarlyStoppingStopper,
+    run_bootstrap_optimization,
+    load_training_examples,
+    BUDGET_LIMIT,
+    DEFAULT_EARLY_STOP_PATIENCE,
+)
+from .critics import (  # noqa: F401
+    SyntheticCritic,
+    CalibrationSample,
+    CalibrationResult,
+    DEFAULT_CALIBRATION_SAMPLES,
+    create_synthetic_critic,
+    CriticType,
+    CriticVerdict,
+    CriticResult,
+    CriticEnsemble,
+    CriticEnsembleEvaluator,
+    BaseCritic,
+    SemanticCritic,
+    StructuralCritic,
+    ObjectiveCritic,
+)
 
 __all__ = [
     # Collector
@@ -91,4 +140,49 @@ __all__ = [
     "FeedbackAutoProcessor",
     "create_auto_processor",
     "run_feedback_analysis_cli",
+    # Self-Iteration Integration
+    "SelfIterationLoop",
+    "create_self_iteration_loop",
+    "collect_pipeline_feedback",
+    "save_quality_feedback",
+    "save_user_rating_feedback",
+    # A/B Test Manager
+    "ABTestManager",
+    "ABTestConfig",
+    "ABTestResult",
+    # Release Management (new)
+    "PromotionGate",
+    "PromotionGateResult",
+    "PromotionMetrics",
+    "CanaryRelease",
+    "CanaryConfig",
+    "CanaryMetrics",
+    "VersionStore",
+    # LLM Analyzer
+    "LLMFeedbackAnalyzer",
+    # Bootstrap Few-Shot Optimizer (DSPy GEPA)
+    "BootstrapFewShotOptimizer",
+    "OptimizationMetrics",
+    "OptimizationResult",
+    "MultiObjectiveLoss",
+    "EarlyStoppingStopper",
+    "run_bootstrap_optimization",
+    "load_training_examples",
+    "BUDGET_LIMIT",
+    "DEFAULT_EARLY_STOP_PATIENCE",
+    # Critics (Issue 2.1)
+    "SyntheticCritic",
+    "CalibrationSample",
+    "CalibrationResult",
+    "DEFAULT_CALIBRATION_SAMPLES",
+    "create_synthetic_critic",
+    "CriticType",
+    "CriticVerdict",
+    "CriticResult",
+    "CriticEnsemble",
+    "CriticEnsembleEvaluator",
+    "BaseCritic",
+    "SemanticCritic",
+    "StructuralCritic",
+    "ObjectiveCritic",
 ]

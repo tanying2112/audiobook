@@ -1,0 +1,221 @@
+"""
+Unit tests for the self-iteration feedback loop integration.
+"""
+
+import pytest
+from unittest.mock import Mock, MagicMock, patch
+from pathlib import Path
+
+from src.audiobook_studio.feedback.integration import (
+    SelfIterationLoop,
+    create_self_iteration_loop,
+    collect_pipeline_feedback,
+    save_quality_feedback,
+    save_user_rating_feedback,
+)
+from src.audiobook_studio.feedback.collector import FeedbackCollector, StageCapture
+
+
+class TestSelfIterationLoop:
+    """Tests for the SelfIterationLoop class."""
+
+    @pytest.fixture
+    def mock_db_factory(self):
+        """Create a mock database session factory."""
+        mock_session = MagicMock()
+        mock_factory = Mock(return_value=mock_session)
+        return mock_factory
+
+    @pytest.fixture
+    def mock_collector(self):
+        """Create a mock FeedbackCollector."""
+        collector = MagicMock(spec=FeedbackCollector)
+        collector.capture_stage = Mock(return_value=MagicMock(spec=StageCapture))
+        collector.save_feedback = Mock(return_value=Path("/tmp/test_feedback.json"))
+        return collector
+
+    def test_create_self_iteration_loop(self, mock_db_factory):
+        """Test factory function creates loop correctly."""
+        loop = create_self_iteration_loop(
+            db_session_factory=mock_db_factory,
+            project_id=1,
+            min_feedback_count=5,
+            check_interval_seconds=60,
+            enable_auto_trigger=True,
+            canary_percentage=0.2,
+        )
+
+        assert loop.project_id == 1
+        assert loop.canary_percentage == 0.2
+        assert loop.auto_processor.min_feedback_count == 5
+        assert loop.auto_processor.check_interval_seconds == 60
+        assert loop.auto_processor.enable_auto_trigger is True
+
+    def test_start_stop_loop(self, mock_db_factory):
+        """Test starting and stopping the loop."""
+        loop = create_self_iteration_loop(mock_db_factory, project_id=1)
+        loop.start()
+        assert loop._worker_thread is not None
+        assert loop._worker_thread.is_alive()
+
+        loop.stop()
+        assert not loop._worker_thread.is_alive()
+
+    def test_get_status(self, mock_db_factory):
+        """Test status reporting."""
+        loop = create_self_iteration_loop(mock_db_factory, project_id=1)
+        status = loop.get_status()
+
+        assert "project_id" in status
+        assert "running" in status
+        assert "iteration_count" in status
+        assert "auto_processor" in status
+        assert "upgraded_prompts" in status
+        assert status["project_id"] == 1
+        assert status["iteration_count"] == 0
+
+    def test_trigger_iteration_now(self, mock_db_factory):
+        """Test manual iteration trigger."""
+        loop = create_self_iteration_loop(mock_db_factory, project_id=1)
+
+        # Mock the auto_processor.trigger_now
+        mock_analysis = MagicMock()
+        mock_analysis.total_analyzed = 10
+        mock_analysis.top_patterns = [("pattern1", 5), ("pattern2", 3)]
+        loop.auto_processor.trigger_now = Mock(return_value=mock_analysis)
+
+        result = loop.trigger_iteration_now()
+
+        assert result == mock_analysis
+        assert loop._iteration_count == 1
+        assert loop._last_analysis_result == mock_analysis
+
+
+class TestIntegrationHelpers:
+    """Tests for pipeline integration helper functions."""
+
+    def test_collect_pipeline_feedback(self):
+        """Test feedback collection helper."""
+        mock_collector = MagicMock(spec=FeedbackCollector)
+        mock_capture = MagicMock(spec=StageCapture)
+        mock_collector.capture_stage.return_value = mock_capture
+
+        capture = collect_pipeline_feedback(
+            collector=mock_collector,
+            stage="annotate",
+            chapter_index=1,
+            paragraph_index=5,
+            chapter_id=10,
+            paragraph_id=50,
+            input_snapshot={"text": "test"},
+        )
+
+        assert capture == mock_capture
+        mock_collector.capture_stage.assert_called_once_with(
+            stage="annotate",
+            chapter_index=1,
+            paragraph_index=5,
+            chapter_id=10,
+            paragraph_id=50,
+            input_snapshot={"text": "test"},
+        )
+
+    def test_save_quality_feedback(self):
+        """Test quality feedback saving helper."""
+        mock_collector = MagicMock(spec=FeedbackCollector)
+        mock_capture = MagicMock(spec=StageCapture)
+        mock_collector.capture_stage.return_value = mock_capture
+        mock_collector.save_feedback.return_value = Path("/tmp/quality_fb.json")
+
+        result = save_quality_feedback(
+            collector=mock_collector,
+            stage="quality",
+            chapter_index=1,
+            paragraph_index=5,
+            chapter_id=10,
+            paragraph_id=50,
+            quality_judgment={"score": 0.8},
+            corrected_judgment={"score": 0.9},
+            rationale="Human corrected the score",
+        )
+
+        assert result == Path("/tmp/quality_fb.json")
+        mock_capture.set_llm_output.assert_called_once_with({"score": 0.8})
+        mock_capture.set_corrected_output.assert_called_once_with({"score": 0.9})
+        mock_capture.set_rationale.assert_called_once_with("Human corrected the score")
+        mock_capture.set_source.assert_called_once_with("quality_judge")
+
+    def test_save_user_rating_feedback(self):
+        """Test user rating feedback saving helper."""
+        mock_collector = MagicMock(spec=FeedbackCollector)
+        mock_capture = MagicMock(spec=StageCapture)
+        mock_collector.capture_stage.return_value = mock_capture
+        mock_collector.save_feedback.return_value = Path("/tmp/user_fb.json")
+
+        result = save_user_rating_feedback(
+            collector=mock_collector,
+            stage="synthesize",
+            chapter_index=1,
+            paragraph_index=5,
+            chapter_id=10,
+            paragraph_id=50,
+            user_rating={"rating": 4, "comment": "Good"},
+            rationale="User rated 4/5",
+        )
+
+        assert result == Path("/tmp/user_fb.json")
+        mock_capture.set_llm_output.assert_called_once_with({"rating": 4, "comment": "Good"})
+        mock_capture.set_corrected_output.assert_called_once_with({"rating": 4, "comment": "Good"})
+        mock_capture.set_rationale.assert_called_once_with("User rated 4/5")
+        mock_capture.set_source.assert_called_once_with("user_rating")
+
+
+class TestSelfIterationLoopMonitoring:
+    """Tests for the monitoring loop behavior."""
+
+    @pytest.fixture
+    def mock_db_factory(self):
+        mock_session = MagicMock()
+        return Mock(return_value=mock_session)
+
+    @patch("src.audiobook_studio.feedback.integration.time.sleep", return_value=None)
+    def test_monitor_loop_checks_status(self, mock_sleep, mock_db_factory):
+        """Test that monitor loop checks auto processor status."""
+        loop = create_self_iteration_loop(mock_db_factory, project_id=1)
+
+        # Mock auto_processor status
+        loop.auto_processor.get_status = Mock(return_value={
+            "unprocessed_feedback_count": 15,
+        })
+        loop.auto_processor.min_feedback_count = 10
+        loop.auto_processor.trigger_now = Mock(return_value=None)
+
+        # Run one iteration of monitor loop
+        loop._stop_event.set()  # Stop after one iteration
+        loop._monitor_loop()
+
+        loop.auto_processor.get_status.assert_called()
+
+    @patch("src.audiobook_studio.feedback.integration.time.sleep", return_value=None)
+    def test_monitor_loop_triggers_analysis(self, mock_sleep, mock_db_factory):
+        """Test that monitor loop triggers analysis when threshold reached."""
+        loop = create_self_iteration_loop(mock_db_factory, project_id=1)
+
+        mock_analysis = MagicMock()
+        mock_analysis.total_analyzed = 15
+        mock_analysis.top_patterns = [("pattern1", 5)]
+
+        loop.auto_processor.get_status = Mock(return_value={
+            "unprocessed_feedback_count": 15,
+        })
+        loop.auto_processor.min_feedback_count = 10
+        loop.auto_processor.trigger_now = Mock(return_value=mock_analysis)
+
+        loop._stop_event.set()
+        loop._monitor_loop()
+
+        loop.auto_processor.trigger_now.assert_called_once()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

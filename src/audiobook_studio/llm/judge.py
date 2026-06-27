@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ..schemas import AudioPostProcessParams, ParagraphAnnotation, QualityJudgment
+from ..schemas import AudioPostProcessParams, ParagraphAnnotation, QualityJudgment, FixSuggestion
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -72,11 +72,9 @@ class LLMJudge:
                 stage="judge",
                 response_model=QualityJudgment,
                 messages=messages,
+                segment_id=segment_id,
             )
-            # Override segment_id in mock result
             output = result.output
-            if hasattr(output, "segment_id") and output.segment_id == "mock_segment":
-                output.segment_id = segment_id
             self._log_judgment(segment_id, output)
             return output
         except Exception as e:
@@ -90,7 +88,13 @@ class LLMJudge:
                 text_audio_alignment=0.0,
                 overall_score=0.0,
                 issues=["sensitive_content"],  # Valid literal from schema
-                fix_suggestions=[f"Judge error: {str(e)}"],
+                fix_suggestions=[FixSuggestion(
+                    suggestion_type="prosody_correction",
+                    target_text="",
+                    suggested_value="",
+                    rationale=f"Judge error: {str(e)}",
+                    confidence=0.9,
+                )],
                 needs_regeneration=True,
             )
 

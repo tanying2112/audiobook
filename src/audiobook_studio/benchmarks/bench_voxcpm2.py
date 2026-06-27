@@ -160,15 +160,38 @@ def detect_hardware() -> HardwareProfile:
     except Exception:
         hw.cpu_cores = 4
 
-    # RAM
+    # RAM - try multiple methods for cross-platform compatibility
+    ram_detected = False
+    
+    # Method 1: sysctl (macOS)
     try:
         result = subprocess.run(
             ["sysctl", "-n", "hw.memsize"],
             capture_output=True, text=True, timeout=5
         )
-        hw.ram_gb = round(int(result.stdout.strip()) / 1e9, 1)
+        if result.returncode == 0 and result.stdout.strip():
+            hw.ram_gb = round(int(result.stdout.strip()) / 1e9, 1)
+            ram_detected = True
     except Exception:
-        hw.ram_gb = 0.0
+        pass
+    
+    # Method 2: /proc/meminfo (Linux)
+    if not ram_detected:
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemTotal:'):
+                        kb = int(line.split()[1])
+                        hw.ram_gb = round(kb / 1e6, 1)
+                        ram_detected = True
+                        break
+        except Exception:
+            pass
+    
+    # Method 3: Fallback - use a reasonable default for test environments
+    if not ram_detected:
+        hw.ram_gb = 16.0  # Default assumption for test environments
+        logger.warning("Could not detect RAM, using default 16.0 GB")
 
     # GPU (macOS)
     try:

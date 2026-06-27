@@ -1,12 +1,12 @@
 from typing import Any, Dict
 from datetime import datetime
 from ..models import TaskRecord
-from ..database import SessionLocal
+from ..database import SessionLocal, get_db
 from .extract import extract_text
 from .analyze_structure import analyze_structure
 from .synthesize import SynthesizePipeline
 from .quality_check import QualityCheckPipeline
-from ..orchestrator import AbstractAgent, AgentCapability, AgentMessage
+from ..base import AbstractAgent, AgentCapability, AgentMessage
 
 class ExtractAgent(AbstractAgent):
     def __init__(self):
@@ -33,7 +33,6 @@ class ExtractAgent(AbstractAgent):
                 extraction_result = extract_text(
                     file_path=message.content['file_path'],
                     mime_type=message.content['mime_type'],
-                    mock_mode=message.content.get('mock_mode', False)
                 )
                 
                 # Update task status
@@ -62,7 +61,6 @@ class AnalyzeAgent(AbstractAgent):
                 title_hint=message.content.get('title_hint'),
                 author_hint=message.content.get('author_hint'),
                 target_difficulty=message.content.get('target_difficulty', 'B'),
-                mock_mode=message.content.get('mock_mode', False)
             )
             
             # Update task status
@@ -85,7 +83,7 @@ class SynthesizeAgent(AbstractAgent):
             task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
             
             # Call existing synthesis pipeline
-            synthesis_result = self.pipeline.process(
+            synthesis_result = self.pipeline.run(
                 text=message.content['text'],
                 voice_params=message.content['voice_params'],
                 quality_level=message.content.get('quality_level', 'standard')
@@ -112,7 +110,7 @@ class QualityAgent(AbstractAgent):
             db = next(get_db())
             task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
             
-            quality_report = self.pipeline.check_quality(
+            quality_report = self.pipeline.run(
                 audio_segments=message.content['audio_segments'],
                 reference_text=message.content['reference_text'],
                 book_id=message.content.get('book_id')

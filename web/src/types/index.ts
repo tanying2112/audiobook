@@ -1,10 +1,6 @@
 /// <reference types="vite/client" />
 
-declare module '*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<{}, {}, any>
-  export default component
-}
+// Vue module augmentation is handled by vite/client
 
 // ── API Response Types ──────────────────────────────────────────────────────
 
@@ -12,6 +8,7 @@ export interface Project {
   id: number
   title: string
   author: string
+  description?: string
   language?: string
   status?: string
   created_at?: string
@@ -30,6 +27,7 @@ export interface Chapter {
   edit_status?: string
   synthesize_status?: string
   quality_status?: string
+  chapter_number?: number
 }
 
 export interface Paragraph {
@@ -38,7 +36,10 @@ export interface Paragraph {
   chapter_id: number
   index: number
   text: string
+  original_text?: string
+  edited_text?: string
   speaker_canonical_name?: string
+  character_name?: string
   is_dialogue?: boolean
   emotion?: string
   emotion_intensity?: number
@@ -49,7 +50,6 @@ export interface Paragraph {
   confidence?: number
   status?: string
   audio_segment_id?: number
-  edited_text?: string
 }
 
 export interface AudioSegment {
@@ -67,6 +67,7 @@ export interface Character {
   id?: number
   project_id: number
   canonical_name: string
+  name?: string
   aliases?: string[]
   gender?: string
   age_range?: string

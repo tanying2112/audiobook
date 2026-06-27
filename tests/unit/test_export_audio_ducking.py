@@ -146,8 +146,7 @@ class TestMixWithDucking:
             speech_path.write_text("dummy speech")
             output_path = tmpdir_path / "output.m4a"
 
-            with patch("src.audiobook_studio.export.audio_ducking.get_duration_sync", return_value=5000), \
-                 patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run:
+            with patch("src.audiobook_studio.export.audio_ducking.get_duration_sync", return_value=5000),                  patch("src.audiobook_studio.export.audio_ducking.detect_speech_segments", return_value=[]),                  patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 result = mix_with_ducking(
                     speech_path=speech_path,

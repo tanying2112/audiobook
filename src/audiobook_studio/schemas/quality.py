@@ -9,7 +9,7 @@
 |------|---------|------|
 | 角色一致性 | LLM Judge 比对 speaker_canonical_name 与音频声纹 | ≥ 0.85 |
 | 情感对齐 | LLM Judge 听音频描述情绪 vs paragraph_annotation.emotion | 一致/不一致 |
-| 无声/卡顿/截断 | 音频规则脚本 (pydub + numpy) | 0 个错误 |
+| 无声/卡顿/截断 | 音频规则脚本 (ffmpeg + numpy) | 0 个错误 |
 | 敏感内容 | 关键词规则 + LLM 复核 | 0 命中 |
 | 节奏合理性 | 句间停顿 vs pause_before_ms/pause_after_ms | 误差 < 200ms |
 

@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,12 @@ class KeySlot:
         """Check if this key is available (not in cooldown)."""
         return time.time() >= self.cooldown_until
 
-    def record_use(self):
+    def record_use(self) -> None:
         """Record a successful use."""
         self.requests_count += 1
         self.last_used = time.time()
 
-    def record_failure(self, cooldown_s: float = 60.0):
+    def record_failure(self, cooldown_s: float = 60.0) -> None:
         """Record a failure and apply cooldown."""
         self.failure_count += 1
         self.cooldown_until = time.time() + cooldown_s
@@ -48,10 +48,10 @@ class ApiKeyPool:
         self,
         provider_name: str,
         primary_key_env: str,
-        pool_key_envs: List[str] = None,
+        pool_key_envs: Optional[List[str]] = None,
         strategy: str = "round_robin",
         cooldown_s: float = 60.0,
-    ):
+    ) -> None:
         self.provider_name = provider_name
         self.strategy = strategy
         self.cooldown_s = cooldown_s
@@ -102,7 +102,7 @@ class ApiKeyPool:
             key_slot.record_use()
             return key_slot.key
 
-    def record_failure(self):
+    def record_failure(self) -> None:
         """Record a failure for the current key (applies cooldown)."""
         with self._lock:
             for key_slot in self.keys:
@@ -110,7 +110,7 @@ class ApiKeyPool:
                     key_slot.record_failure(self.cooldown_s)
                     break
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> Dict[str, Any]:
         """Get pool statistics."""
         return {
             "provider": self.provider_name,
@@ -125,7 +125,7 @@ class ApiKeyPool:
 class KeyPoolManager:
     """Manages ApiKeyPools across multiple providers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._pools: Dict[str, ApiKeyPool] = {}
         self._lock = threading.Lock()
 
@@ -133,10 +133,10 @@ class KeyPoolManager:
         self,
         provider_name: str,
         primary_key_env: str,
-        pool_key_envs: List[str] = None,
+        pool_key_envs: Optional[List[str]] = None,
         strategy: str = "round_robin",
         cooldown_s: float = 60.0,
-    ):
+    ) -> None:
         """Register a key pool for a provider."""
         with self._lock:
             self._pools[provider_name] = ApiKeyPool(
@@ -154,12 +154,12 @@ class KeyPoolManager:
             return pool.get_key()
         return None
 
-    def record_failure(self, provider_name: str):
+    def record_failure(self, provider_name: str) -> None:
         """Record a failure for a provider's current key."""
         pool = self._pools.get(provider_name)
         if pool:
             pool.record_failure()
 
-    def get_all_stats(self) -> Dict[str, Dict]:
+    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get stats for all pools."""
         return {name: pool.get_stats() for name, pool in self._pools.items()}

@@ -17,6 +17,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from ..exceptions import (
+    AudiobookError,
+    StageExecutionError,
+    DataPersistError,
+    DataLoadError,
+)
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
 from ..schemas import (
@@ -36,6 +42,7 @@ from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .quality_check import QualityCheckPipeline
 from .synthesize import SynthesizePipeline
+from .stage_registry import StageRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +239,7 @@ def _write_edit(
 ) -> TTSEdit:
     """Create a TTSEdit record and update the Paragraph with edit output."""
     para.edited_text = result.edited_text
-    para.edit_changes_made = (
-        [c.model_dump() for c in result.changes_made] if result.changes_made else None
-    )
+    para.edit_changes_made = result.changes_made if result.changes_made else None
     para.edit_forbidden_removed = result.forbidden_content_removed
     para.edit_confidence = result.confidence
     para.edit_rationale = result.rationale
@@ -249,11 +254,7 @@ def _write_edit(
         chapter_id=para.chapter_id,
         paragraph_id=para.id,
         edited_text=result.edited_text,
-        changes_made=(
-            [c.model_dump() for c in result.changes_made]
-            if result.changes_made
-            else None
-        ),
+        changes_made=result.changes_made if result.changes_made else None,
         forbidden_content_removed=result.forbidden_content_removed,
         confidence=result.confidence,
         rationale=result.rationale,
@@ -425,7 +426,6 @@ def run_stage(
     chapter_id: Optional[int] = None,
     paragraph_index: Optional[int] = None,
     paragraph_id: Optional[int] = None,
-    mock_mode: bool = False,
     feedback_collector: Optional[FeedbackCollector] = None,
     **kwargs,
 ) -> Any:
@@ -449,8 +449,6 @@ def run_stage(
         1-based paragraph index (required for annotate/edit/synthesize/quality).
     paragraph_id:
         DB primary key of the Paragraph (alternative to paragraph_index).
-    mock_mode:
-        Passed through to the pipeline stage.
     feedback_collector:
         Optional FeedbackCollector for capturing LLM inputs/outputs for self-iteration.
     **kwargs:
@@ -515,179 +513,97 @@ def run_stage(
     # ── Hook: Stage Enter ────────────────────────────────────────────────
     _emit_stage_enter(stage, input_snapshot)
 
-    # ── Stage dispatch ────────────────────────────────────────────────────
+    # ── Stage dispatch via Registry ──────────────────────────────────────
     try:
-        if stage == "extract":
-            pipeline = ExtractPipeline(mock_mode=mock_mode)
-            result: ExtractionResult = pipeline.run(**kwargs)
-            chapter = _write_extract(
-                db,
-                project_id=project_id,
-                chapter_index=chapter_index or 1,
-                result=result,
-                chapter_id=chapter_id,
-            )
-            # Attach the chapter for convenience
-            result._chapter_id = chapter.id  # type: ignore[attr-defined]
+        # Get stage handler from registry
+        handler = StageRegistry.get(stage)
 
-            # Capture feedback
-            if feedback_capture:
-                feedback_capture.set_llm_output(result.model_dump())
-                # Note: corrected_output and rationale would be set externally when human provides feedback
+        # Prepare context for stage handler
+        context = {
+            **kwargs,
+            "project_id": project_id,
+            "chapter": chapter,
+            "paragraph": para,
+            "paragraph_index": paragraph_index,
+        }
 
-            # Hook: Stage Exit (success)
-            _emit_stage_exit(stage, input_snapshot, result, None)
-            return result
+        # Run stage logic
+        result = handler.run(**context)
 
-        elif stage == "analyze":
-            pipeline = AnalyzeStructurePipeline(mock_mode=mock_mode)
-            result: BookAnalysisOutput = pipeline.run(**kwargs)
-            if chapter:
-                _write_analyze(db, chapter, result)
+        # Persist result to database
+        handler.persist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
 
-            if feedback_capture:
-                feedback_capture.set_llm_output(result.model_dump())
-
-            _emit_stage_exit(stage, input_snapshot, result, None)
-            return result
-
-        elif stage == "annotate":
-            pipeline = AnnotateParagraphPipeline(mock_mode=mock_mode)
-            result: ParagraphAnnotation = pipeline.run(**kwargs)
-            if chapter and paragraph_index is not None:
-                para = _write_annotate(
-                    db,
-                    project_id=project_id,
-                    chapter=chapter,
-                    paragraph_index=paragraph_index,
-                    result=result,
-                )
-                result._paragraph_id = para.id  # type: ignore[attr-defined]
-
-            if feedback_capture:
-                feedback_capture.set_llm_output(result.model_dump())
-
-            _emit_stage_exit(stage, input_snapshot, result, None)
-            return result
-
-        elif stage == "edit":
-            pipeline = EditForTtsPipeline(mock_mode=mock_mode)
-            result: TtsEditOutput = pipeline.run(**kwargs)
-            if para:
-                _write_edit(db, para, result)
-
-            if feedback_capture:
-                feedback_capture.set_llm_output(result.model_dump())
-
-            _emit_stage_exit(stage, input_snapshot, result, None)
-            return result
-
-        elif stage == "audio_postprocess":
-            if para is None:
-                raise ValueError(
-                    "audio_postprocess requires paragraph_id or paragraph_index + chapter"
-                )
-            from ..schemas.book import CharacterVoiceBinding
-
-            # Build annotation from para
-            annotation = ParagraphAnnotation(
-                paragraph_index=para.index,
-                speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
-                is_dialogue=para.is_dialogue,
-                emotion=para.emotion or "neutral",
-                emotion_intensity=para.emotion_intensity or 0.5,
-                speech_rate=1.0,  # Default value
-                pitch_shift_semitones=0,  # Default value
-                pause_before_ms=para.pause_before_ms or 0,
-                pause_after_ms=para.pause_after_ms or 0,
-                confidence=para.confidence or 1.0,
-                needs_sfx=False,  # Default value
-                sfx_tags=[],  # Default value
-            )
-            # Build voice_map from chapter's analyzed_json
-            voice_map: list[CharacterVoiceBinding] = []
-            if chapter and chapter.analyzed_json:
-                raw = chapter.analyzed_json
-                if isinstance(raw, str):
-                    raw = json.loads(raw)
-                vms = raw.get("character_voice_map", [])
-                for vm in vms:
-                    voice_map.append(CharacterVoiceBinding(**vm))
-
-            processor = AudioPostProcessor()
-            params = processor.process(
-                annotation=annotation,
-                voice_map=voice_map if voice_map else None,
-            )
-            _write_audio_postprocess(db, para, params)
-
-            if feedback_capture:
-                feedback_capture.set_llm_output(params.model_dump())
-
-            _emit_stage_exit(stage, input_snapshot, params, None)
-            return params
-
-        elif stage == "synthesize":
-            pipeline = SynthesizePipeline(mock_mode=mock_mode)
-            # synthesize returns a list of AudioSegment dataclasses
-            segments = pipeline.run(**kwargs)
-            for seg in segments:
-                seg_dict = {
-                    "file_path": seg.file_path,
-                    "duration_ms": seg.duration_ms,
-                    "engine": seg.engine,
-                    "voice_id": seg.voice_id,
-                    "format": (
-                        seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"
-                    ),
-                }
-                if project_id and chapter and para:
-                    _write_synthesize(db, project_id, chapter, para, seg_dict)
-
-            if feedback_capture:
-                # Capture synthesis output as list
-                feedback_capture.set_llm_output(
-                    {
-                        "segments": [
-                            {
-                                "file_path": s.file_path,
-                                "duration_ms": s.duration_ms,
-                                "engine": s.engine,
-                                "voice_id": s.voice_id,
-                            }
-                            for s in segments
-                        ]
-                    }
-                )
-
-            _emit_stage_exit(stage, input_snapshot, segments, None)
-            return segments
-
-        elif stage == "quality":
-            pipeline = QualityCheckPipeline(mock_mode=mock_mode)
-            result: QualityJudgment = pipeline.run(**kwargs)
-            if project_id and chapter and para:
-                _write_quality(db, project_id, chapter, para, result)
-
-            if feedback_capture:
-                feedback_capture.set_llm_output(result.model_dump())
-                # For quality stage, source is typically "quality_judge"
+        # Capture feedback
+        if feedback_capture:
+            feedback_capture.set_llm_output(handler.get_result_snapshot(result))
+            # Set source for quality stage
+            if stage == "quality":
                 feedback_capture.set_source("quality_judge")
 
-            _emit_stage_exit(stage, input_snapshot, result, None)
-            return result
+        _emit_stage_exit(stage, input_snapshot, result, None)
+        return result
 
-        else:
-            raise ValueError(f"Unknown pipeline stage: {stage}")
-
-    except Exception as e:
-        # Log error but don't break pipeline
-        logger.error("Stage %s failed: %s", stage, e)
+    except ValueError as e:
+        # Wrap ValueError (e.g., unknown stage) in StageExecutionError
+        wrapped = StageExecutionError(
+            stage=stage,
+            reason=str(e),
+            original_error=e,
+        )
+        logger.error(
+            "Stage execution failed: %s",
+            wrapped.error_code,
+            extra={
+                "stage": stage,
+                "error_code": wrapped.error_code,
+                "error_type": wrapped.__class__.__name__,
+                "reason": str(e),
+            },
+        )
         if feedback_capture:
             feedback_capture.set_llm_output({"error": str(e)})
-        # Hook: Stage Exit (error)
+        _emit_stage_exit(stage, input_snapshot, None, wrapped)
+        raise wrapped
+
+    except AudiobookError as e:
+        # Log structured error for AudiobookError exceptions
+        logger.error(
+            "Stage execution failed: %s",
+            e.error_code,
+            extra={
+                "stage": e.stage or stage,
+                "error_code": e.error_code,
+                "error_type": e.__class__.__name__,
+                "provider": e.provider,
+                "context": e.context,
+            },
+        )
+        if feedback_capture:
+            feedback_capture.set_llm_output({"error": e.to_dict()})
         _emit_stage_exit(stage, input_snapshot, None, e)
         raise
+
+    except Exception as e:
+        # Wrap unexpected exceptions in StageExecutionError
+        wrapped = StageExecutionError(
+            stage=stage,
+            reason=str(e),
+            original_error=e,
+        )
+        logger.error(
+            "Stage execution failed: %s",
+            wrapped.error_code,
+            extra={
+                "stage": stage,
+                "error_code": wrapped.error_code,
+                "error_type": wrapped.__class__.__name__,
+                "reason": str(e),
+            },
+        )
+        if feedback_capture:
+            feedback_capture.set_llm_output({"error": str(e)})
+        _emit_stage_exit(stage, input_snapshot, None, wrapped)
+        raise wrapped
 
 
 def run_pipeline(
@@ -699,7 +615,6 @@ def run_pipeline(
     chapter_id: Optional[int] = None,
     paragraph_index: Optional[int] = None,
     paragraph_id: Optional[int] = None,
-    mock_mode: bool = False,
     feedback_collector: Optional[FeedbackCollector] = None,
     **kwargs,
 ) -> List[Any]:
@@ -721,8 +636,6 @@ def run_pipeline(
         1-based paragraph index.
     paragraph_id:
         DB primary key of the Paragraph.
-    mock_mode:
-        Passed through to the pipeline stage.
     feedback_collector:
         Optional FeedbackCollector for capturing LLM inputs/outputs.
     **kwargs:
@@ -739,7 +652,6 @@ def run_pipeline(
         "chapter_id": chapter_id,
         "paragraph_index": paragraph_index,
         "paragraph_id": paragraph_id,
-        "mock_mode": mock_mode,
         "kwargs": _sanitize_kwargs(kwargs),
     }
 
@@ -756,7 +668,6 @@ def run_pipeline(
                 chapter_id=chapter_id,
                 paragraph_index=paragraph_index,
                 paragraph_id=paragraph_id,
-                mock_mode=mock_mode,
                 feedback_collector=feedback_collector,
                 **kwargs,
             )

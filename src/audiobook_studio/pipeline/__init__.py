@@ -7,10 +7,12 @@ Exports convenience functions for each pipeline stage:
 - edit_for_tts: TTS preparation editing
 - quality_check: Quality validation and scoring
 - synthesize_paragraphs: Audio synthesis from paragraphs
+- finalize_audio: Audio post-processing (loudnorm, fade, SFX)
 """
 
 from .analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from .annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
+from .audio_finalize import AudioFinalizer, finalize_audio
 from .audio_postprocess import AudioPostProcessor
 from .checkpoint import CheckpointManager
 from .edit_for_tts import EditForTtsPipeline, edit_for_tts
@@ -31,6 +33,7 @@ __all__ = [
     "edit_for_tts",
     "quality_check",
     "synthesize_paragraphs",
+    "finalize_audio",
     "run_stage",
     # Pipeline classes
     "ExtractPipeline",
@@ -39,6 +42,7 @@ __all__ = [
     "EditForTtsPipeline",
     "QualityCheckPipeline",
     "SynthesizePipeline",
+    "AudioFinalizer",
     # Orchestration components
     "CheckpointManager",
     "AudioPostProcessor",

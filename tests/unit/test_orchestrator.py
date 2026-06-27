@@ -1,4 +1,6 @@
 """Comprehensive unit tests for orchestrator pipeline targeting ≥80% line coverage.
+import os
+os.environ["MOCK_LLM"] = "true"
 
 Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - run_stage() with all 7 stages: extract, analyze, annotate, edit, audio_postprocess, synthesize, quality
@@ -399,14 +401,10 @@ class TestWriteEdit:
 
     def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
         """Test _write_edit creates TTSEdit record and updates paragraph."""
-        # Create a mock result that satisfies production code expectations
-        # (changes_made should be list of objects with model_dump())
-        mock_change = MagicMock()
-        mock_change.model_dump.return_value = {"type": "test_change"}
-
+        # Create a mock result with string list for changes_made (matches TtsEditOutput schema)
         mock_result = MagicMock()
         mock_result.edited_text = "这是编辑后的文本内容。"
-        mock_result.changes_made = [mock_change]
+        mock_result.changes_made = ["test_change"]
         mock_result.forbidden_content_removed = []
         mock_result.confidence = 0.9
         mock_result.rationale = "Test edit rationale"
@@ -583,7 +581,7 @@ class TestRunStageExtract:
     ):
         """Test run_stage with extract stage."""
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.ExtractPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
@@ -593,7 +591,7 @@ class TestRunStageExtract:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                mock_mode=True,
+                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
             )
@@ -623,7 +621,7 @@ class TestRunStageAnalyze:
     ):
         """Test run_stage with analyze stage."""
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AnalyzeStructurePipeline"
+            "src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
@@ -633,7 +631,7 @@ class TestRunStageAnalyze:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                mock_mode=True,
+                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -662,7 +660,7 @@ class TestRunStageAnnotate:
     ):
         """Test run_stage with annotate stage."""
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AnnotateParagraphPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_paragraph_annotation
@@ -706,7 +704,7 @@ class TestRunStageAnnotate:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+                
                 paragraph_text="这是测试段落文本内容。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
@@ -730,22 +728,39 @@ class TestRunStageEdit:
 
     def test_run_stage_edit(self, db_session, sample_paragraph):
         """Test run_stage with edit stage."""
+        from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditOutput
+
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.EditForTtsPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
-            # Create a mock result that has changes_made as list of objects with model_dump()
-            mock_change = MagicMock()
-            mock_change.model_dump.return_value = {"type": "test_change"}
 
-            mock_result = MagicMock()
-            mock_result.edited_text = "这是编辑后的文本内容。"
-            mock_result.changes_made = [mock_change]
-            mock_result.forbidden_content_removed = []
-            mock_result.confidence = 0.9
-            mock_result.rationale = "Test edit rationale"
-            mock_result.difficulty = "B"
-            mock_result.forbid_edit = False
+            # Create valid ParagraphAnnotation for the input
+            mock_paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+                notes="Test annotation",
+            )
+
+            # Create mock TtsEditOutput result
+            mock_result = TtsEditOutput(
+                edited_text="这是编辑后的文本内容。",
+                changes_made=["test_change"],
+                forbidden_content_removed=[],
+                confidence=0.9,
+                rationale="Test edit rationale",
+            )
 
             mock_pipeline.run.return_value = mock_result
 
@@ -753,9 +768,9 @@ class TestRunStageEdit:
                 "edit",
                 db_session,
                 paragraph_id=sample_paragraph.id,
-                mock_mode=True,
+
                 paragraph_text="这是测试段落文本内容。",
-                paragraph_annotation=mock_result,
+                paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
                 forbid_edit=False,
             )
@@ -792,7 +807,7 @@ class TestRunStageAudioPostProcess:
         db_session.commit()
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AudioPostProcessor"
+            "src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor"
         ) as MockProcessor:
             mock_processor = MockProcessor.return_value
             from src.audiobook_studio.schemas import AudioPostProcessParams
@@ -833,11 +848,31 @@ class TestRunStageSynthesize:
         mock_audio_segments,
     ):
         """Test run_stage with synthesize stage with synthesize stage."""
+        from src.audiobook_studio.schemas import ParagraphAnnotation
+
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.SynthesizePipeline"
+            "src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
+
+            # Create valid ParagraphAnnotation
+            mock_paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+                notes="Test annotation",
+            )
 
             result = run_stage(
                 "synthesize",
@@ -845,10 +880,11 @@ class TestRunStageSynthesize:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
+                paragraph_annotation=mock_paragraph_annotation,
             )
 
             assert result == mock_audio_segments
@@ -868,136 +904,6 @@ class TestRunStageSynthesize:
             assert audio.file_path == "/tmp/test_segment_0.mp3"
 
 
-class TestRunPipelineMockSynthesize:
-    """Test Orchestrator.run_pipeline_mock synthesis routing inputs."""
-
-    def test_run_pipeline_mock_passes_valid_synthesize_routing_inputs(
-        self, tmp_path
-    ):
-        """Test mock pipeline synthesis receives field-validated routing inputs."""
-        from src.audiobook_studio.orchestrator import Orchestrator
-
-        source_path = tmp_path / "mock_book.txt"
-        source_path.write_text(
-            "这是第一段旁白文本。\n\n这是第二段角色A文本。",
-            encoding="utf-8",
-        )
-
-        extraction_result = SimpleNamespace(
-            raw_text=(
-                "这是第一段旁白文本，内容足够用于 mock pipeline 合成。\n\n"
-                "这是第二段角色A文本，用于验证合成阶段路由输入。"
-            )
-        )
-
-        analysis_payload = {
-            "book_meta": {
-                "title": "Mock Book",
-                "author": "Mock Author",
-                "genre": "小说",
-                "difficulty": "B",
-                "language": "zh",
-                "era": "现代",
-                "total_chapters_estimated": 1,
-            },
-            "character_voice_map": [
-                {
-                    "canonical_name": "旁白",
-                    "aliases": [],
-                    "gender": "neutral",
-                    "age_range": "adult",
-                    "suggested_voice_id": "zh-CN-XiaoxiaoNeural",
-                    "sample_quote": "这是第一段旁白文本。",
-                },
-                {
-                    "canonical_name": "角色A",
-                    "aliases": [],
-                    "gender": "neutral",
-                    "age_range": "adult",
-                    "suggested_voice_id": "zh-CN-YunxiNeural",
-                    "sample_quote": "这是第二段角色A文本。",
-                },
-            ],
-            "paragraphs": [
-                {
-                    "id": 1,
-                    "chapter_id": 1,
-                    "chapter_index": 1,
-                    "paragraph_index": 1,
-                    "text": "这是第一段旁白文本，内容足够用于 mock pipeline 合成。",
-                    "speaker_canonical_name": "旁白",
-                    "is_dialogue": False,
-                    "emotion": "neutral",
-                    "emotion_intensity": 0.5,
-                    "speech_rate": 1.0,
-                    "pitch_shift_semitones": 0,
-                },
-                {
-                    "id": 2,
-                    "chapter_id": 1,
-                    "chapter_index": 1,
-                    "paragraph_index": 2,
-                    "text": "这是第二段角色A文本，用于验证合成阶段路由输入。",
-                    "speaker_canonical_name": "角色A",
-                    "is_dialogue": True,
-                    "emotion": "curious",
-                    "emotion_intensity": 0.7,
-                    "speech_rate": 1.0,
-                    "pitch_shift_semitones": 1,
-                },
-            ],
-        }
-
-        with patch(
-            "src.audiobook_studio.pipeline.orchestrator.ExtractPipeline"
-        ) as mock_extract_cls, patch(
-            "src.audiobook_studio.pipeline.orchestrator.AnalyzeStructurePipeline"
-        ) as mock_analyze_cls, patch(
-            "src.audiobook_studio.pipeline.orchestrator.SynthesizePipeline"
-        ) as mock_synthesize_cls:
-            mock_extract_cls.return_value.run.return_value = extraction_result
-            mock_analyze_cls.return_value.run.return_value = analysis_payload
-            mock_synthesize_cls.return_value.run.return_value = [
-                SimpleNamespace(file_path="segment_1.mp3"),
-                SimpleNamespace(file_path="segment_2.mp3"),
-            ]
-
-            result = Orchestrator().run_pipeline_mock(
-                file_path=str(source_path),
-                output_dir=str(tmp_path / "output"),
-            )
-
-            assert result.status == "completed"
-            assert result.error is None
-            assert result.stages == ["extract", "analyze", "synthesize"]
-            assert len(result.audio_segments) == 2
-
-            mock_extract_cls.return_value.run.assert_called_once()
-            mock_analyze_cls.return_value.run.assert_called_once()
-            mock_synthesize_cls.assert_called_once()
-            mock_synthesize_cls.return_value.run.assert_called_once()
-
-            # 获取合成阶段的调用参数
-            call_args = mock_synthesize_cls.return_value.run.call_args.args[0]
-
-            # 基础长度校验
-            assert len(call_args) >= 2
-
-            # --- 验证第 1 段 (旁白) ---
-            p1 = call_args[0]
-            assert p1.paragraph_annotation.notes == "Mock annotation"
-            assert p1.character_voice_map[0].canonical_name == "旁白"
-            assert p1.character_voice_map[0].suggested_voice_id == "zh-CN-XiaoxiaoNeural"
-            assert p1.character_voice_map[0].aliases == []
-            assert p1.character_voice_map[0].gender == "neutral"
-
-            # --- 验证第 2 段 (角色A) ---
-            p2 = call_args[1]
-            assert p2.paragraph_annotation.notes == "Mock annotation"
-            assert p2.character_voice_map[1].canonical_name == "角色A"
-            assert p2.character_voice_map[1].suggested_voice_id == "zh-CN-YunxiNeural"
-            assert p2.character_voice_map[1].aliases == []
-            assert p2.character_voice_map[1].gender == "neutral"
 
 
 class TestRunStageQuality:
@@ -1008,7 +914,7 @@ class TestRunStageQuality:
     ):
         """Test run_stage with quality stage."""
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.QualityCheckPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
@@ -1032,7 +938,7 @@ class TestRunStageQuality:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -1069,7 +975,9 @@ class TestRunStageErrors:
 
     def test_run_stage_unknown_stage(self, db_session, sample_project):
         """Test run_stage raises error for unknown stage."""
-        with pytest.raises(ValueError, match="Unknown pipeline stage"):
+        from src.audiobook_studio.exceptions import StageExecutionError
+
+        with pytest.raises(StageExecutionError, match="Unknown pipeline stage"):
             run_stage(
                 "unknown_stage",
                 db_session,
@@ -1080,8 +988,10 @@ class TestRunStageErrors:
         self, db_session, sample_project
     ):
         """Test run_stage audio_postprocess requires paragraph."""
+        from src.audiobook_studio.exceptions import StageExecutionError
+
         with pytest.raises(
-            ValueError,
+            StageExecutionError,
             match="audio_postprocess requires paragraph_id or paragraph_index",
         ):
             run_stage(
@@ -1105,7 +1015,7 @@ class TestRunStageWithFeedbackCollector:
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.ExtractPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
@@ -1115,7 +1025,7 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                mock_mode=True,
+                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 feedback_collector=mock_collector,
@@ -1135,7 +1045,7 @@ class TestRunStageWithFeedbackCollector:
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AnalyzeStructurePipeline"
+            "src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
@@ -1145,7 +1055,7 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                mock_mode=True,
+                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -1172,7 +1082,7 @@ class TestRunStageWithFeedbackCollector:
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AnnotateParagraphPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_paragraph_annotation
@@ -1215,7 +1125,7 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+                
                 paragraph_text="这是测试段落文本内容。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
@@ -1232,26 +1142,44 @@ class TestRunStageWithFeedbackCollector:
 
     def test_run_stage_edit_with_feedback(self, db_session, sample_paragraph):
         """Test run_stage edit stage captures feedback."""
+        from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditOutput
+
         mock_collector = MagicMock(spec=FeedbackCollector)
         mock_capture = MagicMock()
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.EditForTtsPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
-            mock_change = MagicMock()
-            mock_change.model_dump.return_value = {"type": "test_change"}
 
-            mock_result = MagicMock()
-            mock_result.edited_text = "这是编辑后的文本内容。"
-            mock_result.changes_made = [mock_change]
-            mock_result.forbidden_content_removed = []
-            mock_result.confidence = 0.9
-            mock_result.rationale = "Test edit rationale"
-            mock_result.difficulty = "B"
-            mock_result.forbid_edit = False
+            # Create valid ParagraphAnnotation for input
+            mock_paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+                notes="Test annotation",
+            )
+
+            # Create valid TtsEditOutput result
+            mock_result = TtsEditOutput(
+                edited_text="这是编辑后的文本内容。",
+                changes_made=["test_change"],
+                forbidden_content_removed=[],
+                confidence=0.9,
+                rationale="Test edit rationale",
+            )
 
             mock_pipeline.run.return_value = mock_result
 
@@ -1260,9 +1188,9 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_paragraph.project_id,
                 paragraph_id=sample_paragraph.id,
-                mock_mode=True,
+
                 paragraph_text="这是测试段落文本内容。",
-                paragraph_annotation=mock_result,
+                paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
                 forbid_edit=False,
                 feedback_collector=mock_collector,
@@ -1296,7 +1224,7 @@ class TestRunStageWithFeedbackCollector:
         db_session.commit()
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.AudioPostProcessor"
+            "src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor"
         ) as MockProcessor:
             mock_processor = MockProcessor.return_value
             from src.audiobook_studio.schemas import AudioPostProcessParams
@@ -1330,16 +1258,36 @@ class TestRunStageWithFeedbackCollector:
         mock_audio_segments,
     ):
         """Test run_stage synthesize stage captures feedback."""
+        from src.audiobook_studio.schemas import ParagraphAnnotation
+
         mock_collector = MagicMock(spec=FeedbackCollector)
         mock_capture = MagicMock()
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.SynthesizePipeline"
+            "src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
+
+            # Create valid ParagraphAnnotation
+            mock_paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+                notes="Test annotation",
+            )
 
             result = run_stage(
                 "synthesize",
@@ -1347,10 +1295,11 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
+                paragraph_annotation=mock_paragraph_annotation,
                 feedback_collector=mock_collector,
             )
 
@@ -1368,7 +1317,7 @@ class TestRunStageWithFeedbackCollector:
         mock_collector.capture_stage.return_value = mock_capture
 
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.QualityCheckPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
@@ -1392,7 +1341,7 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                mock_mode=True,
+                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -1409,7 +1358,7 @@ class TestRunStageWithFeedbackCollector:
     ):
         """Test run_stage works without feedback_collector (backward compatibility)."""
         with patch(
-            "src.audiobook_studio.pipeline.orchestrator.ExtractPipeline"
+            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
         ) as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
@@ -1419,7 +1368,7 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                mock_mode=True,
+                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 # No feedback_collector

@@ -349,7 +349,7 @@ class TestBlindEvaluate:
         assert result.results[0].score_b == 0.9
         assert result.results[0].rationale == "B much better"
         assert result.results[2].winner == "B"  # Updated by human rating
-        assert result.b_wins == 2  # s1 and s3 now B wins
+        assert result.b_wins == 3  # s1, s2, s3 now B wins
         assert result.a_wins == 0
         assert result.ties == 0
 

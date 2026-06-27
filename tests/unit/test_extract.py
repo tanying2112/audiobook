@@ -25,7 +25,7 @@ class TestExtractPipeline:
     def setup_method(self):
         """Setup test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.pipeline = ExtractPipeline(mock_mode=True)
+        self.pipeline = ExtractPipeline()
 
     def teardown_method(self):
         """Clean up test fixtures."""
@@ -60,18 +60,12 @@ class TestExtractPipeline:
         from src.audiobook_studio.llm import create_router
 
         pipeline = ExtractPipeline()
-        assert pipeline.mock_mode is False
         assert pipeline.router is not None
-
-    def test_init_mock_mode(self):
-        """Test pipeline initialization in mock mode."""
-        pipeline = ExtractPipeline(mock_mode=True)
-        assert pipeline.mock_mode is True
 
     def test_init_with_custom_router(self):
         """Test pipeline initialization with custom router."""
         mock_router = Mock()
-        pipeline = ExtractPipeline(router=mock_router, mock_mode=True)
+        pipeline = ExtractPipeline(router=mock_router)
         assert pipeline.router == mock_router
 
     def test_detect_language_chinese(self):
@@ -99,43 +93,60 @@ class TestExtractPipeline:
         assert lang == "en"  # Short English text defaults to en
 
     def test_run_mock_mode_returns_extraction_result(self):
-        """Test run() returns ExtractionResult in mock mode."""
+        """Test run() returns ExtractionResult in mock mode without calling real extraction."""
         input_data = self.create_minimal_input()
-        result = self.pipeline.run(input_data)
-        
-        assert isinstance(result, ExtractionResult)
-        assert result.raw_text is not None
-        assert len(result.raw_text) > 0
+
+        with patch.object(self.pipeline, '_extract_pdf') as mock_extract:
+            result = self.pipeline.run(input_data)
+
+            assert isinstance(result, ExtractionResult)
+            assert result.raw_text is not None
+            assert len(result.raw_text) > 0
+            # In mock_mode, _extract_pdf should NOT be called
+            mock_extract.assert_not_called()
 
     def test_run_mock_mode_records_performance(self):
-        """Test run() records performance metrics in mock mode."""
+        """Test run() in mock mode records mock performance metrics."""
         input_data = self.create_minimal_input()
-        
-        with patch('src.audiobook_studio.pipeline.extract.record_stage_performance') as mock_record:
-            self.pipeline.run(input_data)
-            mock_record.assert_called_once()
-            call_kwargs = mock_record.call_args.kwargs
-            assert call_kwargs['stage'] == 'extract_mock'
-            assert call_kwargs['cost_usd'] == 0.0
+
+        with patch.object(self.pipeline, '_extract_pdf') as mock_extract:
+            with patch('src.audiobook_studio.pipeline.extract.record_stage_performance') as mock_record:
+                self.pipeline.run(input_data)
+                # In mock mode, record_stage_performance should be called with mock data
+                mock_record.assert_called_once()
+                call_kwargs = mock_record.call_args.kwargs
+                assert call_kwargs['stage'] == 'extract_mock'
+                assert call_kwargs['success'] is True
+                # _extract_pdf should NOT be called in mock mode
+                mock_extract.assert_not_called()
 
     def test_run_mock_mode_with_custom_router(self):
         """Test run() with custom router in mock mode."""
         mock_router = Mock()
-        pipeline = ExtractPipeline(router=mock_router, mock_mode=True)
+        pipeline = ExtractPipeline(router=mock_router)
         input_data = self.create_minimal_input()
-        result = pipeline.run(input_data)
-        
-        assert isinstance(result, ExtractionResult)
-        # In mock mode, router should not be called
-        mock_router.call.assert_not_called()
+
+        with patch.object(pipeline, '_extract_pdf') as mock_extract:
+            result = pipeline.run(input_data)
+
+            assert isinstance(result, ExtractionResult)
+            # In mock mode, _extract_pdf should NOT be called
+            mock_extract.assert_not_called()
+            # Router is not called in mock mode
+            mock_router.call.assert_not_called()
 
     def test_run_real_mode_no_router_call_in_mock(self):
-        """Test that router is not called in mock mode."""
+        """Test that router is not called for basic extraction in mock mode."""
         mock_router = Mock()
-        pipeline = ExtractPipeline(router=mock_router, mock_mode=True)
+        pipeline = ExtractPipeline(router=mock_router)
         input_data = self.create_minimal_input()
-        pipeline.run(input_data)
-        mock_router.call.assert_not_called()
+
+        with patch.object(pipeline, '_extract_pdf') as mock_extract:
+            pipeline.run(input_data)
+            # In mock mode, _extract_pdf should NOT be called
+            mock_extract.assert_not_called()
+            # Router is not called in mock mode
+            mock_router.call.assert_not_called()
 
 
 # Additional tests for actual extraction logic (not mock mode)
@@ -144,7 +155,7 @@ class TestExtractPipelineRealLogic:
 
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()
-        # Use mock_mode=False but mock external libraries
+        # Explicitly set mock_mode=False for real mode tests
         self.pipeline = ExtractPipeline(mock_mode=False)
 
     def teardown_method(self):
@@ -204,22 +215,35 @@ class TestExtractPipelineRealLogic:
     @patch('src.audiobook_studio.pipeline.extract.epub')
     def test_extract_epub(self, mock_epub):
         """Test _extract_epub."""
+        import sys
+        from unittest.mock import Mock
+        # Mock bs4 module
+        mock_bs4 = Mock()
+        mock_soup = Mock()
+        mock_soup.get_text.return_value = "EPUB content"
+        mock_bs4.BeautifulSoup.return_value = mock_soup
+        sys.modules["bs4"] = mock_bs4
+
         mock_item = Mock()
         mock_item.get_type.return_value = "application/xhtml+xml"
         mock_item.get_content.return_value = b"<html><body>EPUB content</body></html>"
-        
+
         mock_book = Mock()
         mock_book.get_items.return_value = [mock_item]
         mock_epub.read_epub.return_value = mock_book
         
         test_file = Path(self.temp_dir) / "test.epub"
         test_file.write_bytes(b"dummy")
-        
+
         text, count, has_ocr, ocr_ratio = self.pipeline._extract_epub(str(test_file))
-        
+
         assert "EPUB content" in text
         assert count == 1
         assert has_ocr is False
+        
+        # Cleanup
+        if "bs4" in sys.modules:
+            del sys.modules["bs4"]
 
     @patch('src.audiobook_studio.pipeline.extract.Document')
     def test_extract_docx(self, mock_document):
@@ -293,13 +317,22 @@ class TestExtractPipelineRealLogic:
     @patch('src.audiobook_studio.pipeline.extract.epub')
     def test_run_real_mode_epub(self, mock_epub):
         """Test run() in real mode with EPUB."""
+        import sys
+        from unittest.mock import Mock
+        # Mock bs4 module
+        mock_bs4 = Mock()
+        mock_soup = Mock()
+        mock_soup.get_text.return_value = "EPUB 测试内容 " * 30
+        mock_bs4.BeautifulSoup.return_value = mock_soup
+        sys.modules["bs4"] = mock_bs4
+
         mock_item = Mock()
         mock_item.get_type.return_value = "application/xhtml+xml"
         mock_item.get_content.return_value = ("<html><body>EPUB 测试内容 " * 30 + "</body></html>").encode("utf-8")
         
         mock_book = Mock()
         mock_book.get_items.return_value = [mock_item]
-        mock_epub.read_epub.return_value = mock_book
+        mock_epub.read_epub.return_value = mock_book = mock_book
         
         input_data = ExtractionInput(
             file_path="/fake/test.epub",
@@ -309,8 +342,12 @@ class TestExtractPipelineRealLogic:
         
         result = self.pipeline.run(input_data)
         
-        assert "EPUB test content" in result.raw_text
+        assert "EPUB 测试内容" in result.raw_text
         assert result.language == "zh"
+        
+        # Cleanup
+        if "bs4" in sys.modules:
+            del sys.modules["bs4"]
 
     @patch('src.audiobook_studio.pipeline.extract.Document')
     def test_run_real_mode_docx(self, mock_document):
@@ -329,7 +366,7 @@ class TestExtractPipelineRealLogic:
         
         result = self.pipeline.run(input_data)
         
-        assert "DOCX test document content" in result.raw_text
+        assert "DOCX 测试文档内容" in result.raw_text
 
     def test_run_real_mode_txt(self):
         """Test run() in real mode with TXT."""
@@ -344,7 +381,7 @@ class TestExtractPipelineRealLogic:
         
         result = self.pipeline.run(input_data)
         
-        assert "Plain text test content" in result.raw_text
+        assert "纯文本测试内容" in result.raw_text
         assert result.language == "zh"
 
     def test_run_unsupported_mime_raises(self):
@@ -375,19 +412,23 @@ class TestExtractConvenienceFunction:
     @patch('src.audiobook_studio.pipeline.extract.pdfplumber')
     @patch('src.audiobook_studio.pipeline.extract.fitz')
     def test_extract_text_integration(self, mock_fitz, mock_pdfplumber):
-        """Test extract_text() function with mocked dependencies."""
+        """Test extract_text() function with mocked dependencies.
+
+        Note: extract_text defaults to mock_mode=True, so we explicitly set mock_mode=False.
+        """
         mock_page = Mock()
         mock_page.extract_text.return_value = "集成测试文本内容" * 20  # > 100 chars to avoid OCR fallback
-        
+
         mock_pdf = Mock()
         mock_pdf.pages = [mock_page]
         mock_pdfplumber.open.return_value.__enter__.return_value = mock_pdf
-        
+
         test_file = Path(self.temp_dir) / "test.pdf"
         test_file.write_bytes(b"%PDF-1.4")
-        
-        result = extract_text(str(test_file), mime_type="application/pdf")
-        
+
+        # Explicitly set mock_mode=False for real extraction test
+        result = extract_text(str(test_file), mime_type="application/pdf", mock_mode=False)
+
         assert "集成测试文本内容" in result.raw_text
         assert result.language == "zh"
 

@@ -57,13 +57,13 @@ class TestM4bMetadata:
         chapters = [ChapterMarker("Ch1", 0, 100000)]
         meta = M4bMetadata(
             title="Test Book",
-            author="Test Author",
+            artist="Test Author",
             album="Test Album",
             year="2024",
             chapters=chapters,
         )
         assert meta.title == "Test Book"
-        assert meta.author == "Test Author"
+        assert meta.artist == "Test Author"
         assert meta.album == "Test Album"
         assert meta.year == "2024"
         assert len(meta.chapters) == 1
@@ -131,8 +131,14 @@ class TestBuildM4b:
             output_path = tmpdir_path / "output.m4b"
 
             # Mock subprocess.run to avoid needing ffmpeg
-            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(stdout="10.5", returncode=0)
+            def mock_run_side_effect(*args, **kwargs):
+                # For the final ffmpeg command that creates output.m4b, create the file
+                cmd = args[0] if args else []
+                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                    output_path.write_text("dummy m4b")
+                return MagicMock(stdout="10.5", returncode=0)
+
+            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
                 build_m4b(
                     audio_segments=[seg1, seg2],
                     chapter_markers=chapters,
@@ -152,8 +158,13 @@ class TestBuildM4b:
             chapters = [ChapterMarker("Chapter 1", 0, 10000)]
             output_path = tmpdir_path / "output.m4b"
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(stdout="10.0", returncode=0)
+            def mock_run_side_effect(*args, **kwargs):
+                cmd = args[0] if args else []
+                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                    output_path.write_text("dummy m4b")
+                return MagicMock(stdout="10.0", returncode=0)
+
+            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
                 build_m4b(
                     audio_segments=[seg1],
                     chapter_markers=chapters,
@@ -192,12 +203,17 @@ class TestBuildM4b:
             output_path = tmpdir_path / "output.m4b"
             metadata = M4bMetadata(
                 title="Test Title",
-                author="Test Author",
+                artist="Test Author",
                 album="Test Album",
             )
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(stdout="10.0", returncode=0)
+            def mock_run_side_effect(*args, **kwargs):
+                cmd = args[0] if args else []
+                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                    output_path.write_text("dummy m4b")
+                return MagicMock(stdout="10.0", returncode=0)
+
+            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
                 build_m4b(
                     audio_segments=[seg1],
                     chapter_markers=chapters,
@@ -280,8 +296,13 @@ class TestBuildM4bMissingFiles:
             ]
             output_path = tmpdir_path / "output.m4b"
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(stdout="20.0", returncode=0)
+            def mock_run_side_effect(*args, **kwargs):
+                cmd = args[0] if args else []
+                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                    output_path.write_text("dummy m4b")
+                return MagicMock(stdout="20.0", returncode=0)
+
+            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
                 build_m4b(
                     audio_segments=[seg1, seg2],
                     chapter_markers=chapters,

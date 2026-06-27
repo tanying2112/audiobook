@@ -4,6 +4,7 @@ Covers initialization, mock_mode, convenience function, and error handling.
 Target coverage: >= 60%.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
+        os.environ["MOCK_LLM"] = "false"
         pipeline = AnnotateParagraphPipeline()
         assert pipeline is not None
         assert pipeline.mock_mode is False
@@ -34,7 +36,8 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        os.environ["MOCK_LLM"] = "true"
+        pipeline = AnnotateParagraphPipeline()
         assert pipeline.mock_mode is True
 
     def test_init_custom_router(self, mock_router):
@@ -44,7 +47,7 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_mock_mode(self, sample_input):
         """Test run in mock mode returns expected annotation."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         result = pipeline.run(sample_input)
         assert isinstance(result, ParagraphAnnotation)
         assert result.speaker_canonical_name == "旁白"
@@ -54,7 +57,7 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_mock_mode_different_index(self):
         """Test mock mode preserves different paragraph index."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         input_data = _make_input(
             paragraph_index=5, paragraph_text="不同索引的测试段落文本，满足长度要求。"
         )
@@ -100,20 +103,20 @@ class TestAnnotateParagraphPipeline:
 
     def test_load_few_shot_exists(self):
         """Test _load_few_shot loads from golden dataset."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         result = pipeline._load_few_shot("annotate_paragraph")
         assert "示例" in result
         assert "输入" in result
 
     def test_load_few_shot_missing(self):
         """Test _load_few_shot returns fallback for missing stage."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         result = pipeline._load_few_shot("nonexistent_stage")
         assert result == "(暂无示例)"
 
     def test_build_prompt(self, sample_input):
         """Test _build_prompt returns valid Jinja2-rendered prompt."""
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         prompt = pipeline._build_prompt(sample_input)
         assert isinstance(prompt, str)
         assert len(prompt) > 100
@@ -122,7 +125,7 @@ class TestAnnotateParagraphPipeline:
     def test_run_no_mock_mode_fallback(self):
         """Test run without mock mode but no router raises appropriate error."""
         # Not testing actual LLM call, just that the code path is exercised
-        pipeline = AnnotateParagraphPipeline(mock_mode=True)
+        pipeline = AnnotateParagraphPipeline()
         assert pipeline.mock_mode is True
 
 

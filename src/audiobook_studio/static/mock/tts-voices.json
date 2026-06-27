@@ -1,0 +1,49 @@
+{
+  "engines": {
+    "kokoro": {
+      "available": true,
+      "voices": [
+        {
+          "id": "kokoro_narrator",
+          "name": "旁白",
+          "gender": "neutral",
+          "language": "zh-CN"
+        }
+      ]
+    },
+    "edge_tts": {
+      "available": true,
+      "voices": [
+        {
+          "id": "zh-CN-XiaoxiaoNeural",
+          "name": "晓晓",
+          "gender": "female",
+          "language": "zh-CN"
+        },
+        {
+          "id": "zh-CN-YunxiNeural",
+          "name": "云希",
+          "gender": "male",
+          "language": "zh-CN"
+        },
+        {
+          "id": "zh-CN-YunjianNeural",
+          "name": "云健",
+          "gender": "male",
+          "language": "zh-CN"
+        }
+      ]
+    },
+    "azure": {
+      "available": true,
+      "voices": [
+        {
+          "id": "zh-CN-XiaozhenNeural",
+          "name": "晓珍",
+          "gender": "female",
+          "language": "zh-CN"
+        }
+      ]
+    }
+  }
+}

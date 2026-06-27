@@ -1,0 +1,14 @@
+{
+  "project_id": 1,
+  "run_id": "autorun_1_1719405600",
+  "status": "running",
+  "current_stage": "annotate",
+  "completed_stages": [
+    "extract",
+    "analyze"
+  ],
+  "progress": 0.28,
+  "cost_usd": 1.5,
+  "quality_score": null,
+  "started_at": "2026-06-26T09:00:00Z"
+}

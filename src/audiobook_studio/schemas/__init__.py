@@ -15,8 +15,10 @@ HARNESS 规范契约层 (Contract Layer) — 所有 Pydantic 模型定义。
 * TtsRoutingInput / TtsRoutingDecision        — 环节⑤ TTS 路由
 * QualityJudgment                             — 环节⑥ 质量检测
 * FeedbackRecord                              — 反馈回路 (横切所有环节)
+* ChapterSource / ChapterSourceCollection     — 章节源数据契约 (黄金数据集)
 """
 
+from .audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from .audio_postprocess import AudioPostProcessParams
 from .book import (
     Book,
@@ -26,10 +28,13 @@ from .book import (
     CharacterVoiceBinding,
     EmotionSnapshot,
 )
+from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourceParagraph
 from .extraction import ExtractionInput, ExtractionResult
 from .feedback import FeedbackRecord
+from .feedback_analysis import FeedbackAnalysis
 from .paragraph import Paragraph, ParagraphAnnotation, ParagraphAnnotationInput
-from .quality import Quality, QualityJudgment
+from .project import Project
+from .quality import FixSuggestion, Quality, QualityJudgment
 from .routing import Routing
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
 from .tts_routing import TtsRoutingDecision, TtsRoutingInput
@@ -62,4 +67,12 @@ __all__ = [
     "Quality",
     # 反馈回路
     "FeedbackRecord",
+    "FeedbackAnalysis",
+    # 章节源数据契约 (黄金数据集)
+    "ChapterSource",
+    "ChapterSourceCollection",
+    "ChapterSourceParagraph",
+    # 音频后处理契约
+    "AudioFinalizeParams",
+    "AudioFinalizeResult",
 ]

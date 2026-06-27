@@ -1,0 +1,22 @@
+{
+  "samples": [
+    {
+      "id": "case_1",
+      "stage": "annotate",
+      "input": {
+        "text": "黛玉道：'我没这么凶 hang。'"
+      },
+      "expected_output": {
+        "speaker": "林黛玉",
+        "emotion": "sad",
+        "is_dialogue": true
+      },
+      "human_verified": true,
+      "quality_score": 0.95
+    }
+  ],
+  "total_count": 1,
+  "by_stage": {
+    "annotate": 1
+  }
+}

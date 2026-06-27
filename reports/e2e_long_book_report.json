@@ -1,12 +1,12 @@
 {
   "book_id": "hongloumeng",
-  "book_title": "Mock Title",
+  "book_title": "Test Book",
   "total_text_chars": 155189,
   "total_paragraphs": 1141,
   "stages": [
     {
       "stage_name": "extract",
-      "duration_ms": 165.07911682128906,
+      "duration_ms": 366.8789863586426,
       "success": true,
       "input_size": 427005,
       "output_size": 155189,
@@ -15,63 +15,63 @@
     },
     {
       "stage_name": "analyze_structure",
-      "duration_ms": 48.0809211730957,
+      "duration_ms": 112.74075508117676,
       "success": true,
       "input_size": 155189,
-      "output_size": 124,
+      "output_size": 101,
       "error_message": "",
       "mock_cost_usd": 0.0
     },
     {
       "stage_name": "annotate_paragraph",
-      "duration_ms": 1082.8452110290527,
+      "duration_ms": 8499.558925628662,
       "success": true,
-      "input_size": 6139,
-      "output_size": 50,
+      "input_size": 13027,
+      "output_size": 100,
       "error_message": "",
       "mock_cost_usd": 0.0
     },
     {
       "stage_name": "edit_for_tts",
-      "duration_ms": 975.2397537231445,
+      "duration_ms": 8910.962343215942,
       "success": true,
-      "input_size": 6139,
-      "output_size": 6139,
+      "input_size": 13027,
+      "output_size": 13027,
       "error_message": "",
       "mock_cost_usd": 0.0
     },
     {
       "stage_name": "synthesize",
-      "duration_ms": 45.60279846191406,
+      "duration_ms": 137.4502182006836,
       "success": true,
-      "input_size": 50,
-      "output_size": 150000,
+      "input_size": 100,
+      "output_size": 300000,
       "error_message": "",
       "mock_cost_usd": 0.0
     },
     {
       "stage_name": "quality_check",
-      "duration_ms": 159.09576416015625,
+      "duration_ms": 1603.7099361419678,
       "success": true,
-      "input_size": 50,
-      "output_size": 50,
+      "input_size": 100,
+      "output_size": 100,
       "error_message": "",
       "mock_cost_usd": 0.0
     }
   ],
-  "total_duration_ms": 2475.9435653686523,
+  "total_duration_ms": 19631.301164627075,
   "total_mock_cost_usd": 0.0,
   "quality_summary": {
-    "avg_overall_score": 0.94,
+    "avg_overall_score": 0.9,
     "total_issues": 0,
     "needs_regeneration_count": 0,
     "score_distribution": {
-      "speaker_clarity": 0.95,
-      "emotion_match": 0.93,
-      "prosody_naturalness": 0.92,
-      "text_audio_alignment": 0.96
+      "speaker_clarity": 0.9,
+      "emotion_match": 0.9,
+      "prosody_naturalness": 0.9,
+      "text_audio_alignment": 0.9
     }
   },
-  "timestamp": "2026-06-18T21:12:52.066888",
+  "timestamp": "2026-06-27T04:51:51.608486",
   "passed": true
 }

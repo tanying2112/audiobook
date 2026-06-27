@@ -26,10 +26,22 @@ class AnalyzeStructurePipeline:
         self,
         router: Optional[LLMRouter] = None,
         prompt_dir: Optional[str] = None,
-        mock_mode: bool = False,
+        mock_mode: Optional[bool] = None,
     ):
-        self.router = router or create_router(mock_mode=mock_mode)
-        self.mock_mode = mock_mode
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Create router (mock mode controlled by MOCK_LLM env var)
+        if router is None:
+            old_mock = os.environ.get("MOCK_LLM")
+            if mock_mode:
+                os.environ["MOCK_LLM"] = "true"
+            self.router = create_router()
+            if old_mock is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_mock
+        else:
+            self.router = router
 
         # Setup Jinja2 environment
         if prompt_dir is None:
@@ -133,7 +145,7 @@ def analyze_structure(
     title_hint: Optional[str] = None,
     author_hint: Optional[str] = None,
     target_difficulty: str = "B",
-    mock_mode: bool = False,
+    mock_mode: bool = True,
 ) -> BookAnalysisOutput:
     """Convenience function for structure analysis."""
     input_data = BookAnalysisInput(
@@ -160,7 +172,6 @@ if __name__ == "__main__":  # pragma: no cover
         choices=["A", "B", "C", "D"],
         help="Target difficulty",
     )
-    parser.add_argument("--mock", action="store_true", help="Use mock mode")
     parser.add_argument("--output", help="Output JSON file")
 
     args = parser.parse_args()
@@ -180,7 +191,6 @@ if __name__ == "__main__":  # pragma: no cover
             title_hint=args.title,
             author_hint=args.author,
             target_difficulty=args.difficulty,
-            mock_mode=args.mock,
         )
         output_json = json.dumps(result.model_dump(), ensure_ascii=False, indent=2)
         if args.output:

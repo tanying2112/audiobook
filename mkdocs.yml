@@ -1,37 +1,124 @@
-site_name: Audiobook Studio 文档
-site_description: 一站式有声书制作平台文档站点
+# MkDocs Configuration for Audiobook Studio
+# Install: pip install mkdocs mkdocs-material mkdocstrings-python
+
+site_name: Audiobook Studio
+site_description: 一站式有声书制作平台 - 从文本到 M4B 的完整自动化流水线
+site_author: Audiobook Studio Team
+site_url: https://audiobook-studio.github.io/
+
+# Repository
+repo_name: audiobook-studio/audiobook
 repo_url: https://github.com/audiobook-studio/audiobook
-repo_name: audiobook
+edit_uri: edit/main/docs/
 
-nav:
-  - 首页: index.md
-  - 项目概述: architecture.md
-  - 快速开始: quick_start.md
-  - API 参考: api.md
-  - Agent 规范:
-      - 总览: agents.md
-      - 多 Agent 协作: agents/collaboration.md
-      - 角色说明: agents/roles.md
-      - 任务队列: agents/task-queue.md
-      - 交接记录: agents/handoff.md
-      - 执行日志: agents/agent-log.md
-  - LLM 马具规范: harness_specifications.md
-  - 贡献指南: contributing.md
-
+# Theme
 theme:
   name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
   palette:
     - scheme: default
       primary: indigo
       accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: 切换到深色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: 切换到浅色模式
+  font:
+    text: Inter
+    code: JetBrains Mono
 
+# Navigation
+nav:
+  - Home:
+    - index.md
+    - Quick Start: quick_start.md
+    - Installation: installation.md
+    - Architecture: architecture.md
+    - Architecture Deep Dive: architecture_deep_dive.md
+    - Pipeline & TTS: pipeline_tts.md
+    - Troubleshooting: troubleshooting.md
+
+  - HARNESS Specifications:
+    - Overview: harness_specifications.md
+    - Examples: HARNESS_SPECIFICATIONS_EXAMPLE.md
+
+  - Development:
+    - Contributing: contributing.md
+    - Development Plan: DEVELOPMENT_PLAN.md
+    - Implementation Roadmap: IMPLEMENTATION_ROADMAP.md
+    - Code of Conduct: CODE_OF_CONDUCT.md
+    - Project Status: PROJECT.md
+
+  - Release & Security:
+    - Release Notes: RELEASE_NOTES.md
+    - Security: SECURITY.md
+
+  - Reports:
+    - Sprint Summaries:
+      - Sprint G: SPRINT_G_COMPLETION_RECORD.md
+      - Sprint E: SPRINT_E_SUMMARY.md
+    - Analysis:
+      - Architecture Analysis: ANALYSIS_SUMMARY.md
+      - Execution Checklist: EXECUTION_CHECKLIST.md
+
+  - Appendix:
+    - API Reference (CN): api.md
+    - API Reference: api_reference.md
+
+# Plugins
 plugins:
-  - search
+  - search:
+      lang:
+        - zh
+        - en
 
+# Extensions
 markdown_extensions:
   - admonition
-  - codehilite
-  - footnotes
-  - meta
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true
+      toc_depth: 4
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# Build settings
+watch:
+  - docs
+  - src/audiobook_studio
+
+copyright: "&copy; 2024 Audiobook Studio Team"

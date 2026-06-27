@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import uuid
+import functools
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -217,6 +218,7 @@ def trace_llm_call(
 ):
     """装饰器：自动为 LLM 调用函数添加 trace."""
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             client = get_langfuse_client()
             with client.trace(name, input_data, metadata, tags) as trace:

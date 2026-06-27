@@ -170,7 +170,7 @@ class RssFeedGenerator:
             enclosure_url = urljoin(self.base_url + "/", f"audio/{audio_filename}")
             item_enclosure = ET.SubElement(item_elem, "enclosure")
             item_enclosure.set("url", enclosure_url)
-            item_enclosure.set("type", "audio/x-m4b")
+            item_enclosure.set("type", "audio/mp4")
             item_enclosure.set("length", str(total_duration_ms * 2))  # 估算文件大小
 
             item_duration = ET.SubElement(item_elem, "itunes:duration")

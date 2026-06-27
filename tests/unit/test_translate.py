@@ -1,9 +1,13 @@
 """Tests for Multilingual Translation Dubbing module."""
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Set MOCK_LLM environment variable before importing pipeline
+os.environ["MOCK_LLM"] = "true"
 
 from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation
@@ -28,7 +32,6 @@ class TestTranslateAndDubPipeline:
         return TranslateAndDubPipeline(
             voice_cloning_manager=mock_voice_cloning_manager,
             annotate_pipeline=mock_annotate_pipeline,
-            mock_mode=True,
         )
 
     def test_pipeline_initialization(self, pipeline):
@@ -43,10 +46,10 @@ class TestTranslateAndDubPipeline:
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
 
-            pipeline = TranslateAndDubPipeline(mock_mode=True)
+            pipeline = TranslateAndDubPipeline()
             assert pipeline.mock_mode is True
             mock_vc.assert_called_once()
-            mock_ap.assert_called_once_with(mock_mode=True)
+            mock_ap.assert_called_once()
 
     def test_translate_and_dub_basic(self, pipeline):
         """Test basic translation and dubbing flow."""
@@ -332,7 +335,7 @@ class TestTranslateAndDubPipelineEdgeCases:
              patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline") as mock_ap:
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
-            return TranslateAndDubPipeline(mock_mode=True)
+            return TranslateAndDubPipeline()
 
     def test_empty_segments(self, pipeline):
         """Test with empty segment list."""
@@ -345,14 +348,14 @@ class TestTranslateAndDubPipelineEdgeCases:
         assert report["successful_translations"] == 0
 
     def test_unknown_emotion_fallback(self, pipeline):
-        """Test fallback for unknown emotion."""
+        """Test fallback for unknown emotion (uses valid emotion not in adjustment dict)."""
         voice_config = {"base_pitch_shift": 0.0, "base_speed_rate": 1.0, "base_volume": 1.0}
 
         annotation = ParagraphAnnotation(
             paragraph_index=0,
             speaker_canonical_name="旁白",
             is_dialogue=False,
-            emotion="unknown_emotion",
+            emotion="tense",  # Valid emotion but not in adjustment dict
             emotion_intensity=0.5,
             speech_rate=1.0,
             pitch_shift_semitones=0,
@@ -364,7 +367,7 @@ class TestTranslateAndDubPipelineEdgeCases:
         )
         params = pipeline._apply_voice_characteristics(annotation, voice_config)
 
-        # Should fall back to neutral
+        # Should fall back to neutral (tense not in adjustment dict)
         assert params["pitch_shift"] == 0.0
         assert params["speed_rate"] == 1.0
         assert params["volume"] == 1.0

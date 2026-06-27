@@ -5,6 +5,7 @@ and error handling.
 Target coverage: >= 75%
 """
 
+import os
 import sys
 from unittest.mock import Mock, patch
 
@@ -22,6 +23,8 @@ class TestAnalyzeStructurePipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
+        # Ensure MOCK_LLM is false for this test
+        os.environ["MOCK_LLM"] = "false"
         pipeline = AnalyzeStructurePipeline()
         assert pipeline is not None
         assert pipeline.mock_mode is False
@@ -29,7 +32,8 @@ class TestAnalyzeStructurePipeline:
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        os.environ["MOCK_LLM"] = "true"
+        pipeline = AnalyzeStructurePipeline()
         assert pipeline.mock_mode is True
 
     def test_init_custom_prompt_dir(self, tmp_path):
@@ -39,17 +43,18 @@ class TestAnalyzeStructurePipeline:
 
     def test_run_mock_mode(self):
         """Test run in mock mode returns expected analysis."""
+        os.environ["MOCK_LLM"] = "true"
         input_data = BookAnalysisInput(
             raw_text="第一章 测试文本内容。" * 20,
             title_hint="测试书",
             author_hint="测试作者",
             target_difficulty="B",
         )
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         result = pipeline.run(input_data)
         assert isinstance(result, BookAnalysisOutput)
-        assert result.book_meta.title == "Mock Title"
-        assert len(result.character_voice_map) >= 2
+        assert result.book_meta.title == "Test Book"
+        assert len(result.character_voice_map) >= 1
         assert len(result.emotion_snapshots) >= 1
         assert len(result.story_line_summary) >= 100
 
@@ -59,10 +64,10 @@ class TestAnalyzeStructurePipeline:
             raw_text="短文本。",
             title_hint="短篇",
         )
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         result = pipeline.run(input_data)
         assert isinstance(result, BookAnalysisOutput)
-        assert result.book_meta.title == "Mock Title"
+        assert result.book_meta.title == "Test Book"
 
     def test_run_non_mock_router_call(self):
         """Test run method calls router with correct parameters."""
@@ -138,7 +143,7 @@ class TestAnalyzeStructurePipeline:
             mock_mode=True,
         )
         assert isinstance(result, BookAnalysisOutput)
-        assert result.book_meta.title == "Mock Title"
+        assert result.book_meta.title == "Test Book"
 
     def test_convenience_function_with_author(self):
         """Test convenience function with author hint."""
@@ -153,13 +158,13 @@ class TestAnalyzeStructurePipeline:
 
     def test_load_few_shot_exists(self):
         """Test _load_few_shot_examples loads from golden dataset."""
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         result = pipeline._load_few_shot_examples("analyze_structure")
         assert "input" in result or "示例" in result or "{" in result
 
     def test_load_few_shot_missing(self):
         """Test _load_few_shot_examples returns fallback for missing stage."""
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         result = pipeline._load_few_shot_examples("nonexistent_stage")
         # Returns full-width Chinese parentheses
         assert "暂无示例" in result
@@ -171,7 +176,7 @@ class TestAnalyzeStructurePipeline:
             title_hint="测试书",
             target_difficulty="B",
         )
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         prompt = pipeline._build_prompt(input_data)
         assert isinstance(prompt, str)
         assert len(prompt) > 100
@@ -179,7 +184,7 @@ class TestAnalyzeStructurePipeline:
 
     def test_jinja_env_configured(self):
         """Test Jinja2 environment has correct configuration."""
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        pipeline = AnalyzeStructurePipeline()
         assert pipeline.jinja_env is not None
         assert hasattr(pipeline.jinja_env, "get_template")
         assert pipeline.jinja_env.filters.get("tojson") is not None

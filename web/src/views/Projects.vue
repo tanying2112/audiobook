@@ -3,10 +3,12 @@ import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projects'
 import { Icon } from '@iconify/vue'
+import { useI18n } from '../i18n'
 
 const router = useRouter()
 const store = useProjectStore()
 const searchQuery = ref('')
+const { t } = useI18n()
 
 onMounted(() => store.loadProjects())
 
@@ -25,21 +27,21 @@ function openProject(id: number) {
 }
 
 async function createProject() {
-  const name = prompt('请输入项目名称:')
+  const name = prompt(t('projects.enter_project_name'))
   if (!name) return
   try {
     await store.addProject({ title: name } as any)
   } catch (e: any) {
-    alert('创建失败: ' + (e.message || e))
+    alert(t('projects.create_failed') + (e.message || e))
   }
 }
 
 async function removeProject(id: number, title: string) {
-  if (!confirm(`确定删除项目「${title}」？此操作不可撤销。`)) return
+  if (!confirm(t('projects.delete_confirm', { title }))) return
   try {
     await store.removeProject(id)
   } catch (e: any) {
-    alert('删除失败: ' + (e.message || e))
+    alert(t('projects.delete_failed') + (e.message || e))
   }
 }
 </script>
@@ -47,10 +49,10 @@ async function removeProject(id: number, title: string) {
 <template>
   <div class="projects-page">
     <div class="page-header">
-      <h1>项目列表</h1>
+      <h1>{{ t('projects.title') }}</h1>
       <button class="btn btn-primary" @click="createProject">
         <Icon icon="mdi:plus" width="18" height="18" />
-        新建项目
+        {{ t('projects.new_project') }}
       </button>
     </div>
 
@@ -59,15 +61,15 @@ async function removeProject(id: number, title: string) {
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="搜索项目名称或描述..."
+        :placeholder="t('projects.search_placeholder')"
         class="search-input"
       />
     </div>
 
-    <div v-if="store.loading" class="loading">加载中...</div>
-    <div v-else-if="store.error" class="error">{{ store.error }}</div>
+    <div v-if="store.loading" class="loading">{{ t('projects.loading') }}</div>
+    <div v-else-if="store.error" class="error">{{ t('common.error') }}: {{ store.error }}</div>
     <div v-else-if="filteredProjects.length === 0" class="empty">
-      {{ searchQuery ? '未找到匹配的项目' : '暂无项目，点击"新建项目"开始使用。' }}
+      {{ searchQuery ? t('projects.no_results') : t('projects.empty_state') }}
     </div>
 
     <div v-else class="project-grid">
@@ -78,12 +80,12 @@ async function removeProject(id: number, title: string) {
         @click="openProject(project.id)"
       >
         <div class="card-body">
-          <h3>{{ project.title || '未命名项目' }}</h3>
+          <h3>{{ project.title || t('projects.unnamed_project') }}</h3>
           <p v-if="project.description" class="desc">{{ project.description }}</p>
-          <span class="meta">ID: {{ project.id }}</span>
+          <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
         </div>
         <div class="card-actions">
-          <button class="btn-icon" title="删除" @click.stop="removeProject(project.id, project.title || '')">
+          <button class="btn-icon" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
             <Icon icon="mdi:delete-outline" width="18" height="18" />
           </button>
         </div>

@@ -335,7 +335,7 @@ class TestVoiceCloningEngine:
 
         success, msg, path = engine.synthesize_speech("Test text", "good_speaker")
         assert success is True
-        assert "语音合成成功" in msg
+        assert "MOCK模式合成" in msg
         assert path is not None
 
     def test_get_voice_info_exists(self, engine):

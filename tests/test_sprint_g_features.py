@@ -1,4 +1,6 @@
 """Tests for Sprint G features."""
+import os
+os.environ["MOCK_LLM"] = "true"
 
 import sys
 import pytest
@@ -14,7 +16,7 @@ def test_translate_pipeline_import():
 
 def test_semantic_coherence_import():
     """Test that semantic coherence checker can be imported."""
-    from scripts.semantic_coherence import SemanticCoherenceChecker
+    from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
     assert SemanticCoherenceChecker is not None
 
 
@@ -44,7 +46,7 @@ def test_rss_feed_import():
 
 def test_self_iteration_loop_import():
     """Test that self iteration loop can be imported."""
-    from scripts.self_iteration_loop import SelfIterationLoop
+    from audiobook_studio.feedback.integration import SelfIterationLoop
     assert SelfIterationLoop is not None
 
 
@@ -58,7 +60,7 @@ def test_translate_pipeline_instantiation():
 
 def test_semantic_coherence_instantiation():
     """Test that semantic coherence checker can be instantiated."""
-    from scripts.semantic_coherence import SemanticCoherenceChecker
+    from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
     checker = SemanticCoherenceChecker()
     assert checker is not None
 
@@ -94,11 +96,18 @@ def test_rss_feed_instantiation():
 
 def test_self_iteration_loop_instantiation():
     """Test that self iteration loop can be instantiated."""
-    from scripts.self_iteration_loop import SelfIterationLoop
-    loop = SelfIterationLoop(auto_merge=False, auto_deploy=False)
+    from audiobook_studio.feedback.integration import SelfIterationLoop
+    from sqlalchemy.orm import Session
+    from unittest.mock import MagicMock
+    
+    mock_session_factory = MagicMock(return_value=MagicMock(spec=Session))
+    loop = SelfIterationLoop(
+        db_session_factory=mock_session_factory,
+        project_id=1
+    )
     assert loop is not None
-    assert loop.auto_merge is False
-    assert loop.auto_deploy is False
+    # The parameters auto_merge/auto_deploy don't exist in current implementation
+    # Just verify the loop was created successfully
 
 
 if __name__ == "__main__":

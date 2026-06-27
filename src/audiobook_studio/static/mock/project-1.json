@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "title": "示例项目：红楼梦",
+  "author": "曹雪芹",
+  "genre": "古典小说",
+  "difficulty": "B",
+  "status": "processing",
+  "progress": 0.45,
+  "total_chapters": 120,
+  "completed_chapters": 54,
+  "total_cost_usd": 3.5,
+  "_embedded": {
+    "analysis": {
+      "character_count": 731000,
+      "character_list": [
+        "贾宝玉",
+        "林黛玉",
+        "薛宝钗",
+        "王熙凤"
+      ]
+    }
+  }
+}

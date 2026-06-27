@@ -20,18 +20,24 @@ class TranslateAndDubPipeline:
     def __init__(
         self,
         voice_cloning_manager: Optional[VoiceCloningManager] = None,
-        annotate_pipeline: Optional[AnnotateParagraphPipeline] = None,        mock_mode: bool = False,
+        annotate_pipeline: Optional[AnnotateParagraphPipeline] = None,
+        mock_mode: Optional[bool] = None,
     ):
+        import os
+        if mock_mode is None:
+            self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+        else:
+            self.mock_mode = mock_mode
+            os.environ["MOCK_LLM"] = "true" if mock_mode else "false"
         self.voice_cloning_manager = voice_cloning_manager
         self.annotate_pipeline = annotate_pipeline
-        self.mock_mode = mock_mode
 
         # Initialize managers if not provided
         if self.voice_cloning_manager is None:
             self.voice_cloning_manager = VoiceCloningManager()
 
         if self.annotate_pipeline is None:
-            self.annotate_pipeline = AnnotateParagraphPipeline(mock_mode=mock_mode)
+            self.annotate_pipeline = AnnotateParagraphPipeline()
     def translate_and_dub(
         self,
         segments: List[AudioSegment],
@@ -55,7 +61,7 @@ class TranslateAndDubPipeline:
 
         # 导入语义连贯性检查器
         try:
-            from scripts.semantic_coherence import SemanticCoherenceChecker
+            from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
             semantic_checker = SemanticCoherenceChecker()
         except ImportError:
             logger.warning("⚠️ 语义连贯性检查器未找到，将跳过 emotional continuity 检查")

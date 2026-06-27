@@ -5,11 +5,11 @@
 - TtsEditOutput: 环节④输出 (编辑后文本 + 变更记录 + 理由)
 
 马具规则:
-1. 难度锁: difficulty ≤ A 或 forbid_edit=true → 直接返回原文，changes_made 为空
-2. 数字归一化: 阿拉伯数字 vs 中文数字统一 (推荐阿拉伯数字)
-3. 断句: 长句 > 50 字必须拆分，每句 ≤ 30 字
-4. 标点处理: 删除朗读无意义符号 (· ※ 等)，保留逗号句号
-5. 禁止删改对话主体: dialogue 文本必须 1:1 保留，只调整标点
+1. 难度锁：difficulty ≤ A 或 forbid_edit=true → 直接返回原文，changes_made 为空
+2. 数字归一化：阿拉伯数字 vs 中文数字统一 (推荐阿拉伯数字)
+3. 断句：长句 > 50 字必须拆分，每句 ≤ 30 字
+4. 标点处理：删除朗读无意义符号 (· ※ 等)，保留逗号句号
+5. 禁止删改对话主体：dialogue 文本必须 1:1 保留，只调整标点
 """
 
 from typing import Literal
@@ -41,13 +41,19 @@ class TtsEditOutput(BaseModel):
 
     edited_text: str = Field(..., description="编辑后用于 TTS 的文本")
     changes_made: list[str] = Field(
-        default_factory=list, description="所做变更列表 (如: '数字归一化', '长句拆分')"
+        default_factory=list, description="所做变更列表 (如：'数字归一化', '长句拆分')"
     )
     forbidden_content_removed: list[str] = Field(
         default_factory=list, description="被移除的禁用内容 (练习页、版权页等)"
     )
     confidence: Confidence = Field(..., description="编辑置信度 0-1")
     rationale: str = Field(..., description="编辑理由 (用于反馈学习)")
+    difficulty: Literal["A", "B", "C", "D"] = Field(
+        default="B", description="难度等级"
+    )
+    forbid_edit: bool = Field(
+        default=False, description="原文锁定标志"
+    )
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

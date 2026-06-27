@@ -1,0 +1,223 @@
+{
+  "title": "Audiobook Studio SLO Dashboard",
+  "uid": "audiobook-studio-slo",
+  "tags": ["audiobook", "slo", "observability"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Latency (p50, p95, p99)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(audiobook_http_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(audiobook_http_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(audiobook_http_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "ms", "logBase": 1}, {"unit": "short"}],
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "id": 2,
+      "title": "HTTP Error Rate",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_http_errors_total[5m])) / sum(rate(audiobook_http_requests_total[5m]))",
+          "legendFormat": "Error Rate"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "percentunit", "max": 0.1}, {"unit": "short"}],
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "id": 3,
+      "title": "LLM Request Latency (p50, p95, p99)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(audiobook_llm_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(audiobook_llm_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(audiobook_llm_request_duration_ms_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "ms", "logBase": 1}, {"unit": "short"}],
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "id": 4,
+      "title": "LLM Error Rate",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_llm_errors_total[5m])) / sum(rate(audiobook_http_requests_total[5m]))",
+          "legendFormat": "LLM Error Rate"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "percentunit", "max": 0.1}, {"unit": "short"}],
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "id": 5,
+      "title": "TTS Synthesis Latency",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(audiobook_tts_synthesis_duration_ms_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(audiobook_tts_synthesis_duration_ms_bucket[5m]))",
+          "legendFormat": "p95"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "ms", "logBase": 1}, {"unit": "short"}],
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}
+    },
+    {
+      "id": 6,
+      "title": "Pipeline Stage Duration",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(audiobook_pipeline_stage_duration_ms_bucket[5m])))",
+          "legendFormat": "{{stage}} p95"
+        }
+      ],
+      "xaxis": {"mode": "time"},
+      "yaxes": [{"unit": "ms", "logBase": 1}, {"unit": "short"}],
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}
+    },
+    {
+      "id": 7,
+      "title": "LLM Tokens Used (Total)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_llm_tokens_used_total[1h])",
+          "legendFormat": "Tokens/hour"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 24, "w": 6, "h": 4}
+    },
+    {
+      "id": 8,
+      "title": "LLM Cost (USD/hour)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_llm_cost_usd_total[1h])",
+          "legendFormat": "Cost/hour"
+        }
+      ],
+      "gridPos": {"x": 6, "y": 24, "w": 6, "h": 4}
+    },
+    {
+      "id": 9,
+      "title": "TTS Characters Used",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_tts_characters_used_total[1h])",
+          "legendFormat": "Chars/hour"
+        }
+      ],
+      "gridPos": {"x": 12, "y": 24, "w": 6, "h": 4}
+    },
+    {
+      "id": 10,
+      "title": "Free Tier Quota Remaining",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "audiobook_free_tier_quota_remaining",
+          "legendFormat": "Quota %"
+        }
+      ],
+      "gridPos": {"x": 18, "y": 24, "w": 6, "h": 4}
+    },
+    {
+      "id": 11,
+      "title": "Books Processed",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_books_processed_total[24h])",
+          "legendFormat": "Books/24h"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 28, "w": 6, "h": 4}
+    },
+    {
+      "id": 12,
+      "title": "Chapters Synthesized",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_chapters_synthesized_total[24h])",
+          "legendFormat": "Chapters/24h"
+        }
+      ],
+      "gridPos": {"x": 6, "y": 28, "w": 6, "h": 4}
+    },
+    {
+      "id": 13,
+      "title": "Quality Check Failures",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_quality_check_failures_total[24h])",
+          "legendFormat": "Failures/24h"
+        }
+      ],
+      "gridPos": {"x": 12, "y": 28, "w": 6, "h": 4}
+    },
+    {
+      "id": 14,
+      "title": "Regenerations Triggered",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_regeneration_triggered_total[24h])",
+          "legendFormat": "Regens/24h"
+        }
+      ],
+      "gridPos": {"x": 18, "y": 28, "w": 6, "h": 4}
+    }
+  ]
+}

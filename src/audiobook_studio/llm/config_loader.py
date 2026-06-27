@@ -1,16 +1,19 @@
-# LLM Provider Config Loader
+"""LLM Provider Configuration using Pydantic Settings.
+
+Type-safe configuration with environment variable support and validation.
+"""
+
 import os
-import threading
-import time
-from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class ProviderType(Enum):
+class ProviderType(str, Enum):
+    """Supported LLM provider types."""
     GROQ = "groq"
     DEEPSEEK = "deepseek"
     OPENROUTER = "openrouter"
@@ -34,7 +37,8 @@ class ProviderType(Enum):
     DUCK2API = "duck2api"
 
 
-class StageName(Enum):
+class StageName(str, Enum):
+    """Pipeline stage names."""
     EXTRACT = "extract"
     ANALYZE = "analyze"
     ANNOTATE = "annotate"
@@ -43,24 +47,26 @@ class StageName(Enum):
     JUDGE = "judge"
 
 
-@dataclass
-class ProviderConfig:
+class ProviderConfig(BaseSettings):
+    """Configuration for a single LLM provider."""
+
     name: str
     provider: ProviderType
     model: str
     api_key_env: Optional[str] = None
-    api_key_pool_env: List[str] = field(default_factory=list)
+    api_key_pool_env: List[str] = Field(default_factory=list)
     key_rotation_strategy: str = "round_robin"
     base_url: Optional[str] = None
     priority: int = 100
     max_tokens_per_minute: int = 10000
     max_requests_per_minute: int = 60
     max_daily_cost_usd: float = 10.0
-    stages: List[StageName] = field(default_factory=list)
+    stages: List[StageName] = Field(default_factory=list)
     enabled: bool = True
-    extra_params: Dict[str, Any] = field(default_factory=dict)
+    extra_params: Dict[str, Any] = Field(default_factory=dict)
 
     def get_api_key(self) -> Optional[str]:
+        """Get primary API key from environment."""
         if self.api_key_env:
             return os.getenv(self.api_key_env)
         return None
@@ -107,8 +113,9 @@ class ProviderConfig:
         return f"{prefix}{self.model}"
 
 
-@dataclass
-class PromptCompressionConfig:
+class PromptCompressionConfig(BaseSettings):
+    """Configuration for prompt compression."""
+
     max_input_tokens: int = 4000
     truncate_strategy: str = "smart"
     remove_few_shot_when_long: bool = True
@@ -116,8 +123,9 @@ class PromptCompressionConfig:
     schema_injection_mode: str = "minimal"
 
 
-@dataclass
-class FallbackConfig:
+class FallbackConfig(BaseSettings):
+    """Configuration for fallback behavior."""
+
     max_retries_per_provider: int = 2
     retry_on_rate_limit: bool = True
     retry_on_timeout: bool = True
@@ -125,22 +133,37 @@ class FallbackConfig:
     exponential_backoff_base: float = 2.0
 
 
-@dataclass
-class CostControlConfig:
+class CostControlConfig(BaseSettings):
+    """Configuration for cost control."""
+
     daily_limit_usd: float = 10.0
     alert_threshold: float = 0.8
     track_per_stage: bool = True
 
 
-@dataclass
-class LLMProvidersConfig:
-    providers: List[ProviderConfig]
-    prompt_compression: PromptCompressionConfig
-    fallback: FallbackConfig
-    cost_control: CostControlConfig
+class LLMProvidersConfig(BaseSettings):
+    """Main LLM providers configuration.
+
+    Loads from YAML file with environment variable override support.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="LLM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    providers: List[ProviderConfig] = Field(default_factory=list)
+    prompt_compression: PromptCompressionConfig = Field(default_factory=PromptCompressionConfig)
+    fallback: FallbackConfig = Field(default_factory=FallbackConfig)
+    cost_control: CostControlConfig = Field(default_factory=CostControlConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "LLMProvidersConfig":
+        """Load configuration from YAML file."""
+        import yaml
+
         if config_path is None:
             config_path = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
 
@@ -167,7 +190,7 @@ class LLMProvidersConfig:
                 )
             )
 
-        # Sort by priority
+        # Sort by priority (lower number = higher priority)
         providers.sort(key=lambda p: p.priority)
 
         pc = data.get("prompt_compression", {})
@@ -186,4 +209,5 @@ class LLMProvidersConfig:
         return [p for p in self.providers if p.enabled and stage in p.stages]
 
     def get_all_enabled(self) -> List[ProviderConfig]:
+        """Get all enabled providers."""
         return [p for p in self.providers if p.enabled]

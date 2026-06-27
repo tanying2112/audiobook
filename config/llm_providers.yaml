@@ -7,7 +7,7 @@ providers:
   - name: opencode_zen
     provider: openai
     model: deepseek-v4-flash-free
-    api_key_env: sk-T0NtmLPQa0fVF37h2xlj09Yhyf9ngfjr4Lk0qLwrnGbzxAbKbh5OVOaUn9x2N3z6
+    api_key_env: OPENCODE_ZEN_API_KEY  # 从 .env 读取，禁止硬编码
     base_url: https://api.opencode-zen.com/v1
     priority: 5
     max_tokens_per_minute: 50000
@@ -43,7 +43,7 @@ providers:
   - name: gemini_flash
     provider: gemini
     model: gemini-2.0-flash
-    api_key_env: AIzaSyAB_LrHqRF8mKFCTbc_uXkhuhsxVpin31M
+    api_key_env: GEMINI_API_KEY  # 从 .env 读取，禁止硬编码
     priority: 10
     max_tokens_per_minute: 30000
     max_requests_per_minute: 60
@@ -78,8 +78,9 @@ providers:
   - name: nvidia_nemotron
     provider: openai
     model: nvidia/minimaxai/minimax-m2.7
-    api_key_env: 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
-    base_url: https://integrate.api.nvidia.com/v1    priority: 15
+    api_key_env: NVIDIA_API_KEY  # 从 .env 读取，禁止硬编码
+    base_url: https://integrate.api.nvidia.com/v1
+    priority: 15
     max_tokens_per_minute: 4000
     max_requests_per_minute: 20
     stages: [analyze, judge]
@@ -89,7 +90,7 @@ providers:
   - name: mistral
     provider: mistral
     model: mistral-small-latest
-    api_key_env: b0BCJMxw12KU2dsOxnUr3eqUD3SyktSP
+    api_key_env: MISTRAL_API_KEY  # 从 .env 读取，禁止硬编码
     base_url: https://api.mistral.ai/v1
     priority: 28
     max_tokens_per_minute: 50000
@@ -148,7 +149,7 @@ providers:
   - name: huggingface
     provider: huggingface
     model: Qwen/Qwen2.5-72B-Instruct
-    api_key_env: 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
+    api_key_env: HF_API_KEY
     base_url: https://api-inference.huggingface.co/v1
     priority: 45
     max_tokens_per_minute: 10000
@@ -160,7 +161,7 @@ providers:
   - name: openrouter
     provider: openrouter
     model: meta-llama/llama-3.1-8b-instruct:free
-    api_key_env: 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
+    api_key_env: OPENROUTER_API_KEY  # 从 .env 读取，禁止硬编码
     priority: 30
     max_tokens_per_minute: 5000
     max_requests_per_minute: 20

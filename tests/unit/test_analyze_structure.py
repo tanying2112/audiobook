@@ -32,7 +32,7 @@ class TestAnalyzeStructurePipeline:
     def setup_method(self):
         """Setup test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        self.pipeline = AnalyzeStructurePipeline()
 
     def teardown_method(self):
         """Clean up test fixtures."""
@@ -54,8 +54,8 @@ class TestAnalyzeStructurePipeline:
         """Create a valid BookAnalysisOutput for mocking."""
         defaults = {
             "book_meta": BookMeta(
-                title="Mock Title",
-                author="Mock Author",
+                title="Test Book",
+                author="Test Author",
                 genre="小说",
                 difficulty="B",
                 language="zh",
@@ -91,24 +91,18 @@ class TestAnalyzeStructurePipeline:
         from src.audiobook_studio.llm import create_router
 
         pipeline = AnalyzeStructurePipeline()
-        assert pipeline.mock_mode is False
         assert pipeline.router is not None
         assert pipeline.jinja_env is not None
-
-    def test_init_mock_mode(self):
-        """Test pipeline initialization in mock mode."""
-        pipeline = AnalyzeStructurePipeline(mock_mode=True)
-        assert pipeline.mock_mode is True
 
     def test_init_with_custom_router(self):
         """Test pipeline initialization with custom router."""
         mock_router = Mock()
-        pipeline = AnalyzeStructurePipeline(router=mock_router, mock_mode=True)
+        pipeline = AnalyzeStructurePipeline(router=mock_router)
         assert pipeline.router == mock_router
 
     def test_init_with_custom_prompt_dir(self):
         """Test pipeline initialization with custom prompt directory."""
-        pipeline = AnalyzeStructurePipeline(prompt_dir=self.temp_dir, mock_mode=True)
+        pipeline = AnalyzeStructurePipeline(prompt_dir=self.temp_dir)
         assert pipeline.prompt_dir == Path(self.temp_dir)
 
     def test_load_few_shot_examples_no_file(self):
@@ -129,7 +123,7 @@ class TestAnalyzeStructurePipeline:
             for ex in examples:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
 
-        pipeline = AnalyzeStructurePipeline(prompt_dir=self.temp_dir, mock_mode=True)
+        pipeline = AnalyzeStructurePipeline(prompt_dir=self.temp_dir)
         result = pipeline._load_few_shot_examples("analyze_structure")
 
         assert "示例 1" in result
@@ -146,9 +140,7 @@ class TestAnalyzeStructurePipeline:
         assert "B" in prompt  # target_difficulty
 
     def test_run_mock_mode_returns_book_analysis_output(self):
-        """Test run() in mock mode calls router (mock_mode doesn't short-circuit in run)."""
-        # The AnalyzeStructurePipeline doesn't short-circuit in mock_mode for run()
-        # It still calls the router, so we need to mock it
+        """Test run() returns BookAnalysisOutput from router mock result."""
         mock_router = MagicMock()
         mock_result = MagicMock()
         mock_result.output = self.create_mock_output()
@@ -160,13 +152,13 @@ class TestAnalyzeStructurePipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        pipeline = AnalyzeStructurePipeline(router=mock_router, mock_mode=True)
+        pipeline = AnalyzeStructurePipeline(router=mock_router)
         input_data = self.create_minimal_input()
 
         result = pipeline.run(input_data)
 
         assert isinstance(result, BookAnalysisOutput)
-        assert result.book_meta.title == "Mock Title"
+        assert result.book_meta.title == "Test Book"
         mock_router.call.assert_called_once()
         call_args = mock_router.call.call_args
         assert call_args[1]["stage"] == "analyze"
@@ -185,7 +177,7 @@ class TestAnalyzeStructurePipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        pipeline = AnalyzeStructurePipeline(router=mock_router, mock_mode=False)
+        pipeline = AnalyzeStructurePipeline(router=mock_router)
         input_data = self.create_minimal_input(
             raw_text="第1章 开始\n\n这是第一段。"
         )
@@ -193,7 +185,7 @@ class TestAnalyzeStructurePipeline:
         result = pipeline.run(input_data)
 
         assert isinstance(result, BookAnalysisOutput)
-        assert result.book_meta.title == "Mock Title"
+        assert result.book_meta.title == "Test Book"
         mock_router.call.assert_called_once()
         call_args = mock_router.call.call_args
         assert call_args[1]["stage"] == "analyze"
@@ -204,7 +196,7 @@ class TestAnalyzeStructurePipeline:
         mock_router = MagicMock()
         mock_router.call.side_effect = Exception("API Error")
 
-        pipeline = AnalyzeStructurePipeline(router=mock_router, mock_mode=False)
+        pipeline = AnalyzeStructurePipeline(router=mock_router)
         input_data = self.create_minimal_input()
 
         with pytest.raises(Exception, match="API Error"):
@@ -228,7 +220,6 @@ class TestAnalyzeStructureConvenienceFunction:
             "title_hint": "便利函数测试书",
             "author_hint": "测试作者",
             "target_difficulty": "A",
-            "mock_mode": True,
         }
         defaults.update(overrides)
         return defaults
@@ -264,7 +255,7 @@ class TestAnalyzeStructureConvenienceFunction:
                     chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
                 ),
             ],
-            story_line_summary="测试故事摘要。" * 3,
+            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
             global_style_notes="风格备注。",
         )
         mock_result.model = "gpt-4o-mini"
@@ -274,12 +265,12 @@ class TestAnalyzeStructureConvenienceFunction:
         mock_result.latency_ms = 800
         mock_result.schema_compliance = True
 
-        from src.audiobook_studio.llm.router import LLMRouter
+        from src.audiobook_studio.llm.router import create_router
 
-        with patch("src.audiobook_studio.pipeline.analyze_structure.LLMRouter") as MockRouter, \
-             patch("src.audiobook_studio.pipeline.analyze_structure.LLMRouter.create") as mock_create:
-            MockRouter.return_value = mock_router
+        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:
+            mock_router = MagicMock()
             mock_router.call.return_value = mock_result
+            mock_create_router.return_value = mock_router
 
             params = self.create_minimal_params()
             result = analyze_structure(**params)
@@ -318,7 +309,7 @@ class TestAnalyzeStructureConvenienceFunction:
                     chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
                 ),
             ],
-            story_line_summary="测试故事摘要。" * 3,
+            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
             global_style_notes="风格备注。",
         )
         mock_result.model = "gpt-4o-mini"
@@ -329,7 +320,7 @@ class TestAnalyzeStructureConvenienceFunction:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        with patch("src.audiobook_studio.llm.create_router", return_value=mock_router):
+        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router", return_value=mock_router):
             params = self.create_minimal_params(raw_text="特定文本内容")
             result = analyze_structure(**params)
 
@@ -345,7 +336,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.pipeline = AnalyzeStructurePipeline(mock_mode=True)
+        self.pipeline = AnalyzeStructurePipeline()
 
     def teardown_method(self):
         import shutil

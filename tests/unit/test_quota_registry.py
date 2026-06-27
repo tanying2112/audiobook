@@ -8,6 +8,7 @@ from src.audiobook_studio.llm.quota_registry import (
     get_quota_registry,
     init_quota_registry,
 )
+from src.audiobook_studio.di import reset_app_container
 
 
 class TestQuotaConfig:
@@ -67,6 +68,7 @@ class TestQuotaRegistry:
 
     def setup_method(self):
         """Reset registry for each test."""
+        reset_app_container()
         init_quota_registry()
         self.registry = get_quota_registry()
 
@@ -227,16 +229,21 @@ class TestQuotaRegistry:
 class TestRouterQuotaIntegration:
     """Tests for quota registry integration with router."""
 
+    def setup_method(self):
+        """Reset container for each test."""
+        from src.audiobook_studio.di import reset_app_container
+        reset_app_container()
+
     def test_router_has_quota_registry(self):
         """Test that router has quota registry."""
         from src.audiobook_studio.llm.router import create_router
-        router = create_router(mock_mode=True)
+        router = create_router()
         assert hasattr(router, 'quota_registry')
 
     def test_router_get_quota_status(self):
         """Test router get_quota_status method."""
         from src.audiobook_studio.llm.router import create_router
-        router = create_router(mock_mode=True)
+        router = create_router()
         status = router.get_quota_status("gemini_flash")
         assert status["provider"] == "gemini_flash"
         assert status["configured"] is True
@@ -244,7 +251,7 @@ class TestRouterQuotaIntegration:
     def test_router_get_healthy_providers(self):
         """Test router get_quota_healthy_providers method."""
         from src.audiobook_studio.llm.router import create_router
-        router = create_router(mock_mode=True)
+        router = create_router()
         healthy = router.get_quota_healthy_providers()
         assert isinstance(healthy, list)
         assert "gemini_flash" in healthy
@@ -252,14 +259,14 @@ class TestRouterQuotaIntegration:
     def test_router_get_quota_health_score(self):
         """Test router get_quota_health_score method."""
         from src.audiobook_studio.llm.router import create_router
-        router = create_router(mock_mode=True)
+        router = create_router()
         score = router.get_quota_health_score("gemini_flash")
         assert 0 <= score <= 1
 
     def test_router_free_tier_health(self):
         """Test router get_free_tier_health method."""
         from src.audiobook_studio.llm.router import create_router
-        router = create_router(mock_mode=True)
+        router = create_router()
         health = router.get_free_tier_health()
         assert "total_free_providers" in health
         assert "healthy_free_providers" in health

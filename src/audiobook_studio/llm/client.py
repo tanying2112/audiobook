@@ -97,7 +97,6 @@ class LLMClientConfig:
     max_tokens: int = 4000
     max_retries: int = 3
     timeout: int = 60
-    mock_mode: bool = False
     mock_data_dir: str = "tests/golden"
     api_base: Optional[str] = None
     # Langfuse configuration
@@ -105,6 +104,11 @@ class LLMClientConfig:
     langfuse_secret_key: Optional[str] = None
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_enabled: bool = False
+
+    @property
+    def mock_mode(self) -> bool:
+        """Check if mock mode is enabled via environment variable."""
+        return os.getenv("MOCK_LLM", "false").lower() == "true"
 
 
 class LLMClient:
@@ -201,6 +205,12 @@ class LLMClient:
         if "response_model" in kwargs:
             response_model = kwargs.pop("response_model")
 
+        # Extract temperature and max_tokens from kwargs so they don't
+        # conflict with the explicit keyword args in the create() call below.
+        # Caller-provided values override self.config defaults.
+        _temperature = kwargs.pop("temperature", self.config.temperature)
+        _max_tokens = kwargs.pop("max_tokens", self.config.max_tokens)
+
         # If prompt is a list (messages), convert to string for mock lookup
         prompt_str = prompt
         if isinstance(prompt, list):
@@ -235,8 +245,8 @@ class LLMClient:
                 model=self.config.model,
                 messages=messages,
                 response_model=response_model,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                temperature=_temperature,
+                max_tokens=_max_tokens,
                 **call_kwargs
             )
             latency_ms = int((time.time() - start) * 1000)
@@ -339,8 +349,8 @@ class LLMClient:
                 paragraph_index=0, speaker_canonical_name='旁白', is_dialogue=False,
                 emotion='neutral', emotion_intensity=0.5, speech_rate=1.0,
                 pitch_shift_semitones=0, needs_sfx=False, sfx_tags=[],
-                pause_before_ms=0, pause_after_ms=0, confidence=0.9,
-                difficulty='B', notes=''
+                pause_before_ms=300, pause_after_ms=500, confidence=0.9,
+                difficulty='B', notes='heuristic_fallback_no_llm_available'
             )
         elif response_model == QualityJudgment:
             from ..schemas import QualityJudgment
@@ -353,8 +363,8 @@ class LLMClient:
         elif response_model == TtsEditOutput:
             from ..schemas import TtsEditOutput
             mock_output = TtsEditOutput(
-                edited_text='Mock edited text', changes_made=[],
-                forbidden_content_removed=[], confidence=0.9, rationale='Mock rationale'
+                edited_text='这是模拟编辑后的文本，用于测试。', changes_made=['heuristic_fallback_no_llm_available'],
+                forbidden_content_removed=[], confidence=0.8, rationale='LLM unavailable, using heuristic fallback'
             )
         elif response_model == TtsRoutingDecision:
             from ..schemas import TtsRoutingDecision
@@ -362,6 +372,16 @@ class LLMClient:
                 segment_id='mock_seg', engine_choice='kokoro', voice_id='v1',
                 prosody_overrides=None, fallback_engine='edge', reasoning='Mock',
                 estimated_cost_usd=0.0, estimated_duration_ms=1000
+            )
+        elif response_model == 'FeedbackAnalysis':
+            from ..schemas import FeedbackAnalysis
+            mock_output = FeedbackAnalysis(
+                pattern_tags=['mock_feedback_tag'],
+                semantic_summary='[Mock] Feedback analysis for testing purposes.',
+                severity='medium',
+                actionable_instruction='Mock actionable instruction for testing.',
+                root_cause='Mock root cause for testing.',
+                confidence=0.85,
             )
         else:
             # Try to create a default instance, but handle list types gracefully
@@ -385,7 +405,6 @@ class LLMClient:
 
 def create_client(
     model: str,
-    mock_mode: bool = False,
     temperature: float = 0.1,
     max_tokens: int = 4000,
     max_retries: int = 3,
@@ -399,7 +418,6 @@ def create_client(
     """Factory function to create LLM client."""
     config = LLMClientConfig(
         model=model,
-        mock_mode=mock_mode,
         temperature=temperature,
         max_tokens=max_tokens,
         max_retries=max_retries,

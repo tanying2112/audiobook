@@ -7,7 +7,10 @@ E3 — 提示词自动版本升级引擎
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .processor import AggregateAnalysis
 
 logger = logging.getLogger(__name__)
 

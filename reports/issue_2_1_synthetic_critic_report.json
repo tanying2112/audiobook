@@ -1,0 +1,110 @@
+{
+  "issue": "Issue 2.1: SyntheticCritic 三元架构",
+  "description": "构建防止'模型自嗨'的异构批评网络",
+  "status": "COMPLETED",
+  "completion_date": "2026-06-25",
+  
+  "acceptance_criteria": {
+    "target": "异构三元模型批判网络（语义派/结构派/客观派）跑通，在校准集上的 F1 分数 >= 0.7",
+    "actual_f1_macro": 0.7741,
+    "passed": true
+  },
+  
+  "calibration_results": {
+    "f1_macro": 0.7741,
+    "precision_macro": 0.8380,
+    "recall_macro": 0.7778,
+    "accuracy": 0.8000,
+    "total_samples": 20,
+    "f1_per_class": {
+      "pass": 0.9412,
+      "warning": 0.7143,
+      "fail": 0.6667
+    },
+    "weights": {
+      "semantic": 0.30,
+      "structural": 0.20,
+      "objective": 0.50
+    },
+    "confusion_matrix": {
+      "pass": {"pass": 8, "warning": 0, "fail": 0},
+      "warning": {"pass": 1, "warning": 5, "fail": 0},
+      "fail": {"pass": 0, "warning": 3, "fail": 3}
+    }
+  },
+  
+  "architecture": {
+    "critics": [
+      {
+        "name": "SemanticCritic",
+        "type": "语义派",
+        "evaluation_dimensions": [
+          "semantic_coherence (0.35) - 语义连贯性",
+          "emotion_consistency (0.35) - 情感一致性",
+          "speaker_fingerprint (0.30) - 角色声音指纹"
+        ],
+        "prompt_template": "prompts/critics/semantic_critic/v1.j2"
+      },
+      {
+        "name": "StructuralCritic",
+        "type": "结构派",
+        "evaluation_dimensions": [
+          "document_structure (0.30) - 文档结构完整性",
+          "paragraph_flow (0.30) - 段落流程连贯性",
+          "cost_compliance (0.25) - 成本约束合规",
+          "format_compliance (0.15) - 格式规范性"
+        ],
+        "prompt_template": "prompts/critics/structural_critic/v1.j2"
+      },
+      {
+        "name": "ObjectiveCritic",
+        "type": "客观派",
+        "evaluation_dimensions": [
+          "dnsmos (0.40) - 音频自然度/质量 (1-5 分)",
+          "wer (0.30) - 语音识别词错误率",
+          "speaker_similarity (0.30) - 说话人声纹相似度"
+        ],
+        "prompt_template": "prompts/critics/objective_critic/v1.j2"
+      }
+    ],
+    
+    "fusion_strategy": "weighted_vote",
+    "default_weights_rationale": "客观派权重最高 (0.5)，因为硬指标最可靠；语义派次之 (0.3)；结构派最低 (0.2)"
+  },
+  
+  "files_created_or_modified": [
+    "src/audiobook_studio/feedback/critics/base.py",
+    "src/audiobook_studio/feedback/critics/semantic_critic.py",
+    "src/audiobook_studio/feedback/critics/structural_critic.py",
+    "src/audiobook_studio/feedback/critics/objective_critic.py",
+    "src/audiobook_studio/feedback/critics/synthetic_critic.py",
+    "tests/unit/test_synthetic_critic.py",
+    "prompts/critics/semantic_critic/v1.j2",
+    "prompts/critics/structural_critic/v1.j2",
+    "prompts/critics/objective_critic/v1.j2"
+  ],
+  
+  "test_results": {
+    "total_tests": 40,
+    "passed": 40,
+    "failed": 0,
+    "test_categories": [
+      "Triad Architecture Tests (5 tests)",
+      "Calibration Dataset Tests (5 tests)",
+      "F1 Score Acceptance Tests (6 tests)",
+      "Adaptive Weights Tests (3 tests)",
+      "Mock Evaluation Tests (3 tests)",
+      "Weight Management Tests (2 tests)",
+      "Serialization Tests (4 tests)",
+      "Score-to-Verdict Mapping Tests (3 tests)",
+      "Helper Functions Tests (3 tests)",
+      "Factory Function Tests (3 tests)",
+      "Ensemble Edge Cases Tests (3 tests)"
+    ]
+  },
+  
+  "dependency": {
+    "depends_on": "Issue 1.4: 硬质检三件套 (DNSMOS + ASR WER + Speaker Sim)",
+    "dependency_status": "satisfied"
+  }
+}
