@@ -36,7 +36,7 @@ repos:
       - id: mypy
         name: mypy - static type checker
         args: [--config-file=mypy.ini]
-        additional_dependencies: [pydantic>=2.7,<3.0, pydantic-settings>=2.0, sqlalchemy>=2.0]
+        additional_dependencies: ["pydantic>=2.7,<3.0", "pydantic-settings>=2.0", "sqlalchemy>=2.0"]
   - repo: local
     hooks:
       - id: docs-guard
