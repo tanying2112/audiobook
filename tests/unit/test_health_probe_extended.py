@@ -10,6 +10,7 @@ class TestHealthProbeExtended:
     def _make_hp(self, providers=None):
         """创建 HealthProbe 并绕过 conftest 的 autouse mock。"""
         from src.audiobook_studio.llm.health_probe import HealthProbe
+
         if providers is None:
             providers = []
         return HealthProbe(providers=providers)
@@ -199,6 +200,7 @@ class TestHealthProbeExtended:
         hp = self._make_hp(providers=[p1, p2])
 
         with patch.object(hp, "_probe_provider") as mock_probe:
+
             def side_effect(name, prov):
                 if name == "p1":
                     hp.statuses["p1"] = hp.statuses["p1"]  # no-op
@@ -219,6 +221,7 @@ class TestHealthProbeExtended:
 
         # 手动启动线程（绕过 mock）
         import threading
+
         hp._stop_event.clear()
         hp._thread = threading.Thread(target=hp._probe_loop, daemon=True)
         hp._thread.start()

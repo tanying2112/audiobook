@@ -15,8 +15,10 @@ router = APIRouter(prefix="/tts", tags=["tts"])
 # Response Schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TTSVoice(BaseModel):
     """Single TTS voice definition."""
+
     id: str = Field(..., description="Voice identifier")
     name: str = Field(..., description="Display name")
     gender: str = Field(..., description="Voice gender: male/female/neutral")
@@ -27,17 +29,21 @@ class TTSVoice(BaseModel):
 
 class TTSEngine(BaseModel):
     """TTS engine with available voices."""
+
     id: str = Field(..., description="Engine identifier")
     name: str = Field(..., description="Engine display name")
     available: bool = Field(..., description="Whether engine is available")
     voices: List[TTSVoice] = Field(default_factory=list, description="Available voices")
     priority: int = Field(0, description="Engine priority (lower = higher priority)")
-    supports_prosody: bool = Field(True, description="Whether engine supports prosody controls")
+    supports_prosody: bool = Field(
+        True, description="Whether engine supports prosody controls"
+    )
     supports_ssml: bool = Field(False, description="Whether engine supports SSML")
 
 
 class TTSVoicesResponse(BaseModel):
     """TTS voices enumeration response."""
+
     engines: Dict[str, TTSEngine] = Field(default_factory=dict)
     total_voices: int = 0
     default_engine: str = "kokoro"
@@ -163,6 +169,7 @@ VOXCPM2_VOICES = [
 # ─────────────────────────────────────────────────────────────────────────────
 # API Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/voices", response_model=TTSVoicesResponse)
 async def list_tts_voices(
@@ -290,7 +297,9 @@ async def get_recommended_voices(
     # Context-based recommendations
     if context == "narration":
         # Narrator voices (neutral, calm)
-        recommendations = [v for v in all_voices if v.gender == "neutral" or "晓" in v.name]
+        recommendations = [
+            v for v in all_voices if v.gender == "neutral" or "晓" in v.name
+        ]
     elif context == "dialogue":
         # Expressive voices for dialogue
         recommendations = [v for v in all_voices if v.gender in ("male", "female")]

@@ -46,7 +46,9 @@ class TestFeedbackCollector:
 
     def test_capture_stage_enabled(self):
         """capture_stage returns active StageCapture when enabled."""
-        capture = self.collector.capture_stage("annotate", chapter_index=1, paragraph_index=5)
+        capture = self.collector.capture_stage(
+            "annotate", chapter_index=1, paragraph_index=5
+        )
         assert capture._disabled is False
         assert capture.stage == "annotate"
         assert capture.chapter_index == 1
@@ -56,8 +58,12 @@ class TestFeedbackCollector:
         """capture_stage with chapter_id, paragraph_id, input_snapshot."""
         snap = {"text": "hello"}
         capture = self.collector.capture_stage(
-            "quality_judge", chapter_index=2, paragraph_index=3,
-            chapter_id=10, paragraph_id=20, input_snapshot=snap,
+            "quality_judge",
+            chapter_index=2,
+            paragraph_index=3,
+            chapter_id=10,
+            paragraph_id=20,
+            input_snapshot=snap,
         )
         assert capture.stage == "quality_judge"
         assert capture.chapter_id == 10
@@ -73,7 +79,9 @@ class TestFeedbackCollector:
 
     def test_save_feedback_minimal(self):
         """save_feedback with minimal required fields."""
-        capture = self.collector.capture_stage("annotate", chapter_index=1, paragraph_index=1)
+        capture = self.collector.capture_stage(
+            "annotate", chapter_index=1, paragraph_index=1
+        )
         capture.set_llm_output({"r": "test"})
         capture.set_corrected_output({"r": "fixed"})
         capture.set_rationale("Valid rationale for a correction")
@@ -87,8 +95,11 @@ class TestFeedbackCollector:
     def test_save_feedback_all_fields(self):
         """save_feedback with all optional fields populated."""
         capture = self.collector.capture_stage(
-            "synthesize", chapter_index=3, paragraph_index=7,
-            chapter_id=30, paragraph_id=70,
+            "synthesize",
+            chapter_index=3,
+            paragraph_index=7,
+            chapter_id=30,
+            paragraph_id=70,
         )
         capture.set_llm_output({"audio": "s1.wav"})
         capture.set_corrected_output({"audio": "s1_fixed.wav"})

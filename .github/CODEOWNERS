@@ -1,17 +1,18 @@
 # =============================================================================
-# Audiobook Studio — Agent Territory CODEOWNERS
+# Audiobook Studio — Agent Territory CODEOWNERS (v2 — 审计修正版)
 # =============================================================================
-# 每个 Agent 拥有各自的"领地"，修改领地外文件需要 @human-architect 硬签。
-# 对齐 AGENT_ISOLATION_POLICY.md 中的领地拓扑。
+# 基于白皮书 V3.0 ROI 靶心对齐，修正 Agent A/C 领地倒置问题。
 #
-# 用法：
-#   Agent A (后端核心)     → agent/A/* 分支
-#   Agent B (前端基建)     → agent/B/* 分支
-#   Agent C (跨端胶水)     → agent/C/* 分支
-#   人类架构师             → 任何文件均可审批
+# Agent A (后端高吞吐爆破手)  → agent/A/*  — API CRUD + 单元测试基建
+# Agent B (前端状态清洗专家)  → agent/B/*  — 前端数据清洗 + 算法 Mock
+# Agent C (跨端管线爆破手)    → agent/C/*  — 核心管线 + TTS + LLM + 发布
+# 人类架构师                  → 任何文件均可审批
+#
+# ⚠️ 本文件与 .github/workflows/agent-isolation-check.yml 双向对齐，
+#    修改任一文件时必须同步更新另一文件。
 # =============================================================================
 
-# ── 默认：根目录 & 全局配置，仅人类架构师可审批 ──────────────────────────────
+# ── 默认：全局配置与文档，仅人类架构师可审批 ──────────────────────────────
 *                                       @guwj
 *.yml                                   @guwj
 *.yaml                                  @guwj
@@ -22,43 +23,44 @@ Makefile                                @guwj
 Dockerfile                              @guwj
 docker-compose.yml                      @guwj
 
-# ── Agent A：后端核心 — pipeline / quality / utils / llm / tts / schemas ─────
+# ── Agent A：后端高吞吐爆破手 — API CRUD + 单元测试基建 ───────────────────
 # 分支前缀：agent/A/*
-/src/audiobook_studio/pipeline/         @guwj
-/src/audiobook_studio/quality/          @guwj
-/src/audiobook_studio/utils/            @guwj
-/src/audiobook_studio/llm/              @guwj
-/src/audiobook_studio/tts/              @guwj
-/src/audiobook_studio/schemas/          @guwj
-/src/audiobook_studio/models/           @guwj
-/src/audiobook_studio/feedback/         @guwj
+# 职责：第一、二梯队 API 端点覆盖率冲刺、测试基建补全
+# ROI 靶心：api/ 下的端点 CRUD 覆盖 + tests/unit/ 下的测试文件
+/src/audiobook_studio/api/              @guwj
 /tests/unit/                            @guwj
 
-# ── Agent B：前端基建 — web/ 视图、组件、状态管理、样式 ──────────────────────
+# ── Agent B：前端状态清洗 + 算法防御专家 ───────────────────────────────────
 # 分支前缀：agent/B/*
-/web/                                   @guwj
-/web/src/views/                         @guwj
-/web/src/components/                    @guwj
+# 职责：前端数据清洗基建 + 后端算法黑盒 Mock
+# 红线：严禁触碰 UI 组件（views/components），仅限数据基建与算法模块
+/web/src/utils/                         @guwj
 /web/src/stores/                        @guwj
-/web/src/composables/                   @guwj
-/web/src/router/                        @guwj
-/web/src/types/                         @guwj
-/web/src/assets/                        @guwj
-
-# ── Agent C：跨端胶水 — API / SSE / 监控 / 发布 / 认证 ─────────────────────
-# 分支前缀：agent/C/*
-/src/audiobook_studio/api/              @guwj
+/web/src/main.ts                        @guwj
+/src/audiobook_studio/quality/          @guwj
 /src/audiobook_studio/monitoring/       @guwj
+/src/audiobook_studio/feedback/         @guwj
+
+# ── Agent C：跨端通信 + 核心管线爆破手 ────────────────────────────────────
+# 分支前缀：agent/C/*
+# 职责：synthesize.py 音频管线巨头 + LLM 路由 + TTS + 发布 + SSE 跨端
+# ROI 靶心：pipeline/ (未覆盖行最大) + tts/ + llm/ + schemas/ + utils/
+/src/audiobook_studio/pipeline/         @guwj
+/src/audiobook_studio/tts/              @guwj
+/src/audiobook_studio/llm/              @guwj
+/src/audiobook_studio/schemas/          @guwj
+/src/audiobook_studio/models/           @guwj
+/src/audiobook_studio/utils/            @guwj
 /src/audiobook_studio/publish/          @guwj
-/src/audiobook_studio/auth/             @guwj
-/src/audiobook_studio/middleware/        @guwj
-/src/audiobook_studio/config/           @guwj
-/src/audiobook_studio/main.py           @guwj
 /web/src/api/                           @guwj
 
-# ── 配置与脚本：仅人类架构师 ─────────────────────────────────────────────────
+# ── 配置与脚本：仅人类架构师 ─────────────────────────────────────────────
 /.github/                               @guwj
 /scripts/                               @guwj
 /prompts/                               @guwj
 /config/                                @guwj
 /alembic/                               @guwj
+/src/audiobook_studio/main.py           @guwj
+/src/audiobook_studio/config/           @guwj
+/src/audiobook_studio/auth/             @guwj
+/src/audiobook_studio/middleware/        @guwj

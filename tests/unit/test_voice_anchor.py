@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from src.audiobook_studio.pipeline.voice_anchor import (
-    VoiceAnchorManager,
     VoiceAnchorConfig,
+    VoiceAnchorManager,
     VoiceAnchorRecord,
     get_voice_anchor_manager,
     reset_voice_anchor_manager,
@@ -93,6 +93,7 @@ class TestVoiceAnchorManager:
     def teardown_method(self):
         """Clean up."""
         import shutil
+
         shutil.rmtree("/tmp/test_voice_anchors", ignore_errors=True)
 
     def test_register_character(self):
@@ -109,7 +110,7 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             assert anchor is not None
             assert anchor.character_name == "narrator"
             assert anchor.voice_id == "zf_xiaoxiao"
@@ -122,7 +123,7 @@ class TestVoiceAnchorManager:
         """Test registration when Voice Anchor is disabled."""
         config = VoiceAnchorConfig(enabled=False)
         manager = VoiceAnchorManager(config)
-        
+
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(b"fake audio data")
             ref_path = f.name
@@ -135,7 +136,7 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             assert anchor is None
             assert not manager.has_anchor("narrator")
         finally:
@@ -155,11 +156,11 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             anchor = self.manager.get_anchor("narrator")
             assert anchor is not None
             assert anchor.character_name == "narrator"
-            
+
             # Non-existent character
             assert self.manager.get_anchor("nonexistent") is None
         finally:
@@ -179,11 +180,11 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             ref_audio = self.manager.get_reference_audio("narrator")
             assert ref_audio is not None
             assert Path(ref_audio).exists()
-            
+
             # Non-existent character
             assert self.manager.get_reference_audio("nonexistent") is None
         finally:
@@ -203,7 +204,7 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             # Inject into empty dict
             prosody = {}
             result = self.manager.inject_reference_audio("narrator", prosody)
@@ -211,13 +212,13 @@ class TestVoiceAnchorManager:
             # The manager copies the reference audio to its own directory
             assert result["reference_audio"] != ref_path
             assert Path(result["reference_audio"]).exists()
-            
+
             # Inject into existing prosody
             prosody = {"rate": "1.2"}
             result = self.manager.inject_reference_audio("narrator", prosody)
             assert result["rate"] == "1.2"
             assert "reference_audio" in result
-            
+
             # Non-existent character (no injection)
             prosody = {}
             result = self.manager.inject_reference_audio("nonexistent", prosody)
@@ -241,7 +242,7 @@ class TestVoiceAnchorManager:
         """Test drift check when Voice Anchor is disabled."""
         config = VoiceAnchorConfig(enabled=False)
         manager = VoiceAnchorManager(config)
-        
+
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(b"fake audio data")
             ref_path = f.name
@@ -257,7 +258,7 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             result = manager.check_drift("narrator", gen_path, chapter_index=2)
             assert result is None
         finally:
@@ -281,16 +282,18 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             # Mock similarity metric to return drift
             mock_result = MagicMock()
             mock_result.is_same_speaker = False
             mock_result.similarity = 0.7
             mock_result.threshold = 0.85
-            
-            with patch.object(self.manager._similarity_metric, 'compute', return_value=mock_result):
+
+            with patch.object(
+                self.manager._similarity_metric, "compute", return_value=mock_result
+            ):
                 result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
-                
+
                 assert result is not None
                 alerts = self.manager.get_drift_alerts(2)
                 assert len(alerts) == 1
@@ -314,7 +317,7 @@ class TestVoiceAnchorManager:
                 chapter_index=1,
                 paragraph_index=0,
             )
-            
+
             summary = self.manager.get_summary()
             assert summary["enabled"] is True
             assert summary["total_anchors"] == 1
@@ -337,7 +340,7 @@ class TestGlobalManager:
         """Test getting global manager instance."""
         manager = get_voice_anchor_manager()
         assert isinstance(manager, VoiceAnchorManager)
-        
+
         # Second call returns same instance
         manager2 = get_voice_anchor_manager()
         assert manager is manager2

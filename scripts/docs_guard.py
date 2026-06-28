@@ -13,15 +13,30 @@ from typing import Dict, List, Set
 # 代码文件模式到相关文档文件的映射
 CODE_to_DOC_MAP: Dict[str, List[str]] = {
     # 架构相关
-    "src/audiobook_studio/di.py": ["docs/architecture.md", "docs/architecture_deep_dive.md"],
-    "src/audiobook_studio/llm/router.py": ["docs/pipeline_tts.md", "docs/api_reference.md"],
+    "src/audiobook_studio/di.py": [
+        "docs/architecture.md",
+        "docs/architecture_deep_dive.md",
+    ],
+    "src/audiobook_studio/llm/router.py": [
+        "docs/pipeline_tts.md",
+        "docs/api_reference.md",
+    ],
     "src/audiobook_studio/tts/__init__.py": ["docs/pipeline_tts.md"],
     # Pipeline 相关
-    "src/audiobook_studio/pipeline/": ["docs/pipeline_tts.md", "docs/harness_specifications.md"],
-    "src/audiobook_studio/feedback/": ["docs/agents.md", "docs/harness_specifications.md"],
+    "src/audiobook_studio/pipeline/": [
+        "docs/pipeline_tts.md",
+        "docs/harness_specifications.md",
+    ],
+    "src/audiobook_studio/feedback/": [
+        "docs/agents.md",
+        "docs/harness_specifications.md",
+    ],
     "src/audiobook_studio/quality/": ["docs/pipeline_tts.md"],
     # Schema 相关
-    "src/audiobook_studio/schemas/": ["docs/api_reference.md", "docs/harness_specifications.md"],
+    "src/audiobook_studio/schemas/": [
+        "docs/api_reference.md",
+        "docs/harness_specifications.md",
+    ],
     # API 相关
     "src/audiobook_studio/api/": ["docs/api.md", "docs/api_reference.md"],
     # 配置相关
@@ -56,7 +71,9 @@ def get_changed_files(staged: bool = False) -> Set[str]:
                 check=True,
                 timeout=10,
             )
-        return set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
+        return (
+            set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
+        )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return set()
 

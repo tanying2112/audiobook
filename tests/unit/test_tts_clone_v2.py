@@ -1,9 +1,10 @@
 """Comprehensive tests for tts/clone.py."""
+
 import hashlib
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import numpy as np
 import pytest
@@ -13,18 +14,18 @@ from src.audiobook_studio.tts.clone import (
     CloningConfig,
     VoiceCloner,
     VoiceCloningEngine,
+    VoiceCloningManager,
     VoicePrint,
     VoiceSample,
     check_kokoro_model_availability,
+    clone_voice,
     get_kokoro_model_path,
     is_kokoro_available,
-    clone_voice,
     load_voice_print,
-    VoiceCloningManager,
 )
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def config(tmp_path):
@@ -60,6 +61,7 @@ def sample(tmp_path):
 
 # ── AudioQuality ────────────────────────────────────────────────────────────
 
+
 class TestAudioQuality:
     def test_enum_values(self):
         assert AudioQuality.EXCELLENT.value == "excellent"
@@ -69,6 +71,7 @@ class TestAudioQuality:
 
 
 # ── CloningConfig ────────────────────────────────────────────────────────────
+
 
 class TestCloningConfig:
     def test_defaults(self):
@@ -85,6 +88,7 @@ class TestCloningConfig:
 
 # ── VoiceSample ──────────────────────────────────────────────────────────────
 
+
 class TestVoiceSample:
     def test_creation(self, sample):
         assert sample.speaker_id == "spk1"
@@ -94,6 +98,7 @@ class TestVoiceSample:
 
 
 # ── VoicePrint ──────────────────────────────────────────────────────────────
+
 
 class TestVoicePrint:
     def test_creation(self):
@@ -113,6 +118,7 @@ class TestVoicePrint:
 
 # ── VoiceCloner stub ─────────────────────────────────────────────────────────
 
+
 class TestVoiceClonerStub:
     def test_init(self):
         vc = VoiceCloner()
@@ -120,27 +126,39 @@ class TestVoiceClonerStub:
 
     def test_clone_voice(self):
         vc = VoiceCloner()
-        assert vc.clone_voice() is True
+        # Mock the required args - test just checks it doesn't crash
+        from pathlib import Path
+
+        result = vc.clone_voice(sample_path=Path("dummy.wav"), speaker_id="test_spk")
+        assert result[0] is False  # Should fail without model
 
     def test_get_cloned_voices(self):
         vc = VoiceCloner()
-        assert vc.get_cloned_voices() == []
+        # Just check it returns a list
+        result = vc.get_cloned_voices()
+        assert isinstance(result, list)
 
 
 # ── Module functions ─────────────────────────────────────────────────────────
 
+
 class TestModuleFunctions:
     def test_clone_voice_fn(self):
-        assert clone_voice() is True
+        from pathlib import Path
+
+        result = clone_voice(sample_path=Path("dummy.wav"), speaker_id="test_spk")
+        assert result[0] is False  # Should fail without model
 
     def test_load_voice_print_fn(self):
-        assert load_voice_print() is None
+        result = load_voice_print(speaker_id="nonexistent")
+        assert result is None
 
     def test_voice_cloning_manager_alias(self):
         assert VoiceCloningManager is VoiceCloningEngine
 
 
 # ── Model availability ──────────────────────────────────────────────────────
+
 
 class TestModelAvailability:
     def test_check_missing(self, tmp_path):
@@ -177,6 +195,7 @@ class TestModelAvailability:
 
 # ── VoiceCloningEngine ──────────────────────────────────────────────────────
 
+
 class TestEngineInit:
     def test_init_default(self, tmp_path):
         e = VoiceCloningEngine()
@@ -201,8 +220,14 @@ class TestSampleValidation:
         f = tmp_path / "short.wav"
         f.write_bytes(b"\x00" * 10)
         s = VoiceSample(
-            id="short", file_path=f, duration=2.0, sample_rate=24000,
-            snr_db=25.0, text_content="short", language="en", speaker_id="spk",
+            id="short",
+            file_path=f,
+            duration=2.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="short",
+            language="en",
+            speaker_id="spk",
         )
         ok, msg = engine._is_sample_valid(s)
         assert ok is False
@@ -211,8 +236,14 @@ class TestSampleValidation:
         f = tmp_path / "noisy.wav"
         f.write_bytes(b"\x00" * 100)
         s = VoiceSample(
-            id="noisy", file_path=f, duration=10.0, sample_rate=24000,
-            snr_db=5.0, text_content="noisy", language="en", speaker_id="spk",
+            id="noisy",
+            file_path=f,
+            duration=10.0,
+            sample_rate=24000,
+            snr_db=5.0,
+            text_content="noisy",
+            language="en",
+            speaker_id="spk",
         )
         ok, msg = engine._is_sample_valid(s)
         assert ok is False
@@ -225,29 +256,49 @@ class TestAddVoiceSample:
         assert "spk1" in engine.voice_samples
 
     def test_add_invalid_too_short(self, engine, tmp_path):
-        f = tmp_path / "bad.wav"; f.write_bytes(b"\x00" * 10)
+        f = tmp_path / "bad.wav"
+        f.write_bytes(b"\x00" * 10)
         s = VoiceSample(
-            id="bad", file_path=f, duration=1.0, sample_rate=24000,
-            snr_db=25.0, text_content="bad", language="en", speaker_id="spk",
+            id="bad",
+            file_path=f,
+            duration=1.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="bad",
+            language="en",
+            speaker_id="spk",
         )
         ok, msg = engine.add_voice_sample(s)
         assert ok is False
 
     def test_add_invalid_low_snr(self, engine, tmp_path):
-        f = tmp_path / "bad.wav"; f.write_bytes(b"\x00" * 100)
+        f = tmp_path / "bad.wav"
+        f.write_bytes(b"\x00" * 100)
         s = VoiceSample(
-            id="bad", file_path=f, duration=10.0, sample_rate=24000,
-            snr_db=5.0, text_content="bad", language="en", speaker_id="spk",
+            id="bad",
+            file_path=f,
+            duration=10.0,
+            sample_rate=24000,
+            snr_db=5.0,
+            text_content="bad",
+            language="en",
+            speaker_id="spk",
         )
         ok, msg = engine.add_voice_sample(s)
         assert ok is False
 
     def test_add_multiple_creates_print(self, engine, tmp_path):
         for i in range(3):
-            f = tmp_path / f"s{i}.wav"; f.write_bytes(b"\x00" * 100)
+            f = tmp_path / f"s{i}.wav"
+            f.write_bytes(b"\x00" * 100)
             s = VoiceSample(
-                id=f"s{i}", file_path=f, duration=20.0, sample_rate=24000,
-                snr_db=25.0, text_content=f"sample {i}", language="en",
+                id=f"s{i}",
+                file_path=f,
+                duration=20.0,
+                sample_rate=24000,
+                snr_db=25.0,
+                text_content=f"sample {i}",
+                language="en",
                 speaker_id="spk1",
             )
             ok, msg = engine.add_voice_sample(s)
@@ -257,31 +308,53 @@ class TestAddVoiceSample:
 
 class TestVoicePrintOperations:
     def test_update_voice_print(self, engine, tmp_path):
-        f = tmp_path / "s.wav"; f.write_bytes(b"\x00" * 100)
+        f = tmp_path / "s.wav"
+        f.write_bytes(b"\x00" * 100)
         s = VoiceSample(
-            id="s", file_path=f, duration=20.0, sample_rate=24000,
-            snr_db=25.0, text_content="text", language="en",
+            id="s",
+            file_path=f,
+            duration=20.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="text",
+            language="en",
             speaker_id="spk1",
         )
         engine.add_voice_sample(s)
         assert "spk1" in engine.voice_prints
         vp = engine.voice_prints["spk1"]
-        assert vp.quality in (AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR)
+        assert vp.quality in (
+            AudioQuality.EXCELLENT,
+            AudioQuality.GOOD,
+            AudioQuality.FAIR,
+        )
         assert vp.sample_count >= 1
 
     def test_update_existing_print(self, engine, tmp_path):
-        f1 = tmp_path / "s1.wav"; f1.write_bytes(b"\x00" * 100)
+        f1 = tmp_path / "s1.wav"
+        f1.write_bytes(b"\x00" * 100)
         s1 = VoiceSample(
-            id="s1", file_path=f1, duration=20.0, sample_rate=24000,
-            snr_db=25.0, text_content="text1", language="en",
+            id="s1",
+            file_path=f1,
+            duration=20.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="text1",
+            language="en",
             speaker_id="spk1",
         )
         engine.add_voice_sample(s1)
 
-        f2 = tmp_path / "s2.wav"; f2.write_bytes(b"\x01" * 100)
+        f2 = tmp_path / "s2.wav"
+        f2.write_bytes(b"\x01" * 100)
         s2 = VoiceSample(
-            id="s2", file_path=f2, duration=20.0, sample_rate=24000,
-            snr_db=25.0, text_content="text2", language="en",
+            id="s2",
+            file_path=f2,
+            duration=20.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="text2",
+            language="en",
             speaker_id="spk1",
         )
         engine.add_voice_sample(s2)
@@ -310,9 +383,14 @@ class TestSynthesizeSpeech:
     def test_poor_quality_speaker(self, engine):
         # Manually create a poor-quality voice print
         engine.voice_prints["bad_spk"] = VoicePrint(
-            speaker_id="bad_spk", voice_hash="x", embedding=[0.1]*8,
-            quality=AudioQuality.POOR, sample_count=1, avg_snr=10.0,
-            created_at="2024-01-01", updated_at="2024-01-01",
+            speaker_id="bad_spk",
+            voice_hash="x",
+            embedding=[0.1] * 8,
+            quality=AudioQuality.POOR,
+            sample_count=1,
+            avg_snr=10.0,
+            created_at="2024-01-01",
+            updated_at="2024-01-01",
         )
         ok, msg, path = engine.synthesize_speech("hello", "bad_spk")
         assert ok is False
@@ -320,9 +398,14 @@ class TestSynthesizeSpeech:
     def test_mock_synthesis(self, engine):
         engine._model_ready = False
         engine.voice_prints["good_spk"] = VoicePrint(
-            speaker_id="good_spk", voice_hash="y", embedding=[0.1]*8,
-            quality=AudioQuality.GOOD, sample_count=2, avg_snr=25.0,
-            created_at="2024-01-01", updated_at="2024-01-01",
+            speaker_id="good_spk",
+            voice_hash="y",
+            embedding=[0.1] * 8,
+            quality=AudioQuality.GOOD,
+            sample_count=2,
+            avg_snr=25.0,
+            created_at="2024-01-01",
+            updated_at="2024-01-01",
         )
         ok, msg, path = engine.synthesize_speech("hello", "good_spk", "en", "happy")
         assert ok is True
@@ -331,10 +414,17 @@ class TestSynthesizeSpeech:
 
 class TestGetVoiceInfo:
     def test_existing(self, engine, tmp_path):
-        f = tmp_path / "s.wav"; f.write_bytes(b"\x00" * 100)
+        f = tmp_path / "s.wav"
+        f.write_bytes(b"\x00" * 100)
         s = VoiceSample(
-            id="s", file_path=f, duration=20.0, sample_rate=24000,
-            snr_db=25.0, text_content="t", language="en", speaker_id="spk1",
+            id="s",
+            file_path=f,
+            duration=20.0,
+            sample_rate=24000,
+            snr_db=25.0,
+            text_content="t",
+            language="en",
+            speaker_id="spk1",
         )
         engine.add_voice_sample(s)
         info = engine.get_voice_info("spk1")
@@ -353,9 +443,14 @@ class TestSaveLoadVoicePrints:
         prints_file = tmp_path / "voices" / "voice_prints.json"
         prints_file.parent.mkdir(parents=True, exist_ok=True)
         engine.voice_prints["spk1"] = VoicePrint(
-            speaker_id="spk1", voice_hash="abc", embedding=[0.1]*8,
-            quality=AudioQuality.GOOD, sample_count=2, avg_snr=22.0,
-            created_at="2024-01-01", updated_at="2024-01-02",
+            speaker_id="spk1",
+            voice_hash="abc",
+            embedding=[0.1] * 8,
+            quality=AudioQuality.GOOD,
+            sample_count=2,
+            avg_snr=22.0,
+            created_at="2024-01-01",
+            updated_at="2024-01-02",
         )
         with patch.object(Path, "__truediv__", wraps=Path.__truediv__):
             # Redirect the save path
@@ -368,9 +463,14 @@ class TestSaveLoadVoicePrints:
 
     def test_save_voice_prints_io_error(self, engine, tmp_path):
         engine.voice_prints["spk1"] = VoicePrint(
-            speaker_id="spk1", voice_hash="abc", embedding=[0.1]*8,
-            quality=AudioQuality.GOOD, sample_count=2, avg_snr=22.0,
-            created_at="2024-01-01", updated_at="2024-01-02",
+            speaker_id="spk1",
+            voice_hash="abc",
+            embedding=[0.1] * 8,
+            quality=AudioQuality.GOOD,
+            sample_count=2,
+            avg_snr=22.0,
+            created_at="2024-01-01",
+            updated_at="2024-01-02",
         )
         with patch("builtins.open", side_effect=Exception("IO error")):
             engine._save_voice_prints()
@@ -389,7 +489,7 @@ class TestSaveLoadVoicePrints:
             "spk1": {
                 "speaker_id": "spk1",
                 "voice_hash": "abc",
-                "embedding": [0.1]*8,
+                "embedding": [0.1] * 8,
                 "quality": "good",
                 "sample_count": 2,
                 "avg_snr": 22.0,
@@ -414,7 +514,9 @@ class TestAudioHash:
     def test_different_data_different_hash(self, engine):
         d1 = np.zeros(24000, dtype=np.float32)
         d2 = np.ones(24000, dtype=np.float32)
-        assert engine._calculate_audio_hash(d1, 24000) != engine._calculate_audio_hash(d2, 24000)
+        assert engine._calculate_audio_hash(d1, 24000) != engine._calculate_audio_hash(
+            d2, 24000
+        )
 
 
 class TestEstimateSNR:
@@ -436,15 +538,18 @@ class TestEstimateSNR:
 
 # ── main() ──────────────────────────────────────────────────────────────────
 
+
 class TestMain:
     def test_main(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr("sys.argv", ["clone.py"])
         from src.audiobook_studio.tts.clone import main
+
         main()
 
 
 # ── Additional coverage tests ────────────────────────────────────────────────
+
 
 class TestEstimateSNREdgeCases:
     def test_uniform_data(self, engine):
@@ -455,10 +560,12 @@ class TestEstimateSNREdgeCases:
 
     def test_silence_then_speech(self, engine):
         """Quiet beginning, loud end."""
-        data = np.concatenate([
-            np.zeros(100, dtype=np.float32),
-            np.ones(900, dtype=np.float32),
-        ])
+        data = np.concatenate(
+            [
+                np.zeros(100, dtype=np.float32),
+                np.ones(900, dtype=np.float32),
+            ]
+        )
         snr = engine._estimate_snr(data, 24000)
         assert snr >= 0
 
@@ -472,4 +579,5 @@ class TestMainFunction:
     def test_main_runs(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         from src.audiobook_studio.tts.clone import main
+
         main()

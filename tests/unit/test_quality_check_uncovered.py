@@ -15,23 +15,30 @@ import numpy as np
 import pytest
 
 from src.audiobook_studio.pipeline.quality_check import (
-    QualityCheckPipeline,
     AudioAnalysisResult,
+    QualityCheckPipeline,
 )
-from src.audiobook_studio.schemas import (
-    QualityJudgment,
-    ParagraphAnnotation,
-)
+from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
 
 
 def _ann(**kw):
     d = dict(
-        paragraph_index=0, speaker_canonical_name="旁白", is_dialogue=False,
-        emotion="neutral", emotion_intensity=0.5, speech_rate=1.0,
-        pitch_shift_semitones=0, pause_before_ms=300, pause_after_ms=500,
-        confidence=0.9, difficulty="B", needs_sfx=False, sfx_tags=[],
-        notes="test", contract_version=1,
+        paragraph_index=0,
+        speaker_canonical_name="旁白",
+        is_dialogue=False,
+        emotion="neutral",
+        emotion_intensity=0.5,
+        speech_rate=1.0,
+        pitch_shift_semitones=0,
+        pause_before_ms=300,
+        pause_after_ms=500,
+        confidence=0.9,
+        difficulty="B",
+        needs_sfx=False,
+        sfx_tags=[],
+        notes="test",
+        contract_version=1,
     )
     d.update(kw)
     return ParagraphAnnotation(**d)
@@ -39,9 +46,14 @@ def _ann(**kw):
 
 def _routing(**kw):
     d = dict(
-        segment_id="seg_001", engine_choice="kokoro", voice_id="v1",
-        prosody_overrides=None, fallback_engine="edge", reasoning="test",
-        estimated_cost_usd=0.001, estimated_duration_ms=5000,
+        segment_id="seg_001",
+        engine_choice="kokoro",
+        voice_id="v1",
+        prosody_overrides=None,
+        fallback_engine="edge",
+        reasoning="test",
+        estimated_cost_usd=0.001,
+        estimated_duration_ms=5000,
     )
     d.update(kw)
     return TtsRoutingDecision(**d)
@@ -119,13 +131,18 @@ class TestCheckOptionalDependenciesSuccess:
     def test_whisper_import_success(self):
         """Only whisper importable → asr=True."""
         fake_whisper = ModuleType("whisper")
-        with patch.dict(sys.modules, {"funasr": None, "faster_whisper": None, "whisper": fake_whisper}):
+        with patch.dict(
+            sys.modules,
+            {"funasr": None, "faster_whisper": None, "whisper": fake_whisper},
+        ):
             features = QualityCheckPipeline._check_optional_dependencies()
             assert features["asr"] is True
 
     def test_all_asr_fail(self):
         """All ASR backends unavailable → asr=False."""
-        with patch.dict(sys.modules, {"funasr": None, "faster_whisper": None, "whisper": None}):
+        with patch.dict(
+            sys.modules, {"funasr": None, "faster_whisper": None, "whisper": None}
+        ):
             features = QualityCheckPipeline._check_optional_dependencies()
             assert features["asr"] is False
 
@@ -136,11 +153,15 @@ class TestCheckOptionalDependenciesSuccess:
         fake_sb_infer = ModuleType("speechbrain.inference")
         fake_sb_speaker = ModuleType("speechbrain.inference.speaker")
         fake_sb_speaker.EncoderClassifier = MagicMock()
-        with patch.dict(sys.modules, {
-            "torch": fake_torch, "speechbrain": fake_sb,
-            "speechbrain.inference": fake_sb_infer,
-            "speechbrain.inference.speaker": fake_sb_speaker,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "torch": fake_torch,
+                "speechbrain": fake_sb,
+                "speechbrain.inference": fake_sb_infer,
+                "speechbrain.inference.speaker": fake_sb_speaker,
+            },
+        ):
             features = QualityCheckPipeline._check_optional_dependencies()
             assert features["speaker_sim"] is True
 
@@ -162,6 +183,7 @@ class TestApplyHardwareProfileNoThresholds:
 
     def _make_hp(self, dnsmos_enabled=False, thresholds=None):
         """Create a hardware profile with a real __dict__ for the check."""
+
         class FakeQC:
             def __init__(self):
                 self.dnsmos_enabled = dnsmos_enabled
@@ -174,6 +196,7 @@ class TestApplyHardwareProfileNoThresholds:
             def __init__(self):
                 self.quality_check = FakeQC()
                 self.active_profile = "edge_lite"
+
             def is_gpu_available(self):
                 return False
 
@@ -272,7 +295,9 @@ class TestAnalyzeAudioRulesFileNotFound:
     def test_file_not_found_returns_default(self):
         """FileNotFoundError → returns default analysis with error issue."""
         pipeline = QualityCheckPipeline(mock_mode=False)
-        with patch.object(pipeline, "_analyze_with_ffprobe", side_effect=FileNotFoundError("ffprobe")):
+        with patch.object(
+            pipeline, "_analyze_with_ffprobe", side_effect=FileNotFoundError("ffprobe")
+        ):
             result = pipeline._analyze_audio_rules(Path("/fake.wav"), 5000)
         assert isinstance(result, AudioAnalysisResult)
         assert "ffprobe_not_found" in result.issues
@@ -281,7 +306,9 @@ class TestAnalyzeAudioRulesFileNotFound:
     def test_generic_exception_returns_error(self):
         """Generic exception → returns analysis with error issue."""
         pipeline = QualityCheckPipeline(mock_mode=False)
-        with patch.object(pipeline, "_analyze_with_ffprobe", side_effect=RuntimeError("boom")):
+        with patch.object(
+            pipeline, "_analyze_with_ffprobe", side_effect=RuntimeError("boom")
+        ):
             result = pipeline._analyze_audio_rules(Path("/fake.wav"), 5000)
         assert isinstance(result, AudioAnalysisResult)
         assert any("analysis_error" in i for i in result.issues)
@@ -302,25 +329,38 @@ class TestAnalyzeWithFfprobe:
         p._hw_speaker_sim_min = None
         return p
 
-    def _run_analysis(self, pipeline, duration=5000, expected=5000,
-                      silence=None, rms_db=-20.0, peak_db=-3.0,
-                      samples=None):
+    def _run_analysis(
+        self,
+        pipeline,
+        duration=5000,
+        expected=5000,
+        silence=None,
+        rms_db=-20.0,
+        peak_db=-3.0,
+        samples=None,
+    ):
         """Helper to run _analyze_with_ffprobe with mocked dependencies."""
         if silence is None:
             silence = []
         if samples is None:
             samples = np.zeros(100, dtype=np.float32)
 
-        with patch("src.audiobook_studio.config.loader.reload_config_if_changed",
-                    return_value=(pipeline.quality_thresholds, None)), \
-             patch("src.audiobook_studio.pipeline.quality_check.get_duration_sync",
-                    return_value=duration), \
-             patch("src.audiobook_studio.pipeline.quality_check.detect_silence_sync",
-                    return_value=silence), \
-             patch("src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync",
-                    return_value=(rms_db, peak_db)), \
-             patch("src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
-                    return_value=samples):
+        with patch(
+            "src.audiobook_studio.config.loader.reload_config_if_changed",
+            return_value=(pipeline.quality_thresholds, None),
+        ), patch(
+            "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
+            return_value=duration,
+        ), patch(
+            "src.audiobook_studio.pipeline.quality_check.detect_silence_sync",
+            return_value=silence,
+        ), patch(
+            "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync",
+            return_value=(rms_db, peak_db),
+        ), patch(
+            "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
+            return_value=samples,
+        ):
             return pipeline._analyze_with_ffprobe(Path("/test.wav"), expected)
 
     def test_clean_audio_no_issues(self):
@@ -339,14 +379,18 @@ class TestAnalyzeWithFfprobe:
 
     def test_clipping_detected(self):
         pipeline = self._make_pipeline()
-        samples = np.concatenate([np.ones(20, dtype=np.float32) * 0.999, np.zeros(50, dtype=np.float32)])
+        samples = np.concatenate(
+            [np.ones(20, dtype=np.float32) * 0.999, np.zeros(50, dtype=np.float32)]
+        )
         result = self._run_analysis(pipeline, samples=samples)
         assert result.has_clipping is True
         assert any("clipping" in i for i in result.issues)
 
     def test_silence_detected(self):
         pipeline = self._make_pipeline()
-        result = self._run_analysis(pipeline, silence=[(1000.0, 2000.0), (3000.0, 4000.0)])
+        result = self._run_analysis(
+            pipeline, silence=[(1000.0, 2000.0), (3000.0, 4000.0)]
+        )
         assert result.has_silence is True
         assert any("silence" in i for i in result.issues)
 
@@ -370,17 +414,21 @@ class TestAnalyzeWithFfprobe:
     def test_empty_samples_zero_duration(self):
         """Empty samples with zero duration → issues=['no_audio_data']."""
         pipeline = self._make_pipeline()
-        result = self._run_analysis(pipeline, duration=0, samples=np.array([], dtype=np.float32))
+        result = self._run_analysis(
+            pipeline, duration=0, samples=np.array([], dtype=np.float32)
+        )
         assert "no_audio_data" in result.issues
-
 
     def test_generic_exception_in_ffprobe(self):
         """Generic exception at line 400 re-raises."""
         pipeline = self._make_pipeline()
-        with patch("src.audiobook_studio.config.loader.reload_config_if_changed",
-                    return_value=(pipeline.quality_thresholds, None)), \
-             patch("src.audiobook_studio.pipeline.quality_check.get_duration_sync",
-                    side_effect=RuntimeError("ffprobe crashed")):
+        with patch(
+            "src.audiobook_studio.config.loader.reload_config_if_changed",
+            return_value=(pipeline.quality_thresholds, None),
+        ), patch(
+            "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
+            side_effect=RuntimeError("ffprobe crashed"),
+        ):
             with pytest.raises(RuntimeError, match="ffprobe crashed"):
                 pipeline._analyze_with_ffprobe(Path("/test.wav"), 5000)
 
@@ -402,9 +450,12 @@ class TestMockModeFixSuggestionMerge:
             audio_path.write_bytes(b"RIFF" + b"\x00" * 1000)
 
             mock_analysis = AudioAnalysisResult(
-                duration_ms=5000, has_silence=True,
+                duration_ms=5000,
+                has_silence=True,
                 silence_regions=[(1000.0, 2000.0)],
-                has_clipping=False, rms_db=-20.0, peak_db=-3.0,
+                has_clipping=False,
+                rms_db=-20.0,
+                peak_db=-3.0,
                 duration_match=True,
                 issues=["silence: 1 silent regions detected"],
             )
@@ -412,8 +463,12 @@ class TestMockModeFixSuggestionMerge:
             annotation = _ann()
             routing = _routing()
 
-            with patch.object(pipeline, "_analyze_audio_rules", return_value=mock_analysis):
-                results = pipeline.run([(str(audio_path), annotation, routing, "测试文本")])
+            with patch.object(
+                pipeline, "_analyze_audio_rules", return_value=mock_analysis
+            ):
+                results = pipeline.run(
+                    [(str(audio_path), annotation, routing, "测试文本")]
+                )
 
             assert len(results) == 1
             assert any("silence" in i for i in results[0].issues)
@@ -432,9 +487,14 @@ class TestAudioDescriptionSpeakerSim:
         """Build audio description and verify all fields present."""
         pipeline = QualityCheckPipeline(mock_mode=True)
         analysis = AudioAnalysisResult(
-            duration_ms=5000, has_silence=False, silence_regions=[],
-            has_clipping=False, rms_db=-20.0, peak_db=-3.0,
-            duration_match=True, issues=[],
+            duration_ms=5000,
+            has_silence=False,
+            silence_regions=[],
+            has_clipping=False,
+            rms_db=-20.0,
+            peak_db=-3.0,
+            duration_match=True,
+            issues=[],
         )
         annotation = _ann()
         desc = pipeline._build_audio_description(analysis, annotation)

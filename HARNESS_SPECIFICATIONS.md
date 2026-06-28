@@ -39,7 +39,7 @@
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║              第一层：契约层（Contract Layer）                              ║
 ║  ┌────────────┬─────────────┬─────────────┬──────────────────────────┐   ║
-║  │ Pydantic   │ BAML DSL    │ JSON Schema │ 黄金数据集 Golden Dataset │   ║
+║  │ Pydantic   │ JSON Schema │ 黄金数据集 Golden Dataset │   ║
 ║  │  Schemas   │ (.baml)     │ (fallback)  │ (tests/golden/*.jsonl)    │   ║
 ║  └────────────┴─────────────┴─────────────┴──────────────────────────┘   ║
 ║  职责：定义每个环节"输入什么、输出什么、字段是否必填"                          ║
@@ -57,7 +57,7 @@
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║              第三层：评估与反馈层（Evaluation & Feedback Layer）              ║
 ║  ┌────────────┬─────────────┬────────────┬──────────────────────────┐    ║
-║  │ DeepEval   │ Promptfoo   │ LLM-as-a-   │ 人工校准                │    ║
+║  │ 规则检查    │ LLM-as-a-   │ 人工校准                │    ║
 ║  │ (单元测试)  │ (A/B 对比)  │ Judge       │ Human-in-the-Loop      │    ║
 ║  └────────────┴─────────────┴────────────┴──────────────────────────┘    ║
 ║  职责：打分、对比、回流；通过则升级提示词版本，失败则阻止合并                     ║
@@ -67,7 +67,7 @@
 **依赖规则**：
 - 契约层变了 → 必须重跑评估层（用新契约校验历史输出会失败）
 - 执行层变了（换模型/换提示词）→ 必须重跑评估层（验证质量不退化）
-- 评估层变了（新增指标）→ 必须回归全部黄金数据集
+- 评估层变了（新增指标/规则）→ 必须回归全部黄金数据集
 
 ### 1.3 自我迭代升级逻辑链条
 
@@ -1048,7 +1048,7 @@ class FeedbackRecord(BaseModel):
             └──────────┬───────────┘
                        ▼
             ┌──────────────────────┐
-            │ 全量黄金数据集回归     │  ← DeepEval + Promptfoo
+            │ 全量黄金数据集回归     │  ← 规则检查 + LLM Judge
             └──────────┬───────────┘
                        ▼
                   通过？
@@ -1116,12 +1116,10 @@ jobs:
           python-version: '3.11'
       - name: Install
         run: pip install -e ".[eval]"
-      - name: Run DeepEval
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: deepeval test run tests/golden/
-      - name: Run Promptfoo
-        run: npx promptfoo eval -c promptfooconfig.yaml
+      - name: Run Quality Checks
+        run: pytest tests/unit/test_quality_check.py tests/unit/test_llm_judge.py -v
+      - name: Run LLM Judge Tests
+        run: pytest tests/unit/test_llm_judge.py -v
       - name: Coverage Gate
         run: pytest --cov=src --cov-fail-under=80
 ```
@@ -1206,19 +1204,18 @@ class LLMTrace(BaseModel):
 
 ### 4.6 现代 LLM 工程化工具链选型矩阵（2025）
 
-| 实践 | 采用理由 | 本项目对应位置 |
-|------|---------|----------------|
-| **Instructor**（Pydantic 驱动） | 与 Pydantic v2 深度集成，自动重试，最适合云端多模型 | 全部 6 个 LLM 环节的解析层 |
-| **BAML**（DSL 强类型） | 提示词即代码，跨模型表现最稳定，适合长期维护 | 复杂多步任务（角色表、情感链） |
-| **DSPy**（声明式 + 优化器） | 自动用 BootstrapFewShot 优化 Prompt，无需手写 | 文本分析、文本编辑两个高质量环节 |
-| **DeepEval** | "LLM 单元测试"，可嵌入 pytest | CI 中作为 Quality Gate |
-| **RAGAS** | 检索/生成双指标 | 剧本上下文注入质量评估 |
-| **Promptfoo** | 提示词 A/B 对比，CSV/JSON 用例 | 本地迭代提示词 |
-| **Langfuse** | 生产级 Trace + 自动评估 | 监控、Golden Dataset 采集 |
-| **Constitutional AI** | 原则驱动自我修正 | 质量检测环节的反馈循环 |
-| **LiteLLM** | 100+ 厂商统一接口 + 自动 Fallback | 厂商适配层 |
+| 实践 | 采用理由 | 本项目对应位置 | 状态 |
+|------|---------|----------------|------|
+| **Instructor**（Pydantic 驱动） | 与 Pydantic v2 深度集成，自动重试，最适合云端多模型 | 全部 6 个 LLM 环节的解析层 | ✅ 已集成 |
+| **DSPy**（声明式 + 优化器） | 自动用 BootstrapFewShot 优化 Prompt，无需手写 | 文本分析、文本编辑两个高质量环节 | ⚠️ 预留集成 |
+| **Langfuse** | 生产级 Trace + 自动评估 | 监控、Golden Dataset 采集 | ✅ 已集成 |
+| **Constitutional AI** | 原则驱动自我修正 | 质量检测环节的反馈循环 | ✅ 已实现 |
+| **LiteLLM** | 100+ 厂商统一接口 + 自动 Fallback | 厂商适配层 | ✅ 已集成 |
+| **LLM-as-a-Judge** | 语义评估，支持 Pairwise 比对 | 质量检测、版本对比 | ✅ 已实现 |
+| **规则检查** | DNSMOS/ASR/SpeakerSim 硬指标 | 客观质量门禁 | ✅ 已实现 |
 
-> **本项目的选型**：以 **Instructor + Pydantic** 为主（生态最广、上手最快），**LiteLLM** 做厂商路由，**DeepEval + Promptfoo + Langfuse** 形成评估闭环。
+> **本项目的选型**：以 **Instructor + Pydantic** 为主（生态最广、上手最快），**LiteLLM** 做厂商路由，**LLM-as-a-Judge + 规则检查 (DNSMOS/ASR/SpeakerSim) + Langfuse** 形成评估闭环。
+> **注**：BAML、DeepEval、Promptfoo、RAGAS 为业界优秀工具，当前版本未集成，预留未来扩展。
 
 ---
 
@@ -1226,7 +1223,7 @@ class LLMTrace(BaseModel):
 
 | 阶段 | 时间窗口 | 目标 | 关键交付 |
 |------|---------|------|---------|
-| **Phase 1** | 第 1-4 周 | 契约 + 黄金数据集骨架 | `schemas/*.py` + 首批 10 条 golden 用例 + DeepEval 通过 |
+| **Phase 1** | 第 1-4 周 | 契约 + 黄金数据集骨架 | `schemas/*.py` + 首批 10 条 golden 用例 + 规则检查通过 |
 | **Phase 2** | 第 5-8 周 | 单一 LLM 跑通环节② | `router.py` + `analyze_structure.py` + 提示词 v1 |
 | **Phase 3** | 第 9-12 周 | 多厂商 Fallback + 全部 6 环节接入 | 路由策略 + LiteLLM 配置 + 各环节实现 |
 | **Phase 4** | 第 13-16 周 | 反馈回路 + 黄金数据集增长 | `FeedbackRecord` 采集 + 差异分析 Agent + 升级评估脚本 |
@@ -1285,7 +1282,7 @@ class LLMTrace(BaseModel):
 |---|------|------|---------|
 | 1 | 格式合规率 | ≥ 99% | Pydantic 校验通过 / 总调用次数 |
 | 2 | 黄金数据集通过率 | ≥ 95% | 人工标注一致维度 / 总维度 |
-| 3 | 整体质量分 | ≥ 旧版本 × 102% | DeepEval 综合评分 |
+| 3 | 整体质量分 | ≥ 旧版本 × 102% | LLM Judge + 规则检查综合评分 |
 | 4 | 成本/延迟退化 | ≤ 旧版本 × 110% | Langfuse 聚合指标 |
 
 ### 6.3 关键不变量速查表

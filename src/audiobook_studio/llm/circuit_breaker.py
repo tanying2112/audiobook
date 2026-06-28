@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Literal, Dict, Any
+from typing import Any, Dict, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,9 @@ class CircuitBreaker:
             self.state = "closed"
             self.failure_count = 0
             self.half_open_calls = 0
-            logger.info(f"Circuit breaker [{self.provider_name}] manually reset to CLOSED")
+            logger.info(
+                f"Circuit breaker [{self.provider_name}] manually reset to CLOSED"
+            )
 
     def get_status(self) -> Dict[str, Any]:
         """Get current circuit breaker status."""

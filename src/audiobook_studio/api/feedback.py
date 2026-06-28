@@ -12,7 +12,10 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 # Request/Response models
 class FeedbackCreate(BaseModel):
     """创建反馈请求."""
-    source: str = Field(..., description="反馈来源: human_edit, quality_judge, user_rating")
+
+    source: str = Field(
+        ..., description="反馈来源: human_edit, quality_judge, user_rating"
+    )
     stage: str = Field(..., description="发生反馈的环节")
     book_id: str = Field(..., description="书籍 ID")
     paragraph_index: Optional[int] = None
@@ -25,6 +28,7 @@ class FeedbackCreate(BaseModel):
 
 class FeedbackResponse(BaseModel):
     """反馈响应."""
+
     id: str
     timestamp: datetime
     source: str
@@ -40,6 +44,7 @@ class FeedbackResponse(BaseModel):
 
 class FeedbackListResponse(BaseModel):
     """反馈列表响应."""
+
     items: List[FeedbackResponse]
     total: int
 
@@ -52,25 +57,29 @@ _feedback_store: List[dict] = []
 async def create_feedback(feedback: FeedbackCreate):
     """提交人工反馈."""
     import uuid
-    
+
     feedback_id = str(uuid.uuid4())
     now = datetime.utcnow()
-    
+
     # Simple diff summary
     diff_summary = f"Modified {feedback.stage} output"
     pattern_tags = ["human_edit"]
-    
+
     # Try to infer pattern tags from rationale
     rationale_lower = feedback.rationale.lower()
     if "emotion" in rationale_lower or "情感" in rationale_lower:
         pattern_tags.append("emotion_mismatch")
-    if "speaker" in rationale_lower or "角色" in rationale_lower or "说话人" in rationale_lower:
+    if (
+        "speaker" in rationale_lower
+        or "角色" in rationale_lower
+        or "说话人" in rationale_lower
+    ):
         pattern_tags.append("speaker_error")
     if "speed" in rationale_lower or "语速" in rationale_lower:
         pattern_tags.append("wrong_speed")
     if "pitch" in rationale_lower or "音高" in rationale_lower:
         pattern_tags.append("wrong_pitch")
-    
+
     fb = {
         "id": feedback_id,
         "timestamp": now,
@@ -88,7 +97,7 @@ async def create_feedback(feedback: FeedbackCreate):
         "contract_version": 1,
     }
     _feedback_store.append(fb)
-    
+
     return FeedbackResponse(**fb)
 
 
@@ -102,20 +111,19 @@ async def list_feedback(
 ):
     """获取反馈列表."""
     filtered = _feedback_store
-    
+
     if book_id:
         filtered = [f for f in filtered if f["book_id"] == book_id]
     if stage:
         filtered = [f for f in filtered if f["stage"] == stage]
     if source:
         filtered = [f for f in filtered if f["source"] == source]
-    
+
     total = len(filtered)
-    items = filtered[offset:offset + limit]
-    
+    items = filtered[offset : offset + limit]
+
     return FeedbackListResponse(
-        items=[FeedbackResponse(**f) for f in items],
-        total=total
+        items=[FeedbackResponse(**f) for f in items], total=total
     )
 
 
@@ -134,23 +142,23 @@ async def get_feedback_stats(book_id: Optional[str] = None):
     filtered = _feedback_store
     if book_id:
         filtered = [f for f in filtered if f["book_id"] == book_id]
-    
+
     # Count by stage
     by_stage = {}
     for f in filtered:
         by_stage[f["stage"]] = by_stage.get(f["stage"], 0) + 1
-    
+
     # Count by source
     by_source = {}
     for f in filtered:
         by_source[f["source"]] = by_source.get(f["source"], 0) + 1
-    
+
     # Pattern tag frequency
     tag_freq = {}
     for f in filtered:
         for tag in f.get("pattern_tags", []):
             tag_freq[tag] = tag_freq.get(tag, 0) + 1
-    
+
     return {
         "total_feedback": len(filtered),
         "by_stage": by_stage,

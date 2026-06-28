@@ -30,7 +30,7 @@ from .processing_run import ProcessingRun
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
-from .user import User, Role, Permission, ProjectPermission
+from .user import Permission, ProjectPermission, Role, User
 
 __all__ = [
     "Project",

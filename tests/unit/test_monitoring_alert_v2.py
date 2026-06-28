@@ -1,4 +1,5 @@
 """Comprehensive tests for monitoring/alert.py."""
+
 import json
 import os
 import sys
@@ -24,8 +25,8 @@ from src.audiobook_studio.monitoring.alert import (
     send_slack_alert,
 )
 
-
 # ── AlertLevel ──────────────────────────────────────────────────────────────
+
 
 class TestAlertLevel:
     def test_values(self):
@@ -35,6 +36,7 @@ class TestAlertLevel:
 
 
 # ── AlertConfig ──────────────────────────────────────────────────────────────
+
 
 class TestAlertConfig:
     def test_defaults(self):
@@ -50,6 +52,7 @@ class TestAlertConfig:
 
 # ── AlertRecord ──────────────────────────────────────────────────────────────
 
+
 class TestAlertRecord:
     def test_creation(self):
         r = AlertRecord(level=AlertLevel.WARNING, message="test", timestamp=1.0)
@@ -59,11 +62,14 @@ class TestAlertRecord:
 
     def test_with_context(self):
         ctx = {"key": "value"}
-        r = AlertRecord(level=AlertLevel.CRITICAL, message="bad", timestamp=2.0, context=ctx)
+        r = AlertRecord(
+            level=AlertLevel.CRITICAL, message="bad", timestamp=2.0, context=ctx
+        )
         assert r.context == ctx
 
 
 # ── AlertManager ─────────────────────────────────────────────────────────────
+
 
 class TestAlertManager:
     def test_init_default(self):
@@ -88,6 +94,7 @@ class TestAlertManager:
 
 # ── parse_args ───────────────────────────────────────────────────────────────
 
+
 class TestParseArgs:
     def test_defaults(self):
         with patch("sys.argv", ["alert.py"]):
@@ -106,7 +113,16 @@ class TestParseArgs:
         assert args.check_only is True
 
     def test_webhooks(self):
-        with patch("sys.argv", ["alert.py", "--dingtalk-webhook", "http://d", "--slack-webhook", "http://s"]):
+        with patch(
+            "sys.argv",
+            [
+                "alert.py",
+                "--dingtalk-webhook",
+                "http://d",
+                "--slack-webhook",
+                "http://s",
+            ],
+        ):
             args = parse_args()
         assert args.dingtalk_webhook == "http://d"
         assert args.slack_webhook == "http://s"
@@ -119,6 +135,7 @@ class TestParseArgs:
 
 # ── collect_logs ─────────────────────────────────────────────────────────────
 
+
 class TestCollectLogs:
     def test_empty_dir(self, tmp_path):
         records = collect_logs(tmp_path / "no_dir", 1)
@@ -127,7 +144,17 @@ class TestCollectLogs:
     def test_collect_recent(self, tmp_path):
         log_file = tmp_path / "test_perf.jsonl"
         now = datetime.now().isoformat()
-        log_file.write_text(json.dumps({"timestamp": now, "model": "gpt-4", "schema_compliance": True, "cost_usd": 0.01}) + "\n")
+        log_file.write_text(
+            json.dumps(
+                {
+                    "timestamp": now,
+                    "model": "gpt-4",
+                    "schema_compliance": True,
+                    "cost_usd": 0.01,
+                }
+            )
+            + "\n"
+        )
         records = collect_logs(tmp_path, 1)
         assert len(records) == 1
 
@@ -175,6 +202,7 @@ class TestCollectLogs:
 
 # ── collect_self_iteration_logs ──────────────────────────────────────────────
 
+
 class TestCollectSelfIterationLogs:
     def test_empty_dir(self, tmp_path):
         records = collect_self_iteration_logs(tmp_path / "no_dir", 1)
@@ -183,7 +211,9 @@ class TestCollectSelfIterationLogs:
     def test_collect(self, tmp_path):
         f = tmp_path / "test_self_iteration.jsonl"
         now = datetime.now().isoformat()
-        f.write_text(json.dumps({"timestamp": now, "promoted": True, "feedback_count": 3}) + "\n")
+        f.write_text(
+            json.dumps({"timestamp": now, "promoted": True, "feedback_count": 3}) + "\n"
+        )
         records = collect_self_iteration_logs(tmp_path, 1)
         assert len(records) == 1
 
@@ -197,6 +227,7 @@ class TestCollectSelfIterationLogs:
 
 # ── compute_metrics ──────────────────────────────────────────────────────────
 
+
 class TestComputeMetrics:
     def test_empty(self):
         m = compute_metrics([])
@@ -206,7 +237,10 @@ class TestComputeMetrics:
         assert m["alerts"] == []
 
     def test_compliant(self):
-        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 0.001} for _ in range(10)]
+        records = [
+            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 0.001}
+            for _ in range(10)
+        ]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 1.0
         assert m["fallback_rate"] == 0.0
@@ -214,52 +248,78 @@ class TestComputeMetrics:
         assert all(a["type"] != "schema_compliance" for a in m["alerts"])
 
     def test_low_compliance_warning(self):
-        records = [{"schema_compliance": i < 9, "model": "gpt-4", "cost_usd": 0.001} for i in range(10)]
+        records = [
+            {"schema_compliance": i < 9, "model": "gpt-4", "cost_usd": 0.001}
+            for i in range(10)
+        ]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 0.9
         types = [a["type"] for a in m["alerts"]]
         assert "schema_compliance" in types
 
     def test_low_compliance_critical(self):
-        records = [{"schema_compliance": i < 5, "model": "gpt-4", "cost_usd": 0.001} for i in range(10)]
+        records = [
+            {"schema_compliance": i < 5, "model": "gpt-4", "cost_usd": 0.001}
+            for i in range(10)
+        ]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 0.5
         critical = [a for a in m["alerts"] if a["type"] == "schema_compliance"]
         assert critical[0]["severity"] == "critical"
 
     def test_fallback_rate_warning(self):
-        records = [{"schema_compliance": True, "model": "fallback-model", "cost_usd": 0.001} for _ in range(10)]
+        records = [
+            {"schema_compliance": True, "model": "fallback-model", "cost_usd": 0.001}
+            for _ in range(10)
+        ]
         m = compute_metrics(records)
         assert m["fallback_rate"] == 1.0
         types = [a["type"] for a in m["alerts"]]
         assert "fallback_rate" in types
 
     def test_heuristic_fallback(self):
-        records = [{"schema_compliance": True, "model": "heuristic_fallback", "cost_usd": 0.001} for _ in range(5)]
+        records = [
+            {
+                "schema_compliance": True,
+                "model": "heuristic_fallback",
+                "cost_usd": 0.001,
+            }
+            for _ in range(5)
+        ]
         m = compute_metrics(records)
         assert m["fallback_rate"] == 1.0
 
     def test_cost_overrun(self):
-        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 1.0} for _ in range(20)]
+        records = [
+            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 1.0}
+            for _ in range(20)
+        ]
         m = compute_metrics(records, hours=1)
         assert m["total_cost_usd"] == 20.0
         types = [a["type"] for a in m["alerts"]]
         assert "cost_overrun" in types
 
     def test_cost_overrun_critical(self):
-        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 50.0} for _ in range(5)]
+        records = [
+            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 50.0}
+            for _ in range(5)
+        ]
         m = compute_metrics(records, hours=1)
         cost_alerts = [a for a in m["alerts"] if a["type"] == "cost_overrun"]
         assert cost_alerts[0]["severity"] == "critical"
 
     def test_fallback_critical(self):
-        records = [{"schema_compliance": True, "model": "fallback-x", "cost_usd": 0.001} for _ in range(20)]
+        records = [
+            {"schema_compliance": True, "model": "fallback-x", "cost_usd": 0.001}
+            for _ in range(20)
+        ]
         m = compute_metrics(records)
         fallback_alerts = [a for a in m["alerts"] if a["type"] == "fallback_rate"]
         assert fallback_alerts[0]["severity"] == "critical"
 
 
 # ── compute_self_iteration_metrics ───────────────────────────────────────────
+
 
 class TestComputeSelfIterationMetrics:
     def test_empty(self):
@@ -306,6 +366,7 @@ class TestComputeSelfIterationMetrics:
 
 # ── send_dingtalk_alert ──────────────────────────────────────────────────────
 
+
 class TestDingtalkAlert:
     def test_success(self):
         with patch("requests.post") as mock_post:
@@ -320,6 +381,7 @@ class TestDingtalkAlert:
 
 # ── send_slack_alert ─────────────────────────────────────────────────────────
 
+
 class TestSlackAlert:
     def test_success(self):
         with patch("requests.post") as mock_post:
@@ -333,6 +395,7 @@ class TestSlackAlert:
 
 
 # ── format_alert_message ─────────────────────────────────────────────────────
+
 
 class TestFormatAlert:
     def test_with_alerts(self):

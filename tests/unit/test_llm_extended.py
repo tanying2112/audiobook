@@ -1,14 +1,13 @@
 """LLM 模块扩展测试 — 补充 client.py 的覆盖率。"""
 
-import os
 import json
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
-from pydantic import BaseModel
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-
+from pydantic import BaseModel
 
 # ===========================================================================
 # client.py — 补充缺失路径
@@ -90,9 +89,7 @@ class TestLLMClientExtended:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_file = Path(tmpdir) / "test_mock.jsonl"
-            mock_file.write_text(
-                json.dumps({"expected_output": {"a": 1}}) + "\n"
-            )
+            mock_file.write_text(json.dumps({"expected_output": {"a": 1}}) + "\n")
 
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
                 cfg = LLMClientConfig(model="test", mock_data_dir=tmpdir)
@@ -259,7 +256,9 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test", api_base="http://custom.api")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            mock_result._raw_response = {
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+            }
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -276,7 +275,9 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="gemini-2.0-flash")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1000, "completion_tokens": 500}}
+            mock_result._raw_response = {
+                "usage": {"prompt_tokens": 1000, "completion_tokens": 500}
+            }
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -292,10 +293,15 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+            mock_result._raw_response = {
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1}
+            }
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
-            msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
+            msgs = [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "hi"},
+            ]
             result = client.call(prompt=msgs, response_model=DummyModel)
             assert result is not None
 
@@ -306,7 +312,9 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             client._client = MagicMock()
-            client._client.chat.completions.create.side_effect = RuntimeError("API down")
+            client._client.chat.completions.create.side_effect = RuntimeError(
+                "API down"
+            )
             with pytest.raises(RuntimeError, match="API down"):
                 client.call("hello", MagicMock)
 

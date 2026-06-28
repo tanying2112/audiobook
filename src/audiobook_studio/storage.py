@@ -159,7 +159,9 @@ def save_extracted_text(
     ensure: bool = True,
 ) -> Path:
     """Write extracted plain text for a chapter."""
-    dst = extracted_dir(project_id, ensure=ensure) / _chapter_filename(chapter_index, ".txt")
+    dst = extracted_dir(project_id, ensure=ensure) / _chapter_filename(
+        chapter_index, ".txt"
+    )
     dst.write_text(text, encoding="utf-8")
     return dst
 
@@ -184,8 +186,12 @@ def save_chapter_annotations(
     ensure: bool = True,
 ) -> Path:
     """Write paragraph annotations for a chapter as JSON."""
-    dst = annotated_dir(project_id, ensure=ensure) / _chapter_filename(chapter_index, ".json")
-    dst.write_text(json.dumps(annotations, ensure_ascii=False, indent=2), encoding="utf-8")
+    dst = annotated_dir(project_id, ensure=ensure) / _chapter_filename(
+        chapter_index, ".json"
+    )
+    dst.write_text(
+        json.dumps(annotations, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return dst
 
 
@@ -211,7 +217,10 @@ def audio_file_path(
     fmt: str = "mp3",
 ) -> Path:
     """Return the expected audio file path."""
-    return audio_dir(project_id) / f"{_paragraph_basename(chapter_index, paragraph_index)}.{fmt}"
+    return (
+        audio_dir(project_id)
+        / f"{_paragraph_basename(chapter_index, paragraph_index)}.{fmt}"
+    )
 
 
 def save_audio(

@@ -10,12 +10,13 @@ Provides consistent stage naming across different subsystems:
 All stage names are normalized to canonical form for consistent processing.
 """
 
-from typing import Optional, Dict, List
 from enum import Enum
+from typing import Dict, List, Optional
 
 
 class CanonicalStage(Enum):
     """Canonical stage names (7-stage pipeline)."""
+
     EXTRACT = "extract"
     ANALYZE = "analyze_structure"
     ANNOTATE = "annotate_paragraph"
@@ -71,7 +72,6 @@ STAGE_ALIASES: Dict[str, CanonicalStage] = {
     "quality_check": CanonicalStage.QUALITY,
     "qc": CanonicalStage.QUALITY,
     "judge": CanonicalStage.QUALITY,
-
     # Frontend stage names → Canonical
     "①": CanonicalStage.EXTRACT,
     "②": CanonicalStage.ANALYZE,
@@ -80,7 +80,6 @@ STAGE_ALIASES: Dict[str, CanonicalStage] = {
     "⑤": CanonicalStage.AUDIO_POSTPROCESS,
     "⑥": CanonicalStage.SYNTHESIZE,
     "⑦": CanonicalStage.QUALITY,
-
     # Chapter ORM status fields → Canonical
     "extract_status": CanonicalStage.EXTRACT,
     "analyze_status": CanonicalStage.ANALYZE,
@@ -88,8 +87,7 @@ STAGE_ALIASES: Dict[str, CanonicalStage] = {
     "edit_status": CanonicalStage.EDIT,
     "synthesize_status": CanonicalStage.SYNTHESIZE,
     "quality_status": CanonicalStage.QUALITY,
-    "route_status": CanonicalStage.AUDIO_POSTPROCESS,  #_mapped
-
+    "route_status": CanonicalStage.AUDIO_POSTPROCESS,  # _mapped
     # Checkpoint names → Canonical
     "checkpoint_extract": CanonicalStage.EXTRACT,
     "checkpoint_analyze": CanonicalStage.ANALYZE,

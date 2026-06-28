@@ -69,7 +69,10 @@ class TestPubDateFormatNonDatetime:
         assert match is not None
         pub_date_str = match.group(1)
         # Verify RFC 822 format: "Day, DD Mon YYYY HH:MM:SS GMT"
-        assert re.match(r"[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT", pub_date_str)
+        assert re.match(
+            r"[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT",
+            pub_date_str,
+        )
 
     def test_pub_date_none_created_at(self, generator):
         """When created_at is None, getattr returns datetime.now()."""
@@ -93,7 +96,10 @@ class TestPubDateFormatNonDatetime:
         match = re.search(r"<pubDate>(.*?)</pubDate>", rss)
         assert match is not None
         # RFC 822 format
-        assert re.match(r"[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT", match.group(1))
+        assert re.match(
+            r"[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT",
+            match.group(1),
+        )
 
 
 class TestChapterWithoutContent:
@@ -110,6 +116,7 @@ class TestChapterWithoutContent:
                 self.title = "第一章"
                 self.summary = "摘要"
                 # Deliberately no .content attribute
+
         chapter = MinimalChapter()
         segments = {1: [_make_segment()]}
 
@@ -146,7 +153,9 @@ class TestNoCoverImage:
         chapter = _make_chapter()
         segments = {1: [_make_segment()]}
 
-        rss = generator.generate_rss_feed(book, [chapter], segments, cover_image_url=None)
+        rss = generator.generate_rss_feed(
+            book, [chapter], segments, cover_image_url=None
+        )
         assert "<image>" not in rss
 
 
@@ -254,10 +263,10 @@ class TestParametrizedInputCombinations:
     @pytest.mark.parametrize(
         "durations,expected_duration",
         [
-            ([30000, 30000], "00:01:00"),       # 60s
-            ([1800000, 1800000], "01:00:00"),    # 1h
-            ([3721000], "01:02:01"),              # 1h 2m 1s
-            ([0], "00:00:00"),                    # zero duration
+            ([30000, 30000], "00:01:00"),  # 60s
+            ([1800000, 1800000], "01:00:00"),  # 1h
+            ([3721000], "01:02:01"),  # 1h 2m 1s
+            ([0], "00:00:00"),  # zero duration
         ],
     )
     def test_duration_calculation(self, generator, durations, expected_duration):
@@ -272,16 +281,22 @@ class TestParametrizedInputCombinations:
     @pytest.mark.parametrize(
         "num_segments,expected_count",
         [
-            (0, 0),   # no segments -> chapter skipped
+            (0, 0),  # no segments -> chapter skipped
             (1, 1),
-            (3, 1),   # multiple segments but still one chapter
+            (3, 1),  # multiple segments but still one chapter
         ],
     )
     def test_segment_count(self, generator, num_segments, expected_count):
         """Test chapter with various numbers of audio segments."""
         book = _make_book()
         chapter = _make_chapter()
-        segments = {1: [_make_segment() for _ in range(num_segments)] if num_segments > 0 else []}
+        segments = {
+            1: (
+                [_make_segment() for _ in range(num_segments)]
+                if num_segments > 0
+                else []
+            )
+        }
 
         rss = generator.generate_rss_feed(book, [chapter], segments)
         assert rss.count("<item>") == expected_count

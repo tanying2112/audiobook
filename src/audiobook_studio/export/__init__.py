@@ -18,12 +18,7 @@ from .batch_exporter import (
     export_chapter,
     export_project,
 )
-from .m4b import (
-    ChapterMarker,
-    M4bMetadata,
-    build_m4b,
-    build_m4b_single_source,
-)
+from .m4b import ChapterMarker, M4bMetadata, build_m4b, build_m4b_single_source
 from .srt import (
     SubtitleConfig,
     SubtitleEntry,

@@ -5,14 +5,14 @@
 """
 
 import logging
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
+from ..models.audio_segment import AudioSegment
 from ..models.book import Book
 from ..models.chapter import Chapter
-from ..models.audio_segment import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,9 @@ class RssFeedGenerator:
                 continue
 
             # 计算章节总时长
-            total_duration_ms = sum(seg.duration_ms for seg in audio_segments if seg.duration_ms)
+            total_duration_ms = sum(
+                seg.duration_ms for seg in audio_segments if seg.duration_ms
+            )
             total_duration_seconds = total_duration_ms // 1000
             hours = total_duration_seconds // 3600
             minutes = (total_duration_seconds % 3600) // 60

@@ -6,11 +6,11 @@ Tests the complete pipeline from raw text to finished audio:
 3. Chapter-level synthesis
 """
 
-import pytest
 from pathlib import Path
 
-from tests.e2e.conftest import E2ETestConfig, SAMPLE_TEXT
+import pytest
 
+from tests.e2e.conftest import SAMPLE_TEXT, E2ETestConfig
 
 pytestmark = pytest.mark.e2e
 
@@ -199,8 +199,8 @@ class TestHardwareProfileIntegration:
     def test_hardware_profile_tts_routing(self):
         """Test hardware profile affects TTS routing."""
         from src.audiobook_studio.config.hardware_profile import (
-            get_hardware_profile,
             TTSEnginePriority,
+            get_hardware_profile,
         )
 
         profile = get_hardware_profile()

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Run E2E long book verification script directly."""
 
-import sys
 import os
+import sys
 
 # Add src to path
 sys.path.insert(0, "src")
 
 # Import and run the E2E script
 sys.path.insert(0, "tests/e2e")
-from e2e_long_book import run_e2e_long_book, save_report, print_summary
 from pathlib import Path
+
+from e2e_long_book import print_summary, run_e2e_long_book, save_report
 
 novel_path = Path("data/long_novel/hongloumeng.txt")
 
@@ -23,7 +24,7 @@ report = run_e2e_long_book(
     novel_path=novel_path,
     book_id="hongloumeng",
     title_hint="红楼梦",
-    max_paragraphs=50  # Start with 50 for faster verification
+    max_paragraphs=50,  # Start with 50 for faster verification
 )
 
 save_report(report, Path("reports/e2e_long_book_report.json"))

@@ -1,14 +1,15 @@
 """Tests for feedback/kill_switch module."""
 
-import pytest
-from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from src.audiobook_studio.feedback.kill_switch import (
     DegradationLevel,
+    KillSwitch,
     KillSwitchConfig,
     ProviderHealth,
-    KillSwitch,
     get_kill_switch,
 )
 
@@ -86,7 +87,9 @@ class TestProviderHealth:
         assert health.is_degraded is True
 
     def test_is_degraded_false(self):
-        health = ProviderHealth(provider="test", consecutive_failures=1, total_calls=10, failed_calls=1)
+        health = ProviderHealth(
+            provider="test", consecutive_failures=1, total_calls=10, failed_calls=1
+        )
         assert health.is_degraded is False
 
 
@@ -111,9 +114,13 @@ class TestKillSwitch:
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.read_text")
     @patch("yaml.safe_load")
-    def test_load_rule_cache_voice_mapping(self, mock_yaml_load, mock_read_text, mock_exists):
+    def test_load_rule_cache_voice_mapping(
+        self, mock_yaml_load, mock_read_text, mock_exists
+    ):
         mock_exists.return_value = True
-        mock_read_text.return_value = "voice_mapping:\n  speaker1:\n    engine: edge-tts\n"
+        mock_read_text.return_value = (
+            "voice_mapping:\n  speaker1:\n    engine: edge-tts\n"
+        )
         mock_yaml_load.return_value = {"speaker1": {"engine": "edge-tts"}}
 
         ks = KillSwitch()
@@ -260,7 +267,11 @@ class TestKillSwitch:
         ks = KillSwitch()
         # Mock rule_cache with voice mapping
         ks.rule_cache["voice_mapping"] = {
-            "narrator": {"engine": "azure", "voice_id": "zh-CN-YunyangNeural", "rate": 10}
+            "narrator": {
+                "engine": "azure",
+                "voice_id": "zh-CN-YunyangNeural",
+                "rate": 10,
+            }
         }
 
         input_data = {"character_name": "narrator"}
@@ -385,6 +396,7 @@ class TestGetKillSwitch:
     def test_singleton_returns_same_instance(self):
         # Reset global for clean test
         import src.audiobook_studio.feedback.kill_switch as ks_module
+
         ks_module._kill_switch = None
 
         ks1 = get_kill_switch()
@@ -394,6 +406,7 @@ class TestGetKillSwitch:
 
     def test_singleton_initializes_with_defaults(self):
         import src.audiobook_studio.feedback.kill_switch as ks_module
+
         ks_module._kill_switch = None
 
         ks = get_kill_switch()

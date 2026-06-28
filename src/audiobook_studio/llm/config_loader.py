@@ -14,6 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class ProviderType(str, Enum):
     """Supported LLM provider types."""
+
     GROQ = "groq"
     DEEPSEEK = "deepseek"
     OPENROUTER = "openrouter"
@@ -39,6 +40,7 @@ class ProviderType(str, Enum):
 
 class StageName(str, Enum):
     """Pipeline stage names."""
+
     EXTRACT = "extract"
     ANALYZE = "analyze"
     ANNOTATE = "annotate"
@@ -155,7 +157,9 @@ class LLMProvidersConfig(BaseSettings):
     )
 
     providers: List[ProviderConfig] = Field(default_factory=list)
-    prompt_compression: PromptCompressionConfig = Field(default_factory=PromptCompressionConfig)
+    prompt_compression: PromptCompressionConfig = Field(
+        default_factory=PromptCompressionConfig
+    )
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
     cost_control: CostControlConfig = Field(default_factory=CostControlConfig)
 

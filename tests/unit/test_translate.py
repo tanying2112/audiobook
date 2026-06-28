@@ -18,9 +18,9 @@ import pytest
 # Set MOCK_LLM environment variable before importing pipeline
 os.environ["MOCK_LLM"] = "true"
 
+from src.audiobook_studio.models.audio_segment import AudioSegment
 from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation
-from src.audiobook_studio.models.audio_segment import AudioSegment
 
 
 class TestTranslateAndDubPipeline:
@@ -50,8 +50,11 @@ class TestTranslateAndDubPipeline:
 
     def test_pipeline_initialization_defaults(self):
         # Test with defaults (no mocks)
-        with patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager") as mock_vc, \
-             patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline") as mock_ap:
+        with patch(
+            "src.audiobook_studio.pipeline.translate.VoiceCloningManager"
+        ) as mock_vc, patch(
+            "src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"
+        ) as mock_ap:
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
 
@@ -187,19 +190,27 @@ class TestTranslateAndDubPipeline:
     def test_translate_text(self, pipeline):
         """Test text translation."""
         # Same language - should return original
-        result = pipeline._translate_text("测试文本", "zh-CN", "zh-CN", "旁白", "neutral")
+        result = pipeline._translate_text(
+            "测试文本", "zh-CN", "zh-CN", "旁白", "neutral"
+        )
         assert result == "测试文本"
 
         # Different language - should translate
-        result = pipeline._translate_text("测试文本", "zh-CN", "en-US", "旁白", "neutral")
+        result = pipeline._translate_text(
+            "测试文本", "zh-CN", "en-US", "旁白", "neutral"
+        )
         assert "[English translation of:" in result
         assert "测试文本" in result
 
         # Other target languages
-        result = pipeline._translate_text("测试文本", "zh-CN", "es-ES", "旁白", "neutral")
+        result = pipeline._translate_text(
+            "测试文本", "zh-CN", "es-ES", "旁白", "neutral"
+        )
         assert "[Español translation of:" in result
 
-        result = pipeline._translate_text("测试文本", "zh-CN", "ja-JP", "旁白", "neutral")
+        result = pipeline._translate_text(
+            "测试文本", "zh-CN", "ja-JP", "旁白", "neutral"
+        )
         assert "[日本語 translation of:" in result
 
     def test_apply_voice_characteristics(self, pipeline):
@@ -303,7 +314,10 @@ class TestTranslateAndDubPipeline:
             original, "Short.", "en-US", voice_params
         )
         dubbed_long = pipeline._synthesize_dubbed_segment(
-            original, "This is a much longer text that should take more time to speak.", "en-US", voice_params
+            original,
+            "This is a much longer text that should take more time to speak.",
+            "en-US",
+            voice_params,
         )
 
         assert dubbed_long.duration_ms > dubbed_short.duration_ms
@@ -340,8 +354,11 @@ class TestTranslateAndDubPipelineEdgeCases:
 
     @pytest.fixture
     def pipeline(self):
-        with patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager") as mock_vc, \
-             patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline") as mock_ap:
+        with patch(
+            "src.audiobook_studio.pipeline.translate.VoiceCloningManager"
+        ) as mock_vc, patch(
+            "src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"
+        ) as mock_ap:
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
             return TranslateAndDubPipeline()
@@ -358,7 +375,11 @@ class TestTranslateAndDubPipelineEdgeCases:
 
     def test_unknown_emotion_fallback(self, pipeline):
         """Test fallback for unknown emotion (uses valid emotion not in adjustment dict)."""
-        voice_config = {"base_pitch_shift": 0.0, "base_speed_rate": 1.0, "base_volume": 1.0}
+        voice_config = {
+            "base_pitch_shift": 0.0,
+            "base_speed_rate": 1.0,
+            "base_volume": 1.0,
+        }
 
         annotation = ParagraphAnnotation(
             paragraph_index=0,

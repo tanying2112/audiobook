@@ -1,30 +1,28 @@
 """Comprehensive tests for pipeline/orchestrator.py — hook system, sanitize, run_stage, run_pipeline."""
+
 import json
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from src.audiobook_studio.exceptions import AudiobookError, StageExecutionError
 from src.audiobook_studio.pipeline.orchestrator import (
-    register_stage_hook,
-    register_pipeline_hook,
+    _default_stage_hook,
+    _emit_pipeline_end,
+    _emit_pipeline_start,
     _emit_stage_enter,
     _emit_stage_exit,
-    _emit_pipeline_start,
-    _emit_pipeline_end,
-    _default_stage_hook,
-    _sanitize_kwargs,
-    run_stage,
-    run_pipeline,
-    _stage_hooks,
     _pipeline_hooks,
+    _sanitize_kwargs,
+    _stage_hooks,
+    register_pipeline_hook,
+    register_stage_hook,
+    run_pipeline,
+    run_stage,
 )
-from src.audiobook_studio.exceptions import (
-    AudiobookError,
-    StageExecutionError,
-)
-
 
 # ── Hook Registration ────────────────────────────────────────────────────────
+
 
 class TestHookRegistration:
     def test_register_stage_hook(self):
@@ -47,11 +45,14 @@ class TestHookRegistration:
 
 # ── Emit Functions ───────────────────────────────────────────────────────────
 
+
 class TestEmitFunctions:
     def test_emit_stage_enter(self):
         called = []
+
         def hook(event, stage, context, result, error):
             called.append(event)
+
         _stage_hooks.append(hook)
         try:
             _emit_stage_enter("test_stage", {"key": "val"})
@@ -61,8 +62,10 @@ class TestEmitFunctions:
 
     def test_emit_stage_exit(self):
         called = []
+
         def hook(event, stage, context, result, error):
             called.append(event)
+
         _stage_hooks.append(hook)
         try:
             _emit_stage_exit("test_stage", {"k": "v"}, result="ok", error=None)
@@ -72,8 +75,10 @@ class TestEmitFunctions:
 
     def test_emit_stage_exit_with_error(self):
         called_with_err = []
+
         def hook(event, stage, context, result, error):
             called_with_err.append(error)
+
         _stage_hooks.append(hook)
         try:
             err = Exception("fail")
@@ -84,8 +89,10 @@ class TestEmitFunctions:
 
     def test_emit_pipeline_start(self):
         called = []
+
         def hook(event, context, result, error):
             called.append(event)
+
         _pipeline_hooks.append(hook)
         try:
             _emit_pipeline_start({"stages": []})
@@ -95,8 +102,10 @@ class TestEmitFunctions:
 
     def test_emit_pipeline_end(self):
         called = []
+
         def hook(event, context, result, error):
             called.append(event)
+
         _pipeline_hooks.append(hook)
         try:
             _emit_pipeline_end({}, result=[], error=None)
@@ -107,6 +116,7 @@ class TestEmitFunctions:
     def test_hook_exception_swallowed(self):
         def bad_hook(*a, **k):
             raise RuntimeError("boom")
+
         _stage_hooks.append(bad_hook)
         try:
             # Should not raise
@@ -118,6 +128,7 @@ class TestEmitFunctions:
     def test_pipeline_hook_exception_swallowed(self):
         def bad_hook(*a, **k):
             raise RuntimeError("boom")
+
         _pipeline_hooks.append(bad_hook)
         try:
             _emit_pipeline_start({})
@@ -127,6 +138,7 @@ class TestEmitFunctions:
 
 
 # ── _default_stage_hook ─────────────────────────────────────────────────────
+
 
 class TestDefaultStageHook:
     def test_enter(self):
@@ -143,6 +155,7 @@ class TestDefaultStageHook:
 
 
 # ── _sanitize_kwargs ─────────────────────────────────────────────────────────
+
 
 class TestSanitizeKwargs:
     def test_empty(self):
@@ -163,6 +176,7 @@ class TestSanitizeKwargs:
     def test_generic_object(self):
         class MyObj:
             pass
+
         result = _sanitize_kwargs({"a": MyObj()})
         assert isinstance(result["a"], str)
 
@@ -173,11 +187,14 @@ class TestSanitizeKwargs:
 
 # ── run_stage ────────────────────────────────────────────────────────────────
 
+
 class TestRunStage:
     def _mock_db(self):
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
         return db
 
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
@@ -193,11 +210,18 @@ class TestRunStage:
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
-                raise AudiobookError(stage="test", reason="provider failed", provider="gpt-4")
+                raise AudiobookError(
+                    stage="test", reason="provider failed", provider="gpt-4"
+                )
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {}
+            def get_result_snapshot(r):
+                return {}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         with pytest.raises(AudiobookError):
@@ -209,10 +233,15 @@ class TestRunStage:
             @staticmethod
             def run(**kwargs):
                 raise RuntimeError("unexpected")
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {}
+            def get_result_snapshot(r):
+                return {}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         with pytest.raises(StageExecutionError):
@@ -224,10 +253,15 @@ class TestRunStage:
             @staticmethod
             def run(**kwargs):
                 return {"result": "ok"}
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return r
+            def get_result_snapshot(r):
+                return r
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         result = run_stage("extract", db, project_id=1, chapter_index=1)
@@ -239,16 +273,25 @@ class TestRunStage:
             @staticmethod
             def run(**kwargs):
                 return "done"
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {"snap": r}
+            def get_result_snapshot(r):
+                return {"snap": r}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
-        chapter = MagicMock(); chapter.id = 10
-        para = MagicMock(); para.id = 20
+        chapter = MagicMock()
+        chapter.id = 10
+        para = MagicMock()
+        para.id = 20
         db.query.return_value.filter.return_value.first.side_effect = [chapter, para]
-        result = run_stage("annotate", db, project_id=1, chapter_index=1, paragraph_index=1)
+        result = run_stage(
+            "annotate", db, project_id=1, chapter_index=1, paragraph_index=1
+        )
         assert result == "done"
 
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
@@ -257,10 +300,15 @@ class TestRunStage:
             @staticmethod
             def run(**kwargs):
                 return "done"
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {"snap": r}
+            def get_result_snapshot(r):
+                return {"snap": r}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         fc = MagicMock()
@@ -275,11 +323,17 @@ class TestRunStage:
     def test_with_feedback_no_project_id(self, mock_registry):
         class FakeHandler:
             @staticmethod
-            def run(**kwargs): return "ok"
+            def run(**kwargs):
+                return "ok"
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {}
+            def get_result_snapshot(r):
+                return {}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         fc = MagicMock()
@@ -293,10 +347,15 @@ class TestRunStage:
             @staticmethod
             def run(**kwargs):
                 raise ValueError("bad input")
+
             @staticmethod
-            def persist(*a): pass
+            def persist(*a):
+                pass
+
             @staticmethod
-            def get_result_snapshot(r): return {}
+            def get_result_snapshot(r):
+                return {}
+
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         fc = MagicMock()
@@ -308,6 +367,7 @@ class TestRunStage:
 
 
 # ── run_pipeline ─────────────────────────────────────────────────────────────
+
 
 class TestRunPipeline:
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
@@ -336,8 +396,10 @@ class TestRunPipeline:
         mock_run_stage.return_value = "ok"
         db = MagicMock()
         pipeline_events = []
+
         def hook(event, ctx, result, error):
             pipeline_events.append(event)
+
         _pipeline_hooks.append(hook)
         try:
             run_pipeline(["extract"], db, project_id=1)

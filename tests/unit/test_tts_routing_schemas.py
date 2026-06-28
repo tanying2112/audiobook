@@ -8,16 +8,13 @@ Tests match the ACTUAL API from src/audiobook_studio/schemas/tts_routing.py:
 import pytest
 from pydantic import ValidationError
 
-from src.audiobook_studio.schemas.tts_routing import (
-    TtsRoutingInput,
-    TtsRoutingDecision,
-)
-from src.audiobook_studio.schemas.paragraph import ParagraphAnnotation
 from src.audiobook_studio.schemas.book import (
-    CharacterVoiceBinding,
     BookMeta,
+    CharacterVoiceBinding,
     EmotionSnapshot,
 )
+from src.audiobook_studio.schemas.paragraph import ParagraphAnnotation
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision, TtsRoutingInput
 
 
 def create_valid_paragraph_annotation(**overrides):
@@ -157,7 +154,9 @@ class TestTtsRoutingInput:
         paragraph_annotation = create_valid_paragraph_annotation()
         character_voice_map = [create_valid_character_voice_binding()]
 
-        with pytest.raises(ValidationError, match="String should have at least 1 character"):
+        with pytest.raises(
+            ValidationError, match="String should have at least 1 character"
+        ):
             TtsRoutingInput(
                 paragraph_annotation=paragraph_annotation,
                 text="",
@@ -172,7 +171,9 @@ class TestTtsRoutingInput:
         paragraph_annotation = create_valid_paragraph_annotation()
         character_voice_map = [create_valid_character_voice_binding()]
 
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 1"):
+        with pytest.raises(
+            ValidationError, match="Input should be greater than or equal to 1"
+        ):
             TtsRoutingInput(
                 paragraph_annotation=paragraph_annotation,
                 text="测试",
@@ -187,7 +188,9 @@ class TestTtsRoutingInput:
         paragraph_annotation = create_valid_paragraph_annotation()
         character_voice_map = [create_valid_character_voice_binding()]
 
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
+        with pytest.raises(
+            ValidationError, match="Input should be greater than or equal to 0"
+        ):
             TtsRoutingInput(
                 paragraph_annotation=paragraph_annotation,
                 text="测试",
@@ -202,7 +205,9 @@ class TestTtsRoutingInput:
         paragraph_annotation = create_valid_paragraph_annotation()
         character_voice_map = [create_valid_character_voice_binding()]
 
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
+        with pytest.raises(
+            ValidationError, match="Input should be greater than or equal to 0"
+        ):
             TtsRoutingInput(
                 paragraph_annotation=paragraph_annotation,
                 text="测试",
@@ -335,7 +340,10 @@ class TestTtsRoutingDecision:
 
     def test_engine_choice_validation(self):
         """Test engine_choice must be one of allowed values."""
-        with pytest.raises(ValidationError, match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'"):
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'",
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="invalid_engine",
@@ -346,7 +354,10 @@ class TestTtsRoutingDecision:
 
     def test_fallback_engine_validation(self):
         """Test fallback_engine must be one of allowed values."""
-        with pytest.raises(ValidationError, match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'"):
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'",
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="kokoro",
@@ -357,7 +368,9 @@ class TestTtsRoutingDecision:
 
     def test_estimated_cost_non_negative(self):
         """Test estimated_cost_usd must be non-negative."""
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
+        with pytest.raises(
+            ValidationError, match="Input should be greater than or equal to 0"
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="kokoro",
@@ -369,7 +382,9 @@ class TestTtsRoutingDecision:
 
     def test_estimated_duration_non_negative(self):
         """Test estimated_duration_ms must be non-negative."""
-        with pytest.raises(ValidationError, match="Input should be greater than or equal to 0"):
+        with pytest.raises(
+            ValidationError, match="Input should be greater than or equal to 0"
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="kokoro",
@@ -649,8 +664,7 @@ class TestTtsRoutingSchemasIntegration:
 
         # Find the character in voice map
         speaker_binding = next(
-            (b for b in character_voice_map if b.canonical_name == "角色A"),
-            None
+            (b for b in character_voice_map if b.canonical_name == "角色A"), None
         )
         assert speaker_binding is not None
 

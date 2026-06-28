@@ -93,8 +93,7 @@ def normalize_nested_timestamps(data: Any, depth: int = 0, max_depth: int = 10) 
 
     if isinstance(data, list):
         return [
-            normalize_nested_timestamps(item, depth + 1, max_depth)
-            for item in data
+            normalize_nested_timestamps(item, depth + 1, max_depth) for item in data
         ]
 
     # Convert timestamp at leaf level
@@ -158,8 +157,9 @@ class ISOTimestampMiddleware(BaseHTTPMiddleware):
 # Alternative: Pydantic Config (per-model approach)
 # ─────────────────────────────────────────────────────────────────────────────
 
-from pydantic import BaseModel, field_serializer
 from datetime import datetime as dt
+
+from pydantic import BaseModel, field_serializer
 
 
 class ISOModel(BaseModel):
@@ -187,5 +187,9 @@ class ISOModel(BaseModel):
 
     class Config:
         json_encoders = {
-            dt: lambda v: v.isoformat() if v.tzinfo else v.replace(tzinfo=timezone.utc).isoformat()
+            dt: lambda v: (
+                v.isoformat()
+                if v.tzinfo
+                else v.replace(tzinfo=timezone.utc).isoformat()
+            )
         }

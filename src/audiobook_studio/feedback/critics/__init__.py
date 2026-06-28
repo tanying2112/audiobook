@@ -9,22 +9,28 @@ SyntheticCritic 三元架构 - 异构批评网络
 三派通过加权投票或集成学习输出最终质量判断，F1 >= 0.7 在校准集上。
 """
 
-from .base import BaseCritic, CriticResult, CriticEnsemble
-from .base import CriticType, CriticVerdict, CriticEnsembleEvaluator
+from .base import (
+    BaseCritic,
+    CriticEnsemble,
+    CriticEnsembleEvaluator,
+    CriticResult,
+    CriticType,
+    CriticVerdict,
+)
+from .objective_critic import ObjectiveCritic
 from .semantic_critic import SemanticCritic
 from .structural_critic import StructuralCritic
-from .objective_critic import ObjectiveCritic
 from .synthetic_critic import (
-    SyntheticCritic,
-    CalibrationSample,
-    CalibrationResult,
     DEFAULT_CALIBRATION_SAMPLES,
+    CalibrationResult,
+    CalibrationSample,
+    SyntheticCritic,
     create_synthetic_critic,
 )
 
 __all__ = [
     "BaseCritic",
-    "CriticResult", 
+    "CriticResult",
     "CriticEnsemble",
     "CriticType",
     "CriticVerdict",

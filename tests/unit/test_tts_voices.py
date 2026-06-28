@@ -10,10 +10,10 @@ from src.audiobook_studio.api.tts_voices import (
     EDGE_TTS_VOICES,
     GCP_VOICES,
     KOKORO_VOICES,
-    TTSVoicesResponse,
+    VOXCPM2_VOICES,
     TTSEngine,
     TTSVoice,
-    VOXCPM2_VOICES,
+    TTSVoicesResponse,
     get_recommended_voices,
     list_tts_voices,
     preview_voice,
@@ -455,12 +455,12 @@ class TestRouter:
                 path_methods[route.path] = route.methods
 
         # Check for expected endpoints
-        assert "/voices" in path_methods
-        assert "GET" in path_methods["/voices"]
-        assert "/voices/recommended" in path_methods
-        assert "GET" in path_methods["/voices/recommended"]
-        assert "/voices/preview/{voice_id}" in path_methods
-        assert "GET" in path_methods["/voices/preview/{voice_id}"]
+        assert "/tts/voices" in path_methods
+        assert "GET" in path_methods["/tts/voices"]
+        assert "/tts/voices/recommended" in path_methods
+        assert "GET" in path_methods["/tts/voices/recommended"]
+        assert "/tts/voices/preview/{voice_id}" in path_methods
+        assert "GET" in path_methods["/tts/voices/preview/{voice_id}"]
 
 
 if __name__ == "__main__":

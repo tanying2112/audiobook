@@ -103,7 +103,9 @@ class TestBuildChapterMarkers:
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync") as mock_get_duration:
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync"
+        ) as mock_get_duration:
             mock_get_duration.side_effect = [5000, 3000, 7000]
             markers = _build_chapter_markers(chapter_data)
 
@@ -126,7 +128,9 @@ class TestBuildChapterMarkers:
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync") as mock_get_duration:
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync"
+        ) as mock_get_duration:
             mock_get_duration.side_effect = Exception("ffprobe failed")
             markers = _build_chapter_markers(chapter_data)
 
@@ -142,7 +146,9 @@ class TestBuildChapterMarkers:
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync") as mock_get_duration:
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync"
+        ) as mock_get_duration:
             mock_get_duration.side_effect = FileNotFoundError("File not found")
             markers = _build_chapter_markers(chapter_data)
 
@@ -196,17 +202,36 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text="First paragraph", original_text=None, character_name="Narrator"),
-                    MagicMock(id=2, order=2, text="Second paragraph", original_text=None, character_name="Character"),
+                    MagicMock(
+                        id=1,
+                        order=1,
+                        text="First paragraph",
+                        original_text=None,
+                        character_name="Narrator",
+                    ),
+                    MagicMock(
+                        id=2,
+                        order=2,
+                        text="Second paragraph",
+                        original_text=None,
+                        character_name="Character",
+                    ),
                 ],
                 "audio_segments": [
-                    MagicMock(paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=3000),
-                    MagicMock(paragraph_id=2, file_path="/path/seg2.mp3", duration_ms=4000),
+                    MagicMock(
+                        paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=3000
+                    ),
+                    MagicMock(
+                        paragraph_id=2, file_path="/path/seg2.mp3", duration_ms=4000
+                    ),
                 ],
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync", side_effect=[3000, 4000]):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync",
+            side_effect=[3000, 4000],
+        ):
             entries = _build_subtitle_entries(chapter_data)
 
         assert len(entries) == 2
@@ -223,15 +248,26 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text=None, original_text="Original text", character_name="Narrator"),
+                    MagicMock(
+                        id=1,
+                        order=1,
+                        text=None,
+                        original_text="Original text",
+                        character_name="Narrator",
+                    ),
                 ],
                 "audio_segments": [
-                    MagicMock(paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=2000),
+                    MagicMock(
+                        paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=2000
+                    ),
                 ],
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync", return_value=2000):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync",
+            return_value=2000,
+        ):
             entries = _build_subtitle_entries(chapter_data)
 
         assert entries[0].text == "Original text"
@@ -240,7 +276,9 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text="No audio", character_name="Narrator"),
+                    MagicMock(
+                        id=1, order=1, text="No audio", character_name="Narrator"
+                    ),
                 ],
                 "audio_segments": [],
             },
@@ -326,11 +364,14 @@ class TestExportChapter:
             "audio_segments": [],
         }
 
-        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data", return_value={
-            "chapter": mock_chapter,
-            "paragraphs": [],
-            "audio_segments": [],
-        }):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter._collect_chapter_data",
+            return_value={
+                "chapter": mock_chapter,
+                "paragraphs": [],
+                "audio_segments": [],
+            },
+        ):
             result = export_chapter(1, 1, mock_session)
 
         assert result is None

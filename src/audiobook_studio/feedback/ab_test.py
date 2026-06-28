@@ -20,6 +20,281 @@ from ..schemas import ParagraphAnnotation, QualityJudgment
 logger = logging.getLogger(__name__)
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# LLM Judge for Blind Evaluation
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def create_llm_judge_fn(stage: str, judge_model: str = None):
+    """
+    Create an LLM-as-a-Judge function for blind evaluation of A/B test samples.
+
+    The judge evaluates outputs without knowing which version (A or B) produced them,
+    providing unbiased quality assessment.
+
+    Args:
+        stage: Pipeline stage name (edit_for_tts, annotate_paragraph, etc.)
+        judge_model: LLM model to use as judge (None = use default from config)
+
+    Returns:
+        Function that takes (output_a, output_b, input_data) and returns (score_a, score_b, rationale)
+    """
+    from ..llm import LLMClientConfig, create_client
+    from ..schemas import QualityJudgment
+
+    if judge_model is None:
+        judge_model = "openrouter/auto"
+
+    client = create_client(
+        model=judge_model,
+        temperature=0.1,
+        max_tokens=2000,
+    )
+
+    # Stage-specific judge prompts
+    JUDGE_PROMPTS = {
+        "edit_for_tts": """你是专业的 TTS 文本编辑质量评估专家。请盲评两个版本的编辑输出，不知道哪个是旧版本哪个是新版本。
+
+输入段落: {input_text}
+参考标注: {reference_annotation}
+
+版本 A 输出:
+{output_a}
+
+版本 B 输出:
+{output_b}
+
+评估标准:
+1. 文本自然度 (口语化程度、流畅性)
+2. 编辑准确性 (是否正确处理数字、标点、禁用词)
+3. 情感标记保留 (是否保留了原标注的情感强度)
+4. 停顿标记合理性
+5. 整体 TTS 友好度
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由，包括具体优缺点对比"
+}}""",
+        "annotate_paragraph": """你是专业的段落标注质量评估专家。请盲评两个版本的标注输出。
+
+输入段落: {input_text}
+
+版本 A 标注:
+{output_a}
+
+版本 B 标注:
+{output_b}
+
+评估标准:
+1. 说话人识别准确性
+2. 情感标注准确性 (类别 + 强度)
+3. 语速、音调标注合理性
+4. 停顿标注合理性
+5. 音效标注完整性
+6. 整体标注一致性
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由"
+}}""",
+        "analyze_structure": """你是专业的书籍结构分析专家。请盲评两个版本的结构分析输出。
+
+输入书籍内容摘要: {input_text}
+
+版本 A 分析:
+{output_a}
+
+版本 B 分析:
+{output_b}
+
+评估标准:
+1. 书籍元信息提取准确性 (标题、作者、体裁、难度等)
+2. 角色声线映射完整性
+3. 情感快照覆盖度
+4. 故事主线摘要质量
+5. 全局文风备注准确性
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由"
+}}""",
+        "quality_judge": """你是专业的音频质量评估专家。请盲评两个版本的质量判定输出。
+
+音频参考文本: {input_text}
+
+版本 A 质量判定:
+{output_a}
+
+版本 B 质量判定:
+{output_b}
+
+评估标准:
+1. 整体质量评分准确性
+2. 问题识别完整性
+3. 修复建议实用性
+4. 是否正确识别需重生成
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由"
+}}""",
+        "synthesize": """你是专业的 TTS 合成质量评估专家。请盲评两个版本的合成输出。
+
+输入文本: {input_text}
+
+版本 A 合成结果:
+{output_a}
+
+版本 B 合成结果:
+{output_b}
+
+评估标准:
+1. 引擎选择合理性
+2. 声音 ID 选择准确性
+3. 韵律覆盖参数合理性
+4. 成本/时长估算准确性
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由"
+}}""",
+    }
+
+    default_prompt = """你是专业的 AI 输出质量评估专家。请盲评两个版本的输出。
+
+输入: {input_text}
+
+版本 A 输出:
+{output_a}
+
+版本 B 输出:
+{output_b}
+
+评估标准: 输出质量、准确性、完整性、实用性
+
+请输出 JSON 格式:
+{{
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "winner": "A" | "B" | "tie",
+  "rationale": "详细评分理由"
+}}"""
+
+    prompt_template = JUDGE_PROMPTS.get(stage, default_prompt)
+
+    def judge_fn(
+        input_data: Dict[str, Any], output_a: Dict[str, Any], output_b: Dict[str, Any]
+    ) -> Tuple[float, float, str]:
+        """
+        Evaluate two outputs blindly using LLM judge.
+
+        Returns:
+            (score_a, score_b, rationale)
+        """
+        # Prepare input text for prompt
+        if stage == "edit_for_tts":
+            input_text = input_data.get("paragraph_text", "")
+            reference_annotation = str(input_data.get("paragraph_annotation", {}))
+            prompt = prompt_template.format(
+                input_text=input_text[:2000],
+                reference_annotation=reference_annotation[:1000],
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+        elif stage == "annotate_paragraph":
+            input_text = input_data.get("paragraph_text", "")
+            prompt = prompt_template.format(
+                input_text=input_text[:2000],
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+        elif stage == "analyze_structure":
+            input_text = input_data.get("book_text", input_data.get("text", ""))
+            prompt = prompt_template.format(
+                input_text=input_text[:2000],
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+        elif stage == "quality_judge":
+            input_text = input_data.get("expected_text", input_data.get("text", ""))
+            prompt = prompt_template.format(
+                input_text=input_text[:2000],
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+        elif stage == "synthesize":
+            input_text = input_data.get("text", "")
+            prompt = prompt_template.format(
+                input_text=input_text[:2000],
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+        else:
+            input_text = str(input_data)[:2000]
+            prompt = default_prompt.format(
+                input_text=input_text,
+                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
+                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
+            )
+
+        # Use a simple schema for the judge response
+        from pydantic import BaseModel
+
+        class JudgeOutput(BaseModel):
+            score_a: float
+            score_b: float
+            winner: str
+            rationale: str
+
+        try:
+            result = client.call(
+                prompt=prompt,
+                response_model=JudgeOutput,
+                temperature=0.1,
+            )
+            output = result.output
+
+            # Clamp scores to valid range
+            score_a = max(0.0, min(1.0, output.score_a))
+            score_b = max(0.0, min(1.0, output.score_b))
+
+            # Validate winner
+            winner = output.winner if output.winner in ("A", "B", "tie") else "tie"
+
+            return score_a, score_b, output.rationale
+
+        except Exception as e:
+            logger.warning(
+                f"LLM Judge evaluation failed: {e}, falling back to heuristic scoring"
+            )
+            # Fallback to heuristic scoring
+            score_a = _score_output(output_a, stage)
+            score_b = _score_output(output_b, stage)
+            return score_a, score_b, f"LLM Judge failed, used heuristic: {str(e)[:100]}"
+
+    return judge_fn
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Heuristic Scoring (Fallback)
+# ════════════════════════════════════════════════════════════════════════════
+
+
 @dataclass
 class ABTestSample:
     """单个 A/B 测试样本."""
@@ -191,6 +466,8 @@ def run_ab_test(
     samples: List[ABTestSample],
     judge_fn=None,
     significance_level: float = 0.05,
+    use_llm_judge: bool = False,
+    judge_model: str = None,
 ) -> ABTestReport:
     """执行 A/B 测试.
 
@@ -198,7 +475,11 @@ def run_ab_test(
         stage: Pipeline stage name
         samples: A/B 测试样本列表
         judge_fn: 可选的自定义评分函数 (默认使用启发式评分)
+                  可以是旧签名: (output) -> float
+                  或新签名: (input_data, output_a, output_b) -> (score_a, score_b, rationale)
         significance_level: 显著性水平 (默认 0.05)
+        use_llm_judge: 是否使用 LLM-as-a-Judge 进行盲评
+        judge_model: LLM Judge 使用的模型
 
     Returns:
         ABTestReport 报告
@@ -214,14 +495,39 @@ def run_ab_test(
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    scorer = judge_fn or (lambda out: _score_output(out, stage))
+    # Create LLM Judge if requested
+    if use_llm_judge and judge_fn is None:
+        judge_fn = create_llm_judge_fn(stage, judge_model)
+
+    # Determine judge function signature
+    # Old signature: (output) -> float
+    # New signature: (input_data, output_a, output_b) -> (score_a, score_b, rationale)
     results: List[ABTestResult] = []
     a_wins = b_wins = ties = 0
     total_a = total_b = 0.0
 
     for sample in samples:
-        score_a = scorer(sample.output_a)
-        score_b = scorer(sample.output_b)
+        if judge_fn is not None:
+            # Check if it's the new LLM Judge signature (takes 3 args)
+            import inspect
+
+            sig = inspect.signature(judge_fn)
+            if len(sig.parameters) >= 3:
+                # New signature: (input_data, output_a, output_b) -> (score_a, score_b, rationale)
+                score_a, score_b, rationale = judge_fn(
+                    sample.input_data, sample.output_a, sample.output_b
+                )
+            else:
+                # Old signature: (output) -> float
+                score_a = judge_fn(sample.output_a)
+                score_b = judge_fn(sample.output_b)
+                rationale = ""
+        else:
+            # Fallback to heuristic
+            score_a = _score_output(sample.output_a, stage)
+            score_b = _score_output(sample.output_b, stage)
+            rationale = ""
+
         total_a += score_a
         total_b += score_b
 
@@ -235,12 +541,15 @@ def run_ab_test(
             winner = "tie"
             ties += 1
 
-        results.append(ABTestResult(
-            sample_id=sample.sample_id,
-            winner=winner,
-            score_a=score_a,
-            score_b=score_b,
-        ))
+        results.append(
+            ABTestResult(
+                sample_id=sample.sample_id,
+                winner=winner,
+                score_a=score_a,
+                score_b=score_b,
+                rationale=rationale,
+            )
+        )
 
     n = len(samples)
     avg_a = total_a / n
@@ -328,6 +637,106 @@ def build_ab_samples(
         )
         samples.append(sample)
     return samples
+
+
+def run_ab_test_with_pipeline_rerun(
+    stage: str,
+    golden_examples: List[Dict[str, Any]],
+    old_version: int,
+    new_version: int,
+    judge_fn=None,
+    significance_level: float = 0.05,
+    mock_mode: bool = True,
+) -> ABTestReport:
+    """
+    Run A/B test with real pipeline re-run for both versions.
+
+    This function:
+    1. Runs the pipeline with old_version prompt on golden dataset inputs
+    2. Runs the pipeline with new_version prompt on golden dataset inputs
+    3. Uses LLM Judge (or heuristic) to blindly evaluate outputs
+    4. Returns statistical comparison report
+
+    Args:
+        stage: Pipeline stage name (golden dataset directory name)
+        golden_examples: Golden dataset examples with input data
+        old_version: Old prompt version number
+        new_version: New prompt version number
+        judge_fn: Optional custom judge function
+        significance_level: Statistical significance level
+        mock_mode: Whether to run pipeline in mock mode
+
+    Returns:
+        ABTestReport with statistical comparison
+    """
+    from ..feedback.promotion_gate import (
+        _golden_to_pipeline_stage,
+        _run_stage_with_prompt_version,
+    )
+
+    pipeline_stage = _golden_to_pipeline_stage(stage)
+
+    # Build samples with real pipeline outputs
+    samples: List[ABTestSample] = []
+
+    for example in golden_examples:
+        if "input" not in example:
+            continue
+
+        input_data = example["input"]
+
+        try:
+            # Run with old version
+            output_a = _run_stage_with_prompt_version(
+                pipeline_stage, old_version, input_data, mock_mode=mock_mode
+            )
+            if hasattr(output_a, "model_dump"):
+                output_a = output_a.model_dump()
+            elif hasattr(output_a, "dict"):
+                output_a = output_a.dict()
+
+            # Run with new version
+            output_b = _run_stage_with_prompt_version(
+                pipeline_stage, new_version, input_data, mock_mode=mock_mode
+            )
+            if hasattr(output_b, "model_dump"):
+                output_b = output_b.model_dump()
+            elif hasattr(output_b, "dict"):
+                output_b = output_b.dict()
+
+            sample = ABTestSample(
+                sample_id=str(uuid.uuid4()),
+                stage=stage,
+                input_data=input_data,
+                output_a=output_a,
+                output_b=output_b,
+                version_a=old_version,
+                version_b=new_version,
+            )
+            samples.append(sample)
+
+        except Exception as e:
+            logger.warning(f"Failed to run pipeline for A/B sample: {e}")
+            continue
+
+    if not samples:
+        logger.warning("No valid A/B samples generated from pipeline re-run")
+        return ABTestReport(
+            stage=stage,
+            version_a=old_version,
+            version_b=new_version,
+            num_samples=0,
+            results=[],
+            recommendation="Pipeline re-run failed for all samples",
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # Use provided judge_fn or create LLM Judge
+    if judge_fn is None:
+        judge_fn = create_llm_judge_fn(stage)
+
+    # Run A/B test with the judge function
+    return run_ab_test(stage, samples, judge_fn, significance_level)
 
 
 def blind_evaluate(

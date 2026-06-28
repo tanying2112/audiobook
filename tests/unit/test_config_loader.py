@@ -7,11 +7,11 @@ import pytest
 
 from src.audiobook_studio.config.loader import (
     ConfigLoader,
-    load_rules,
-    load_quality_thresholds,
-    load_contract_versions,
-    reload_config_if_changed,
     clear_config_cache,
+    load_contract_versions,
+    load_quality_thresholds,
+    load_rules,
+    reload_config_if_changed,
 )
 
 
@@ -26,13 +26,16 @@ class TestConfigLoaderQualityThresholds:
     def test_quality_thresholds_validation(self, loader, tmp_path):
         """Test Pydantic validation of quality thresholds."""
         config_file = tmp_path / "thresholds.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 overall:
   min_acceptable_score: 0.7
   excellent_score: 0.9
 dimensions:
   speaker_clarity: 0.85
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_quality_thresholds(str(config_file))
         assert result["overall"]["min_acceptable_score"] == 0.7
@@ -41,7 +44,9 @@ dimensions:
     def test_quality_thresholds_defaults_for_missing(self, loader, tmp_path):
         """Test missing fields get Pydantic defaults."""
         config_file = tmp_path / "thresholds.yaml"
-        config_file.write_text("overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8")
+        config_file.write_text(
+            "overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8"
+        )
 
         result = loader.load_quality_thresholds(str(config_file))
         # Missing fields should have defaults
@@ -67,11 +72,14 @@ class TestConfigLoaderConstitutionalRules:
     def test_constitutional_rules_validation(self, loader, tmp_path):
         """Test Pydantic validation of constitutional rules."""
         config_file = tmp_path / "rules.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 character_consistency:
   min_consistency_score: 0.95
   verify_voice_binding: true
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_constitutional_rules(str(config_file))
         assert result["character_consistency"]["min_consistency_score"] == 0.95
@@ -93,14 +101,17 @@ class TestConfigLoaderContractVersions:
     def test_contract_versions_with_global_alias(self, loader, tmp_path):
         """Test 'global' key is properly handled as alias."""
         config_file = tmp_path / "versions.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 global:
   current: 2
   schema: HARNESS_v2
 stages:
   extract:
     current: 1
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_contract_versions(str(config_file))
         # 'global' key should be preserved in output
@@ -126,25 +137,36 @@ class TestConfigLoaderPipelineConfig:
     def test_pipeline_config_validation(self, loader, tmp_path):
         """Test full pipeline config validation."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 quality_thresholds:
   overall:
     min_acceptable_score: 0.75
 constitutional_rules:
   character_consistency:
     min_consistency_score: 0.92
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_pipeline_config(str(config_file))
         assert "quality_thresholds" in result
         assert "constitutional_rules" in result
         assert result["quality_thresholds"]["overall"]["min_acceptable_score"] == 0.75
-        assert result["constitutional_rules"]["character_consistency"]["min_consistency_score"] == 0.92
+        assert (
+            result["constitutional_rules"]["character_consistency"][
+                "min_consistency_score"
+            ]
+            == 0.92
+        )
 
     def test_pipeline_config_cache(self, loader, tmp_path):
         """Test config caching."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n", encoding="utf-8")
+        config_file.write_text(
+            "quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n",
+            encoding="utf-8",
+        )
 
         result1 = loader.load_pipeline_config(str(config_file))
         result2 = loader.load_pipeline_config(str(config_file))
@@ -155,7 +177,10 @@ constitutional_rules:
     def test_pipeline_config_clear_cache(self, loader, tmp_path):
         """Test cache clearing."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n", encoding="utf-8")
+        config_file.write_text(
+            "quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n",
+            encoding="utf-8",
+        )
 
         loader.load_pipeline_config(str(config_file))
         loader.clear_cache(str(config_file))

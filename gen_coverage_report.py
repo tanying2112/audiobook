@@ -2,8 +2,8 @@
 """Generate coverage baseline report from existing coverage.json."""
 
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def categorize_file(filepath: str) -> str:
@@ -201,7 +201,9 @@ def print_summary(report: dict):
         if data["total_lines"] > 0:
             target = report["targets_check"].get(cat, {}).get("target", "N/A")
             status = "✅" if data["percent_covered"] >= target else "⚠️"
-            print(f"  {status} {cat:15s} | {data['percent_covered']:6.1f}% (target: {target}%) | {data['file_count']} files")
+            print(
+                f"  {status} {cat:15s} | {data['percent_covered']:6.1f}% (target: {target}%) | {data['file_count']} files"
+            )
 
     print("\nTarget Compliance:")
     print("-" * 70)
@@ -209,16 +211,24 @@ def print_summary(report: dict):
         if cat == "overall_pass":
             continue
         status = "✅ PASS" if check["passed"] else "❌ FAIL"
-        print(f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%")
+        print(
+            f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%"
+        )
 
-    overall_status = "✅ ALL TARGETS MET" if report["targets_check"]["overall_pass"] else "❌ SOME TARGETS MISSED"
+    overall_status = (
+        "✅ ALL TARGETS MET"
+        if report["targets_check"]["overall_pass"]
+        else "❌ SOME TARGETS MISSED"
+    )
     print(f"\n{overall_status}")
 
     if report["low_coverage_files"]:
         print(f"\nLow Coverage Files (< 50%, >10 lines):")
         print("-" * 70)
         for f in report["low_coverage_files"][:20]:
-            print(f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)")
+            print(
+                f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)"
+            )
 
     print("=" * 70)
 

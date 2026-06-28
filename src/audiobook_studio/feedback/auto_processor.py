@@ -186,9 +186,7 @@ class FeedbackAutoProcessor:
                 "unprocessed_feedback_count": len(unprocessed),
                 "last_analysis_count": self._last_analysis_count,
                 "next_check_in_seconds": (
-                    self.check_interval_seconds
-                    if self._worker_thread_alive()
-                    else None
+                    self.check_interval_seconds if self._worker_thread_alive() else None
                 ),
             }
         finally:

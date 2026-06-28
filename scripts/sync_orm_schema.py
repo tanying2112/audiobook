@@ -7,17 +7,18 @@ Usage:
     python scripts/sync_orm_schema.py [--dry-run] [--model ModelName]
 """
 
+import argparse
 import ast
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-import argparse
 
 
 @dataclass
 class ModelField:
     """Represents a single field in an ORM model."""
+
     name: str
     field_type: str
     is_optional: bool
@@ -30,6 +31,7 @@ class ModelField:
 @dataclass
 class ORMModel:
     """Represents a complete ORM model."""
+
     name: str
     tablename: Optional[str]
     fields: List[ModelField] = field(default_factory=list)
@@ -38,6 +40,7 @@ class ORMModel:
 @dataclass
 class SchemaResult:
     """Result of schema generation."""
+
     model_name: str
     input_schema: str
     output_schema: str
@@ -65,7 +68,9 @@ SA_TYPE_MAP = {
 
 # Fields to exclude from input schemas (internal/bookkeeping)
 EXCLUDED_FIELDS = {
-    "created_at", "updated_at", "deleted_at",  # Timestamps
+    "created_at",
+    "updated_at",
+    "deleted_at",  # Timestamps
 }
 
 
@@ -107,7 +112,10 @@ class ORMSchemaExtractor:
         """Check if a class is a SQLAlchemy model."""
         for item in class_node.body:
             if isinstance(item, ast.AnnAssign):
-                if isinstance(item.target, ast.Name) and item.target.id == "__tablename__":
+                if (
+                    isinstance(item.target, ast.Name)
+                    and item.target.id == "__tablename__"
+                ):
                     return True
             # Also check for Base inheritance
             for base in class_node.bases:
@@ -119,7 +127,10 @@ class ORMSchemaExtractor:
         """Extract the __tablename__ value."""
         for item in class_node.body:
             if isinstance(item, ast.AnnAssign):
-                if isinstance(item.target, ast.Name) and item.target.id == "__tablename__":
+                if (
+                    isinstance(item.target, ast.Name)
+                    and item.target.id == "__tablename__"
+                ):
                     if isinstance(item.value, ast.Constant):
                         return item.value.value
         return None
@@ -165,13 +176,13 @@ class ORMSchemaExtractor:
                 is_optional = True
                 nullable = True
                 # Extract inner type
-                match = re.search(r'Mapped\[Optional\[([^\]]+)\]\]', annotation_str)
+                match = re.search(r"Mapped\[Optional\[([^\]]+)\]\]", annotation_str)
                 if not match:
-                    match = re.search(r'Optional\[([^\]]+)\]', annotation_str)
+                    match = re.search(r"Optional\[([^\]]+)\]", annotation_str)
                 if match:
                     field_type = match.group(1)
             elif "Mapped[" in annotation_str:
-                match = re.search(r'Mapped\[([^\]]+)\]', annotation_str)
+                match = re.search(r"Mapped\[([^\]]+)\]", annotation_str)
                 if match:
                     field_type = match.group(1)
 
@@ -206,7 +217,15 @@ class PydanticSchemaGenerator:
         # Collect relationship types to exclude them from input
         relationship_types = set()
         for f in model.fields:
-            if "List[" in f.field_type or f.field_type in ["AudioSegment", "TTSEdit", "Routing", "Quality", "FeedbackRecord", "Chapter", "Paragraph"]:
+            if "List[" in f.field_type or f.field_type in [
+                "AudioSegment",
+                "TTSEdit",
+                "Routing",
+                "Quality",
+                "FeedbackRecord",
+                "Chapter",
+                "Paragraph",
+            ]:
                 relationship_types.add(f.name)
 
         lines = [
@@ -290,7 +309,15 @@ class PydanticSchemaGenerator:
         for f in model.fields:
             if "List[" in f.field_type:
                 relationship_types.add(f.name)
-            elif f.field_type in ["AudioSegment", "TTSEdit", "Routing", "Quality", "FeedbackRecord", "Chapter", "Paragraph"]:
+            elif f.field_type in [
+                "AudioSegment",
+                "TTSEdit",
+                "Routing",
+                "Quality",
+                "FeedbackRecord",
+                "Chapter",
+                "Paragraph",
+            ]:
                 relationship_types.add(f.name)
 
         lines = [
@@ -307,7 +334,7 @@ class PydanticSchemaGenerator:
             f'    """Output schema for {model_name} operations."""',
             "",
             "    class Config:",
-            '        from_attributes = True  # For ORM compatibility',
+            "        from_attributes = True  # For ORM compatibility",
             "",
         ]
 
@@ -352,7 +379,7 @@ class PydanticSchemaGenerator:
     def _sa_to_python_type(self, sa_type: str) -> str:
         """Convert SQLAlchemy type to Python type."""
         # Handle Mapped[] wrapper
-        sa_type = re.sub(r'Mapped\[([^\]]+)\]', r'\1', sa_type)
+        sa_type = re.sub(r"Mapped\[([^\]]+)\]", r"\1", sa_type)
 
         for sa, py in SA_TYPE_MAP.items():
             sa_type = sa_type.replace(sa, py)
@@ -366,11 +393,11 @@ class PydanticSchemaGenerator:
             Tuple of (cleaned_value, has_valid_default)
         """
         # Remove mapped_column(...) wrapper
-        default = re.sub(r'mapped_column\([^)]*\)', '', default)
+        default = re.sub(r"mapped_column\([^)]*\)", "", default)
 
         # Extract default value
         if "default=" in default:
-            match = re.search(r'default=([^,)]+)', default)
+            match = re.search(r"default=([^,)]+)", default)
             if match:
                 default = match.group(1).strip()
             else:
@@ -475,9 +502,13 @@ class SchemaSyncTool:
 
 def main():
     parser = argparse.ArgumentParser(description="Sync ORM models to Pydantic schemas")
-    parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing files"
+    )
     parser.add_argument("--models-dir", type=str, default="src/audiobook_studio/models")
-    parser.add_argument("--schemas-dir", type=str, default="src/audiobook_studio/schemas/auto")
+    parser.add_argument(
+        "--schemas-dir", type=str, default="src/audiobook_studio/schemas/auto"
+    )
     args = parser.parse_args()
 
     root = Path(__file__).parent.parent

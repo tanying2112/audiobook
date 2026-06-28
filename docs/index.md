@@ -9,6 +9,8 @@
 | [首页](index.md) | 项目概览和快速开始 |
 | [架构设计](architecture.md) | 三档变速架构说明 |
 | [API 参考](api.md) | API 接口文档 |
+| [用户指南](user-guide.md) | 完整用户手册，5分钟快速上手 |
+| [性能优化](performance.md) | 5万字小说 < 30分钟全流程优化指南 |
 
 ## 🤖 Agent 系统
 

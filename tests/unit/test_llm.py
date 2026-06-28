@@ -5,10 +5,9 @@ import json
 import threading
 import time
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # circuit_breaker
@@ -133,6 +132,7 @@ class TestApiKeyPool:
     def test_primary_key(self):
         """从环境变量获取主 key。"""
         import os
+
         from src.audiobook_studio.llm.key_pool import ApiKeyPool
 
         os.environ["TEST_POOL_KEY_1"] = "sk-test-1"
@@ -147,6 +147,7 @@ class TestApiKeyPool:
     def test_round_robin(self):
         """多 key 时 round_robin 轮转。"""
         import os
+
         from src.audiobook_studio.llm.key_pool import ApiKeyPool
 
         os.environ["TEST_RO_KEY_1"] = "k1"
@@ -169,6 +170,7 @@ class TestApiKeyPool:
     def test_get_stats(self):
         """get_stats 返回正确的统计信息。"""
         import os
+
         from src.audiobook_studio.llm.key_pool import ApiKeyPool
 
         os.environ["TEST_STATS_KEY"] = "sk-stats"
@@ -185,6 +187,7 @@ class TestApiKeyPool:
     def test_record_failure(self):
         """record_failure 后 key 进入冷却。"""
         import os
+
         from src.audiobook_studio.llm.key_pool import ApiKeyPool
 
         os.environ["TEST_FAIL_KEY"] = "sk-fail"
@@ -206,6 +209,7 @@ class TestKeyPoolManager:
     def test_register_and_get(self):
         """注册 provider 后可以获取 key。"""
         import os
+
         from src.audiobook_studio.llm.key_pool import KeyPoolManager
 
         os.environ["TEST_KPM_KEY"] = "sk-kpm"
@@ -249,53 +253,59 @@ class TestQuotaRegistry:
 
     def test_can_make_request_registered(self):
         """注册 provider 在额度内允许请求。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(
-            provider_name="test_p",
-            requests_per_minute=10,
-            requests_per_day=100,
-            tokens_per_minute=5000,
-            tokens_per_day=50000,
-        ))
+        reg.register_config(
+            QuotaConfig(
+                provider_name="test_p",
+                requests_per_minute=10,
+                requests_per_day=100,
+                tokens_per_minute=5000,
+                tokens_per_day=50000,
+            )
+        )
         assert reg.can_make_request("test_p", estimated_tokens=100) is True
 
     def test_daily_limit_exceeded(self):
         """超过每日请求限制后拒绝。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(
-            provider_name="limited",
-            requests_per_day=2,
-            requests_per_minute=100,
-            tokens_per_minute=100000,
-            tokens_per_day=100000,
-        ))
+        reg.register_config(
+            QuotaConfig(
+                provider_name="limited",
+                requests_per_day=2,
+                requests_per_minute=100,
+                tokens_per_minute=100000,
+                tokens_per_day=100000,
+            )
+        )
         reg.record_request("limited")
         reg.record_request("limited")
         assert reg.can_make_request("limited") is False
 
     def test_minute_limit_exceeded(self):
         """超过每分钟请求限制后拒绝。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(
-            provider_name="mtest",
-            requests_per_minute=2,
-            requests_per_day=1000,
-            tokens_per_minute=100000,
-            tokens_per_day=100000,
-        ))
+        reg.register_config(
+            QuotaConfig(
+                provider_name="mtest",
+                requests_per_minute=2,
+                requests_per_day=1000,
+                tokens_per_minute=100000,
+                tokens_per_day=100000,
+            )
+        )
         reg.record_request("mtest")
         reg.record_request("mtest")
         assert reg.can_make_request("mtest") is False
 
     def test_record_failure(self):
         """记录失败会增加 consecutive_failures。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
         reg.register_config(QuotaConfig(provider_name="ftest"))
@@ -306,7 +316,7 @@ class TestQuotaRegistry:
 
     def test_record_success_resets_failures(self):
         """成功请求重置连续失败计数。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
         reg.register_config(QuotaConfig(provider_name="srtest"))
@@ -319,16 +329,18 @@ class TestQuotaRegistry:
 
     def test_quota_status_configured(self):
         """get_quota_status 返回完整状态。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(
-            provider_name="qtest",
-            requests_per_day=100,
-            tokens_per_day=10000,
-            requests_per_minute=10,
-            tokens_per_minute=1000,
-        ))
+        reg.register_config(
+            QuotaConfig(
+                provider_name="qtest",
+                requests_per_day=100,
+                tokens_per_day=10000,
+                requests_per_minute=10,
+                tokens_per_minute=1000,
+            )
+        )
         reg.record_request("qtest", tokens_used=500)
         status = reg.get_quota_status("qtest")
         assert status["configured"] is True
@@ -344,7 +356,7 @@ class TestQuotaRegistry:
 
     def test_get_all_statuses(self):
         """get_all_statuses 返回所有已注册 provider 状态。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
         reg.register_config(QuotaConfig(provider_name="a"))
@@ -355,16 +367,18 @@ class TestQuotaRegistry:
 
     def test_get_healthy_providers(self):
         """get_healthy_providers 返回未超限的 provider 列表。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(provider_name="healthy_p", requests_per_day=100))
+        reg.register_config(
+            QuotaConfig(provider_name="healthy_p", requests_per_day=100)
+        )
         healthy = reg.get_healthy_providers()
         assert "healthy_p" in healthy
 
     def test_health_score(self):
         """get_quota_health_score 返回 0-1 之间的分数。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
         reg.register_config(QuotaConfig(provider_name="hs_p", requests_per_day=100))
@@ -380,16 +394,18 @@ class TestQuotaRegistry:
 
     def test_token_daily_limit(self):
         """超过每日 token 限制后拒绝。"""
-        from src.audiobook_studio.llm.quota_registry import QuotaRegistry, QuotaConfig
+        from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(QuotaConfig(
-            provider_name="tdtest",
-            tokens_per_day=100,
-            requests_per_day=10000,
-            tokens_per_minute=100000,
-            requests_per_minute=10000,
-        ))
+        reg.register_config(
+            QuotaConfig(
+                provider_name="tdtest",
+                tokens_per_day=100,
+                requests_per_day=10000,
+                tokens_per_minute=100000,
+                requests_per_minute=10000,
+            )
+        )
         reg.record_request("tdtest", tokens_used=100)
         assert reg.can_make_request("tdtest", estimated_tokens=1) is False
 
@@ -495,21 +511,30 @@ class TestUtils:
 
     def test_validate_none_response(self):
         """None 响应抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="None"):
             validate_and_parse_llm_response(None, MagicMock, "test")
 
     def test_validate_empty_string(self):
         """空字符串响应抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="empty"):
             validate_and_parse_llm_response("", MagicMock, "test")
 
     def test_validate_invalid_json_string(self):
         """无效 JSON 字符串抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="invalid JSON"):
             validate_and_parse_llm_response("not json", MagicMock, "test")
@@ -523,21 +548,30 @@ class TestUtils:
 
     def test_validate_non_dict(self):
         """非 dict 类型抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="not a JSON object"):
             validate_and_parse_llm_response([1, 2], MagicMock, "test")
 
     def test_validate_empty_dict(self):
         """空 dict {} 抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="empty"):
             validate_and_parse_llm_response({}, MagicMock, "test")
 
     def test_validate_judge_missing_segment_id(self):
         """judge 阶段缺少 segment_id 抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import validate_and_parse_llm_response, LLMParseError
+        from src.audiobook_studio.llm.utils import (
+            LLMParseError,
+            validate_and_parse_llm_response,
+        )
 
         with pytest.raises(LLMParseError, match="segment_id"):
             validate_and_parse_llm_response({"a": 1}, MagicMock, "judge")
@@ -575,7 +609,11 @@ class TestLLMClient:
 
     def test_mock_mode_call(self):
         """mock_mode 下返回 mock 结果。"""
-        from src.audiobook_studio.llm.client import LLMClient, LLMClientConfig, create_client
+        from src.audiobook_studio.llm.client import (
+            LLMClient,
+            LLMClientConfig,
+            create_client,
+        )
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             client = create_client(model="test-model")
@@ -583,7 +621,7 @@ class TestLLMClient:
 
     def test_create_client_factory(self):
         """create_client 工厂函数返回 LLMClient。"""
-        from src.audiobook_studio.llm.client import create_client, LLMClient
+        from src.audiobook_studio.llm.client import LLMClient, create_client
 
         client = create_client(model="test", api_base="http://fake")
         assert isinstance(client, LLMClient)
@@ -623,7 +661,7 @@ class TestLLMRouter:
 
     def test_stage_routing_config(self):
         """StageRoutingConfig 包含模型列表。"""
-        from src.audiobook_studio.llm.router import StageRoutingConfig, ModelConfig
+        from src.audiobook_studio.llm.router import ModelConfig, StageRoutingConfig
 
         src = StageRoutingConfig(
             stage="analyze",
@@ -717,7 +755,7 @@ class TestLLMRouter:
 
     def test_create_router_factory(self):
         """create_router 工厂函数返回 LLMRouter。"""
-        from src.audiobook_studio.llm.router import create_router, LLMRouter
+        from src.audiobook_studio.llm.router import LLMRouter, create_router
 
         router = create_router()
         assert isinstance(router, LLMRouter)
@@ -745,7 +783,7 @@ class TestLLMJudge:
 
     def test_judge_fallback_on_error(self):
         """judge_quality 在 router 抛出异常时返回安全默认值。"""
-        from src.audiobook_studio.llm.judge import LLMJudge, JudgeConfig
+        from src.audiobook_studio.llm.judge import JudgeConfig, LLMJudge
         from src.audiobook_studio.schemas import ParagraphAnnotation
 
         mock_router = MagicMock()
@@ -775,3 +813,61 @@ class TestLLMJudge:
         )
         assert result.needs_regeneration is True
         assert result.overall_score == 0.0
+
+
+# ===========================================================================
+# constitutional_rules
+# ===========================================================================
+
+
+class TestConstitutionalRules:
+    def test_apply_constitutional_rules_returns_response(self):
+        """apply_constitutional_rules 返回原始响应（占位符实现）。"""
+        from src.audiobook_studio.llm.constitutional_rules import (
+            apply_constitutional_rules,
+        )
+        from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
+
+        output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
+        result = apply_constitutional_rules(output)
+        assert result == output
+
+    def test_apply_constitutional_rules_with_context(self):
+        """apply_constitutional_rules 接受上下文参数。"""
+        from src.audiobook_studio.llm.constitutional_rules import (
+            apply_constitutional_rules,
+        )
+        from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
+
+        output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
+        result = apply_constitutional_rules(output, context={"stage": "test"})
+        assert result == output
+
+    def test_apply_safety_filters(self):
+        """apply_safety_filters 返回原始响应（占位符实现）。"""
+        from src.audiobook_studio.llm.constitutional_rules import apply_safety_filters
+        from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
+
+        output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
+        result = apply_safety_filters(output)
+        assert result == output
+
+    def test_apply_style_guidelines(self):
+        """apply_style_guidelines 返回原始响应（占位符实现）。"""
+        from src.audiobook_studio.llm.constitutional_rules import apply_style_guidelines
+        from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
+
+        output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
+        result = apply_style_guidelines(output, style_guide={"tone": "formal"})
+        assert result == output
+
+    def test_apply_domain_constraints(self):
+        """apply_domain_constraints 返回原始响应（占位符实现）。"""
+        from src.audiobook_studio.llm.constitutional_rules import (
+            apply_domain_constraints,
+        )
+        from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
+
+        output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
+        result = apply_domain_constraints(output, domain="medical")
+        assert result == output

@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +62,9 @@ class ApiKeyPool:
 
         primary_key = os.getenv(primary_key_env, "")
         if primary_key:
-            self.keys.append(
-                KeySlot(key=primary_key, env_var=primary_key_env)
-            )
+            self.keys.append(KeySlot(key=primary_key, env_var=primary_key_env))
 
-        for env_var in (pool_key_envs or []):
+        for env_var in pool_key_envs or []:
             key = os.getenv(env_var, "")
             if key:
                 self.keys.append(KeySlot(key=key, env_var=env_var))

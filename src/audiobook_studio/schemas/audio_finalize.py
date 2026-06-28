@@ -29,20 +29,31 @@ class AudioFinalizeParams(BaseModel):
     """
 
     # Loudnorm (EBU R128)
-    apply_loudnorm: bool = Field(default=True, description="是否应用 EBU R128 响度标准化")
-    loudnorm_target_i: LoudnormTargetI = Field(default=-20.0, description="目标综合响度 (LUFS)，EBU R128 建议 -23，有声书常用 -20")
-    loudnorm_target_lra: LoudnormTargetLRA = Field(default=7.0, description="目标响度范围 (LU)")
+    apply_loudnorm: bool = Field(
+        default=True, description="是否应用 EBU R128 响度标准化"
+    )
+    loudnorm_target_i: LoudnormTargetI = Field(
+        default=-20.0,
+        description="目标综合响度 (LUFS)，EBU R128 建议 -23，有声书常用 -20",
+    )
+    loudnorm_target_lra: LoudnormTargetLRA = Field(
+        default=7.0, description="目标响度范围 (LU)"
+    )
     loudnorm_target_tp: LoudnormTargetTP = Field(default=-2.0, description="目标真峰值")
 
     # Fade in/out
     apply_fade: bool = Field(default=True, description="是否应用淡入淡出")
     fade_in_ms: FadeDuration = Field(default=500, description="淡入时长 (毫秒)")
     fade_out_ms: FadeDuration = Field(default=500, description="淡出时长 (毫秒)")
-    fade_shape: Literal["tri", "exp", "log", "sin"] = Field(default="tri", description="淡入淡出曲线形状")
+    fade_shape: Literal["tri", "exp", "log", "sin"] = Field(
+        default="tri", description="淡入淡出曲线形状"
+    )
 
     # SFX Overlay
     apply_sfx: bool = Field(default=True, description="是否叠加场景音效")
-    sfx_gain_db: float = Field(default=-20.0, description="SFX 增益 (dB)，负值表示比主轨低")
+    sfx_gain_db: float = Field(
+        default=-20.0, description="SFX 增益 (dB)，负值表示比主轨低"
+    )
 
     # Metadata
     embed_metadata: bool = Field(default=True, description="是否嵌入元数据")
@@ -55,7 +66,9 @@ class AudioFinalizeParams(BaseModel):
     metadata_cover_path: Optional[str] = Field(default=None, description="封面图片路径")
 
     # Output format
-    output_format: Literal["mp3", "m4b", "wav"] = Field(default="mp3", description="输出格式")
+    output_format: Literal["mp3", "m4b", "wav"] = Field(
+        default="mp3", description="输出格式"
+    )
     output_bitrate: str = Field(default="128k", description="输出比特率")
 
     model_config = {"from_attributes": True, "extra": "forbid"}

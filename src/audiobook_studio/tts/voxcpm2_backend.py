@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 
-from .engine import TTSEngine, SynthesisResult, VoiceInfo
+from .engine import SynthesisResult, TTSEngine, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,42 @@ QUANTIZATION_MODES = {
 
 # Predefined voice presets for VoxCPM2
 VOXCPM2_VOICES = {
-    "zh_female_1": {"name": "zh_female_1", "language": "zh", "gender": "female", "description": "中文女声 1"},
-    "zh_female_2": {"name": "zh_female_2", "language": "zh", "gender": "female", "description": "中文女声 2"},
-    "zh_male_1": {"name": "zh_male_1", "language": "zh", "gender": "male", "description": "中文男声 1"},
-    "zh_male_2": {"name": "zh_male_2", "language": "zh", "gender": "male", "description": "中文男声 2"},
-    "en_female_1": {"name": "en_female_1", "language": "en", "gender": "female", "description": "English Female 1"},
-    "en_male_1": {"name": "en_male_1", "language": "en", "gender": "male", "description": "English Male 1"},
+    "zh_female_1": {
+        "name": "zh_female_1",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 1",
+    },
+    "zh_female_2": {
+        "name": "zh_female_2",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 2",
+    },
+    "zh_male_1": {
+        "name": "zh_male_1",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 1",
+    },
+    "zh_male_2": {
+        "name": "zh_male_2",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 2",
+    },
+    "en_female_1": {
+        "name": "en_female_1",
+        "language": "en",
+        "gender": "female",
+        "description": "English Female 1",
+    },
+    "en_male_1": {
+        "name": "en_male_1",
+        "language": "en",
+        "gender": "male",
+        "description": "English Male 1",
+    },
 }
 
 
@@ -50,9 +80,10 @@ class VoxCPM2Backend(TTSEngine):
         batch_size: int = 4,
         kv_cache_reuse: bool = True,
         compile_model: bool = True,
-        **kwargs
+        **kwargs,
     ):
         import os
+
         super().__init__(model_path, device, sample_rate, **kwargs)
         self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
         self.dtype = dtype
@@ -62,7 +93,9 @@ class VoxCPM2Backend(TTSEngine):
 
         self._model = None
         self._tokenizer = None
-        self._voice_embeddings = VOXCPM2_VOICES  # Use predefined voices
+        self._voice_embeddings = dict(
+            VOXCPM2_VOICES
+        )  # Use predefined voices (copy to avoid mutating shared state)
         self._reference_audio_cache = {}
 
     @property
@@ -103,7 +136,9 @@ class VoxCPM2Backend(TTSEngine):
                         f"Insufficient VRAM: {vram_gb:.1f} GB available, "
                         f"need >={min_vram} GB for {self.dtype} mode"
                     )
-                logger.info(f"GPU VRAM: {vram_gb:.1f} GB (need {min_vram} GB for {self.dtype})")
+                logger.info(
+                    f"GPU VRAM: {vram_gb:.1f} GB (need {min_vram} GB for {self.dtype})"
+                )
 
             # Resolve model path
             if self.model_path is None:
@@ -111,55 +146,77 @@ class VoxCPM2Backend(TTSEngine):
 
             model_dir = Path(self.model_path)
             if not model_dir.exists():
-                raise FileNotFoundError(f"VoxCPM2 model directory not found: {self.model_path}")
+                raise FileNotFoundError(
+                    f"VoxCPM2 model directory not found: {self.model_path}"
+                )
 
             # Load model (placeholder - real implementation loads VoxCPM2 weights)
-            logger.info(f"Loading VoxCPM2 model from {self.model_path} with {self.dtype}...")
+            logger.info(
+                f"Loading VoxCPM2 model from {self.model_path} with {self.dtype}..."
+            )
 
             # Simulate model loading - replace with actual VoxCPM2 loading
             # self._model = VoxCPM2.from_pretrained(self.model_path, dtype=self.dtype)
             # if self.compile_model:
             #     self._model = torch.compile(self._model)
-            
+
             # Load tokenizer
             # self._tokenizer = VoxCPM2Tokenizer.from_pretrained(self.model_path)
-            
+
             # Load voice embeddings
             voice_emb_path = model_dir / "voice_embeddings.pt"
             if voice_emb_path.exists():
-                self._voice_embeddings = torch.load(voice_emb_path, map_location=self.device)
+                self._voice_embeddings = torch.load(
+                    voice_emb_path, map_location=self.device
+                )
             else:
-                logger.warning("Voice embeddings not found, using random initialization")
+                logger.warning(
+                    "Voice embeddings not found, using random initialization"
+                )
                 # Initialize default voice embeddings
                 for voice_id in VOXCPM2_VOICES:
-                    self._voice_embeddings[voice_id] = torch.randn(1, 256, device=self.device)
+                    self._voice_embeddings[voice_id] = torch.randn(
+                        1, 256, device=self.device
+                    )
 
             self._initialized = True
-            logger.info(f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, device={self.device}")
+            logger.info(
+                f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, device={self.device}"
+            )
 
         except ImportError:
-            logger.error("torch/torchaudio not installed. Run: pip install torch torchaudio")
+            logger.error(
+                "torch/torchaudio not installed. Run: pip install torch torchaudio"
+            )
             raise
         except Exception as e:
             logger.error(f"Failed to initialize VoxCPM2 backend: {e}")
             raise
 
-    def _get_voice_embedding(self, voice_id: str, reference_audio: Optional[str] = None):
+    def _get_voice_embedding(
+        self, voice_id: str, reference_audio: Optional[str] = None
+    ):
         """Get voice embedding, optionally from reference audio."""
-        import torch
-        
+
         # If reference audio provided, compute embedding
         if reference_audio and Path(reference_audio).exists():
             cache_key = hashlib.md5(reference_audio.encode()).hexdigest()
             if cache_key in self._reference_audio_cache:
                 return self._reference_audio_cache[cache_key]
-            
+
             # Extract speaker embedding from reference audio
             # This would use a speaker encoder (e.g., ECAPA-TDNN, WavLM)
             logger.info(f"Extracting voice embedding from reference: {reference_audio}")
             # embedding = self._speaker_encoder(reference_audio)
             # For now, use a placeholder
-            embedding = torch.randn(1, 256, device=self.device)
+            if self.mock_mode:
+                import numpy as np
+
+                embedding = np.random.randn(1, 256).astype(np.float32)
+            else:
+                import torch
+
+                embedding = torch.randn(1, 256, device=self.device)
             self._reference_audio_cache[cache_key] = embedding
             return embedding
 
@@ -167,7 +224,7 @@ class VoxCPM2Backend(TTSEngine):
         if voice_id not in self._voice_embeddings:
             logger.warning(f"Voice {voice_id} not found, using default 'zh_female_1'")
             voice_id = "zh_female_1"
-        
+
         return self._voice_embeddings[voice_id]
 
     async def synthesize(
@@ -177,7 +234,7 @@ class VoxCPM2Backend(TTSEngine):
         output_path: Path,
         prosody: Optional[Dict] = None,
         reference_audio: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> SynthesisResult:
         """Synthesize text using VoxCPM2."""
         if not self._initialized:
@@ -185,9 +242,11 @@ class VoxCPM2Backend(TTSEngine):
 
         # Mock mode: create empty audio file
         if self.mock_mode:
-            import soundfile as sf
-            import numpy as np
             import hashlib
+
+            import numpy as np
+            import soundfile as sf
+
             dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
             sf.write(str(output_path), dummy_audio, self.sample_rate)
             text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
@@ -225,7 +284,7 @@ class VoxCPM2Backend(TTSEngine):
         #     batch_size=self.batch_size,
         #     use_kv_cache=self.kv_cache_reuse,
         # )
-        
+
         # Placeholder: generate dummy audio
         duration_sec = len(text) / 5.0  # ~5 chars/sec for Chinese
         num_samples = int(duration_sec * self.sample_rate)
@@ -267,17 +326,19 @@ class VoxCPM2Backend(TTSEngine):
         """Get available VoxCPM2 voices."""
         voices = []
         for voice_id, info in VOXCPM2_VOICES.items():
-            voices.append(VoiceInfo(
-                voice_id=voice_id,
-                name=info["name"],
-                language=info["language"],
-                gender=info["gender"],
-                description=info["description"],
-                sample_rate=self.sample_rate,
-                supports_prosody=True,
-                supports_reference_audio=True,  # VoxCPM2 supports reference audio
-                engine=self.engine_name,
-            ))
+            voices.append(
+                VoiceInfo(
+                    voice_id=voice_id,
+                    name=info["name"],
+                    language=info["language"],
+                    gender=info["gender"],
+                    description=info["description"],
+                    sample_rate=self.sample_rate,
+                    supports_prosody=True,
+                    supports_reference_audio=True,  # VoxCPM2 supports reference audio
+                    engine=self.engine_name,
+                )
+            )
         return voices
 
     def estimate_duration(self, text: str, voice_id: str, **kwargs) -> int:
@@ -285,10 +346,12 @@ class VoxCPM2Backend(TTSEngine):
         # VoxCPM2 at 48kHz: ~5 chars/sec for Chinese, ~12 chars/sec for English
         chinese_chars = sum(1 for c in text if "一" <= c <= "鿿")
         english_chars = len(text) - chinese_chars
-        
+
         est_sec = chinese_chars / 5.0 + english_chars / 12.0
-        
-        speed = kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
+
+        speed = (
+            kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
+        )
         est_sec = est_sec / speed
 
         return max(500, int(est_sec * 1000))
@@ -299,38 +362,44 @@ class VoxCPM2Backend(TTSEngine):
         if self.mock_mode:
             self._model = None
             self._tokenizer = None
-            self._voice_embeddings.clear()
-            self._reference_audio_cache.clear()
+            self._voice_embeddings = {}
+            self._reference_audio_cache = {}
             self._initialized = False
             logger.info("VoxCPM2 backend cleaned up (mock mode)")
             return
 
-        import torch
+        try:
+            import torch
 
-        self._model = None
-        self._tokenizer = None
-        self._voice_embeddings.clear()
-        self._reference_audio_cache.clear()
+            self._model = None
+            self._tokenizer = None
+            self._voice_embeddings = {}
+            self._reference_audio_cache = {}
 
-        if self.device == "cuda" and torch.cuda.is_available():
-            torch.cuda.empty_cache()
+            if self.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
-        self._initialized = False
-        logger.info("VoxCPM2 backend cleaned up")
+            self._initialized = False
+            logger.info("VoxCPM2 backend cleaned up")
+        except ImportError:
+            # torch not available, just clean up what we can
+            self._model = None
+            self._tokenizer = None
+            self._voice_embeddings = {}
+            self._reference_audio_cache = {}
+            self._initialized = False
+            logger.info("VoxCPM2 backend cleaned up (torch not available)")
 
 
 async def create_voxcpmp2_backend(
     model_path: Optional[str] = None,
     device: str = "cuda",
     dtype: str = "float16",
-    **kwargs
+    **kwargs,
 ) -> VoxCPM2Backend:
     """Factory function to create and initialize VoxCPM2 backend."""
     backend = VoxCPM2Backend(
-        model_path=model_path,
-        device=device,
-        dtype=dtype,
-        **kwargs
+        model_path=model_path, device=device, dtype=dtype, **kwargs
     )
     await backend.initialize()
     return backend

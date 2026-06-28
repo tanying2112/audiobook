@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 class SemanticCritic(BaseCritic):
     """语义派批评器.
-    
+
     评估维度：
     1. semantic_coherence - 语义连贯性：前后文语义衔接是否自然
     2. emotion_consistency - 情感一致性：实际情感与标注是否匹配
     3. speaker_fingerprint - 角色声音指纹：说话人声音特征是否符合角色档案
     """
-    
+
     def __init__(
         self,
         router=None,
@@ -36,12 +36,12 @@ class SemanticCritic(BaseCritic):
         prompt_dir: Optional[str] = None,
     ):
         super().__init__(CriticType.SEMANTIC, router, config)
-        
+
         # Setup Jinja2 environment
         if prompt_dir is None:
             prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
         self.prompt_dir = Path(prompt_dir)
-        
+
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompt_dir)),
             autoescape=select_autoescape(),
@@ -49,7 +49,7 @@ class SemanticCritic(BaseCritic):
             lstrip_blocks=True,
         )
         self.jinja_env.filters["tojson"] = json.dumps
-    
+
     def evaluate(
         self,
         audio_path: Path,
@@ -59,8 +59,10 @@ class SemanticCritic(BaseCritic):
         context: Optional[Dict[str, Any]] = None,
     ) -> CriticResult:
         """评估语义质量."""
-        prompt = self._build_prompt(audio_path, annotation, routing_decision, reference_text, context)
-        
+        prompt = self._build_prompt(
+            audio_path, annotation, routing_decision, reference_text, context
+        )
+
         messages = [
             {
                 "role": "system",
@@ -71,7 +73,7 @@ class SemanticCritic(BaseCritic):
             },
             {"role": "user", "content": prompt},
         ]
-        
+
         try:
             result = self.router.call(
                 stage="judge",
@@ -89,7 +91,7 @@ class SemanticCritic(BaseCritic):
         except Exception as e:
             logger.error(f"SemanticCritic LLM call failed: {e}")
             raise
-    
+
     def _build_prompt(
         self,
         audio_path: Path,
@@ -100,32 +102,34 @@ class SemanticCritic(BaseCritic):
     ) -> str:
         """构建语义评估提示词."""
         template = self.jinja_env.get_template("critics/semantic_critic/v1.j2")
-        
+
         # Prepare context data
         prev_text = ""
         next_text = ""
         prev_emotion = ""
         next_emotion = ""
         chapter_info = ""
-        
+
         if context:
             prev_text = context.get("prev_text", "")
             next_text = context.get("next_text", "")
             prev_emotion = context.get("prev_emotion", "")
             next_emotion = context.get("next_emotion", "")
             chapter_info = context.get("chapter_info", "")
-        
+
         # Build character voice profile
         char_voice_profile = {}
         if context and "character_profiles" in context:
             for char in context["character_profiles"]:
                 char_voice_profile[char.get("canonical_name", "")] = {
                     "voice_id": char.get("suggested_voice_id", ""),
-                    "description": char.get("语音描述", char.get("voice_description", "")),
+                    "description": char.get(
+                        "语音描述", char.get("voice_description", "")
+                    ),
                     "gender": char.get("gender", ""),
                     "age_group": char.get("age_group", ""),
                 }
-        
+
         return template.render(
             # Segment info
             segment_id=Path(audio_path).stem,
@@ -135,30 +139,25 @@ class SemanticCritic(BaseCritic):
             emotion_intensity=annotation.emotion_intensity,
             expected_speech_rate=annotation.speech_rate,
             expected_pitch_shift=annotation.pitch_shift_semitones,
-            
             # Reference text
             reference_text=reference_text,
-            
             # Context
             prev_text=prev_text[:500] if prev_text else "（无前文）",
             next_text=next_text[:500] if next_text else "（无后文）",
             prev_emotion=prev_emotion,
             next_emotion=next_emotion,
             chapter_info=chapter_info,
-            
             # Character voice profiles
             character_voice_profiles=char_voice_profile,
-            
             # Routing info
             selected_voice=routing_decision.voice_id,
             selected_model=routing_decision.engine_choice,
             voice_instructions=routing_decision.prosody_overrides or {},
-            
             # Thresholds
             pass_threshold=self.pass_threshold,
             warning_threshold=self.warning_threshold,
         )
-    
+
     def _evaluate_mock(
         self,
         audio_path: Path,
@@ -172,7 +171,7 @@ class SemanticCritic(BaseCritic):
         score = 0.85
         confidence = 0.9
         verdict = self._determine_verdict(score)
-        
+
         reasoning = "[Mock] 语义连贯性良好，情感表达与标注一致，角色声音特征匹配"
         evidence = {
             "semantic_coherence": 0.88,
@@ -180,7 +179,7 @@ class SemanticCritic(BaseCritic):
             "speaker_fingerprint": 0.85,
         }
         tags = []
-        
+
         return CriticResult(
             critic_type=CriticType.SEMANTIC,
             verdict=verdict,

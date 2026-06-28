@@ -1,18 +1,25 @@
 """FastAPI dependencies for authentication and authorization."""
 
-from typing import Optional, List
-from fastapi import Depends, HTTPException, status, Security
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
-from sqlalchemy.orm import Session
-from jose import JWTError
+from typing import List, Optional
 
-from audiobook_studio.database import get_db
-# SQLAlchemy models from models/user.py
-from audiobook_studio.models.user import User
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import (
+    OAuth2PasswordBearer,
+    OAuth2PasswordRequestForm,
+    SecurityScopes,
+)
+from jose import JWTError
+from sqlalchemy.orm import Session
+
+from src.audiobook_studio.auth.jwt_handler import jwt_handler
+
 # Pydantic models from auth/models.py
-from audiobook_studio.auth.models import TokenData, PermissionName, RoleName
-from audiobook_studio.auth.jwt_handler import jwt_handler
-from audiobook_studio.auth.rbac import RBACManager
+from src.audiobook_studio.auth.models import PermissionName, RoleName, TokenData
+from src.audiobook_studio.auth.rbac import RBACManager
+from src.audiobook_studio.database import get_db
+
+# SQLAlchemy models from models/user.py
+from src.audiobook_studio.models.user import User
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(
@@ -32,24 +39,28 @@ async def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     """Get current authenticated user from JWT token."""
-    authenticate_value = f'Bearer scope="{security_scopes.scope_str}"' if security_scopes.scopes else "Bearer"
-    
+    authenticate_value = (
+        f'Bearer scope="{security_scopes.scope_str}"'
+        if security_scopes.scopes
+        else "Bearer"
+    )
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": authenticate_value},
     )
-    
+
     try:
         payload = jwt_handler.decode_token(token)
         user_id: int = int(payload.get("sub", 0))
         username: str = payload.get("username", "")
         roles: List[str] = payload.get("roles", [])
         permissions: List[str] = payload.get("permissions", [])
-        
+
         if user_id == 0:
             raise credentials_exception
-        
+
         token_data = TokenData(
             username=username,
             user_id=user_id,
@@ -60,20 +71,23 @@ async def get_current_user(
         raise credentials_exception
     except Exception:
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.id == token_data.user_id).first()
     if user is None:
         raise credentials_exception
-    
+
     # Check scopes if required
     for scope in security_scopes.scopes:
-        if scope not in token_data.permissions and scope != "admin" not in token_data.roles:
+        if (
+            scope not in token_data.permissions
+            and scope != "admin" not in token_data.roles
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Not enough permissions. Required: {scope}",
                 headers={"WWW-Authenticate": authenticate_value},
             )
-    
+
     return user
 
 
@@ -101,6 +115,7 @@ async def get_current_superuser(
 # Permission-based dependencies
 def require_permission(permission: PermissionName):
     """Dependency to require a specific permission."""
+
     async def permission_checker(
         current_user: User = Depends(get_current_active_user),
         db: Session = Depends(get_db),
@@ -112,11 +127,13 @@ def require_permission(permission: PermissionName):
                 detail=f"Permission denied: {permission.value} required",
             )
         return current_user
+
     return permission_checker
 
 
 def require_role(role: RoleName):
     """Dependency to require a specific role."""
+
     async def role_checker(
         current_user: User = Depends(get_current_active_user),
     ) -> User:
@@ -126,11 +143,13 @@ def require_role(role: RoleName):
                 detail=f"Role required: {role.value}",
             )
         return current_user
+
     return role_checker
 
 
 def require_project_permission(required_role: RoleName):
     """Dependency to require project-level permission."""
+
     async def project_permission_checker(
         project_id: int,
         current_user: User = Depends(get_current_active_user),
@@ -143,6 +162,7 @@ def require_project_permission(required_role: RoleName):
                 detail=f"Project access denied: {required_role.value} role required",
             )
         return current_user
+
     return project_permission_checker
 
 

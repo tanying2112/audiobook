@@ -103,7 +103,9 @@ def main():
     if args.analyze_now:
         # Run analysis once
         logger.info(f"Running one-time analysis for project {args.project_id}")
-        result = run_feedback_analysis_cli(db_factory, args.project_id, limit=args.limit)
+        result = run_feedback_analysis_cli(
+            db_factory, args.project_id, limit=args.limit
+        )
         print(f"\n=== Analysis Results ===")
         print(f"Total analyzed: {result.total_analyzed}")
         print(f"Patterns found: {len(result.pattern_frequency)}")
@@ -131,6 +133,7 @@ def main():
 
         try:
             import time
+
             while True:
                 time.sleep(10)
                 status = processor.get_status()

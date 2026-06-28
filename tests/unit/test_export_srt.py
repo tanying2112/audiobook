@@ -192,7 +192,9 @@ class TestGenerateSrt:
 
             # Entry with 6000ms duration - should be split
             entries = [
-                SubtitleEntry(1, 0, 6000, "This is a very long text that needs splitting"),
+                SubtitleEntry(
+                    1, 0, 6000, "This is a very long text that needs splitting"
+                ),
             ]
 
             result = generate_srt(entries, output_path, config)

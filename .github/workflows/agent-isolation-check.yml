@@ -1,12 +1,15 @@
 # =============================================================================
-# Agent Scope Isolation Check — 越界拦截流水线
+# Agent Scope Isolation Check — 越界拦截流水线 (v2 — 审计修正版)
 # =============================================================================
-# 当 PR 分支名以 agent/A/*, agent/B/*, agent/C/* 开头时，
-# 自动检测修改文件是否超出该 Agent 的领地范围。
-# 越界则直接 Fail Build，拒绝合并。
+# 基于白皮书 V3.0 ROI 靶心对齐，修正 Agent A/C 领地倒置问题。
+# 本文件与 .github/CODEOWNERS 双向对齐。
+#
+# Agent A (后端高吞吐爆破手)  → api/ + tests/unit/
+# Agent B (前端状态清洗专家)  → web/src/{utils,stores}/ + quality/ + monitoring/ + feedback/
+# Agent C (跨端管线爆破手)    → pipeline/ + tts/ + llm/ + schemas/ + models/ + utils/ + publish/ + web/src/api/
 # =============================================================================
 
-name: "🔒 Agent Scope Isolation Check"
+name: "🔒 Agent Scope Isolation Check (v2)"
 
 on:
   pull_request:
@@ -26,7 +29,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史以比对 diff
+          fetch-depth: 0
 
       # ── Step 2: 检测变更文件并验证领地边界 ────────────────────────────────
       - name: Detect Changed Files & Verify Bounds
@@ -36,7 +39,6 @@ jobs:
           BRANCH_NAME="${{ github.head_ref }}"
           echo "🔹 Current Branch: $BRANCH_NAME"
 
-          # 获取当前 PR 相对于目标分支修改的所有文件
           TARGET="${{ github.base_ref }}"
           CHANGED_FILES=$(git diff --name-only "origin/$TARGET...HEAD" || echo "")
           echo "🔹 Changed files:"
@@ -57,74 +59,78 @@ jobs:
 
           VIOLATIONS=0
 
-          # ── Agent A：后端核心领地 ────────────────────────────────────────
+          # ── Agent A：后端高吞吐爆破手 ────────────────────────────────────
+          # 领地：api/ + tests/unit/
+          # 职责：第一、二梯队 API CRUD 端点覆盖率冲刺
           if [[ "$AGENT_ID" == "A" ]]; then
-            echo "====== [Agent A 领地审查] ======"
-            echo "领地范围：src/audiobook_studio/{pipeline,quality,utils,llm,tts,schemas,models,feedback}/ tests/unit/"
-            echo ""
-            for file in $CHANGED_FILES; do
-              # 允许的路径白名单
-              ALLOWED=false
-              [[ "$file" =~ ^src/audiobook_studio/pipeline/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/quality/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/utils/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/llm/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/tts/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/schemas/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/models/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/feedback/ ]] && ALLOWED=true
-              [[ "$file" =~ ^tests/unit/ ]] && ALLOWED=true
-
-              if [[ "$ALLOWED" == "false" ]]; then
-                echo "🚨 [越界警报]: Agent A 无权修改文件: $file"
-                VIOLATIONS=$((VIOLATIONS + 1))
-              fi
-            done
-
-          # ── Agent B：前端基建领地 ────────────────────────────────────────
-          elif [[ "$AGENT_ID" == "B" ]]; then
-            echo "====== [Agent B 领地审查] ======"
-            echo "领地范围：web/src/{views,components,stores,composables,router,types,assets}/"
-            echo ""
-            for file in $CHANGED_FILES; do
-              ALLOWED=false
-              [[ "$file" =~ ^web/src/views/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/components/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/stores/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/composables/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/router/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/types/ ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/assets/ ]] && ALLOWED=true
-              # 允许修改前端共享配置
-              [[ "$file" == "web/package.json" ]] && ALLOWED=true
-              [[ "$file" == "web/vite.config.ts" ]] && ALLOWED=true
-              [[ "$file" == "web/tsconfig.json" ]] && ALLOWED=true
-
-              if [[ "$ALLOWED" == "false" ]]; then
-                echo "🚨 [越界警报]: Agent B 无权修改文件: $file"
-                VIOLATIONS=$((VIOLATIONS + 1))
-              fi
-            done
-
-          # ── Agent C：跨端胶水领地 ────────────────────────────────────────
-          elif [[ "$AGENT_ID" == "C" ]]; then
-            echo "====== [Agent C 领地审查] ======"
-            echo "领地范围：src/audiobook_studio/{api,monitoring,publish,auth,middleware,config}/ main.py web/src/api/"
+            echo "====== [Agent A 领地审查: 后端高吞吐爆破手] ======"
+            echo "领地范围：src/audiobook_studio/api/ + tests/unit/"
             echo ""
             for file in $CHANGED_FILES; do
               ALLOWED=false
               [[ "$file" =~ ^src/audiobook_studio/api/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/monitoring/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/publish/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/auth/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/middleware/ ]] && ALLOWED=true
-              [[ "$file" =~ ^src/audiobook_studio/config/ ]] && ALLOWED=true
-              [[ "$file" == "src/audiobook_studio/main.py" ]] && ALLOWED=true
-              [[ "$file" =~ ^web/src/api/ ]] && ALLOWED=true
-              [[ "$file" == ".env.example" ]] && ALLOWED=true
+              [[ "$file" =~ ^tests/unit/ ]] && ALLOWED=true
+              # 允许修改被测模块的源文件（只读理解，实际改动应在 api/ 下）
+              # 但严格来说 Agent A 不应直接改 pipeline/ 等
 
               if [[ "$ALLOWED" == "false" ]]; then
-                echo "🚨 [越界警报]: Agent C 无权修改文件: $file"
+                echo "  🚨 [越界警报]: Agent A 无权修改文件: $file"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            done
+
+          # ── Agent B：前端状态清洗 + 算法防御专家 ──────────────────────────
+          # 领地：web/src/{utils,stores}/ + quality/ + monitoring/ + feedback/
+          # 红线：严禁触碰 UI 组件（views/components）
+          elif [[ "$AGENT_ID" == "B" ]]; then
+            echo "====== [Agent B 领地审查: 前端状态清洗 + 算法防御专家] ======"
+            echo "领地范围：web/src/{utils,stores}/ + quality/ + monitoring/ + feedback/"
+            echo "红线：严禁触碰 views/components"
+            echo ""
+            for file in $CHANGED_FILES; do
+              ALLOWED=false
+              # 前端数据清洗基建
+              [[ "$file" =~ ^web/src/utils/ ]] && ALLOWED=true
+              [[ "$file" =~ ^web/src/stores/ ]] && ALLOWED=true
+              [[ "$file" == "web/src/main.ts" ]] && ALLOWED=true
+              [[ "$file" == "web/package.json" ]] && ALLOWED=true
+              [[ "$file" == "web/vite.config.ts" ]] && ALLOWED=true
+              [[ "$file" == "web/tsconfig.json" ]] && ALLOWED=true
+              # 后端算法黑盒 Mock
+              [[ "$file" =~ ^src/audiobook_studio/quality/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/monitoring/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/feedback/ ]] && ALLOWED=true
+
+              if [[ "$ALLOWED" == "false" ]]; then
+                echo "  🚨 [越界警报]: Agent B 无权修改文件: $file"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            done
+
+          # ── Agent C：跨端通信 + 核心管线爆破手 ──────────────────────────
+          # 领地：pipeline/ + tts/ + llm/ + schemas/ + models/ + utils/ + publish/ + web/src/api/
+          # 职责：synthesize.py 巨头 + LLM 路由 + TTS + 发布
+          elif [[ "$AGENT_ID" == "C" ]]; then
+            echo "====== [Agent C 领地审查: 跨端管线爆破手] ======"
+            echo "领地范围：pipeline/ + tts/ + llm/ + schemas/ + models/ + utils/ + publish/ + web/src/api/"
+            echo ""
+            for file in $CHANGED_FILES; do
+              ALLOWED=false
+              # 核心管线
+              [[ "$file" =~ ^src/audiobook_studio/pipeline/ ]] && ALLOWED=true
+              # TTS + LLM + 契约 + 模型 + 工具
+              [[ "$file" =~ ^src/audiobook_studio/tts/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/llm/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/schemas/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/models/ ]] && ALLOWED=true
+              [[ "$file" =~ ^src/audiobook_studio/utils/ ]] && ALLOWED=true
+              # 发布集成
+              [[ "$file" =~ ^src/audiobook_studio/publish/ ]] && ALLOWED=true
+              # 跨端 SSE
+              [[ "$file" =~ ^web/src/api/ ]] && ALLOWED=true
+
+              if [[ "$ALLOWED" == "false" ]]; then
+                echo "  🚨 [越界警报]: Agent C 无权修改文件: $file"
                 VIOLATIONS=$((VIOLATIONS + 1))
               fi
             done

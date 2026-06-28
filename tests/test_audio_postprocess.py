@@ -1,12 +1,16 @@
 """Tests for audio_postprocess pipeline module."""
 
 import pytest
-from src.audiobook_studio.pipeline.audio_postprocess import AudioPostProcessor, EMOTION_PRESETS
+
+from src.audiobook_studio.pipeline.audio_postprocess import (
+    EMOTION_PRESETS,
+    AudioPostProcessor,
+)
 from src.audiobook_studio.schemas import (
-    ParagraphAnnotation,
+    AudioPostProcessParams,
     CharacterVoiceBinding,
     EmotionSnapshot,
-    AudioPostProcessParams,
+    ParagraphAnnotation,
 )
 
 
@@ -24,7 +28,9 @@ class TestAudioPostProcessor:
 
     def test_init_custom_presets(self):
         """Test processor initialization with custom presets."""
-        custom_presets = {"neutral": {"speech_rate": 0.9, "pitch_shift_semitones": 0, "sfx_tags": []}}
+        custom_presets = {
+            "neutral": {"speech_rate": 0.9, "pitch_shift_semitones": 0, "sfx_tags": []}
+        }
         processor = AudioPostProcessor(emotion_presets=custom_presets)
         assert processor.emotion_presets == custom_presets
 
@@ -40,7 +46,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert isinstance(result, AudioPostProcessParams)
         assert result.speech_rate == 1.0
         assert result.pitch_shift_semitones == 0
@@ -58,7 +66,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 1.1
         assert result.pitch_shift_semitones == 1
         assert "ambient_cheerful" in result.sfx_tags
@@ -75,7 +85,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 0.8
         assert result.pitch_shift_semitones == -1
         assert "ambient_melancholic" in result.sfx_tags
@@ -92,7 +104,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         # Angry preset: speech_rate=1.2, with intensity > 0.8 adds 0.05 -> 1.25
         # round(12.5) = 12 (banker's rounding) -> 1.2
         # pitch_shift=2, with intensity > 0.8 adds 1 -> 3
@@ -112,7 +126,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 1.2
         assert result.pitch_shift_semitones == 3
         assert "ambient_suspense" in result.sfx_tags
@@ -129,7 +145,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 1.2
         assert result.pitch_shift_semitones == 2
         assert "ambient_surprise" in result.sfx_tags
@@ -146,7 +164,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         # Dialogue gets slight bump: neutral preset 1.0 + 0.05 = 1.05, rounds to 1.0 (banker's rounding)
         assert result.speech_rate == 1.0
 
@@ -162,7 +182,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         # Higher intensity should increase speech_rate and pitch
         assert result.speech_rate > 1.1
 
@@ -178,7 +200,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         # Lower intensity should decrease speech_rate
         assert result.speech_rate < 1.1
 
@@ -206,7 +230,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=voice_map, emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=voice_map, emotion_snapshot=None
+        )
         # Without voice_preset, defaults from emotion preset should be used
         assert result.speech_rate == 1.0  # neutral preset
         assert result.pitch_shift_semitones == 0
@@ -225,7 +251,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=2,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         # Should be rounded to 0.1 step
         assert result.speech_rate == round(result.speech_rate * 10) / 10
 
@@ -243,7 +271,9 @@ class TestAudioPostProcessor:
             pause_before_ms=500,
             pause_after_ms=300,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.pause_before_ms == 500
         assert result.pause_after_ms == 300
 
@@ -259,7 +289,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 0.7
         assert result.pitch_shift_semitones == -2
 
@@ -275,7 +307,9 @@ class TestAudioPostProcessor:
             pitch_shift_semitones=0,
             confidence=0.9,
         )
-        result = self.processor.process(annotation=annotation, voice_map=[], emotion_snapshot=None)
+        result = self.processor.process(
+            annotation=annotation, voice_map=[], emotion_snapshot=None
+        )
         assert result.speech_rate == 0.7
         assert result.pitch_shift_semitones == -1
         assert "ambient_sigh" in result.sfx_tags

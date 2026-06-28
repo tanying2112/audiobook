@@ -1,13 +1,15 @@
 """Configuration API endpoints for constitutional rules and quality
 thresholds."""
+
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
 
 from src.audiobook_studio.config.loader import (
-    load_rules,
-    load_quality_thresholds,
     load_contract_versions,
+    load_quality_thresholds,
+    load_rules,
 )
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -15,6 +17,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 class ConfigReloadResponse(BaseModel):
     """Response for config reload operations."""
+
     success: bool
     message: str
     config: Optional[Dict[str, Any]] = None
@@ -22,20 +25,19 @@ class ConfigReloadResponse(BaseModel):
 
 class RuleUpdateRequest(BaseModel):
     """Request to update constitutional rules."""
-    rules: Dict[str, Any] = Field(
-        ..., description="New constitutional rules"
-    )
+
+    rules: Dict[str, Any] = Field(..., description="New constitutional rules")
 
 
 class ThresholdUpdateRequest(BaseModel):
     """Request to update quality thresholds."""
-    thresholds: Dict[str, Any] = Field(
-        ..., description="New quality thresholds"
-    )
+
+    thresholds: Dict[str, Any] = Field(..., description="New quality thresholds")
 
 
 class ConfigStatusResponse(BaseModel):
     """Response showing current config status."""
+
     constitutional_rules: Dict[str, Any]
     quality_thresholds: Dict[str, Any]
     contract_versions: Dict[str, Any]

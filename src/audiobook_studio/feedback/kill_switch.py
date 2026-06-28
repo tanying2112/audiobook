@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 
 class DegradationLevel(Enum):
     """降级等级."""
-    NORMAL = "normal"      # 正常运行
-    PARTIAL = "partial"    # 部分 LLM 不可用
+
+    NORMAL = "normal"  # 正常运行
+    PARTIAL = "partial"  # 部分 LLM 不可用
     DEGRADED = "degraded"  # 严重降级，仅规则
-    EMERGENCY = "emergency" # 完全紧急模式，仅缓存
+    EMERGENCY = "emergency"  # 完全紧急模式，仅缓存
 
 
 @dataclass
@@ -46,6 +47,7 @@ class KillSwitchConfig:
 @dataclass
 class ProviderHealth:
     """单个 LLM 提供商的健康状态."""
+
     provider: str
     is_alive: bool = True
     consecutive_failures: int = 0
@@ -67,7 +69,7 @@ class ProviderHealth:
 
 
 class KillSwitch:
-    """强化 Kill Switch — 管理 LLM 降级与恢复. """
+    """强化 Kill Switch — 管理 LLM 降级与恢复."""
 
     def __init__(self, config: Optional[KillSwitchConfig] = None):
         self.config = config or KillSwitchConfig()
@@ -83,6 +85,7 @@ class KillSwitch:
         if voice_map_path.exists():
             try:
                 import yaml
+
                 data = yaml.safe_load(voice_map_path.read_text())
                 self.rule_cache["voice_mapping"] = data
                 logger.info(f"Loaded voice mapping cache: {len(data)} entries")
@@ -94,6 +97,7 @@ class KillSwitch:
         if weights_path.exists():
             try:
                 import yaml
+
                 self.rule_cache["difficulty_weights"] = yaml.safe_load(
                     weights_path.read_text()
                 )

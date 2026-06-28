@@ -4,24 +4,33 @@ Provides endpoints for uploading source files (PDF, EPUB, DOCX, TXT)
 with async text extraction and WebSocket progress updates.
 """
 
+import logging
 import os
 import uuid
-import logging
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..models import Project, Chapter
-from ..database import get_db
+from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
 from ..auth.dependencies import get_current_active_user, require_project_permission
+from ..database import get_db
+from ..models import Chapter, Project
 from ..models.user import User
 from ..pipeline.extract import extract_text
-from ..api.websocket import manager, emit_pipeline_event, PipelineEventType
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +54,10 @@ ALLOWED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt"}
 
 # ── Request/Response Models ────────────────────────────────────────────────
 
+
 class UploadInitResponse(BaseModel):
     """Response for upload initialization."""
+
     upload_id: str
     project_id: int
     filename: str
@@ -58,6 +69,7 @@ class UploadInitResponse(BaseModel):
 
 class UploadChunkRequest(BaseModel):
     """Request for uploading a chunk."""
+
     upload_id: str
     chunk_index: int
     total_chunks: int
@@ -66,6 +78,7 @@ class UploadChunkRequest(BaseModel):
 
 class UploadCompleteResponse(BaseModel):
     """Response when upload is complete."""
+
     upload_id: str
     project_id: int
     file_path: str
@@ -78,6 +91,7 @@ class UploadCompleteResponse(BaseModel):
 
 class ExtractionJobStatus(BaseModel):
     """Status of an extraction job."""
+
     job_id: str
     project_id: int
     upload_id: str
@@ -94,6 +108,7 @@ class ExtractionJobStatus(BaseModel):
 
 class ExtractionResultResponse(BaseModel):
     """Final extraction result."""
+
     job_id: str
     project_id: int
     status: str
@@ -118,22 +133,22 @@ extraction_jobs: Dict[str, ExtractionJobStatus] = {}
 
 # ── Helper Functions ──────────────────────────────────────────────────────
 
+
 def validate_file(file: UploadFile) -> None:
     """Validate uploaded file."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
-    
+
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=400, 
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            status_code=400,
+            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
-    
+
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
-            status_code=400, 
-            detail=f"MIME type {file.content_type} not allowed"
+            status_code=400, detail=f"MIME type {file.content_type} not allowed"
         )
 
 
@@ -142,15 +157,15 @@ async def save_upload_chunk(upload_id: str, chunk: bytes, chunk_index: int) -> N
     session = upload_sessions.get(upload_id)
     if not session:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    
+
     file_path = session["file_path"]
-    
+
     # Write chunk at correct position
     with open(file_path, "r+b") as f:
         # For simplicity, append chunks (in production, use proper chunk positioning)
         f.seek(0, 2)  # Seek to end
         f.write(chunk)
-    
+
     session["chunks_received"].add(chunk_index)
 
 
@@ -159,14 +174,15 @@ def finalize_upload(upload_id: str) -> str:
     session = upload_sessions.get(upload_id)
     if not session:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    
+
     if len(session["chunks_received"]) != session["total_chunks"]:
         raise HTTPException(status_code=400, detail="Not all chunks received")
-    
+
     return session["file_path"]
 
 
 # ── API Endpoints ──────────────────────────────────────────────────────────
+
 
 @router.post("/{project_id}/upload/init", response_model=UploadInitResponse)
 async def init_upload(
@@ -182,28 +198,32 @@ async def init_upload(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Validate file type
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=400, 
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            status_code=400,
+            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
-    
+
     if mime_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"MIME type {mime_type} not allowed")
-    
+        raise HTTPException(
+            status_code=400, detail=f"MIME type {mime_type} not allowed"
+        )
+
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes")
-    
+        raise HTTPException(
+            status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes"
+        )
+
     # Create upload session
     upload_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{upload_id}_{filename}"
-    
+
     # Create empty file for chunked writing
     file_path.touch()
-    
+
     upload_sessions[upload_id] = {
         "project_id": project_id,
         "filename": filename,
@@ -215,9 +235,9 @@ async def init_upload(
         "created_at": datetime.utcnow(),
         "user_id": current_user.id,
     }
-    
+
     logger.info(f"Upload initialized: {upload_id} for project {project_id}")
-    
+
     return UploadInitResponse(
         upload_id=upload_id,
         project_id=project_id,
@@ -242,25 +262,25 @@ async def upload_chunk(
     session = upload_sessions.get(upload_id)
     if not session:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    
+
     if session["project_id"] != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
+
     # Initialize total_chunks on first chunk
     if session["total_chunks"] == 0:
         session["total_chunks"] = total_chunks
     elif session["total_chunks"] != total_chunks:
         raise HTTPException(status_code=400, detail="Total chunks mismatch")
-    
+
     # Read chunk data
     chunk_data = await file.read()
-    
+
     # Save chunk
     await save_upload_chunk(upload_id, chunk_data, chunk_index)
-    
+
     # Update progress
     progress = len(session["chunks_received"]) / total_chunks * 100
-    
+
     # Emit WebSocket progress
     await emit_pipeline_event(
         project_id=project_id,
@@ -272,18 +292,20 @@ async def upload_chunk(
             "chunk_index": chunk_index,
             "total_chunks": total_chunks,
             "progress": progress,
-        }
+        },
     )
-    
+
     if is_final:
         # Finalize upload
         file_path = finalize_upload(upload_id)
         session["status"] = "uploaded"
         session["completed_at"] = datetime.utcnow()
-        
+
         # Start extraction job
-        job_id = await start_extraction_job(upload_id, project_id, file_path, session["mime_type"])
-        
+        job_id = await start_extraction_job(
+            upload_id, project_id, file_path, session["mime_type"]
+        )
+
         return UploadCompleteResponse(
             upload_id=upload_id,
             project_id=project_id,
@@ -292,8 +314,12 @@ async def upload_chunk(
             mime_type=session["mime_type"],
             extraction_job_id=job_id,
         )
-    
-    return {"status": "chunk_received", "chunk_index": chunk_index, "progress": progress}
+
+    return {
+        "status": "chunk_received",
+        "chunk_index": chunk_index,
+        "progress": progress,
+    }
 
 
 @router.post("/{project_id}/upload", response_model=UploadCompleteResponse)
@@ -309,27 +335,32 @@ async def upload_file(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     validate_file(file)
-    
+
     # Read file content
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large")
-    
+
     # Save file
     upload_id = str(uuid.uuid4())
     filename = file.filename or "unknown"
     file_path = UPLOAD_DIR / f"{upload_id}_{filename}"
-    
+
     with open(file_path, "wb") as f:
         f.write(content)
-    
+
     logger.info(f"File uploaded: {file_path} ({len(content)} bytes)")
-    
+
     # Start extraction in background
-    job_id = await start_extraction_job(upload_id, project_id, str(file_path), file.content_type or "application/octet-stream")
-    
+    job_id = await start_extraction_job(
+        upload_id,
+        project_id,
+        str(file_path),
+        file.content_type or "application/octet-stream",
+    )
+
     return UploadCompleteResponse(
         upload_id=upload_id,
         project_id=project_id,
@@ -341,14 +372,11 @@ async def upload_file(
 
 
 async def start_extraction_job(
-    upload_id: str, 
-    project_id: int, 
-    file_path: str, 
-    mime_type: str
+    upload_id: str, project_id: int, file_path: str, mime_type: str
 ) -> str:
     """Start an async extraction job."""
     job_id = str(uuid.uuid4())
-    
+
     job = ExtractionJobStatus(
         job_id=job_id,
         project_id=project_id,
@@ -360,11 +388,12 @@ async def start_extraction_job(
         updated_at=datetime.utcnow(),
     )
     extraction_jobs[job_id] = job
-    
+
     # Start extraction in background
     import asyncio
+
     asyncio.create_task(run_extraction(job_id, project_id, file_path, mime_type))
-    
+
     return job_id
 
 
@@ -373,40 +402,41 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
     job = extraction_jobs.get(job_id)
     if not job:
         return
-    
+
     try:
         job.status = "running"
         job.current_step = "extracting_text"
         job.progress = 0.1
         job.updated_at = datetime.utcnow()
-        
+
         # Emit progress
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_ENTER,
             stage="extract",
             progress=0.1,
-            data={"job_id": job_id, "step": "extracting_text"}
+            data={"job_id": job_id, "step": "extracting_text"},
         )
-        
+
         # Extract text using pipeline
         result = await extract_text(file_path, mime_type)
-        
+
         job.progress = 0.5
         job.current_step = "creating_chapters"
         job.updated_at = datetime.utcnow()
-        
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_PROGRESS,
             stage="extract",
             progress=0.5,
-            data={"job_id": job_id, "step": "creating_chapters"}
+            data={"job_id": job_id, "step": "creating_chapters"},
         )
-        
+
         # Create chapters from extracted text
         from ..database import SessionLocal
-        from ..models import Project, Chapter
+        from ..models import Chapter, Project
+
         db = SessionLocal()
         try:
             project = db.query(Project).filter(Project.id == project_id).first()
@@ -414,7 +444,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                 # Simple chapter splitting (by page breaks or fixed size)
                 chapters = split_into_chapters(result.raw_text)
                 job.total_chapters = len(chapters)
-                
+
                 for i, chapter_text in enumerate(chapters):
                     chapter = Chapter(
                         project_id=project_id,
@@ -428,24 +458,24 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                     job.extracted_chapters = i + 1
                     job.progress = 0.5 + (0.4 * (i + 1) / len(chapters))
                     job.updated_at = datetime.utcnow()
-                
+
                 db.commit()
-                
+
                 # Update project status
                 project.current_stage = "analyze"
                 project.progress = 0.15
                 db.commit()
-        
+
         finally:
             db.close()
-        
+
         # Complete
         job.status = "completed"
         job.progress = 1.0
         job.current_step = "completed"
         job.completed_at = datetime.utcnow()
         job.updated_at = datetime.utcnow()
-        
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_EXIT,
@@ -459,23 +489,23 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                 "page_count": result.page_count,
                 "has_ocr": result.has_ocr,
                 "ocr_page_ratio": result.ocr_page_ratio,
-            }
+            },
         )
-        
+
         logger.info(f"Extraction job {job_id} completed for project {project_id}")
-        
+
     except Exception as e:
         job.status = "failed"
         job.error = str(e)
         job.updated_at = datetime.utcnow()
-        
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.ERROR,
             stage="extract",
-            data={"job_id": job_id, "error": str(e)}
+            data={"job_id": job_id, "error": str(e)},
         )
-        
+
         logger.error(f"Extraction job {job_id} failed: {e}")
 
 
@@ -483,15 +513,15 @@ def split_into_chapters(text: str) -> List[str]:
     """Split text into chapters (simple heuristic)."""
     # Split by common chapter markers
     import re
-    
+
     # Try to find chapter markers
     chapter_patterns = [
-        r'\n\s*第[一二三四五六七八九十百千万\d]+\s*[章回节]\s*\n',
-        r'\n\s*Chapter\s+\d+\s*\n',
-        r'\n\s*CHAPTER\s+\d+\s*\n',
-        r'\n\s*第\s*\d+\s*章\s*\n',
+        r"\n\s*第[一二三四五六七八九十百千万\d]+\s*[章回节]\s*\n",
+        r"\n\s*Chapter\s+\d+\s*\n",
+        r"\n\s*CHAPTER\s+\d+\s*\n",
+        r"\n\s*第\s*\d+\s*章\s*\n",
     ]
-    
+
     for pattern in chapter_patterns:
         matches = list(re.finditer(pattern, text))
         if len(matches) > 1:
@@ -501,13 +531,13 @@ def split_into_chapters(text: str) -> List[str]:
                 end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
                 chapters.append(text[start:end].strip())
             return [c for c in chapters if c]
-    
+
     # Fallback: split by double newlines, group into chunks
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chapter_size = max(1, len(paragraphs) // 10)  # ~10 chapters
     chapters = []
     for i in range(0, len(paragraphs), chapter_size):
-        chapters.append("\n\n".join(paragraphs[i:i + chapter_size]))
+        chapters.append("\n\n".join(paragraphs[i : i + chapter_size]))
     return chapters
 
 
@@ -522,10 +552,10 @@ async def get_upload_status(
     session = upload_sessions.get(upload_id)
     if not session:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    
+
     if session["project_id"] != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
+
     return {
         "upload_id": upload_id,
         "project_id": project_id,
@@ -533,11 +563,15 @@ async def get_upload_status(
         "status": session.get("status", "initialized"),
         "chunks_received": len(session["chunks_received"]),
         "total_chunks": session["total_chunks"],
-        "progress": len(session["chunks_received"]) / max(session["total_chunks"], 1) * 100,
+        "progress": len(session["chunks_received"])
+        / max(session["total_chunks"], 1)
+        * 100,
     }
 
 
-@router.get("/{project_id}/extraction/{job_id}/status", response_model=ExtractionJobStatus)
+@router.get(
+    "/{project_id}/extraction/{job_id}/status", response_model=ExtractionJobStatus
+)
 async def get_extraction_status(
     project_id: int,
     job_id: str,
@@ -548,10 +582,10 @@ async def get_extraction_status(
     job = extraction_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Extraction job not found")
-    
+
     if job.project_id != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
+
     return job
 
 
@@ -577,16 +611,16 @@ async def cancel_upload(
     session = upload_sessions.get(upload_id)
     if not session:
         raise HTTPException(status_code=404, detail="Upload session not found")
-    
+
     if session["project_id"] != project_id:
         raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
+
     # Delete temp file
     file_path = Path(session["file_path"])
     if file_path.exists():
         file_path.unlink()
-    
+
     # Remove session
     del upload_sessions[upload_id]
-    
+
     return {"message": "Upload cancelled and cleaned up"}

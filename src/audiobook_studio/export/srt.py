@@ -126,7 +126,9 @@ def generate_srt(
         if duration > cfg.max_duration_per_entry_ms:
             # Too long — split into multiple entries
             text_chunks = _split_long_text(entry.text, cfg.max_chars_per_line)
-            chunk_duration = max(duration // len(text_chunks), cfg.min_duration_per_entry_ms)
+            chunk_duration = max(
+                duration // len(text_chunks), cfg.min_duration_per_entry_ms
+            )
             chunk_start = entry.start_ms
 
             for chunk in text_chunks:
@@ -156,17 +158,23 @@ def generate_srt(
         duration = entry.end_ms - entry.start_ms
         if duration > cfg.max_duration_per_entry_ms:
             text_chunks = _split_long_text(entry.text, cfg.max_chars_per_line)
-            chunk_duration = max(duration // len(text_chunks), cfg.min_duration_per_entry_ms)
+            chunk_duration = max(
+                duration // len(text_chunks), cfg.min_duration_per_entry_ms
+            )
             chunk_start = entry.start_ms
             for chunk in text_chunks:
                 chunk_end = min(chunk_start + chunk_duration, entry.end_ms)
-                vtt_lines.append(f"{_ms_to_srt(chunk_start)} --> {_ms_to_srt(chunk_end)}")
+                vtt_lines.append(
+                    f"{_ms_to_srt(chunk_start)} --> {_ms_to_srt(chunk_end)}"
+                )
                 text = f"[{entry.speaker}] {chunk}" if entry.speaker else chunk
                 vtt_lines.append(text)
                 vtt_lines.append("")
                 chunk_start = chunk_end
         else:
-            vtt_lines.append(f"{_ms_to_srt(entry.start_ms)} --> {_ms_to_srt(entry.end_ms)}")
+            vtt_lines.append(
+                f"{_ms_to_srt(entry.start_ms)} --> {_ms_to_srt(entry.end_ms)}"
+            )
             text = f"[{entry.speaker}] {entry.text}" if entry.speaker else entry.text
             vtt_lines.append(text)
             vtt_lines.append("")

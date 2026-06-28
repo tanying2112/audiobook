@@ -1,5 +1,41 @@
 # Release Notes
 
+## 2026-06-28 — v0.2.0 Production Ready Release
+
+### Highlights
+- **Voice Cloning Real Implementation**: Kokoro-ONNX voice cloning with 15s audio sample support
+- **Real TTS Synthesis Integration**: VoiceCloningEngine fully integrated with TTS pipeline
+- **Test Infrastructure Cleanup**: Removed duplicate test methods, 4245 tests collect cleanly
+- **CI Coverage Threshold**: All core modules now require ≥80% coverage
+- **Documentation Complete**: deployment.md, faq.md, harness_guide.md finalized
+
+### Production Features
+- Voice cloning with 256-dim embedding extraction
+- Reference audio support in KokoroBackend
+- Cross-chapter voice anchoring (Voice Anchor)
+- Real-time synthesis with fallback chain
+- Batch processing for long-form content
+
+### Test Infrastructure
+- Fixed duplicate `test_all_intermediate_stages` in test_auto_run.py
+- Removed incomplete `test_make_routing_decision_mock` stub in test_synthesize.py
+- Cleaned up duplicate test_synthesize_kokoro_* methods
+- Coverage check script updated for 80% targets
+
+### CI/CD Enhancements
+- Coverage threshold: `--cov-fail-under=80`
+- Coverage check script: all core modules ≥80%
+- Contract compliance: ≥99%
+- Golden dataset pass rate: ≥95%
+
+### Bug Fixes
+- Indentation error in voxcpm2_backend.py `_get_voice_embedding()`
+- Mock mode engine selection in synthesize.py `_try_synthesize_with_fallback()`
+- Duplicate chapter_id parameter in translate.py
+- Pydantic v2 migration (.dict() → .model_dump())
+
+---
+
 ## 2026-06-24 — v0.2.0 Engineering Hardening Release
 
 ### Highlights

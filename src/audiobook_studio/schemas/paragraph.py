@@ -52,9 +52,7 @@ class ParagraphAnnotationInput(BaseModel):
         ..., min_length=100, max_length=500, description="故事主线摘要"
     )
     global_style_notes: str = Field(..., description="全局文风备注")
-    contract_version: int = Field(
-        default=2, description="契约版本号 v2: 极简语义标注"
-    )
+    contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
 
 class ParagraphAnnotation(BaseModel):
@@ -96,17 +94,27 @@ class ParagraphAnnotation(BaseModel):
         default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值"
     )
     notes: str | None = Field(default=None, description="备注/不确定性说明")
-    contract_version: int = Field(
-        default=2, description="契约版本号 v2: 极简语义标注"
-    )
+    contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
     # v1 兼容字段 (可选，迁移期保留)
-    speech_rate: Optional[SpeechRate] = Field(default=None, description="语速 (7 档离散值) - v1 兼容")
-    pitch_shift_semitones: Optional[PitchShift] = Field(default=None, description="音高偏移 半音 -5 到 +5 - v1 兼容")
-    needs_sfx: Optional[bool] = Field(default=None, description="是否需要场景音效 - v1 兼容")
-    sfx_tags: Optional[list[str]] = Field(default=None, description="音效标签列表 - v1 兼容")
-    pause_before_ms: Optional[PauseMs] = Field(default=None, description="前停顿毫秒 - v1 兼容")
-    pause_after_ms: Optional[PauseMs] = Field(default=None, description="后停顿毫秒 - v1 兼容")
+    speech_rate: Optional[SpeechRate] = Field(
+        default=None, description="语速 (7 档离散值) - v1 兼容"
+    )
+    pitch_shift_semitones: Optional[PitchShift] = Field(
+        default=None, description="音高偏移 半音 -5 到 +5 - v1 兼容"
+    )
+    needs_sfx: Optional[bool] = Field(
+        default=None, description="是否需要场景音效 - v1 兼容"
+    )
+    sfx_tags: Optional[list[str]] = Field(
+        default=None, description="音效标签列表 - v1 兼容"
+    )
+    pause_before_ms: Optional[PauseMs] = Field(
+        default=None, description="前停顿毫秒 - v1 兼容"
+    )
+    pause_after_ms: Optional[PauseMs] = Field(
+        default=None, description="后停顿毫秒 - v1 兼容"
+    )
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

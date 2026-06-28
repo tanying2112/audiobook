@@ -16,8 +16,8 @@ from src.audiobook_studio.storage import (
     project_dir,
     raw_dir,
     raw_file_path,
-    reports_dir,
     remove_project_storage,
+    reports_dir,
     save_audio,
     save_chapter_annotations,
     save_extracted_text,
@@ -32,6 +32,7 @@ def temp_storage():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Patch the storage root
         import src.audiobook_studio.storage as storage_mod
+
         original_root = storage_mod._STORAGE_ROOT
         storage_mod._STORAGE_ROOT = Path(tmpdir)
         yield Path(tmpdir)
@@ -89,6 +90,7 @@ class TestPathHelpers:
     def test_chapter_filename(self):
         """Test _chapter_filename helper."""
         from src.audiobook_studio.storage import _chapter_filename
+
         assert _chapter_filename(1, ".txt") == "ch_001.txt"
         assert _chapter_filename(5, ".json") == "ch_005.json"
         assert _chapter_filename(100, ".md") == "ch_100.md"
@@ -96,6 +98,7 @@ class TestPathHelpers:
     def test_paragraph_basename(self):
         """Test _paragraph_basename helper."""
         from src.audiobook_studio.storage import _paragraph_basename
+
         assert _paragraph_basename(1, 1) == "ch_001_p_001"
         assert _paragraph_basename(5, 42) == "ch_005_p_042"
         assert _paragraph_basename(100, 999) == "ch_100_p_999"

@@ -2,10 +2,9 @@
 apply 模板辅助函数、以及 API 端点核心逻辑。"""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # Schema / dataclass 测试
@@ -39,9 +38,15 @@ class TestTemplateSchemas:
         from src.audiobook_studio.api.templates import TemplateItem
 
         t = TemplateItem(
-            id=1, feedback_id="fb-1", source="s", stage="annotate",
-            rationale="r", created_at="2025-01-01",
-            input_snapshot={}, llm_output={}, corrected_output={},
+            id=1,
+            feedback_id="fb-1",
+            source="s",
+            stage="annotate",
+            rationale="r",
+            created_at="2025-01-01",
+            input_snapshot={},
+            llm_output={},
+            corrected_output={},
         )
         assert t.pattern_tags is None
         assert t.diff_summary is None
@@ -57,12 +62,21 @@ class TestTemplateSchemas:
 
     def test_template_list_response_with_data(self):
         """TemplateListResponse 含数据。"""
-        from src.audiobook_studio.api.templates import TemplateListResponse, TemplateItem
+        from src.audiobook_studio.api.templates import (
+            TemplateItem,
+            TemplateListResponse,
+        )
 
         t = TemplateItem(
-            id=1, feedback_id="fb-1", source="s", stage="annotate",
-            rationale="r", created_at="2025-01-01",
-            input_snapshot={}, llm_output={}, corrected_output={},
+            id=1,
+            feedback_id="fb-1",
+            source="s",
+            stage="annotate",
+            rationale="r",
+            created_at="2025-01-01",
+            input_snapshot={},
+            llm_output={},
+            corrected_output={},
         )
         resp = TemplateListResponse(templates=[t], total_count=1, pending_count=0)
         assert len(resp.templates) == 1
@@ -87,7 +101,8 @@ class TestTemplateSchemas:
         from src.audiobook_studio.api.templates import TemplateApplyRequest
 
         req = TemplateApplyRequest(
-            template_id=1, scope="all",
+            template_id=1,
+            scope="all",
             chapter_ids=[1, 2],
             pattern_filter="tag",
         )
@@ -117,8 +132,11 @@ class TestTemplateSchemas:
         from src.audiobook_studio.api.templates import TemplateApplyProgress
 
         p = TemplateApplyProgress(
-            processed=5, total=10, status="completed",
-            current_paragraph_id=5, current_stage="annotate",
+            processed=5,
+            total=10,
+            status="completed",
+            current_paragraph_id=5,
+            current_stage="annotate",
         )
         assert p.processed == 5
         assert p.status == "completed"
@@ -399,8 +417,11 @@ class TestApplyTemplateBackground:
 
         task_id = "test_task_init"
         _apply_template_background.progress[task_id] = {
-            "processed": 0, "total": 0, "status": "running",
-            "error": None, "current_paragraph_id": None,
+            "processed": 0,
+            "total": 0,
+            "status": "running",
+            "error": None,
+            "current_paragraph_id": None,
             "current_stage": None,
         }
         assert task_id in _apply_template_background.progress
@@ -466,7 +487,10 @@ class TestConfirmTemplateLogic:
     @pytest.mark.asyncio
     async def test_confirm_success(self):
         """confirm_template 确认操作。"""
-        from src.audiobook_studio.api.templates import confirm_template, TemplateConfirmRequest
+        from src.audiobook_studio.api.templates import (
+            TemplateConfirmRequest,
+            confirm_template,
+        )
 
         db = MagicMock()
         record = MagicMock()
@@ -486,7 +510,10 @@ class TestConfirmTemplateLogic:
     @pytest.mark.asyncio
     async def test_reject_success(self):
         """confirm_template 拒绝操作。"""
-        from src.audiobook_studio.api.templates import confirm_template, TemplateConfirmRequest
+        from src.audiobook_studio.api.templates import (
+            TemplateConfirmRequest,
+            confirm_template,
+        )
 
         db = MagicMock()
         record = MagicMock()
@@ -505,7 +532,10 @@ class TestConfirmTemplateLogic:
     @pytest.mark.asyncio
     async def test_confirm_with_tags(self):
         """confirm 带 pattern_tags。"""
-        from src.audiobook_studio.api.templates import confirm_template, TemplateConfirmRequest
+        from src.audiobook_studio.api.templates import (
+            TemplateConfirmRequest,
+            confirm_template,
+        )
 
         db = MagicMock()
         record = MagicMock()
@@ -530,8 +560,12 @@ class TestApplyTemplateLogic:
     @pytest.mark.asyncio
     async def test_apply_not_confirmed(self):
         """apply_template 未确认模板返回 400。"""
-        from src.audiobook_studio.api.templates import apply_template, TemplateApplyRequest
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.templates import (
+            TemplateApplyRequest,
+            apply_template,
+        )
 
         db = MagicMock()
         template = MagicMock()
@@ -549,8 +583,12 @@ class TestApplyTemplateLogic:
     @pytest.mark.asyncio
     async def test_apply_not_found(self):
         """apply_template 模板不存在返回 404。"""
-        from src.audiobook_studio.api.templates import apply_template, TemplateApplyRequest
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.templates import (
+            TemplateApplyRequest,
+            apply_template,
+        )
 
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
@@ -565,7 +603,10 @@ class TestApplyTemplateLogic:
     @pytest.mark.asyncio
     async def test_apply_success(self):
         """apply_template 成功提交后台任务。"""
-        from src.audiobook_studio.api.templates import apply_template, TemplateApplyRequest
+        from src.audiobook_studio.api.templates import (
+            TemplateApplyRequest,
+            apply_template,
+        )
 
         db = MagicMock()
         template = MagicMock()
@@ -576,7 +617,9 @@ class TestApplyTemplateLogic:
         req = TemplateApplyRequest(template_id=1, scope="all")
         bg = MagicMock()
 
-        result = await apply_template(project_id=1, request=req, background_tasks=bg, db=db)
+        result = await apply_template(
+            project_id=1, request=req, background_tasks=bg, db=db
+        )
         assert result["status"] == "queued"
         assert "task_id" in result
         bg.add_task.assert_called_once()
@@ -591,8 +634,9 @@ class TestGetApplyProgressLogic:
     @pytest.mark.asyncio
     async def test_progress_not_found(self):
         """查询不存在任务返回 404。"""
-        from src.audiobook_studio.api.templates import get_apply_progress
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.templates import get_apply_progress
 
         with pytest.raises(HTTPException) as exc_info:
             await get_apply_progress(project_id=1, task_id="nonexistent")
@@ -602,8 +646,8 @@ class TestGetApplyProgressLogic:
     async def test_progress_found(self):
         """查询存在任务返回进度。"""
         from src.audiobook_studio.api.templates import (
-            get_apply_progress,
             _apply_template_background,
+            get_apply_progress,
         )
 
         task_id = "progress_test_task"

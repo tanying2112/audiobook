@@ -15,9 +15,9 @@ import logging
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from tqdm import tqdm
@@ -34,13 +34,13 @@ REQUIRED_FILES = {
     "kokoro-v1.0.onnx": {
         "url": f"https://huggingface.co/{KOKORO_REPO}/resolve/main/kokoro-v1.0.onnx",
         "size_mb": 308,
-        "sha256": None  # Will be verified on first download
+        "sha256": None,  # Will be verified on first download
     },
     "voices-v1.0.bin": {
         "url": f"https://huggingface.co/{KOKORO_REPO}/resolve/main/voices-v1.0.bin",
         "size_mb": 56,
-        "sha256": None
-    }
+        "sha256": None,
+    },
 }
 
 # Alternative: Official ONNX models from the kokoro-onnx repo
@@ -49,13 +49,13 @@ FALLBACK_FILES = {
     "model.onnx": {
         "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.1.0/kokoro-v1.0.onnx",
         "size_mb": 308,
-        "sha256": None
+        "sha256": None,
     },
     "voices.bin": {
         "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.1.0/voices-v1.0.bin",
         "size_mb": 56,
-        "sha256": None
-    }
+        "sha256": None,
+    },
 }
 
 CHUNK_SIZE = 8192
@@ -77,7 +77,7 @@ def download_file(
     url: str,
     filepath: Path,
     expected_size_mb: float = None,
-    progress_bar: Optional[tqdm] = None
+    progress_bar: Optional[tqdm] = None,
 ) -> Tuple[bool, str]:
     """
     Download a single file with resume support.
@@ -89,13 +89,17 @@ def download_file(
     # Resume support - check existing partial download
     if temp_path.exists():
         headers["Range"] = f"bytes={temp_path.stat().st_size}-"
-        logger.info(f"Resuming download: {filepath.name} (already have {temp_path.stat().st_size} bytes)")
+        logger.info(
+            f"Resuming download: {filepath.name} (already have {temp_path.stat().st_size} bytes)"
+        )
 
     for attempt in range(MAX_RETRIES):
         try:
             response = requests.get(url, headers=headers, stream=True, timeout=30)
 
-            if response.status_code == 416:  # Range not satisfiable - file already complete
+            if (
+                response.status_code == 416
+            ):  # Range not satisfiable - file already complete
                 if temp_path.exists():
                     temp_path.rename(filepath)
                     return True, "Already complete"
@@ -119,16 +123,24 @@ def download_file(
             # Verify size if expected
             if expected_size_mb and total_size > 0:
                 actual_mb = temp_path.stat().st_size / (1024 * 1024)
-                if abs(actual_mb - expected_size_mb) > expected_size_mb * 0.1:  # 10% tolerance
-                    logger.warning(f"Size mismatch: expected ~{expected_size_mb}MB, got {actual_mb:.1f}MB")
+                if (
+                    abs(actual_mb - expected_size_mb) > expected_size_mb * 0.1
+                ):  # 10% tolerance
+                    logger.warning(
+                        f"Size mismatch: expected ~{expected_size_mb}MB, got {actual_mb:.1f}MB"
+                    )
 
             # Atomic rename
             temp_path.rename(filepath)
-            logger.info(f"Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)")
+            logger.info(
+                f"Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)"
+            )
             return True, ""
 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"Attempt {attempt + 1}/{MAX_RETRIES} failed for {filepath.name}: {e}")
+            logger.warning(
+                f"Attempt {attempt + 1}/{MAX_RETRIES} failed for {filepath.name}: {e}"
+            )
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY * (attempt + 1))
             continue
@@ -156,7 +168,9 @@ def verify_model_files(model_dir: Path, files_spec: Dict) -> Tuple[bool, List[st
         size_mb = filepath.stat().st_size / (1024 * 1024)
         expected_mb = spec.get("size_mb", 0)
         if expected_mb and abs(size_mb - expected_mb) > expected_mb * 0.15:
-            issues.append(f"Size mismatch: {filename} ({size_mb:.1f}MB vs expected ~{expected_mb}MB)")
+            issues.append(
+                f"Size mismatch: {filename} ({size_mb:.1f}MB vs expected ~{expected_mb}MB)"
+            )
 
     return len(issues) == 0, issues
 
@@ -165,7 +179,7 @@ def download_all_models(
     model_dir: Path = DEFAULT_MODEL_DIR,
     files_spec: Dict = REQUIRED_FILES,
     max_workers: int = MAX_WORKERS,
-    force: bool = False
+    force: bool = False,
 ) -> bool:
     """
     Download all required model files.
@@ -203,7 +217,9 @@ def download_all_models(
 
     # Download with progress tracking
     success_count = 0
-    with tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading models") as pbar:
+    with tqdm(
+        total=total_size, unit="B", unit_scale=True, desc="Downloading models"
+    ) as pbar:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(download_file, url, filepath, size_mb, pbar): filename
@@ -225,7 +241,9 @@ def download_all_models(
     # Verify final result
     valid, issues = verify_model_files(model_dir, files_spec)
     if valid:
-        logger.info(f"All {success_count} model files downloaded and verified successfully!")
+        logger.info(
+            f"All {success_count} model files downloaded and verified successfully!"
+        )
         return True
     else:
         logger.error(f"Verification failed: {issues}")
@@ -243,7 +261,7 @@ def ensure_models_available(
     model_dir: Optional[Path] = None,
     force: bool = False,
     fallback: bool = False,
-    max_workers: int = MAX_WORKERS
+    max_workers: int = MAX_WORKERS,
 ) -> Tuple[bool, Path]:
     """
     Ensure Kokoro models are available, downloading if necessary.
@@ -264,7 +282,7 @@ def ensure_models_available(
         model_dir=target_dir,
         files_spec=files_spec,
         max_workers=max_workers,
-        force=force
+        force=force,
     )
 
     if not success and not fallback:

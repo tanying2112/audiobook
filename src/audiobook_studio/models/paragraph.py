@@ -132,7 +132,7 @@ class Paragraph(Base):
             book_id=self.book_id or self.project_id,
             index=self.index,
             text=self.text,
-        speaker=self.speaker or self.speaker_canonical_name,
+            speaker=self.speaker or self.speaker_canonical_name,
         )
 
     def to_annotation_dict(self) -> dict:

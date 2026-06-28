@@ -14,11 +14,12 @@ Usage:
     pytest tests/unit/ -v  # E2E tests skipped
 """
 
+import asyncio
 import os
-import pytest
 from pathlib import Path
 from typing import Optional
-import asyncio
+
+import pytest
 
 
 # Skip E2E tests by default - require explicit --e2e flag

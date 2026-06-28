@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # 校准数据集
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class CalibrationSample:
     """校准样本 — 包含模拟输入和人工标注真值.
@@ -62,140 +63,251 @@ class CalibrationSample:
 DEFAULT_CALIBRATION_SAMPLES: List[CalibrationSample] = [
     # ─── PASS 样本 (高质量) ───
     CalibrationSample(
-        sample_id="pass_001", description="优秀朗读：语义连贯、情感匹配、客观指标全优",
-        semantic_score=0.88, structural_score=0.85, objective_score=0.92,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.88,
-        ground_truth_tags=[], category="narration", difficulty="easy",
+        sample_id="pass_001",
+        description="优秀朗读：语义连贯、情感匹配、客观指标全优",
+        semantic_score=0.88,
+        structural_score=0.85,
+        objective_score=0.92,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.88,
+        ground_truth_tags=[],
+        category="narration",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="pass_002", description="对话场景：角色声音匹配、情感精准",
-        semantic_score=0.90, structural_score=0.80, objective_score=0.90,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.87,
-        ground_truth_tags=[], category="dialogue", difficulty="easy",
+        sample_id="pass_002",
+        description="对话场景：角色声音匹配、情感精准",
+        semantic_score=0.90,
+        structural_score=0.80,
+        objective_score=0.90,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.87,
+        ground_truth_tags=[],
+        category="dialogue",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="pass_003", description="情感丰富段落：悲伤语气准确传达",
-        semantic_score=0.85, structural_score=0.82, objective_score=0.88,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.85,
-        ground_truth_tags=[], category="emotion", difficulty="medium",
+        sample_id="pass_003",
+        description="情感丰富段落：悲伤语气准确传达",
+        semantic_score=0.85,
+        structural_score=0.82,
+        objective_score=0.88,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.85,
+        ground_truth_tags=[],
+        category="emotion",
+        difficulty="medium",
     ),
     CalibrationSample(
-        sample_id="pass_004", description="旁白段落：自然流畅、节奏合适",
-        semantic_score=0.87, structural_score=0.88, objective_score=0.90,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.88,
-        ground_truth_tags=[], category="narration", difficulty="easy",
+        sample_id="pass_004",
+        description="旁白段落：自然流畅、节奏合适",
+        semantic_score=0.87,
+        structural_score=0.88,
+        objective_score=0.90,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.88,
+        ground_truth_tags=[],
+        category="narration",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="pass_005", description="章节开头：结构清晰、情感匹配",
-        semantic_score=0.82, structural_score=0.90, objective_score=0.88,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.86,
-        ground_truth_tags=[], category="structure", difficulty="easy",
+        sample_id="pass_005",
+        description="章节开头：结构清晰、情感匹配",
+        semantic_score=0.82,
+        structural_score=0.90,
+        objective_score=0.88,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.86,
+        ground_truth_tags=[],
+        category="structure",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="pass_006", description="快节奏动作场景：语速匹配、情感到位",
-        semantic_score=0.84, structural_score=0.78, objective_score=0.86,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.83,
-        ground_truth_tags=[], category="action", difficulty="medium",
+        sample_id="pass_006",
+        description="快节奏动作场景：语速匹配、情感到位",
+        semantic_score=0.84,
+        structural_score=0.78,
+        objective_score=0.86,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.83,
+        ground_truth_tags=[],
+        category="action",
+        difficulty="medium",
     ),
     CalibrationSample(
-        sample_id="pass_007", description="多角色对话：声音区分清晰、语义连贯",
-        semantic_score=0.86, structural_score=0.83, objective_score=0.89,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.86,
-        ground_truth_tags=[], category="dialogue", difficulty="medium",
+        sample_id="pass_007",
+        description="多角色对话：声音区分清晰、语义连贯",
+        semantic_score=0.86,
+        structural_score=0.83,
+        objective_score=0.89,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.86,
+        ground_truth_tags=[],
+        category="dialogue",
+        difficulty="medium",
     ),
-
     # ─── WARNING 样本 (中等质量) ───
     CalibrationSample(
-        sample_id="warn_001", description="段落边界略有偏差：结构分数较低",
-        semantic_score=0.78, structural_score=0.62, objective_score=0.85,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.75,
-        ground_truth_tags=["paragraph_boundary_drift"], category="structure",
+        sample_id="warn_001",
+        description="段落边界略有偏差：结构分数较低",
+        semantic_score=0.78,
+        structural_score=0.62,
+        objective_score=0.85,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.75,
+        ground_truth_tags=["paragraph_boundary_drift"],
+        category="structure",
         difficulty="medium",
     ),
     CalibrationSample(
-        sample_id="warn_002", description="情感略有偏差：语义连贯但情感不够饱满",
-        semantic_score=0.65, structural_score=0.80, objective_score=0.82,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.72,
-        ground_truth_tags=["emotion_mismatch"], category="emotion",
+        sample_id="warn_002",
+        description="情感略有偏差：语义连贯但情感不够饱满",
+        semantic_score=0.65,
+        structural_score=0.80,
+        objective_score=0.82,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.72,
+        ground_truth_tags=["emotion_mismatch"],
+        category="emotion",
         difficulty="medium",
     ),
     CalibrationSample(
-        sample_id="warn_003", description="客观指标接近边界阈值",
-        semantic_score=0.80, structural_score=0.78, objective_score=0.68,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.75,
-        ground_truth_tags=["dnsmos_below_threshold"], category="quality",
+        sample_id="warn_003",
+        description="客观指标接近边界阈值",
+        semantic_score=0.80,
+        structural_score=0.78,
+        objective_score=0.68,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.75,
+        ground_truth_tags=["dnsmos_below_threshold"],
+        category="quality",
         difficulty="medium",
     ),
     CalibrationSample(
-        sample_id="warn_004", description="说话人过渡突兀：结构流程存在问题",
-        semantic_score=0.75, structural_score=0.60, objective_score=0.80,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.70,
+        sample_id="warn_004",
+        description="说话人过渡突兀：结构流程存在问题",
+        semantic_score=0.75,
+        structural_score=0.60,
+        objective_score=0.80,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.70,
         ground_truth_tags=["speaker_transition_abrupt", "flow_discontinuity"],
-        category="structure", difficulty="hard",
-    ),
-    CalibrationSample(
-        sample_id="warn_005", description="成本接近上限：结构合规有警告",
-        semantic_score=0.82, structural_score=0.55, objective_score=0.85,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.72,
-        ground_truth_tags=["cost_warning"], category="cost", difficulty="medium",
-    ),
-    CalibrationSample(
-        sample_id="warn_006", description="角色声音略有漂移：客观声纹相似度下降",
-        semantic_score=0.70, structural_score=0.78, objective_score=0.72,
-        ground_truth_verdict=CriticVerdict.WARNING, ground_truth_score=0.73,
-        ground_truth_tags=["speaker_fingerprint_drift"], category="voice",
+        category="structure",
         difficulty="hard",
     ),
-
+    CalibrationSample(
+        sample_id="warn_005",
+        description="成本接近上限：结构合规有警告",
+        semantic_score=0.82,
+        structural_score=0.55,
+        objective_score=0.85,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.72,
+        ground_truth_tags=["cost_warning"],
+        category="cost",
+        difficulty="medium",
+    ),
+    CalibrationSample(
+        sample_id="warn_006",
+        description="角色声音略有漂移：客观声纹相似度下降",
+        semantic_score=0.70,
+        structural_score=0.78,
+        objective_score=0.72,
+        ground_truth_verdict=CriticVerdict.WARNING,
+        ground_truth_score=0.73,
+        ground_truth_tags=["speaker_fingerprint_drift"],
+        category="voice",
+        difficulty="hard",
+    ),
     # ─── FAIL 样本 (低质量) ───
     CalibrationSample(
-        sample_id="fail_001", description="语义断裂：上下文不连贯",
-        semantic_score=0.35, structural_score=0.65, objective_score=0.70,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.40,
-        ground_truth_tags=["semantic_drift"], category="semantic", difficulty="easy",
+        sample_id="fail_001",
+        description="语义断裂：上下文不连贯",
+        semantic_score=0.35,
+        structural_score=0.65,
+        objective_score=0.70,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.40,
+        ground_truth_tags=["semantic_drift"],
+        category="semantic",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="fail_002", description="情感反向：悲伤场景用欢快语气",
-        semantic_score=0.20, structural_score=0.70, objective_score=0.75,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.25,
-        ground_truth_tags=["emotion_reversed"], category="emotion", difficulty="easy",
+        sample_id="fail_002",
+        description="情感反向：悲伤场景用欢快语气",
+        semantic_score=0.20,
+        structural_score=0.70,
+        objective_score=0.75,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.25,
+        ground_truth_tags=["emotion_reversed"],
+        category="emotion",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="fail_003", description="角色混淆：旁白和对话声音不分",
-        semantic_score=0.30, structural_score=0.55, objective_score=0.65,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.35,
-        ground_truth_tags=["speaker_confusion"], category="voice", difficulty="easy",
+        sample_id="fail_003",
+        description="角色混淆：旁白和对话声音不分",
+        semantic_score=0.30,
+        structural_score=0.55,
+        objective_score=0.65,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.35,
+        ground_truth_tags=["speaker_confusion"],
+        category="voice",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="fail_004", description="客观指标全面低下：DNSMOS极低、WER极高",
-        semantic_score=0.45, structural_score=0.50, objective_score=0.25,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.30,
-        ground_truth_tags=["dnsmos_below_threshold", "wer_above_threshold",
-                           "critical_failure"],
-        category="quality", difficulty="easy",
+        sample_id="fail_004",
+        description="客观指标全面低下：DNSMOS极低、WER极高",
+        semantic_score=0.45,
+        structural_score=0.50,
+        objective_score=0.25,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.30,
+        ground_truth_tags=[
+            "dnsmos_below_threshold",
+            "wer_above_threshold",
+            "critical_failure",
+        ],
+        category="quality",
+        difficulty="easy",
     ),
     CalibrationSample(
-        sample_id="fail_005", description="章节边界完全错位 + 成本严重超支",
-        semantic_score=0.50, structural_score=0.20, objective_score=0.60,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.35,
+        sample_id="fail_005",
+        description="章节边界完全错位 + 成本严重超支",
+        semantic_score=0.50,
+        structural_score=0.20,
+        objective_score=0.60,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.35,
         ground_truth_tags=["chapter_boundary_mismatch", "cost_overrun"],
-        category="structure", difficulty="hard",
+        category="structure",
+        difficulty="hard",
     ),
     CalibrationSample(
-        sample_id="fail_006", description="三维度全面不合格",
-        semantic_score=0.25, structural_score=0.30, objective_score=0.35,
-        ground_truth_verdict=CriticVerdict.FAIL, ground_truth_score=0.25,
-        ground_truth_tags=["semantic_drift", "flow_discontinuity",
-                           "critical_failure"],
-        category="general", difficulty="easy",
+        sample_id="fail_006",
+        description="三维度全面不合格",
+        semantic_score=0.25,
+        structural_score=0.30,
+        objective_score=0.35,
+        ground_truth_verdict=CriticVerdict.FAIL,
+        ground_truth_score=0.25,
+        ground_truth_tags=["semantic_drift", "flow_discontinuity", "critical_failure"],
+        category="general",
+        difficulty="easy",
     ),
-
     # ─── 边界案例 ───
     CalibrationSample(
-        sample_id="edge_001", description="刚好及格线：各维度均在阈值边缘",
-        semantic_score=0.70, structural_score=0.70, objective_score=0.70,
-        ground_truth_verdict=CriticVerdict.PASS, ground_truth_score=0.70,
-        ground_truth_tags=[], category="boundary", difficulty="hard",
+        sample_id="edge_001",
+        description="刚好及格线：各维度均在阈值边缘",
+        semantic_score=0.70,
+        structural_score=0.70,
+        objective_score=0.70,
+        ground_truth_verdict=CriticVerdict.PASS,
+        ground_truth_score=0.70,
+        ground_truth_tags=[],
+        category="boundary",
+        difficulty="hard",
     ),
 ]
 
@@ -203,6 +315,7 @@ DEFAULT_CALIBRATION_SAMPLES: List[CalibrationSample] = [
 # ═══════════════════════════════════════════════════════════════════════════
 # F1 评估器
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class CalibrationResult:
@@ -260,8 +373,11 @@ def _compute_f1_per_class(
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = (2 * precision * recall / (precision + recall)
-              if (precision + recall) > 0 else 0.0)
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
         f1_scores[label] = round(f1, 4)
 
     return f1_scores
@@ -270,6 +386,7 @@ def _compute_f1_per_class(
 # ═══════════════════════════════════════════════════════════════════════════
 # SyntheticCritic — 三元批评网络主类
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class SyntheticCritic:
     """异构三元批评网络.
@@ -315,9 +432,7 @@ class SyntheticCritic:
             CriticType.OBJECTIVE: 0.50,
         }
 
-        self.calibration_samples = (
-            calibration_samples or DEFAULT_CALIBRATION_SAMPLES
-        )
+        self.calibration_samples = calibration_samples or DEFAULT_CALIBRATION_SAMPLES
 
         self._ensemble = CriticEnsembleEvaluator(
             semantic_critic=self.semantic_critic,
@@ -338,12 +453,14 @@ class SyntheticCritic:
         """运行三元批评并融合结果."""
         if self.mock_mode:
             return self.run_mock_evaluation(
-                audio_path, annotation, routing_decision,
-                reference_text, context,
+                audio_path,
+                annotation,
+                routing_decision,
+                reference_text,
+                context,
             )
         return self._ensemble.evaluate(
-            audio_path, annotation, routing_decision,
-            reference_text, context
+            audio_path, annotation, routing_decision, reference_text, context
         )
 
     # ─── 校准与 F1 评估 ────────────────────────────────────────────────
@@ -372,8 +489,7 @@ class SyntheticCritic:
                 score=sample.semantic_score,
                 confidence=0.8,
                 reasoning=(
-                    f"[Calibration] semantic score = "
-                    f"{sample.semantic_score}"
+                    f"[Calibration] semantic score = " f"{sample.semantic_score}"
                 ),
                 evidence={"score": sample.semantic_score},
             )
@@ -383,8 +499,7 @@ class SyntheticCritic:
                 score=sample.structural_score,
                 confidence=0.75,
                 reasoning=(
-                    f"[Calibration] structural score = "
-                    f"{sample.structural_score}"
+                    f"[Calibration] structural score = " f"{sample.structural_score}"
                 ),
                 evidence={"score": sample.structural_score},
             )
@@ -394,15 +509,12 @@ class SyntheticCritic:
                 score=sample.objective_score,
                 confidence=0.9,
                 reasoning=(
-                    f"[Calibration] objective score = "
-                    f"{sample.objective_score}"
+                    f"[Calibration] objective score = " f"{sample.objective_score}"
                 ),
                 evidence={"score": sample.objective_score},
             )
 
-            results = [
-                semantic_result, structural_result, objective_result
-            ]
+            results = [semantic_result, structural_result, objective_result]
             ensemble = self._ensemble._fuse_results(results)
             predicted_verdict = ensemble.final_verdict
 
@@ -416,9 +528,7 @@ class SyntheticCritic:
         f1_per_class = _compute_f1_per_class(confusion, labels)
 
         # Macro-F1
-        f1_macro = round(
-            sum(f1_per_class.values()) / len(f1_per_class), 4
-        )
+        f1_macro = round(sum(f1_per_class.values()) / len(f1_per_class), 4)
 
         # Macro precision / recall
         precision_scores = []
@@ -432,12 +542,8 @@ class SyntheticCritic:
             precision_scores.append(p)
             recall_scores.append(r)
 
-        precision_macro = round(
-            sum(precision_scores) / len(precision_scores), 4
-        )
-        recall_macro = round(
-            sum(recall_scores) / len(recall_scores), 4
-        )
+        precision_macro = round(sum(precision_scores) / len(precision_scores), 4)
+        recall_macro = round(sum(recall_scores) / len(recall_scores), 4)
 
         # Accuracy
         correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
@@ -446,15 +552,17 @@ class SyntheticCritic:
         # 构建预测详情
         predictions = []
         for sample, pred in zip(samples, y_pred):
-            predictions.append({
-                "sample_id": sample.sample_id,
-                "true_verdict": sample.ground_truth_verdict.value,
-                "pred_verdict": pred,
-                "true_score": sample.ground_truth_score,
-                "category": sample.category,
-                "difficulty": sample.difficulty,
-                "correct": sample.ground_truth_verdict.value == pred,
-            })
+            predictions.append(
+                {
+                    "sample_id": sample.sample_id,
+                    "true_verdict": sample.ground_truth_verdict.value,
+                    "pred_verdict": pred,
+                    "true_score": sample.ground_truth_score,
+                    "category": sample.category,
+                    "difficulty": sample.difficulty,
+                    "correct": sample.ground_truth_verdict.value == pred,
+                }
+            )
 
         result = CalibrationResult(
             f1_macro=f1_macro,
@@ -558,9 +666,7 @@ class SyntheticCritic:
                 verdict=CriticVerdict.PASS,
                 score=0.85,
                 confidence=0.88,
-                reasoning=(
-                    "[Mock] 语义连贯性良好，情感表达与标注一致"
-                ),
+                reasoning=("[Mock] 语义连贯性良好，情感表达与标注一致"),
                 evidence={
                     "semantic_coherence": 0.88,
                     "emotion_consistency": 0.90,
@@ -573,9 +679,7 @@ class SyntheticCritic:
                 verdict=CriticVerdict.WARNING,
                 score=0.65,
                 confidence=0.70,
-                reasoning=(
-                    "[Mock] 段落边界略有偏差，流程略有停顿"
-                ),
+                reasoning=("[Mock] 段落边界略有偏差，流程略有停顿"),
                 evidence={
                     "document_structure": 0.80,
                     "paragraph_flow": 0.60,
@@ -609,9 +713,7 @@ class SyntheticCritic:
         """设置三派权重."""
         total = sum(weights.values())
         if abs(total - 1.0) > 0.01:
-            logger.warning(
-                f"Weights sum to {total:.2f}, normalizing to 1.0"
-            )
+            logger.warning(f"Weights sum to {total:.2f}, normalizing to 1.0")
             weights = {k: v / total for k, v in weights.items()}
         self.weights = weights
         self._ensemble.weights = weights
@@ -620,6 +722,7 @@ class SyntheticCritic:
 # ═══════════════════════════════════════════════════════════════════════════
 # 工厂函数
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def create_synthetic_critic(
     weights: Optional[Dict[CriticType, float]] = None,
@@ -647,9 +750,9 @@ def create_synthetic_critic(
     objective_critic = None
 
     try:
+        from .objective_critic import ObjectiveCritic
         from .semantic_critic import SemanticCritic
         from .structural_critic import StructuralCritic
-        from .objective_critic import ObjectiveCritic
 
         semantic_critic = SemanticCritic(
             router=router,
@@ -664,9 +767,7 @@ def create_synthetic_critic(
             config=config.get("objective", {}),
         )
     except Exception as e:
-        logger.warning(
-            f"Failed to init critics: {e}"
-        )
+        logger.warning(f"Failed to init critics: {e}")
 
     return SyntheticCritic(
         semantic_critic=semantic_critic,

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,7 @@ router = APIRouter(prefix="/projects/{project_id}/publish", tags=["publish"])
 
 class AudiobookshelfConfig(BaseModel):
     """Audiobookshelf server configuration."""
+
     server_url: str = Field(..., description="Audiobookshelf server URL")
     api_key: str = Field(..., description="API key for authentication")
     library_id: Optional[str] = Field(None, description="Target library ID")
@@ -40,6 +41,7 @@ class AudiobookshelfConfig(BaseModel):
 
 class PodcastRSSConfig(BaseModel):
     """Podcast RSS feed configuration."""
+
     feed_title: str = Field(..., description="Podcast feed title")
     feed_description: str = Field(..., description="Podcast description")
     feed_link: str = Field(..., description="Feed website link")
@@ -53,9 +55,10 @@ class PodcastRSSConfig(BaseModel):
 
 class PublishRequest(BaseModel):
     """Publish request payload."""
+
     destinations: List[str] = Field(
         ["audiobookshelf"],
-        description="Where to publish: audiobookshelf, podcast_rss, both"
+        description="Where to publish: audiobookshelf, podcast_rss, both",
     )
     audiobookshelf_config: Optional[AudiobookshelfConfig] = None
     podcast_config: Optional[PodcastRSSConfig] = None
@@ -63,6 +66,7 @@ class PublishRequest(BaseModel):
 
 class PublishJobOut(BaseModel):
     """Publish job output."""
+
     job_id: str
     project_id: int
     status: str = "pending"  # pending, publishing, completed, failed
@@ -75,6 +79,7 @@ class PublishJobOut(BaseModel):
 
 class PublishHistoryOut(BaseModel):
     """Publish history item."""
+
     job_id: str
     status: str
     destinations: List[str]
@@ -84,6 +89,7 @@ class PublishHistoryOut(BaseModel):
 
 class RSSFeedOut(BaseModel):
     """Generated RSS feed."""
+
     xml: str = Field(..., description="RSS XML content")
     feed_url: str = Field(..., description="Feed URL")
     episode_count: int = Field(..., description="Number of episodes")
@@ -125,7 +131,7 @@ async def publish_project(
     if project.status != "completed":
         raise HTTPException(
             status_code=400,
-            detail=f"Project not ready for publishing. Current status: {project.status}"
+            detail=f"Project not ready for publishing. Current status: {project.status}",
         )
 
     # Validate destinations
@@ -135,7 +141,7 @@ async def publish_project(
         invalid = requested - valid_destinations
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid destinations: {invalid}. Valid: {valid_destinations}"
+            detail=f"Invalid destinations: {invalid}. Valid: {valid_destinations}",
         )
 
     # Generate job ID
@@ -157,8 +163,14 @@ async def publish_project(
         job_id=job_id,
         project_id=project_id,
         destinations=request.destinations,
-        audiobookshelf_config=request.audiobookshelf_config.dict() if request.audiobookshelf_config else None,
-        podcast_config=request.podcast_config.dict() if request.podcast_config else None,
+        audiobookshelf_config=(
+            request.audiobookshelf_config.model_dump()
+            if request.audiobookshelf_config
+            else None
+        ),
+        podcast_config=(
+            request.podcast_config.model_dump() if request.podcast_config else None
+        ),
     )
 
     return PublishJobOut(
@@ -236,18 +248,11 @@ async def _publish_background(
     job["completed_at"] = datetime.now(timezone.utc).isoformat()
 
     # Check if all succeeded
-    all_success = all(
-        r.get("success", False)
-        for r in results.values()
-    )
+    all_success = all(r.get("success", False) for r in results.values())
     job["status"] = "completed" if all_success else "failed"
 
     if not all_success:
-        errors = [
-            r.get("error")
-            for r in results.values()
-            if r.get("error")
-        ]
+        errors = [r.get("error") for r in results.values() if r.get("error")]
         job["error"] = "; ".join(errors)
 
 
@@ -334,7 +339,9 @@ async def _publish_to_audiobookshelf(
                 )
             elif lib_resp.status != 200:
                 error_text = await lib_resp.text()
-                raise ValueError(f"Failed to access library ({lib_resp.status}): {error_text}")
+                raise ValueError(
+                    f"Failed to access library ({lib_resp.status}): {error_text}"
+                )
 
             library_info = await lib_resp.json()
             folders = library_info.get("folders", [])
@@ -396,17 +403,21 @@ async def _publish_to_audiobookshelf(
                 dest_path = library_audio_path / audio_file.name
                 try:
                     shutil.copy2(audio_file, dest_path)
-                    upload_results.append({
-                        "file": audio_file.name,
-                        "success": True,
-                        "server_path": str(dest_path),
-                    })
+                    upload_results.append(
+                        {
+                            "file": audio_file.name,
+                            "success": True,
+                            "server_path": str(dest_path),
+                        }
+                    )
                 except Exception as e:
-                    upload_results.append({
-                        "file": audio_file.name,
-                        "success": False,
-                        "error": str(e),
-                    })
+                    upload_results.append(
+                        {
+                            "file": audio_file.name,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
         else:
             # ── Remote server: use POST /api/upload (multipart) ──
             if not folder_id:
@@ -423,36 +434,49 @@ async def _publish_to_audiobookshelf(
                     data.add_field("title", book_title)
                     data.add_field("author", author)
                     data.add_field(
-                        "file", f,
+                        "file",
+                        f,
                         filename=audio_file.name,
                         content_type=_mime_type(audio_file),
                     )
 
-                    async with session.post(f"{server_url}/api/upload", data=data) as upload_resp:
+                    async with session.post(
+                        f"{server_url}/api/upload", data=data
+                    ) as upload_resp:
                         if upload_resp.status in (200, 201):
-                            upload_results.append({
-                                "file": audio_file.name,
-                                "success": True,
-                            })
+                            upload_results.append(
+                                {
+                                    "file": audio_file.name,
+                                    "success": True,
+                                }
+                            )
                         else:
                             error = await upload_resp.text()
-                            upload_results.append({
-                                "file": audio_file.name,
-                                "success": False,
-                                "error": f"HTTP {upload_resp.status}: {error}",
-                            })
+                            upload_results.append(
+                                {
+                                    "file": audio_file.name,
+                                    "success": False,
+                                    "error": f"HTTP {upload_resp.status}: {error}",
+                                }
+                            )
 
         successful_uploads = sum(1 for r in upload_results if r.get("success"))
         if successful_uploads == 0:
             raise ValueError(
                 "All file uploads failed: "
-                + "; ".join(r.get("error", "unknown") for r in upload_results if not r.get("success"))
+                + "; ".join(
+                    r.get("error", "unknown")
+                    for r in upload_results
+                    if not r.get("success")
+                )
             )
 
         # ─────────────────────────────────────────────────────────────
         # Step 4: Trigger library scan
         # ─────────────────────────────────────────────────────────────
-        async with session.post(f"{server_url}/api/libraries/{library_id}/scan") as scan_resp:
+        async with session.post(
+            f"{server_url}/api/libraries/{library_id}/scan"
+        ) as scan_resp:
             scan_ok = scan_resp.status in (200, 201)
             if not scan_ok:
                 logger.warning(f"Scan trigger returned {scan_resp.status}")
@@ -509,7 +533,12 @@ async def _publish_to_audiobookshelf(
                 # Audiobookshelf uses BCP-47 e.g. "zh-CN"; Project.language is "zh"
                 lang = project.language
                 if len(lang) == 2:
-                    lang_map = {"zh": "zh-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR"}
+                    lang_map = {
+                        "zh": "zh-CN",
+                        "en": "en-US",
+                        "ja": "ja-JP",
+                        "ko": "ko-KR",
+                    }
                     lang = lang_map.get(lang, lang)
                 metadata_payload["metadata"]["language"] = lang
 
@@ -523,21 +552,23 @@ async def _publish_to_audiobookshelf(
             # ─────────────────────────────────────────────────────────
             # Step 7: Upload cover image (if available)
             # ─────────────────────────────────────────────────────────
-            from ..storage import storage
+            from .. import storage as storage_module
 
             cover_candidates = [
-                storage.project_dir(project_id) / "cover.jpg",
-                storage.project_dir(project_id) / "cover.png",
+                storage_module.project_dir(project_id) / "cover.jpg",
+                storage_module.project_dir(project_id) / "cover.png",
             ]
             for cover_path in cover_candidates:
                 if cover_path.exists():
                     with open(cover_path, "rb") as cover_f:
                         cover_data = aiohttp.FormData()
                         cover_data.add_field(
-                            "cover", cover_f,
+                            "cover",
+                            cover_f,
                             filename=cover_path.name,
                             content_type=(
-                                "image/jpeg" if cover_path.suffix == ".jpg"
+                                "image/jpeg"
+                                if cover_path.suffix == ".jpg"
                                 else "image/png"
                             ),
                         )
@@ -635,7 +666,9 @@ async def get_publish_job(project_id: int, job_id: str):
         raise HTTPException(status_code=404, detail="Publish job not found")
 
     if job["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Job does not belong to this project")
+        raise HTTPException(
+            status_code=400, detail="Job does not belong to this project"
+        )
 
     return PublishJobOut(**job)
 
@@ -643,10 +676,7 @@ async def get_publish_job(project_id: int, job_id: str):
 @router.get("/history", response_model=List[PublishHistoryOut])
 async def get_publish_history(project_id: int):
     """Get publish history for a project."""
-    history = [
-        job for job in _publish_jobs.values()
-        if job["project_id"] == project_id
-    ]
+    history = [job for job in _publish_jobs.values() if job["project_id"] == project_id]
 
     # Sort by created_at descending
     history.sort(key=lambda x: x["created_at"], reverse=True)
@@ -710,7 +740,8 @@ async def get_podcast_rss_feed(
 
     # Build config from query params with project defaults
     config = {
-        "feed_title": feed_title or f"Podcast {project.title or f'Project {project_id}'}",
+        "feed_title": feed_title
+        or f"Podcast {project.title or f'Project {project_id}'}",
         "feed_description": feed_description or project.story_line_summary or "",
         "feed_link": feed_link or public_url,
         "feed_language": feed_language or project.language or "zh-CN",
@@ -750,7 +781,7 @@ async def get_podcast_rss_feed(
         xml_lines.append(f'    <itunes:category text="{category}"/>')
 
     # Explicit tag
-    xml_lines.append(f'    <itunes:explicit>{feed_explicit}</itunes:explicit>')
+    xml_lines.append(f"    <itunes:explicit>{feed_explicit}</itunes:explicit>")
 
     # Add episodes
     for i, seg in enumerate(segments, start=1):
@@ -774,21 +805,25 @@ async def get_podcast_rss_feed(
         # Optionally, use a snippet of the text as description? We don't have text in segment.
         episode_description = f"Chapter {seg.chapter_index if hasattr(seg, 'chapter_index') else '?'} Segment {seg.index if hasattr(seg, 'index') else i}"
 
-        xml_lines.extend([
-            f"    <item>",
-            f"      <title>{episode_title}</title>",
-            f"      <description>{episode_description}</description>",
-            f"      <enclosure url=\"{enclosure_url}\" length=\"{seg.file_size_bytes or 0}\" type=\"{mime_type}\"/>",
-            f"      <guid>{enclosure_url}</guid>",
-            f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S %Z')}</pubDate>",
-            f"      <itunes:duration>{seg.duration_ms // 1000 if seg.duration_ms else 0}</itunes:duration>",
-            f"    </item>",
-        ])
+        xml_lines.extend(
+            [
+                f"    <item>",
+                f"      <title>{episode_title}</title>",
+                f"      <description>{episode_description}</description>",
+                f'      <enclosure url="{enclosure_url}" length="{seg.file_size_bytes or 0}" type="{mime_type}"/>',
+                f"      <guid>{enclosure_url}</guid>",
+                f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S %Z')}</pubDate>",
+                f"      <itunes:duration>{seg.duration_ms // 1000 if seg.duration_ms else 0}</itunes:duration>",
+                f"    </item>",
+            ]
+        )
 
-    xml_lines.extend([
-        f"  </channel>",
-        f"</rss>",
-    ])
+    xml_lines.extend(
+        [
+            f"  </channel>",
+            f"</rss>",
+        ]
+    )
 
     xml_content = "\n".join(xml_lines)
 

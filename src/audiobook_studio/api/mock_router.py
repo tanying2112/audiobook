@@ -39,7 +39,7 @@ def _load_mock_data(filename: str) -> Dict[str, Any]:
     if not filepath.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Mock data file not found: {filename}. Please create it in {MOCK_DIR}"
+            detail=f"Mock data file not found: {filename}. Please create it in {MOCK_DIR}",
         )
 
     with open(filepath, "r", encoding="utf-8") as f:
@@ -49,6 +49,7 @@ def _load_mock_data(filename: str) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Mock Endpoints (mirroring real API structure)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/projects")
 async def mock_list_projects():
@@ -72,23 +73,29 @@ async def mock_list_chapters(project_id: int):
 
 
 @router.get("/projects/{project_id}/paragraphs")
-async def mock_list_paragraphs(project_id: int, chapter_id: int = None, skip: int = 0, limit: int = 100):
+async def mock_list_paragraphs(
+    project_id: int, chapter_id: int = None, skip: int = 0, limit: int = 100
+):
     """Mock: List paragraphs with pagination."""
     if chapter_id:
-        data = _load_mock_data(f"project-{project_id}-chapter-{chapter_id}-paragraphs.json")
+        data = _load_mock_data(
+            f"project-{project_id}-chapter-{chapter_id}-paragraphs.json"
+        )
     else:
         data = _load_mock_data(f"project-{project_id}-paragraphs.json")
 
     # Apply pagination
     items = data.get("items", [])
-    paginated = items[skip:skip+limit]
+    paginated = items[skip : skip + limit]
 
-    return JSONResponse(content={
-        "items": paginated,
-        "total": len(items),
-        "skip": skip,
-        "limit": limit,
-    })
+    return JSONResponse(
+        content={
+            "items": paginated,
+            "total": len(items),
+            "skip": skip,
+            "limit": limit,
+        }
+    )
 
 
 @router.get("/paragraphs/{paragraph_id}/detail")
@@ -276,7 +283,9 @@ def _tokenize_for_streaming(text: str) -> List[str]:
 
 def _sse(payload: Any) -> str:
     """格式化 SSE 事件行."""
-    data = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+    data = (
+        payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+    )
     return f"data: {data}\n\n"
 
 
@@ -308,7 +317,9 @@ async def _chat_edit_generator(req: ChatEditRequest) -> AsyncGenerator[str, None
 
     suggestion = {
         "kind": "text_edit",
-        "paragraph_id": _segment_id(req.project_id, req.chapter_index, req.paragraph_index),
+        "paragraph_id": _segment_id(
+            req.project_id, req.chapter_index, req.paragraph_index
+        ),
         "before": {"text": template["before"]},
         "after": {"text": template["after"]},
         "changes_made": template["changes_made"],
@@ -316,7 +327,9 @@ async def _chat_edit_generator(req: ChatEditRequest) -> AsyncGenerator[str, None
         "rationale": template["rationale"],
         "pattern_tag": template["pattern"],
     }
-    yield _sse({"type": "suggestion", "suggestion": suggestion, "message_id": message_id})
+    yield _sse(
+        {"type": "suggestion", "suggestion": suggestion, "message_id": message_id}
+    )
     await asyncio.sleep(0.1)
 
     yield _sse({"type": "done", "message_id": message_id})
@@ -335,7 +348,10 @@ async def mock_chat_edit(req: ChatEditRequest):
     """模拟对话式文本编辑的 SSE 流式响应."""
     logger.info(
         "[mock] chat-edit: project=%s ch=%s p=%s intent=%r",
-        req.project_id, req.chapter_index, req.paragraph_index, req.intent,
+        req.project_id,
+        req.chapter_index,
+        req.paragraph_index,
+        req.intent,
     )
     return StreamingResponse(
         _chat_edit_generator(req),
@@ -360,7 +376,9 @@ async def mock_chat_annotate(req: ChatAnnotateRequest):
 
         suggestion = {
             "kind": "annotation_adjust",
-            "paragraph_id": _segment_id(req.project_id, req.chapter_index, req.paragraph_index),
+            "paragraph_id": _segment_id(
+                req.project_id, req.chapter_index, req.paragraph_index
+            ),
             "before": {
                 "speaker_canonical_name": "unknown",
                 "emotion": "neutral",
@@ -375,13 +393,17 @@ async def mock_chat_annotate(req: ChatAnnotateRequest):
             "confidence": 0.87,
             "rationale": rationale,
         }
-        yield _sse({"type": "suggestion", "suggestion": suggestion, "message_id": message_id})
+        yield _sse(
+            {"type": "suggestion", "suggestion": suggestion, "message_id": message_id}
+        )
         await asyncio.sleep(0.1)
         yield _sse({"type": "done", "message_id": message_id})
         yield _sse("[DONE]")
 
     return StreamingResponse(
-        gen(), media_type="text/event-stream", headers=_SSE_HEADERS,
+        gen(),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )
 
 
@@ -403,6 +425,7 @@ async def mock_health():
 # ─────────────────────────────────────────────────────────────────────────────
 # Catch-all for undefined mock endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def mock_catchall(request: Request, path: str):
@@ -433,6 +456,7 @@ async def mock_catchall(request: Request, path: str):
 # Helper to Initialize Mock Data Directory
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def ensure_mock_directory():
     """Create mock data directory and sample files if they don't exist."""
     MOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -450,10 +474,10 @@ def ensure_mock_directory():
                     "progress": 0.45,
                     "total_cost_usd": 3.50,
                     "created_at": "2026-06-20T10:00:00Z",
-                    "updated_at": "2026-06-26T08:30:00Z"
+                    "updated_at": "2026-06-26T08:30:00Z",
                 }
             ],
-            "total": 1
+            "total": 1,
         },
         "project-1.json": {
             "id": 1,
@@ -469,17 +493,32 @@ def ensure_mock_directory():
             "_embedded": {
                 "analysis": {
                     "character_count": 731000,
-                    "character_list": ["贾宝玉", "林黛玉", "薛宝钗", "王熙凤"]
+                    "character_list": ["贾宝玉", "林黛玉", "薛宝钗", "王熙凤"],
                 }
-            }
+            },
         },
         "project-1-chapters.json": {
             "items": [
-                {"id": 1, "title": "第一回 甄士隐梦幻识通灵", "status": "completed", "progress": 1.0},
-                {"id": 2, "title": "第二回 贾夫人仙逝扬州城", "status": "completed", "progress": 1.0},
-                {"id": 3, "title": "第三回 托内兄如海荐西宾", "status": "processing", "progress": 0.6}
+                {
+                    "id": 1,
+                    "title": "第一回 甄士隐梦幻识通灵",
+                    "status": "completed",
+                    "progress": 1.0,
+                },
+                {
+                    "id": 2,
+                    "title": "第二回 贾夫人仙逝扬州城",
+                    "status": "completed",
+                    "progress": 1.0,
+                },
+                {
+                    "id": 3,
+                    "title": "第三回 托内兄如海荐西宾",
+                    "status": "processing",
+                    "progress": 0.6,
+                },
             ],
-            "total": 120
+            "total": 120,
         },
         "paragraph-1-detail.json": {
             "id": 1,
@@ -496,46 +535,75 @@ def ensure_mock_directory():
                     "emotion_intensity": 0.5,
                     "speech_rate": 1.0,
                     "difficulty": "B",
-                    "forbid_edit": False
+                    "forbid_edit": False,
                 },
                 "tts_edit": {"changes_made": [], "edited_text": None},
                 "routing": {"engine_choice": "kokoro", "voice_id": "kokoro_narrator"},
-                "quality": {"overall_score": 0.85, "needs_regeneration": False, "issues": []}
+                "quality": {
+                    "overall_score": 0.85,
+                    "needs_regeneration": False,
+                    "issues": [],
+                },
             },
             "annotation": {"speaker_canonical_name": "旁白", "emotion": "neutral"},
             "tts_edit": None,
             "routing": {"engine_choice": "kokoro", "voice_id": "kokoro_narrator"},
-            "quality": {"overall_score": 0.85, "needs_regeneration": False}
+            "quality": {"overall_score": 0.85, "needs_regeneration": False},
         },
         "tts-voices.json": {
             "engines": {
                 "kokoro": {
                     "available": True,
                     "voices": [
-                        {"id": "kokoro_narrator", "name": "旁白", "gender": "neutral", "language": "zh-CN"}
-                    ]
+                        {
+                            "id": "kokoro_narrator",
+                            "name": "旁白",
+                            "gender": "neutral",
+                            "language": "zh-CN",
+                        }
+                    ],
                 },
                 "edge_tts": {
                     "available": True,
                     "voices": [
-                        {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "gender": "female", "language": "zh-CN"},
-                        {"id": "zh-CN-YunxiNeural", "name": "云希", "gender": "male", "language": "zh-CN"},
-                        {"id": "zh-CN-YunjianNeural", "name": "云健", "gender": "male", "language": "zh-CN"}
-                    ]
+                        {
+                            "id": "zh-CN-XiaoxiaoNeural",
+                            "name": "晓晓",
+                            "gender": "female",
+                            "language": "zh-CN",
+                        },
+                        {
+                            "id": "zh-CN-YunxiNeural",
+                            "name": "云希",
+                            "gender": "male",
+                            "language": "zh-CN",
+                        },
+                        {
+                            "id": "zh-CN-YunjianNeural",
+                            "name": "云健",
+                            "gender": "male",
+                            "language": "zh-CN",
+                        },
+                    ],
                 },
                 "azure": {
                     "available": True,
                     "voices": [
-                        {"id": "zh-CN-XiaozhenNeural", "name": "晓珍", "gender": "female", "language": "zh-CN"}
-                    ]
-                }
+                        {
+                            "id": "zh-CN-XiaozhenNeural",
+                            "name": "晓珍",
+                            "gender": "female",
+                            "language": "zh-CN",
+                        }
+                    ],
+                },
             }
         },
         "harness-status.json": {
             "running": False,
             "iteration_count": 0,
             "unprocessed_feedback_count": 0,
-            "min_feedback_threshold": 10
+            "min_feedback_threshold": 10,
         },
         "harness-dashboard.json": {
             "iteration_status": {"running": False, "iteration_count": 0},
@@ -545,7 +613,7 @@ def ensure_mock_directory():
             "promotion_gate": {"format_compliance_rate": 0.99, "overall_pass": True},
             "canary_dashboard": {"active_canaries": [], "total_active": 0},
             "ab_tests": {"tests": [], "total_tests": 0},
-            "critics_latest": {"verdicts": [], "weighted_verdict": "accept"}
+            "critics_latest": {"verdicts": [], "weighted_verdict": "accept"},
         },
         "golden-samples.json": {
             "samples": [
@@ -553,13 +621,17 @@ def ensure_mock_directory():
                     "id": "case_1",
                     "stage": "annotate",
                     "input": {"text": "黛玉道：'我没这么凶 hang。'"},
-                    "expected_output": {"speaker": "林黛玉", "emotion": "sad", "is_dialogue": True},
+                    "expected_output": {
+                        "speaker": "林黛玉",
+                        "emotion": "sad",
+                        "is_dialogue": True,
+                    },
                     "human_verified": True,
-                    "quality_score": 0.95
+                    "quality_score": 0.95,
                 }
             ],
             "total_count": 1,
-            "by_stage": {"annotate": 1}
+            "by_stage": {"annotate": 1},
         },
         "export-jobs.json": {
             "items": [
@@ -571,10 +643,10 @@ def ensure_mock_directory():
                     "progress": 1.0,
                     "output_url": "/api/export/output_001.m4b",
                     "created_at": "2026-06-25T10:00:00Z",
-                    "completed_at": "2026-06-25T10:30:00Z"
+                    "completed_at": "2026-06-25T10:30:00Z",
                 }
             ],
-            "total": 1
+            "total": 1,
         },
         "project-1-autorun-status.json": {
             "project_id": 1,
@@ -585,8 +657,8 @@ def ensure_mock_directory():
             "progress": 0.28,
             "cost_usd": 1.50,
             "quality_score": None,
-            "started_at": "2026-06-26T09:00:00Z"
-        }
+            "started_at": "2026-06-26T09:00:00Z",
+        },
     }
 
     for filename, content in SAMPLE_FILES.items():

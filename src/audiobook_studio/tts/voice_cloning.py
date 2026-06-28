@@ -118,6 +118,87 @@ class VoiceCloningManager:
         except Exception as e:
             logger.warning(f"⚠️ 保存声音指纹失败: {e}")
 
+    def _extract_real_embedding(
+        self, sample: VoiceSample, target_dim: int = 256
+    ) -> List[float]:
+        """从音频样本提取真实的声音特征向量.
+
+        Args:
+            sample: 声音样本
+            target_dim: 目标特征维度 (默认 256，匹配 Kokoro embedding)
+
+        Returns:
+            特征向量列表
+        """
+        try:
+            # 延迟导入 soundfile (避免强制依赖)
+            import soundfile as sf
+
+            # 加载音频
+            audio_data, sr = sf.read(str(sample.file_path))
+            if sr != 24000:
+                # 重采样
+                ratio = 24000 / sr
+                audio_data = np.interp(
+                    np.arange(0, len(audio_data) * ratio),
+                    np.arange(0, len(audio_data)),
+                    audio_data,
+                ).astype(np.float32)
+
+            # 归一化
+            if len(audio_data) > 0:
+                audio_data = audio_data / (np.max(np.abs(audio_data)) + 1e-8)
+
+            features = []
+
+            # 频谱质心 (Spectral Centroid) - 8 维
+            if len(audio_data) > 100:
+                segment_size = len(audio_data) // 8
+                for i in range(8):
+                    segment = audio_data[i * segment_size : (i + 1) * segment_size]
+                    if len(segment) > 0:
+                        fft = np.fft.rfft(segment)
+                        magnitudes = np.abs(fft)
+                        freqs = np.fft.rfftfreq(len(segment), 1 / 24000)
+                        if np.sum(magnitudes) > 0:
+                            centroid = np.sum(magnitudes * freqs) / np.sum(magnitudes)
+                            features.append(centroid / 24000)
+
+            # 零跨零率 (Zero Crossing Rate) - 8 维
+            zcr = np.sum(np.abs(np.diff(np.sign(audio_data))) > 0) / len(audio_data)
+            features.extend([zcr] * 8)
+
+            # 频谱带宽 (Spectral Bandwidth) - 8 维
+            for i in range(8):
+                segment = (
+                    audio_data[i * segment_size : (i + 1) * segment_size]
+                    if len(audio_data) > 100
+                    else audio_data
+                )
+                if len(segment) > 0:
+                    fft = np.fft.rfft(segment)
+                    magnitudes = np.abs(fft)
+                    if np.sum(magnitudes) > 0:
+                        center = np.sum(
+                            magnitudes * np.arange(len(magnitudes))
+                        ) / np.sum(magnitudes)
+                        bandwidth = np.sqrt(
+                            np.sum(
+                                magnitudes * (np.arange(len(magnitudes)) - center) ** 2
+                            )
+                        ) / np.sum(magnitudes)
+                        features.append(bandwidth / len(magnitudes))
+
+            # 填充到 target_dim
+            while len(features) < target_dim:
+                features.append(0.5)
+
+            return features[:target_dim]
+
+        except Exception as e:
+            logger.warning(f"提取声音特征失败: {e}, 使用默认特征")
+            return [0.5] * target_dim
+
     def _calculate_audio_hash(self, audio_data: np.ndarray, sample_rate: int) -> str:
         """计算音频数据的哈希值（用于声纹）"""
         # 简化实现：使用音频数据的统计特征
@@ -230,18 +311,9 @@ class VoiceCloningManager:
 
             voice_hash = hashlib.sha256(sample_info.encode()).hexdigest()
 
-            # 生成特征向量（简化版）
-            # 实际 zou 使用真实的音频特征如MFCC
-            embedding = [
-                avg_snr / 50.0,  # 归一化SNR
-                np.mean([s.duration for s in valid_samples]) / 30.0,  # 归一化时长
-                len(valid_samples) / 10.0,  # 样本数量归一化
-                hash(sample.speaker_id) % 1000 / 1000.0,  # 基于ID的随机特征
-                0.5,  # 占位符
-                0.5,  # 占位符
-                0.5,  # 占位符
-                0.5,  # 占位符
-            ]
+            # 生成特征向量（真实 256 维）
+            # 从第一个有效样本提取声音特征用于克隆
+            embedding = self._extract_real_embedding(valid_samples[0])
 
             # 检查是否已存在声音指纹
             if speaker_id in self.voice_prints:

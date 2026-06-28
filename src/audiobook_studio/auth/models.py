@@ -1,14 +1,15 @@
 """Pydantic models for authentication API (request/response models)."""
 
-from enum import Enum
-from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
-from pydantic import ConfigDict
+from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RoleName(str, Enum):
     """System roles."""
+
     ADMIN = "admin"
     PROJECT_OWNER = "project_owner"
     EDITOR = "editor"
@@ -18,6 +19,7 @@ class RoleName(str, Enum):
 
 class PermissionName(str, Enum):
     """System permissions."""
+
     PROJECT_CREATE = "project:create"
     PROJECT_READ = "project:read"
     PROJECT_UPDATE = "project:update"

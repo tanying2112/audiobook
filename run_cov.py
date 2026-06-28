@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Run pytest with coverage and generate report."""
 
-import sys
-import subprocess
 import json
-from pathlib import Path
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # Run pytest with coverage
 result = subprocess.run(
     [
-        sys.executable, "-m", "pytest",
+        sys.executable,
+        "-m",
+        "pytest",
         "--cov=src/audiobook_studio",
         "--cov-report=json",
         "--cov-report=term-missing",

@@ -10,17 +10,17 @@ Covers:
 import asyncio
 import struct
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 
 from src.audiobook_studio.utils.ffmpeg_probe import (
-    _run_ffprobe,
     _run_ffmpeg,
+    _run_ffprobe,
+    detect_silence,
     get_duration,
     get_rms_peak,
-    detect_silence,
     read_pcm_samples,
 )
 
@@ -72,7 +72,7 @@ class TestGetRmsPeakValueErrors:
             MagicMock(
                 returncode=0,
                 stderr="frame:0 lavfi.astats.Overall.RMS_level=not_a_number\n"
-                       "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
+                "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
             ),
             MagicMock(
                 returncode=0,
@@ -97,7 +97,7 @@ class TestGetRmsPeakValueErrors:
             MagicMock(
                 returncode=0,
                 stderr="frame:0 lavfi.astats.Overall.RMS_level=bad_rms\n"
-                       "frame:0 lavfi.astats.Overall.Peak_level=bad_peak\n",
+                "frame:0 lavfi.astats.Overall.Peak_level=bad_peak\n",
             ),
             MagicMock(
                 returncode=0,
@@ -188,7 +188,9 @@ class TestReadPcmEdgeCases:
         """Test read_pcm_samples with odd-length bytes triggers ValueError."""
         # Code calls np.frombuffer which raises ValueError for non-multiple-of-4
         mock_run.return_value = MagicMock(returncode=0, stdout=b"\x00\x00\x00")
-        with pytest.raises(ValueError, match="buffer size must be a multiple of element size"):
+        with pytest.raises(
+            ValueError, match="buffer size must be a multiple of element size"
+        ):
             await read_pcm_samples(Path("test.mp3"))
 
     @pytest.mark.asyncio
@@ -217,7 +219,9 @@ class TestReadPcmEdgeCases:
     async def test_read_pcm_string_stdout_invalid_length(self, mock_run):
         """Test read_pcm_samples with string of invalid length raises ValueError."""
         mock_run.return_value = MagicMock(returncode=0, stdout="abc")
-        with pytest.raises(ValueError, match="buffer size must be a multiple of element size"):
+        with pytest.raises(
+            ValueError, match="buffer size must be a multiple of element size"
+        ):
             await read_pcm_samples(Path("test.mp3"))
 
 

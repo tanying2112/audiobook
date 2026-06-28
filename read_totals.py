@@ -60,4 +60,6 @@ print("\nCategory Breakdown:")
 for cat, data in categories.items():
     if data["total"] > 0:
         pct = (data["covered"] / data["total"]) * 100
-        print(f"  {cat:15s} | {pct:6.1f}% | covered={data['covered']} total={data['total']}")
+        print(
+            f"  {cat:15s} | {pct:6.1f}% | covered={data['covered']} total={data['total']}"
+        )

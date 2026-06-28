@@ -14,12 +14,14 @@ class TestRssFeedGeneratorExtended:
     def test_init_default_url(self):
         """默认 base_url 初始化。"""
         from src.audiobook_studio.publish.rss import RssFeedGenerator
+
         gen = RssFeedGenerator()
         assert gen.base_url == "http://localhost:8000"
 
     def test_init_custom_url_trailing_slash(self):
         """自定义 base_url 去除尾部斜杠。"""
         from src.audiobook_studio.publish.rss import RssFeedGenerator
+
         gen = RssFeedGenerator(base_url="http://example.com/")
         assert gen.base_url == "http://example.com"
 

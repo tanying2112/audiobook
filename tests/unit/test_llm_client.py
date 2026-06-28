@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.audiobook_studio.llm.client import (
+    MODEL_PRICING,
     LLMCallResult,
     LLMClient,
     LLMClientConfig,
-    MODEL_PRICING,
     create_client,
 )
 
@@ -117,7 +117,9 @@ class TestLLMClientRealMode:
         client = create_client("gpt-4o")
 
         messages = [{"role": "user", "content": "Test"}]
-        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
+        result = client.call(
+            response_model=QualityJudgment, messages=messages, stage="judge"
+        )
 
         assert isinstance(result, LLMCallResult)
         assert result.output == mock_response
@@ -144,7 +146,9 @@ class TestLLMClientRealMode:
 
         messages = [{"role": "user", "content": "Test"}]
         with pytest.raises(Exception, match="API Error"):
-            client.call(response_model=QualityJudgment, messages=messages, stage="judge")
+            client.call(
+                response_model=QualityJudgment, messages=messages, stage="judge"
+            )
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
@@ -167,7 +171,9 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_response._raw_response = {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}
+        mock_response._raw_response = {
+            "usage": {"prompt_tokens": 100, "completion_tokens": 50}
+        }
 
         mock_client.chat.completions.create.return_value = mock_response
 
@@ -176,7 +182,9 @@ class TestLLMClientRealMode:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Test"}]
-        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
+        result = client.call(
+            response_model=QualityJudgment, messages=messages, stage="judge"
+        )
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs.get("api_base") == "https://custom.api/v1"

@@ -7,15 +7,16 @@ Covers:
 - Backward compatibility shims (get_engine_registry, register_engine, etc.)
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from src.audiobook_studio.tts.engine import (
     EngineRegistry,
+    SynthesisResult,
     TTSEngine,
     VoiceInfo,
-    SynthesisResult,
 )
 
 
@@ -109,18 +110,34 @@ class TestTTSEngineAbstractAndShims:
 
     def test_is_available_default(self):
         """is_available returns False before initialization."""
+
         class ConcreteEngine(TTSEngine):
             @property
-            def engine_name(self): return "concrete"
+            def engine_name(self):
+                return "concrete"
+
             @property
-            def supports_streaming(self): return False
+            def supports_streaming(self):
+                return False
+
             @property
-            def supports_batch(self): return False
-            async def initialize(self): pass
-            async def synthesize(self, **kwargs): pass
-            def get_voices(self): return []
-            def estimate_duration(self, text, voice_id, **kwargs): return 1000
-            async def cleanup(self): pass
+            def supports_batch(self):
+                return False
+
+            async def initialize(self):
+                pass
+
+            async def synthesize(self, **kwargs):
+                pass
+
+            def get_voices(self):
+                return []
+
+            def estimate_duration(self, text, voice_id, **kwargs):
+                return 1000
+
+            async def cleanup(self):
+                pass
 
         instance = ConcreteEngine()
         assert instance.is_available() is False
@@ -129,18 +146,34 @@ class TestTTSEngineAbstractAndShims:
 
     def test_get_engine_info(self):
         """get_engine_info returns correct metadata."""
+
         class ConcreteEngine(TTSEngine):
             @property
-            def engine_name(self): return "concrete"
+            def engine_name(self):
+                return "concrete"
+
             @property
-            def supports_streaming(self): return True
+            def supports_streaming(self):
+                return True
+
             @property
-            def supports_batch(self): return False
-            async def initialize(self): pass
-            async def synthesize(self, **kwargs): pass
-            def get_voices(self): return []
-            def estimate_duration(self, text, voice_id, **kwargs): return 2000
-            async def cleanup(self): pass
+            def supports_batch(self):
+                return False
+
+            async def initialize(self):
+                pass
+
+            async def synthesize(self, **kwargs):
+                pass
+
+            def get_voices(self):
+                return []
+
+            def estimate_duration(self, text, voice_id, **kwargs):
+                return 2000
+
+            async def cleanup(self):
+                pass
 
         instance = ConcreteEngine()
         instance.device = "cpu"
@@ -158,18 +191,34 @@ class TestTTSEngineAbstractAndShims:
 
     def test_repr(self):
         """__repr__ returns readable string."""
+
         class ConcreteEngine(TTSEngine):
             @property
-            def engine_name(self): return "concrete"
+            def engine_name(self):
+                return "concrete"
+
             @property
-            def supports_streaming(self): return False
+            def supports_streaming(self):
+                return False
+
             @property
-            def supports_batch(self): return False
-            async def initialize(self): pass
-            async def synthesize(self, **kwargs): pass
-            def get_voices(self): return []
-            def estimate_duration(self, text, voice_id, **kwargs): return 1000
-            async def cleanup(self): pass
+            def supports_batch(self):
+                return False
+
+            async def initialize(self):
+                pass
+
+            async def synthesize(self, **kwargs):
+                pass
+
+            def get_voices(self):
+                return []
+
+            def estimate_duration(self, text, voice_id, **kwargs):
+                return 1000
+
+            async def cleanup(self):
+                pass
 
         instance = ConcreteEngine()
         instance.device = "gpu"
@@ -182,14 +231,15 @@ class TestTTSEngineAbstractAndShims:
     async def test_backward_compat_shims(self):
         """Test backward-compat module-level functions."""
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
         from src.audiobook_studio.tts.engine import (
-            get_engine_registry,
-            register_engine,
-            get_engine,
-            initialize_all_engines,
             cleanup_all_engines,
+            get_engine,
+            get_engine_registry,
+            initialize_all_engines,
+            register_engine,
         )
 
         registry = get_engine_registry()

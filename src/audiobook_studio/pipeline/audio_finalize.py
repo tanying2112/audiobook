@@ -178,20 +178,35 @@ class AudioFinalizer:
                 num_inputs = 1 + len(sfx_inputs)
                 filter_complex = f"[0:a]{filter_complex}[main]"
                 for i in range(len(sfx_inputs)):
-                    filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
-                filter_complex += f";[main]"+"".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
-                filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
+                    filter_complex += (
+                        f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
+                    )
+                filter_complex += f";[main]" + "".join(
+                    f"[sfx{i}]" for i in range(len(sfx_inputs))
+                )
+                filter_complex += (
+                    f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
+                )
 
         # Apply filter and set output format
         if filter_complex:
             cmd.extend(["-filter_complex", filter_complex])
 
-        cmd.extend([
-            "-c:a", "libmp3lame" if params.output_format == "mp3" else "aac" if params.output_format == "m4b" else "pcm_s16le",
-            "-b:a", params.output_bitrate,
-            "-map", "0:a" if not sfx_inputs else "0:a",
-            str(output_path),
-        ])
+        cmd.extend(
+            [
+                "-c:a",
+                (
+                    "libmp3lame"
+                    if params.output_format == "mp3"
+                    else "aac" if params.output_format == "m4b" else "pcm_s16le"
+                ),
+                "-b:a",
+                params.output_bitrate,
+                "-map",
+                "0:a" if not sfx_inputs else "0:a",
+                str(output_path),
+            ]
+        )
 
         # Execute ffmpeg
         try:
@@ -202,17 +217,20 @@ class AudioFinalizer:
                 errors.append(f"ffmpeg failed: {result.stderr}")
                 # Fallback: copy input to output
                 import shutil
+
                 shutil.copy2(input_path, output_path)
                 warnings.append("ffmpeg failed, fell back to simple copy")
 
         except FileNotFoundError:
             errors.append("ffmpeg not found")
             import shutil
+
             shutil.copy2(input_path, output_path)
             warnings.append("ffmpeg not found, fell back to simple copy")
         except subprocess.TimeoutExpired:
             errors.append("ffmpeg timed out")
             import shutil
+
             shutil.copy2(input_path, output_path)
             warnings.append("ffmpeg timed out, fell back to simple copy")
 
@@ -222,7 +240,9 @@ class AudioFinalizer:
             metadata_embedded = self._embed_metadata(output_path, params)
 
         # 6. Measure final output
-        measured_i, measured_lra, measured_tp, measured_thresh = self._measure_loudness(output_path)
+        measured_i, measured_lra, measured_tp, measured_thresh = self._measure_loudness(
+            output_path
+        )
         duration_ms = self._get_duration(output_path)
 
         logger.info(
@@ -269,7 +289,9 @@ class AudioFinalizer:
         if params.fade_out_ms > 0:
             # Fade out will be applied from (duration - fade_out_ms) to end
             # We use a placeholder that gets resolved in post-processing
-            fade_parts.append(f"afade=t=out:st=PLACEHOLDER:d={fade_out_sec}:{params.fade_shape}")
+            fade_parts.append(
+                f"afade=t=out:st=PLACEHOLDER:d={fade_out_sec}:{params.fade_shape}"
+            )
 
         return ",".join(fade_parts) if fade_parts else "anull"
 
@@ -316,10 +338,18 @@ class AudioFinalizer:
         # Temporary file for atomic write
         temp_path = audio_path.with_suffix(audio_path.suffix + ".tmp")
 
-        cmd = [
-            "ffmpeg", "-y", "-i", str(audio_path),
-            "-c", "copy",  # Copy audio stream without re-encoding
-        ] + metadata_args + [str(temp_path)]
+        cmd = (
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(audio_path),
+                "-c",
+                "copy",  # Copy audio stream without re-encoding
+            ]
+            + metadata_args
+            + [str(temp_path)]
+        )
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -344,9 +374,14 @@ class AudioFinalizer:
             return 0.0, 0.0, 0.0, 0.0
 
         cmd = [
-            "ffmpeg", "-i", str(audio_path),
-            "-af", "ebur128=peak=true",
-            "-f", "null", "-"
+            "ffmpeg",
+            "-i",
+            str(audio_path),
+            "-af",
+            "ebur128=peak=true",
+            "-f",
+            "null",
+            "-",
         ]
 
         try:
@@ -376,10 +411,14 @@ class AudioFinalizer:
             return 0
 
         cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(audio_path)
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
         ]
 
         try:

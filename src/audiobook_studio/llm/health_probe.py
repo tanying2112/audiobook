@@ -132,9 +132,7 @@ class HealthProbe:
                     quota_limit=quota_limit,
                 )
                 if resp.status_code != 200:
-                    logger.warning(
-                        f"Health probe [{name}] status={resp.status_code}"
-                    )
+                    logger.warning(f"Health probe [{name}] status={resp.status_code}")
         except httpx.TimeoutException:
             self.statuses[name] = HealthStatus(
                 provider=name,
@@ -152,7 +150,9 @@ class HealthProbe:
     def probe_now(self, name: str) -> HealthStatus:
         """Immediately probe a specific provider and return status."""
         if name not in self.providers:
-            return HealthStatus(provider=name, is_healthy=False, error_message="not found")
+            return HealthStatus(
+                provider=name, is_healthy=False, error_message="not found"
+            )
         self._probe_provider(name, self.providers[name])
         return self.statuses[name]
 

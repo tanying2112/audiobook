@@ -19,12 +19,22 @@ jobs:
           # Project targets Python 3.11; use that version for consistency
           python-version: '3.11'
 
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
           pre-commit install
+
+      - name: Install deepeval & promptfoo
+        run: |
+          pip install deepeval
+          npm install -g promptfoo
 
       - name: Run pre-commit hooks
         continue-on-error: true
@@ -33,9 +43,19 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=src --cov-report=xml -q
+          pytest --cov=src --cov-report=xml --cov-fail-under=80 -q
 
-      - name: Coverage gate (F-P0-1: core modules ≥ targets, overall ≥80%)
+      - name: Run DeepEval tests (if any)
+        if: ${{ exists('tests/deepeval') }}
+        run: |
+          python -m pytest tests/deepeval/ -v
+
+      - name: Run Promptfoo eval (if any)
+        if: ${{ exists('promptfoo.yaml') }}
+        run: |
+          promptfoo eval ./promptfoo.yaml
+
+      - name:  "Coverage gate (F-P0-1: core modules ≥ targets, overall ≥80%)"
         run: |
           python scripts/coverage_check.py --fail-under 80
 
@@ -74,7 +94,7 @@ jobs:
           if curl -sSf http://localhost:8000/health; then
             echo "✅ Docker container /health endpoint passed"
           else
-            echo "❌ Docker container /health endpoint failed"
+            echo "❌ Docker container /health endpoint /health endpoint failed"
             docker stop ci-audiobook
             docker rm ci-audiobook
             exit 1
@@ -112,7 +132,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-node@v5
         with:
           python-version: '3.11'
 
@@ -125,7 +145,6 @@ jobs:
 
       - name: Generate OpenAPI spec
         run: |
-          python -c "
           import sys
           sys.path.insert(0, 'src')
           from audiobook_studio.main import app
@@ -133,7 +152,6 @@ jobs:
           with open('openapi.json', 'w') as f:
               json.dump(app.openapi(), f, indent=2)
           print('OpenAPI spec generated')
-          "
 
       - name: Run contract tests
         run: |
@@ -149,7 +167,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-node@v5
         with:
           python-version: '3.11'
 
@@ -239,22 +257,22 @@ jobs:
           if os.path.exists(metrics_file):
               with open(metrics_file) as f:
                   d = json.load(f)
-              fallback_rate = d.get("fallback_rate", 0.0)
+              fallback_rate = d.get('fallback_rate', 0.0)
           else:
               fallback_rate = 0.0
           print(f'Fallback rate: {fallback_rate:.1%}')
-          if fallback_rate > 0.05:
+          if float(fallback_rate) > 0.05:
               print(f'❌ Fallback rate {fallback_rate:.1%} > 5%')
               exit(1)
-          print('✅ Fallback rate ≤ 5%')
+          print('✅ F  Fallback rate ≤ 5%')
           "
 
       - name: Check compliance rate (≥99%)
         run: |
           python -c "
           import json, os, datetime
-          today = datetime.date.today().strftime('%Y%m%d')
-          metrics_file = f'logs/metrics_{today}.json'
+          today = datetime.date.today().strftime("%Y%m%d")
+          metrics_file = f"logs/metrics_{today}.json"
           if os.path.exists(metrics_file):
               with open(metrics_file) as f:
                   d = json.load(f)
@@ -262,24 +280,23 @@ jobs:
           else:
               compliance_rate = 0.0
           print(f'Compliance rate: {compliance_rate:.1%}')
-          if compliance_rate < 0.99:
+          if float(compliance_rate) < 0.99:
               print(f'❌ Compliance rate {compliance_rate:.1%} < 99%')
               exit(1)
-          print('✅ Compliance rate ≥ 99%')
+          print('✅ C Compliance rate ≥ 99%')
           "
 
-      - name: Check contract version
+      - name: Check version
         run: |
           python -c "
           import json, os
-          contract_file = 'config/contract_version.json'
-          if os.path.exists(contract_file):
-              with open(contract_file) as f:
+          if os.path.exists('config/contract_version.json'):
+              with open('config/contract_version.json') as f:
                   d = json.load(f)
               version = d.get('version', 'unknown')
-              print(f'Contract version: {version}')
+              print(f'Version: {version}')
           else:
-              print('❌ Contract version file not found')
+              print('❌ Version file not found')
               exit(1)
           "
 

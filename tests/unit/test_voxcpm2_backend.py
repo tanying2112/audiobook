@@ -3,14 +3,14 @@
 import hashlib
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
 from src.audiobook_studio.tts.voxcpm2_backend import (
-    VoxCPM2Backend,
     QUANTIZATION_MODES,
     VOXCPM2_VOICES,
+    VoxCPM2Backend,
     create_voxcpmp2_backend,
 )
 
@@ -20,6 +20,9 @@ class TestVoxCPM2BackendInit:
 
     def test_init_default(self):
         """Test default initialization."""
+        import os
+
+        os.environ["MOCK_LLM"] = "false"
         backend = VoxCPM2Backend()
         assert backend.mock_mode is False  # Default unless MOCK_LLM env var set
         assert backend.dtype == "float16"
@@ -82,12 +85,26 @@ class TestVoxCPM2BackendMethods:
         backend = VoxCPM2Backend()
         embedding = backend._get_voice_embedding("zh_female_1")
         # Should return the predefined embedding from VOXCPM2_VOICES
-        assert isinstance(embedding, dict)  # Actually returns the dict from VOXCPM2_VOICES
+        assert isinstance(
+            embedding, dict
+        )  # Actually returns the dict from VOXCPM2_VOICES
         assert "name" in embedding
         assert embedding["name"] == "zh_female_1"
 
-    def test_get_voice_embedding_with_reference(self, tmp_path):
+    def test_get_voice_embedding_with_reference(self, tmp_path, monkeypatch):
         """Test _get_voice_embedding with reference audio."""
+        import os
+
+        os.environ["MOCK_LLM"] = "true"
+
+        # Re-import to pick up the new env var
+        import importlib
+
+        import src.audiobook_studio.tts.voxcpm2_backend as vcb
+
+        importlib.reload(vcb)
+        VoxCPM2Backend = vcb.VoxCPM2Backend
+
         from unittest.mock import patch
 
         backend = VoxCPM2Backend()
@@ -102,7 +119,9 @@ class TestVoxCPM2BackendMethods:
                 mock_md5.return_value = mock_hash
 
                 with patch.object(backend, "_reference_audio_cache", {}):
-                    embedding = backend._get_voice_embedding("zh_female_1", str(ref_audio))
+                    embedding = backend._get_voice_embedding(
+                        "zh_female_1", str(ref_audio)
+                    )
                     # Should return a tensor (placeholder implementation)
                     # In the actual implementation, this returns a torch tensor
                     assert embedding is not None
@@ -120,6 +139,7 @@ class TestVoxCPM2BackendMethods:
     async def test_synthesize_mock_mode(self, tmp_path):
         """Test synthesize in mock mode."""
         import os
+
         os.environ["MOCK_LLM"] = "true"
 
         try:
@@ -152,11 +172,12 @@ class TestVoxCPM2BackendMethods:
         assert isinstance(voices, list)
         assert len(voices) == len(VOXCPM2_VOICES)
         # Check that all expected voices are present
-        voice_names = [v["name"] for v in voices]
+        voice_names = [v.name for v in voices]
         for voice_id, info in VOXCPM2_VOICES.items():
             assert info["name"] in voice_names
 
-    def test_cleanup(self):
+    @pytest.mark.asyncio
+    async def test_cleanup(self):
         """Test cleanup method."""
         backend = VoxCPM2Backend()
         # Set some state
@@ -167,7 +188,7 @@ class TestVoxCPM2BackendMethods:
         backend._initialized = True
 
         # Call cleanup
-        backend.cleanup()
+        await backend.cleanup()
 
         # Check that state is reset
         assert backend._model is None
@@ -179,10 +200,12 @@ class TestVoxCPM2BackendMethods:
     @pytest.mark.asyncio
     async def test_create_voxcpmp2_backend(self):
         """Test factory function creates and initializes backend."""
-        with patch("src.audiobook_studio.tts.voxcpm2_backend.VoxCPM2Backend") as mock_backend_class:
+        with patch(
+            "src.audiobook_studio.tts.voxcpm2_backend.VoxCPM2Backend"
+        ) as mock_backend_class:
             mock_backend = MagicMock()
             mock_backend_class.return_value = mock_backend
-            mock_backend.initialize = MagicMock()
+            mock_backend.initialize = AsyncMock()
 
             backend = await create_voxcpmp2_backend(
                 model_path="/test/model",
@@ -207,7 +230,7 @@ class TestQuantizationModes:
 
     def test_quantization_modes_structure(self):
         """Test that QUANTIZATION_MODES has the expected structure."""
-        assert isinstance(QUANTIZATION_MIDES, dict)
+        assert isinstance(QUANTIZATION_MODES, dict)
         assert "fp32" in QUANTIZATION_MODES
         assert "fp16" in QUANTIZATION_MODES
         assert "bf16" in QUANTIZATION_MODES
@@ -219,8 +242,8 @@ class TestQuantizationModes:
             assert "vram_gb" in info
             assert "min_vram_gb" in info
             assert isinstance(info["dtype"], str)
-            assert isinstance(inoutry["vram_gb"], float)
-            assert isinstance(info["min_vram_gb"], float)
+            assert isinstance(info["vram_gb"], float)
+            assert isinstance(info["min_vram_gb"], (int, float))
 
     def test_voxcpm2_voices_structure(self):
         """Test that VOXCPM2_VOICES has the expected structure."""
@@ -245,11 +268,18 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_initialize_import_error(self, monkeypatch):
         """
-```markdown
-Test initialize when torch/torchaudio not installed.
+        ```markdown
+        Test initialize when import of torch halted; None in sys.modules.
         """
         # Mock the import to raise ImportError
         with patch.dict("sys.modules", {"torch": None}):
-            backend = VoxCPM2Backend(mock_mode=False)  # Not in mock mode to trigger import
-            with pytest.raises(ImportError, match="torch/torchaudio not installed"):
+            import os
+
+            os.environ["MOCK_LLM"] = "false"
+            backend = VoxCPM2Backend(
+                mock_mode=False
+            )  # Not in mock mode to trigger import
+            with pytest.raises(
+                ImportError, match="import of torch halted; None in sys.modules"
+            ):
                 await backend.initialize()

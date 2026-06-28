@@ -1,12 +1,13 @@
 """Unit tests for audio quality check pipeline."""
 
-import os
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
+
 from src.audiobook_studio.monitoring import record_stage_performance
 from src.audiobook_studio.pipeline.quality_check import (
     AudioAnalysisResult,
@@ -286,7 +287,10 @@ class TestQualityCheckPipeline:
 
             # Should have fix suggestions
             assert len(judgment.fix_suggestions) > 0
-            assert any("重新合成以修复音频质量问题" in s.suggested_value for s in judgment.fix_suggestions)
+            assert any(
+                "重新合成以修复音频质量问题" in s.suggested_value
+                for s in judgment.fix_suggestions
+            )
 
     def test_run_with_silence_issue_triggers_regeneration(self):
         """Test that silence issues can trigger regeneration."""

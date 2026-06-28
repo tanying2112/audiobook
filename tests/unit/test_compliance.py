@@ -25,6 +25,7 @@ class TestComplianceMonitor:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init_creates_storage_dir(self):
@@ -132,12 +133,16 @@ class TestComplianceMonitor:
         self.monitor.record("extract", False, quality_score=0.5)
 
         # Should pass at 0.8 compliance rate
-        result = self.monitor.check_thresholds(min_compliance_rate=0.8, min_quality_score=0.7)
+        result = self.monitor.check_thresholds(
+            min_compliance_rate=0.8, min_quality_score=0.7
+        )
         assert result["overall_pass"] is True
         assert result["stage_results"]["extract"]["pass"] is True
 
         # Should fail at 0.95 compliance rate
-        result = self.monitor.check_thresholds(min_compliance_rate=0.95, min_quality_score=0.7)
+        result = self.monitor.check_thresholds(
+            min_compliance_rate=0.95, min_quality_score=0.7
+        )
         assert result["overall_pass"] is False
         assert result["stage_results"]["extract"]["pass"] is False
 
@@ -150,6 +155,7 @@ class TestComplianceMonitor:
 
         assert Path(report_path).exists()
         import json
+
         with open(report_path) as f:
             report = json.load(f)
 
@@ -173,6 +179,7 @@ class TestConvenienceFunctions:
     def setup_method(self):
         """Reset global monitor."""
         import src.audiobook_studio.monitoring.compliance as compliance_module
+
         compliance_module._global_monitor = None
 
     def test_get_compliance_monitor(self):

@@ -5,17 +5,18 @@ Runs the full pipeline on a long novel (e.g., 红楼梦) in mock mode
 and generates detailed performance/cost/quality reports.
 """
 
-import sys
-import os
 import json
+import os
+import sys
 import time
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Load .env file from project root (before any pipeline imports)
 from dotenv import load_dotenv
+
 _project_root = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_project_root / ".env")
 
@@ -27,24 +28,24 @@ os.environ["MOCK_LLM"] = "true"
 sys.path.insert(0, "src")
 
 from audiobook_studio.pipeline import (
-    extract_text,
     analyze_structure,
     annotate_paragraph,
     edit_for_tts,
-    synthesize_paragraphs,
+    extract_text,
     quality_check,
+    synthesize_paragraphs,
 )
 from audiobook_studio.schemas import (
+    BookAnalysisInput,
     BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
+    ExtractionInput,
     ParagraphAnnotation,
+    QualityJudgment,
     TtsEditInput,
     TtsRoutingDecision,
     TtsRoutingInput,
-    ExtractionInput,
-    BookAnalysisInput,
-    QualityJudgment,
 )
 
 
@@ -57,8 +58,11 @@ def check_env_keys():
     # Reject placeholder keys (e.g. "your-langfuse-public-key")
     _placeholder_patterns = ("your-", "example", "changeme", "xxx", "TODO")
     langfuse_real = bool(
-        langfuse_pk and langfuse_sk
-        and not any(p in (langfuse_pk + langfuse_sk).lower() for p in _placeholder_patterns)
+        langfuse_pk
+        and langfuse_sk
+        and not any(
+            p in (langfuse_pk + langfuse_sk).lower() for p in _placeholder_patterns
+        )
     )
     langfuse_ok = langfuse_real
 
@@ -78,13 +82,17 @@ def check_env_keys():
 
     print("\n🔐 Environment Key Check:")
     print(f"   MOCK_LLM = {mock_mode}")
-    print(f"   Langfuse: {'✅ configured' if langfuse_ok else '⚠️  NOT configured (tracing disabled)'}")
+    print(
+        f"   Langfuse: {'✅ configured' if langfuse_ok else '⚠️  NOT configured (tracing disabled)'}"
+    )
     if langfuse_host:
         print(f"     LANGFUSE_HOST = {langfuse_host}")
 
     configured_llm = [k for k, v in llm_keys.items() if v]
     if mock_mode:
-        print(f"   LLM keys: {len(configured_llm)} configured (mock mode — keys not required)")
+        print(
+            f"   LLM keys: {len(configured_llm)} configured (mock mode — keys not required)"
+        )
     elif configured_llm:
         print(f"   LLM keys: ✅ {', '.join(configured_llm)}")
     else:
@@ -96,6 +104,7 @@ def check_env_keys():
 @dataclass
 class StageMetrics:
     """Metrics for a single pipeline stage."""
+
     stage_name: str
     duration_ms: float
     success: bool
@@ -108,6 +117,7 @@ class StageMetrics:
 @dataclass
 class PipelineReport:
     """Complete pipeline execution report."""
+
     book_id: str
     book_title: str
     total_text_chars: int
@@ -122,10 +132,10 @@ class PipelineReport:
 
 def split_paragraphs(text: str) -> List[str]:
     """Split text into paragraphs by double newlines, filtering empty ones."""
-    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     # If no double newlines, try single newlines
     if len(paragraphs) <= 1:
-        paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
     return paragraphs
 
 
@@ -137,7 +147,7 @@ def run_extraction(novel_path: Path) -> tuple:
         file_path=str(novel_path),
         mime_type="text/plain",
         detect_language=True,
-        mock_mode=False
+        mock_mode=False,
     )
     duration = (time.time() - start) * 1000
     metrics = StageMetrics(
@@ -146,7 +156,7 @@ def run_extraction(novel_path: Path) -> tuple:
         success=True,
         input_size=novel_path.stat().st_size,
         output_size=len(extraction.raw_text),
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return extraction, metrics
 
@@ -162,15 +172,13 @@ def run_analyze(text: str, title_hint: str = "Long Novel") -> tuple:
         success=True,
         input_size=len(text),
         output_size=len(analysis.story_line_summary),
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return analysis, metrics
 
 
 def run_annotate_paragraphs(
-    paragraphs: List[str],
-    analysis,
-    max_paragraphs: int = 100  # Limit for verification
+    paragraphs: List[str], analysis, max_paragraphs: int = 100  # Limit for verification
 ) -> tuple:
     """Stage 3: Paragraph Annotation (process up to max_paragraphs)."""
     start = time.time()
@@ -178,12 +186,16 @@ def run_annotate_paragraphs(
     total_chars = 0
 
     # Use first emotion snapshot as default
-    default_emotion_snapshot = analysis.emotion_snapshots[0] if analysis.emotion_snapshots else EmotionSnapshot(
-        emotion="neutral", intensity=0.5, confidence=0.8
+    default_emotion_snapshot = (
+        analysis.emotion_snapshots[0]
+        if analysis.emotion_snapshots
+        else EmotionSnapshot(emotion="neutral", intensity=0.5, confidence=0.8)
     )
 
     story_line_summary = analysis.story_line_summary
-    global_style_notes = getattr(analysis, 'global_style_notes', 'Standard narrative style.')
+    global_style_notes = getattr(
+        analysis, "global_style_notes", "Standard narrative style."
+    )
 
     for i, para_text in enumerate(paragraphs[:max_paragraphs]):
         try:
@@ -196,7 +208,7 @@ def run_annotate_paragraphs(
                 emotion_snapshot=default_emotion_snapshot,
                 story_line_summary=story_line_summary,
                 global_style_notes=global_style_notes,
-                mock_mode=True
+                mock_mode=True,
             )
             annotations.append(annotation)
             total_chars += len(para_text)
@@ -211,7 +223,7 @@ def run_annotate_paragraphs(
         success=len(annotations) > 0,
         input_size=total_chars,
         output_size=len(annotations),
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return annotations, metrics
 
@@ -219,20 +231,22 @@ def run_annotate_paragraphs(
 def run_edit_for_tts(
     paragraphs: List[str],
     annotations: List[ParagraphAnnotation],
-    max_paragraphs: int = 100
+    max_paragraphs: int = 100,
 ) -> tuple:
     """Stage 4: TTS Editing."""
     start = time.time()
     edited_results = []
     total_chars = 0
 
-    for i, (para_text, annotation) in enumerate(zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs])):
+    for i, (para_text, annotation) in enumerate(
+        zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs])
+    ):
         try:
             result = edit_for_tts(
                 paragraph_text=para_text,
                 paragraph_annotation=annotation,
                 difficulty="B",
-                mock_mode=True
+                mock_mode=True,
             )
             edited_results.append(result)
             total_chars += len(result.edited_text)
@@ -246,7 +260,7 @@ def run_edit_for_tts(
         success=len(edited_results) > 0,
         input_size=sum(len(p) for p in paragraphs[:max_paragraphs]),
         output_size=total_chars,
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return edited_results, metrics
 
@@ -255,24 +269,38 @@ def run_synth(
     annotations: List[ParagraphAnnotation],
     edited_results,
     analysis,
-    max_paragraphs: int = 100
+    max_paragraphs: int = 100,
 ) -> tuple:
     """Stage 5: Audio Synthesis."""
     start = time.time()
 
     # Prepare TTS inputs
-    char_voice_map = analysis.character_voice_map if analysis.character_voice_map else [
-        CharacterVoiceBinding(
-            canonical_name="旁白", aliases=[], gender="neutral",
-            age_range="adult", suggested_voice_id="v1", sample_quote=None
-        )
-    ]
+    char_voice_map = (
+        analysis.character_voice_map
+        if analysis.character_voice_map
+        else [
+            CharacterVoiceBinding(
+                canonical_name="旁白",
+                aliases=[],
+                gender="neutral",
+                age_range="adult",
+                suggested_voice_id="v1",
+                sample_quote=None,
+            )
+        ]
+    )
 
     tts_inputs = []
-    for i, (annotation, edited_result) in enumerate(zip(annotations[:max_paragraphs], edited_results[:max_paragraphs])):
+    for i, (annotation, edited_result) in enumerate(
+        zip(annotations[:max_paragraphs], edited_results[:max_paragraphs])
+    ):
         tts_input = TtsRoutingInput(
             paragraph_annotation=annotation,
-            text=edited_result.edited_text if hasattr(edited_result, 'edited_text') else "",
+            text=(
+                edited_result.edited_text
+                if hasattr(edited_result, "edited_text")
+                else ""
+            ),
             character_voice_map=char_voice_map,
             book_id="long_novel",
             chapter_index=1,
@@ -280,7 +308,7 @@ def run_synth(
             cumulative_cost_usd=0.0,
             cost_limit_per_book=20.0,
             cost_limit_per_chapter=5.0,
-            prefer_local=True
+            prefer_local=True,
         )
         tts_inputs.append(tts_input)
 
@@ -295,7 +323,7 @@ def run_synth(
         success=len(synthesis) > 0,
         input_size=len(tts_inputs),
         output_size=total_duration,
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return synthesis, metrics
 
@@ -305,34 +333,54 @@ def run_quality(
     edited_results,
     synthesis,
     routing_decisions: List[TtsRoutingDecision],
-    max_paragraphs: int = 100
+    max_paragraphs: int = 100,
 ) -> tuple:
     """Stage 6: Quality Check."""
     start = time.time()
 
     quality_inputs = []
     for i, (annotation, edited_result, segment) in enumerate(
-        zip(annotations[:max_paragraphs], edited_results[:max_paragraphs], synthesis[:max_paragraphs])
+        zip(
+            annotations[:max_paragraphs],
+            edited_results[:max_paragraphs],
+            synthesis[:max_paragraphs],
+        )
     ):
-        reference_text = edited_result.edited_text if hasattr(edited_result, 'edited_text') else ""
-        quality_inputs.append((
-            segment.file_path,
-            annotation,
-            routing_decisions[i] if i < len(routing_decisions) else TtsRoutingDecision(
-                segment_id=f"long_novel_ch1_p{i}",
-                engine_choice="kokoro", voice_id="v1",
-                prosody_overrides={}, fallback_engine="edge",
-                reasoning="Mock", estimated_cost_usd=0.0, estimated_duration_ms=3000
-            ),
-            reference_text
-        ))
+        reference_text = (
+            edited_result.edited_text if hasattr(edited_result, "edited_text") else ""
+        )
+        quality_inputs.append(
+            (
+                segment.file_path,
+                annotation,
+                (
+                    routing_decisions[i]
+                    if i < len(routing_decisions)
+                    else TtsRoutingDecision(
+                        segment_id=f"long_novel_ch1_p{i}",
+                        engine_choice="kokoro",
+                        voice_id="v1",
+                        prosody_overrides={},
+                        fallback_engine="edge",
+                        reasoning="Mock",
+                        estimated_cost_usd=0.0,
+                        estimated_duration_ms=3000,
+                    )
+                ),
+                reference_text,
+            )
+        )
 
     quality_results = quality_check(inputs=quality_inputs, mock_mode=True)
 
     duration = (time.time() - start) * 1000
 
     # Calculate quality summary
-    avg_score = sum(r.overall_score for r in quality_results) / len(quality_results) if quality_results else 0
+    avg_score = (
+        sum(r.overall_score for r in quality_results) / len(quality_results)
+        if quality_results
+        else 0
+    )
     total_issues = sum(len(r.issues) for r in quality_results)
     needs_regeneration_count = sum(1 for r in quality_results if r.needs_regeneration)
 
@@ -341,11 +389,43 @@ def run_quality(
         "total_issues": total_issues,
         "needs_regeneration_count": needs_regeneration_count,
         "score_distribution": {
-            "speaker_clarity": round(sum(r.speaker_clarity for r in quality_results) / len(quality_results), 3) if quality_results else 0,
-            "emotion_match": round(sum(r.emotion_match for r in quality_results) / len(quality_results), 3) if quality_results else 0,
-            "prosody_naturalness": round(sum(r.prosody_naturalness for r in quality_results) / len(quality_results), 3) if quality_results else 0,
-            "text_audio_alignment": round(sum(r.text_audio_alignment for r in quality_results) / len(quality_results), 3) if quality_results else 0,
-        }
+            "speaker_clarity": (
+                round(
+                    sum(r.speaker_clarity for r in quality_results)
+                    / len(quality_results),
+                    3,
+                )
+                if quality_results
+                else 0
+            ),
+            "emotion_match": (
+                round(
+                    sum(r.emotion_match for r in quality_results)
+                    / len(quality_results),
+                    3,
+                )
+                if quality_results
+                else 0
+            ),
+            "prosody_naturalness": (
+                round(
+                    sum(r.prosody_naturalness for r in quality_results)
+                    / len(quality_results),
+                    3,
+                )
+                if quality_results
+                else 0
+            ),
+            "text_audio_alignment": (
+                round(
+                    sum(r.text_audio_alignment for r in quality_results)
+                    / len(quality_results),
+                    3,
+                )
+                if quality_results
+                else 0
+            ),
+        },
     }
 
     metrics = StageMetrics(
@@ -354,7 +434,7 @@ def run_quality(
         success=len(quality_results) > 0,
         input_size=len(quality_inputs),
         output_size=len(quality_results),
-        mock_cost_usd=0.0
+        mock_cost_usd=0.0,
     )
     return quality_results, metrics, quality_summary
 
@@ -363,7 +443,7 @@ def run_e2e_long_book(
     novel_path: Path,
     book_id: str = "long_novel",
     title_hint: str = "Long Novel",
-    max_paragraphs: int = 100
+    max_paragraphs: int = 100,
 ) -> PipelineReport:
     """Run full E2E pipeline on long novel."""
 
@@ -379,16 +459,23 @@ def run_e2e_long_book(
     try:
         extraction, metrics = run_extraction(novel_path)
         stage_metrics.append(metrics)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Input: {metrics.input_size} bytes | Output: {metrics.output_size} chars | Language: {extraction.language}")
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Input: {metrics.input_size} bytes | Output: {metrics.output_size} chars | Language: {extraction.language}"
+        )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
         stage_metrics.append(StageMetrics("extract", 0, False, error_message=str(e)))
         return PipelineReport(
-            book_id=book_id, book_title=title_hint,
-            total_text_chars=0, total_paragraphs=0,
-            stages=stage_metrics, total_duration_ms=0,
-            total_mock_cost_usd=0, quality_summary={},
-            timestamp=datetime.now().isoformat(), passed=False
+            book_id=book_id,
+            book_title=title_hint,
+            total_text_chars=0,
+            total_paragraphs=0,
+            stages=stage_metrics,
+            total_duration_ms=0,
+            total_mock_cost_usd=0,
+            quality_summary={},
+            timestamp=datetime.now().isoformat(),
+            passed=False,
         )
 
     # Split into paragraphs
@@ -400,68 +487,108 @@ def run_e2e_long_book(
     try:
         analysis, metrics = run_analyze(extraction.raw_text, title_hint)
         stage_metrics.append(metrics)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Characters: {len(analysis.character_voice_map)} | Emotions: {len(analysis.emotion_snapshots)}")
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Characters: {len(analysis.character_voice_map)} | Emotions: {len(analysis.emotion_snapshots)}"
+        )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(StageMetrics("analyze_structure", 0, False, error_message=str(e)))
+        stage_metrics.append(
+            StageMetrics("analyze_structure", 0, False, error_message=str(e))
+        )
         return PipelineReport(
-            book_id=book_id, book_title=title_hint,
-            total_text_chars=len(extraction.raw_text), total_paragraphs=len(paragraphs),
-            stages=stage_metrics, total_duration_ms=sum(m.duration_ms for m in stage_metrics),
-            total_mock_cost_usd=0, quality_summary={},
-            timestamp=datetime.now().isoformat(), passed=False
+            book_id=book_id,
+            book_title=title_hint,
+            total_text_chars=len(extraction.raw_text),
+            total_paragraphs=len(paragraphs),
+            stages=stage_metrics,
+            total_duration_ms=sum(m.duration_ms for m in stage_metrics),
+            total_mock_cost_usd=0,
+            quality_summary={},
+            timestamp=datetime.now().isoformat(),
+            passed=False,
         )
 
     # Stage 3: Annotate
     print(f"\n🏷️  Stage 3: Paragraph Annotation (first {max_paragraphs} paragraphs)")
     try:
-        annotations, metrics = run_annotate_paragraphs(paragraphs, analysis, max_paragraphs)
+        annotations, metrics = run_annotate_paragraphs(
+            paragraphs, analysis, max_paragraphs
+        )
         stage_metrics.append(metrics)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Annotated: {len(annotations)} paragraphs")
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Annotated: {len(annotations)} paragraphs"
+        )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(StageMetrics("annotate_paragraph", 0, False, error_message=str(e)))
+        stage_metrics.append(
+            StageMetrics("annotate_paragraph", 0, False, error_message=str(e))
+        )
         return PipelineReport(
-            book_id=book_id, book_title=title_hint,
-            total_text_chars=len(extraction.raw_text), total_paragraphs=len(paragraphs),
-            stages=stage_metrics, total_duration_ms=sum(m.duration_ms for m in stage_metrics),
-            total_mock_cost_usd=0, quality_summary={},
-            timestamp=datetime.now().isoformat(), passed=False
+            book_id=book_id,
+            book_title=title_hint,
+            total_text_chars=len(extraction.raw_text),
+            total_paragraphs=len(paragraphs),
+            stages=stage_metrics,
+            total_duration_ms=sum(m.duration_ms for m in stage_metrics),
+            total_mock_cost_usd=0,
+            quality_summary={},
+            timestamp=datetime.now().isoformat(),
+            passed=False,
         )
 
     # Stage 4: Edit for TTS
     print(f"\n🎛️  Stage 4: TTS Editing (first {max_paragraphs} paragraphs)")
     try:
-        edited_results, metrics = run_edit_for_tts(paragraphs, annotations, max_paragraphs)
+        edited_results, metrics = run_edit_for_tts(
+            paragraphs, annotations, max_paragraphs
+        )
         stage_metrics.append(metrics)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Edited: {len(edited_results)} paragraphs")
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Edited: {len(edited_results)} paragraphs"
+        )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(StageMetrics("edit_for_tts", 0, False, error_message=str(e)))
+        stage_metrics.append(
+            StageMetrics("edit_for_tts", 0, False, error_message=str(e))
+        )
         return PipelineReport(
-            book_id=book_id, book_title=title_hint,
-            total_text_chars=len(extraction.raw_text), total_paragraphs=len(paragraphs),
-            stages=stage_metrics, total_duration_ms=sum(m.duration_ms for m in stage_metrics),
-            total_mock_cost_usd=0, quality_summary={},
-            timestamp=datetime.now().isoformat(), passed=False
+            book_id=book_id,
+            book_title=title_hint,
+            total_text_chars=len(extraction.raw_text),
+            total_paragraphs=len(paragraphs),
+            stages=stage_metrics,
+            total_duration_ms=sum(m.duration_ms for m in stage_metrics),
+            total_mock_cost_usd=0,
+            quality_summary={},
+            timestamp=datetime.now().isoformat(),
+            passed=False,
         )
 
     # Stage 5: Synthesize
     print(f"\n🔊 Stage 5: Audio Synthesis (first {max_paragraphs} paragraphs)")
     try:
-        synthesis, metrics = run_synth(annotations, edited_results, analysis, max_paragraphs)
+        synthesis, metrics = run_synth(
+            annotations, edited_results, analysis, max_paragraphs
+        )
         stage_metrics.append(metrics)
         total_audio_ms = sum(s.duration_ms for s in synthesis)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Segments: {len(synthesis)} | Total audio: {total_audio_ms}ms")
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Segments: {len(synthesis)} | Total audio: {total_audio_ms}ms"
+        )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
         stage_metrics.append(StageMetrics("synthesize", 0, False, error_message=str(e)))
         return PipelineReport(
-            book_id=book_id, book_title=title_hint,
-            total_text_chars=len(extraction.raw_text), total_paragraphs=len(paragraphs),
-            stages=stage_metrics, total_duration_ms=sum(m.duration_ms for m in stage_metrics),
-            total_mock_cost_usd=0, quality_summary={},
-            timestamp=datetime.now().isoformat(), passed=False
+            book_id=book_id,
+            book_title=title_hint,
+            total_text_chars=len(extraction.raw_text),
+            total_paragraphs=len(paragraphs),
+            stages=stage_metrics,
+            total_duration_ms=sum(m.duration_ms for m in stage_metrics),
+            total_mock_cost_usd=0,
+            quality_summary={},
+            timestamp=datetime.now().isoformat(),
+            passed=False,
         )
 
     # Prepare routing decisions for quality check
@@ -475,22 +602,32 @@ def run_e2e_long_book(
             fallback_engine="edge",
             reasoning="Mock routing decision for E2E verification",
             estimated_cost_usd=0.0,
-            estimated_duration_ms=synthesis[i].duration_ms if i < len(synthesis) else 3000,
+            estimated_duration_ms=(
+                synthesis[i].duration_ms if i < len(synthesis) else 3000
+            ),
         )
         routing_decisions.append(routing)
 
     # Stage 6: Quality Check
     print(f"\n🔍 Stage 6: Quality Check (first {max_paragraphs} paragraphs)")
     try:
-        quality_results, metrics, quality_summary = run_quality(annotations, edited_results, synthesis, routing_decisions, max_paragraphs)
+        quality_results, metrics, quality_summary = run_quality(
+            annotations, edited_results, synthesis, routing_decisions, max_paragraphs
+        )
         stage_metrics.append(metrics)
-        print(f"   ✅ {metrics.duration_ms:.1f}ms | Checked: {len(quality_results)} segments")
-        print(f"   📊 Avg Score: {quality_summary['avg_overall_score']:.3f} | Issues: {quality_summary['total_issues']} | Regen needed: {quality_summary['needs_regeneration_count']}")
-        for k, v in quality_summary['score_distribution'].items():
+        print(
+            f"   ✅ {metrics.duration_ms:.1f}ms | Checked: {len(quality_results)} segments"
+        )
+        print(
+            f"   📊 Avg Score: {quality_summary['avg_overall_score']:.3f} | Issues: {quality_summary['total_issues']} | Regen needed: {quality_summary['needs_regeneration_count']}"
+        )
+        for k, v in quality_summary["score_distribution"].items():
             print(f"      {k}: {v:.3f}")
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(StageMetrics("quality_check", 0, False, error_message=str(e)))
+        stage_metrics.append(
+            StageMetrics("quality_check", 0, False, error_message=str(e))
+        )
         quality_summary = {}
 
     # Final report
@@ -499,15 +636,15 @@ def run_e2e_long_book(
 
     report = PipelineReport(
         book_id=book_id,
-        book_title=analysis.book_meta.title if 'analysis' in locals() else title_hint,
-        total_text_chars=len(extraction.raw_text) if 'extraction' in locals() else 0,
+        book_title=analysis.book_meta.title if "analysis" in locals() else title_hint,
+        total_text_chars=len(extraction.raw_text) if "extraction" in locals() else 0,
         total_paragraphs=len(paragraphs),
         stages=stage_metrics,
         total_duration_ms=total_duration,
         total_mock_cost_usd=sum(m.mock_cost_usd for m in stage_metrics),
         quality_summary=quality_summary,
         timestamp=datetime.now().isoformat(),
-        passed=all_passed
+        passed=all_passed,
     )
 
     return report
@@ -519,9 +656,9 @@ def save_report(report: PipelineReport, output_path: Path):
 
     # Convert dataclasses to dict
     report_dict = asdict(report)
-    report_dict['stages'] = [asdict(m) for m in report.stages]
+    report_dict["stages"] = [asdict(m) for m in report.stages]
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report_dict, f, ensure_ascii=False, indent=2)
 
     print(f"\n📝 Report saved to: {output_path}")
@@ -544,7 +681,9 @@ def print_summary(report: PipelineReport):
     print("-" * 70)
     for m in report.stages:
         status = "✅" if m.success else "❌"
-        print(f"  {status} {m.stage_name:20s} | {m.duration_ms:8.1f}ms | in:{m.input_size:>8} | out:{m.output_size:>8}")
+        print(
+            f"  {status} {m.stage_name:20s} | {m.duration_ms:8.1f}ms | in:{m.input_size:>8} | out:{m.output_size:>8}"
+        )
 
     if report.quality_summary:
         qs = report.quality_summary
@@ -552,7 +691,7 @@ def print_summary(report: PipelineReport):
         print(f"   Overall Score: {qs['avg_overall_score']:.3f}")
         print(f"   Total Issues: {qs['total_issues']}")
         print(f"   Needs Regeneration: {qs['needs_regeneration_count']}")
-        for k, v in qs['score_distribution'].items():
+        for k, v in qs["score_distribution"].items():
             print(f"   {k}: {v:.3f}")
 
     print("=" * 70)
@@ -566,18 +705,33 @@ def print_summary(report: PipelineReport):
         # Check if any stage took suspiciously long
         for m in report.stages:
             if m.duration_ms > 5000:  # >5 seconds in mock mode is unusual
-                print(f"   ⚠️  {m.stage_name} took {m.duration_ms:.1f}ms (unexpectedly slow for mock mode)")
+                print(
+                    f"   ⚠️  {m.stage_name} took {m.duration_ms:.1f}ms (unexpectedly slow for mock mode)"
+                )
 
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="E2E Long Novel Verification")
-    parser.add_argument("--novel", default="data/long_novel/hongloumeng.txt", help="Path to novel text file")
+    parser.add_argument(
+        "--novel",
+        default="data/long_novel/hongloumeng.txt",
+        help="Path to novel text file",
+    )
     parser.add_argument("--book-id", default="hongloumeng", help="Book identifier")
     parser.add_argument("--title", default="红楼梦", help="Book title hint")
-    parser.add_argument("--max-paragraphs", type=int, default=100, help="Max paragraphs to process (for verification speed)")
-    parser.add_argument("--output", default="reports/e2e_long_book_report.json", help="Output report path")
+    parser.add_argument(
+        "--max-paragraphs",
+        type=int,
+        default=100,
+        help="Max paragraphs to process (for verification speed)",
+    )
+    parser.add_argument(
+        "--output",
+        default="reports/e2e_long_book_report.json",
+        help="Output report path",
+    )
 
     args = parser.parse_args()
 
@@ -594,7 +748,7 @@ def main():
         novel_path=novel_path,
         book_id=args.book_id,
         title_hint=args.title,
-        max_paragraphs=args.max_paragraphs
+        max_paragraphs=args.max_paragraphs,
     )
 
     # Save report

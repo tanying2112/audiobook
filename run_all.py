@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Run coverage check and E2E test in one script."""
 
+import json
 import subprocess
 import sys
-import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 print("=" * 70)
 print("STEP 1: Running Coverage Check")
@@ -13,11 +13,15 @@ print("=" * 70)
 
 # Run pytest with coverage
 result = subprocess.run(
-    [sys.executable, "-m", "pytest",
-     "--cov=src/audiobook_studio",
-     "--cov-report=json:coverage_check.json",
-     "--cov-report=term-missing",
-     "-q"],
+    [
+        sys.executable,
+        "-m",
+        "pytest",
+        "--cov=src/audiobook_studio",
+        "--cov-report=json:coverage_check.json",
+        "--cov-report=term-missing",
+        "-q",
+    ],
     capture_output=True,
     text=True,
     timeout=180,
@@ -47,8 +51,9 @@ sys.path.insert(0, "src")
 
 # Run E2E
 sys.path.insert(0, "tests/e2e")
-from e2e_long_book import run_e2e_long_book, save_report, print_summary
 from pathlib import Path
+
+from e2e_long_book import print_summary, run_e2e_long_book, save_report
 
 novel_path = Path("data/long_novel/hongloumeng.txt")
 
@@ -59,7 +64,7 @@ else:
         novel_path=novel_path,
         book_id="hongloumeng",
         title_hint="红楼梦",
-        max_paragraphs=50
+        max_paragraphs=50,
     )
     save_report(report, Path("reports/e2e_long_book_report.json"))
     print_summary(report)

@@ -48,12 +48,8 @@ class TtsEditOutput(BaseModel):
     )
     confidence: Confidence = Field(..., description="编辑置信度 0-1")
     rationale: str = Field(..., description="编辑理由 (用于反馈学习)")
-    difficulty: Literal["A", "B", "C", "D"] = Field(
-        default="B", description="难度等级"
-    )
-    forbid_edit: bool = Field(
-        default=False, description="原文锁定标志"
-    )
+    difficulty: Literal["A", "B", "C", "D"] = Field(default="B", description="难度等级")
+    forbid_edit: bool = Field(default=False, description="原文锁定标志")
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

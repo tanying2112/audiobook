@@ -1,14 +1,14 @@
 """OpenTelemetry tracing setup."""
 
-import os
 import logging
+import os
 from typing import Optional
 
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +36,13 @@ def init_tracing(
     global _tracer_provider
 
     # Create resource with service info
-    resource = Resource.create({
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: service_version,
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
-    })
+    resource = Resource.create(
+        {
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: service_version,
+            "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
+        }
+    )
 
     # Create tracer provider
     _tracer_provider = TracerProvider(resource=resource)
@@ -65,6 +67,7 @@ def init_tracing(
     # Auto-instrument common libraries (imported lazily to avoid test setup issues)
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor.instrument()
         logger.info("FastAPI instrumentation enabled")
     except Exception as e:
@@ -72,6 +75,7 @@ def init_tracing(
 
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
         SQLAlchemyInstrumentor.instrument(engine=None)
         logger.info("SQLAlchemy instrumentation enabled")
     except Exception as e:
@@ -79,6 +83,7 @@ def init_tracing(
 
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
         HTTPXClientInstrumentor.instrument()
         logger.info("HTTPX instrumentation enabled")
     except Exception as e:
@@ -86,12 +91,15 @@ def init_tracing(
 
     try:
         from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
         RequestsInstrumentor.instrument()
         logger.info("Requests instrumentation enabled")
     except Exception as e:
         logger.warning(f"Requests instrumentation failed: {e}")
 
-    logger.info(f"OpenTelemetry tracing initialized for {service_name} v{service_version}")
+    logger.info(
+        f"OpenTelemetry tracing initialized for {service_name} v{service_version}"
+    )
     return _tracer_provider
 
 

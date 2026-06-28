@@ -2,17 +2,17 @@
 """Team collaboration features: comments, tasks, approvals, change history."""
 
 from .team_collaboration import (
-    CollaborationManager,
-    TeamMember,
-    Comment,
-    CommentType,
-    Task,
-    TaskStatus,
     ApprovalRequest,
     ApprovalResponse,
     ApprovalStatus,
     ChangeRecord,
     ChangeType,
+    CollaborationManager,
+    Comment,
+    CommentType,
+    Task,
+    TaskStatus,
+    TeamMember,
 )
 
 __all__ = [

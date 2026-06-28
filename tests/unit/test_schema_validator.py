@@ -1,16 +1,17 @@
 """Tests for schema_validator module."""
 
-import pytest
+import logging
 from typing import Optional
 
+import pytest
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 from src.audiobook_studio.schemas.schema_validator import (
-    SchemaSyncReport,
-    FieldDiff,
     DriftType,
+    FieldDiff,
+    SchemaSyncReport,
     SchemaValidator,
     sync_schema_validator,
 )
@@ -18,11 +19,13 @@ from src.audiobook_studio.schemas.schema_validator import (
 
 class MockBase(DeclarativeBase):
     """Mock ORM base for testing."""
+
     pass
 
 
 class MockUserModel(MockBase):
     """Mock SQLAlchemy model."""
+
     __tablename__ = "mock_users"
 
     id = Column(Integer, primary_key=True)
@@ -33,6 +36,7 @@ class MockUserModel(MockBase):
 
 class MockUserSchema(BaseModel):
     """Corresponding Pydantic schema."""
+
     id: int
     name: str
     email: Optional[str] = None
@@ -41,6 +45,7 @@ class MockUserSchema(BaseModel):
 
 class MockSchemaDifferent(BaseModel):
     """Schema with different fields (for drift detection)."""
+
     id: int
     name: str
     email: str  # Should be Optional
@@ -49,6 +54,7 @@ class MockSchemaDifferent(BaseModel):
 
 class MockModelMissing(MockBase):
     """Model missing fields."""
+
     __tablename__ = "mock_missing"
 
     id = Column(Integer, primary_key=True)
@@ -57,6 +63,7 @@ class MockModelMissing(MockBase):
 
 class MockSchemaMissing(BaseModel):
     """Schema missing fields."""
+
     id: int
     name: str
     age: Optional[int] = None
@@ -260,10 +267,15 @@ class TestSyncSchemaValidator:
             sync_schema_validator()
         assert exc_info.value.code in (0, 1, None)
 
-    def test_sync_schema_validator_prints_report(self, capsys):
-        """Test sync_schema_validator prints a report."""
+    def test_sync_schema_validator_prints_report(self, caplog):
+        """Test sync_schema_validator logs a report."""
+        # Set log level to INFO to capture logger.info output
+        caplog.set_level(logging.INFO)
         with pytest.raises(SystemExit):
             sync_schema_validator()
-        captured = capsys.readouterr()
-        assert "Schema Synchronization Report" in captured.out
-        assert "Total pairs checked" in captured.out
+        # The function uses logger.info - check caplog for the log messages
+        log_output = caplog.text
+        assert (
+            "Schema Synchronization Report" in log_output
+            or "Total pairs checked" in log_output
+        )

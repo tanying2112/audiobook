@@ -1,6 +1,7 @@
 """Unit tests for text extraction pipeline."""
 
 import os
+
 # Save original value
 _original_mock = os.environ.get("MOCK_LLM", "false")
 # Set mock mode for tests that need it
@@ -10,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+
 from src.audiobook_studio.pipeline.extract import ExtractPipeline, extract_text
 from src.audiobook_studio.schemas import ExtractionInput, ExtractionResult
 
@@ -484,6 +486,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
         """Test run method with unsupported MIME type."""
         # Create input that bypasses schema validation (directly create invalid mime)
         import pytest
+
         from src.audiobook_studio.schemas import ExtractionInput
 
         input_data = ExtractionInput(

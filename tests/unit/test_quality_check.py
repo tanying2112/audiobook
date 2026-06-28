@@ -9,20 +9,21 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/quality_check.py:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+
 from src.audiobook_studio.pipeline.quality_check import (
+    AudioAnalysisResult,
     QualityCheckPipeline,
     quality_check,
-    AudioAnalysisResult,
 )
-from src.audiobook_studio.schemas import (
-    QualityJudgment,
-    ParagraphAnnotation,
-)
+from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
-from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema, TtsRoutingDecision
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
+from src.audiobook_studio.schemas.tts_routing import (
+    TtsRoutingDecision as TtsRoutingDecisionSchema,
+)
 
 
 class TestQualityCheckPipeline:
@@ -40,6 +41,7 @@ class TestQualityCheckPipeline:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -79,7 +81,7 @@ class TestQualityCheckPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router, create_judge
+        from src.audiobook_studio.llm import create_judge, create_router
 
         # Explicitly set mock_mode=False for deterministic test
         pipeline = QualityCheckPipeline(mock_mode=False)
@@ -96,14 +98,18 @@ class TestQualityCheckPipeline:
         """Test pipeline initialization with custom router and judge."""
         mock_router = Mock()
         mock_judge = Mock()
-        pipeline = QualityCheckPipeline(router=mock_router, judge=mock_judge, mock_mode=True)
+        pipeline = QualityCheckPipeline(
+            router=mock_router, judge=mock_judge, mock_mode=True
+        )
         assert pipeline.router == mock_router
         assert pipeline.judge == mock_judge
 
     def test_analyze_audio_rules_mock_mode(self):
         """Test _analyze_audio_rules in mock mode returns defaults."""
         expected_duration = 5000
-        analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, expected_duration)
+        analysis = self.pipeline._analyze_audio_rules(
+            self.mock_audio_path, expected_duration
+        )
 
         assert isinstance(analysis, AudioAnalysisResult)
         assert analysis.duration_ms == expected_duration
@@ -204,10 +210,7 @@ class TestQualityCheckPipeline:
             p.write_bytes(b"RIFF" + b"\x00" * 1000)
             audio_paths.append(str(p))
 
-        annotations = [
-            self.create_mock_annotation(paragraph_index=i)
-            for i in range(3)
-        ]
+        annotations = [self.create_mock_annotation(paragraph_index=i) for i in range(3)]
         routings = [
             self.create_mock_routing_decision(segment_id=f"book_001_ch1_p{i}")
             for i in range(3)
@@ -306,6 +309,7 @@ class TestQualityCheckEdgeCases:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -364,9 +368,20 @@ class TestQualityCheckEdgeCases:
     def test_all_emotions(self):
         """Test quality check with all emotion types."""
         emotions = [
-            "neutral", "happy", "sad", "angry", "fearful",
-            "surprised", "disgusted", "tense", "tender", "contemplative",
-            "whisper", "cold_laugh", "sigh", "sarcastic",
+            "neutral",
+            "happy",
+            "sad",
+            "angry",
+            "fearful",
+            "surprised",
+            "disgusted",
+            "tense",
+            "tender",
+            "contemplative",
+            "whisper",
+            "cold_laugh",
+            "sigh",
+            "sarcastic",
         ]
         for emotion in emotions:
             annotation = self.create_mock_annotation(emotion=emotion)
@@ -421,8 +436,6 @@ class TestQualityCheckEdgeCases:
         assert "wrong_speaker" in results[0].issues
 
 
-
-
 class TestQualityCheckNonMockPathsExtended:
     """Extended tests for non-mock code paths for coverage."""
 
@@ -433,6 +446,7 @@ class TestQualityCheckNonMockPathsExtended:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_apply_hardware_profile_quality_config_no_thresholds(self):
@@ -464,6 +478,7 @@ class TestQualityCheckNonMockPathsExtended:
     def test_should_use_multimodal_judge_false_wrong_profile(self):
         """Test _should_use_multimodal_judge returns False for wrong profile types."""
         from unittest.mock import MagicMock
+
         pipeline = QualityCheckPipeline(mock_mode=True)
         pipeline.hardware_profile = MagicMock()
         pipeline.hardware_profile.active_profile = "edge_lite"
@@ -520,12 +535,15 @@ class TestQualityCheckNonMockPathsExtended:
             notes="Test",
             contract_version=1,
         )
-        result = pipeline._multimodal_judge_quality("test_seg", audio_path, annotation, "ref text")
+        result = pipeline._multimodal_judge_quality(
+            "test_seg", audio_path, annotation, "ref text"
+        )
         assert result is None
 
     def test_run_hard_quality_checks_real_mode(self):
         """Test _run_hard_quality_checks in real mode calls quality suite."""
         from unittest.mock import MagicMock
+
         pipeline = QualityCheckPipeline(mock_mode=False)
         audio_path = Path(self.temp_dir) / "test.mp3"
         audio_path.write_bytes(b"dummy audio")
@@ -543,7 +561,7 @@ class TestQualityCheckNonMockPathsExtended:
             result = pipeline._run_hard_quality_checks(
                 audio_path=audio_path,
                 reference_text="参考文本",
-                speaker_id="speaker_001"
+                speaker_id="speaker_001",
             )
             assert result.passed is True
 
@@ -577,7 +595,10 @@ class TestCheckOptionalDependencies:
         pipeline = QualityCheckPipeline(mock_mode=True)
         # Override available features to simulate no deps
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": False, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": False,
+            "asr": False,
+            "speaker_sim": False,
         }
         audio_path = Path(tempfile.mkdtemp()) / "test.mp3"
         audio_path.write_bytes(b"dummy")
@@ -592,7 +613,10 @@ class TestCheckOptionalDependencies:
         """Test _run_hard_quality_checks proceeds when at least one dep is available."""
         pipeline = QualityCheckPipeline(mock_mode=True)
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": True, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": True,
+            "asr": False,
+            "speaker_sim": False,
         }
         audio_path = Path(tempfile.mkdtemp()) / "test.mp3"
         audio_path.write_bytes(b"dummy")
@@ -629,7 +653,10 @@ class TestCheckOptionalDependencies:
         pipeline = QualityCheckPipeline(judge=mock_judge, mock_mode=False)
         # Simulate no optional deps
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": False, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": False,
+            "asr": False,
+            "speaker_sim": False,
         }
 
         annotation = ParagraphAnnotation(
@@ -670,6 +697,7 @@ class TestCheckOptionalDependencies:
             mock_judge.judge_quality.assert_called_once()
         finally:
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 

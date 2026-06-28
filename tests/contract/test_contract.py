@@ -4,29 +4,33 @@ Contract Testing using Schemathesis
 Validates that the API implementation conforms to the OpenAPI specification.
 Run with: pytest tests/contract/test_contract.py -v
 """
-import pytest
-import schemathesis
+
 import json
-import sys
 import os
 import re
+import sys
+
+import pytest
+import schemathesis
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+
 
 # Load the OpenAPI schema from file
 def load_openapi_spec():
     """Load OpenAPI spec from generated file."""
-    spec_path = os.path.join(os.path.dirname(__file__), '..', '..', 'openapi.json')
+    spec_path = os.path.join(os.path.dirname(__file__), "..", "..", "openapi.json")
     if os.path.exists(spec_path):
-        with open(spec_path, 'r') as f:
+        with open(spec_path, "r") as f:
             return json.load(f)
     # Try relative path
-    spec_path = os.path.join(os.getcwd(), 'openapi.json')
+    spec_path = os.path.join(os.getcwd(), "openapi.json")
     if os.path.exists(spec_path):
-        with open(spec_path, 'r') as f:
+        with open(spec_path, "r") as f:
             return json.load(f)
     raise FileNotFoundError(f"OpenAPI spec not found at {spec_path}")
+
 
 openapi_spec = load_openapi_spec()
 
@@ -47,6 +51,7 @@ EXCLUDE_PATHS = [
 # Get all operations from the schema
 all_operations = list(schema.get_all_operations())
 
+
 def test_schema_loaded():
     """Verify the OpenAPI schema was loaded correctly."""
     assert schema is not None
@@ -62,11 +67,11 @@ def test_api_conformance(case: schemathesis.Case):
     for excluded in EXCLUDE_PATHS:
         if re.match(excluded, path):
             pytest.skip(f"Skipping excluded path: {path}")
-    
+
     # Skip paths that require authentication or special setup
     if path.startswith("/ws/"):
         pytest.skip("WebSocket endpoint - requires separate testing")
-    
+
     # Test that the path exists in the schema
     assert case.path is not None, "Path should not be None"
 
@@ -130,10 +135,10 @@ def test_golden_samples_in_schema(case: schemathesis.Case):
 def test_schema_coverage():
     """Test that we have good coverage of the schema."""
     # Get all paths from raw spec
-    paths = set(openapi_spec.get('paths', {}).keys())
-    
+    paths = set(openapi_spec.get("paths", {}).keys())
+
     print(f"Total unique paths in schema: {len(paths)}")
-    
+
     # Expected core paths (with /api prefix)
     core_paths = {
         "/api/projects/",
@@ -145,9 +150,11 @@ def test_schema_coverage():
         "/health",
         "/api/config/contracts/reload",
     }
-    
+
     for expected_path in core_paths:
-        assert expected_path in paths, f"Expected path {expected_path} not found in schema"
+        assert (
+            expected_path in paths
+        ), f"Expected path {expected_path} not found in schema"
 
 
 if __name__ == "__main__":

@@ -1,25 +1,26 @@
 """Tests for pipeline/orchestrator.py — _write_* functions."""
+
 import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.audiobook_studio.pipeline.orchestrator import (
-    _write_extract,
     _write_analyze,
     _write_annotate,
-    _write_edit,
-    _write_synthesize,
-    _write_quality,
     _write_audio_postprocess,
+    _write_edit,
+    _write_extract,
+    _write_quality,
+    _write_synthesize,
 )
 from src.audiobook_studio.schemas import (
-    ExtractionResult,
-    BookAnalysisOutput,
-    ParagraphAnnotation,
-    TtsEditOutput,
-    QualityJudgment,
     AudioPostProcessParams,
+    BookAnalysisOutput,
+    ExtractionResult,
+    ParagraphAnnotation,
+    QualityJudgment,
+    TtsEditOutput,
 )
 
 
@@ -39,7 +40,9 @@ def mock_db():
     para.edited_text = ""
 
     db.query.return_value.filter.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+        None
+    )
     return db, chapter, para
 
 
@@ -106,7 +109,9 @@ class TestWriteAnnotate:
             emotion_intensity=0.8,
             confidence=0.9,
         )
-        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
+        _write_annotate(
+            db, project_id=1, chapter=chapter, paragraph_index=1, result=result
+        )
         db.add.assert_called()
         db.commit.assert_called()
 
@@ -121,7 +126,9 @@ class TestWriteAnnotate:
             emotion_intensity=0.5,
             confidence=0.7,
         )
-        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
+        _write_annotate(
+            db, project_id=1, chapter=chapter, paragraph_index=1, result=result
+        )
         db.commit.assert_called()
 
 
@@ -168,7 +175,9 @@ class TestWriteSynthesize:
             "engine": "kokoro",
             "voice_id": "v1",
         }
-        _write_synthesize(db, project_id=1, chapter=chapter, para=para, segment_info=seg)
+        _write_synthesize(
+            db, project_id=1, chapter=chapter, para=para, segment_info=seg
+        )
         db.add.assert_called()
         db.commit.assert_called()
         assert para.status == "synthesized"
@@ -179,7 +188,9 @@ class TestWriteQuality:
         db, chapter, para = mock_db
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_tts_edit
+        )
         result = QualityJudgment(
             segment_id="seg1",
             speaker_clarity=0.9,

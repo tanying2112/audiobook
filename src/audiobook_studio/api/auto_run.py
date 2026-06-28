@@ -3,24 +3,31 @@
 Provides one-click full automation from text to audiobook.
 """
 
+import asyncio
 import json
 import logging
-from typing import Dict, List, Optional, Any, Callable
+import os
 from datetime import datetime, timezone
 from pathlib import Path
-import asyncio
+from typing import Any, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+os.environ["MOCK_LLM"] = "false"
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..database import get_db
+from ..models.audio_segment import AudioSegment
 from ..models.book import Project
 from ..models.chapter import Chapter
-from ..pipeline.orchestrator import run_stage
+from ..models.paragraph import Paragraph
+from ..models.quality import Quality
+from ..models.tts_edit import TTSEdit
 from ..pipeline.checkpoint import CheckpointManager
-from ..api.websocket import emit_pipeline_event, PipelineEventType
+from ..pipeline.orchestrator import run_stage
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +41,30 @@ router = APIRouter(prefix="/projects/{project_id}/auto-run", tags=["auto-run"])
 
 class AutoRunConfig(BaseModel):
     """Configuration for auto-run pipeline."""
+
     target_difficulty: str = Field("B", description="Target difficulty: A/B/C/D")
-    primary_voice_preference: str = Field("female", description="Voice preference: male/female/neutral")
-    speech_rate_preference: str = Field("standard", description="Speech rate: slow/standard/fast")
-    cost_limit_usd: Optional[float] = Field(None, description="Maximum cost limit in USD")
-    quality_threshold: float = Field(0.7, ge=0, le=1, description="Quality threshold for auto-regen")
-    max_regeneration_attempts: int = Field(3, ge=1, le=5, description="Max regen attempts per segment")
+    primary_voice_preference: str = Field(
+        "female", description="Voice preference: male/female/neutral"
+    )
+    speech_rate_preference: str = Field(
+        "standard", description="Speech rate: slow/standard/fast"
+    )
+    cost_limit_usd: Optional[float] = Field(
+        None, description="Maximum cost limit in USD"
+    )
+    quality_threshold: float = Field(
+        0.7, ge=0, le=1, description="Quality threshold for auto-regen"
+    )
+    max_regeneration_attempts: int = Field(
+        3, ge=1, le=5, description="Max regen attempts per segment"
+    )
     enable_background_music: bool = Field(False, description="Enable BGM mixing")
     enable_sfx: bool = Field(True, description="Enable SFX tags")
 
 
 class AutoRunStatusResponse(BaseModel):
     """Auto-run pipeline status."""
+
     project_id: int
     run_id: str
     status: str = "pending"  # pending, running, paused, completed, failed
@@ -64,19 +83,26 @@ class AutoRunStatusResponse(BaseModel):
 
 class StagePausePoint(BaseModel):
     """Stage where pipeline can pause for intervention."""
+
     stage: str
     pause_after: bool = Field(True, description="Whether to pause after this stage")
-    requires_approval: bool = Field(False, description="Whether user approval is needed")
+    requires_approval: bool = Field(
+        False, description="Whether user approval is needed"
+    )
 
 
 class AutoRunStartRequest(BaseModel):
     """Request to start auto-run pipeline."""
+
     config: AutoRunConfig = Field(default_factory=AutoRunConfig)
-    pause_points: Optional[List[StagePausePoint]] = Field(None, description="Stages to pause at")
+    pause_points: Optional[List[StagePausePoint]] = Field(
+        None, description="Stages to pause at"
+    )
 
 
 class AutoRunActionResponse(BaseModel):
     """Response for pause/resume/cancel actions."""
+
     action: str
     status: str
     message: str
@@ -85,6 +111,7 @@ class AutoRunActionResponse(BaseModel):
 
 class IntermediateProduct(BaseModel):
     """Intermediate product from a pipeline stage."""
+
     stage: str
     project_id: int
     chapter_id: Optional[int] = None
@@ -103,7 +130,15 @@ class IntermediateProduct(BaseModel):
 _active_runs: Dict[int, Dict[str, Any]] = {}
 
 # Pause points configuration
-_stage_order = ["extract", "analyze", "annotate", "edit", "audio_postprocess", "synthesize", "quality"]
+_stage_order = [
+    "extract",
+    "analyze",
+    "annotate",
+    "edit",
+    "audio_postprocess",
+    "synthesize",
+    "quality",
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +181,7 @@ async def _run_auto_pipeline(
         _active_runs[project_id] = {
             "run_id": run_id,
             "status": "running",
-            "config": config.dict(),
+            "config": config.model_dump(),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "current_stage": None,
             "completed_stages": [],
@@ -157,7 +192,7 @@ async def _run_auto_pipeline(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_ENTER,
             stage="auto_run",
-            data={"run_id": run_id, "config": config.dict()},
+            data={"run_id": run_id, "config": config.model_dump()},
         )
 
         checkpoint_mgr = _get_checkpoint_manager(project_id)
@@ -204,7 +239,7 @@ async def _run_auto_pipeline(
                             project_id=project_id,
                             event_type=PipelineEventType.PAUSED,
                             stage=stage,
-                            data={"pause_point": pp.dict()},
+                            data={"pause_point": pp.model_dump()},
                         )
                         # Wait for resume
                         while _active_runs[project_id]["status"] == "paused":
@@ -212,7 +247,9 @@ async def _run_auto_pipeline(
 
         # Completed
         _active_runs[project_id]["status"] = "completed"
-        _active_runs[project_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        _active_runs[project_id]["completed_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -243,9 +280,10 @@ async def _run_single_stage(
     We iterate chapters (for extract/analyze) or paragraphs (for other stages)
     and emit progress events for each sub-item.
     """
+    import os
+
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    import os
 
     # Create a new database session for this stage
     database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
@@ -266,7 +304,9 @@ async def _run_single_stage(
             chapters = project.chapters
             total = len(chapters)
             if total == 0:
-                logger.warning(f"No chapters found for project {project_id} in stage {stage}")
+                logger.warning(
+                    f"No chapters found for project {project_id} in stage {stage}"
+                )
                 await emit_pipeline_event(
                     project_id=project_id,
                     event_type=PipelineEventType.STAGE_PROGRESS,
@@ -278,7 +318,9 @@ async def _run_single_stage(
             for idx, chapter in enumerate(chapters, start=1):
                 # Check per-chapter checkpoint
                 if checkpoint_mgr.is_stage_done(stage, chapter.index):
-                    logger.info(f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping")
+                    logger.info(
+                        f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping"
+                    )
                     progress = idx / total
                     await emit_pipeline_event(
                         project_id=project_id,
@@ -308,12 +350,20 @@ async def _run_single_stage(
                     progress=progress,
                 )
 
-        elif stage in ("annotate", "edit", "audio_postprocess", "synthesize", "quality"):
+        elif stage in (
+            "annotate",
+            "edit",
+            "audio_postprocess",
+            "synthesize",
+            "quality",
+        ):
             # These stages operate on paragraphs
             paragraphs = project.paragraphs
             total = len(paragraphs)
             if total == 0:
-                logger.warning(f"No paragraphs found for project {project_id} in stage {stage}")
+                logger.warning(
+                    f"No paragraphs found for project {project_id} in stage {stage}"
+                )
                 await emit_pipeline_event(
                     project_id=project_id,
                     event_type=PipelineEventType.STAGE_PROGRESS,
@@ -353,7 +403,9 @@ async def _run_single_stage(
             seen_chapters: set = set()
             for para in paragraphs:
                 if para.chapter_id and para.chapter_id not in seen_chapters:
-                    chapter = db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
+                    chapter = (
+                        db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
+                    )
                     if chapter:
                         checkpoint_mgr.mark_stage_done(stage, chapter.index)
                     seen_chapters.add(para.chapter_id)
@@ -552,6 +604,7 @@ async def get_intermediate_product(
     project_id: int,
     stage: str,
     chapter_id: Optional[int] = None,
+    db: Session = Depends(get_db),
 ):
     """
     View intermediate product from a pipeline stage.
@@ -567,28 +620,246 @@ async def get_intermediate_product(
     - synthesize: Audio segments
     - quality: Quality scores and issues
     """
-    # Placeholder - would query actual stage output
-    # For production, load from stage output files or DB
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
 
     if stage not in _stage_order:
         raise HTTPException(status_code=400, detail=f"Unknown stage: {stage}")
 
-    # Mock response based on stage
-    mock_data = {
-        "extract": {"text_preview": "...", "char_count": 0},
-        "analyze": {"characters": [], "emotions": []},
-        "annotate": {"annotations": []},
-        "edit": {"decisions": []},
-        "audio_postprocess": {"params": {}},
-        "synthesize": {"segments": []},
-        "quality": {"scores": {}},
-    }
+    # Helper to get first chapter if none specified
+    def get_chapter(cid: Optional[int]) -> Chapter:
+        if cid is not None:
+            chapter = (
+                db.query(Chapter)
+                .filter(Chapter.id == cid, Chapter.project_id == project_id)
+                .first()
+            )
+            if not chapter:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Chapter {cid} not found in project {project_id}",
+                )
+            return chapter
+        # Return first chapter
+        chapter = (
+            db.query(Chapter)
+            .filter(Chapter.project_id == project_id)
+            .order_by(Chapter.index)
+            .first()
+        )
+        if not chapter:
+            raise HTTPException(
+                status_code=404, detail=f"No chapters found for project {project_id}"
+            )
+        return chapter
+
+    chapter = get_chapter(chapter_id)
+
+    if stage == "extract":
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "raw_text": chapter.raw_text or "",
+            "extracted_text": chapter.extracted_text or "",
+        }
+        product_type = "text"
+
+    elif stage == "analyze":
+        # analyzed_json is a JSON string stored as Text; we stored as dict via json.loads? In _write_analyze we stored dict in analyzed_json column? Actually we stored json.loads(result.model_dump_json()) which is a dict.
+        # The column is probably JSON type.
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "analyzed": chapter.analyzed_json or {},
+        }
+        product_type = "text"
+
+    elif stage == "annotate":
+        # Need paragraphs for this chapter (maybe first paragraph only? we could list all)
+        paragraphs = (
+            db.query(Paragraph)
+            .filter(
+                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
+            )
+            .order_by(Paragraph.index)
+            .all()
+        )
+        annotations = []
+        for para in paragraphs:
+            annotations.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "speaker_canonical_name": para.speaker_canonical_name,
+                    "is_dialogue": para.is_dialogue,
+                    "emotion": para.emotion,
+                    "emotion_intensity": para.emotion_intensity,
+                    "speech_rate": para.speech_rate,
+                    "pitch_shift_semitones": para.pitch_shift_semitones,
+                    "pause_before_ms": para.pause_before_ms,
+                    "pause_after_ms": para.pause_after_ms,
+                    "confidence": para.confidence,
+                    "notes": para.notes,
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "annotations": annotations,
+        }
+        product_type = "text"
+
+    elif stage == "edit":
+        paragraphs = (
+            db.query(Paragraph)
+            .filter(
+                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
+            )
+            .order_by(Paragraph.index)
+            .all()
+        )
+        edits = []
+        for para in paragraphs:
+            edits.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "edited_text": para.edited_text,
+                    "changes_made": para.edit_changes_made,
+                    "forbidden_content_removed": para.edit_forbidden_removed,
+                    "edit_confidence": para.edit_confidence,
+                    "edit_rationale": para.edit_rationale,
+                    "edit_difficulty": para.edit_difficulty,
+                    "forbid_edit": para.edit_forbid_edit,
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "edits": edits,
+        }
+        product_type = "text"
+
+    elif stage == "audio_postprocess":
+        paragraphs = (
+            db.query(Paragraph)
+            .filter(
+                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
+            )
+            .order_by(Paragraph.index)
+            .all()
+        )
+        params_list = []
+        for para in paragraphs:
+            params_list.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "speech_rate": para.speech_rate,
+                    "pitch_shift_semitones": para.pitch_shift_semitones,
+                    "needs_sfx": para.needs_sfx,
+                    "sfx_tags": para.sfx_tags or [],
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "audio_postprocess_params": params_list,
+        }
+        product_type = "text"
+
+    elif stage == "synthesize":
+        # Get audio segments via paragraphs
+        paragraphs = (
+            db.query(Paragraph)
+            .filter(
+                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
+            )
+            .order_by(Paragraph.index)
+            .all()
+        )
+        segments = []
+        for para in paragraphs:
+            if para.audio_segment_id:
+                seg = (
+                    db.query(AudioSegment)
+                    .filter(AudioSegment.id == para.audio_segment_id)
+                    .first()
+                )
+                if seg:
+                    segments.append(
+                        {
+                            "segment_id": seg.id,
+                            "paragraph_id": para.id,
+                            "paragraph_index": para.index,
+                            "file_path": seg.file_path,
+                            "format": seg.format,
+                            "duration_ms": seg.duration_ms,
+                            "engine": seg.engine,
+                            "voice_id": seg.voice_id,
+                            "status": seg.status,
+                        }
+                    )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "audio_segments": segments,
+        }
+        product_type = "audio"
+
+    elif stage == "quality":
+        paragraphs = (
+            db.query(Paragraph)
+            .filter(
+                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
+            )
+            .order_by(Paragraph.index)
+            .all()
+        )
+        quality_entries = []
+        for para in paragraphs:
+            qual = (
+                db.query(Quality)
+                .filter(Quality.paragraph_id == para.id)
+                .order_by(Quality.id.desc())
+                .first()
+            )
+            if qual:
+                quality_entries.append(
+                    {
+                        "paragraph_id": para.id,
+                        "paragraph_index": para.index,
+                        "quality_id": qual.id,
+                        "speaker_clarity": qual.speaker_clarity,
+                        "emotion_match": qual.emotion_match,
+                        "prosody_naturalness": getattr(
+                            qual, "prosody_naturalness", None
+                        ),
+                        "text_audio_alignment": qual.text_audio_alignment,
+                        "overall_score": qual.overall_score,
+                        "issues": qual.issues,
+                        "fix_suggestions": qual.fix_suggestions,
+                        "needs_regeneration": qual.needs_regeneration,
+                    }
+                )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "quality_results": quality_entries,
+        }
+        product_type = "text"
+
+    else:
+        # Should not happen due to earlier check
+        raise HTTPException(status_code=400, detail=f"Unsupported stage: {stage}")
 
     return IntermediateProduct(
         stage=stage,
         project_id=project_id,
         chapter_id=chapter_id,
-        product_type="text" if stage in ("extract", "analyze", "annotate", "edit") else "audio",
-        data=mock_data.get(stage, {}),
+        product_type=product_type,
+        data=data,
         created_at=datetime.now(timezone.utc).isoformat(),
     )

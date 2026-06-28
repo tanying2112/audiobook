@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.audiobook_studio.database import get_database_url
+from src.audiobook_studio.database import DATABASE_URL, SessionLocal
 from src.audiobook_studio.feedback.integration import create_self_iteration_loop
 
 logging.basicConfig(
@@ -32,14 +32,14 @@ logger = logging.getLogger(__name__)
 
 def get_db_session_factory():
     """Create a database session factory."""
-    db_url = get_database_url()
-    engine = create_engine(db_url)
-    return sessionmaker(bind=engine)
+    return SessionLocal
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run self-iteration feedback loop")
-    parser.add_argument("--project-id", type=int, required=True, help="Project ID to monitor")
+    parser.add_argument(
+        "--project-id", type=int, required=True, help="Project ID to monitor"
+    )
     parser.add_argument(
         "--min-feedback",
         type=int,
@@ -57,6 +57,28 @@ def main():
         type=float,
         default=0.1,
         help="Canary percentage for validation (default: 0.1)",
+    )
+    parser.add_argument(
+        "--no-auto-pr",
+        action="store_true",
+        help="Disable automatic PR creation for promoted prompts",
+    )
+    parser.add_argument(
+        "--no-auto-merge",
+        action="store_true",
+        help="Disable automatic PR merge after CI passes",
+    )
+    parser.add_argument(
+        "--pr-base-branch",
+        type=str,
+        default="main",
+        help="Base branch for PRs (default: main)",
+    )
+    parser.add_argument(
+        "--ci-timeout",
+        type=int,
+        default=1800,
+        help="CI timeout in seconds for auto-merge (default: 1800)",
     )
     parser.add_argument(
         "--no-auto",
@@ -100,6 +122,10 @@ def main():
         check_interval_seconds=args.interval,
         enable_auto_trigger=not args.no_auto,
         canary_percentage=args.canary,
+        enable_auto_pr=not args.no_auto_pr,
+        enable_auto_merge=not args.no_auto_merge,
+        pr_base_branch=args.pr_base_branch,
+        ci_timeout_seconds=args.ci_timeout,
     )
 
     if args.command == "start":
@@ -108,6 +134,7 @@ def main():
 
         if args.daemon:
             import time
+
             logger.info("Running as daemon. Press Ctrl+C to stop.")
             try:
                 while True:
@@ -125,14 +152,16 @@ def main():
         print(f"Iteration Count: {status['iteration_count']}")
         print(f"Auto Processor: {status['auto_processor']}")
         print(f"Upgraded Prompts: {status['upgraded_prompts']}")
-        if status['last_analysis']:
+        if status["last_analysis"]:
             print(f"Last Analysis: {status['last_analysis']}")
 
     elif args.command == "trigger":
         logger.info("Triggering manual iteration...")
         result = loop.trigger_iteration_now()
         if result:
-            logger.info(f"Analysis complete: {result.total_analyzed} records, {len(result.top_patterns)} patterns")
+            logger.info(
+                f"Analysis complete: {result.total_analyzed} records, {len(result.top_patterns)} patterns"
+            )
         else:
             logger.info("No analysis triggered (insufficient feedback)")
 
@@ -140,6 +169,7 @@ def main():
         logger.info("Running one-shot iteration...")
         loop.start()
         import time
+
         time.sleep(2)  # Give it time to check
         result = loop.trigger_iteration_now()
         loop.stop()

@@ -31,6 +31,7 @@ def _get_llm_analyzer():
     if _llm_analyzer is None:
         try:
             from .llm_analyzer import LLMFeedbackAnalyzer
+
             _llm_analyzer = LLMFeedbackAnalyzer()
             logger.info("LLMFeedbackAnalyzer 初始化成功")
         except Exception as e:
@@ -38,12 +39,13 @@ def _get_llm_analyzer():
             _llm_analyzer = False  # 标记为不可用
     return _llm_analyzer if _llm_analyzer is not False else None
 
+
 # ── Known pattern tag taxonomy ────────────────────────────────────────────────
 
 PATTERN_TAXONOMY = {
     # Text editing patterns
     "dialogue_attribution": "错标/漏标对话归属",
-    "emotion_too_mild": "情感强度不足",  
+    "emotion_too_mild": "情感强度不足",
     "emotion_too_strong": "情感强度过高",
     "emotion_wrong": "情感类型错误",
     "speaker_wrong": "说话人识别错误",
@@ -86,7 +88,7 @@ class DiffAnalysisResult:
     analysis_source: str = "keyword"  # "llm" | "keyword"
 
 
-@dataclass 
+@dataclass
 class AggregateAnalysis:
     """聚合多个反馈的统计结果."""
 
@@ -132,9 +134,7 @@ def _extract_key_differences(
                         f"LLM='{llm_val[:60]}...' → 修正='{cor_val[:60]}...'"
                     )
             else:
-                diffs.append(
-                    f"字段 '{key}' 值不同: {llm_val} → {cor_val}"
-                )
+                diffs.append(f"字段 '{key}' 值不同: {llm_val} → {cor_val}")
 
     return diffs
 
@@ -154,21 +154,37 @@ def _infer_pattern_tags(
     if any(kw in rationale_lower for kw in ["对话", "dialogue", "归属", "角色"]):
         tags.append("dialogue_attribution")
     if any(kw in rationale_lower for kw in ["情感", "情绪", "感情"]):
-        if "强烈" in rationale_lower or "不足" in rationale_lower or "太淡" in rationale_lower:
+        if (
+            "强烈" in rationale_lower
+            or "不足" in rationale_lower
+            or "太淡" in rationale_lower
+        ):
             tags.append("emotion_too_mild")
-        elif "过度" in rationale_lower or "过强" in rationale_lower or "太强" in rationale_lower:
+        elif (
+            "过度" in rationale_lower
+            or "过强" in rationale_lower
+            or "太强" in rationale_lower
+        ):
             tags.append("emotion_too_strong")
         else:
             tags.append("emotion_wrong")
     if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker", "旁白"]):
         tags.append("speaker_wrong")
     if any(kw in rationale_lower for kw in ["停顿", "pause", "停顿"]):
-        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
+        if (
+            "缺少" in rationale_lower
+            or "加" in rationale_lower
+            or "需要" in rationale_lower
+        ):
             tags.append("pause_missing")
         else:
             tags.append("pause_too_long")
     if any(kw in rationale_lower for kw in ["音效", "sfx", "场景"]):
-        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
+        if (
+            "缺少" in rationale_lower
+            or "加" in rationale_lower
+            or "需要" in rationale_lower
+        ):
             tags.append("sfx_missing")
         else:
             tags.append("sfx_wrong")
@@ -181,7 +197,9 @@ def _infer_pattern_tags(
     if stage in ("edit_for_tts", "annotate", "translate"):
         if any(kw in rationale_lower for kw in ["口语", "书面", "自然", "翻译"]):
             llm_text = str(llm_output.get("edited_text", llm_output.get("text", "")))
-            cor_text = str(corrected_output.get("edited_text", corrected_output.get("text", "")))
+            cor_text = str(
+                corrected_output.get("edited_text", corrected_output.get("text", ""))
+            )
             if len(llm_text) > len(cor_text):
                 tags.append("text_colloquial")
             else:
@@ -379,9 +397,7 @@ def _generate_recommendations(
 
     for pattern, count in top_patterns[:5]:
         description = PATTERN_TAXONOMY.get(pattern, pattern)
-        recs.append(
-            f"高频模式 [{pattern}] ({count}次): {description}"
-        )
+        recs.append(f"高频模式 [{pattern}] ({count}次): {description}")
 
     # Stage-specific recommendations
     for stage, count in stage_dist.items():
@@ -416,7 +432,7 @@ def get_trend_report(
     for r in records:
         stage_counter[r.stage] += 1
         source_counter[r.source] += 1
-        for tag in (r.pattern_tags or []):
+        for tag in r.pattern_tags or []:
             pattern_counter[tag] += 1
 
     return {

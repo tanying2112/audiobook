@@ -12,20 +12,18 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/edit_for_tts.py:
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from src.audiobook_studio.pipeline.edit_for_tts import (
-    EditForTtsPipeline,
-    edit_for_tts,
-)
+
+from src.audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline, edit_for_tts
 from src.audiobook_studio.schemas import (
-    TtsEditInput,
-    TtsEditOutput,
-    ParagraphAnnotation,
     BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
+    ParagraphAnnotation,
+    TtsEditInput,
+    TtsEditOutput,
 )
 
 
@@ -40,6 +38,7 @@ class TestEditForTtsPipeline:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -158,8 +157,7 @@ class TestEditForTtsPipeline:
     def test_run_mock_mode_difficulty_a_preserves_original(self):
         """Test run() in mock mode with difficulty A preserves original."""
         input_data = self.create_minimal_input(
-            difficulty="A",
-            paragraph_text="第1章 标题\n\n这是正文内容。"
+            difficulty="A", paragraph_text="第1章 标题\n\n这是正文内容。"
         )
         result = self.pipeline.run(input_data)
 
@@ -172,8 +170,7 @@ class TestEditForTtsPipeline:
     def test_run_mock_mode_forbid_edit_preserves_original(self):
         """Test run() in mock mode with forbid_edit=True preserves original."""
         input_data = self.create_minimal_input(
-            forbid_edit=True,
-            paragraph_text="张三在2023年去了北京。"
+            forbid_edit=True, paragraph_text="张三在2023年去了北京。"
         )
         result = self.pipeline.run(input_data)
 
@@ -221,7 +218,9 @@ class TestEditForTtsPipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
+        with patch(
+            "src.audiobook_studio.monitoring.record_stage_performance"
+        ) as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
@@ -238,7 +237,9 @@ class TestEditForTtsPipeline:
         mock_router = MagicMock()
         mock_router.call.side_effect = Exception("API Error")
 
-        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
+        with patch(
+            "src.audiobook_studio.monitoring.record_stage_performance"
+        ) as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
@@ -261,6 +262,7 @@ class TestEditForTtsConvenienceFunction:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -324,6 +326,7 @@ class TestEditForTtsEdgeCases:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_base_input(self, **overrides):
@@ -353,7 +356,9 @@ class TestEditForTtsEdgeCases:
 
     def test_whitespace_only_text(self):
         """Test edit with whitespace-heavy text."""
-        input_data = self.create_base_input(paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  ")
+        input_data = self.create_base_input(
+            paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  "
+        )
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
 
@@ -367,7 +372,9 @@ class TestEditForTtsEdgeCases:
 
     def test_unicode_content(self):
         """Test edit with unicode content (emoji, special chars)."""
-        input_data = self.create_base_input(paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡")
+        input_data = self.create_base_input(
+            paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡"
+        )
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
 
@@ -381,8 +388,7 @@ class TestEditForTtsEdgeCases:
     def test_forbid_edit_flag(self):
         """Test forbid_edit flag preserves original text."""
         input_data = self.create_base_input(
-            forbid_edit=True,
-            paragraph_text="张三在2023年去了北京。"
+            forbid_edit=True, paragraph_text="张三在2023年去了北京。"
         )
         result = self.pipeline.run(input_data)
         assert result.edited_text == "张三在2023年去了北京。"

@@ -5,22 +5,57 @@ feedback 模块初始化
 A/B 测试、Kill Switch 降级、质量增强等功能。
 """
 
+from .ab_test import blind_evaluate, build_ab_samples, run_ab_test
+from .ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
+from .auto_processor import (
+    FeedbackAutoProcessor,
+    create_auto_processor,
+    run_feedback_analysis_cli,
+)
+from .bootstrap_fewshot import (
+    BUDGET_LIMIT,
+    DEFAULT_EARLY_STOP_PATIENCE,
+    BootstrapFewShotOptimizer,
+    EarlyStoppingStopper,
+    MultiObjectiveLoss,
+    OptimizationMetrics,
+    OptimizationResult,
+    load_training_examples,
+    run_bootstrap_optimization,
+)
 from .collector import (
+    capture_edit_feedback,
     capture_feedback,
     capture_quality_feedback,
-    capture_edit_feedback,
     list_unprocessed_feedback,
     mark_feedback_processed,
 )
-from .processor import (
-    analyze_batch,
-    analyze_single_feedback,
-    get_trend_report,
+from .critics import (  # noqa: F401
+    DEFAULT_CALIBRATION_SAMPLES,
+    BaseCritic,
+    CalibrationResult,
+    CalibrationSample,
+    CriticEnsemble,
+    CriticEnsembleEvaluator,
+    CriticResult,
+    CriticType,
+    CriticVerdict,
+    ObjectiveCritic,
+    SemanticCritic,
+    StructuralCritic,
+    SyntheticCritic,
+    create_synthetic_critic,
 )
-from .prompt_upgrader import (
-    batch_upgrade,
-    upgrade_prompt,
+from .integration import (
+    SelfIterationLoop,
+    collect_pipeline_feedback,
+    create_self_iteration_loop,
+    save_quality_feedback,
+    save_user_rating_feedback,
 )
+from .kill_switch import DegradationLevel, KillSwitch, KillSwitchConfig, get_kill_switch
+from .llm_analyzer import LLMFeedbackAnalyzer
+from .processor import analyze_batch, analyze_single_feedback, get_trend_report
 from .promotion_gate import (
     check_format_compliance,
     check_golden_dataset,
@@ -28,77 +63,22 @@ from .promotion_gate import (
     check_quality_improvement,
     evaluate_promotion,
 )
-from .ab_test import (
-    run_ab_test,
-    build_ab_samples,
-    blind_evaluate,
-)
-from .kill_switch import (
-    KillSwitch,
-    KillSwitchConfig,
-    DegradationLevel,
-    get_kill_switch,
-)
+from .prompt_upgrader import batch_upgrade, upgrade_prompt
 from .quality_enhancement import (
     check_semantic_coherence,
-    validate_emotions,
-    grade_difficulty,
-    get_free_tier_health,
     get_false_positive_tracker,
-)
-from .auto_processor import (
-    FeedbackAutoProcessor,
-    create_auto_processor,
-    run_feedback_analysis_cli,
-)
-from .integration import (
-    SelfIterationLoop,
-    create_self_iteration_loop,
-    collect_pipeline_feedback,
-    save_quality_feedback,
-    save_user_rating_feedback,
-)
-from .ab_test_manager import (
-    ABTestManager,
-    ABTestConfig,
-    ABTestResult,
+    get_free_tier_health,
+    grade_difficulty,
+    validate_emotions,
 )
 from .release import (
+    CanaryConfig,
+    CanaryMetrics,
+    CanaryRelease,
     PromotionGate,
     PromotionGateResult,
     PromotionMetrics,
-    CanaryRelease,
-    CanaryConfig,
-    CanaryMetrics,
     VersionStore,
-)
-from .llm_analyzer import LLMFeedbackAnalyzer
-from .bootstrap_fewshot import (
-    BootstrapFewShotOptimizer,
-    OptimizationMetrics,
-    OptimizationResult,
-    MultiObjectiveLoss,
-    EarlyStoppingStopper,
-    run_bootstrap_optimization,
-    load_training_examples,
-    BUDGET_LIMIT,
-    DEFAULT_EARLY_STOP_PATIENCE,
-)
-from .critics import (  # noqa: F401
-    SyntheticCritic,
-    CalibrationSample,
-    CalibrationResult,
-    DEFAULT_CALIBRATION_SAMPLES,
-    create_synthetic_critic,
-    CriticType,
-    CriticVerdict,
-    CriticResult,
-    CriticEnsemble,
-    CriticEnsembleEvaluator,
-    BaseCritic,
-    SemanticCritic,
-    StructuralCritic,
-    ObjectiveCritic,
 )
 
 __all__ = [

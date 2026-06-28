@@ -8,14 +8,15 @@ Provides structured models for:
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Literal
 from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class PromptStatus(str, Enum):
     """Prompt lifecycle status."""
+
     DRAFT = "draft"
     ACTIVE = "active"
     DEPRECATED = "deprecated"
@@ -24,6 +25,7 @@ class PromptStatus(str, Enum):
 
 class PromptStage(str, Enum):
     """Pipeline stage that the prompt is used for."""
+
     EXTRACT = "extract"
     ANALYZE_STRUCTURE = "analyze_structure"
     ANNOTATE_PARAGRAPH = "annotate_paragraph"
@@ -36,6 +38,7 @@ class PromptStage(str, Enum):
 
 class ExperimentType(str, Enum):
     """Type of prompt experiment."""
+
     AB_TEST = "ab_test"
     MULTIVARIATE = "multivariate"
     CANARY = "canary"
@@ -44,6 +47,7 @@ class ExperimentType(str, Enum):
 
 class PromptVersionMetrics(BaseModel):
     """Performance metrics for a prompt version."""
+
     # Quality metrics
     avg_quality_score: float = Field(default=0.0, ge=0, le=1)
     avg_schema_compliance_rate: float = Field(default=0.0, ge=0, le=1)
@@ -69,6 +73,7 @@ class PromptVersionMetrics(BaseModel):
 
 class PromptTemplate(BaseModel):
     """A single prompt template with Jinja2 syntax."""
+
     template_id: str = Field(..., min_length=1)
     version: str = Field(..., min_length=1)  # e.g., "v1", "v2.1"
 
@@ -90,7 +95,7 @@ class PromptTemplate(BaseModel):
     created_by: str = ""
     description: str = ""
 
-    @field_validator('version')
+    @field_validator("version")
     @classmethod
     def validate_version_format(cls, v: str) -> str:
         if not v.startswith("v"):
@@ -100,9 +105,10 @@ class PromptTemplate(BaseModel):
 
 class PromptVersion(BaseModel):
     """Complete prompt version with template and metadata."""
+
     # Identity
     prompt_id: str = Field(..., min_length=1)  # e.g., "analyze_structure"
-    version: str = Field(..., min_length=1)   # e.g., "v1", "v2"
+    version: str = Field(..., min_length=1)  # e.g., "v1", "v2"
     stage: PromptStage
 
     # Template
@@ -120,7 +126,9 @@ class PromptVersion(BaseModel):
     metrics: PromptVersionMetrics = Field(default_factory=PromptVersionMetrics)
 
     # Additional configuration
-    fallback_to: Optional[str] = Field(default=None)  # Version to fallback to on failure
+    fallback_to: Optional[str] = Field(
+        default=None
+    )  # Version to fallback to on failure
     tags: List[str] = Field(default_factory=list)
 
     # Validation notes
@@ -130,6 +138,7 @@ class PromptVersion(BaseModel):
 
 class ExperimentVariant(BaseModel):
     """A variant in an A/B test experiment."""
+
     variant_id: str
     prompt_version: str
     traffic_percentage: float = Field(ge=0, le=100)
@@ -138,6 +147,7 @@ class ExperimentVariant(BaseModel):
 
 class PromptExperiment(BaseModel):
     """A/B test or multivariate experiment configuration."""
+
     experiment_id: str
     name: str
     description: str = ""
@@ -170,9 +180,11 @@ class PromptExperiment(BaseModel):
     # Langfuse tracking
     langfuse_experiment_key: Optional[str] = None
 
-    @field_validator('variants')
+    @field_validator("variants")
     @classmethod
-    def validate_traffic_sum(cls, variants: List[ExperimentVariant]) -> List[ExperimentVariant]:
+    def validate_traffic_sum(
+        cls, variants: List[ExperimentVariant]
+    ) -> List[ExperimentVariant]:
         total = sum(v.traffic_percentage for v in variants)
         if total != 100:
             raise ValueError(f"Traffic percentages must sum to 100, got {total}")
@@ -181,6 +193,7 @@ class PromptExperiment(BaseModel):
 
 class PromptRegistryState(BaseModel):
     """Complete state of the prompt registry."""
+
     # All registered prompt versions indexed by stage
     versions: Dict[str, Dict[str, PromptVersion]] = Field(default_factory=dict)
 

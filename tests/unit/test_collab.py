@@ -1,7 +1,8 @@
 """Tests for collaboration API models."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 
 class TestCollabModels:
@@ -16,7 +17,7 @@ class TestCollabModels:
             task_id=1,
             file_path="test.py",
             line_number=10,
-            parent_id=None
+            parent_id=None,
         )
         assert comment.content == "Test comment"
         assert comment.comment_type == "comment"
@@ -27,10 +28,7 @@ class TestCollabModels:
     def test_comment_create(self):
         from src.audiobook_studio.api.collab import CommentCreate
 
-        comment = CommentCreate(
-            content="New comment",
-            comment_type="suggestion"
-        )
+        comment = CommentCreate(content="New comment", comment_type="suggestion")
         assert comment.content == "New comment"
         assert comment.comment_type == "suggestion"
 
@@ -43,7 +41,7 @@ class TestCollabModels:
             content="Response",
             comment_type="comment",
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
         assert comment.id == 1
         assert comment.author_id == "user1"
@@ -60,7 +58,7 @@ class TestCollabModels:
             reporter_id="user2",
             tags=["tag1"],
             priority=3,
-            project_id="proj1"
+            project_id="proj1",
         )
         assert task.title == "Test Task"
         assert task.status == "todo"
@@ -71,9 +69,7 @@ class TestCollabModels:
         from src.audiobook_studio.api.collab import TaskCreate
 
         task = TaskCreate(
-            title="New Task",
-            description="Description",
-            status="in_progress"
+            title="New Task", description="Description", status="in_progress"
         )
         assert task.title == "New Task"
         assert task.status == "in_progress"
@@ -87,7 +83,7 @@ class TestCollabModels:
             description="Desc",
             status="done",
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
         assert task.id == 1
         assert task.status == "done"
@@ -101,7 +97,7 @@ class TestCollabModels:
             approver_ids=["user1", "user2"],
             task_id=1,
             artifact_path="/path/to/artifact",
-            required_approvals=2
+            required_approvals=2,
         )
         assert approval.title == "Approval"
         assert approval.approver_ids == ["user1", "user2"]

@@ -11,10 +11,9 @@ Tests the core template application functions:
 
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # _feedback_to_template conversion
@@ -129,6 +128,7 @@ class TestApplyAnnotationTemplateBusiness:
 
     def test_full_annotation_update(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
+
         db = MagicMock()
         pa = self._make_para()
         corrected = {
@@ -166,6 +166,7 @@ class TestApplyAnnotationTemplateBusiness:
 
     def test_partial_update_only_specified_fields(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
+
         db = MagicMock()
         pa = self._make_para(speaker_canonical_name="旁白")
         corrected = {"emotion": "angry"}
@@ -179,6 +180,7 @@ class TestApplyAnnotationTemplateBusiness:
 
     def test_empty_corrected_output_no_changes(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
+
         db = MagicMock()
         pa = self._make_para()
         _apply_annotation_template(db, pa, {})
@@ -188,6 +190,7 @@ class TestApplyAnnotationTemplateBusiness:
 
     def test_difficulty_sets_edit_difficulty(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
+
         db = MagicMock()
         pa = self._make_para()
         _apply_annotation_template(db, pa, {"difficulty": "B"})
@@ -195,10 +198,13 @@ class TestApplyAnnotationTemplateBusiness:
 
     def test_unknown_fields_ignored(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
+
         db = MagicMock()
         pa = self._make_para()
         # corrected_output contains fields not in the mapped list
-        _apply_annotation_template(db, pa, {"nonexistent_field": "value", "emotion": "tender"})
+        _apply_annotation_template(
+            db, pa, {"nonexistent_field": "value", "emotion": "tender"}
+        )
         assert pa.emotion == "tender"
 
 
@@ -407,7 +413,9 @@ class TestApplyQualityTemplateBusiness:
         db = MagicMock()
         pa = self._make_para()
         tts_edit = self._make_tts_edit()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = tts_edit
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            tts_edit
+        )
 
         corrected = {
             "speaker_clarity": 0.95,
@@ -438,7 +446,9 @@ class TestApplyQualityTemplateBusiness:
         db = MagicMock()
         pa = self._make_para()
         # No TTSEdit found
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
 
         _apply_quality_template(db, pa, {"speaker_clarity": 0.9})
 
@@ -452,9 +462,13 @@ class TestApplyQualityTemplateBusiness:
         db = MagicMock()
         pa = self._make_para()
         tts_edit = self._make_tts_edit()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = tts_edit
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            tts_edit
+        )
 
-        _apply_quality_template(db, pa, {"overall_score": 0.75, "needs_regeneration": True})
+        _apply_quality_template(
+            db, pa, {"overall_score": 0.75, "needs_regeneration": True}
+        )
 
         assert pa.quality_overall_score == 0.75
         assert pa.quality_needs_regeneration is True
@@ -543,10 +557,12 @@ class TestRerunDownstreamStages:
 
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             call_count = [0]
+
             def side_effect(stage, db, **kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:  # First call (para1, edit) fails
                     raise RuntimeError("DB timeout")
+
             mock_run.side_effect = side_effect
 
             # Should not raise — errors are caught and logged
@@ -567,8 +583,12 @@ class TestApplyTemplateBackground:
 
     def test_progress_tracking_lifecycle(self):
         """Background task tracks progress from running to completed."""
-        from src.audiobook_studio.api.templates import _apply_template_background, _apply_annotation_template
-        from src.audiobook_studio.models import Paragraph, FeedbackRecord as FR
+        from src.audiobook_studio.api.templates import (
+            _apply_annotation_template,
+            _apply_template_background,
+        )
+        from src.audiobook_studio.models import FeedbackRecord as FR
+        from src.audiobook_studio.models import Paragraph
 
         task_id = "test_task_001"
 
@@ -604,8 +624,12 @@ class TestApplyTemplateBackground:
             with patch("sqlalchemy.create_engine"):
                 with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
                     with patch("os.getenv", return_value="sqlite:///./test.db"):
-                        with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
-                            with patch("src.audiobook_studio.api.templates._rerun_downstream_stages"):
+                        with patch(
+                            "src.audiobook_studio.api.templates._apply_annotation_template"
+                        ):
+                            with patch(
+                                "src.audiobook_studio.api.templates._rerun_downstream_stages"
+                            ):
                                 await _apply_template_background(
                                     project_id=10,
                                     template_id=42,
@@ -633,7 +657,9 @@ class TestApplyTemplateBackground:
 
         task_id = "test_task_002"
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None  # No template
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None  # No template
+        )
 
         async def run():
             with patch("sqlalchemy.create_engine"):
@@ -667,7 +693,9 @@ class TestApplyTemplateBackground:
         mock_template = MagicMock()
         mock_template.processed = False  # Not confirmed
         mock_template.promoted = False
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_template
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            mock_template
+        )
 
         async def run():
             with patch("sqlalchemy.create_engine"):

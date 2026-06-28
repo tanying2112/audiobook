@@ -24,8 +24,11 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar
 
+# Langfuse monitoring - use lazy import to avoid circular dependency
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, TypeVar
+
+from ..di import get_app_container
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
@@ -41,17 +44,11 @@ from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, Sta
 from .health_probe import HealthProbe, HealthStatus
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
-from ..di import get_app_container
 
-# Langfuse monitoring - use lazy import to avoid circular dependency
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..monitoring.langfuse_client import (
-        init_langfuse,
-        is_enabled as langfuse_is_enabled,
-        observe_llm_call,
-        span,
-    )
+    from ..monitoring.langfuse_client import init_langfuse
+    from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
+    from ..monitoring.langfuse_client import observe_llm_call, span
 
 # trace_function is imported at runtime in the lazy decorator below
 
@@ -62,22 +59,30 @@ from .utils import LLMParseError, validate_and_parse_llm_response
 
 def _lazy_trace_function(stage: str):
     """Lazy-loading decorator for trace_function to avoid import-time errors."""
+
     def decorator(func):
         from functools import wraps
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 from ..monitoring.langfuse_client import trace_function
-                return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
+
+                return trace_function(name=func.__name__, stage=stage)(func)(
+                    *args, **kwargs
+                )
             except Exception:
                 # If langfuse not available or any error, run without tracing
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # Hardware profile integration
-from ..config.hardware_profile import get_hardware_profile, HardwareProfile
+from ..config.hardware_profile import HardwareProfile, get_hardware_profile
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -206,12 +211,14 @@ class CostTracker:
 def get_cost_tracker() -> CostTracker:
     """Deprecated: use get_app_container().get(CostTracker)"""
     from ..di import get_app_container
+
     return get_app_container().get(CostTracker)
 
 
 def reset_cost_tracker():
     """Deprecated: use container.clear() or reset_app_container()"""
     from ..di import get_app_container
+
     container = get_app_container()
     container.unregister(CostTracker)
     container.register_singleton(CostTracker, CostTracker())
@@ -371,6 +378,7 @@ class LLMRouter:
             return
         try:
             from ..monitoring.langfuse_client import init_langfuse
+
             init_langfuse(
                 public_key=self.langfuse_public_key,
                 secret_key=self.langfuse_secret_key,
@@ -385,7 +393,10 @@ class LLMRouter:
         """Check if Langfuse is enabled (cached)."""
         if not self._langfuse_enabled_cached:
             try:
-                from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
+                from ..monitoring.langfuse_client import (
+                    is_enabled as langfuse_is_enabled,
+                )
+
                 self._langfuse_enabled_cached = langfuse_is_enabled()
             except Exception:
                 self._langfuse_enabled_cached = False
@@ -395,7 +406,11 @@ class LLMRouter:
         key = provider.name
         if key not in self.clients:
             # Initialize Langfuse if not already done
-            if self.langfuse_public_key and self.langfuse_secret_key and not self._langfuse_initialized:
+            if (
+                self.langfuse_public_key
+                and self.langfuse_secret_key
+                and not self._langfuse_initialized
+            ):
                 self._init_langfuse()
             self.clients[key] = create_client(
                 provider.get_litellm_model_name(),
@@ -428,7 +443,10 @@ class LLMRouter:
         return json.dumps(response_model.model_json_schema(), ensure_ascii=False)
 
     def _apply_hardware_profile_routing(
-        self, stage: str, providers: List[ProviderConfig], stage_models: List[Dict[str, Any]]
+        self,
+        stage: str,
+        providers: List[ProviderConfig],
+        stage_models: List[Dict[str, Any]],
     ) -> List[ProviderConfig]:
         """Reorder and filter providers based on hardware profile stage model map.
 
@@ -480,7 +498,9 @@ class LLMRouter:
         """Select the best available provider with multi-layer filtering."""
         from ..monitoring.langfuse_client import span
 
-        with span("router.select_provider", metadata={"estimated_tokens": estimated_tokens}) as s:
+        with span(
+            "router.select_provider", metadata={"estimated_tokens": estimated_tokens}
+        ) as s:
             for provider in providers:
                 # Layer 1: Circuit breaker check
                 cb = self.circuit_breakers.get(provider.name)
@@ -499,7 +519,9 @@ class LLMRouter:
                     continue
 
                 # Layer 4: Health probe check (if available)
-                if self.health_probe and not self.health_probe.is_healthy(provider.name):
+                if self.health_probe and not self.health_probe.is_healthy(
+                    provider.name
+                ):
                     logger.debug(
                         f"Health probe reports {provider.name} unhealthy, skipping"
                     )
@@ -507,7 +529,9 @@ class LLMRouter:
 
                 # Layer 5: Quota registry check (for free-tier providers)
                 quota_status = self.quota_registry.get_quota_status(provider.name)
-                if quota_status.get("configured", False) and not quota_status.get("healthy", True):
+                if quota_status.get("configured", False) and not quota_status.get(
+                    "healthy", True
+                ):
                     logger.debug(
                         f"Quota exhausted or unhealthy for {provider.name}: "
                         f"daily_pct={quota_status['daily']['requests_pct']}%, "
@@ -535,7 +559,9 @@ class LLMRouter:
                 s.update(metadata={"selected_provider": None})
             return None
 
-    def _heuristic_fallback(self, stage: str, response_model, segment_id: str, **context) -> Optional[Any]:
+    def _heuristic_fallback(
+        self, stage: str, response_model, segment_id: str, **context
+    ) -> Optional[Any]:
         """Kill Switch: pure rule-based fallback when ALL LLM providers fail.
 
         Returns a valid instance matching the response_model for each stage.
@@ -548,7 +574,10 @@ class LLMRouter:
         """
         from ..monitoring.langfuse_client import span
 
-        with span("router.heuristic_fallback", metadata={"stage": stage, "segment_id": segment_id}) as s:
+        with span(
+            "router.heuristic_fallback",
+            metadata={"stage": stage, "segment_id": segment_id},
+        ) as s:
             logger.warning(
                 f"All LLM providers failed for stage {stage} (segment_id={segment_id}), using heuristic fallback"
             )
@@ -556,6 +585,7 @@ class LLMRouter:
             if stage == "analyze":
                 # Return a valid BookAnalysisOutput for analyze stage
                 from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+
                 result = BookAnalysisOutput(
                     book_meta=BookMeta(
                         title="Unknown Book",
@@ -638,16 +668,18 @@ class LLMRouter:
     @_lazy_trace_function(stage="llm")
     def call(self, stage: str, response_model, messages: list, **kwargs):
         stage_enum = StageName(stage)
-        
+
         # Get providers from config
         providers = self.config.get_providers_for_stage(stage_enum)
-        
+
         # Apply hardware profile stage model mapping if available
         if self.hardware_profile:
             stage_models = self.hardware_profile.get_llm_stage_models(stage)
             if stage_models:
                 # Filter and reorder providers based on hardware profile priority
-                providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
+                providers = self._apply_hardware_profile_routing(
+                    stage, providers, stage_models
+                )
 
         if not providers:
             raise ValueError(f"No providers configured for stage: {stage}")
@@ -685,7 +717,9 @@ class LLMRouter:
                 continue
 
             # Quota registry check before making request
-            if not self.quota_registry.can_make_request(provider.name, estimated_tokens):
+            if not self.quota_registry.can_make_request(
+                provider.name, estimated_tokens
+            ):
                 logger.warning(f"Quota exceeded for {provider.name}, skipping")
                 continue
 
@@ -701,19 +735,24 @@ class LLMRouter:
 
                 # Validate the result matches expected model
                 if result.output is None:
-                    logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
+                    logger.warning(
+                        f"Provider {provider.name} returned None output for stage {stage}"
+                    )
                     raise ValueError("LLM returned None output")
 
                 # Defensive JSON parsing validation
                 # The raw_response should be validated before Pydantic validation
-                if hasattr(result, 'raw_response') and result.raw_response is not None:
+                if hasattr(result, "raw_response") and result.raw_response is not None:
                     from .client import validate_and_parse_llm_response
+
                     try:
                         validate_and_parse_llm_response(
                             result.raw_response, response_model, stage
                         )
                     except LLMParseError as e:
-                        logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
+                        logger.warning(
+                            f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}"
+                        )
                         raise
 
                 self.rate_limiters[provider.name].record_usage(
@@ -733,13 +772,14 @@ class LLMRouter:
                 self.quota_registry.record_request(
                     provider.name,
                     tokens_used=result.tokens_in + result.tokens_out,
-                    success=True
+                    success=True,
                 )
 
                 # Langfuse tracing - lazy import
                 if self._is_langfuse_enabled():
                     try:
                         from ..monitoring.langfuse_client import observe_llm_call
+
                         observe_llm_call(
                             stage=stage,
                             model=result.model,
@@ -777,9 +817,7 @@ class LLMRouter:
                     self._free_quota_fail[provider.name] += 1
                 # Record quota failure
                 self.quota_registry.record_request(
-                    provider.name,
-                    tokens_used=0,
-                    success=False
+                    provider.name, tokens_used=0, success=False
                 )
                 continue
 
@@ -789,7 +827,9 @@ class LLMRouter:
         if stage == "judge":
             # Try to extract segment_id from kwargs
             segment_id = kwargs.get("segment_id", "unknown")
-        fallback = self._heuristic_fallback(stage, response_model, segment_id=segment_id)
+        fallback = self._heuristic_fallback(
+            stage, response_model, segment_id=segment_id
+        )
         if fallback:
             return LLMCallResult(
                 output=fallback,

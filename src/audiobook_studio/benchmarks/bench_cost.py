@@ -6,7 +6,7 @@ Audiobook Studio — 性能基准测试：成本
 Usage:
     python scripts/bench_cost.py [--baseline FILE] [--threshold PERCENT]
 
-性能基准目标：退化 ≤ 110%（即新成本不应超过基准的110%）
+性能基准目标：退化 ≤ 110%%（即新成本不应超过基准的110%%）
 """
 
 import argparse
@@ -22,19 +22,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.audiobook_studio.llm import create_router
 from src.audiobook_studio.schemas import (
+    BookAnalysisOutput,
     ExtractionInput,
     ParagraphAnnotation,
-    BookAnalysisOutput,
+    QualityJudgment,
     TtsEditOutput,
     TtsRoutingDecision,
-    QualityJudgment,
 )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio 性能基准测试：成本"
-    )
+    parser = argparse.ArgumentParser(description="Audiobook Studio 性能基准测试：成本")
     parser.add_argument(
         "--baseline",
         type=str,
@@ -44,7 +42,7 @@ def parse_args() -> argparse.Namespace:
         "--threshold",
         type=float,
         default=110.0,
-        help="成本退化阈值百分比（默认: 110.0，即允许退化到基准的110%）",
+        help="成本退化阈值百分比（默认: 110.0，即允许退化到基准的110%%）",
     )
     parser.add_argument(
         "--mock",
@@ -82,10 +80,7 @@ def load_baseline(baseline_path: Optional[str]) -> Optional[Dict[str, float]]:
 def save_baseline(data: Dict[str, float], output_path: str) -> None:
     """保存基准成本数据。"""
     try:
-        result = {
-            "timestamp": time.time(),
-            "cost_usd": data
-        }
+        result = {"timestamp": time.time(), "cost_usd": data}
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print(f"基准数据已保存到: {output_path}")
@@ -149,7 +144,8 @@ def measure_stage_cost(stage: str, mock: bool = False) -> float:
 
             # 添加一些随机变化以模拟真实世界的变化
             import random
-            cost *= (0.9 + random.random() * 0.2)  # 0.9x to 1.1x
+
+            cost *= 0.9 + random.random() * 0.2  # 0.9x to 1.1x
 
             costs.append(cost)
 
@@ -182,8 +178,8 @@ def _get_test_data_for_stage(stage: str) -> Dict:
                 "pitch_shift_semitones": 0,
                 "pause_before_ms": 0,
                 "pause_after_ms": 0,
-                "confidence": 0.9
-            }
+                "confidence": 0.9,
+            },
         }
     elif stage == "edit":
         return {
@@ -198,10 +194,10 @@ def _get_test_data_for_stage(stage: str) -> Dict:
                 "pitch_shift_semitones": 0,
                 "pause_before_ms": 0,
                 "pause_after_ms": 0,
-                "confidence": 0.9
+                "confidence": 0.9,
             },
             "difficulty": "B",
-            "forbid_edit": False
+            "forbid_edit": False,
         }
     elif stage == "synthesize":
         return {
@@ -212,7 +208,7 @@ def _get_test_data_for_stage(stage: str) -> Dict:
             "emotion": "neutral",
             "emotion_intensity": 0.5,
             "speech_rate": 1.0,
-            "pitch_shift_semitones": 0
+            "pitch_shift_semitones": 0,
         }
     elif stage == "quality":
         return {
@@ -222,15 +218,15 @@ def _get_test_data_for_stage(stage: str) -> Dict:
             "text": "这是一个用于质量检测的测试段落。",
             "ground_truth_text": "这是一个用于质量检测的测试段落。",
             "audio_duration_ms": 3000,
-            "prosody_overrides": {}
+            "prosody_overrides": {},
         }
     else:
         return {}
 
 
-def evaluate_performance(current: Dict[str, float],
-                        baseline: Optional[Dict[str, float]],
-                        threshold: float) -> Tuple[bool, List[Dict]]:
+def evaluate_performance(
+    current: Dict[str, float], baseline: Optional[Dict[str, float]], threshold: float
+) -> Tuple[bool, List[Dict]]:
     """评估成本是否在可接受范围内。
 
     返回:
@@ -250,14 +246,16 @@ def evaluate_performance(current: Dict[str, float],
                 ratio = (current_cost / baseline_cost) * 100
                 if ratio > threshold:
                     passed = False
-                    issues.append({
-                        "stage": stage,
-                        "current_cost_usd": round(current_cost, 6),
-                        "baseline_cost_usd": round(baseline_cost, 6),
-                        "ratio_percent": round(ratio, 2),
-                        "threshold_percent": threshold,
-                        "status": "FAILED" if ratio > threshold else "PASSED"
-                    })
+                    issues.append(
+                        {
+                            "stage": stage,
+                            "current_cost_usd": round(current_cost, 6),
+                            "baseline_cost_usd": round(baseline_cost, 6),
+                            "ratio_percent": round(ratio, 2),
+                            "threshold_percent": threshold,
+                            "status": "FAILED" if ratio > threshold else "PASSED",
+                        }
+                    )
 
     return passed, issues
 
@@ -281,7 +279,7 @@ def main():
             print(f"  {stage}: ${cost:.6f}")
         except Exception as e:
             print(f"  {stage}: 错误 - {e}")
-            current_cost[stage] = float('inf')
+            current_cost[stage] = float("inf")
 
     print()
 
@@ -306,11 +304,13 @@ def main():
         print("🚨 成本退化检测:")
         for issue in issues:
             status_emoji = "❌" if issue["status"] == "FAILED" else "✅"
-            print(f"  {status_emoji} {issue['stage']}: "
-                  f"${issue['current_cost_usd']} "
-                  f"(基准: ${issue['baseline_cost_usd']} "
-                  f"比率: {issue['ratio_percent']}% "
-                  f"(阈值: {issue['threshold_percent']}%)")
+            print(
+                f"  {status_emoji} {issue['stage']}: "
+                f"${issue['current_cost_usd']} "
+                f"(基准: ${issue['baseline_cost_usd']} "
+                f"比率: {issue['ratio_percent']}% "
+                f"(阈值: {issue['threshold_percent']}%)"
+            )
         print()
     else:
         print("✅ 所有阶段成本在可接受范围内")

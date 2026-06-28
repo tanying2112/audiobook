@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-28
+
+### Added
+- Voice cloning implementation with Kokoro-ONNX: 15s audio sample → character voice ID
+- Real TTS synthesis with VoiceCloningEngine integration
+- Test infrastructure cleanup: removed duplicate test methods
+- CI coverage threshold upgraded to 80% for all core modules
+- Documentation updates: deployment.md, faq.md, harness_guide.md
+
+### Changed
+- Test collection fixed: 4245 tests collected without errors
+- Coverage check script targets updated: all core modules ≥80%
+- Mock mode handling improved in synthesize.py and auto_run.py
+- Pydantic v2 migration: .dict() → .model_dump() fixes
+
+### Fixed
+- Duplicate test methods in test_auto_run.py and test_synthesize.py
+- Mock mode engine selection in synthesize.py
+- Indentation error in voxcpm2_backend.py _get_voice_embedding()
+- Duplicate chapter_id parameter in translate.py
+
 ### Added
 - Phase 0: Full test infrastructure repair (A0.1-A0.4, B0.1-B0.5)
 - Phase 0: Pipeline coverage reached 83.8% (from 32.6%)

@@ -8,7 +8,7 @@ import hashlib
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Literal
+from typing import Dict, List, Literal, Optional
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -17,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 @dataclass
 class ABTestVariant:
     """A/B 测试变体配置."""
+
     name: str  # "control" 或 "treatment"
     version: int  # Prompt 版本号
     weight: float  # 权重 0-1
@@ -26,6 +27,7 @@ class ABTestVariant:
 @dataclass
 class ABTestConfig:
     """A/B 测试配置."""
+
     stage: str  # pipeline stage
     experiment_id: str
     variants: List[ABTestVariant] = field(default_factory=list)
@@ -45,8 +47,15 @@ DEFAULT_EXPERIMENTS: Dict[str, ABTestConfig] = {
         stage="analyze_structure",
         experiment_id="analyze_structure_v2",
         variants=[
-            ABTestVariant(name="control", version=1, weight=0.5, description="原版 prompt"),
-            ABTestVariant(name="treatment", version=2, weight=0.5, description="优化后的角色识别 prompt"),
+            ABTestVariant(
+                name="control", version=1, weight=0.5, description="原版 prompt"
+            ),
+            ABTestVariant(
+                name="treatment",
+                version=2,
+                weight=0.5,
+                description="优化后的角色识别 prompt",
+            ),
         ],
         enabled=True,
         sticky=True,
@@ -55,8 +64,15 @@ DEFAULT_EXPERIMENTS: Dict[str, ABTestConfig] = {
         stage="annotate_paragraph",
         experiment_id="annotate_paragraph_v2",
         variants=[
-            ABTestVariant(name="control", version=1, weight=0.5, description="原版 prompt"),
-            ABTestVariant(name="treatment", version=2, weight=0.5, description="增强情感标注 prompt"),
+            ABTestVariant(
+                name="control", version=1, weight=0.5, description="原版 prompt"
+            ),
+            ABTestVariant(
+                name="treatment",
+                version=2,
+                weight=0.5,
+                description="增强情感标注 prompt",
+            ),
         ],
         enabled=True,
         sticky=True,
@@ -65,8 +81,12 @@ DEFAULT_EXPERIMENTS: Dict[str, ABTestConfig] = {
         stage="edit_for_tts",
         experiment_id="edit_for_tts_v2",
         variants=[
-            ABTestVariant(name="control", version=1, weight=0.5, description="原版 prompt"),
-            ABTestVariant(name="treatment", version=2, weight=0.5, description="更严格的断句规则"),
+            ABTestVariant(
+                name="control", version=1, weight=0.5, description="原版 prompt"
+            ),
+            ABTestVariant(
+                name="treatment", version=2, weight=0.5, description="更严格的断句规则"
+            ),
         ],
         enabled=True,
         sticky=True,
@@ -75,8 +95,15 @@ DEFAULT_EXPERIMENTS: Dict[str, ABTestConfig] = {
         stage="tts_routing",
         experiment_id="tts_routing_v2",
         variants=[
-            ABTestVariant(name="control", version=1, weight=0.5, description="原版路由策略"),
-            ABTestVariant(name="treatment", version=2, weight=0.5, description="更激进的本地引擎优先"),
+            ABTestVariant(
+                name="control", version=1, weight=0.5, description="原版路由策略"
+            ),
+            ABTestVariant(
+                name="treatment",
+                version=2,
+                weight=0.5,
+                description="更激进的本地引擎优先",
+            ),
         ],
         enabled=True,
         sticky=True,
@@ -85,8 +112,15 @@ DEFAULT_EXPERIMENTS: Dict[str, ABTestConfig] = {
         stage="quality_judge",
         experiment_id="quality_judge_v2",
         variants=[
-            ABTestVariant(name="control", version=1, weight=0.5, description="原版评分标准"),
-            ABTestVariant(name="treatment", version=2, weight=0.5, description="更严格的情感匹配阈值"),
+            ABTestVariant(
+                name="control", version=1, weight=0.5, description="原版评分标准"
+            ),
+            ABTestVariant(
+                name="treatment",
+                version=2,
+                weight=0.5,
+                description="更严格的情感匹配阈值",
+            ),
         ],
         enabled=True,
         sticky=True,
@@ -146,7 +180,9 @@ class ABTestAllocator:
         # 默认返回最后一个
         return experiment.variants[-1] if experiment.variants else None
 
-    def get_prompt_version(self, stage: str, book_id: str = "", user_id: str = "", request: Request = None) -> int:
+    def get_prompt_version(
+        self, stage: str, book_id: str = "", user_id: str = "", request: Request = None
+    ) -> int:
         """获取应使用的 prompt 版本号."""
         variant = self.get_variant(stage, book_id, user_id, request)
         if variant:
@@ -180,7 +216,9 @@ class ABTestMiddleware(BaseHTTPMiddleware):
 
         # 尝试从路径参数获取
         if not book_id and hasattr(request, "path_params"):
-            book_id = request.path_params.get("book_id", "") or request.path_params.get("project_id", "")
+            book_id = request.path_params.get("book_id", "") or request.path_params.get(
+                "project_id", ""
+            )
 
         # 为每个 pipeline stage 分配变体
         stage_versions = {}
@@ -192,7 +230,9 @@ class ABTestMiddleware(BaseHTTPMiddleware):
             "tts_routing",
             "quality_judge",
         ]:
-            version = self.allocator.get_prompt_version(stage, book_id, user_id, request)
+            version = self.allocator.get_prompt_version(
+                stage, book_id, user_id, request
+            )
             stage_versions[stage] = version
 
         # 注入到 request.state

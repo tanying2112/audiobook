@@ -47,6 +47,17 @@ class AudioSegment:
     voice_id: str
     text_hash: str  # For incremental regeneration detection
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "segment_id": self.segment_id,
+            "file_path": self.file_path,
+            "duration_ms": self.duration_ms,
+            "engine": self.engine,
+            "voice_id": self.voice_id,
+            "text_hash": self.text_hash,
+        }
+
 
 class SynthesizePipeline:
     """Pipeline for audio synthesis with incremental regeneration."""
@@ -61,7 +72,10 @@ class SynthesizePipeline:
         mock_mode: Optional[bool] = None,
         hardware_profile: Optional[HardwareProfile] = None,
     ):
-        self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+        if mock_mode is not None:
+            self.mock_mode = mock_mode
+        else:
+            self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
 
         # Create router
         if router is None:
@@ -233,28 +247,83 @@ class SynthesizePipeline:
     def _synthesize_kokoro(
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
-        """Synthesize using Kokoro-ONNX (local). Falls back to Edge-TTS if unavailable."""
+        """Synthesize using Kokoro-ONNX (local). Falls back to mock/Edge-TTS if unavailable."""
 
-        # kokoro-onnx is optional; fall back to edge-tts if not installed
-        try:
-            import kokoro  # noqa: F811
+        import asyncio
 
-            # TODO: implement real kokoro-onnx synthesis
-            logger.warning(
-                "Kokoro-ONNX not fully integrated yet, falling back to Edge-TTS"
+        from ..tts.kokoro_backend import KokoroBackend
+
+        # Mock mode: create dummy file
+        if self.mock_mode:
+            import hashlib
+
+            import numpy as np
+            import soundfile as sf
+
+            text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+            dummy_audio = np.zeros(24000, dtype=np.float32)  # 1 second silence at 24kHz
+            # Handle both .mp3 and .wav extensions
+            if output_path.suffix == ".mp3":
+                wav_path = output_path.with_suffix(".wav")
+                sf.write(str(wav_path), dummy_audio, 24000)
+            else:
+                sf.write(str(output_path), dummy_audio, 24000)
+            logger.info(f"Mock Kokoro synthesis: {output_path}")
+            return 3000
+
+        async def _do_synthesize():
+            # Try to get engine from registry first
+            engine = EngineRegistry().get("kokoro")
+            if engine and engine.is_available():
+                result = await engine.synthesize(
+                    text=text,
+                    voice_id=voice_id,
+                    output_path=output_path,
+                    prosody=prosody,
+                )
+                return result.duration_ms
+            # Create new backend instance
+            kokoro = KokoroBackend(model_path="./models/kokoro-onnx")
+            await kokoro.initialize()
+            result = await kokoro.synthesize(
+                text=text,
+                voice_id=voice_id,
+                output_path=output_path,
+                prosody=prosody,
             )
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
+            await kokoro.cleanup()
+            return result.duration_ms
+
+        try:
+            return asyncio.run(_do_synthesize())
         except ImportError:
-            logger.info("kokoro-onnx not installed, falling back to Edge-TTS")
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
+            logger.info("onnxruntime not installed, falling back to mock/Edge-TTS")
+            return self._synthesize_mock(text, voice_id, prosody, output_path)
+        except FileNotFoundError:
+            logger.info("Kokoro model files not found, falling back to mock/Edge-TTS")
+            return self._synthesize_mock(text, voice_id, prosody, output_path)
         except Exception as e:
             logger.error(f"Kokoro synthesis failed: {e}")
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
+            return self._synthesize_mock(text, voice_id, prosody, output_path)
 
     def _synthesize_edge(
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Edge-TTS (cloud). Returns duration_ms."""
+
+        # Mock mode: create dummy file
+        if self.mock_mode:
+            import hashlib
+
+            import numpy as np
+            import soundfile as sf
+
+            text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+            dummy_audio = np.zeros(24000, dtype=np.float32)  # 1 second silence at 24kHz
+            # Write directly to output_path (soundfile handles any extension)
+            sf.write(str(output_path), dummy_audio, 24000)
+            logger.info(f"Mock Edge-TTS synthesis: {output_path}")
+            return 2800  # Edge mock duration
 
         try:
             import asyncio
@@ -298,10 +367,39 @@ class SynthesizePipeline:
             logger.error(f"Edge-TTS synthesis failed: {e}")
             raise
 
+    def _synthesize_mock(
+        self, text: str, voice_id: str, prosody: dict, output_path: Path
+    ) -> int:
+        """Mock synthesis - creates empty audio file for testing. Returns duration_ms."""
+        import numpy as np
+        import soundfile as sf
+
+        # Create a 1-second silent audio file
+        dummy_audio = np.zeros(24000, dtype=np.float32)  # 1 second silence at 24kHz
+        sf.write(str(output_path.with_suffix(".wav")), dummy_audio, 24000)
+
+        self._mock_segment_counter += 1
+        logger.info(
+            f"Mock synthesis created: {output_path} (segment #{self._mock_segment_counter})"
+        )
+        return 3000  # Match Kokoro mock duration
+
     def _synthesize_azure(
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Azure Cognitive Services TTS. Returns duration_ms."""
+
+        # Mock mode: create dummy file
+        if self.mock_mode:
+            import hashlib
+
+            import numpy as np
+            import soundfile as sf
+
+            dummy_audio = np.zeros(24000, dtype=np.float32)
+            sf.write(str(output_path), dummy_audio, 24000)
+            logger.info(f"Mock Azure TTS synthesis: {output_path}")
+            return 2800  # Azure mock duration
 
         # Check for Azure credentials
         azure_key = os.getenv("AZURE_TTS_KEY") or os.getenv("AZURE_SPEECH_KEY")
@@ -390,6 +488,18 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path
     ) -> int:
         """Synthesize using Google Cloud TTS. Returns duration_ms."""
+
+        # Mock mode: create dummy file
+        if self.mock_mode:
+            import hashlib
+
+            import numpy as np
+            import soundfile as sf
+
+            dummy_audio = np.zeros(24000, dtype=np.float32)
+            sf.write(str(output_path), dummy_audio, 24000)
+            logger.info(f"Mock GCP TTS synthesis: {output_path}")
+            return 2800  # GCP mock duration
 
         # Check for GCP credentials
         gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
@@ -806,7 +916,8 @@ class SynthesizePipeline:
 
             # Create engine based on name
             engine = None
-            if engine_name == "kokoro":
+            # Handle both "kokoro" and "kokoro_onnx" as valid names
+            if engine_name in ("kokoro", "kokoro_onnx"):
                 import asyncio
 
                 from ..tts import KokoroBackend, create_kokoro_backend
@@ -842,7 +953,9 @@ class SynthesizePipeline:
 
             if engine:
                 # Register with DI container registry for reuse
-                registry.register(engine, set_as_default=(engine_name == "kokoro"))
+                registry.register(
+                    engine, set_as_default=(engine_name in ("kokoro", "kokoro_onnx"))
+                )
                 self._engine_cache[engine_name] = engine
                 return engine
         except Exception as e:
@@ -880,6 +993,12 @@ class SynthesizePipeline:
         self, text: str, voice_id: str, prosody: dict, output_path: Path, engine: str
     ) -> tuple[int, str]:
         """Try synthesis with fallback chain from hardware profile."""
+        # Mock mode: use direct mock synthesis for any engine
+        if self.mock_mode:
+            logger.info(f"Mock mode: using mock synthesis for {engine}")
+            duration = self._synthesize_mock(text, voice_id, prosody, output_path)
+            return duration, engine
+
         config = self._get_tts_engine_config()
         engines_to_try = [engine] + [
             f.get("engine") for f in config.get("fallback_chain", [])
@@ -889,7 +1008,7 @@ class SynthesizePipeline:
             if not eng:
                 continue
             try:
-                if eng == "kokoro" or eng == "voxcpmp2":
+                if eng == "kokoro" or eng == "kokoro_onnx" or eng == "voxcpmp2":
                     # Use new engine abstraction
                     tts_engine = self._get_engine_for_synthesis(eng, config)
                     if tts_engine:
@@ -943,6 +1062,10 @@ class SynthesizePipeline:
         )
         voice_id = char.suggested_voice_id if char else "default"
 
+        mock_info = "Mock mode" if self.mock_mode else "real mode"
+        reasoning = (
+            f"Auto routing: local preferred for Chinese, Edge for English ({mock_info})"
+        )
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice="kokoro" if inp.prefer_local else "edge",
@@ -952,7 +1075,7 @@ class SynthesizePipeline:
                 "pitch": f"{inp.paragraph_annotation.pitch_shift_semitones}st",
             },
             fallback_engine="edge",
-            reasoning="Auto routing: local preferred for Chinese, Edge for English",
+            reasoning=reasoning,
             estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
             estimated_duration_ms=3000,
         )

@@ -1,31 +1,32 @@
 """Tests for audiobook_studio exceptions module."""
 
 import pytest
+
 from src.audiobook_studio.exceptions import (
     AudiobookError,
-    DomainError,
-    ValidationError,
-    SchemaComplianceError,
-    FallbackUsedError,
-    ProviderError,
-    QuotaExceededError,
-    RateLimitError,
     CircuitOpenError,
-    ProviderUnavailableError,
-    ProviderTimeoutError,
-    InfrastructureError,
-    DatabaseError,
-    FileWriteError,
     ConfigError,
-    PipelineError,
-    StageExecutionError,
-    StageHookError,
+    DatabaseError,
     DataLoadError,
     DataPersistError,
+    DomainError,
+    FallbackUsedError,
+    FileWriteError,
+    InfrastructureError,
+    PipelineError,
+    ProviderError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+    QuotaExceededError,
+    RateLimitError,
+    SchemaComplianceError,
+    StageExecutionError,
+    StageHookError,
+    TTSAudioExportError,
     TTSError,
     TTSModelLoadError,
     TTSSynthesisError,
-    TTSAudioExportError,
+    ValidationError,
 )
 
 

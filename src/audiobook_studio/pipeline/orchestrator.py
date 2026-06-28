@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 
 from ..exceptions import (
     AudiobookError,
-    StageExecutionError,
-    DataPersistError,
     DataLoadError,
+    DataPersistError,
+    StageExecutionError,
 )
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
@@ -41,8 +41,8 @@ from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .quality_check import QualityCheckPipeline
-from .synthesize import SynthesizePipeline
 from .stage_registry import StageRegistry
+from .synthesize import SynthesizePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,10 @@ def _emit_stage_enter(stage: str, context: Dict[str, Any]) -> None:
 
 
 def _emit_stage_exit(
-    stage: str, context: Dict[str, Any], result: Any = None, error: Exception | None = None
+    stage: str,
+    context: Dict[str, Any],
+    result: Any = None,
+    error: Exception | None = None,
 ) -> None:
     """Fire stage-exit hooks (non-blocking)."""
     for h in _stage_hooks:
@@ -129,13 +132,26 @@ def _emit_pipeline_end(
 
 
 # Placeholder logger.info hooks for observability (can be overridden by external registration)
-def _default_stage_hook(event: str, stage: str, context: dict, result: Any = None, error: Exception | None = None) -> None:
+def _default_stage_hook(
+    event: str,
+    stage: str,
+    context: dict,
+    result: Any = None,
+    error: Exception | None = None,
+) -> None:
     """Default logging hook - logs stage lifecycle events at INFO level."""
     if event == "stage_enter":
-        logger.info("[HOOK] ▶ Stage ENTER: %s | ctx_keys=%s", stage, list(context.keys()))
+        logger.info(
+            "[HOOK] ▶ Stage ENTER: %s | ctx_keys=%s", stage, list(context.keys())
+        )
     elif event == "stage_exit":
         status = "ERROR" if error else "OK"
-        logger.info("[HOOK] ■ Stage EXIT: %s [%s] | result_type=%s", stage, status, type(result).__name__)
+        logger.info(
+            "[HOOK] ■ Stage EXIT: %s [%s] | result_type=%s",
+            stage,
+            status,
+            type(result).__name__,
+        )
 
 
 # Auto-register default logger hook (can be disabled by clearing _stage_hooks)
@@ -312,7 +328,7 @@ def _write_quality(
     result: QualityJudgment,
 ) -> Quality:
     """Create a Quality record and update Paragraph with quality scores.
-    
+
     Ensures tts_edit_id is never NULL by:
     1. Finding the latest TTSEdit for this paragraph
     2. If none exists, creating a dummy TTSEdit with edited_text=""
@@ -326,7 +342,7 @@ def _write_quality(
         .order_by(TTSEdit.version.desc())
         .first()
     )
-    
+
     # If no TTSEdit exists, create a dummy one to satisfy NOT NULL constraint
     if tts_edit is None:
         tts_edit = TTSEdit(
@@ -343,8 +359,12 @@ def _write_quality(
         )
         db.add(tts_edit)
         db.flush()  # Get the ID without committing
-        logger.info("Created dummy TTSEdit id=%s for quality check on Paragraph %d", tts_edit.id, para.index)
-    
+        logger.info(
+            "Created dummy TTSEdit id=%s for quality check on Paragraph %d",
+            tts_edit.id,
+            para.index,
+        )
+
     tts_edit_id = tts_edit.id
 
     quality = Quality(
@@ -531,7 +551,9 @@ def run_stage(
         result = handler.run(**context)
 
         # Persist result to database
-        handler.persist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
+        handler.persist(
+            db, project_id, chapter, para, result, chapter_index, paragraph_index
+        )
 
         # Capture feedback
         if feedback_capture:

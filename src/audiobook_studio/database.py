@@ -53,6 +53,7 @@ engine = create_engine(
 # Session factory (2.0 style)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
+
 def get_db():
     """Generator function that yields database sessions"""
     db = SessionLocal()
@@ -60,6 +61,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def init_db() -> None:
     """Create all tables if they do not exist (MVP convenience; production uses Alembic)."""

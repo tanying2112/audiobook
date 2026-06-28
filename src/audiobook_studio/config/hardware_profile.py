@@ -220,6 +220,9 @@ class VoiceAnchorProfileConfig(BaseSettings):
     embedding_model: str = "wavlm_large"
     similarity_threshold: float = 0.85
     max_drift_alerts_per_chapter: int = 3
+    mock_mode: bool = False
+    device: str = "cpu"
+    cache_dir: Optional[str] = None
 
 
 class HardwareProfileConfig(BaseSettings):

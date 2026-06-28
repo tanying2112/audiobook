@@ -24,17 +24,18 @@ from typing import Any, Dict, List, Optional
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.audiobook_studio.pipeline.orchestrator import run_pipeline
-from src.audiobook_studio.pipeline.feedback_collector import create_feedback_collector
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from src.audiobook_studio.database import get_database_url
 from src.audiobook_studio.feedback.integration import (
-    create_self_iteration_loop,
     collect_pipeline_feedback,
+    create_self_iteration_loop,
     save_quality_feedback,
     save_user_rating_feedback,
 )
-from src.audiobook_studio.database import get_database_url
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from src.audiobook_studio.pipeline.feedback_collector import create_feedback_collector
+from src.audiobook_studio.pipeline.orchestrator import run_pipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,7 +44,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def create_test_book(book_dir: Path, num_chapters: int = 3, paragraphs_per_chapter: int = 5) -> Path:
+def create_test_book(
+    book_dir: Path, num_chapters: int = 3, paragraphs_per_chapter: int = 5
+) -> Path:
     """创建测试用书籍文件."""
     book_path = book_dir / "test_book.txt"
     content = []
@@ -101,21 +104,25 @@ def test_feedback_collection(project_id: int, collector) -> Dict[str, Any]:
 
     # 1. 模拟人工编辑反馈
     with collect_pipeline_feedback(collector, "annotate", 0, 0) as capture:
-        capture.set_llm_output({
-            "emotion": "happy",
-            "speaker_canonical_name": "旁白",
-            "is_dialogue": False,
-            "emotion_intensity": 0.5,
-            "confidence": 0.8,
-        })
+        capture.set_llm_output(
+            {
+                "emotion": "happy",
+                "speaker_canonical_name": "旁白",
+                "is_dialogue": False,
+                "emotion_intensity": 0.5,
+                "confidence": 0.8,
+            }
+        )
         # 人工修正：改为中性
-        capture.set_corrected_output({
-            "emotion": "neutral",
-            "speaker_canonical_name": "旁白",
-            "is_dialogue": False,
-            "emotion_intensity": 0.3,
-            "confidence": 0.9,
-        })
+        capture.set_corrected_output(
+            {
+                "emotion": "neutral",
+                "speaker_canonical_name": "旁白",
+                "is_dialogue": False,
+                "emotion_intensity": 0.3,
+                "confidence": 0.9,
+            }
+        )
         capture.set_rationale("Fixed emotion from happy to neutral for narrative")
 
     # 2. 模拟质量评判反馈
@@ -128,7 +135,7 @@ def test_feedback_collection(project_id: int, collector) -> Dict[str, Any]:
         paragraph_id=1,
         quality_judgment={"overall_score": 0.7, "issues": ["emotion_mismatch"]},
         corrected_judgment={"overall_score": 0.9, "issues": []},
-        rationale="Quality judge was too harsh"
+        rationale="Quality judge was too harsh",
     )
     feedback_files.append("quality_feedback.json")
 
@@ -141,7 +148,7 @@ def test_feedback_collection(project_id: int, collector) -> Dict[str, Any]:
         chapter_id=1,
         paragraph_id=1,
         user_rating={"rating": 4, "comment": "Good voice quality"},
-        rationale="User rated 4/5"
+        rationale="User rated 4/5",
     )
     feedback_files.append("user_rating_feedback.json")
 
@@ -217,8 +224,14 @@ def test_promotion_gate() -> Dict[str, Any]:
 
     return {
         "success": result.passed and not result_fail.passed,
-        "pass_case": {"passed": result.passed, "failed_criteria": result.failed_criteria},
-        "fail_case": {"passed": result_fail.passed, "failed_criteria": result_fail.failed_criteria},
+        "pass_case": {
+            "passed": result.passed,
+            "failed_criteria": result.failed_criteria,
+        },
+        "fail_case": {
+            "passed": result_fail.passed,
+            "failed_criteria": result_fail.failed_criteria,
+        },
     }
 
 
@@ -226,12 +239,13 @@ def test_ab_test() -> Dict[str, Any]:
     """测试 A/B 测试框架."""
     logger.info("Testing A/B test framework...")
 
-    from src.audiobook_studio.feedback.ab_test import (
-        run_ab_test,
-        build_ab_samples,
-        ABTestSample,
-    )
     import uuid
+
+    from src.audiobook_studio.feedback.ab_test import (
+        ABTestSample,
+        build_ab_samples,
+        run_ab_test,
+    )
 
     # 创建测试样本
     samples = [
@@ -240,7 +254,9 @@ def test_ab_test() -> Dict[str, Any]:
             stage="edit_for_tts",
             input_data={"text": f"test {i}"},
             output_a={"edited_text": "short"},
-            output_b={"edited_text": "much longer and better output text with more content"},
+            output_b={
+                "edited_text": "much longer and better output text with more content"
+            },
             version_a=1,
             version_b=2,
         )
@@ -264,8 +280,13 @@ def test_canary_release() -> Dict[str, Any]:
     """测试 Canary Release 与自动回滚."""
     logger.info("Testing canary release...")
 
-    from src.audiobook_studio.feedback.release import CanaryRelease, CanaryConfig, CanaryMetrics
     from datetime import datetime, timezone
+
+    from src.audiobook_studio.feedback.release import (
+        CanaryConfig,
+        CanaryMetrics,
+        CanaryRelease,
+    )
 
     # 创建 canary release
     config = CanaryConfig(min_samples=50, rollback_threshold=0.95)
@@ -281,7 +302,7 @@ def test_canary_release() -> Dict[str, Any]:
         samples_collected=100,
         avg_quality_score=0.87,
         baseline_quality_score=0.85,
-        quality_ratio=0.87/0.85,
+        quality_ratio=0.87 / 0.85,
         error_rate=0.02,
         timestamp=datetime.now(timezone.utc),
     )
@@ -295,7 +316,7 @@ def test_canary_release() -> Dict[str, Any]:
         samples_collected=100,
         avg_quality_score=0.78,  # ratio = 0.78/0.85 = 0.917 < 0.95
         baseline_quality_score=0.85,
-        quality_ratio=0.78/0.85,
+        quality_ratio=0.78 / 0.85,
         error_rate=0.02,
         timestamp=datetime.now(timezone.utc),
     )
@@ -308,8 +329,8 @@ def test_canary_release() -> Dict[str, Any]:
 
     return {
         "success": (
-            status_after_good["status"] == "running" and
-            status_after_bad["status"] == "rolled_back"
+            status_after_good["status"] == "running"
+            and status_after_bad["status"] == "rolled_back"
         ),
         "good_metrics_status": status_after_good["status"],
         "bad_metrics_status": status_after_bad["status"],
@@ -323,8 +344,9 @@ def test_version_store() -> Dict[str, Any]:
     logger.info("Testing version store...")
 
     import tempfile
-    from src.audiobook_studio.feedback.release import VersionStore
     from pathlib import Path
+
+    from src.audiobook_studio.feedback.release import VersionStore
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir) / "prompts"
@@ -355,12 +377,12 @@ def test_version_store() -> Dict[str, Any]:
 
         return {
             "success": (
-                current == 3 and
-                rollback_success and
-                after_rollback == 1 and
-                rollback_last and
-                after_rollback_last == 2 and
-                len(history) == 3
+                current == 3
+                and rollback_success
+                and after_rollback == 1
+                and rollback_last
+                and after_rollback_last == 2
+                and len(history) == 3
             ),
             "initial_version": current,
             "after_rollback": after_rollback,
@@ -429,6 +451,7 @@ def run_all_tests(project_id: int = 1) -> Dict[str, Any]:
     finally:
         # 清理测试目录
         import shutil
+
         shutil.rmtree(test_dir, ignore_errors=True)
 
     results["overall"] = "PASSED" if all_passed else "FAILED"
@@ -437,7 +460,9 @@ def run_all_tests(project_id: int = 1) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(description="Run E2E verification")
-    parser.add_argument("--project-id", type=int, default=1, help="Project ID for testing")
+    parser.add_argument(
+        "--project-id", type=int, default=1, help="Project ID for testing"
+    )
     parser.add_argument("--output", type=str, help="Output JSON file for results")
     args = parser.parse_args()
 

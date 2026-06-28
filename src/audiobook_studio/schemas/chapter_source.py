@@ -82,9 +82,15 @@ class ChapterSource(BaseModel):
         """已验证段落占比."""
         return self.verified_paragraphs / max(self.total_paragraphs, 1)
 
-    def get_golden_samples(self, min_quality: float = 0.8) -> list[ChapterSourceParagraph]:
+    def get_golden_samples(
+        self, min_quality: float = 0.8
+    ) -> list[ChapterSourceParagraph]:
         """获取符合质量阈值的黄金样本."""
-        return [p for p in self.paragraphs if p.quality_score >= min_quality and p.human_verified]
+        return [
+            p
+            for p in self.paragraphs
+            if p.quality_score >= min_quality and p.human_verified
+        ]
 
 
 class ChapterSourceCollection(BaseModel):

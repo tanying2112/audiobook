@@ -3,10 +3,10 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Set, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Set
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 # ─────────────────────────────────────────────────────────────────────────────
 # Connection Manager
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ConnectionManager:
     """Manages WebSocket connections for pipeline events."""
@@ -81,8 +82,10 @@ manager = ConnectionManager()
 # Event Types
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class PipelineEventType:
     """Pipeline event type constants."""
+
     STAGE_ENTER = "stage_enter"
     STAGE_EXIT = "stage_exit"
     STAGE_PROGRESS = "stage_progress"
@@ -97,6 +100,7 @@ class PipelineEventType:
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket Endpoint
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.websocket("/pipeline/{project_id}")
 async def pipeline_websocket(websocket: WebSocket, project_id: int):
@@ -122,29 +126,32 @@ async def pipeline_websocket(websocket: WebSocket, project_id: int):
     await manager.connect(websocket, project_id)
 
     # Send initial connection confirmation
-    await manager.send_to_connection(websocket, {
-        "type": "connected",
-        "project_id": project_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    await manager.send_to_connection(
+        websocket,
+        {
+            "type": "connected",
+            "project_id": project_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     try:
         while True:
             # Keep connection alive, handle ping/pong
             try:
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=30.0
-                )
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
                 # Handle client messages (pause, resume, etc.)
                 message = json.loads(data)
                 await handle_client_message(websocket, project_id, message)
             except asyncio.TimeoutError:
                 # Send keepalive
-                await manager.send_to_connection(websocket, {
-                    "type": "keepalive",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                await manager.send_to_connection(
+                    websocket,
+                    {
+                        "type": "keepalive",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
@@ -152,40 +159,46 @@ async def pipeline_websocket(websocket: WebSocket, project_id: int):
         manager.disconnect(websocket)
 
 
-async def handle_client_message(
-    websocket: WebSocket,
-    project_id: int,
-    message: dict
-):
+async def handle_client_message(websocket: WebSocket, project_id: int, message: dict):
     """Handle incoming messages from WebSocket clients."""
     msg_type = message.get("type")
 
     if msg_type == "pause":
         # TODO: Implement pipeline pause
-        await manager.send_to_connection(websocket, {
-            "type": "ack",
-            "action": "pause",
-            "status": "pending_implementation",
-        })
+        await manager.send_to_connection(
+            websocket,
+            {
+                "type": "ack",
+                "action": "pause",
+                "status": "pending_implementation",
+            },
+        )
     elif msg_type == "resume":
         # TODO: Implement pipeline resume
-        await manager.send_to_connection(websocket, {
-            "type": "ack",
-            "action": "resume",
-            "status": "pending_implementation",
-        })
+        await manager.send_to_connection(
+            websocket,
+            {
+                "type": "ack",
+                "action": "resume",
+                "status": "pending_implementation",
+            },
+        )
     elif msg_type == "status":
         # Return current status
-        await manager.send_to_connection(websocket, {
-            "type": "status",
-            "project_id": project_id,
-            "status": "unknown",  # TODO: Query actual status
-        })
+        await manager.send_to_connection(
+            websocket,
+            {
+                "type": "status",
+                "project_id": project_id,
+                "status": "unknown",  # TODO: Query actual status
+            },
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper Functions for Backend Integration
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def emit_pipeline_event(
     project_id: int,
@@ -233,6 +246,7 @@ async def emit_pipeline_event(
 # ─────────────────────────────────────────────────────────────────────────────
 # HTTP Fallback Endpoint (for polling clients)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/pipeline/{project_id}/events")
 async def get_pipeline_events(project_id: int):

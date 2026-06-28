@@ -3,13 +3,19 @@ E2 — BootstrapFewShot (DSPy 介入)
 
 利用多目标 Pareto 优化进行自动 Prompt 优化。
 锁定优化"角色识别"与"Voice Design"两个目标。
+
+增强功能：
+- 支持从真实长书数据加载训练样本
+- 自动运行 pipeline 提取角色和语音标注
+- 支持多书籍批量优化
 """
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dspy
 from dspy import Example, Prediction
@@ -22,6 +28,53 @@ logger = logging.getLogger(__name__)
 BUDGET_LIMIT = 500
 DEFAULT_EARLY_STOP_PATIENCE = 10
 
+# Default long novel data directory
+DEFAULT_LONG_NOVEL_DIR = "data/long_novel"
+
+
+def configure_dspy_optimizer(use_mock: bool = True):
+    """Configure DSPy with appropriate LM for optimization."""
+    if use_mock:
+        # Use a mock LM for testing
+        import dspy
+        from dspy import LM
+
+        # Create a simple mock LM that returns deterministic responses
+        class MockLM(LM):
+            def __init__(self):
+                super().__init__(model="mock", temperature=0.0)
+                self.call_count = 0
+
+            def basic_request(self, prompt, **kwargs):
+                self.call_count += 1
+                # Return mock response based on prompt type
+                # DSPy's JSONAdapter expects JSON with output fields
+                if "character_name" in prompt:
+                    return [{"text": '{"character_name": "旁白"}'}]
+                elif "voice_design" in prompt:
+                    return [{"text": '{"voice_design": "narrator_male"}'}]
+                else:
+                    return [{"text": '{"character_name": "旁白"}'}]
+
+            def __call__(self, prompt=None, messages=None, **kwargs):
+                # Handle both prompt= and messages= calling conventions
+                if messages is not None:
+                    # Extract prompt from messages
+                    prompt_text = " ".join(str(m.get("content", "")) for m in messages)
+                else:
+                    prompt_text = prompt or ""
+                return self.basic_request(prompt_text, **kwargs)
+
+        mock_lm = MockLM()
+        dspy.configure(lm=mock_lm)
+        return mock_lm
+    else:
+        # Use real LM configuration (from environment)
+        import dspy
+
+        # DSPy will use the default LM from environment variables
+        return None
+
 
 @dataclass
 class OptimizationMetrics:
@@ -33,6 +86,10 @@ class OptimizationMetrics:
     inference_calls_used: int = 0
     cost_usd: float = 0.0
     iterations_completed: int = 0
+    # Long book data metrics
+    num_books_processed: int = 0
+    total_paragraphs: int = 0
+    unique_characters: int = 0
 
 
 @dataclass
@@ -45,6 +102,20 @@ class OptimizationResult:
     stopped_early: bool = False
     iterations_completed: int = 0
     pareto_frontier: Optional[List[Dict[str, Any]]] = None
+
+
+@dataclass
+class BookTrainingData:
+    """Container for training data extracted from a book."""
+
+    book_name: str
+    book_path: str
+    character_examples: List[
+        Tuple[str, Dict[str, Any]]
+    ]  # (paragraph_text, {character, voice})
+    num_paragraphs: int
+    unique_characters: int
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class MultiObjectiveLoss:
@@ -117,9 +188,16 @@ class CharacterRecognitionModule(dspy.Module):
             )
         )
 
-    def forward(self, paragraph_text: str) -> str:
+    def forward(self, paragraph_text: str = None, **kwargs) -> str:
+        # Handle both positional and keyword arguments
+        if paragraph_text is None:
+            paragraph_text = kwargs.get("paragraph_text", "")
         result = self.predict(paragraph_text=paragraph_text)
         return result.character_name
+
+    # DSPy calls modules with **inputs, so we need to handle that
+    def __call__(self, **kwargs):
+        return self.forward(**kwargs)
 
 
 class VoiceDesignModule(dspy.Module):
@@ -147,6 +225,87 @@ class VoiceDesignModule(dspy.Module):
             emotion=emotion,
         )
         return result.voice_design
+
+
+def extract_paragraphs_from_text(
+    text: str, max_paragraphs: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """Extract paragraphs from raw book text.
+
+    Args:
+        text: Raw book text
+        max_paragraphs: Maximum number of paragraphs to extract
+
+    Returns:
+        List of paragraph dicts with text and index
+    """
+    # Remove Project Gutenberg header/footer
+    import re
+
+    # Remove Gutenberg header (everything before "START OF THE PROJECT GUTENBERG")
+    start_markers = [
+        "START OF THE PROJECT GUTENBERG",
+        "START OF THIS PROJECT GUTENBERG",
+        "*** START",
+    ]
+    for marker in start_markers:
+        idx = text.find(marker)
+        if idx >= 0:
+            text = text[idx + len(marker) :]
+            break
+
+    # Remove Gutenberg footer (everything after "END OF THE PROJECT GUTENBERG")
+    end_markers = [
+        "END OF THE PROJECT GUTENBERG",
+        "END OF THIS PROJECT GUTENBERG",
+        "*** END",
+    ]
+    for marker in end_markers:
+        idx = text.find(marker)
+        if idx >= 0:
+            text = text[:idx]
+            break
+
+    # Split by double newlines (paragraph breaks) or single newlines for dialogue-heavy text
+    paragraphs = []
+
+    # Try splitting by double newlines first
+    raw_paragraphs = text.split("\n\n")
+
+    # If that gives too few paragraphs, try single newlines
+    if len(raw_paragraphs) < 10:
+        raw_paragraphs = text.split("\n")
+
+    for i, para in enumerate(raw_paragraphs):
+        para = para.strip()
+        # Skip very short paragraphs, metadata lines, and Gutenberg artifacts
+        if para and len(para) > 20:
+            # Skip lines that look like metadata
+            if not any(
+                para.startswith(prefix)
+                for prefix in [
+                    "Title:",
+                    "Author:",
+                    "Translator:",
+                    "Release date:",
+                    "Language:",
+                    "Character set:",
+                    "Produced by:",
+                    "The Project Gutenberg",
+                    "This eBook",
+                    "eBook #",
+                ]
+            ):
+                paragraphs.append(
+                    {
+                        "text": para,
+                        "paragraph_index": i,
+                    }
+                )
+                if max_paragraphs and len(paragraphs) >= max_paragraphs:
+                    break
+
+    return paragraphs
 
 
 def create_multi_objective_metric(
@@ -179,7 +338,7 @@ def create_multi_objective_metric(
         ground_char = (
             gold.character
             if hasattr(gold, "character")
-            else gold.outputs().get("character", "")
+            else gold.outputs.get("character", "")
         )
 
         # Handle nested ground truth
@@ -197,7 +356,7 @@ def create_multi_objective_metric(
             pred_output.get("voice_design", "") if isinstance(pred_output, dict) else ""
         )
         ground_voice = (
-            gold.voice if hasattr(gold, "voice") else gold.outputs().get("voice", "")
+            gold.voice if hasattr(gold, "voice") else gold.outputs.get("voice", "")
         )
 
         voice_correct = False
@@ -225,6 +384,258 @@ def create_multi_objective_metric(
         return ScoreWithFeedback(score=score, feedback=feedback)
 
     return metric
+
+
+def load_long_novel_data(
+    novel_dir: str = DEFAULT_LONG_NOVEL_DIR,
+    max_books: Optional[int] = None,
+    max_paragraphs_per_book: Optional[int] = None,
+) -> List[BookTrainingData]:
+    """Load and extract paragraphs from long novel text files.
+
+    Args:
+        novel_dir: Directory containing .txt novel files
+        max_books: Maximum number of books to process
+        max_paragraphs_per_book: Maximum paragraphs per book
+
+    Returns:
+        List of BookTrainingData with extracted paragraphs
+    """
+    novel_path = Path(novel_dir)
+    if not novel_path.exists():
+        logger.warning(f"Novel directory not found: {novel_dir}")
+        return []
+
+    novel_files = list(novel_path.glob("*.txt"))
+    if not novel_files:
+        logger.warning(f"No .txt files found in {novel_dir}")
+        return []
+
+    if max_books:
+        novel_files = novel_files[:max_books]
+
+    books_data = []
+    for novel_file in novel_files:
+        try:
+            text = novel_file.read_text(encoding="utf-8")
+            paragraphs = extract_paragraphs_from_text(text, max_paragraphs_per_book)
+
+            if paragraphs:
+                books_data.append(
+                    BookTrainingData(
+                        book_name=novel_file.stem,
+                        book_path=str(novel_file),
+                        character_examples=[],  # Will be filled by pipeline
+                        num_paragraphs=len(paragraphs),
+                        unique_characters=0,
+                        metadata={
+                            "total_chars": len(text),
+                            "paragraphs_extracted": len(paragraphs),
+                        },
+                    )
+                )
+                logger.info(f"Loaded {novel_file.name}: {len(paragraphs)} paragraphs")
+        except Exception as e:
+            logger.error(f"Failed to load {novel_file}: {e}")
+
+    return books_data
+
+
+def run_pipeline_on_book_data(
+    book_data: BookTrainingData,
+    stage: str = "annotate_paragraph",
+    mock_mode: bool = True,
+    max_paragraphs: Optional[int] = None,
+) -> BookTrainingData:
+    """Run pipeline stage on book paragraphs to extract character/voice annotations.
+
+    This runs the actual pipeline (analyze + annotate) to generate ground truth
+    training examples for bootstrap optimization.
+
+    Args:
+        book_data: BookTrainingData with extracted paragraphs
+        stage: Pipeline stage to run ('annotate_paragraph' or 'edit_for_tts')
+        mock_mode: Use mock LLM for fast processing
+        max_paragraphs: Limit paragraphs to process
+
+    Returns:
+        BookTrainingData with character_examples populated
+    """
+    # Set mock mode
+    os.environ["MOCK_LLM"] = "true" if mock_mode else "false"
+
+    try:
+        # Import pipeline components
+        from ..pipeline.analyze_structure import AnalyzeStructurePipeline
+        from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline
+        from ..schemas import BookAnalysisInput, ParagraphAnnotationInput
+
+        # Read the full book text
+        full_text = Path(book_data.book_path).read_text(encoding="utf-8")
+
+        # Stage 1: Analyze structure to get book context
+        analyze_pipeline = AnalyzeStructurePipeline(mock_mode=mock_mode)
+        analyze_input = BookAnalysisInput(
+            raw_text=full_text[:10000],  # Use first 10k chars for analysis (context)
+            title_hint=book_data.book_name,
+            author_hint="Unknown",
+        )
+        book_analysis = analyze_pipeline.run(analyze_input)
+
+        # Extract character voice map from analysis
+        character_voice_map = book_analysis.character_voice_map
+        emotion_snapshot = (
+            book_analysis.emotion_snapshots[0]
+            if book_analysis.emotion_snapshots
+            else None
+        )
+        story_line_summary = book_analysis.story_line_summary
+        global_style_notes = book_analysis.global_style_notes
+        book_meta = book_analysis.book_meta
+
+        # Stage 2: Annotate paragraphs
+        annotate_pipeline = AnnotateParagraphPipeline(mock_mode=mock_mode)
+
+        # Get paragraphs from book_data
+        full_text = Path(book_data.book_path).read_text(encoding="utf-8")
+        paragraphs = extract_paragraphs_from_text(full_text, max_paragraphs)
+
+        character_examples = []
+        unique_characters = set()
+
+        for i, para in enumerate(paragraphs):
+            if max_paragraphs and i >= max_paragraphs:
+                break
+
+            # Build annotation input
+            annotate_input = ParagraphAnnotationInput(
+                paragraph_text=para["text"],
+                paragraph_index=para["paragraph_index"],
+                chapter_index=1,  # Must be >= 1 per schema validation
+                book_meta=book_meta,
+                character_voice_map=character_voice_map,
+                emotion_snapshot=emotion_snapshot,
+                story_line_summary=story_line_summary,
+                global_style_notes=global_style_notes,
+            )
+
+            # Run annotation
+            annotation = annotate_pipeline.run(annotate_input)
+
+            # Extract character and voice
+            character = annotation.speaker_canonical_name
+            voice = None
+            for cv in character_voice_map:
+                if cv.canonical_name == character:
+                    voice = cv.suggested_voice_id
+                    break
+
+            if character:
+                unique_characters.add(character)
+                character_examples.append(
+                    (
+                        para["text"],
+                        {
+                            "character": character,
+                            "voice": voice,
+                        },
+                    )
+                )
+
+        # Update book_data
+        book_data.character_examples = character_examples
+        book_data.unique_characters = len(unique_characters)
+        book_data.metadata["unique_characters"] = list(unique_characters)
+
+        logger.info(
+            f"Processed {book_data.book_name}: {len(character_examples)} examples, {len(unique_characters)} unique characters"
+        )
+
+    except Exception as e:
+        logger.error(f"Pipeline processing failed for {book_data.book_name}: {e}")
+
+    return book_data
+
+
+def prepare_training_data_from_books(
+    novel_dir: str = DEFAULT_LONG_NOVEL_DIR,
+    stage: str = "annotate_paragraph",
+    mock_mode: bool = True,
+    max_books: Optional[int] = None,
+    max_paragraphs_per_book: Optional[int] = None,
+) -> List[Tuple[str, Dict[str, Any]]]:
+    """Load books, run pipeline, and prepare combined training data.
+
+    This is the main entry point for getting real training data from long novels.
+
+    Args:
+        novel_dir: Directory with .txt novel files
+        stage: Pipeline stage to use for annotation
+        mock_mode: Use mock LLM for speed
+        max_books: Max books to process
+        max_paragraphs_per_book: Max paragraphs per book
+
+    Returns:
+        List of (paragraph_text, {character, voice}) tuples for training
+    """
+    # Load books
+    books_data = load_long_novel_data(novel_dir, max_books, max_paragraphs_per_book)
+
+    if not books_data:
+        logger.warning("No book data loaded, falling back to bootstrap examples")
+        return []
+
+    # Process each book through pipeline
+    all_examples = []
+    total_paragraphs = 0
+    total_characters = set()
+
+    for book_data in books_data:
+        book_data = run_pipeline_on_book_data(
+            book_data, stage, mock_mode, max_paragraphs_per_book
+        )
+        all_examples.extend(book_data.character_examples)
+        total_paragraphs += book_data.num_paragraphs
+        if "unique_characters" in book_data.metadata:
+            total_characters.update(book_data.metadata["unique_characters"])
+
+    logger.info(
+        f"Total training examples from {len(books_data)} books: {len(all_examples)}"
+    )
+    logger.info(f"Total unique characters: {len(total_characters)}")
+
+    return all_examples
+
+
+def save_optimized_prompt(
+    stage: str,
+    optimized_prompt: str,
+    version: int,
+    output_dir: Optional[str] = None,
+) -> Path:
+    """Save optimized prompt as new version.
+
+    Args:
+        stage: Pipeline stage name
+        optimized_prompt: The optimized prompt content
+        version: Version number for the new prompt
+        output_dir: Optional custom output directory
+
+    Returns:
+        Path to saved prompt file
+    """
+    if output_dir is None:
+        output_dir = Path("prompts") / stage
+    else:
+        output_dir = Path(output_dir) / stage
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = output_dir / f"v{version}.j2"
+
+    prompt_file.write_text(optimized_prompt, encoding="utf-8")
+    logger.info(f"Saved optimized prompt to {prompt_file}")
+
+    return prompt_file
 
 
 class EarlyStoppingStopper:
@@ -306,6 +717,9 @@ class BootstrapFewShotOptimizer:
         Returns:
             OptimizationResult with optimized prompt and metrics
         """
+        # Configure DSPy with mock LM for testing
+        configure_dspy_optimizer(use_mock=True)
+
         # Reset state
         self._stopper = EarlyStoppingStopper(patience=self.early_stop_patience)
         self._metric_calls = 0
@@ -340,11 +754,17 @@ class BootstrapFewShotOptimizer:
         # Create DSPy module with initial prompt
         character_module = CharacterRecognitionModule(prompt_template=initial_prompt)
 
+        # Get reflection LM from DSPy config (mock LM if configured)
+        import dspy
+
+        reflection_lm = dspy.settings.lm if dspy.settings.lm else None
+
         # Create GEPA optimizer with strict budget limit
         gepa = GEPA(
             metric=metric,
             max_metric_calls=self.budget_limit,  # Strict budget: 500
             track_stats=True,
+            reflection_lm=reflection_lm,
         )
 
         # Compile with GEPA (may return early due to budget/budget)

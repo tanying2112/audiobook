@@ -5,7 +5,7 @@ HARNESS 规范契约层 (Contract Layer) — 所有 Pydantic 模型定义。
 三层架构:
 1. 契约层: 本包 (Pydantic Schemas + 黄金数据集)
 2. 执行层: LLM 调用 + Instructor 解析 + LiteLLM 路由
-3. 评估层: DeepEval + Promptfoo + LLM-as-a-Judge
+3. 评估层: LLM-as-a-Judge + 规则检查 (DNSMOS/ASR/SpeakerSim) + 人工校准
 
 核心模型 (对应 6 个 LLM 环节 + 反馈):
 * ExtractionInput / ExtractionResult          — 环节① 文本提取
@@ -28,7 +28,11 @@ from .book import (
     CharacterVoiceBinding,
     EmotionSnapshot,
 )
-from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourceParagraph
+from .chapter_source import (
+    ChapterSource,
+    ChapterSourceCollection,
+    ChapterSourceParagraph,
+)
 from .extraction import ExtractionInput, ExtractionResult
 from .feedback import FeedbackRecord
 from .feedback_analysis import FeedbackAnalysis

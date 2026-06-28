@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ExportFormat(str, Enum):
     """导出格式选项."""
+
     M4B = "m4b"
     SRT = "srt"
     VTT = "vtt"
@@ -34,6 +35,7 @@ class ExportFormat(str, Enum):
 
 class ExportProgress(str, Enum):
     """导出进度状态."""
+
     PENDING = "pending"
     CONCATENATING = "concatenating"
     CHAPTERING = "chaptering"
@@ -79,13 +81,13 @@ def _collect_chapter_data(
             "paragraphs": [...]
         }
     """
+    from ..models.audio_segment import AudioSegment
     from ..models.chapter import Chapter
     from ..models.paragraph import Paragraph
-    from ..models.audio_segment import AudioSegment
 
-    chapter = session.query(Chapter).filter_by(
-        id=chapter_id, project_id=project_id
-    ).first()
+    chapter = (
+        session.query(Chapter).filter_by(id=chapter_id, project_id=project_id).first()
+    )
     if not chapter:
         logger.warning(f"Chapter {chapter_id} not found in project {project_id}")
         return None
@@ -130,16 +132,20 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
                 try:
                     chapter_duration_ms += get_duration_sync(path)
                 except Exception as e:
-                    logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
+                    logger.warning(
+                        f"Failed to probe duration for {path}: {e}, using fallback"
+                    )
                     chapter_duration_ms += seg.duration_ms or 3000
             else:
                 chapter_duration_ms += seg.duration_ms or 3000
 
-        markers.append(ChapterMarker(
-            title=chapter.title or f"Chapter {chapter.index}",
-            start_ms=cumulative_ms,
-            duration_ms=chapter_duration_ms,
-        ))
+        markers.append(
+            ChapterMarker(
+                title=chapter.title or f"Chapter {chapter.index}",
+                start_ms=cumulative_ms,
+                duration_ms=chapter_duration_ms,
+            )
+        )
         cumulative_ms += chapter_duration_ms
 
     return markers
@@ -166,10 +172,7 @@ def _build_subtitle_entries(
 
     for data in chapter_data:
         paragraphs = sorted(data["paragraphs"], key=lambda p: p.order)
-        segments_map = {
-            seg.paragraph_id: seg
-            for seg in data["audio_segments"]
-        }
+        segments_map = {seg.paragraph_id: seg for seg in data["audio_segments"]}
 
         for para in paragraphs:
             seg = segments_map.get(para.id)
@@ -181,18 +184,22 @@ def _build_subtitle_entries(
                     try:
                         duration = get_duration_sync(path)
                     except Exception as e:
-                        logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
+                        logger.warning(
+                            f"Failed to probe duration for {path}: {e}, using fallback"
+                        )
                         duration = seg.duration_ms or 3000
                 else:
                     duration = seg.duration_ms or 3000
 
-            entries.append(SubtitleEntry(
-                index=len(entries) + 1,
-                start_ms=offset_ms,
-                end_ms=offset_ms + duration,
-                text=para.original_text or para.text or "",
-                speaker=para.character_name,
-            ))
+            entries.append(
+                SubtitleEntry(
+                    index=len(entries) + 1,
+                    start_ms=offset_ms,
+                    end_ms=offset_ms + duration,
+                    text=para.original_text or para.text or "",
+                    speaker=para.character_name,
+                )
+            )
             offset_ms += duration
 
     return entries
@@ -253,7 +260,11 @@ def export_project(
 
     try:
         # --- M4B export ---
-        if ExportFormat.M4B in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
+        if (
+            ExportFormat.M4B in job.formats
+            or ExportFormat.M4B_SRT in job.formats
+            or ExportFormat.ALL in job.formats
+        ):
             job.progress = ExportProgress.CONCATENATING
             logger.info("Building M4B (chaptered)...")
 
@@ -276,10 +287,23 @@ def export_project(
                 with open(concat_list, "w") as f:
                     for af in audio_files:
                         f.write(f"file '{af.absolute()}'\n")
-                subprocess.run([
-                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                    "-i", str(concat_list), "-c", "copy", str(temp_audio),
-                ], check=True, capture_output=True)
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(temp_audio),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
 
                 # Mix with BGM
                 mixed_path = output_dir / "temp_mixed.m4a"
@@ -315,7 +339,11 @@ def export_project(
             job.output_paths["m4b"] = str(m4b_path)
 
         # --- SRT export ---
-        if ExportFormat.SRT in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
+        if (
+            ExportFormat.SRT in job.formats
+            or ExportFormat.M4B_SRT in job.formats
+            or ExportFormat.ALL in job.formats
+        ):
             job.progress = ExportProgress.SUBTITLES
             logger.info("Generating SRT subtitles...")
 
@@ -381,7 +409,9 @@ def export_chapter(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Concatenate into single M4B chapter file
-    chapter_output = out_dir / f"ch{chapter.index:02d}_{chapter.title or chapter.index}.m4b"
+    chapter_output = (
+        out_dir / f"ch{chapter.index:02d}_{chapter.title or chapter.index}.m4b"
+    )
 
     # Calculate total duration using ffprobe
     total_duration_ms = 0
@@ -391,7 +421,9 @@ def export_chapter(
             try:
                 total_duration_ms += get_duration_sync(path)
             except Exception as e:
-                logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
+                logger.warning(
+                    f"Failed to probe duration for {path}: {e}, using fallback"
+                )
                 total_duration_ms += seg.duration_ms or 3000
         else:
             total_duration_ms += seg.duration_ms or 3000

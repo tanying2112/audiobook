@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 # 1. 语义连贯性检查
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class SemanticCoherenceResult:
     """语义连贯性检查结果."""
+
     scores: List[float]
     mean_score: float
     std_score: float
@@ -83,10 +85,7 @@ def check_semantic_coherence(
         lower_bound = max(0.0, mean_score - 2 * std_score)
         upper_bound = min(1.0, mean_score + 2 * std_score)
 
-    anomalies = [
-        i for i, s in enumerate(scores)
-        if s < lower_bound or s > upper_bound
-    ]
+    anomalies = [i for i, s in enumerate(scores) if s < lower_bound or s > upper_bound]
 
     is_coherent = len(anomalies) < len(scores) * 0.3  # < 30% 异常
 
@@ -106,9 +105,10 @@ def check_semantic_coherence(
 
 def _cosine_similarity(text_a: str, text_b: str) -> float:
     """计算两段文本的余弦相似度 (基于字符 n-gram)."""
+
     # Build char-level 2-gram sets (simplified TF-IDF)
     def get_ngrams(text: str, n: int = 2) -> Counter:
-        return Counter(text[i:i + n] for i in range(len(text) - n + 1))
+        return Counter(text[i : i + n] for i in range(len(text) - n + 1))
 
     vec_a = get_ngrams(text_a)
     vec_b = get_ngrams(text_b)
@@ -117,8 +117,8 @@ def _cosine_similarity(text_a: str, text_b: str) -> float:
     all_grams = set(vec_a.keys()) | set(vec_b.keys())
     dot_product = sum(vec_a[g] * vec_b[g] for g in all_grams)
 
-    magnitude_a = math.sqrt(sum(v ** 2 for v in vec_a.values()))
-    magnitude_b = math.sqrt(sum(v ** 2 for v in vec_b.values()))
+    magnitude_a = math.sqrt(sum(v**2 for v in vec_a.values()))
+    magnitude_b = math.sqrt(sum(v**2 for v in vec_b.values()))
 
     if magnitude_a == 0 or magnitude_b == 0:
         return 0.0
@@ -129,6 +129,7 @@ def _cosine_similarity(text_a: str, text_b: str) -> float:
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. 情感验证 + 报告
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ValidationReport:
@@ -144,11 +145,26 @@ class ValidationReport:
 
 # Valid emotion enums for Chinese audiobooks
 _VALID_EMOTIONS = {
-    "neutral", "happy", "sad", "angry", "fearful",
-    "surprised", "disgusted", "contemptuous",
-    "anxious", "excited", "calm", "warm",
-    "proud", "hopeful", "grateful", "lonely",
-    "nostalgic", "playful", "serious", "sarcastic",
+    "neutral",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "surprised",
+    "disgusted",
+    "contemptuous",
+    "anxious",
+    "excited",
+    "calm",
+    "warm",
+    "proud",
+    "hopeful",
+    "grateful",
+    "lonely",
+    "nostalgic",
+    "playful",
+    "serious",
+    "sarcastic",
     "other",  # "other" 作为合法兜底枚举
 }
 
@@ -217,9 +233,11 @@ def validate_emotions(
 # 3. 动态难度权重
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class DifficultyWeights:
     """动态难度权重."""
+
     weights: Dict[str, float]
 
     def get_weight(self, category: str, default: float = 1.0) -> float:
@@ -250,11 +268,15 @@ def _compute_text_difficulty(text: str) -> Dict[str, float]:
     )
 
     # Sentence length
-    sentences = [s.strip() for s in text.replace("!", "。").replace("?", "。").split("。") if s.strip()]
+    sentences = [
+        s.strip()
+        for s in text.replace("!", "。").replace("?", "。").split("。")
+        if s.strip()
+    ]
     avg_sentence_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
 
     # Punctuation diversity
-    punct = sum(1 for c in text if c in "，。！？；：、""''（）—…")
+    punct = sum(1 for c in text if c in "，。！？；：、" "''（）—…")
     punct_ratio = punct / max(total_chars, 1)
 
     return {
@@ -309,9 +331,11 @@ def grade_difficulty(
 # 4. 免费资源健康指数
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class FreeTierHealth:
     """免费资源健康状态."""
+
     healthy: bool
     cpu_count: int
     memory_gb: float
@@ -337,8 +361,9 @@ def get_free_tier_health() -> FreeTierHealth:
     memory_gb = 0.0
     try:
         import psutil
+
         mem = psutil.virtual_memory()
-        memory_gb = mem.total / (1024 ** 3)
+        memory_gb = mem.total / (1024**3)
         mem_score = min(memory_gb / 4, 1.0) * 30
         if mem.percent > 90:
             warnings.append(f"内存使用率过高: {mem.percent:.0f}%")
@@ -346,13 +371,13 @@ def get_free_tier_health() -> FreeTierHealth:
         # Fallback: try reading from sysctl on macOS
         try:
             import subprocess
+
             result = subprocess.run(
-                ["sysctl", "hw.memsize"],
-                capture_output=True, text=True
+                ["sysctl", "hw.memsize"], capture_output=True, text=True
             )
             if result.returncode == 0:
                 memory_bytes = int(result.stdout.split(":")[1].strip())
-                memory_gb = memory_bytes / (1024 ** 3)
+                memory_gb = memory_bytes / (1024**3)
             else:
                 memory_gb = 2.0  # conservative default
         except Exception:
@@ -363,8 +388,9 @@ def get_free_tier_health() -> FreeTierHealth:
     disk_free_gb = 0.0
     try:
         import shutil
+
         total, used, free = shutil.disk_usage("/")
-        disk_free_gb = free / (1024 ** 3)
+        disk_free_gb = free / (1024**3)
         disk_score = min(disk_free_gb / 10, 1.0) * 20  # max 20 points
         if disk_free_gb < 2:
             warnings.append(f"磁盘空间不足: {disk_free_gb:.1f} GB")
@@ -376,13 +402,14 @@ def get_free_tier_health() -> FreeTierHealth:
     try:
         if platform.system() == "Darwin":
             import subprocess
+
             result = subprocess.run(
-                ["sysctl", "kern.boottime"],
-                capture_output=True, text=True
+                ["sysctl", "kern.boottime"], capture_output=True, text=True
             )
             if result.returncode == 0:
                 # Parse "kern.boottime: { sec = 123456, usec = 0 }"
                 import re
+
                 match = re.search(r"sec = (\d+)", result.stdout)
                 if match:
                     boot_secs = int(match.group(1))
@@ -399,6 +426,7 @@ def get_free_tier_health() -> FreeTierHealth:
     # Load average
     try:
         import os
+
         load = os.getloadavg()
         load_avg = (load[0], load[1], load[2])
         # penalize if load > cpu_count
@@ -426,9 +454,11 @@ def get_free_tier_health() -> FreeTierHealth:
 # 5. 误报质量问题追踪
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class FalsePositiveIssue:
     """误报质量问题记录."""
+
     issue_id: str
     segment_id: str
     issue_type: str
@@ -441,6 +471,7 @@ class FalsePositiveIssue:
 @dataclass
 class FalsePositiveTracker:
     """误报质量追踪器."""
+
     issues: List[FalsePositiveIssue] = field(default_factory=list)
 
     def record_false_positive(
@@ -479,9 +510,7 @@ class FalsePositiveTracker:
             return 0.0
 
         if issue_type:
-            fp_count = sum(
-                1 for i in self.issues if i.issue_type == issue_type
-            )
+            fp_count = sum(1 for i in self.issues if i.issue_type == issue_type)
         else:
             fp_count = len(self.issues)
 

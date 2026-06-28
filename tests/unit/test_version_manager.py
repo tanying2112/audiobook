@@ -6,14 +6,14 @@ restore_state, _find_run, _collect_stages_config.
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers: build lightweight fake ORM objects without a real DB
 # ---------------------------------------------------------------------------
+
 
 def _make_run(
     id=1,
@@ -78,7 +78,7 @@ class TestSaveRun:
     @patch(f"{VM}._get_db")
     def test_save_run_basic(self, mock_get_db, mock_collect):
         """save_run creates a ProcessingRun with correct fields."""
-        from src.audiobook_studio.version_manager import save_run, ProcessingRun
+        from src.audiobook_studio.version_manager import ProcessingRun, save_run
 
         db = MagicMock()
         mock_get_db.return_value = db
@@ -589,7 +589,9 @@ class TestRestoreState:
 
         target = _make_run(id=5, stages_completed=["extract"])
 
-        ch = _make_chapter(id=1, extract_status="completed", annotate_status="completed")
+        ch = _make_chapter(
+            id=1, extract_status="completed", annotate_status="completed"
+        )
 
         para = MagicMock()
         para.status = "annotated"
@@ -623,8 +625,8 @@ class TestRestoreState:
 class TestCollectStagesConfig:
     def test_collect_empty_project(self):
         """_collect_stages_config 在没有章节时返回空结果。"""
-        from src.audiobook_studio.version_manager import _collect_stages_config
         from src.audiobook_studio.models import Chapter, Paragraph
+        from src.audiobook_studio.version_manager import _collect_stages_config
 
         db = MagicMock()
         # db.query(Chapter) → 空列表; db.query(Paragraph).filter().count() → 0
@@ -649,12 +651,14 @@ class TestCollectStagesConfig:
 
     def test_collect_with_chapters(self):
         """_collect_stages_config 正确汇总已完成的阶段。"""
-        from src.audiobook_studio.version_manager import _collect_stages_config
         from src.audiobook_studio.models import Chapter, Paragraph
+        from src.audiobook_studio.version_manager import _collect_stages_config
 
         db = MagicMock()
 
-        ch1 = _make_chapter(id=1, extract_status="completed", analyze_status="completed")
+        ch1 = _make_chapter(
+            id=1, extract_status="completed", analyze_status="completed"
+        )
 
         chapter_q = MagicMock()
         chapter_q.filter.return_value.order_by.return_value.all.return_value = [ch1]

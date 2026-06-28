@@ -12,8 +12,8 @@ Usage:
 import argparse
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def load_compliance_report(report_path: str) -> dict:
@@ -28,7 +28,9 @@ def load_compliance_report(report_path: str) -> dict:
                 path = max(reports, key=lambda p: p.stat().st_mtime)
                 print(f"📄 Using latest report: {path}")
             else:
-                return {"error": f"No compliance report found at {report_path} or in default location"}
+                return {
+                    "error": f"No compliance report found at {report_path} or in default location"
+                }
         else:
             return {"error": f"No compliance report found at {report_path}"}
 
@@ -36,7 +38,9 @@ def load_compliance_report(report_path: str) -> dict:
         return json.load(f)
 
 
-def check_compliance_from_report(report: dict, threshold: float = 0.99, stage: str = "all") -> dict:
+def check_compliance_from_report(
+    report: dict, threshold: float = 0.99, stage: str = "all"
+) -> dict:
     """Check compliance from loaded report data.
 
     Args:
@@ -115,18 +119,29 @@ def print_compliance_report(result: dict):
         for stage, data in result["stage_results"].items():
             if isinstance(data, dict) and "pass" in data:
                 status = "✅" if data.get("pass") else "❌"
-                print(f"  {status} {stage:20s} | {data.get('compliance_rate', 0):.2%} | {data.get('compliant_calls', 0)}/{data.get('total_calls', 0)} calls")
+                print(
+                    f"  {status} {stage:20s} | {data.get('compliance_rate', 0):.2%} | {data.get('compliant_calls', 0)}/{data.get('total_calls', 0)} calls"
+                )
 
     print("=" * 70)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Contract Compliance Check for CI")
-    parser.add_argument("--threshold", type=float, default=0.99, help="Minimum compliance rate (default: 0.99)")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.99,
+        help="Minimum compliance rate (default: 0.99)",
+    )
     parser.add_argument("--stage", default="all", help="Stage to check (default: all)")
-    parser.add_argument("--report", help="Path to compliance report JSON (default: auto-detect latest)")
+    parser.add_argument(
+        "--report", help="Path to compliance report JSON (default: auto-detect latest)"
+    )
     parser.add_argument("--output", help="Output JSON report path")
-    parser.add_argument("--fail-on-error", action="store_true", help="Exit with error code on failure")
+    parser.add_argument(
+        "--fail-on-error", action="store_true", help="Exit with error code on failure"
+    )
 
     args = parser.parse_args()
 
@@ -140,7 +155,9 @@ def main():
     report_path = args.report or "./reports/compliance/compliance_report_latest.json"
     report = load_compliance_report(report_path)
 
-    result = check_compliance_from_report(report, threshold=args.threshold, stage=args.stage)
+    result = check_compliance_from_report(
+        report, threshold=args.threshold, stage=args.stage
+    )
     result["threshold"] = args.threshold
 
     print_compliance_report(result)
@@ -152,11 +169,15 @@ def main():
         print(f"📝 Report saved to: {args.output}")
 
     if args.fail_on_error and not result.get("passed", False):
-        print(f"\n❌ Compliance check FAILED: {result.get('overall_compliance_rate', 0):.2%} < {args.threshold:.1%}")
+        print(
+            f"\n❌ Compliance check FAILED: {result.get('overall_compliance_rate', 0):.2%} < {args.threshold:.1%}"
+        )
         sys.exit(1)
 
     if result.get("passed"):
-        print(f"\n✅ Compliance check PASSED: {result.get('overall_compliance_rate', 0):.2%} ≥ {args.threshold:.1%}")
+        print(
+            f"\n✅ Compliance check PASSED: {result.get('overall_compliance_rate', 0):.2%} ≥ {args.threshold:.1%}"
+        )
     else:
         print(f"\n⚠️  Compliance check did not meet threshold (no hard fail)")
 

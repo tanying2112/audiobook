@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from ..utils.ffmpeg_probe import get_duration_sync, detect_silence_sync
+from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +74,29 @@ def detect_speech_segments(
         speech_start_ms = int(prev_end)
         speech_end_ms = int(start_ms)
         if speech_end_ms - speech_start_ms >= min_speech_ms:
-            segments.append(DuckingSegment(
-                speech_start_ms, speech_end_ms, "speech", label="speech"
-            ))
+            segments.append(
+                DuckingSegment(speech_start_ms, speech_end_ms, "speech", label="speech")
+            )
 
         # Silence segment
         silence_end_ms = int(end_ms)
         if silence_end_ms - speech_end_ms >= min_speech_ms:
-            segments.append(DuckingSegment(
-                speech_end_ms, silence_end_ms, "silence", duck_gain_db=0, label="silence"
-            ))
+            segments.append(
+                DuckingSegment(
+                    speech_end_ms,
+                    silence_end_ms,
+                    "silence",
+                    duck_gain_db=0,
+                    label="silence",
+                )
+            )
         prev_end = end_ms
 
     # Trailing speech
     if prev_end < total_duration_ms:
-        segments.append(DuckingSegment(
-            int(prev_end), total_duration_ms, "speech", label="speech"
-        ))
+        segments.append(
+            DuckingSegment(int(prev_end), total_duration_ms, "speech", label="speech")
+        )
 
     return segments
 
@@ -123,19 +129,28 @@ def mix_with_ducking(
     speech_duration_s = speech_duration_ms / 1000.0
 
     # Detect segments if not provided
-    segments = ducking_segments or detect_speech_segments(speech_path, cfg.silence_threshold_db)
+    segments = ducking_segments or detect_speech_segments(
+        speech_path, cfg.silence_threshold_db
+    )
 
     if not bgm_path:
         # No BGM — just apply post-processing (normalize + fade)
         logger.info("No BGM provided; applying post-processing only")
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(speech_path),
-            "-af", "loudnorm=I=-16:LRA=11:TP=-1.5,afade=t=in:ss=0:d=0.3,afade=t=out:st=0:d=0.5",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ar", "44100",
-            "-ac", "2",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(speech_path),
+            "-af",
+            "loudnorm=I=-16:LRA=11:TP=-1.5,afade=t=in:ss=0:d=0.3,afade=t=out:st=0:d=0.5",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
             str(output_path),
         ]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -144,8 +159,14 @@ def mix_with_ducking(
 
     # Apply BGM with ducking using ffmpeg sidechain compression
     bgm_loop = [
-        "-stream_loop", "-1" if speech_duration_s > 30 else str(int(30 / max(speech_duration_s, 1)) + 1),
-        "-i", str(bgm_path),
+        "-stream_loop",
+        (
+            "-1"
+            if speech_duration_s > 30
+            else str(int(30 / max(speech_duration_s, 1)) + 1)
+        ),
+        "-i",
+        str(bgm_path),
     ]
 
     # Build ffmpeg filter for sidechain compression (auto-ducking)
@@ -165,19 +186,31 @@ def mix_with_ducking(
         f"afade=t=out:st={speech_duration_s - 0.5}:d=0.5[out]"
     )
 
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(speech_path),
-    ] + bgm_loop + [
-        "-filter_complex", filter_complex,
-        "-map", "[out]",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-ar", "44100",
-        "-ac", "2",
-        "-shortest",
-        str(output_path),
-    ]
+    cmd = (
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(speech_path),
+        ]
+        + bgm_loop
+        + [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[out]",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-shortest",
+            str(output_path),
+        ]
+    )
 
     logger.info(f"Mixing with auto-ducking: {' '.join(cmd[:8])}...")
     try:
@@ -186,10 +219,16 @@ def mix_with_ducking(
         logger.error("ffmpeg mixing timed out")
         # Fallback: simple volume adjustment
         fallback_cmd = [
-            "ffmpeg", "-y",
-            "-i", str(speech_path),
-            "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
-            "-c:a", "aac", "-b:a", "128k",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(speech_path),
+            "-af",
+            "loudnorm=I=-16:LRA=11:TP=-1.5",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
             str(output_path),
         ]
         subprocess.run(fallback_cmd, check=True, capture_output=True, text=True)
@@ -211,15 +250,21 @@ def add_sfx(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(speech_path),
-        "-i", str(sfx_path),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(speech_path),
+        "-i",
+        str(sfx_path),
         "-filter_complex",
         f"[1:a]volume={sfx_volume_db}dB[sfx];"
         f"[0:a][sfx]overlay=enable='between(t,{insert_at_ms/1000},{insert_at_ms/1000+3})':format=auto[out]",
-        "-map", "[out]",
-        "-c:a", "aac",
-        "-b:a", "128k",
+        "-map",
+        "[out]",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
         str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True, text=True)

@@ -11,22 +11,26 @@ Provides real-time dashboard data by querying:
 import json
 import logging
 from collections import Counter
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.feedback_record import FeedbackRecord
+from ..feedback.critics.base import CriticEnsembleEvaluator, CriticResult, CriticType
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
-from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
-from ..feedback.promotion_gate import evaluate_promotion
-from ..feedback.critics.base import CriticEnsembleEvaluator, CriticType, CriticResult
-from ..feedback.release import CanaryRelease, CanaryConfig, VersionStore
+from ..feedback.processor import (
+    analyze_batch,
+    analyze_single_feedback,
+    get_trend_report,
+)
+from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
+from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
+from ..models.feedback_record import FeedbackRecord
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +41,10 @@ router = APIRouter(prefix="/harness", tags=["harness"])
 # Response Schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SelfIterationStatus(BaseModel):
     """Self-iteration loop status."""
+
     running: bool = False
     iteration_count: int = 0
     last_iteration_time: Optional[str] = None
@@ -49,6 +55,7 @@ class SelfIterationStatus(BaseModel):
 
 class FeedbackFunnel(BaseModel):
     """Feedback funnel metrics."""
+
     total_feedback: int = 0
     analyzed_count: int = 0
     triggered_upgrade_count: int = 0
@@ -59,6 +66,7 @@ class FeedbackFunnel(BaseModel):
 
 class PatternTagFrequency(BaseModel):
     """Pattern tag frequency item."""
+
     tag: str
     count: int
     stage: str
@@ -67,6 +75,7 @@ class PatternTagFrequency(BaseModel):
 
 class PatternHeatmapResponse(BaseModel):
     """Pattern heatmap response."""
+
     patterns: List[PatternTagFrequency] = Field(default_factory=list)
     by_stage: Dict[str, List[str]] = {}
     top_patterns: List[str] = Field(default_factory=list)
@@ -74,6 +83,7 @@ class PatternHeatmapResponse(BaseModel):
 
 class PromptVersionTimelineItem(BaseModel):
     """Prompt version timeline item."""
+
     version: str
     stage: str
     created_at: str
@@ -84,11 +94,13 @@ class PromptVersionTimelineItem(BaseModel):
 
 class PromptVersionTimelineResponse(BaseModel):
     """Prompt version timeline response."""
+
     stages: Dict[str, List[PromptVersionTimelineItem]] = {}
 
 
 class PromotionGateResult(BaseModel):
     """Promotion gate evaluation result."""
+
     format_compliance_rate: float = 0.0
     golden_pass_rate: float = 0.0
     quality_score_ratio: float = 0.0
@@ -99,6 +111,7 @@ class PromotionGateResult(BaseModel):
 
 class CanaryStatus(BaseModel):
     """Canary release status."""
+
     canary_id: str
     version: str
     stage: str
@@ -113,12 +126,14 @@ class CanaryStatus(BaseModel):
 
 class CanaryDashboardResponse(BaseModel):
     """Canary dashboard response."""
+
     active_canaries: List[CanaryStatus] = Field(default_factory=list)
     total_active: int = 0
 
 
 class ABTestResult(BaseModel):
     """A/B test result."""
+
     test_id: str
     variant_a: str
     variant_b: str
@@ -134,12 +149,14 @@ class ABTestResult(BaseModel):
 
 class ABTestDashboardResponse(BaseModel):
     """A/B test results dashboard."""
+
     tests: List[ABTestResult] = Field(default_factory=list)
     total_tests: int = 0
 
 
 class CriticVerdict(BaseModel):
     """Single critic verdict."""
+
     critic_type: str  # semantic, structural, objective
     verdict: str  # accept, reject, needs_revision
     score: float = 0.0
@@ -148,6 +165,7 @@ class CriticVerdict(BaseModel):
 
 class CriticEnsembleResult(BaseModel):
     """Critic ensemble evaluation result."""
+
     verdicts: List[CriticVerdict] = Field(default_factory=list)
     weighted_verdict: str = "accept"
     weighted_score: float = 0.0
@@ -156,6 +174,7 @@ class CriticEnsembleResult(BaseModel):
 
 class HarnessDashboardResponse(BaseModel):
     """Complete HARNESS dashboard response."""
+
     iteration_status: SelfIterationStatus
     feedback_funnel: FeedbackFunnel
     pattern_heatmap: PatternHeatmapResponse
@@ -183,9 +202,10 @@ _version_store = VersionStore(Path("prompts"))
 
 def _get_db_session_factory():
     """Create a DB session factory for SelfIterationLoop."""
+    import os
+
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    import os
 
     database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
@@ -206,7 +226,9 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
             )
             _iteration_loops[project_id] = loop
         except Exception as e:
-            logger.error(f"Failed to create SelfIterationLoop for project {project_id}: {e}")
+            logger.error(
+                f"Failed to create SelfIterationLoop for project {project_id}: {e}"
+            )
             return None
     return _iteration_loops.get(project_id)
 
@@ -214,6 +236,7 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
 # ─────────────────────────────────────────────────────────────────────────────
 # API Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/status", response_model=SelfIterationStatus)
 async def get_harness_status(
@@ -227,9 +250,12 @@ async def get_harness_status(
     the FeedbackRecord table for unprocessed counts.
     """
     # Query unprocessed feedback count from DB
-    unprocessed_count = db.query(func.count(FeedbackRecord.id)).filter(
-        FeedbackRecord.processed == False
-    ).scalar() or 0
+    unprocessed_count = (
+        db.query(func.count(FeedbackRecord.id))
+        .filter(FeedbackRecord.processed == False)
+        .scalar()
+        or 0
+    )
 
     # If project_id given, try to get iteration loop status
     if project_id:
@@ -297,9 +323,7 @@ async def get_pattern_heatmap(
 
     Aggregates pattern_tags from processed FeedbackRecord entries.
     """
-    query = db.query(FeedbackRecord).filter(
-        FeedbackRecord.processed == True
-    )
+    query = db.query(FeedbackRecord).filter(FeedbackRecord.processed == True)
     if project_id:
         query = query.filter(FeedbackRecord.project_id == project_id)
 
@@ -334,11 +358,13 @@ async def get_pattern_heatmap(
             if tag in sc and sc[tag] > max_stage_count:
                 most_common_stage = stage
                 max_stage_count = sc[tag]
-        patterns.append(PatternTagFrequency(
-            tag=tag,
-            count=count,
-            stage=most_common_stage,
-        ))
+        patterns.append(
+            PatternTagFrequency(
+                tag=tag,
+                count=count,
+                stage=most_common_stage,
+            )
+        )
 
     by_stage = {
         stage: [tag for tag, _ in sc.most_common(5)]
@@ -379,7 +405,9 @@ async def get_prompt_timeline(stage: Optional[str] = None):
 
             # Get file modification time as creation time
             try:
-                mtime = datetime.fromtimestamp(prompt_file.stat().st_mtime, tz=timezone.utc)
+                mtime = datetime.fromtimestamp(
+                    prompt_file.stat().st_mtime, tz=timezone.utc
+                )
                 created_at = mtime.isoformat()
             except OSError:
                 created_at = ""
@@ -398,12 +426,14 @@ async def get_prompt_timeline(stage: Optional[str] = None):
             else:
                 status = "draft"
 
-            items.append(PromptVersionTimelineItem(
-                version=f"v{ver}",
-                stage=s,
-                created_at=created_at,
-                status=status,
-            ))
+            items.append(
+                PromptVersionTimelineItem(
+                    version=f"v{ver}",
+                    stage=s,
+                    created_at=created_at,
+                    status=status,
+                )
+            )
 
         if items:
             timeline[s] = items
@@ -492,18 +522,20 @@ async def get_canaries():
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds() / 3600
                 remaining_hours = max(0, _canary_config.max_duration_hours - elapsed)
 
-            active.append(CanaryStatus(
-                canary_id=canary_id,
-                version=info.get("version", ""),
-                stage=info.get("stage", ""),
-                traffic_pct=_canary_config.traffic_percentage,
-                samples_collected=0,
-                quality_ratio=0.0,
-                max_duration_hours=_canary_config.max_duration_hours,
-                remaining_hours=round(remaining_hours, 1),
-                auto_rollback_triggered=info.get("status") == "rolled_back",
-                status=info.get("status", "running"),
-            ))
+            active.append(
+                CanaryStatus(
+                    canary_id=canary_id,
+                    version=info.get("version", ""),
+                    stage=info.get("stage", ""),
+                    traffic_pct=_canary_config.traffic_percentage,
+                    samples_collected=0,
+                    quality_ratio=0.0,
+                    max_duration_hours=_canary_config.max_duration_hours,
+                    remaining_hours=round(remaining_hours, 1),
+                    auto_rollback_triggered=info.get("status") == "rolled_back",
+                    status=info.get("status", "running"),
+                )
+            )
 
     return CanaryDashboardResponse(
         active_canaries=active,
@@ -549,18 +581,20 @@ async def get_ab_tests(
 
         improvement = ((new_score - old_score) / max(old_score, 0.01)) * 100
 
-        tests.append(ABTestResult(
-            test_id=f"ab_{stage_name}_v{prev_ver}_v{current_ver}",
-            variant_a=f"v{prev_ver}",
-            variant_b=f"v{current_ver}",
-            sample_count=0,  # No real samples yet
-            score_a=round(old_score, 3),
-            score_b=round(new_score, 3),
-            improvement_pct=round(improvement, 1),
-            p_value=1.0,  # No real statistical test without samples
-            statistically_significant=False,
-            winner="B" if improvement > 5 else ("A" if improvement < -5 else None),
-        ))
+        tests.append(
+            ABTestResult(
+                test_id=f"ab_{stage_name}_v{prev_ver}_v{current_ver}",
+                variant_a=f"v{prev_ver}",
+                variant_b=f"v{current_ver}",
+                sample_count=0,  # No real samples yet
+                score_a=round(old_score, 3),
+                score_b=round(new_score, 3),
+                improvement_pct=round(improvement, 1),
+                p_value=1.0,  # No real statistical test without samples
+                statistically_significant=False,
+                winner="B" if improvement > 5 else ("A" if improvement < -5 else None),
+            )
+        )
 
     return ABTestDashboardResponse(
         tests=tests,
@@ -582,9 +616,11 @@ async def get_latest_critic_results(
     from ..models.paragraph import Paragraph
 
     # Find the latest paragraph with quality scores
-    query = db.query(Paragraph).filter(
-        Paragraph.quality_overall_score.isnot(None)
-    ).order_by(Paragraph.id.desc())
+    query = (
+        db.query(Paragraph)
+        .filter(Paragraph.quality_overall_score.isnot(None))
+        .order_by(Paragraph.id.desc())
+    )
 
     if project_id:
         query = query.filter(Paragraph.project_id == project_id)
@@ -603,19 +639,31 @@ async def get_latest_critic_results(
     verdicts = [
         CriticVerdict(
             critic_type="semantic",
-            verdict="accept" if (latest_para.quality_emotion_match or 0) >= 0.7 else "needs_revision",
+            verdict=(
+                "accept"
+                if (latest_para.quality_emotion_match or 0) >= 0.7
+                else "needs_revision"
+            ),
             score=latest_para.quality_emotion_match or 0.0,
             reasoning=f"Emotion match score: {latest_para.quality_emotion_match or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="structural",
-            verdict="accept" if (latest_para.quality_prosody_naturalness or 0) >= 0.7 else "needs_revision",
+            verdict=(
+                "accept"
+                if (latest_para.quality_prosody_naturalness or 0) >= 0.7
+                else "needs_revision"
+            ),
             score=latest_para.quality_prosody_naturalness or 0.0,
             reasoning=f"Prosody naturalness score: {latest_para.quality_prosody_naturalness or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="objective",
-            verdict="accept" if (latest_para.quality_text_audio_alignment or 0) >= 0.7 else "needs_revision",
+            verdict=(
+                "accept"
+                if (latest_para.quality_text_audio_alignment or 0) >= 0.7
+                else "needs_revision"
+            ),
             score=latest_para.quality_text_audio_alignment or 0.0,
             reasoning=f"Text-audio alignment: {latest_para.quality_text_audio_alignment or 0:.2f}",
         ),
@@ -623,9 +671,7 @@ async def get_latest_critic_results(
 
     # Weighted verdict
     weights = {"semantic": 0.3, "structural": 0.2, "objective": 0.5}
-    weighted_score = sum(
-        v.score * weights.get(v.critic_type, 0.33) for v in verdicts
-    )
+    weighted_score = sum(v.score * weights.get(v.critic_type, 0.33) for v in verdicts)
 
     if weighted_score >= 0.7:
         weighted_verdict = "accept"
@@ -669,7 +715,9 @@ async def trigger_iteration(
                     f"found {len(result.top_patterns)} patterns"
                 )
             else:
-                logger.info("Iteration triggered but no new analysis (no unprocessed feedback)")
+                logger.info(
+                    "Iteration triggered but no new analysis (no unprocessed feedback)"
+                )
         except Exception as e:
             logger.error(f"Error during triggered iteration: {e}")
 

@@ -53,8 +53,12 @@ class StructuralCritic(BaseCritic):
         self.jinja_env.filters["tojson"] = json.dumps
 
         # Structural-specific thresholds
-        self.boundary_tolerance = self.config.get("boundary_tolerance", 0.1)  # 10% boundary deviation tolerance
-        self.cost_tolerance = self.config.get("cost_tolerance", 0.2)  # 20% cost deviation tolerance
+        self.boundary_tolerance = self.config.get(
+            "boundary_tolerance", 0.1
+        )  # 10% boundary deviation tolerance
+        self.cost_tolerance = self.config.get(
+            "cost_tolerance", 0.2
+        )  # 20% cost deviation tolerance
         self.min_flow_score = self.config.get("min_flow_score", 0.6)
 
     def evaluate(
@@ -66,7 +70,9 @@ class StructuralCritic(BaseCritic):
         context: Optional[Dict[str, Any]] = None,
     ) -> CriticResult:
         """评估结构质量."""
-        prompt = self._build_prompt(audio_path, annotation, routing_decision, reference_text, context)
+        prompt = self._build_prompt(
+            audio_path, annotation, routing_decision, reference_text, context
+        )
 
         messages = [
             {
@@ -128,10 +134,8 @@ class StructuralCritic(BaseCritic):
             is_dialogue=annotation.is_dialogue,
             paragraph_index=annotation.paragraph_index,
             chapter_index=context.get("chapter_index", 1) if context else 1,
-
             # Reference text
             reference_text=reference_text,
-
             # Context: adjacent paragraphs
             prev_text=prev_paragraph.get("text", "（无前段）")[:500],
             prev_speaker=prev_paragraph.get("speaker", ""),
@@ -139,17 +143,18 @@ class StructuralCritic(BaseCritic):
             next_text=next_paragraph.get("text", "（无后段）")[:500],
             next_speaker=next_paragraph.get("speaker", ""),
             next_is_dialogue=next_paragraph.get("is_dialogue", False),
-
             # Chapter boundary
             chapter_boundary_info=chapter_boundary_info or "（非章节边界）",
-            is_chapter_start=context.get("is_chapter_start", False) if context else False,
+            is_chapter_start=(
+                context.get("is_chapter_start", False) if context else False
+            ),
             is_chapter_end=context.get("is_chapter_end", False) if context else False,
-
             # Document structure
             total_chapters=document_structure.get("total_chapters", 0),
             total_paragraphs=document_structure.get("total_paragraphs", 0),
-            current_chapter_paragraphs=document_structure.get("current_chapter_paragraphs", 0),
-
+            current_chapter_paragraphs=document_structure.get(
+                "current_chapter_paragraphs", 0
+            ),
             # Cost context
             cumulative_cost=cost_context.get("cumulative_cost_usd", 0.0),
             cost_limit_per_book=cost_context.get("cost_limit_per_book", 20.0),
@@ -157,11 +162,9 @@ class StructuralCritic(BaseCritic):
             estimated_cost=routing_decision.estimated_cost_usd,
             engine_choice=routing_decision.engine_choice,
             fallback_engine=routing_decision.fallback_engine,
-
             # Format compliance
             segment_id_format=routing_decision.segment_id,
             contract_version=routing_decision.contract_version,
-
             # Thresholds
             pass_threshold=self.pass_threshold,
             warning_threshold=self.warning_threshold,

@@ -23,9 +23,9 @@ if TYPE_CHECKING:
     from .character import Character
     from .emotion_snapshot import EmotionSnapshot
     from .feedback_record import FeedbackRecord
-    from .user import ProjectPermission
     from .paragraph import Paragraph
     from .processing_run import ProcessingRun
+    from .user import ProjectPermission
 
 
 class Book(Base):

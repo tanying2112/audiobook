@@ -20,18 +20,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.audiobook_studio.tts.model_downloader import (
+    DEFAULT_MODEL_DIR,
+    FALLBACK_FILES,
+    REQUIRED_FILES,
+    download_all_models,
     ensure_models_available,
     get_model_paths,
     verify_models,
-    download_all_models,
-    REQUIRED_FILES,
-    FALLBACK_FILES,
-    DEFAULT_MODEL_DIR,
 )
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -43,33 +42,26 @@ def main():
         "--model-dir",
         type=Path,
         default=DEFAULT_MODEL_DIR,
-        help="Directory to store model files"
+        help="Directory to store model files",
     )
     parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force re-download even if files exist"
+        "--force", action="store_true", help="Force re-download even if files exist"
     )
     parser.add_argument(
         "--verify-only",
         action="store_true",
-        help="Only verify existing files, don't download"
+        help="Only verify existing files, don't download",
     )
     parser.add_argument(
-        "--fallback",
-        action="store_true",
-        help="Use fallback URLs (GitHub releases)"
+        "--fallback", action="store_true", help="Use fallback URLs (GitHub releases)"
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=3,
-        help="Number of parallel downloads"
+        "--workers", type=int, default=3, help="Number of parallel downloads"
     )
     parser.add_argument(
         "--show-paths",
         action="store_true",
-        help="Show expected model file paths and exit"
+        help="Show expected model file paths and exit",
     )
 
     args = parser.parse_args()
@@ -95,7 +87,7 @@ def main():
         model_dir=args.model_dir,
         files_spec=files_spec,
         max_workers=args.workers,
-        force=args.force
+        force=args.force,
     )
 
     if not success and not args.fallback:
@@ -104,7 +96,7 @@ def main():
             model_dir=args.model_dir,
             files_spec=FALLBACK_FILES,
             max_workers=args.workers,
-            force=True
+            force=True,
         )
 
     if success:

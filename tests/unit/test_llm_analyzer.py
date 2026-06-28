@@ -10,17 +10,18 @@
 """
 
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
-from src.audiobook_studio.schemas import FeedbackAnalysis
+import pytest
+
 from src.audiobook_studio.feedback.llm_analyzer import LLMFeedbackAnalyzer
-
+from src.audiobook_studio.schemas import FeedbackAnalysis
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_router():
@@ -80,6 +81,7 @@ def sample_feedback_simple():
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. Mock 模式分析
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestAnalyzeMock:
     """测试 analyze_mock 方法（不调用 LLM）."""
@@ -191,6 +193,7 @@ class TestAnalyzeMock:
 # 2. LLM 调用成功路径
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestAnalyzeSuccess:
     """测试 analyze 方法 LLM 调用成功."""
 
@@ -278,17 +281,22 @@ class TestAnalyzeSuccess:
 # 3. LLM 调用失败降级
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestAnalyzeFailure:
     """测试 analyze 方法 LLM 调用失败."""
 
-    def test_analyze_raises_on_llm_failure(self, analyzer, mock_router, sample_feedback):
+    def test_analyze_raises_on_llm_failure(
+        self, analyzer, mock_router, sample_feedback
+    ):
         """LLM 调用失败时应抛出异常（由调用方捕获降级）."""
         mock_router.call.side_effect = Exception("LLM API timeout")
 
         with pytest.raises(Exception, match="LLM API timeout"):
             analyzer.analyze(**sample_feedback)
 
-    def test_analyze_raises_on_invalid_response(self, analyzer, mock_router, sample_feedback):
+    def test_analyze_raises_on_invalid_response(
+        self, analyzer, mock_router, sample_feedback
+    ):
         """LLM 返回无效数据时应抛出异常."""
         mock_router.call.side_effect = ValueError("Invalid response format")
 
@@ -299,6 +307,7 @@ class TestAnalyzeFailure:
 # ──────────────────────────────────────────────────────────────────────────────
 # 4. Prompt 构建
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestPromptBuilding:
     """测试 _build_prompt 方法."""
@@ -356,6 +365,7 @@ class TestPromptBuilding:
 # 5. FeedbackAnalysis Schema 验证
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestFeedbackAnalysisSchema:
     """测试 FeedbackAnalysis schema."""
 
@@ -378,6 +388,7 @@ class TestFeedbackAnalysisSchema:
     def test_invalid_severity_raises(self):
         """无效 severity 应抛出 ValidationError."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             FeedbackAnalysis(severity="critical")
 
@@ -392,6 +403,7 @@ class TestFeedbackAnalysisSchema:
     def test_confidence_out_of_range_raises(self):
         """confidence 超出范围应抛出 ValidationError."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             FeedbackAnalysis(confidence=1.5)
         with pytest.raises(ValidationError):
@@ -425,6 +437,7 @@ class TestFeedbackAnalysisSchema:
 # ──────────────────────────────────────────────────────────────────────────────
 # 6. Processor 集成 — LLM 优先 + 关键词降级
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestProcessorIntegration:
     """测试 processor.py 的 analyze_single_feedback 集成."""

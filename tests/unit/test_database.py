@@ -9,7 +9,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.audiobook_studio.database import Base, DATABASE_URL, SessionLocal, engine, init_db
+from src.audiobook_studio.database import (
+    DATABASE_URL,
+    Base,
+    SessionLocal,
+    engine,
+    init_db,
+)
 
 
 class TestDatabaseModule:
@@ -22,10 +28,14 @@ class TestDatabaseModule:
 
     def test_database_url_from_env(self):
         """Test DATABASE_URL from environment variable."""
-        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}):
+        with patch.dict(
+            os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}
+        ):
             # Need to reload module to pick up new env var
             import importlib
+
             import src.audiobook_studio.database as db_module
+
             importlib.reload(db_module)
             assert db_module.DATABASE_URL == "postgresql://user:pass@localhost/db"
 
@@ -55,6 +65,7 @@ class TestDatabaseModule:
     def test_base_datetime_serialization(self):
         """Test Base.to_dict handles datetime."""
         from datetime import datetime
+
         from sqlalchemy import DateTime, Integer
         from sqlalchemy.orm import Mapped, mapped_column
 
@@ -86,11 +97,14 @@ class TestDatabaseModule:
             # Need to patch DATABASE_URL before importing models
             with patch.dict(os.environ, {"DATABASE_URL": f"sqlite:///{db_path}"}):
                 import importlib
+
                 import src.audiobook_studio.database as db_module
+
                 importlib.reload(db_module)
 
                 # Create a new engine for this test
                 from sqlalchemy import create_engine
+
                 test_engine = create_engine(
                     f"sqlite:///{db_path}",
                     connect_args={"check_same_thread": False},
@@ -106,7 +120,9 @@ class TestDatabaseModule:
 
                 # Verify tables exist by querying
                 with test_engine.connect() as conn:
-                    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+                    result = conn.execute(
+                        text("SELECT name FROM sqlite_master WHERE type='table'")
+                    )
                     tables = [row[0] for row in result]
                     # Should have our model tables
                     assert len(tables) > 0

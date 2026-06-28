@@ -2,24 +2,24 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from src.audiobook_studio.tts import (
+    EngineRegistry,
+    KokoroBackend,
+    SynthesisResult,
     TTSEngine,
     VoiceInfo,
-    SynthesisResult,
-    EngineRegistry,
-    get_engine_registry,
-    register_engine,
-    get_engine,
-    initialize_all_engines,
-    cleanup_all_engines,
-    KokoroBackend,
-    create_kokoro_backend,
     VoxCPM2Backend,
+    cleanup_all_engines,
+    create_kokoro_backend,
     create_voxcpmp2_backend,
+    get_engine,
+    get_engine_registry,
+    initialize_all_engines,
+    register_engine,
 )
 
 
@@ -86,9 +86,9 @@ class TestEngineRegistry:
         """Test registering an engine."""
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "test_engine"
-        
+
         self.registry.register(mock_engine, set_as_default=True)
-        
+
         assert "test_engine" in self.registry._engines
         assert self.registry._default_engine == "test_engine"
 
@@ -96,10 +96,10 @@ class TestEngineRegistry:
         """Test unregistering an engine."""
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "test_engine"
-        
+
         self.registry.register(mock_engine, set_as_default=True)
         self.registry.unregister("test_engine")
-        
+
         assert "test_engine" not in self.registry._engines
         assert self.registry._default_engine is None
 
@@ -107,12 +107,12 @@ class TestEngineRegistry:
         """Test getting an engine by name."""
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "test_engine"
-        
+
         self.registry.register(mock_engine)
-        
+
         retrieved = self.registry.get("test_engine")
         assert retrieved == mock_engine
-        
+
         # Non-existent engine
         assert self.registry.get("nonexistent") is None
 
@@ -122,10 +122,10 @@ class TestEngineRegistry:
         mock_engine1.engine_name = "engine1"
         mock_engine2 = Mock(spec=TTSEngine)
         mock_engine2.engine_name = "engine2"
-        
+
         self.registry.register(mock_engine1)
         self.registry.register(mock_engine2)
-        
+
         default = self.registry.get_default()
         assert default == mock_engine1  # First registered is default
 
@@ -161,14 +161,14 @@ class TestEngineRegistry:
         mock_engine1 = Mock(spec=TTSEngine)
         mock_engine1.engine_name = "engine1"
         mock_engine1.is_available.return_value = True
-        
+
         mock_engine2 = Mock(spec=TTSEngine)
         mock_engine2.engine_name = "engine2"
         mock_engine2.is_available.return_value = False
-        
+
         self.registry.register(mock_engine1)
         self.registry.register(mock_engine2)
-        
+
         available = self.registry.get_available_engines()
         assert "engine1" in available
         assert "engine2" not in available
@@ -180,6 +180,7 @@ class TestGlobalRegistry:
     def setup_method(self):
         """Setup test fixtures."""
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_get_engine_registry(self):
@@ -219,7 +220,6 @@ class TestKokoroBackend:
         self.backend = KokoroBackend(
             model_path="/fake/model.onnx",
             voices_path="/fake/voices.bin",
-            
         )
 
     def test_engine_name(self):
@@ -264,7 +264,7 @@ class TestKokoroBackend:
         """Test synthesize in mock mode."""
         self.backend.mock_mode = True
         await self.backend.initialize()
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "output.mp3"
             result = await self.backend.synthesize(
@@ -272,7 +272,7 @@ class TestKokoroBackend:
                 voice_id="zf_xiaoxiao",
                 output_path=output_path,
             )
-            
+
             assert isinstance(result, SynthesisResult)
             assert result.engine == "kokoro"
             assert result.voice_id == "zf_xiaoxiao"
@@ -295,7 +295,6 @@ class TestVoxCPM2Backend:
         self.backend = VoxCPM2Backend(
             model_path="/fake/VoxCPM2",
             device="cpu",  # Use CPU for testing
-            
         )
 
     def test_engine_name(self):
@@ -338,7 +337,7 @@ class TestVoxCPM2Backend:
         """Test synthesize in mock mode."""
         self.backend.mock_mode = True
         await self.backend.initialize()
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "output.mp3"
             result = await self.backend.synthesize(
@@ -346,7 +345,7 @@ class TestVoxCPM2Backend:
                 voice_id="zh_female_1",
                 output_path=output_path,
             )
-            
+
             assert isinstance(result, SynthesisResult)
             assert result.engine == "voxcpmp2"
             assert result.voice_id == "zh_female_1"
@@ -368,27 +367,27 @@ class TestTTSEngineInterface:
         """Test KokoroBackend implements all abstract methods."""
         backend = KokoroBackend()
         assert isinstance(backend, TTSEngine)
-        assert hasattr(backend, 'engine_name')
-        assert hasattr(backend, 'supports_streaming')
-        assert hasattr(backend, 'supports_batch')
-        assert hasattr(backend, 'initialize')
-        assert hasattr(backend, 'synthesize')
-        assert hasattr(backend, 'get_voices')
-        assert hasattr(backend, 'estimate_duration')
-        assert hasattr(backend, 'cleanup')
+        assert hasattr(backend, "engine_name")
+        assert hasattr(backend, "supports_streaming")
+        assert hasattr(backend, "supports_batch")
+        assert hasattr(backend, "initialize")
+        assert hasattr(backend, "synthesize")
+        assert hasattr(backend, "get_voices")
+        assert hasattr(backend, "estimate_duration")
+        assert hasattr(backend, "cleanup")
 
     def test_voxcpmp2_implements_interface(self):
         """Test VoxCPM2Backend implements all abstract methods."""
         backend = VoxCPM2Backend()
         assert isinstance(backend, TTSEngine)
-        assert hasattr(backend, 'engine_name')
-        assert hasattr(backend, 'supports_streaming')
-        assert hasattr(backend, 'supports_batch')
-        assert hasattr(backend, 'initialize')
-        assert hasattr(backend, 'synthesize')
-        assert hasattr(backend, 'get_voices')
-        assert hasattr(backend, 'estimate_duration')
-        assert hasattr(backend, 'cleanup')
+        assert hasattr(backend, "engine_name")
+        assert hasattr(backend, "supports_streaming")
+        assert hasattr(backend, "supports_batch")
+        assert hasattr(backend, "initialize")
+        assert hasattr(backend, "synthesize")
+        assert hasattr(backend, "get_voices")
+        assert hasattr(backend, "estimate_duration")
+        assert hasattr(backend, "cleanup")
 
 
 if __name__ == "__main__":

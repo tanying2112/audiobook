@@ -9,25 +9,36 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.audiobook_studio.publish.audiobookshelf import (
+    AudiobookFile,
+    AudiobookMetadata,
     AudiobookshelfConfig,
     AudiobookshelfPublisher,
-    AudiobookMetadata,
-    AudiobookFile,
 )
 
 
 def _cfg(**kw):
     c = AudiobookshelfConfig(
-        api_url="http://localhost:8080", api_key="k", library_id="lib1", **kw,
+        api_url="http://localhost:8080",
+        api_key="k",
+        library_id="lib1",
+        **kw,
     )
     return c
 
 
 def _meta(**kw):
     defaults = dict(
-        title="T", author="A", narrator="N", description="D",
-        language="zh-CN", publication_year=2020, publisher="P",
-        genres=["g"], tags=["t"], series="S", series_index=1.0,
+        title="T",
+        author="A",
+        narrator="N",
+        description="D",
+        language="zh-CN",
+        publication_year=2020,
+        publisher="P",
+        genres=["g"],
+        tags=["t"],
+        series="S",
+        series_index=1.0,
     )
     defaults.update(kw)
     return AudiobookMetadata(**defaults)
@@ -36,9 +47,17 @@ def _meta(**kw):
 def _ud(**kw):
     """Build a plain dict upload_data as _real_api_call expects."""
     d = {
-        "title": "T", "author": "A", "narrator": "N", "description": "D",
-        "language": "zh-CN", "year": 2020, "publisher": "P",
-        "genres": ["g"], "tags": ["t"], "series": "S", "seriesIndex": 1.0,
+        "title": "T",
+        "author": "A",
+        "narrator": "N",
+        "description": "D",
+        "language": "zh-CN",
+        "year": 2020,
+        "publisher": "P",
+        "genres": ["g"],
+        "tags": ["t"],
+        "series": "S",
+        "seriesIndex": 1.0,
     }
     d.update(kw)
     return d
@@ -50,8 +69,12 @@ def _audio_file(td, fmt="m4b", size=None):
     fp.write_bytes(data)
     sz = size if size is not None else len(data)
     return AudiobookFile(
-        file_path=fp, size_bytes=sz, duration_seconds=60,
-        format=fmt, bitrate_kbps=64, checksum_md5="x",
+        file_path=fp,
+        size_bytes=sz,
+        duration_seconds=60,
+        format=fmt,
+        bitrate_kbps=64,
+        checksum_md5="x",
     )
 
 
@@ -105,10 +128,12 @@ class TestPublishMock:
     def test_publish_mock_success(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         p.client.patch.return_value = _resp(204)
@@ -176,8 +201,12 @@ class TestRealAPILibraryErrors:
         p = _publisher_real()
         p.client.get.return_value = _resp(200, {"folders": [{"id": "f1"}]})
         af = AudiobookFile(
-            file_path=Path("/nonexistent.m4b"), size_bytes=0,
-            duration_seconds=60, format="m4b", bitrate_kbps=64, checksum_md5="x",
+            file_path=Path("/nonexistent.m4b"),
+            size_bytes=0,
+            duration_seconds=60,
+            format="m4b",
+            bitrate_kbps=64,
+            checksum_md5="x",
         )
         r = p._real_api_call(_ud(), af)
         assert r["success"] is False
@@ -217,11 +246,13 @@ class TestRealAPIUpload:
     def test_scan_exception_non_fatal(self):
         p = _publisher_real()
         call_count = [0]
+
         def mock_post(url, **kw):
             call_count[0] += 1
             if call_count[0] == 1:
                 return _resp(201)
             raise ConnectionError("scan fail")
+
         p.client.get.return_value = _resp(200, {"folders": [{"id": "f1"}]})
         p.client.post.side_effect = mock_post
         with tempfile.TemporaryDirectory() as td:
@@ -232,11 +263,13 @@ class TestRealAPIUpload:
     def test_scan_http_error_non_fatal(self):
         p = _publisher_real()
         call_count = [0]
+
         def mock_post(url, **kw):
             call_count[0] += 1
             if call_count[0] == 1:
                 return _resp(201)
             return _resp(500, text="scan err")
+
         p.client.get.return_value = _resp(200, {"folders": [{"id": "f1"}]})
         p.client.post.side_effect = mock_post
         with tempfile.TemporaryDirectory() as td:
@@ -247,10 +280,12 @@ class TestRealAPIUpload:
     def test_search_matches_item(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         p.client.patch.return_value = _resp(204)
@@ -266,6 +301,7 @@ class TestRealAPIUpload:
         empty = []
         match = [{"id": "i2", "media": {"metadata": {"title": "T"}}}]
         call_idx = [0]
+
         def mock_get(url, **kw):
             if "search" in url:
                 call_idx[0] += 1
@@ -273,6 +309,7 @@ class TestRealAPIUpload:
                     return _resp(200, empty)
                 return _resp(200, match)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         with tempfile.TemporaryDirectory() as td:
@@ -282,10 +319,12 @@ class TestRealAPIUpload:
 
     def test_search_exception_non_fatal(self):
         p = _publisher_real()
+
         def mock_get(url, **kw):
             if "search" in url:
                 raise ConnectionError("fail")
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         with tempfile.TemporaryDirectory() as td:
@@ -296,10 +335,12 @@ class TestRealAPIUpload:
     def test_metadata_patch_exception(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         p.client.patch.side_effect = ConnectionError("fail")
@@ -311,17 +352,24 @@ class TestRealAPIUpload:
     def test_metadata_optional_fields(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         p.client.patch.return_value = _resp(204)
         ud = _ud(
-            description="desc", year=2020, publisher="Pub",
-            genres=["scifi"], language="zh", series="Ser",
-            seriesIndex=2, tags=["tag1"],
+            description="desc",
+            year=2020,
+            publisher="Pub",
+            genres=["scifi"],
+            language="zh",
+            series="Ser",
+            seriesIndex=2,
+            tags=["tag1"],
             chapters=[{"title": "Ch1", "start": 0, "end": 100}],
         )
         with tempfile.TemporaryDirectory() as td:
@@ -342,10 +390,12 @@ class TestRealAPIUpload:
     def test_cover_upload(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         p.client.post.return_value = _resp(201)
         p.client.patch.return_value = _resp(204)
@@ -360,17 +410,21 @@ class TestRealAPIUpload:
     def test_cover_upload_exception(self):
         p = _publisher_real()
         search_results = [{"id": "i1", "media": {"metadata": {"title": "T"}}}]
+
         def mock_get(url, **kw):
             if "search" in url:
                 return _resp(200, search_results)
             return _resp(200, {"folders": [{"id": "f1"}]})
+
         p.client.get.side_effect = mock_get
         call_count = [0]
+
         def mock_post(url, **kw):
             call_count[0] += 1
             if call_count[0] == 1:
                 return _resp(201)
             raise ConnectionError("cover fail")
+
         p.client.post.side_effect = mock_post
         p.client.patch.return_value = _resp(204)
         cover_b64 = base64.b64encode(b"img").decode()
@@ -429,14 +483,18 @@ class TestPrepareAudiobook:
     def test_invalid_year_too_low(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = p._prepare_audiobook(_meta(publication_year=500), _audio_file(td))
+            ok, msg, _ = p._prepare_audiobook(
+                _meta(publication_year=500), _audio_file(td)
+            )
             assert not ok
             assert "年份" in msg
 
     def test_invalid_year_too_high(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = p._prepare_audiobook(_meta(publication_year=3000), _audio_file(td))
+            ok, msg, _ = p._prepare_audiobook(
+                _meta(publication_year=3000), _audio_file(td)
+            )
             assert not ok
 
     def test_unsupported_format_auto_convert(self):
@@ -467,8 +525,12 @@ class TestPrepareAudiobook:
             fp = Path(td) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=len(b"audio"), duration_seconds=60,
-                format="mp3", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=len(b"audio"),
+                duration_seconds=60,
+                format="mp3",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             ok, msg, _ = p._prepare_audiobook(_meta(), af)
             assert not ok
@@ -477,8 +539,12 @@ class TestPrepareAudiobook:
     def test_audio_file_not_exists(self):
         p = self._publisher()
         af = AudiobookFile(
-            file_path=Path("/no/such/file.m4b"), size_bytes=0,
-            duration_seconds=60, format="m4b", bitrate_kbps=64, checksum_md5="x",
+            file_path=Path("/no/such/file.m4b"),
+            size_bytes=0,
+            duration_seconds=60,
+            format="m4b",
+            bitrate_kbps=64,
+            checksum_md5="x",
         )
         ok, msg, _ = p._prepare_audiobook(_meta(), af)
         assert not ok
@@ -490,8 +556,12 @@ class TestPrepareAudiobook:
             dp = Path(td) / "not_a_file.m4b"
             dp.mkdir()
             af = AudiobookFile(
-                file_path=dp, size_bytes=0, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=dp,
+                size_bytes=0,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             ok, msg, _ = p._prepare_audiobook(_meta(), af)
             assert not ok
@@ -509,7 +579,9 @@ class TestPrepareAudiobook:
         with tempfile.TemporaryDirectory() as td:
             cover = Path(td) / "cover.jpg"
             cover.write_bytes(b"\xff\xd8\xff\xe0img")
-            ok, msg, data = p._prepare_audiobook(_meta(cover_image_path=cover), _audio_file(td))
+            ok, msg, data = p._prepare_audiobook(
+                _meta(cover_image_path=cover), _audio_file(td)
+            )
             assert ok
             assert data["coverImage"] is not None
 
@@ -525,7 +597,9 @@ class TestPrepareAudiobook:
     def test_year_none(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, data = p._prepare_audiobook(_meta(publication_year=None), _audio_file(td))
+            ok, msg, data = p._prepare_audiobook(
+                _meta(publication_year=None), _audio_file(td)
+            )
             assert ok
             assert data["year"] is None
 
@@ -543,7 +617,10 @@ class TestGetMimeTypeSync:
         assert self._publisher()._get_mime_type(Path("a.mp3")) == "audio/mpeg"
 
     def test_unknown(self):
-        assert self._publisher()._get_mime_type(Path("a.xyz")) == "application/octet-stream"
+        assert (
+            self._publisher()._get_mime_type(Path("a.xyz"))
+            == "application/octet-stream"
+        )
 
 
 class TestGetLibraryStatus:
@@ -570,6 +647,7 @@ class TestGetLibraryStatus:
 class TestMain:
     def test_main_runs(self):
         from src.audiobook_studio.publish.audiobookshelf import main
+
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             with patch("builtins.print"):
                 main()

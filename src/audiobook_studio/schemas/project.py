@@ -3,7 +3,7 @@
 用于 API 序列化和数据验证。
 """
 
-from typing import Literal, Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, confloat
 
@@ -38,8 +38,12 @@ class Project(BaseModel):
 
     # 成本追踪
     total_cost_usd: CostType = Field(default=0.0, description="已花费成本 (USD)")
-    cost_limit_per_book: CostType = Field(default=20.0, description="每本书成本上限 (USD)")
-    cost_limit_per_chapter: CostType = Field(default=5.0, description="每章成本上限 (USD)")
+    cost_limit_per_book: CostType = Field(
+        default=20.0, description="每本书成本上限 (USD)"
+    )
+    cost_limit_per_chapter: CostType = Field(
+        default=5.0, description="每章成本上限 (USD)"
+    )
 
     # 时间戳
     created_at: str | None = Field(default=None, description="创建时间")

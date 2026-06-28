@@ -178,7 +178,9 @@ class QuotaRegistry:
         with self._lock:
             self._configs[config.provider_name] = config
             if config.provider_name not in self._usage:
-                self._usage[config.provider_name] = QuotaUsage(provider_name=config.provider_name)
+                self._usage[config.provider_name] = QuotaUsage(
+                    provider_name=config.provider_name
+                )
 
     def get_config(self, provider_name: str) -> Optional[QuotaConfig]:
         """Get quota configuration for a provider."""
@@ -209,7 +211,9 @@ class QuotaRegistry:
             usage.tokens_this_minute = 0
             usage.last_reset_minute = current_minute
 
-    def can_make_request(self, provider_name: str, estimated_tokens: int = 1000) -> bool:
+    def can_make_request(
+        self, provider_name: str, estimated_tokens: int = 1000
+    ) -> bool:
         """Check if a request can be made within quota limits."""
         with self._lock:
             config = self._configs.get(provider_name)
@@ -221,26 +225,49 @@ class QuotaRegistry:
             self._check_reset(usage)
 
             # Check daily limits
-            if config.requests_per_day > 0 and usage.requests_today >= config.requests_per_day:
-                logger.debug(f"Quota exceeded: {provider_name} daily request limit ({config.requests_per_day})")
+            if (
+                config.requests_per_day > 0
+                and usage.requests_today >= config.requests_per_day
+            ):
+                logger.debug(
+                    f"Quota exceeded: {provider_name} daily request limit ({config.requests_per_day})"
+                )
                 return False
 
-            if config.tokens_per_day > 0 and usage.tokens_today >= config.tokens_per_day:
-                logger.debug(f"Quota exceeded: {provider_name} daily token limit ({config.tokens_per_day})")
+            if (
+                config.tokens_per_day > 0
+                and usage.tokens_today >= config.tokens_per_day
+            ):
+                logger.debug(
+                    f"Quota exceeded: {provider_name} daily token limit ({config.tokens_per_day})"
+                )
                 return False
 
             # Check minute limits
-            if config.requests_per_minute > 0 and usage.requests_this_minute >= config.requests_per_minute:
-                logger.debug(f"Quota exceeded: {provider_name} per-minute request limit ({config.requests_per_minute})")
+            if (
+                config.requests_per_minute > 0
+                and usage.requests_this_minute >= config.requests_per_minute
+            ):
+                logger.debug(
+                    f"Quota exceeded: {provider_name} per-minute request limit ({config.requests_per_minute})"
+                )
                 return False
 
-            if config.tokens_per_minute > 0 and usage.tokens_this_minute + estimated_tokens > config.tokens_per_minute:
-                logger.debug(f"Quota exceeded: {provider_name} per-minute token limit ({config.tokens_per_minute})")
+            if (
+                config.tokens_per_minute > 0
+                and usage.tokens_this_minute + estimated_tokens
+                > config.tokens_per_minute
+            ):
+                logger.debug(
+                    f"Quota exceeded: {provider_name} per-minute token limit ({config.tokens_per_minute})"
+                )
                 return False
 
             return True
 
-    def record_request(self, provider_name: str, tokens_used: int = 0, success: bool = True):
+    def record_request(
+        self, provider_name: str, tokens_used: int = 0, success: bool = True
+    ):
         """Record a request for quota tracking."""
         with self._lock:
             usage = self._usage.get(provider_name)
@@ -281,13 +308,21 @@ class QuotaRegistry:
             minute_token_pct = 0
 
             if config.requests_per_day > 0:
-                daily_request_pct = round(usage.requests_today / config.requests_per_day * 100, 1)
+                daily_request_pct = round(
+                    usage.requests_today / config.requests_per_day * 100, 1
+                )
             if config.tokens_per_day > 0:
-                daily_token_pct = round(usage.tokens_today / config.tokens_per_day * 100, 1)
+                daily_token_pct = round(
+                    usage.tokens_today / config.tokens_per_day * 100, 1
+                )
             if config.requests_per_minute > 0:
-                minute_request_pct = round(usage.requests_this_minute / config.requests_per_minute * 100, 1)
+                minute_request_pct = round(
+                    usage.requests_this_minute / config.requests_per_minute * 100, 1
+                )
             if config.tokens_per_minute > 0:
-                minute_token_pct = round(usage.tokens_this_minute / config.tokens_per_minute * 100, 1)
+                minute_token_pct = round(
+                    usage.tokens_this_minute / config.tokens_per_minute * 100, 1
+                )
 
             return {
                 "provider": provider_name,
@@ -313,9 +348,11 @@ class QuotaRegistry:
                     "total_failures_today": usage.total_failures_today,
                     "last_successful_request": usage.last_successful_request,
                 },
-                "healthy": daily_request_pct < 95 and daily_token_pct < 95
-                    and minute_request_pct < 90 and minute_token_pct < 90
-                    and usage.consecutive_failures < 5,
+                "healthy": daily_request_pct < 95
+                and daily_token_pct < 95
+                and minute_request_pct < 90
+                and minute_token_pct < 90
+                and usage.consecutive_failures < 5,
             }
 
     def get_all_statuses(self) -> Dict[str, Dict]:
@@ -334,7 +371,11 @@ class QuotaRegistry:
             provider_names = list(self._configs.keys())
 
         # Build statuses without holding the lock
-        return [name for name in provider_names if self.get_quota_status(name).get("healthy", True)]
+        return [
+            name
+            for name in provider_names
+            if self.get_quota_status(name).get("healthy", True)
+        ]
 
     def get_quota_health_score(self, provider_name: str) -> float:
         """Get a health score (0-1) for a provider based on quota availability."""
@@ -343,7 +384,9 @@ class QuotaRegistry:
             return 1.0
 
         daily_pct = max(status["daily"]["requests_pct"], status["daily"]["tokens_pct"])
-        minute_pct = max(status["minute"]["requests_pct"], status["minute"]["tokens_pct"])
+        minute_pct = max(
+            status["minute"]["requests_pct"], status["minute"]["tokens_pct"]
+        )
 
         # Score decreases as usage approaches limits
         daily_score = max(0, 1 - daily_pct / 100)
@@ -360,6 +403,7 @@ class QuotaRegistry:
 def get_quota_registry() -> QuotaRegistry:
     """Deprecated: use get_app_container().get(QuotaRegistry)"""
     from ..di import get_app_container
+
     return get_app_container().get(QuotaRegistry)
 
 

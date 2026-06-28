@@ -3,7 +3,7 @@
 分层异常设计，便于捕获、分类和结构化日志记录。
 """
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 
 class AudiobookError(Exception):
@@ -101,7 +101,10 @@ class SchemaComplianceError(DomainError):
             message=message,
             error_code="SCHEMA_COMPLIANCE_ERROR",
             stage=stage,
-            context={"contract_version": contract_version, "violations": violations or []},
+            context={
+                "contract_version": contract_version,
+                "violations": violations or [],
+            },
             original_error=original_error,
         )
 
@@ -120,7 +123,10 @@ class FallbackUsedError(DomainError):
             message=message,
             error_code="FALLBACK_USED",
             stage=stage,
-            context={"fallback_reason": fallback_reason, "original_provider": original_provider},
+            context={
+                "fallback_reason": fallback_reason,
+                "original_provider": original_provider,
+            },
         )
 
 

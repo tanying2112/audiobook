@@ -34,7 +34,6 @@ from src.audiobook_studio.benchmarks.bench_voxcpm2 import (
     run_benchmark,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -228,7 +227,10 @@ class TestVoxCPM2Projection:
 
     def test_int8_throughput_higher_than_fp16(self, sample_projection):
         """INT8 批量吞吐量应高于 FP16。"""
-        assert sample_projection.int8_throughput_cps_a100 > sample_projection.fp16_throughput_cps_a100
+        assert (
+            sample_projection.int8_throughput_cps_a100
+            > sample_projection.fp16_throughput_cps_a100
+        )
 
     def test_notes_not_empty(self, sample_projection):
         assert len(sample_projection.notes) > 0
@@ -364,6 +366,7 @@ class TestMarkdownReport:
         self, sample_hw_low, sample_projection, sample_tts_results
     ) -> BenchmarkReport:
         import datetime
+
         summary = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         recs = build_recommendations(sample_hw_low, sample_projection)
         criteria = build_acceptance_criteria(
@@ -435,6 +438,7 @@ class TestRunBenchmark:
     def test_run_benchmark_report_serializable(self):
         """报告必须可序列化为 JSON。"""
         from dataclasses import asdict
+
         report = run_benchmark(skip_tts=True)
         data = asdict(report)
         json_str = json.dumps(data, ensure_ascii=False)

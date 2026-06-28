@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.prompts.registry import PromptRegistry, get_prompt_registry
 from src.audiobook_studio.prompts.models import (
+    ExperimentType,
     PromptStage,
     PromptStatus,
-    ExperimentType,
 )
+from src.audiobook_studio.prompts.registry import PromptRegistry, get_prompt_registry
 
 
 class TestPromptRegistryInit:
@@ -266,10 +266,8 @@ class TestGetActiveExperiment:
             name="Test Experiment",
             stage=PromptStage.SYNTHESIZE,
             variants=[
-                {"variant_id": "A", "prompt_version": "v1",
-                 "traffic_percentage": 50},
-                {"variant_id": "B", "prompt_version": "v2",
-                 "traffic_percentage": 50},
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 50},
+                {"variant_id": "B", "prompt_version": "v2", "traffic_percentage": 50},
             ],
         )
 
@@ -284,8 +282,9 @@ class TestGetActiveExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[{"variant_id": "A", "prompt_version": "v1",
-                       "traffic_percentage": 100}],
+            variants=[
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
+            ],
         )
 
         result = registry.get_active_experiment(PromptStage.EXTRACT)
@@ -304,8 +303,9 @@ class TestGetActiveExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[{"variant_id": "A", "prompt_version": "v1",
-                       "traffic_percentage": 100}],
+            variants=[
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
+            ],
         )
         registry.complete_experiment("exp1")
 
@@ -327,8 +327,9 @@ class TestSelectVersionForRequest:
             is_default=True,
         )
 
-        result = registry.select_version_for_request(PromptStage.ANALYZE_STRUCTURE,
-                                                    "req123")
+        result = registry.select_version_for_request(
+            PromptStage.ANALYZE_STRUCTURE, "req123"
+        )
         assert result.version == "v1"
 
     def test_select_version_with_experiment(self):
@@ -353,15 +354,12 @@ class TestSelectVersionForRequest:
             name="Test",
             stage=PromptStage.SYNTHESIZE,
             variants=[
-                {"variant_id": "A", "prompt_version": "v1",
-                 "traffic_percentage": 50},
-                {"variant_id": "B", "prompt_version": "v2",
-                 "traffic_percentage": 50},
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 50},
+                {"variant_id": "B", "prompt_version": "v2", "traffic_percentage": 50},
             ],
         )
 
-        result = registry.select_version_for_request(PromptStage.SYNTHESIZE,
-                                                    "req123")
+        result = registry.select_version_for_request(PromptStage.SYNTHESIZE, "req123")
         assert result is not None
 
     def test_select_version_experiment_variant_not_found(self):
@@ -379,14 +377,16 @@ class TestSelectVersionForRequest:
             name="Test",
             stage=PromptStage.SYNTHESIZE,
             variants=[
-                {"variant_id": "A", "prompt_version": "v_nonexistent",
-                 "traffic_percentage": 100},
+                {
+                    "variant_id": "A",
+                    "prompt_version": "v_nonexistent",
+                    "traffic_percentage": 100,
+                },
             ],
         )
 
         # Should fall back to default version
-        result = registry.select_version_for_request(PromptStage.SYNTHESIZE,
-                                                    "req123")
+        result = registry.select_version_for_request(PromptStage.SYNTHESIZE, "req123")
         assert result.version == "v1"
 
     def test_select_version_no_version_available(self):
@@ -405,10 +405,8 @@ class TestGetExperimentVariant:
         registry = PromptRegistry()
         experiment = MagicMock()
         experiment.variants = [
-            MagicMock(variant_id="A", prompt_version="v1",
-                      traffic_percentage=50),
-            MagicMock(variant_id="B", prompt_version="v2",
-                      traffic_percentage=50),
+            MagicMock(variant_id="A", prompt_version="v1", traffic_percentage=50),
+            MagicMock(variant_id="B", prompt_version="v2", traffic_percentage=50),
         ]
 
         variant = registry._get_experiment_variant(experiment, "test_request")
@@ -419,8 +417,7 @@ class TestGetExperimentVariant:
         registry = PromptRegistry()
         experiment = MagicMock()
         experiment.variants = [
-            MagicMock(variant_id="A", prompt_version="v1",
-                      traffic_percentage=100),
+            MagicMock(variant_id="A", prompt_version="v1", traffic_percentage=100),
         ]
 
         variant = registry._get_experiment_variant(experiment, "any_request")
@@ -438,10 +435,8 @@ class TestCreateExperiment:
             name="A/B Test",
             stage=PromptStage.SYNTHESIZE,
             variants=[
-                {"variant_id": "A", "prompt_version": "v1",
-                 "traffic_percentage": 50},
-                {"variant_id": "B", "prompt_version": "v2",
-                 "traffic_percentage": 50},
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 50},
+                {"variant_id": "B", "prompt_version": "v2", "traffic_percentage": 50},
             ],
             experiment_type=ExperimentType.AB_TEST,
         )
@@ -457,12 +452,9 @@ class TestCreateExperiment:
             name="Multivariate",
             stage=PromptStage.QUALITY_CHECK,
             variants=[
-                {"variant_id": "V1", "prompt_version": "v1",
-                 "traffic_percentage": 33},
-                {"variant_id": "V2", "prompt_version": "v2",
-                 "traffic_percentage": 33},
-                {"variant_id": "V3", "prompt_version": "v3",
-                 "traffic_percentage": 34},
+                {"variant_id": "V1", "prompt_version": "v1", "traffic_percentage": 33},
+                {"variant_id": "V2", "prompt_version": "v2", "traffic_percentage": 33},
+                {"variant_id": "V3", "prompt_version": "v3", "traffic_percentage": 34},
             ],
             experiment_type=ExperimentType.MULTIVARIATE,
         )
@@ -477,8 +469,7 @@ class TestCreateExperiment:
             name="Test",
             stage=PromptStage.FEEDBACK_ANALYSIS,
             variants=[
-                {"variant_id": "A", "prompt_version": "v1",
-                 "traffic_percentage": 100},
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100},
             ],
             description="Custom description",
             min_sample_size=200,
@@ -506,8 +497,7 @@ class TestCompleteExperiment:
             name="Test",
             stage=PromptStage.SYNTHESIZE,
             variants=[
-                {"variant_id": "A", "prompt_version": "v1",
-                 "traffic_percentage": 100},
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100},
             ],
         )
 
@@ -535,8 +525,9 @@ class TestCompleteExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[{"variant_id": "A", "prompt_version": "v1",
-                       "traffic_percentage": 100}],
+            variants=[
+                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
+            ],
         )
 
         registry.complete_experiment("exp1")
@@ -811,6 +802,7 @@ class TestGetPromptRegistry:
     def test_get_prompt_registry_creates_new(self):
         """Test that function creates new registry if none exists."""
         import src.audiobook_studio.prompts.registry as reg_module
+
         reg_module._registry = None
 
         registry = get_prompt_registry()
@@ -820,6 +812,7 @@ class TestGetPromptRegistry:
     def test_get_prompt_registry_returns_existing(self):
         """Test that function returns existing registry."""
         import src.audiobook_studio.prompts.registry as reg_module
+
         reg_module._registry = None
 
         registry1 = get_prompt_registry()
@@ -830,6 +823,7 @@ class TestGetPromptRegistry:
     def test_get_prompt_registry_passes_kwargs(self):
         """Test that kwargs are passed to constructor."""
         import src.audiobook_studio.prompts.registry as reg_module
+
         reg_module._registry = None
 
         registry = get_prompt_registry(langfuse_enabled=False)

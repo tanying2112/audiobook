@@ -15,12 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..export import (
-    ExportFormat,
-    ExportJob,
-    ExportProgress,
-    export_project,
-)
+from ..export import ExportFormat, ExportJob, ExportProgress, export_project
 from ..models import Project
 from .dependencies import get_db
 
@@ -34,6 +29,7 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
 class ExportRequest(BaseModel):
     """导出请求."""
+
     chapter_ids: Optional[List[int]] = None  # None = 全部章节
     formats: List[str] = ["m4b_srt"]  # m4b, srt, vtt, m4b_srt, all
     bgm_path: Optional[str] = None
@@ -46,6 +42,7 @@ class ExportRequest(BaseModel):
 
 class ExportStatusOut(BaseModel):
     """导出状态."""
+
     status: str
     output_paths: dict = {}
     error: Optional[str] = None
@@ -54,6 +51,7 @@ class ExportStatusOut(BaseModel):
 
 class FormatInfo(BaseModel):
     """支持的格式."""
+
     value: str
     label: str
     description: str
@@ -131,6 +129,7 @@ def start_export(
     subtitle_config = None
     if payload.max_chars_per_line:
         from ..export.srt import SubtitleConfig
+
         subtitle_config = SubtitleConfig(
             max_chars_per_line=payload.max_chars_per_line,
         )
@@ -228,4 +227,7 @@ def export_single_chapter(
             detail="Chapter not found or has no audio segments",
         )
 
-    return {"path": result_path, "download_url": f"/api/export/download/{Path(result_path).name}"}
+    return {
+        "path": result_path,
+        "download_url": f"/api/export/download/{Path(result_path).name}",
+    }

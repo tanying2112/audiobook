@@ -4,16 +4,17 @@ Tests verify route registration, schemas, and business logic without
 TestClient (which has Python 3.14 / httpx compatibility issues).
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.api.audio_segments import (
-    router,
     AudioSegmentResponse,
+    MergeRequest,
     ReorderRequest,
     TrimRequest,
-    MergeRequest,
+    router,
 )
 
 
@@ -101,8 +102,9 @@ class TestBusinessLogic:
 
     def test_list_audio_segments_empty_dir(self, tmp_path, monkeypatch):
         """Test list_audio_segments returns empty when book dir missing."""
-        from src.audiobook_studio.api.audio_segments import list_audio_segments
         from fastapi import FastAPI
+
+        from src.audiobook_studio.api.audio_segments import list_audio_segments
 
         # Patch CWD so Path("storage/books/...") resolves to a tmp dir without the book
         monkeypatch.chdir(tmp_path)
@@ -127,18 +129,21 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        with patch.object(Path, 'exists', return_value=True), \
-             patch.object(Path, 'glob', return_value=mock_files):
+        with patch.object(Path, "exists", return_value=True), patch.object(
+            Path, "glob", return_value=mock_files
+        ):
             segments = list_audio_segments("test_book", db=FakeDB())
             # Should return list (may be empty if mocking not applied correctly)
             assert isinstance(segments, list)
 
     def test_merge_segments_validation_minimum(self):
         """Test merge requires at least 2 segments."""
-        from src.audiobook_studio.api.audio_segments import merge_segments
         from fastapi import HTTPException
 
+        from src.audiobook_studio.api.audio_segments import merge_segments
+
         request = MergeRequest(segment_ids=["seg_1"])
+
         class FakeDB:
             pass
 
@@ -148,10 +153,12 @@ class TestBusinessLogic:
 
     def test_trim_segment_validation(self):
         """Test trim validation rejects start >= end."""
-        from src.audiobook_studio.api.audio_segments import trim_segment
         from fastapi import HTTPException
 
+        from src.audiobook_studio.api.audio_segments import trim_segment
+
         request = TrimRequest(start_ms=5000, end_ms=3000)
+
         class FakeDB:
             pass
 
@@ -164,6 +171,7 @@ class TestBusinessLogic:
         from src.audiobook_studio.api.audio_segments import trim_segment
 
         request = TrimRequest(start_ms=1000, end_ms=3000)
+
         class FakeDB:
             pass
 
@@ -179,6 +187,7 @@ class TestBusinessLogic:
         from src.audiobook_studio.api.audio_segments import merge_segments
 
         request = MergeRequest(segment_ids=["seg_1", "seg_2", "seg_3"])
+
         class FakeDB:
             pass
 
@@ -195,6 +204,7 @@ class TestBusinessLogic:
             segment_ids=["seg_1", "seg_2"],
             output_path="/custom/output.mp3",
         )
+
         class FakeDB:
             pass
 
@@ -209,6 +219,7 @@ class TestBusinessLogic:
             segment_ids=["seg_3", "seg_1", "seg_2"],
             crossfade_ms=100,
         )
+
         class FakeDB:
             pass
 

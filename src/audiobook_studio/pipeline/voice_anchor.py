@@ -26,7 +26,7 @@ class VoiceAnchorRecord:
     reference_audio_path: str
     chapter_index: int
     paragraph_index: int
-    similarity_threshold: float = 0.85
+    similarity_threshold: float = 0.85  # 声音相似度阈值 (cosine similarity, range 0-1)
     embedding_model: str = "wavlm_large"
     created_at: str = ""
 
@@ -49,9 +49,12 @@ class VoiceAnchorConfig:
 
     enabled: bool = True
     embedding_model: str = "wavlm_large"
-    similarity_threshold: float = 0.85
+    similarity_threshold: float = 0.85  # 声音相似度阈值 (cosine similarity, range 0-1)
     max_drift_alerts_per_chapter: int = 3
     reference_audio_dir: str = "storage/voice_anchors"
+    mock_mode: bool = False  # 测试模式，不加载真实模型
+    device: str = "cpu"  # 计算设备 (cpu | cuda)
+    cache_dir: Optional[str] = None  # 模型缓存目录
 
 
 class VoiceAnchorManager:
@@ -81,6 +84,9 @@ class VoiceAnchorManager:
         self._similarity_metric = SpeakerSimilarityMetric(
             backend=backend,
             threshold=self.config.similarity_threshold,
+            mock_mode=self.config.mock_mode,
+            device=self.config.device,
+            cache_dir=Path(self.config.cache_dir) if self.config.cache_dir else None,
         )
 
         logger.info(
@@ -202,8 +208,6 @@ class VoiceAnchorManager:
             result = self._similarity_metric.compute(
                 target_audio=Path(generated_audio_path),
                 reference_audio=Path(anchor.reference_audio_path),
-                reference_id=character_name,
-                target_id=f"{character_name}_ch{chapter_index}",
             )
 
             # Record drift alert if similarity below threshold
@@ -338,6 +342,9 @@ def get_voice_anchor_manager() -> VoiceAnchorManager:
             embedding_model=va_config.embedding_model,
             similarity_threshold=va_config.similarity_threshold,
             max_drift_alerts_per_chapter=va_config.max_drift_alerts_per_chapter,
+            mock_mode=getattr(va_config, "mock_mode", False),
+            device=getattr(va_config, "device", "cpu"),
+            cache_dir=getattr(va_config, "cache_dir", None),
         )
         _voice_anchor_manager = VoiceAnchorManager(config)
 

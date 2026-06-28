@@ -42,7 +42,13 @@ def update_quality(
     i = db.query(Quality).filter(Quality.id == quality_id).first()
     if not i:
         raise HTTPException(status_code=404, detail="Quality not found")
-    for field, value in payload.model_dump().items():
+    # Exclude id and foreign key from update
+    update_data = {
+        k: v
+        for k, v in payload.model_dump().items()
+        if k not in ("id", "tts_edit_id") and v is not None
+    }
+    for field, value in update_data.items():
         setattr(i, field, value)
     db.commit()
     db.refresh(i)

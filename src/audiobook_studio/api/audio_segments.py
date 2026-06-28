@@ -7,8 +7,8 @@ Provides endpoints for:
 - POST /api/audio-segments/{id}/merge - Merge segments
 """
 
-from typing import List, Optional
 from pathlib import Path
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -21,28 +21,36 @@ router = APIRouter(prefix="/audio-segments", tags=["audio-segments"])
 
 class AudioSegmentResponse(BaseModel):
     """Audio segment response schema."""
+
     id: str = Field(description="Segment identifier")
     file_path: str = Field(description="Path to audio file")
     duration_ms: int = Field(description="Duration in milliseconds")
-    text_hash: Optional[str] = Field(default=None, description="Text hash for cache validation")
+    text_hash: Optional[str] = Field(
+        default=None, description="Text hash for cache validation"
+    )
     speaker: Optional[str] = Field(default=None, description="Speaker name")
     paragraph_index: Optional[int] = Field(default=None, description="Paragraph index")
 
 
 class ReorderRequest(BaseModel):
     """Reorder request schema."""
+
     segment_ids: List[str] = Field(description="Ordered list of segment IDs")
-    crossfade_ms: int = Field(default=50, description="Crossfade duration in milliseconds")
+    crossfade_ms: int = Field(
+        default=50, description="Crossfade duration in milliseconds"
+    )
 
 
 class TrimRequest(BaseModel):
     """Trim request schema."""
+
     start_ms: int = Field(description="Start time in milliseconds")
     end_ms: int = Field(description="End time in milliseconds")
 
 
 class MergeRequest(BaseModel):
     """Merge request schema."""
+
     segment_ids: List[str] = Field(description="List of segment IDs to merge")
     output_path: Optional[str] = Field(default=None, description="Custom output path")
 
@@ -62,12 +70,16 @@ def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
     segments = []
     for audio_file in sorted(storage_path.glob("*.mp3")):
         # Mock duration - in production use ffprobe
-        segments.append(AudioSegmentResponse(
-            id=audio_file.stem,
-            file_path=str(audio_file),
-            duration_ms=5000,  # Mock 5 seconds
-            paragraph_index=int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0,
-        ))
+        segments.append(
+            AudioSegmentResponse(
+                id=audio_file.stem,
+                file_path=str(audio_file),
+                duration_ms=5000,  # Mock 5 seconds
+                paragraph_index=(
+                    int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0
+                ),
+            )
+        )
 
     return segments
 
@@ -155,7 +167,9 @@ def merge_segments(
         Merged segment metadata
     """
     if len(request.segment_ids) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 segments required for merge")
+        raise HTTPException(
+            status_code=400, detail="At least 2 segments required for merge"
+        )
 
     output_path = request.output_path or f"storage/books/{book_id}/audio/merged.mp3"
 

@@ -23,22 +23,22 @@ Provides:
 """
 
 import hashlib
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
-import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
 from .models import (
-    PromptVersion,
-    PromptTemplate,
+    ExperimentType,
+    ExperimentVariant,
+    PromptExperiment,
+    PromptRegistryState,
     PromptStage,
     PromptStatus,
-    PromptExperiment,
-    ExperimentVariant,
-    ExperimentType,
-    PromptRegistryState,
+    PromptTemplate,
+    PromptVersion,
     PromptVersionMetrics,
 )
 
@@ -86,6 +86,7 @@ class PromptRegistry:
         """Initialize Langfuse client for experiment tracking."""
         try:
             from langfuse import Langfuse
+
             kwargs = {}
             if public_key:
                 kwargs["public_key"] = public_key
@@ -190,7 +191,7 @@ class PromptRegistry:
         Returns:
             The registered PromptVersion
         """
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         return self.register_template(
@@ -461,7 +462,9 @@ class PromptRegistry:
 
         if version is None:
             if request_id is None:
-                raise ValueError("request_id required when version is None (for experiment routing)")
+                raise ValueError(
+                    "request_id required when version is None (for experiment routing)"
+                )
             prompt_version = self.select_version_for_request(stage, request_id)
         else:
             prompt_version = self.get_version(stage, version)
@@ -478,7 +481,9 @@ class PromptRegistry:
             return rendered_system, rendered_user
 
         except TemplateError as e:
-            logger.error(f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}")
+            logger.error(
+                f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}"
+            )
             raise ValueError(f"Template rendering failed: {e}")
 
     def load_prompts_from_directory(self) -> int:
@@ -522,7 +527,9 @@ class PromptRegistry:
         logger.info(f"Loaded {count} prompt templates from {self.prompts_dir}")
         return count
 
-    def list_versions(self, stage: Optional[PromptStage] = None) -> Dict[str, List[str]]:
+    def list_versions(
+        self, stage: Optional[PromptStage] = None
+    ) -> Dict[str, List[str]]:
         """List all registered prompt versions.
 
         Args:
@@ -532,9 +539,7 @@ class PromptRegistry:
             Dict mapping stage -> list of versions
         """
         if stage:
-            return {
-                stage.value: list(self._state.versions.get(stage.value, {}).keys())
-            }
+            return {stage.value: list(self._state.versions.get(stage.value, {}).keys())}
         return {
             stage: list(versions.keys())
             for stage, versions in self._state.versions.items()

@@ -1,21 +1,24 @@
 """Tests for feedback/processor module."""
+
 import os
+
 os.environ["MOCK_LLM"] = "true"
 
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.feedback.processor import (
     PATTERN_TAXONOMY,
-    DiffAnalysisResult,
     AggregateAnalysis,
+    DiffAnalysisResult,
     _compute_text_similarity,
     _extract_key_differences,
-    _infer_pattern_tags,
-    analyze_single_feedback,
-    analyze_batch,
     _generate_recommendations,
+    _infer_pattern_tags,
+    analyze_batch,
+    analyze_single_feedback,
     get_trend_report,
 )
 
@@ -153,9 +156,11 @@ class TestInferPatternTags:
 
     def test_deduplication(self):
         tags = _infer_pattern_tags(
-            "edit_for_tts", {}, {},
+            "edit_for_tts",
+            {},
+            {},
             "对话归属错误，说话人识别错误",  # Both map to same pattern
-            []
+            [],
         )
         # Should not have duplicates
         assert len(tags) == len(set(tags))
@@ -215,7 +220,10 @@ class TestAnalyzeBatch:
 
     def test_no_unprocessed_feedback(self):
         mock_db = MagicMock()
-        with patch("src.audiobook_studio.feedback.collector.list_unprocessed_feedback", return_value=[]):
+        with patch(
+            "src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
+            return_value=[],
+        ):
             result = analyze_batch(mock_db)
 
             assert result.total_analyzed == 0
@@ -242,9 +250,13 @@ class TestAnalyzeBatch:
         mock_record2.corrected_output = {"score": 0.8}
         mock_record2.rationale = "削波失真"
 
-        with patch("src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
-                   return_value=[mock_record1, mock_record2]):
-            with patch("src.audiobook_studio.feedback.collector.mark_feedback_processed") as mock_mark:
+        with patch(
+            "src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
+            return_value=[mock_record1, mock_record2],
+        ):
+            with patch(
+                "src.audiobook_studio.feedback.collector.mark_feedback_processed"
+            ) as mock_mark:
                 result = analyze_batch(mock_db, limit=10)
 
                 assert result.total_analyzed == 2

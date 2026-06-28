@@ -1,5 +1,7 @@
 """Integration tests for full pipeline in mock mode."""
+
 import os
+
 os.environ["MOCK_LLM"] = "true"
 
 import sys

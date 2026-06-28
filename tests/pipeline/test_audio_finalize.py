@@ -1,11 +1,15 @@
 """Unit tests for AudioFinalize module."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.pipeline.audio_finalize import AudioFinalizer
-from src.audiobook_studio.schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
+from src.audiobook_studio.schemas.audio_finalize import (
+    AudioFinalizeParams,
+    AudioFinalizeResult,
+)
 
 
 class TestAudioFinalizeParams:
@@ -93,12 +97,15 @@ class TestAudioFinalizer:
         finalizer = AudioFinalizer(sfx_library_path=custom_path, mock_mode=True)
         assert finalizer.sfx_library_path == custom_path
 
-    @pytest.mark.parametrize("sfx_tags,expected_count", [
-        (["ambient_cheerful"], 1),
-        (["ambient_tense", "ambient_soft"], 2),
-        ([], 0),
-        (None, 0),
-    ])
+    @pytest.mark.parametrize(
+        "sfx_tags,expected_count",
+        [
+            (["ambient_cheerful"], 1),
+            (["ambient_tense", "ambient_soft"], 2),
+            ([], 0),
+            (None, 0),
+        ],
+    )
     def test_resolve_sfx_files(self, sfx_tags, expected_count):
         """Test SFX tag resolution."""
         finalizer = AudioFinalizer(mock_mode=True)
@@ -141,7 +148,9 @@ class TestAudioFinalizer:
             metadata_album="Test Album",
         )
 
-        result = finalizer.finalize(input_path, output_path, params, ["ambient_cheerful"])
+        result = finalizer.finalize(
+            input_path, output_path, params, ["ambient_cheerful"]
+        )
 
         assert result.input_path == str(input_path)
         assert result.output_path == str(output_path)
@@ -149,7 +158,9 @@ class TestAudioFinalizer:
         assert result.loudnorm_applied is True
         assert result.fade_applied is True
         assert result.sfx_applied is True
-        assert result.metadata_embedded is True  # Mock mode sets True when metadata_title is provided
+        assert (
+            result.metadata_embedded is True
+        )  # Mock mode sets True when metadata_title is provided
 
     def test_finalize_mock_no_sfx(self):
         """Test finalize without SFX in mock mode."""
@@ -169,11 +180,13 @@ class TestAudioFinalizer:
         output_path = Path("/tmp/test_output.mp3")
         params = AudioFinalizeParams(apply_sfx=False)
 
-        result = finalizer.finalize(input_path, output_path, params, ["ambient_cheerful"])
+        result = finalizer.finalize(
+            input_path, output_path, params, ["ambient_cheerful"]
+        )
 
         assert result.sfx_applied is False
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_finalize_real_success(self, mock_run, tmp_path):
         """Test successful finalize in real mode."""
         mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="-20.0")
@@ -192,8 +205,10 @@ class TestAudioFinalizer:
         )
 
         # Mock _measure_loudness and _get_duration
-        with patch.object(finalizer, '_measure_loudness', return_value=(-20.0, 7.0, -2.0, -40.0)):
-            with patch.object(finalizer, '_get_duration', return_value=5000):
+        with patch.object(
+            finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)
+        ):
+            with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 
         assert result.input_path == str(input_path)
@@ -203,7 +218,7 @@ class TestAudioFinalizer:
         assert result.fade_applied is True
         assert len(result.errors) == 0
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_finalize_real_ffmpeg_not_found(self, mock_run, tmp_path):
         """Test finalize with ffmpeg not found."""
         mock_run.side_effect = FileNotFoundError("ffmpeg not found")
@@ -215,8 +230,10 @@ class TestAudioFinalizer:
         finalizer = AudioFinalizer(mock_mode=False)
         params = AudioFinalizeParams()
 
-        with patch.object(finalizer, '_measure_loudness', return_value=(-20.0, 7.0, -2.0, -40.0)):
-            with patch.object(finalizer, '_get_duration', return_value=5000):
+        with patch.object(
+            finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)
+        ):
+            with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 
         assert len(result.errors) > 0 or len(result.warnings) > 0

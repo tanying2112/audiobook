@@ -1,12 +1,16 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, JSON, DateTime
+
+from sqlalchemy import JSON, Column, DateTime, String
+
 from ..database import Base
+
 
 class AgentKnowledge(Base):
     """Centralized knowledge base for agent collaboration"""
+
     __tablename__ = "agent_knowledge"
-    
+
     id = Column(String, primary_key=True)
     topic = Column(String, index=True)
     knowledge = Column(JSON)  # Structured domain knowledge
@@ -15,10 +19,12 @@ class AgentKnowledge(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_accessed = Column(DateTime)
 
+
 class TaskRecord(Base):
     """Audit trail for all agent operations"""
+
     __tablename__ = "agent_tasks"
-    
+
     id = Column(String, primary_key=True)
     task_type = Column(String)
     input_data = Column(JSON)
@@ -28,7 +34,7 @@ class TaskRecord(Base):
     retries = Column(JSON)  # List of retry attempts
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
-    
+
     @property
     def duration(self) -> Optional[float]:
         if self.completed_at:

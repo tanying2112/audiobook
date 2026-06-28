@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ..schemas import AudioPostProcessParams, ParagraphAnnotation, QualityJudgment, FixSuggestion
+from ..schemas import (
+    AudioPostProcessParams,
+    FixSuggestion,
+    ParagraphAnnotation,
+    QualityJudgment,
+)
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -88,13 +93,15 @@ class LLMJudge:
                 text_audio_alignment=0.0,
                 overall_score=0.0,
                 issues=["sensitive_content"],  # Valid literal from schema
-                fix_suggestions=[FixSuggestion(
-                    suggestion_type="prosody_correction",
-                    target_text="",
-                    suggested_value="",
-                    rationale=f"Judge error: {str(e)}",
-                    confidence=0.9,
-                )],
+                fix_suggestions=[
+                    FixSuggestion(
+                        suggestion_type="prosody_correction",
+                        target_text="",
+                        suggested_value="",
+                        rationale=f"Judge error: {str(e)}",
+                        confidence=0.9,
+                    )
+                ],
                 needs_regeneration=True,
             )
 

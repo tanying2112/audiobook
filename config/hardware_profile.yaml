@@ -260,6 +260,9 @@ profiles:
       embedding_model: "wavlm_large"
       similarity_threshold: 0.85
       max_drift_alerts_per_chapter: 3
+      mock_mode: false
+      device: "cuda"
+      cache_dir: "~/.cache/audiobook_studio/models"
 
 # ---------------------------------------------------------
 # 运行时自动检测与推荐（不修改此处，由代码在启动时评估）

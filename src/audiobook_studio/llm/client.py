@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
+import instructor
+from litellm import completion
 from pydantic import BaseModel
 from tenacity import (
     retry,
@@ -20,9 +22,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-
-import instructor
-from litellm import completion
 
 from ..schemas import (
     BookAnalysisOutput,
@@ -34,6 +33,8 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+from .constitutional_rules import apply_constitutional_rules
 
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
@@ -137,6 +138,7 @@ class LLMClient:
             return
         try:
             from langfuse import Langfuse
+
             self._langfuse = Langfuse(
                 public_key=self.config.langfuse_public_key,
                 secret_key=self.config.langfuse_secret_key,
@@ -152,6 +154,7 @@ class LLMClient:
     def _load_mock_data(self):
         """Load mock data for testing."""
         import json
+
         mock_dir = Path(self.config.mock_data_dir)
         if mock_dir.exists():
             # Look for both .json and .jsonl files
@@ -172,26 +175,26 @@ class LLMClient:
     def call(self, *args, **kwargs) -> LLMCallResult:
         """
         Call LLM with structured output parsing.
-        
+
         Compatible calling conventions:
         - call(prompt, response_model, **kwargs)  # positional
         - call(prompt="...", response_model=..., **kwargs)  # keyword prompt
         - call(text="...", response_model=..., **kwargs)    # keyword text
         - call(content="...", response_model=..., **kwargs) # keyword content
-        
+
         The prompt is extracted from the first positional arg or from
         prompt=, text=, or content= keyword arguments.
         """
         # Extract prompt from various possible sources
         prompt = None
         response_model = None
-        
+
         # Handle positional arguments: (prompt, response_model, ...)
         if args:
             prompt = args[0]
             if len(args) > 1:
                 response_model = args[1]
-        
+
         # Handle keyword arguments (override positional if provided)
         if "prompt" in kwargs:
             prompt = kwargs.pop("prompt")
@@ -247,12 +250,15 @@ class LLMClient:
                 response_model=response_model,
                 temperature=_temperature,
                 max_tokens=_max_tokens,
-                **call_kwargs
+                **call_kwargs,
             )
             latency_ms = int((time.time() - start) * 1000)
 
             # Get raw response for validation
-            raw_response = getattr(result, '_raw_response', None) or getattr(result, 'model_dump', lambda: {})()
+            raw_response = (
+                getattr(result, "_raw_response", None)
+                or getattr(result, "model_dump", lambda: {})()
+            )
 
             # Extract token usage from raw response
             tokens_in = 0
@@ -271,14 +277,20 @@ class LLMClient:
 
             # Calculate cost
             cost_usd = 0.0
-            model_pricing = MODEL_PRICING.get(self.config.model, {"input": 0, "output": 0})
+            model_pricing = MODEL_PRICING.get(
+                self.config.model, {"input": 0, "output": 0}
+            )
             if tokens_in > 0:
                 cost_usd += (tokens_in / 1_000_000) * model_pricing.get("input", 0)
             if tokens_out > 0:
                 cost_usd += (tokens_out / 1_000_000) * model_pricing.get("output", 0)
 
+            # Apply constitutional rules
+            ruled_output = apply_constitutional_rules(
+                result, context={"model": self.config.model}
+            )
             return LLMCallResult(
-                output=result,
+                output=ruled_output,
                 model=self.config.model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
@@ -294,6 +306,7 @@ class LLMClient:
     def _mock_call(self, prompt: str, response_model: Type[T]) -> LLMCallResult:
         """Mock LLM call for testing."""
         import copy
+
         # Return mock data if available
         for key, data in self._mock_cache.items():
             if key in prompt.lower():
@@ -309,78 +322,137 @@ class LLMClient:
                 )
         # Return minimal valid mock based on response_model type
         from ..schemas import (
-            BookAnalysisOutput, ExtractionResult, ParagraphAnnotation,
-            QualityJudgment, TtsEditOutput, TtsRoutingDecision
+            BookAnalysisOutput,
+            ExtractionResult,
+            ParagraphAnnotation,
+            QualityJudgment,
+            TtsEditOutput,
+            TtsRoutingDecision,
         )
+
         if response_model == BookAnalysisOutput:
-            from ..schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
+            from ..schemas import (
+                BookAnalysisOutput,
+                BookMeta,
+                CharacterVoiceBinding,
+                EmotionSnapshot,
+            )
+
             mock_output = BookAnalysisOutput(
                 book_meta=BookMeta(
-                    title='Test Book', author='Test Author', genre='小说',
-                    difficulty='B', language='zh', era='现代', total_chapters_estimated=10
+                    title="Test Book",
+                    author="Test Author",
+                    genre="小说",
+                    difficulty="B",
+                    language="zh",
+                    era="现代",
+                    total_chapters_estimated=10,
                 ),
                 character_voice_map=[
                     CharacterVoiceBinding(
-                        canonical_name='旁白', aliases=[], gender='neutral',
-                        age_range='adult', suggested_voice_id='v1',
-                        sample_quote='这是一个测试样本。'
+                        canonical_name="旁白",
+                        aliases=[],
+                        gender="neutral",
+                        age_range="adult",
+                        suggested_voice_id="v1",
+                        sample_quote="这是一个测试样本。",
                     ),
                     CharacterVoiceBinding(
-                        canonical_name='主角', aliases=[], gender='male',
-                        age_range='adult', suggested_voice_id='v2',
-                        sample_quote='主角的测试台词。'
+                        canonical_name="主角",
+                        aliases=[],
+                        gender="male",
+                        age_range="adult",
+                        suggested_voice_id="v2",
+                        sample_quote="主角的测试台词。",
                     ),
                 ],
                 emotion_snapshots=[
-                    EmotionSnapshot(chapter=1, dominant_emotion='neutral', intensity=0.5, notes='测试情感快照')
+                    EmotionSnapshot(
+                        chapter=1,
+                        dominant_emotion="neutral",
+                        intensity=0.5,
+                        notes="测试情感快照",
+                    )
                 ],
-                story_line_summary='这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。',
-                global_style_notes='测试全局文风备注：保持平实叙述风格，对话自然流畅。'
+                story_line_summary="这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。",
+                global_style_notes="测试全局文风备注：保持平实叙述风格，对话自然流畅。",
             )
         elif response_model == ExtractionResult:
             from ..schemas import ExtractionResult
+
             mock_output = ExtractionResult(
-                raw_text='Mock extracted text', language='zh', page_count=1,
-                has_ocr=False, ocr_page_ratio=0.0, warnings=[]
+                raw_text="Mock extracted text",
+                language="zh",
+                page_count=1,
+                has_ocr=False,
+                ocr_page_ratio=0.0,
+                warnings=[],
             )
         elif response_model == ParagraphAnnotation:
             from ..schemas import ParagraphAnnotation
+
             mock_output = ParagraphAnnotation(
-                paragraph_index=0, speaker_canonical_name='旁白', is_dialogue=False,
-                emotion='neutral', emotion_intensity=0.5, speech_rate=1.0,
-                pitch_shift_semitones=0, needs_sfx=False, sfx_tags=[],
-                pause_before_ms=300, pause_after_ms=500, confidence=0.9,
-                difficulty='B', notes='heuristic_fallback_no_llm_available'
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                needs_sfx=False,
+                sfx_tags=[],
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                notes="heuristic_fallback_no_llm_available",
             )
         elif response_model == QualityJudgment:
             from ..schemas import QualityJudgment
+
             mock_output = QualityJudgment(
-                segment_id='mock_seg', speaker_clarity=0.9, emotion_match=0.9,
-                prosody_naturalness=0.9, text_audio_alignment=0.9,
-                overall_score=0.9, issues=[], fix_suggestions=[],
-                needs_regeneration=False
+                segment_id="mock_seg",
+                speaker_clarity=0.9,
+                emotion_match=0.9,
+                prosody_naturalness=0.9,
+                text_audio_alignment=0.9,
+                overall_score=0.9,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
             )
         elif response_model == TtsEditOutput:
             from ..schemas import TtsEditOutput
+
             mock_output = TtsEditOutput(
-                edited_text='这是模拟编辑后的文本，用于测试。', changes_made=['heuristic_fallback_no_llm_available'],
-                forbidden_content_removed=[], confidence=0.8, rationale='LLM unavailable, using heuristic fallback'
+                edited_text="这是模拟编辑后的文本，用于测试。",
+                changes_made=["heuristic_fallback_no_llm_available"],
+                forbidden_content_removed=[],
+                confidence=0.8,
+                rationale="LLM unavailable, using heuristic fallback",
             )
         elif response_model == TtsRoutingDecision:
             from ..schemas import TtsRoutingDecision
+
             mock_output = TtsRoutingDecision(
-                segment_id='mock_seg', engine_choice='kokoro', voice_id='v1',
-                prosody_overrides=None, fallback_engine='edge', reasoning='Mock',
-                estimated_cost_usd=0.0, estimated_duration_ms=1000
+                segment_id="mock_seg",
+                engine_choice="kokoro",
+                voice_id="v1",
+                prosody_overrides=None,
+                fallback_engine="edge",
+                reasoning="Mock",
+                estimated_cost_usd=0.0,
+                estimated_duration_ms=1000,
             )
-        elif response_model == 'FeedbackAnalysis':
+        elif response_model == "FeedbackAnalysis":
             from ..schemas import FeedbackAnalysis
+
             mock_output = FeedbackAnalysis(
-                pattern_tags=['mock_feedback_tag'],
-                semantic_summary='[Mock] Feedback analysis for testing purposes.',
-                severity='medium',
-                actionable_instruction='Mock actionable instruction for testing.',
-                root_cause='Mock root cause for testing.',
+                pattern_tags=["mock_feedback_tag"],
+                semantic_summary="[Mock] Feedback analysis for testing purposes.",
+                severity="medium",
+                actionable_instruction="Mock actionable instruction for testing.",
+                root_cause="Mock root cause for testing.",
                 confidence=0.85,
             )
         else:
@@ -399,7 +471,9 @@ class LLMClient:
             cost_usd=0.0,
             latency_ms=1,
             schema_compliance=True,
-            raw_response=mock_output.model_dump() if hasattr(mock_output, 'model_dump') else {},
+            raw_response=(
+                mock_output.model_dump() if hasattr(mock_output, "model_dump") else {}
+            ),
         )
 
 

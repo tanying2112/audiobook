@@ -18,13 +18,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.audiobook_studio.feedback.ab_test import (
-    run_ab_test,
-    build_ab_samples,
-    blind_evaluate,
     ABTestReport,
     _score_output,
+    blind_evaluate,
+    build_ab_samples,
+    run_ab_test,
 )
-from src.audiobook_studio.feedback.promotion_gate import _load_golden_dataset
+from src.audiobook_studio.feedback.promotion_gate import (
+    _load_golden_examples as _load_golden_dataset,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,14 +37,37 @@ logger = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run A/B test for prompt versions")
-    parser.add_argument("--stage", type=str, required=True, help="Pipeline stage name (e.g., edit_for_tts, quality_judge, annotate_paragraph)")
-    parser.add_argument("--version-a", type=int, help="Control version number (e.g., 1)")
-    parser.add_argument("--version-b", type=int, help="Treatment version number (e.g., 2)")
-    parser.add_argument("--samples", type=int, default=10, help="Number of samples to test (default: 10)")
-    parser.add_argument("--golden-dir", type=str, help="Path to golden dataset directory")
-    parser.add_argument("--significance", type=float, default=0.05, help="Significance level (default: 0.05)")
+    parser.add_argument(
+        "--stage",
+        type=str,
+        required=True,
+        help="Pipeline stage name (e.g., edit_for_tts, quality_judge, annotate_paragraph)",
+    )
+    parser.add_argument(
+        "--version-a", type=int, help="Control version number (e.g., 1)"
+    )
+    parser.add_argument(
+        "--version-b", type=int, help="Treatment version number (e.g. 2)"
+    )
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=10,
+        help="Number of samples to test (default: 10)",
+    )
+    parser.add_argument(
+        "--golden-dir", type=str, help="Path to golden dataset directory"
+    )
+    parser.add_argument(
+        "--significance",
+        type=float,
+        default=0.05,
+        help="Significance level (default: 0.05)",
+    )
     parser.add_argument("--output", type=str, help="Output report JSON file path")
-    parser.add_argument("--human-ratings", type=str, help="Path to human ratings JSON file")
+    parser.add_argument(
+        "--human-ratings", type=str, help="Path to human ratings JSON file"
+    )
     return parser.parse_args()
 
 
@@ -52,7 +77,9 @@ def load_human_ratings(path: str):
         return json.load(f)
 
 
-def create_synthetic_samples(stage: str, version_a: int, version_b: int, num_samples: int):
+def create_synthetic_samples(
+    stage: str, version_a: int, version_b: int, num_samples: int
+):
     """Create synthetic test samples for demonstration."""
     import uuid
 
@@ -65,9 +92,15 @@ def create_synthetic_samples(stage: str, version_a: int, version_b: int, num_sam
             stage=stage,
             input_data={"text": f"Test paragraph {i+1}"},
             # Version A: shorter, less detailed output
-            output_a={"edited_text": f"Version A output {i+1}", "confidence": 0.7 if stage == "edit_for_tts" else 0.7},
+            output_a={
+                "edited_text": f"Version A output {i+1}",
+                "confidence": 0.7 if stage == "edit_for_tts" else 0.7,
+            },
             # Version B: longer, more detailed output (simulating improvement)
-            output_b={"edited_text": f"Version B improved output {i+1} with more detail and better quality", "confidence": 0.85 if stage == "edit_for_tts" else 0.85},
+            output_b={
+                "edited_text": f"Version B improved output {i+1} with more detail and better quality",
+                "confidence": 0.85 if stage == "edit_for_tts" else 0.85,
+            },
             version_a=version_a,
             version_b=version_b,
         )
@@ -91,21 +124,31 @@ def main():
         golden_examples = _load_golden_dataset(args.stage)
         if not golden_examples:
             logger.warning("No golden examples found, using synthetic samples")
-            samples = create_synthetic_samples(args.stage, version_a, version_b, args.samples)
+            samples = create_synthetic_samples(
+                args.stage, version_a, version_b, args.samples
+            )
         else:
             # Limit samples
             if len(golden_examples) > args.samples:
-                golden_examples = golden_examples[:args.samples]
-            samples = build_ab_samples(args.stage, golden_examples, version_a, version_b)
+                golden_examples = golden_examples[: args.samples]
+            samples = build_ab_samples(
+                args.stage, golden_examples, version_a, version_b
+            )
     else:
-        logger.info(f"No golden dataset provided, using {args.samples} synthetic samples")
-        samples = create_synthetic_samples(args.stage, version_a, version_b, args.samples)
+        logger.info(
+            f"No golden dataset provided, using {args.samples} synthetic samples"
+        )
+        samples = create_synthetic_samples(
+            args.stage, version_a, version_b, args.samples
+        )
 
     if not samples:
         logger.error("No samples available for testing")
         return 1
 
-    logger.info(f"Running A/B test: {args.stage} v{version_a} vs v{version_b} with {len(samples)} samples")
+    logger.info(
+        f"Running A/B test: {args.stage} v{version_a} vs v{version_b} with {len(samples)} samples"
+    )
 
     # Run A/B test
     report = run_ab_test(
@@ -134,8 +177,12 @@ def main():
     print(f"  Ties: {report.ties}")
     print(f"\nStatistical Significance:")
     print(f"  p-value: {report.p_value:.4f}")
-    print(f"  CI (95%): [{report.confidence_interval[0]:.4f}, {report.confidence_interval[1]:.4f}]")
-    print(f"  Significant (α={report.significance_level}): {'Yes ✅' if report.is_significant else 'No ❌'}")
+    print(
+        f"  CI (95%): [{report.confidence_interval[0]:.4f}, {report.confidence_interval[1]:.4f}]"
+    )
+    print(
+        f"  Significant (α={report.significance_level}): {'Yes ✅' if report.is_significant else 'No ❌'}"
+    )
     print(f"\nRecommendation: {report.recommendation}")
 
     # Save report if output path provided
@@ -178,9 +225,15 @@ def main():
         logger.info(f"Report saved to {output_path}")
 
     # Exit with code based on recommendation
-    if "推荐升级" in report.recommendation or "recommend upgrade" in report.recommendation.lower():
+    if (
+        "推荐升级" in report.recommendation
+        or "recommend upgrade" in report.recommendation.lower()
+    ):
         return 0
-    elif "不建议升级" in report.recommendation or "do not recommend" in report.recommendation.lower():
+    elif (
+        "不建议升级" in report.recommendation
+        or "do not recommend" in report.recommendation.lower()
+    ):
         return 1
     else:
         return 2  # Inconclusive

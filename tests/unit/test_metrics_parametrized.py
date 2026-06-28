@@ -11,12 +11,11 @@ all if/elif/else branches in:
 
 from dataclasses import fields as dc_fields
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-
 
 # ===========================================================================
 # Fixtures
@@ -27,6 +26,7 @@ import pytest
 def wer_metric():
     """Create an ASRWerMetric with a mocked backend for _compute_wer_cer tests."""
     from src.audiobook_studio.quality.metrics import ASRWerMetric
+
     metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="dummy")
     # Replace backend with a mock to avoid import of real ASR models
     metric._backend = MagicMock()
@@ -48,49 +48,47 @@ class TestComputeWerCer:
             ("hello world", "hello world", 0.0, 0.0, 0, 0, 0),
             ("a", "a", 0.0, 0.0, 0, 0, 0),
             ("", "", 0.0, 0.0, 0, 0, 0),
-
             # ── English — single substitution ──
             ("hello", "jello", 1.0, 1.0, 0, 0, 1),
-
             # ── English — single insertion ──
             ("hello", "hello there", 1.0, 1.0, 1, 0, 0),
-
             # ── English — single deletion ──
             ("hello world", "hello", 0.5, 0.5, 0, 1, 0),
-
             # ── English — all operations ──
-            ("the cat sat", "the dog sit", 2/3, 2/3, 0, 0, 2),
-
+            ("the cat sat", "the dog sit", 2 / 3, 2 / 3, 0, 0, 2),
             # ── English — empty reference edge case (1 word) ──
             ("", "hello", 1.0, 1.0, 1, 0, 0),
-
             # ── English — empty hypothesis ──
             ("hello", "", 1.0, 1.0, 0, 1, 0),
-
             # ── English — complete replacement (single word) ──
             ("abc", "xyz", 1.0, 1.0, 0, 0, 1),
-
             # ── English — longer hypothesis with insertions ──
             ("a b", "a x b y", 1.0, 1.0, 2, 0, 0),
-
             # ── English — longer reference with deletions ──
             ("a b c d", "a c", 0.5, 0.5, 0, 2, 0),
-
             # ── English — single char mismatch ──
             ("a", "b", 1.0, 1.0, 0, 0, 1),
-
             # ── English — partial match ──
             ("hello world", "hello moon", 0.5, 0.5, 0, 0, 1),
-
             # ── English — repeated words ──
-            ("the the the", "the the", 1/3, 1/3, 0, 1, 0),
-            ("the the", "the the the", 1/2, 1/2, 1, 0, 0),
+            ("the the the", "the the", 1 / 3, 1 / 3, 0, 1, 0),
+            ("the the", "the the the", 1 / 2, 1 / 2, 1, 0, 0),
         ],
     )
-    def test_english_wer_cer(self, wer_metric, reference, hypothesis,
-                              expected_wer, expected_cer,
-                              expected_ins, expected_del, expected_sub):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
+    def test_english_wer_cer(
+        self,
+        wer_metric,
+        reference,
+        hypothesis,
+        expected_wer,
+        expected_cer,
+        expected_ins,
+        expected_del,
+        expected_sub,
+    ):
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
+            reference, hypothesis
+        )
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -102,30 +100,34 @@ class TestComputeWerCer:
         [
             # ── Chinese — identical ──
             ("你好世界", "你好世界", 0.0, 0.0, 0, 0, 0),
-
             # ── Chinese — single substitution ──
             ("你好世界", "你坏世界", 0.25, 0.25, 0, 0, 1),
-
             # ── Chinese — single insertion (2 chars added) ──
             ("你好", "你好世界", 1.0, 1.0, 2, 0, 0),
-
             # ── Chinese — single deletion (2 chars removed) ──
             ("你好世界", "你好", 0.5, 0.5, 0, 2, 0),
-
             # ── Chinese — empty reference (2 chars inserted) ──
             ("", "你好", 2.0, 2.0, 2, 0, 0),
-
             # ── Chinese — empty hypothesis (1 char deleted) ──
             ("你好", "", 1.0, 1.0, 0, 2, 0),
-
             # ── Chinese — complete replacement (no Chinese chars → English tokenization) ──
             ("abc", "xyz", 1.0, 1.0, 0, 0, 1),
         ],
     )
-    def test_chinese_wer_cer(self, wer_metric, reference, hypothesis,
-                              expected_wer, expected_cer,
-                              expected_ins, expected_del, expected_sub):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
+    def test_chinese_wer_cer(
+        self,
+        wer_metric,
+        reference,
+        hypothesis,
+        expected_wer,
+        expected_cer,
+        expected_ins,
+        expected_del,
+        expected_sub,
+    ):
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
+            reference, hypothesis
+        )
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -137,17 +139,26 @@ class TestComputeWerCer:
         [
             # ── Mixed Chinese + English spaces ──
             ("你好 world", "你好 world", 0.0, 0.0, 0, 0, 0),
-
             # ── Chinese with English words (Chinese detected → char tokenization) ──
             # Tokenized as: 你 好 h e l l o 世 界 (9 chars) vs 你 好 w o r l d 世 界 (9 chars)
             # "hello" vs "world" → 5 substitutions among 9 total
-            ("你好hello世界", "你好world世界", 4/9, 4/9, 0, 0, 4),
+            ("你好hello世界", "你好world世界", 4 / 9, 4 / 9, 0, 0, 4),
         ],
     )
-    def test_mixed_language_wer_cer(self, wer_metric, reference, hypothesis,
-                                     expected_wer, expected_cer,
-                                     expected_ins, expected_del, expected_sub):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
+    def test_mixed_language_wer_cer(
+        self,
+        wer_metric,
+        reference,
+        hypothesis,
+        expected_wer,
+        expected_cer,
+        expected_ins,
+        expected_del,
+        expected_sub,
+    ):
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
+            reference, hypothesis
+        )
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -312,8 +323,11 @@ class TestDNSMOSResultToDict:
             (3.5, 3.0, 4.0, 3.8, False, "Inference error"),
         ],
     )
-    def test_dnsmos_to_dict(self, mos_overall, mos_sig, mos_bak, mos_ovr, success, error):
+    def test_dnsmos_to_dict(
+        self, mos_overall, mos_sig, mos_bak, mos_ovr, success, error
+    ):
         from src.audiobook_studio.quality.metrics import DNSMOSResult
+
         r = DNSMOSResult(mos_overall, mos_sig, mos_bak, mos_ovr, success, error)
         d = r.to_dict()
         assert d["mos_overall"] == mos_overall
@@ -328,17 +342,53 @@ class TestASRResultToDict:
     @pytest.mark.parametrize(
         "text, words, language, confidence, duration_ms, success, error",
         [
-            ("hello", [{"word": "hello", "start_ms": 0, "end_ms": 500, "confidence": 0.99}], "en", 0.99, 500.0, True, None),
+            (
+                "hello",
+                [{"word": "hello", "start_ms": 0, "end_ms": 500, "confidence": 0.99}],
+                "en",
+                0.99,
+                500.0,
+                True,
+                None,
+            ),
             ("", [], "unknown", 0.0, 0.0, False, "No audio"),
-            ("你好", [{"word": "你", "start_ms": 0, "end_ms": 300, "confidence": 0.95}, {"word": "好", "start_ms": 300, "end_ms": 600, "confidence": 0.97}], "zh", 0.96, 600.0, True, None),
-            ("test", [{"word": "test", "start_ms": 0, "end_ms": 1000, "confidence": 0.5}], "en", 0.5, 1000.0, True, None),
+            (
+                "你好",
+                [
+                    {"word": "你", "start_ms": 0, "end_ms": 300, "confidence": 0.95},
+                    {"word": "好", "start_ms": 300, "end_ms": 600, "confidence": 0.97},
+                ],
+                "zh",
+                0.96,
+                600.0,
+                True,
+                None,
+            ),
+            (
+                "test",
+                [{"word": "test", "start_ms": 0, "end_ms": 1000, "confidence": 0.5}],
+                "en",
+                0.5,
+                1000.0,
+                True,
+                None,
+            ),
         ],
     )
-    def test_asr_to_dict(self, text, words, language, confidence, duration_ms, success, error):
+    def test_asr_to_dict(
+        self, text, words, language, confidence, duration_ms, success, error
+    ):
         from src.audiobook_studio.quality.metrics import ASRResult
-        r = ASRResult(text=text, words=words, language=language,
-                      confidence=confidence, duration_ms=duration_ms,
-                      success=success, error=error)
+
+        r = ASRResult(
+            text=text,
+            words=words,
+            language=language,
+            confidence=confidence,
+            duration_ms=duration_ms,
+            success=success,
+            error=error,
+        )
         d = r.to_dict()
         assert d["text"] == text
         assert d["words"] == words
@@ -360,12 +410,31 @@ class TestWERResultToDict:
             (2.0, 2.0, 10, 0, 0, 0, 10, False, "Empty reference"),
         ],
     )
-    def test_wer_to_dict(self, wer, cer, insertions, deletions, substitutions,
-                          reference_words, hypothesis_words, success, error):
+    def test_wer_to_dict(
+        self,
+        wer,
+        cer,
+        insertions,
+        deletions,
+        substitutions,
+        reference_words,
+        hypothesis_words,
+        success,
+        error,
+    ):
         from src.audiobook_studio.quality.metrics import WERResult
-        r = WERResult(wer=wer, cer=cer, insertions=insertions, deletions=deletions,
-                      substitutions=substitutions, reference_words=reference_words,
-                      hypothesis_words=hypothesis_words, success=success, error=error)
+
+        r = WERResult(
+            wer=wer,
+            cer=cer,
+            insertions=insertions,
+            deletions=deletions,
+            substitutions=substitutions,
+            reference_words=reference_words,
+            hypothesis_words=hypothesis_words,
+            success=success,
+            error=error,
+        )
         d = r.to_dict()
         assert d["wer"] == wer
         assert d["cer"] == cer
@@ -388,11 +457,19 @@ class TestSpeakerSimilarityResultToDict:
             (1.0, 1.0, True, "ref", "target", True, None),
         ],
     )
-    def test_similarity_to_dict(self, similarity, threshold, is_same, ref_id, target_id, success, error):
+    def test_similarity_to_dict(
+        self, similarity, threshold, is_same, ref_id, target_id, success, error
+    ):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityResult
+
         r = SpeakerSimilarityResult(
-            similarity=similarity, threshold=threshold, is_same_speaker=is_same,
-            reference_id=ref_id, target_id=target_id, success=success, error=error,
+            similarity=similarity,
+            threshold=threshold,
+            is_same_speaker=is_same,
+            reference_id=ref_id,
+            target_id=target_id,
+            success=success,
+            error=error,
         )
         d = r.to_dict()
         assert d["similarity"] == similarity
@@ -421,8 +498,11 @@ class TestSpeakerEmbeddingRoundTrip:
     )
     def test_round_trip(self, embedding_dim, model_name, sample_rate):
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.random.randn(embedding_dim).astype(np.float32)
-        se = SpeakerEmbedding(embedding=emb, model_name=model_name, sample_rate=sample_rate)
+        se = SpeakerEmbedding(
+            embedding=emb, model_name=model_name, sample_rate=sample_rate
+        )
 
         d = se.to_dict()
         assert d["dim"] == embedding_dim
@@ -437,6 +517,7 @@ class TestSpeakerEmbeddingRoundTrip:
 
     def test_zero_dimension_embedding(self):
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.array([], dtype=np.float32)
         se = SpeakerEmbedding(embedding=emb, model_name="test", sample_rate=16000)
         d = se.to_dict()
@@ -448,6 +529,7 @@ class TestSpeakerEmbeddingRoundTrip:
 
     def test_all_zeros_embedding(self):
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.zeros(192, dtype=np.float32)
         se = SpeakerEmbedding(embedding=emb, model_name="ecapa", sample_rate=16000)
         d = se.to_dict()
@@ -457,8 +539,11 @@ class TestSpeakerEmbeddingRoundTrip:
     def test_large_embedding(self):
         """Large embedding (e.g. wav2vec 1024-dim)."""
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.random.randn(1024).astype(np.float32)
-        se = SpeakerEmbedding(embedding=emb, model_name="wav2vec_large", sample_rate=16000)
+        se = SpeakerEmbedding(
+            embedding=emb, model_name="wav2vec_large", sample_rate=16000
+        )
         d = se.to_dict()
         restored = SpeakerEmbedding.from_dict(d)
         assert restored.embedding.shape == (1024,)
@@ -483,7 +568,10 @@ class TestWERResultNoReference:
     def test_no_reference_returns_error(self, ref_text):
         """Empty/None reference triggers the no-reference error branch."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
-        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="init")
+
+        metric = ASRWerMetric(
+            backend="funasr", model_name="test", reference_text="init"
+        )
         metric._backend = MagicMock()
         metric.reference_text = ref_text  # Force it to None/empty
 
@@ -496,7 +584,10 @@ class TestWERResultNoReference:
     def test_constructor_reference_used_when_no_param(self):
         """Constructor reference_text is used when compute() gets no param."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
-        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="hello")
+
+        metric = ASRWerMetric(
+            backend="funasr", model_name="test", reference_text="hello"
+        )
         metric._backend = MagicMock()
 
         mock_asr = MagicMock()
@@ -511,6 +602,7 @@ class TestWERResultNoReference:
     def test_param_reference_overrides_constructor(self):
         """compute(reference_text=...) overrides constructor reference_text."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
+
         metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="old")
         metric._backend = MagicMock()
 
@@ -526,7 +618,10 @@ class TestWERResultNoReference:
     def test_constructor_reference_used_when_param_none(self):
         """When compute() param is None, falls back to constructor reference."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
-        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="fallback")
+
+        metric = ASRWerMetric(
+            backend="funasr", model_name="test", reference_text="fallback"
+        )
         metric._backend = MagicMock()
 
         mock_asr = MagicMock()
@@ -547,16 +642,19 @@ class TestWERResultNoReference:
 class TestASRWerMetricCreateBackend:
     def test_funasr_backend(self):
         from src.audiobook_studio.quality.metrics import ASRWerMetric, FunASRBackend
+
         metric = ASRWerMetric(backend="funasr", model_name="paraformer")
         assert isinstance(metric._backend, FunASRBackend)
 
     def test_whisper_backend(self):
         from src.audiobook_studio.quality.metrics import ASRWerMetric, WhisperBackend
+
         metric = ASRWerMetric(backend="whisper", model_name="small")
         assert isinstance(metric._backend, WhisperBackend)
 
     def test_unknown_backend_raises(self):
         from src.audiobook_studio.quality.metrics import ASRWerMetric
+
         with pytest.raises(ValueError, match="Unknown ASR backend"):
             ASRWerMetric(backend="invalid_backend", model_name="test")
 
@@ -568,17 +666,26 @@ class TestASRWerMetricCreateBackend:
 
 class TestSpeakerSimilarityCreateBackend:
     def test_ecapa_backend(self):
-        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, ECAPATDNNBackend
+        from src.audiobook_studio.quality.metrics import (
+            ECAPATDNNBackend,
+            SpeakerSimilarityMetric,
+        )
+
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn")
         assert isinstance(metric._backend, ECAPATDNNBackend)
 
     def test_wavlm_backend(self):
-        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, WavLMBackend
+        from src.audiobook_studio.quality.metrics import (
+            SpeakerSimilarityMetric,
+            WavLMBackend,
+        )
+
         metric = SpeakerSimilarityMetric(backend="wavlm_large")
         assert isinstance(metric._backend, WavLMBackend)
 
     def test_unknown_backend_raises(self):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric
+
         with pytest.raises(ValueError, match="Unknown speaker embedding backend"):
             SpeakerSimilarityMetric(backend="unknown_backend")
 
@@ -591,6 +698,7 @@ class TestSpeakerSimilarityCreateBackend:
 class TestSpeakerSimilarityCompute:
     def test_no_reference_returns_error(self):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric
+
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn")
 
         result = metric.compute(Path("target.wav"))
@@ -600,19 +708,27 @@ class TestSpeakerSimilarityCompute:
         assert result.is_same_speaker is False
 
     def test_registered_reference_used(self):
-        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, SpeakerEmbedding
+        from src.audiobook_studio.quality.metrics import (
+            SpeakerEmbedding,
+            SpeakerSimilarityMetric,
+        )
+
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn", threshold=0.85)
 
         # Manually register an embedding
         ref_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         metric._reference_embeddings["ref_001"] = SpeakerEmbedding(
-            embedding=ref_emb, model_name="ecapa_tdnn", sample_rate=16000,
+            embedding=ref_emb,
+            model_name="ecapa_tdnn",
+            sample_rate=16000,
         )
 
         # Mock backend to return target embedding
         target_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         target_embedding = SpeakerEmbedding(
-            embedding=target_emb, model_name="ecapa_tdnn", sample_rate=16000,
+            embedding=target_emb,
+            model_name="ecapa_tdnn",
+            sample_rate=16000,
         )
         metric._backend.extract_embedding = MagicMock(return_value=target_embedding)
 
@@ -623,44 +739,66 @@ class TestSpeakerSimilarityCompute:
 
     def test_reference_id_not_found_falls_to_audio(self):
         """When reference_id is not in _reference_embeddings, checks reference_audio path."""
-        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, SpeakerEmbedding
+        from src.audiobook_studio.quality.metrics import (
+            SpeakerEmbedding,
+            SpeakerSimilarityMetric,
+        )
+
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn")
 
         ref_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         ref_embedding = SpeakerEmbedding(
-            embedding=ref_emb, model_name="ecapa_tdnn", sample_rate=16000,
+            embedding=ref_emb,
+            model_name="ecapa_tdnn",
+            sample_rate=16000,
         )
         target_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         target_embedding = SpeakerEmbedding(
-            embedding=target_emb, model_name="ecapa_tdnn", sample_rate=16000,
+            embedding=target_emb,
+            model_name="ecapa_tdnn",
+            sample_rate=16000,
         )
         call_count = [0]
+
         def mock_extract(audio_path):
             call_count[0] += 1
             if call_count[0] == 1:
                 return ref_embedding
             return target_embedding
+
         metric._backend.extract_embedding = MagicMock(side_effect=mock_extract)
 
         # reference_id not found → should fall through to extract_embedding from reference_audio
-        result = metric.compute(Path("target.wav"), reference_id="nonexistent", reference_audio=Path("ref.wav"))
+        result = metric.compute(
+            Path("target.wav"),
+            reference_id="nonexistent",
+            reference_audio=Path("ref.wav"),
+        )
         assert result.success is True
 
     def test_threshold_boundary(self):
         """is_same_speaker depends on similarity >= threshold."""
-        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, SpeakerEmbedding
+        from src.audiobook_studio.quality.metrics import (
+            SpeakerEmbedding,
+            SpeakerSimilarityMetric,
+        )
+
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn", threshold=0.85)
 
         # Register reference with known embedding
         ref_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         metric._reference_embeddings["ref"] = SpeakerEmbedding(
-            embedding=ref_emb, model_name="ecapa", sample_rate=16000,
+            embedding=ref_emb,
+            model_name="ecapa",
+            sample_rate=16000,
         )
 
         # Target with cosine similarity = 0.9 (above threshold)
         target_emb = np.array([0.9, 0.43589, 0.0], dtype=np.float32)
         target_embedding = SpeakerEmbedding(
-            embedding=target_emb, model_name="ecapa", sample_rate=16000,
+            embedding=target_emb,
+            model_name="ecapa",
+            sample_rate=16000,
         )
         metric._backend.extract_embedding = MagicMock(return_value=target_embedding)
 
@@ -678,12 +816,14 @@ class TestSpeakerSimilarityCompute:
 class TestASRGetName:
     def test_funasr_name(self):
         from src.audiobook_studio.quality.metrics import ASRWerMetric
+
         m = ASRWerMetric(backend="funasr", model_name="paraformer")
         assert "funasr" in m.get_name()
         assert "paraformer" in m.get_name()
 
     def test_whisper_name(self):
         from src.audiobook_studio.quality.metrics import ASRWerMetric
+
         m = ASRWerMetric(backend="whisper", model_name="small")
         assert "whisper" in m.get_name()
         assert "small" in m.get_name()
@@ -692,11 +832,13 @@ class TestASRGetName:
 class TestSpeakerSimilarityGetName:
     def test_ecapa_name(self):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric
+
         m = SpeakerSimilarityMetric(backend="ecapa_tdnn")
         assert m.get_name() == "speaker_sim_ecapa_tdnn"
 
     def test_wavlm_name(self):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric
+
         m = SpeakerSimilarityMetric(backend="wavlm_large")
         assert m.get_name() == "speaker_sim_wavlm_large"
 
@@ -713,8 +855,12 @@ class TestDNSMOSCompute:
 
         # Simulate the early return when model is not loaded
         result = DNSMOSResult(
-            mos_overall=0.0, mos_sig=0.0, mos_bak=0.0, mos_ovr=0.0,
-            success=False, error="Model not loaded",
+            mos_overall=0.0,
+            mos_sig=0.0,
+            mos_bak=0.0,
+            mos_ovr=0.0,
+            success=False,
+            error="Model not loaded",
         )
         assert result.success is False
         d = result.to_dict()
@@ -732,22 +878,44 @@ class TestWERResultAllFields:
 
     def test_all_fields_present(self):
         from src.audiobook_studio.quality.metrics import WERResult
+
         r = WERResult(
-            wer=0.15, cer=0.08, insertions=2, deletions=1, substitutions=3,
-            reference_words=20, hypothesis_words=21, success=True, error=None,
+            wer=0.15,
+            cer=0.08,
+            insertions=2,
+            deletions=1,
+            substitutions=3,
+            reference_words=20,
+            hypothesis_words=21,
+            success=True,
+            error=None,
         )
         d = r.to_dict()
         expected_keys = {
-            "wer", "cer", "insertions", "deletions", "substitutions",
-            "reference_words", "hypothesis_words", "success", "error",
+            "wer",
+            "cer",
+            "insertions",
+            "deletions",
+            "substitutions",
+            "reference_words",
+            "hypothesis_words",
+            "success",
+            "error",
         }
         assert set(d.keys()) == expected_keys
 
     def test_error_field_populated(self):
         from src.audiobook_studio.quality.metrics import WERResult
+
         r = WERResult(
-            wer=1.0, cer=1.0, insertions=0, deletions=0, substitutions=0,
-            reference_words=0, hypothesis_words=0, success=False,
+            wer=1.0,
+            cer=1.0,
+            insertions=0,
+            deletions=0,
+            substitutions=0,
+            reference_words=0,
+            hypothesis_words=0,
+            success=False,
             error="ASR model crashed",
         )
         d = r.to_dict()
@@ -809,6 +977,7 @@ class TestSpeakerEmbeddingEdgeCases:
     def test_negative_values(self):
         """Embedding with negative values round-trips correctly."""
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.array([-1.5, -0.0, 2.5, 100.0], dtype=np.float32)
         se = SpeakerEmbedding(embedding=emb, model_name="test", sample_rate=16000)
         d = se.to_dict()
@@ -818,6 +987,7 @@ class TestSpeakerEmbeddingEdgeCases:
     def test_nan_values(self):
         """Embedding with NaN values round-trips correctly."""
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.array([1.0, float("nan"), 3.0], dtype=np.float32)
         se = SpeakerEmbedding(embedding=emb, model_name="test", sample_rate=16000)
         d = se.to_dict()
@@ -829,6 +999,7 @@ class TestSpeakerEmbeddingEdgeCases:
     def test_inf_values(self):
         """Embedding with inf values round-trips correctly."""
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
+
         emb = np.array([float("inf"), float("-inf"), 0.0], dtype=np.float32)
         se = SpeakerEmbedding(embedding=emb, model_name="test", sample_rate=16000)
         d = se.to_dict()

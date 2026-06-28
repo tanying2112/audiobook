@@ -2,11 +2,11 @@
 """Multi-language translation with semantic coherence preservation."""
 
 from .multilingual_dubbing import (
-    MultilingualDubbingManager,
     CharacterVoice,
     EmotionMapping,
-    Segment,
     EmotionType,
+    MultilingualDubbingManager,
+    Segment,
 )
 
 __all__ = [

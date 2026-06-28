@@ -1,10 +1,11 @@
 """Tests for team_collaboration module."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add project path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -13,18 +14,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 def test_collaboration_imports():
     """Test that team_collaboration module can be imported."""
     from src.audiobook_studio.collaboration.team_collaboration import (
-        CommentType,
-        TaskStatus,
-        ApprovalStatus,
-        ChangeType,
-        TeamMember,
-        Comment,
-        Task,
         ApprovalRequest,
         ApprovalResponse,
+        ApprovalStatus,
         ChangeRecord,
+        ChangeType,
         CollaborationManager,
+        Comment,
+        CommentType,
+        Task,
+        TaskStatus,
+        TeamMember,
     )
+
     assert CommentType is not None
     assert TaskStatus is not None
     assert ApprovalStatus is not None
@@ -100,7 +102,10 @@ class TestDataclasses:
 
     def test_comment_creation(self):
         """Test creating a Comment."""
-        from src.audiobook_studio.collaboration.team_collaboration import Comment, CommentType
+        from src.audiobook_studio.collaboration.team_collaboration import (
+            Comment,
+            CommentType,
+        )
 
         comment = Comment(
             id="comment-1",
@@ -117,7 +122,10 @@ class TestDataclasses:
 
     def test_task_creation(self):
         """Test creating a Task."""
-        from src.audiobook_studio.collaboration.team_collaboration import Task, TaskStatus
+        from src.audiobook_studio.collaboration.team_collaboration import (
+            Task,
+            TaskStatus,
+        )
 
         task = Task(
             id="task-1",
@@ -179,7 +187,9 @@ class TestCollaborationManager:
 
     def test_manager_creation(self, tmp_path):
         """Test creating a CollaborationManager."""
-        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager
+        from src.audiobook_studio.collaboration.team_collaboration import (
+            CollaborationManager,
+        )
 
         manager = CollaborationManager(storage_path=tmp_path)
         assert manager.team_members == {}

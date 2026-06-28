@@ -12,24 +12,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, float]]:
     """运行基准脚本并返回结果。"""
     try:
-        cmd = [
-            sys.executable,
-            script_path,
-            "--mock"
-        ]
+        cmd = [sys.executable, script_path, "--mock"]
 
         # 只在不输出到文件时捕获输出
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60  # 60秒超时
+            cmd, capture_output=True, text=True, timeout=60  # 60秒超时
         )
 
         if result.returncode != 0:
@@ -50,14 +43,11 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
             script_path,
             "--mock",
             "--output",
-            output_file
+            output_file,
         ]
 
         result = subprocess.run(
-            cmd_with_output,
-            capture_output=True,
-            text=True,
-            timeout=60
+            cmd_with_output, capture_output=True, text=True, timeout=60
         )
 
         if result.returncode != 0:
@@ -68,7 +58,7 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
 
         # 读取生成的基准文件
         if os.path.exists(output_file):
-            with open(output_file, 'r') as f:
+            with open(output_file, "r") as f:
                 data = json.load(f)
                 # 根据我们的基准脚本结构提取适当的数据
                 if "latency_ms" in data:
@@ -78,7 +68,9 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
                 else:
                     # 尝试找到任何数值数据
                     for key, value in data.items():
-                        if isinstance(value, dict) and all(isinstance(v, (int, float)) for v in value.values()):
+                        if isinstance(value, dict) and all(
+                            isinstance(v, (int, float)) for v in value.values()
+                        ):
                             return value
                     return {}
         else:
@@ -97,7 +89,7 @@ def load_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
     """从文件加载基准数据。"""
     try:
         if os.path.exists(baseline_path):
-            with open(baseline_path, 'r') as f:
+            with open(baseline_path, "r") as f:
                 data = json.load(f)
                 # 根据我们的基准脚本结构提取适当的数据
                 if "latency_ms" in data:
@@ -107,7 +99,9 @@ def load_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
                 else:
                     # 尝试找到任何数值数据
                     for key, value in data.items():
-                        if isinstance(value, dict) and all(isinstance(v, (int, float)) for v in value.values()):
+                        if isinstance(value, dict) and all(
+                            isinstance(v, (int, float)) for v in value.values()
+                        ):
                             return value
                     return {}
         else:
@@ -119,9 +113,7 @@ def load_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
 
 
 def compare_performance(
-    current: Dict[str, float],
-    baseline: Dict[str, float],
-    threshold: float = 110.0
+    current: Dict[str, float], baseline: Dict[str, float], threshold: float = 110.0
 ) -> Tuple[bool, List[Dict]]:
     """比较当前性能与基准性能。
 
@@ -142,47 +134,34 @@ def compare_performance(
                 ratio = (current_value / baseline_value) * 100
                 if ratio > threshold:
                     passed = False
-                    issues.append({
-                        "stage": stage,
-                        "current_value": round(current_value, 6),
-                        "baseline_value": round(baseline_value, 6),
-                        "ratio_percent": round(ratio, 2),
-                        "threshold_percent": threshold,
-                        "status": "FAILED" if ratio > threshold else "PASSED"
-                    })
+                    issues.append(
+                        {
+                            "stage": stage,
+                            "current_value": round(current_value, 6),
+                            "baseline_value": round(baseline_value, 6),
+                            "ratio_percent": round(ratio, 2),
+                            "threshold_percent": threshold,
+                            "status": "FAILED" if ratio > threshold else "PASSED",
+                        }
+                    )
 
     return passed, issues
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio CI性能检查"
+    parser = argparse.ArgumentParser(description="Audiobook Studio CI性能检查")
+    parser.add_argument(
+        "--latency-script", default="scripts/bench_latency.py", help="延迟基准脚本路径"
     )
     parser.add_argument(
-        "--latency-script",
-        default="scripts/bench_latency.py",
-        help="延迟基准脚本路径"
+        "--cost-script", default="scripts/bench_cost.py", help="成本基准脚本路径"
+    )
+    parser.add_argument("--baselines-dir", default="baselines", help="基准文件目录")
+    parser.add_argument(
+        "--threshold", type=float, default=110.0, help="性能退化阈值百分比"
     )
     parser.add_argument(
-        "--cost-script",
-        default="scripts/bench_cost.py",
-        help="成本基准脚本路径"
-    )
-    parser.add_argument(
-        "--baselines-dir",
-        default="baselines",
-        help="基准文件目录"
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=110.0,
-        help="性能退化阈值百分比"
-    )
-    parser.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        help="如果任何基准运行失败则退出错误"
+        "--fail-on-error", action="store_true", help="如果任何基准运行失败则退出错误"
     )
 
     args = parser.parse_args()
@@ -225,7 +204,9 @@ def main():
 
     # 检查延迟基准
     if latency_current:
-        latency_baseline_path = os.path.join(args.baselines_dir, "latency_baseline.json")
+        latency_baseline_path = os.path.join(
+            args.baselines_dir, "latency_baseline.json"
+        )
         latency_baseline = load_baseline(latency_baseline_path)
         if latency_baseline:
             print("正在比较延迟性能...")
@@ -237,22 +218,26 @@ def main():
                 print("🚨 延迟性能退化检测:")
                 for issue in latency_issues:
                     status_emoji = "❌" if issue["status"] == "FAILED" else "✅"
-                    print(f"  {status_emoji} {issue['stage']}: "
-                          f"{issue['current_value']} "
-                          f"(基准: {issue['baseline_value']}, "
-                          f"比率: {issue['ratio_percent']}% "
-                          f"(阈值: {issue['threshold_percent']}%)")
+                    print(
+                        f"  {status_emoji} {issue['stage']}: "
+                        f"{issue['current_value']} "
+                        f"(基准: {issue['baseline_value']}, "
+                        f"比率: {issue['ratio_percent']}% "
+                        f"(阈值: {issue['threshold_percent']}%)"
+                    )
             else:
                 print("✅ 延迟性能在可接受范围内")
         else:
             print("信息: 未找到延迟基准，仅保存当前测量值作为基准")
             # 保存当前测量值作为基准用于未来比较
             baseline_data = {
-                "timestamp": __import__('time').time(),
-                "latency_ms": latency_current
+                "timestamp": __import__("time").time(),
+                "latency_ms": latency_current,
             }
             os.makedirs(args.baselines_dir, exist_ok=True)
-            with open(os.path.join(args.baselines_dir, "latency_baseline.json"), 'w') as f:
+            with open(
+                os.path.join(args.baselines_dir, "latency_baseline.json"), "w"
+            ) as f:
                 json.dump(baseline_data, f, indent=2)
 
     print()
@@ -271,22 +256,24 @@ def main():
                 print("🚨 成本性能退化检测:")
                 for issue in cost_issues:
                     status_emoji = "❌" if issue["status"] == "FAILED" else "✅"
-                    print(f"  {status_emoji} {issue['stage']}: "
-                          f"${issue['current_value']} "
-                          f"(基准: ${issue['baseline_value']}, "
-                          f"比率: {issue['ratio_percent']}% "
-                          f"(阈值: {issue['threshold_percent']}%)")
+                    print(
+                        f"  {status_emoji} {issue['stage']}: "
+                        f"${issue['current_value']} "
+                        f"(基准: ${issue['baseline_value']}, "
+                        f"比率: {issue['ratio_percent']}% "
+                        f"(阈值: {issue['threshold_percent']}%)"
+                    )
             else:
                 print("✅ 成本性能在可接受范围内")
         else:
             print("信息: 未找到成本基准，仅保存当前测量值作为基准")
             # 保存当前测量值作为基准用于未来比较
             baseline_data = {
-                "timestamp": __import__('time').time(),
-                "cost_usd": cost_current
+                "timestamp": __import__("time").time(),
+                "cost_usd": cost_current,
             }
             os.makedirs(args.baselines_dir, exist_ok=True)
-            with open(os.path.join(args.baselines_dir, "cost_baseline.json"), 'w') as f:
+            with open(os.path.join(args.baselines_dir, "cost_baseline.json"), "w") as f:
                 json.dump(baseline_data, f, indent=2)
 
     print()

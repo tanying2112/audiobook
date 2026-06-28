@@ -1,12 +1,13 @@
 """Tests for feedback collector module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.audiobook_studio.feedback.collector import (
+    capture_edit_feedback,
     capture_feedback,
     capture_quality_feedback,
-    capture_edit_feedback,
     list_unprocessed_feedback,
     mark_feedback_processed,
 )
@@ -25,7 +26,9 @@ class TestCaptureFeedback:
         mock_db.query = MagicMock()
 
         # Mock the FeedbackRecordModel creation
-        with patch('src.audiobook_studio.feedback.collector.FeedbackRecordModel') as mock_model:
+        with patch(
+            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
+        ) as mock_model:
             mock_model.return_value = mock_record
             mock_record.id = "test-id"
             mock_record.feedback_id = "test-feedback-id"
@@ -54,7 +57,9 @@ class TestCaptureFeedback:
         mock_db.commit = MagicMock()
         mock_db.refresh = MagicMock()
 
-        with patch('src.audiobook_studio.feedback.collector.FeedbackRecordModel') as mock_model:
+        with patch(
+            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
+        ) as mock_model:
             mock_model.return_value = mock_record
 
             result = capture_feedback(
@@ -70,7 +75,7 @@ class TestCaptureFeedback:
 
             # Check the rationale was padded
             call_args = mock_model.call_args
-            assert "自动采集反馈记录" in call_args.kwargs.get('rationale', '')
+            assert "自动采集反馈记录" in call_args.kwargs.get("rationale", "")
 
     def test_capture_feedback_with_optional_fields(self):
         """Test capture with all optional fields."""
@@ -80,7 +85,9 @@ class TestCaptureFeedback:
         mock_db.commit = MagicMock()
         mock_db.refresh = MagicMock()
 
-        with patch('src.audiobook_studio.feedback.collector.FeedbackRecordModel') as mock_model:
+        with patch(
+            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
+        ) as mock_model:
             mock_model.return_value = mock_record
 
             result = capture_feedback(
@@ -101,11 +108,11 @@ class TestCaptureFeedback:
             )
 
             call_kwargs = mock_model.call_args.kwargs
-            assert call_kwargs['project_id'] == 1
-            assert call_kwargs['source'] == "quality_judge"
-            assert call_kwargs['stage'] == "quality_judge"
-            assert call_kwargs.get('chapter_id') == 5
-            assert call_kwargs.get('paragraph_id') == 10
+            assert call_kwargs["project_id"] == 1
+            assert call_kwargs["source"] == "quality_judge"
+            assert call_kwargs["stage"] == "quality_judge"
+            assert call_kwargs.get("chapter_id") == 5
+            assert call_kwargs.get("paragraph_id") == 10
 
 
 class TestCaptureQualityFeedback:
@@ -116,7 +123,10 @@ class TestCaptureQualityFeedback:
         mock_db = MagicMock()
         mock_record = MagicMock()
 
-        with patch('src.audiobook_studio.feedback.collector.capture_feedback', return_value=mock_record) as mock_capture:
+        with patch(
+            "src.audiobook_studio.feedback.collector.capture_feedback",
+            return_value=mock_record,
+        ) as mock_capture:
             result = capture_quality_feedback(
                 db=mock_db,
                 project_id=1,
@@ -132,13 +142,13 @@ class TestCaptureQualityFeedback:
 
             mock_capture.assert_called_once()
             call_args = mock_capture.call_args
-            assert call_args.kwargs['source'] == "quality_judge"
-            assert call_args.kwargs['stage'] == "quality_judge"
-            assert call_args.kwargs['project_id'] == 1
-            assert call_args.kwargs['chapter_id'] == 2
-            assert call_args.kwargs['paragraph_id'] == 3
-            assert call_args.kwargs['paragraph_index'] == 1
-            assert call_args.kwargs['chapter_index'] == 1
+            assert call_args.kwargs["source"] == "quality_judge"
+            assert call_args.kwargs["stage"] == "quality_judge"
+            assert call_args.kwargs["project_id"] == 1
+            assert call_args.kwargs["chapter_id"] == 2
+            assert call_args.kwargs["paragraph_id"] == 3
+            assert call_args.kwargs["paragraph_index"] == 1
+            assert call_args.kwargs["chapter_index"] == 1
             assert result == mock_record
 
 
@@ -150,7 +160,10 @@ class TestCaptureEditFeedback:
         mock_db = MagicMock()
         mock_record = MagicMock()
 
-        with patch('src.audiobook_studio.feedback.collector.capture_feedback', return_value=mock_record) as mock_capture:
+        with patch(
+            "src.audiobook_studio.feedback.collector.capture_feedback",
+            return_value=mock_record,
+        ) as mock_capture:
             result = capture_edit_feedback(
                 db=mock_db,
                 project_id=1,
@@ -166,12 +179,16 @@ class TestCaptureEditFeedback:
 
             mock_capture.assert_called_once()
             call_args = mock_capture.call_args
-            assert call_args.kwargs['source'] == "human_edit"
-            assert call_args.kwargs['stage'] == "edit_for_tts"
-            assert call_args.kwargs['input_snapshot'] == {"original_text": "Original text"}
-            assert call_args.kwargs['llm_output'] == {"edited_text": "LLM suggestion"}
-            assert call_args.kwargs['corrected_output'] == {"edited_text": "Edited text"}
-            assert call_args.kwargs['rationale'] == "User's reason"
+            assert call_args.kwargs["source"] == "human_edit"
+            assert call_args.kwargs["stage"] == "edit_for_tts"
+            assert call_args.kwargs["input_snapshot"] == {
+                "original_text": "Original text"
+            }
+            assert call_args.kwargs["llm_output"] == {"edited_text": "LLM suggestion"}
+            assert call_args.kwargs["corrected_output"] == {
+                "edited_text": "Edited text"
+            }
+            assert call_args.kwargs["rationale"] == "User's reason"
             assert result == mock_record
 
 

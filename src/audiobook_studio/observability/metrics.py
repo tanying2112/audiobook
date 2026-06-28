@@ -1,14 +1,15 @@
 """OpenTelemetry metrics setup with Prometheus export."""
 
-import os
 import logging
-from typing import Optional, Dict, Any
+import os
+from typing import Any, Dict, Optional
+
 from opentelemetry import metrics
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.metrics import Counter, Histogram, ObservableGauge, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.metrics import Histogram, Counter, UpDownCounter, ObservableGauge
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,13 @@ def init_metrics(
     """
     global _meter_provider
 
-    resource = Resource.create({
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: service_version,
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
-    })
+    resource = Resource.create(
+        {
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: service_version,
+            "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
+        }
+    )
 
     # Set up Prometheus reader (exposes /metrics endpoint)
     prometheus_reader = PrometheusMetricReader(
@@ -54,7 +57,9 @@ def init_metrics(
 
     metrics.set_meter_provider(_meter_provider)
 
-    logger.info(f"OpenTelemetry metrics initialized for {service_name} v{service_version}")
+    logger.info(
+        f"OpenTelemetry metrics initialized for {service_name} v{service_version}"
+    )
     logger.info(f"Prometheus metrics available at :{prometheus_port}/metrics")
 
     return _meter_provider
@@ -189,7 +194,6 @@ def create_slo_metrics() -> Dict[str, Any]:
             "ms",
             bucket_boundaries=[100, 500, 1000, 5000, 10000, 30000, 60000, 120000],
         ),
-
         # Error rate SLOs
         "http_requests_total": create_counter(
             "http_requests_total",
@@ -207,7 +211,6 @@ def create_slo_metrics() -> Dict[str, Any]:
             "pipeline_failures_total",
             "Total pipeline failures",
         ),
-
         # Quota/Cost SLOs
         "llm_tokens_used": create_counter(
             "llm_tokens_used_total",
@@ -226,7 +229,6 @@ def create_slo_metrics() -> Dict[str, Any]:
             "Remaining free tier quota percentage",
             "percent",
         ),
-
         # Business metrics
         "books_processed_total": create_counter(
             "books_processed_total",

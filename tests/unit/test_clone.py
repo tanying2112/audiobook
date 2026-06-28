@@ -115,8 +115,9 @@ def config():
 @pytest.fixture
 def engine(config):
     """Create a VoiceCloningEngine instance with mocked persistence."""
-    with patch.object(VoiceCloningEngine, '_load_voice_prints'), \
-         patch.object(VoiceCloningEngine, '_save_voice_prints'):
+    with patch.object(VoiceCloningEngine, "_load_voice_prints"), patch.object(
+        VoiceCloningEngine, "_save_voice_prints"
+    ):
         engine = VoiceCloningEngine(config)
         yield engine
 
@@ -150,9 +151,13 @@ class TestVoiceCloningEngine:
     def test_estimate_snr(self, engine):
         """Test SNR estimation."""
         # High signal, low noise
-        audio = np.concatenate([np.random.rand(100) * 0.01,  # noise
-                                np.sin(np.linspace(0, 100, 47900)) * 0.5,  # signal
-                                np.random.rand(100) * 0.01])  # noise
+        audio = np.concatenate(
+            [
+                np.random.rand(100) * 0.01,  # noise
+                np.sin(np.linspace(0, 100, 47900)) * 0.5,  # signal
+                np.random.rand(100) * 0.01,
+            ]
+        )  # noise
         sample_rate = 24000
 
         snr = engine._estimate_snr(audio, sample_rate)
@@ -372,6 +377,7 @@ class TestVoiceCloningEngine:
     def test_voice_cloning_manager_alias(self):
         """Test that VoiceCloningManager is an alias."""
         from src.audiobook_studio.tts.clone import VoiceCloningManager
+
         assert VoiceCloningManager is VoiceCloningEngine
 
 
@@ -380,7 +386,7 @@ class TestVoiceCloningPersistence:
 
     def test_add_voice_sample_triggers_save(self, engine):
         """Test that adding a valid sample triggers save."""
-        with patch.object(engine, '_save_voice_prints') as mock_save:
+        with patch.object(engine, "_save_voice_prints") as mock_save:
             sample = VoiceSample(
                 id="persist_001",
                 file_path=Path("test.wav"),
@@ -410,7 +416,7 @@ class TestVoiceCloningPersistence:
         engine.add_voice_sample(sample)
 
         # Now add another sample for the same speaker
-        with patch.object(engine, '_save_voice_prints') as mock_save:
+        with patch.object(engine, "_save_voice_prints") as mock_save:
             sample2 = VoiceSample(
                 id="update_002",
                 file_path=Path("test2.wav"),

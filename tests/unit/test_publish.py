@@ -5,10 +5,9 @@ PodcastEpisode, AudiobookshelfIntegrator, AudiobookshelfAPIClient stub,
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # PodcastEpisode
@@ -50,7 +49,8 @@ class TestPodcastEpisode:
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode
 
         ep = PodcastEpisode(
-            title="t", description="d",
+            title="t",
+            description="d",
             audio_file_path=Path("/tmp/x.mp3"),
             duration_seconds=60,
             pub_date=datetime(2025, 1, 1),
@@ -85,7 +85,9 @@ class TestPodcastFeed:
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastFeed
 
         feed = PodcastFeed(
-            title="t", description="d", link="http://x",
+            title="t",
+            description="d",
+            link="http://x",
             language="en-US",
             author="Me",
             itunes_categories=[("Arts", "Books")],
@@ -122,7 +124,9 @@ class TestPodcastRSSGenerator:
 
     def test_add_episode(self):
         """add_episode 添加并排序。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -136,7 +140,9 @@ class TestPodcastRSSGenerator:
 
     def test_generate_rss_xml(self):
         """generate_rss_xml 输出包含 RSS 结构。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -148,9 +154,13 @@ class TestPodcastRSSGenerator:
 
     def test_generate_rss_xml_with_itunes(self):
         """generate_rss_xml 包含 iTunes 标签。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
-        feed = self._make_feed(itunes_author="Me", itunes_categories=[("Arts", "Books")])
+        feed = self._make_feed(
+            itunes_author="Me", itunes_categories=[("Arts", "Books")]
+        )
         gen = PodcastRSSGenerator(feed)
         gen.add_episode(self._make_ep())
         xml = gen.generate_rss_xml()
@@ -159,7 +169,9 @@ class TestPodcastRSSGenerator:
 
     def test_generate_rss_xml_with_image(self):
         """generate_rss_xml 包含封面图。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed(image_url="http://x/img.jpg")
         gen = PodcastRSSGenerator(feed)
@@ -170,7 +182,9 @@ class TestPodcastRSSGenerator:
 
     def test_save_to_file(self):
         """save_to_file 写入文件成功。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             feed = self._make_feed()
@@ -184,7 +198,9 @@ class TestPodcastRSSGenerator:
 
     def test_save_to_file_error(self):
         """save_to_file 写入失败返回错误。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -194,7 +210,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_ok(self):
         """validate_feed 通过。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -205,7 +223,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_empty_title(self):
         """validate_feed 标题为空时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed(title="  ")
         gen = PodcastRSSGenerator(feed)
@@ -215,7 +235,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_empty_description(self):
         """validate_feed 描述为空时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed(description="  ")
         gen = PodcastRSSGenerator(feed)
@@ -225,7 +247,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_empty_link(self):
         """validate_feed 链接为空时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed(link="  ")
         gen = PodcastRSSGenerator(feed)
@@ -234,7 +258,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_no_episodes(self):
         """validate_feed 无节目时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -244,7 +270,9 @@ class TestPodcastRSSGenerator:
 
     def test_validate_feed_episode_no_title(self):
         """validate_feed 节目标题为空时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -255,7 +283,9 @@ class TestPodcastRSSGenerator:
 
     def test_reassign_episode_numbers(self):
         """add_episode 重新分配 episode_number。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+        from src.audiobook_studio.publish.podcast_rss_generator import (
+            PodcastRSSGenerator,
+        )
 
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
@@ -278,7 +308,9 @@ class TestPodcastRSSGenerator:
 class TestAudiobookshelfAPIClient:
     def test_stub_methods(self):
         """AudiobookshelfAPIClient stub 的方法返回正确值。"""
-        from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfAPIClient
+        from src.audiobook_studio.publish.audiobookshelf_integration import (
+            AudiobookshelfAPIClient,
+        )
 
         client = AudiobookshelfAPIClient()
         assert client.check_connection() is True
@@ -293,21 +325,35 @@ class TestAudiobookshelfAPIClient:
 class TestAudiobookIntegratorData:
     def test_metadata_fields(self):
         """AudiobookMetadata 所有字段可访问。"""
-        from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookMetadata
+        from src.audiobook_studio.publish.audiobookshelf_integration import (
+            AudiobookMetadata,
+        )
 
         m = AudiobookMetadata(
-            title="书", author="作者", narrator="旁白", description="简介",
-            language="en", publication_year=2024, publisher="出版社",
-            genres=["sci-fi"], tags=["tag1"], series="系列", series_index=1.0,
+            title="书",
+            author="作者",
+            narrator="旁白",
+            description="简介",
+            language="en",
+            publication_year=2024,
+            publisher="出版社",
+            genres=["sci-fi"],
+            tags=["tag1"],
+            series="系列",
+            series_index=1.0,
             cover_image_path=Path("/cover.jpg"),
-            duration_seconds=3600, bitrate_kbps=128, format="mp3",
+            duration_seconds=3600,
+            bitrate_kbps=128,
+            format="mp3",
         )
         assert m.title == "书"
         assert m.duration_seconds == 3600
 
     def test_file_dataclass(self):
         """AudiobookFile 数据类可创建。"""
-        from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+        from src.audiobook_studio.publish.audiobookshelf_integration import (
+            AudiobookFile,
+        )
 
         f = AudiobookFile(
             file_path=Path("/book.m4b"),
@@ -323,7 +369,9 @@ class TestAudiobookIntegratorData:
 
     def test_config_dataclass(self):
         """AudiobookshelfConfig 数据类可创建。"""
-        from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfConfig
+        from src.audiobook_studio.publish.audiobookshelf_integration import (
+            AudiobookshelfConfig,
+        )
 
         c = AudiobookshelfConfig(
             api_url="http://localhost:8080",

@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, Mock, PropertyMock, patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.models import (
     AudioSegment,
@@ -465,7 +466,12 @@ class TestWriteQuality:
     """Test _write_quality function."""
 
     def test_write_quality_creates_quality_record_with_existing_tts_edit(
-        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph,
+        mock_quality_judgment,
     ):
         """Test _write_quality works when TTSEdit already exists."""
         # Create a TTSEdit first
@@ -482,7 +488,11 @@ class TestWriteQuality:
         db_session.refresh(tts_edit)
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph,
+            mock_quality_judgment,
         )
 
         assert quality is not None
@@ -495,25 +505,41 @@ class TestWriteQuality:
         assert sample_paragraph.status == "quality_checked"
 
     def test_write_quality_creates_tts_edit_if_missing(
-        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph_with_edit,
+        mock_quality_judgment,
     ):
         """Test _write_quality auto-creates TTSEdit when none exists but paragraph has edited_text."""
         # Ensure no TTSEdit exists
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph_with_edit.id).delete()
+        db_session.query(TTSEdit).filter(
+            TTSEdit.paragraph_id == sample_paragraph_with_edit.id
+        ).delete()
         db_session.commit()
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph_with_edit,
+            mock_quality_judgment,
         )
 
         assert quality is not None
         assert quality.tts_edit_id is not None
 
         # Verify a TTSEdit was created
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_tts_edit = (
+            db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        )
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
-        assert created_tts_edit.rationale == "Auto-created for quality check (no prior edit)"
+        assert (
+            created_tts_edit.rationale
+            == "Auto-created for quality check (no prior edit)"
+        )
 
         # Check paragraph was updated
         db_session.refresh(sample_paragraph_with_edit)
@@ -521,23 +547,36 @@ class TestWriteQuality:
         assert sample_paragraph_with_edit.status == "quality_checked"
 
     def test_write_quality_handles_missing_edited_text(
-        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph,
+        mock_quality_judgment,
     ):
         """Test _write_quality creates dummy TTSEdit even when no edited_text exists."""
         # Ensure no TTSEdit exists and paragraph has no edited_text
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph.id).delete()
+        db_session.query(TTSEdit).filter(
+            TTSEdit.paragraph_id == sample_paragraph.id
+        ).delete()
         sample_paragraph.edited_text = None
         db_session.commit()
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph,
+            mock_quality_judgment,
         )
 
         assert quality is not None
         assert quality.tts_edit_id is not None  # Should create dummy TTSEdit
 
         # Verify a TTSEdit was created with empty edited_text
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_tts_edit = (
+            db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        )
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == ""
 
@@ -591,7 +630,6 @@ class TestRunStageExtract:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
             )
@@ -631,7 +669,6 @@ class TestRunStageAnalyze:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -704,7 +741,6 @@ class TestRunStageAnnotate:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 paragraph_text="这是测试段落文本内容。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
@@ -768,7 +804,6 @@ class TestRunStageEdit:
                 "edit",
                 db_session,
                 paragraph_id=sample_paragraph.id,
-
                 paragraph_text="这是测试段落文本内容。",
                 paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
@@ -880,7 +915,6 @@ class TestRunStageSynthesize:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
@@ -902,8 +936,6 @@ class TestRunStageSynthesize:
             )
             assert audio is not None
             assert audio.file_path == "/tmp/test_segment_0.mp3"
-
-
 
 
 class TestRunStageQuality:
@@ -938,7 +970,6 @@ class TestRunStageQuality:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -1025,7 +1056,6 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 feedback_collector=mock_collector,
@@ -1055,7 +1085,6 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -1125,7 +1154,6 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 paragraph_text="这是测试段落文本内容。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
@@ -1188,7 +1216,6 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_paragraph.project_id,
                 paragraph_id=sample_paragraph.id,
-
                 paragraph_text="这是测试段落文本内容。",
                 paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
@@ -1295,7 +1322,6 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
@@ -1341,7 +1367,6 @@ class TestRunStageWithFeedbackCollector:
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -1368,7 +1393,6 @@ class TestRunStageWithFeedbackCollector:
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 # No feedback_collector

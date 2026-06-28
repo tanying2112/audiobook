@@ -7,10 +7,10 @@ Provides character management endpoints:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
-import yaml
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -31,8 +31,12 @@ def load_voice_mapping() -> Dict[str, Any]:
     global VOICE_MAPPING_CACHE
     if VOICE_MAPPING_CACHE is None:
         try:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "voice_mapping.yaml"
-            with open(config_path, 'r', encoding='utf-8') as f:
+            config_path = (
+                Path(__file__).parent.parent.parent.parent
+                / "config"
+                / "voice_mapping.yaml"
+            )
+            with open(config_path, "r", encoding="utf-8") as f:
                 VOICE_MAPPING_CACHE = yaml.safe_load(f)
         except Exception as e:
             logger.warning(f"Failed to load voice mapping config: {e}")
@@ -41,6 +45,7 @@ def load_voice_mapping() -> Dict[str, Any]:
 
 
 # ── Pydantic schemas for API responses ────────────────────────────────────────
+
 
 class CharacterBase(BaseModel):
     canonical_name: str
@@ -79,6 +84,7 @@ class VoiceMappingResponse(BaseModel):
 
 # ── API Endpoints ────────────────────────────────────────────────────────────
 
+
 @router.get("", response_model=List[CharacterResponse])
 async def fetch_characters(
     project_id: int,
@@ -107,20 +113,21 @@ async def create_character(
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Check if canonical_name already exists in this project
-    existing = db.query(Character).filter(
-        Character.project_id == project_id,
-        Character.canonical_name == character.canonical_name
-    ).first()
+    existing = (
+        db.query(Character)
+        .filter(
+            Character.project_id == project_id,
+            Character.canonical_name == character.canonical_name,
+        )
+        .first()
+    )
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Character with canonical_name '{character.canonical_name}' already exists in this project"
+            detail=f"Character with canonical_name '{character.canonical_name}' already exists in this project",
         )
 
-    db_character = Character(
-        project_id=project_id,
-        **character.model_dump()
-    )
+    db_character = Character(project_id=project_id, **character.model_dump())
     db.add(db_character)
     db.commit()
     db.refresh(db_character)
@@ -136,7 +143,7 @@ async def get_voice_mapping(
     mapping = load_voice_mapping()
     return VoiceMappingResponse(
         voice_mapping=mapping.get("voice_mapping", {}),
-        voice_mapping_en=mapping.get("voice_mapping_en", {})
+        voice_mapping_en=mapping.get("voice_mapping_en", {}),
     )
 
 
@@ -147,10 +154,11 @@ async def fetch_character(
     db: Session = Depends(get_db),
 ):
     """获取特定角色."""
-    character = db.query(Character).filter(
-        Character.project_id == project_id,
-        Character.id == character_id
-    ).first()
+    character = (
+        db.query(Character)
+        .filter(Character.project_id == project_id, Character.id == character_id)
+        .first()
+    )
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
     return character
@@ -164,24 +172,29 @@ async def update_character(
     db: Session = Depends(get_db),
 ):
     """更新角色."""
-    character = db.query(Character).filter(
-        Character.project_id == project_id,
-        Character.id == character_id
-    ).first()
+    character = (
+        db.query(Character)
+        .filter(Character.project_id == project_id, Character.id == character_id)
+        .first()
+    )
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
     # If canonical_name is being updated, check for conflicts
     if character_update.canonical_name is not None:
-        existing = db.query(Character).filter(
-            Character.project_id == project_id,
-            Character.canonical_name == character_update.canonical_name,
-            Character.id != character_id  # Exclude current character
-        ).first()
+        existing = (
+            db.query(Character)
+            .filter(
+                Character.project_id == project_id,
+                Character.canonical_name == character_update.canonical_name,
+                Character.id != character_id,  # Exclude current character
+            )
+            .first()
+        )
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Character with canonical_name '{character_update.canonical_name}' already exists in this project"
+            detail=f"Character with canonical_name '{character_update.canonical_name}' already exists in this project",
         )
 
     # Update fields
@@ -202,10 +215,11 @@ async def delete_character(
     db: Session = Depends(get_db),
 ):
     """删除角色."""
-    character = db.query(Character).filter(
-        Character.project_id == project_id,
-        Character.id == character_id
-    ).first()
+    character = (
+        db.query(Character)
+        .filter(Character.project_id == project_id, Character.id == character_id)
+        .first()
+    )
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 

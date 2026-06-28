@@ -1,17 +1,18 @@
 """Tests for feedback/ab_test module."""
 
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.feedback.ab_test import (
-    ABTestSample,
-    ABTestResult,
     ABTestReport,
+    ABTestResult,
+    ABTestSample,
     _score_output,
-    run_ab_test,
-    build_ab_samples,
     blind_evaluate,
+    build_ab_samples,
+    run_ab_test,
 )
 
 
@@ -134,7 +135,9 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={"edited_text": "much longer and better output text with more content"},
+                output_b={
+                    "edited_text": "much longer and better output text with more content"
+                },
                 version_a=1,
                 version_b=2,
             ),
@@ -143,7 +146,9 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={"edited_text": "much longer and better output text with more content"},
+                output_b={
+                    "edited_text": "much longer and better output text with more content"
+                },
                 version_a=1,
                 version_b=2,
             ),
@@ -152,7 +157,9 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={"edited_text": "much longer and better output text with more content"},
+                output_b={
+                    "edited_text": "much longer and better output text with more content"
+                },
                 version_a=1,
                 version_b=2,
             ),
@@ -175,7 +182,10 @@ class TestRunABTest:
                 sample_id="s1",
                 stage="edit_for_tts",
                 input_data={},
-                output_a={"edited_text": "much longer and better output text with more content", "confidence": 0.9},
+                output_a={
+                    "edited_text": "much longer and better output text with more content",
+                    "confidence": 0.9,
+                },
                 output_b={"edited_text": "short"},
                 version_a=2,
                 version_b=3,
@@ -338,8 +348,18 @@ class TestBlindEvaluate:
         )
 
         human_ratings = [
-            {"sample_id": "s1", "score_a": 0.5, "score_b": 0.9, "rationale": "B much better"},
-            {"sample_id": "s3", "score_a": 0.4, "score_b": 0.7, "rationale": "B better"},
+            {
+                "sample_id": "s1",
+                "score_a": 0.5,
+                "score_b": 0.9,
+                "rationale": "B much better",
+            },
+            {
+                "sample_id": "s3",
+                "score_a": 0.4,
+                "score_b": 0.7,
+                "rationale": "B better",
+            },
         ]
 
         result = blind_evaluate(report, human_ratings)
@@ -388,7 +408,11 @@ class TestIntegration:
         """Simulate a complete A/B test workflow."""
         # 1. Build samples from golden dataset
         golden = [
-            {"input": {"text": f"paragraph {i}"}, "output_old": {"edited_text": f"v1 text {i}"}, "output_new": {"edited_text": f"v2 improved text {i}"}}
+            {
+                "input": {"text": f"paragraph {i}"},
+                "output_old": {"edited_text": f"v1 text {i}"},
+                "output_new": {"edited_text": f"v2 improved text {i}"},
+            }
             for i in range(5)
         ]
 
@@ -416,7 +440,11 @@ class TestIntegration:
                 stage="quality_judge",
                 input_data={},
                 output_a={"overall_score": 0.7, "issues": []},
-                output_b={"overall_score": 0.85, "issues": ["minor"], "fix_suggestions": [{"action": "check"}]},
+                output_b={
+                    "overall_score": 0.85,
+                    "issues": ["minor"],
+                    "fix_suggestions": [{"action": "check"}],
+                },
                 version_a=1,
                 version_b=2,
             )
@@ -435,8 +463,17 @@ class TestIntegration:
                 sample_id=f"a{i}",
                 stage="annotate_paragraph",
                 input_data={},
-                output_a={"emotion": "neutral", "speaker_canonical_name": "narrator", "is_dialogue": False},
-                output_b={"emotion": "happy", "speaker_canonical_name": "旁白", "is_dialogue": True, "emotion_intensity": 0.8},
+                output_a={
+                    "emotion": "neutral",
+                    "speaker_canonical_name": "narrator",
+                    "is_dialogue": False,
+                },
+                output_b={
+                    "emotion": "happy",
+                    "speaker_canonical_name": "旁白",
+                    "is_dialogue": True,
+                    "emotion_intensity": 0.8,
+                },
                 version_a=1,
                 version_b=2,
             )

@@ -1,17 +1,18 @@
 """Tests for feedback/prompt_upgrader module."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.feedback.prompt_upgrader import (
     PATTERN_PROMPT_FIXES,
-    _load_current_prompt,
     _apply_pattern_fixes,
-    _write_new_version,
-    upgrade_prompt,
-    batch_upgrade,
+    _load_current_prompt,
     _map_pattern_to_stage,
+    _write_new_version,
+    batch_upgrade,
+    upgrade_prompt,
 )
 
 
@@ -21,10 +22,18 @@ class TestPatternPromptFixes:
     def test_all_patterns_have_fixes(self):
         # Actual patterns defined in the source
         expected_patterns = [
-            "dialogue_attribution", "emotion_too_mild", "emotion_too_strong",
-            "emotion_wrong", "speaker_wrong", "pause_missing", "pause_too_long",
-            "sfx_missing", "text_colloquial", "text_formal",
-            "prosody_robotic", "prosody_flat",
+            "dialogue_attribution",
+            "emotion_too_mild",
+            "emotion_too_strong",
+            "emotion_wrong",
+            "speaker_wrong",
+            "pause_missing",
+            "pause_too_long",
+            "sfx_missing",
+            "text_colloquial",
+            "text_formal",
+            "prosody_robotic",
+            "prosody_flat",
         ]
         for pattern in expected_patterns:
             assert pattern in PATTERN_PROMPT_FIXES
@@ -177,7 +186,9 @@ class TestUpgradePrompt:
         mock_apply.return_value = ("Original prompt", [])
         mock_write.return_value = Path("prompts/edit_for_tts/v2.j2")
 
-        result = upgrade_prompt("edit_for_tts", [], additional_fixes=["Custom fix instruction"])
+        result = upgrade_prompt(
+            "edit_for_tts", [], additional_fixes=["Custom fix instruction"]
+        )
 
         assert result == Path("prompts/edit_for_tts/v2.j2")
 
@@ -206,7 +217,9 @@ class TestBatchUpgrade:
 
         assert "edit_for_tts" in results
         assert "quality_judge" in results
-        assert mock_upgrade.call_count == 2  # Only 2 stages had patterns above threshold
+        assert (
+            mock_upgrade.call_count == 2
+        )  # Only 2 stages had patterns above threshold
 
 
 class TestMapPatternToStage:
@@ -214,31 +227,47 @@ class TestMapPatternToStage:
 
     def test_edit_patterns(self):
         edit_patterns = [
-            "dialogue_attribution", "emotion_too_mild", "emotion_too_strong",
-            "emotion_wrong", "speaker_wrong", "pause_missing", "pause_too_long",
-            "sfx_missing", "sfx_wrong", "text_colloquial", "text_formal",
+            "dialogue_attribution",
+            "emotion_too_mild",
+            "emotion_too_strong",
+            "emotion_wrong",
+            "speaker_wrong",
+            "pause_missing",
+            "pause_too_long",
+            "sfx_missing",
+            "sfx_wrong",
+            "text_colloquial",
+            "text_formal",
         ]
         for pattern in edit_patterns:
             assert _map_pattern_to_stage(pattern) == "edit_for_tts"
 
     def test_quality_patterns(self):
         quality_patterns = [
-            "clipping", "silence", "low_volume", "duration_mismatch",
-            "prosody_robotic", "prosody_flat",
+            "clipping",
+            "silence",
+            "low_volume",
+            "duration_mismatch",
+            "prosody_robotic",
+            "prosody_flat",
         ]
         for pattern in quality_patterns:
             assert _map_pattern_to_stage(pattern) == "quality_judge"
 
     def test_structure_patterns(self):
         structure_patterns = [
-            "chapter_split_wrong", "character_missing", "summary_incomplete",
+            "chapter_split_wrong",
+            "character_missing",
+            "summary_incomplete",
         ]
         for pattern in structure_patterns:
             assert _map_pattern_to_stage(pattern) == "analyze_structure"
 
     def test_annotation_patterns(self):
         annotation_patterns = [
-            "emotion_too_mild", "emotion_too_strong", "emotion_wrong",
+            "emotion_too_mild",
+            "emotion_too_strong",
+            "emotion_wrong",
         ]
         for pattern in annotation_patterns:
             # These map to both edit_for_tts and annotate_paragraph

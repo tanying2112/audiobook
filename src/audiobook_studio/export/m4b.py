@@ -58,7 +58,9 @@ def _build_ffmpeg_chapter_metadata(
         end_ms = min(ch.start_ms + ch.duration_ms, total_duration_ms)
         lines.append(f"END={end_ms}")
         # Escape = and ; and \n in title
-        safe_title = ch.title.replace("=", "\\=").replace(";", "\\;").replace("\n", " ").strip()
+        safe_title = (
+            ch.title.replace("=", "\\=").replace(";", "\\;").replace("\n", " ").strip()
+        )
         lines.append(f"title={safe_title or f'Chapter {i+1}'}")
     return "\n".join(lines)
 
@@ -69,13 +71,20 @@ def _normalize_audio(input_path: Path, output_path: Path) -> None:
     D5 integration: loudnorm 响度归一化 + 淡入淡出。
     """
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-af", "loudnorm=I=-16:LRA=11:TP=-1.5,afade=t=in:ss=0:d=0.5,afade=t=out:st=0:d=0.5",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-ar", "44100",
-        "-ac", "2",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-af",
+        "loudnorm=I=-16:LRA=11:TP=-1.5,afade=t=in:ss=0:d=0.5,afade=t=out:st=0:d=0.5",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
         str(output_path),
     ]
     logger.info(f"Normalizing audio: {' '.join(cmd)}")
@@ -123,13 +132,25 @@ def build_m4b(
             for i, seg_path in enumerate(audio_segments):
                 seg_path = Path(seg_path)
                 if not seg_path.exists():
-                    logger.warning(f"Audio segment not found: {seg_path}, creating silence")
+                    logger.warning(
+                        f"Audio segment not found: {seg_path}, creating silence"
+                    )
                     silence_path = tmpdir_path / f"silence_{i}.mp3"
-                    subprocess.run([
-                        "ffmpeg", "-y",
-                        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
-                        "-t", "1", str(silence_path),
-                    ], check=True, capture_output=True)
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "lavfi",
+                            "-i",
+                            "anullsrc=r=44100:cl=mono",
+                            "-t",
+                            "1",
+                            str(silence_path),
+                        ],
+                        check=True,
+                        capture_output=True,
+                    )
                     normalized_path = silence_path
                 elif normalize:
                     normalized_path = tmpdir_path / f"norm_{i}.m4a"
@@ -147,10 +168,16 @@ def build_m4b(
         # Step 2: Concatenate all normalized segments
         concat_output = tmpdir_path / "concat.m4a"
         concat_cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c", "copy",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c",
+            "copy",
             str(concat_output),
         ]
         logger.info(f"Concatenating segments: {' '.join(concat_cmd)}")
@@ -158,9 +185,13 @@ def build_m4b(
 
         # Get accurate duration from the concatenated file
         probe_cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             str(concat_output),
         ]
         result = subprocess.run(probe_cmd, check=True, capture_output=True, text=True)
@@ -168,17 +199,24 @@ def build_m4b(
 
         # Step 3: Write chapter metadata
         chapter_meta_path = tmpdir_path / "chapters.txt"
-        chapter_meta = _build_ffmpeg_chapter_metadata(chapter_markers, total_duration_ms)
+        chapter_meta = _build_ffmpeg_chapter_metadata(
+            chapter_markers, total_duration_ms
+        )
         chapter_meta_path.write_text(chapter_meta, encoding="utf-8")
         logger.info(f"Chapter metadata:\n{chapter_meta}")
 
         # Step 4: Apply chapter markers + metadata to produce M4B
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(concat_output),
-            "-i", str(chapter_meta_path),
-            "-map_metadata", "1",
-            "-codec", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(concat_output),
+            "-i",
+            str(chapter_meta_path),
+            "-map_metadata",
+            "1",
+            "-codec",
+            "copy",
         ]
 
         # Add global metadata
@@ -224,9 +262,13 @@ def build_m4b_single_source(
 
     # Get audio duration
     probe_cmd = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "csv=p=0",
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "csv=p=0",
         str(full_audio_path),
     ]
     result = subprocess.run(probe_cmd, check=True, capture_output=True, text=True)
@@ -235,15 +277,22 @@ def build_m4b_single_source(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
         chapter_meta_path = tmpdir_path / "chapters.txt"
-        chapter_meta = _build_ffmpeg_chapter_metadata(chapter_markers, total_duration_ms)
+        chapter_meta = _build_ffmpeg_chapter_metadata(
+            chapter_markers, total_duration_ms
+        )
         chapter_meta_path.write_text(chapter_meta, encoding="utf-8")
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(full_audio_path),
-            "-i", str(chapter_meta_path),
-            "-map_metadata", "1",
-            "-codec", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(full_audio_path),
+            "-i",
+            str(chapter_meta_path),
+            "-map_metadata",
+            "1",
+            "-codec",
+            "copy",
         ]
 
         if meta.title:

@@ -1,17 +1,18 @@
 """Tests for bench_cost module."""
 
 import json
-import pytest
 import statistics
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.benchmarks.bench_cost import (
-    parse_args,
-    load_baseline,
-    save_baseline,
-    measure_stage_cost,
     _get_test_data_for_stage,
+    load_baseline,
+    measure_stage_cost,
+    parse_args,
+    save_baseline,
 )
 
 
@@ -27,14 +28,25 @@ class TestParseArgs:
         parser.add_argument("--threshold", type=float, default=110.0)
         parser.add_argument("--mock", action="store_true")
         parser.add_argument("--output", type=str)
-        parser.add_argument("--stages", nargs="+", default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"])
+        parser.add_argument(
+            "--stages",
+            nargs="+",
+            default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"],
+        )
 
         args = parser.parse_args([])
         assert args.baseline is None
         assert args.threshold == 110.0
         assert args.mock is False
         assert args.output is None
-        assert args.stages == ["extract", "analyze", "annotate", "edit", "synthesize", "quality"]
+        assert args.stages == [
+            "extract",
+            "analyze",
+            "annotate",
+            "edit",
+            "synthesize",
+            "quality",
+        ]
 
     def test_parse_args_custom(self):
         """Test custom argument values."""
@@ -45,9 +57,26 @@ class TestParseArgs:
         parser.add_argument("--threshold", type=float, default=110.0)
         parser.add_argument("--mock", action="store_true")
         parser.add_argument("--output", type=str)
-        parser.add_argument("--stages", nargs="+", default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"])
+        parser.add_argument(
+            "--stages",
+            nargs="+",
+            default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"],
+        )
 
-        args = parser.parse_args(["--baseline", "baseline.json", "--threshold", "120.0", "--mock", "--output", "result.json", "--stages", "extract", "analyze"])
+        args = parser.parse_args(
+            [
+                "--baseline",
+                "baseline.json",
+                "--threshold",
+                "120.0",
+                "--mock",
+                "--output",
+                "result.json",
+                "--stages",
+                "extract",
+                "analyze",
+            ]
+        )
         assert args.baseline == "baseline.json"
         assert args.threshold == 120.0
         assert args.mock is True
@@ -71,7 +100,9 @@ class TestLoadBaseline:
     def test_load_baseline_valid_file(self, tmp_path):
         """Test loading valid baseline file."""
         baseline_file = tmp_path / "baseline.json"
-        baseline_file.write_text(json.dumps({"cost_usd": {"extract": 0.001, "analyze": 0.005}}))
+        baseline_file.write_text(
+            json.dumps({"cost_usd": {"extract": 0.001, "analyze": 0.005}})
+        )
 
         result = load_baseline(str(baseline_file))
         assert result == {"extract": 0.001, "analyze": 0.005}
@@ -176,30 +207,37 @@ class TestGetTestDataForStage:
         data = _get_test_data_for_stage("unknown")
         assert data == {}
 
-
-# class TestMain:
-#     """Test main workflow (skipped due to argparse conflicts with pytest)."""
-#
-#     @pytest.mark.skip(reason="argparse conflicts with pytest argv")
-#     @patch("sys.argv", ["bench_cost.py", "--mock"])
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.measure_stage_cost")
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.save_baseline")
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.load_baseline")
-#     def test_main_mock_no_baseline(self, mock_load, mock_save, mock_measure):
-#         """Test main with mock mode, no baseline."""
-#         pass
-#
-#     @pytest.mark.skip(reason="argparse conflicts with pytest argv")
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.measure_stage_cost")
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.load_baseline")
-#     @patch("src.audiobook_studio.benchmarks.bench_cost.save_baseline")
-#     def test_main_with_baseline_pass(self, mock_save, mock_load, mock_measure):
-#         """Test main with baseline, cost within threshold."""
-#         pass
+        # class TestMain:
+        #     """Test main workflow (skipped due to argparse conflicts with pytest)."""
+        #
+        #     @pytest.mark.skip(reason="argparse conflicts with pytest argv")
+        #     @patch("sys.argv", ["bench_cost.py", "--mock"])
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.measure_stage_cost")
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.save_baseline")
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.load_baseline")
+        #     def test_main_mock_no_baseline(self, mock_load, mock_save, mock_measure):
+        #         """Test main with mock mode, no baseline."""
+        #         pass
+        #
+        #     @pytest.mark.skip(reason="argparse conflicts with pytest argv")
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.measure_stage_cost")
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.load_baseline")
+        #     @patch("src.audiobook_studio.benchmarks.bench_cost.save_baseline")
+        #     def test_main_with_baseline_pass(self, mock_save, mock_load, mock_measure):
+        #         """Test main with baseline, cost within threshold."""
+        #         pass
         sys.stdout = StringIO()
         try:
             from src.audiobook_studio.benchmarks.bench_cost import main
-            sys.argv = ["bench_cost.py", "--baseline", "baseline.json", "--mock", "--threshold", "110"]
+
+            sys.argv = [
+                "bench_cost.py",
+                "--baseline",
+                "baseline.json",
+                "--mock",
+                "--threshold",
+                "110",
+            ]
             try:
                 main()
             except SystemExit:

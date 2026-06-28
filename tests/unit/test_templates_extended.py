@@ -1,7 +1,7 @@
 """templates.py 扩展测试 — 覆盖 _apply_*_template, list_templates 筛选路径, confirm, apply, progress 端点。"""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -137,7 +137,9 @@ class TestTemplatesHelperFunctions:
         # Mock query chain for TTSEdit
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_tts_edit
+        )
 
         corrected = {
             "speaker_clarity": 0.9,
@@ -165,7 +167,9 @@ class TestTemplatesHelperFunctions:
 
         db = self._make_db()
         pa = self._make_para()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
 
         _apply_quality_template(db, pa, {"overall_score": 0.9})
         # Should not add quality record
@@ -189,16 +193,24 @@ class TestTemplatesBackgroundTask:
             with patch("sqlalchemy.orm.sessionmaker") as mock_sm:
                 mock_session = MagicMock()
                 # Template not found → ValueError
-                mock_session.query.return_value.filter.return_value.first.return_value = None
+                mock_session.query.return_value.filter.return_value.first.return_value = (
+                    None
+                )
                 mock_sm.return_value = MagicMock(return_value=mock_session)
 
                 import asyncio
+
                 try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=999,
-                        scope="all", chapter_ids=None,
-                        pattern_filter=None, task_id="test_task_1",
-                    ))
+                    asyncio.run(
+                        _apply_template_background(
+                            project_id=1,
+                            template_id=999,
+                            scope="all",
+                            chapter_ids=None,
+                            pattern_filter=None,
+                            task_id="test_task_1",
+                        )
+                    )
                 except Exception:
                     pass
 
@@ -219,16 +231,24 @@ class TestTemplatesBackgroundTask:
                 mock_template = MagicMock()
                 mock_template.processed = False
                 mock_template.promoted = False
-                mock_session.query.return_value.filter.return_value.first.return_value = mock_template
+                mock_session.query.return_value.filter.return_value.first.return_value = (
+                    mock_template
+                )
                 mock_sm.return_value = MagicMock(return_value=mock_session)
 
                 import asyncio
+
                 try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=1,
-                        scope="all", chapter_ids=None,
-                        pattern_filter=None, task_id="test_task_2",
-                    ))
+                    asyncio.run(
+                        _apply_template_background(
+                            project_id=1,
+                            template_id=1,
+                            scope="all",
+                            chapter_ids=None,
+                            pattern_filter=None,
+                            task_id="test_task_2",
+                        )
+                    )
                 except Exception:
                     pass
 
@@ -261,12 +281,18 @@ class TestTemplatesBackgroundTask:
                 mock_sm.return_value = MagicMock(return_value=mock_session)
 
                 import asyncio
+
                 try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=1,
-                        scope="chapter", chapter_ids=[1, 2],
-                        pattern_filter=None, task_id="test_task_3",
-                    ))
+                    asyncio.run(
+                        _apply_template_background(
+                            project_id=1,
+                            template_id=1,
+                            scope="chapter",
+                            chapter_ids=[1, 2],
+                            pattern_filter=None,
+                            task_id="test_task_3",
+                        )
+                    )
                 except Exception:
                     pass
 
@@ -279,6 +305,7 @@ class TestTemplatesAPISchemas:
     def test_template_list_response_defaults(self):
         """TemplateListResponse 默认值。"""
         from src.audiobook_studio.api.templates import TemplateListResponse
+
         resp = TemplateListResponse()
         assert resp.templates == []
         assert resp.total_count == 0
@@ -287,6 +314,7 @@ class TestTemplatesAPISchemas:
     def test_template_confirm_request(self):
         """TemplateConfirmRequest 创建。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest
+
         req = TemplateConfirmRequest(action="confirm", pattern_tags=["tag1"])
         assert req.action == "confirm"
         assert req.pattern_tags == ["tag1"]
@@ -294,6 +322,7 @@ class TestTemplatesAPISchemas:
     def test_template_confirm_request_no_tags(self):
         """TemplateConfirmRequest 无 tags。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest
+
         req = TemplateConfirmRequest(action="reject")
         assert req.action == "reject"
         assert req.pattern_tags is None
@@ -301,9 +330,12 @@ class TestTemplatesAPISchemas:
     def test_template_apply_request(self):
         """TemplateApplyRequest 创建。"""
         from src.audiobook_studio.api.templates import TemplateApplyRequest
+
         req = TemplateApplyRequest(
-            template_id=1, scope="chapter",
-            chapter_ids=[1, 2], pattern_filter=None,
+            template_id=1,
+            scope="chapter",
+            chapter_ids=[1, 2],
+            pattern_filter=None,
         )
         assert req.template_id == 1
         assert req.scope == "chapter"
@@ -312,6 +344,7 @@ class TestTemplatesAPISchemas:
     def test_template_apply_progress_defaults(self):
         """TemplateApplyProgress 默认值。"""
         from src.audiobook_studio.api.templates import TemplateApplyProgress
+
         p = TemplateApplyProgress()
         assert p.processed == 0
         assert p.total == 0
@@ -320,12 +353,19 @@ class TestTemplatesAPISchemas:
     def test_template_item_full(self):
         """TemplateItem 完整字段。"""
         from src.audiobook_studio.api.templates import TemplateItem
+
         item = TemplateItem(
-            id=1, feedback_id="fb-1", source="human_edit",
-            stage="annotate", pattern_tags=["tag1"],
-            diff_summary="diff", rationale="reason",
+            id=1,
+            feedback_id="fb-1",
+            source="human_edit",
+            stage="annotate",
+            pattern_tags=["tag1"],
+            diff_summary="diff",
+            rationale="reason",
             created_at="2025-01-01T00:00:00",
-            input_snapshot={}, llm_output={}, corrected_output={},
+            input_snapshot={},
+            llm_output={},
+            corrected_output={},
         )
         assert item.id == 1
         assert item.source == "human_edit"

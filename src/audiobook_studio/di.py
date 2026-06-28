@@ -13,12 +13,15 @@ from .config.hardware_profile import HardwareProfile
 from .llm.config_loader import LLMProvidersConfig
 from .llm.quota_registry import QuotaRegistry
 from .tts.engine import EngineRegistry
+
 # CostTracker imported lazily in initialize_defaults to avoid circular import
 
 T = TypeVar("T")
 
 # Request-scoped context variable for per-request DI overrides
-_request_container: ContextVar[Optional["DIContainer"]] = ContextVar("_request_container", default=None)
+_request_container: ContextVar[Optional["DIContainer"]] = ContextVar(
+    "_request_container", default=None
+)
 
 
 class DIContainer:
@@ -59,14 +62,20 @@ class DIContainer:
                 raise ValueError(f"Factory already registered for {interface}")
             self._factories[interface] = factory
 
-    def register_type(self, interface: Type[T], impl: Type[T], *, singleton: bool = True) -> None:
+    def register_type(
+        self, interface: Type[T], impl: Type[T], *, singleton: bool = True
+    ) -> None:
         """Register a type to be instantiated (singleton by default)."""
         if singleton:
+
             def factory() -> T:
                 return impl()
+
         else:
+
             def factory() -> T:
                 return impl()
+
         self.register_factory(interface, factory)
 
     def get(self, interface: Type[T]) -> T:
@@ -92,9 +101,11 @@ class DIContainer:
         if self._parent:
             return self._parent.get(interface)
 
-        raise KeyError(f"No registration found for {interface}. "
-                       f"Call register_singleton/register_factory first, "
-                       f"or ensure container is initialized via initialize_defaults().")
+        raise KeyError(
+            f"No registration found for {interface}. "
+            f"Call register_singleton/register_factory first, "
+            f"or ensure container is initialized via initialize_defaults()."
+        )
 
     def get_or_none(self, interface: Type[T]) -> Optional[T]:
         """Get instance or return None if not registered."""
@@ -147,8 +158,12 @@ class DIContainer:
         finally:
             _request_container.reset(token)
 
-    def initialize_defaults(self, *, hardware_profile: Optional[HardwareProfile] = None,
-                            llm_config: Optional[LLMProvidersConfig] = None) -> "DIContainer":
+    def initialize_defaults(
+        self,
+        *,
+        hardware_profile: Optional[HardwareProfile] = None,
+        llm_config: Optional[LLMProvidersConfig] = None,
+    ) -> "DIContainer":
         """Initialize with production defaults. Idempotent."""
         if self._initialized:
             return self
@@ -161,6 +176,7 @@ class DIContainer:
             self.register_singleton(QuotaRegistry, QuotaRegistry())
             # Lazy import CostTracker to avoid circular import
             from .llm.router import CostTracker
+
             self.register_singleton(CostTracker, CostTracker())
             self.register_singleton(EngineRegistry, EngineRegistry())
 
@@ -168,13 +184,16 @@ class DIContainer:
             if hardware_profile:
                 self.register_singleton(HardwareProfile, hardware_profile)
             else:
-                self.register_factory(HardwareProfile, lambda: HardwareProfile.get_hardware_profile())
+                self.register_factory(
+                    HardwareProfile, lambda: HardwareProfile.get_hardware_profile()
+                )
 
             if llm_config:
                 self.register_singleton(LLMProvidersConfig, llm_config)
             else:
-                self.register_factory(LLMProvidersConfig,
-                                     lambda: LLMProvidersConfig.load())
+                self.register_factory(
+                    LLMProvidersConfig, lambda: LLMProvidersConfig.load()
+                )
 
             self._initialized = True
             return self
@@ -242,12 +261,14 @@ def init_quota_registry() -> QuotaRegistry:
 def get_cost_tracker():
     """Deprecated: use get_app_container().get(CostTracker)"""
     from .llm.router import CostTracker
+
     return get_app_container().get(CostTracker)
 
 
 def reset_cost_tracker() -> None:
     """Deprecated: use container.clear() or reset_app_container()"""
     from .llm.router import CostTracker
+
     container = get_app_container()
     container.unregister(CostTracker)
     # Re-register fresh instance

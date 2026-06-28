@@ -3,32 +3,40 @@
 Provides endpoints for login, registration, token refresh, and user management.
 """
 
-from typing import List, Optional
 from datetime import timedelta
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
 
-from audiobook_studio.database import get_db
-# SQLAlchemy models
-from audiobook_studio.models.user import User as UserModel, ProjectPermission as ProjectPermissionModel
-# Pydantic models
-from audiobook_studio.auth.models import (
-    UserCreate, UserUpdate, UserOut, Token, RoleName, PermissionName,
-    ProjectPermissionOut
-)
-from audiobook_studio.auth.jwt_handler import jwt_handler
-from audiobook_studio.auth.rbac import RBACManager, get_rbac_manager
-from audiobook_studio.auth.dependencies import (
-    get_current_user,
+from src.audiobook_studio.auth.dependencies import (
+    authenticate_user,
     get_current_active_user,
     get_current_superuser,
-    authenticate_user,
+    get_current_user,
     require_permission,
     require_role,
 )
+from src.audiobook_studio.auth.jwt_handler import jwt_handler
+
+# Pydantic models
+from src.audiobook_studio.auth.models import (
+    PermissionName,
+    ProjectPermissionOut,
+    RoleName,
+    Token,
+    UserCreate,
+    UserOut,
+    UserUpdate,
+)
+from src.audiobook_studio.auth.rbac import RBACManager, get_rbac_manager
+from src.audiobook_studio.database import get_db
+
+# SQLAlchemy models
+from src.audiobook_studio.models.user import ProjectPermission as ProjectPermissionModel
+from src.audiobook_studio.models.user import User as UserModel
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -63,28 +71,28 @@ async def login(
     """Authenticate user and return access/refresh tokens."""
     rbac = get_rbac_manager(db)
     user = rbac.authenticate_user(form_data.username, form_data.password)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
-    
+
     # Get user permissions from roles
     permissions = rbac.get_user_permissions(user)
     roles = [role.name for role in user.roles]
-    
+
     tokens = jwt_handler.create_token_pair(
         user_id=user.id,
         username=user.username,
         roles=roles,
         permissions=list(permissions),
     )
-    
+
     return TokenResponse(**tokens)
 
 
@@ -95,22 +103,22 @@ async def refresh_token(
 ):
     """Refresh access token using refresh token."""
     new_access_token = jwt_handler.refresh_access_token(request.refresh_token)
-    
+
     if not new_access_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    
+
     # Decode refresh token to get user info
     payload = jwt_handler.decode_token(request.refresh_token)
     user_id = int(payload.get("sub", 0))
     username = payload.get("username", "")
     roles = payload.get("roles", [])
     permissions = payload.get("permissions", [])
-    
+
     new_refresh_token = jwt_handler.create_refresh_token(user_id, username)
-    
+
     return TokenResponse(
         access_token=new_access_token,
         refresh_token=new_refresh_token,
@@ -127,21 +135,21 @@ async def register(
 ):
     """Register a new user (admin only)."""
     rbac = get_rbac_manager(db)
-    
+
     # Check if user already exists
     if rbac.get_user_by_username(user_data.username):
         raise HTTPException(status_code=400, detail="Username already registered")
-    
+
     if rbac.get_user_by_email(user_data.email):
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     user = rbac.create_user(
         email=user_data.email,
         username=user_data.username,
         password=user_data.password,
         full_name=user_data.full_name,
     )
-    
+
     return UserOut.from_orm(user)
 
 
@@ -155,24 +163,26 @@ async def read_current_user(
     permissions = rbac.get_user_permissions(current_user)
     roles = [role.name for role in current_user.roles]
     project_perms = rbac.get_user_project_permissions(current_user.id)
-    
+
     # Convert project permissions to output format
     project_perms_out = []
     for p in project_perms:
-        project_perms_out.append(ProjectPermissionOut(
-            id=p.id,
-            user_id=p.user_id,
-            project_id=p.project_id,
-            role=p.role,
-            created_at=p.created_at,
-            granted_by=p.granted_by,
-            username=current_user.username,
-        ))
-    
+        project_perms_out.append(
+            ProjectPermissionOut(
+                id=p.id,
+                user_id=p.user_id,
+                project_id=p.project_id,
+                role=p.role,
+                created_at=p.created_at,
+                granted_by=p.granted_by,
+                username=current_user.username,
+            )
+        )
+
     user_out = UserOut.from_orm(current_user)
     user_out.roles = roles
     user_out.project_permissions = project_perms_out
-    
+
     return user_out
 
 
@@ -184,10 +194,10 @@ async def update_current_user(
 ):
     """Update current user profile."""
     rbac = get_rbac_manager(db)
-    
+
     update_data = user_update.model_dump(exclude_unset=True)
     user = rbac.update_user(current_user, **update_data)
-    
+
     return UserOut.from_orm(user)
 
 
@@ -213,10 +223,10 @@ async def get_user(
     """Get user by ID (admin only)."""
     rbac = get_rbac_manager(db)
     user = rbac.get_user(user_id)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     return UserOut.from_orm(user)
 
 
@@ -230,13 +240,13 @@ async def update_user(
     """Update user (admin only)."""
     rbac = get_rbac_manager(db)
     user = rbac.get_user(user_id)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     update_data = user_update.model_dump(exclude_unset=True)
     user = rbac.update_user(user, **update_data)
-    
+
     return UserOut.from_orm(user)
 
 
@@ -248,14 +258,14 @@ async def delete_user(
 ):
     """Delete user (admin only)."""
     rbac = get_rbac_manager(db)
-    
+
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
-    
+
     success = rbac.delete_user(user_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     return MessageResponse(message="User deleted successfully")
 
 
@@ -302,11 +312,13 @@ async def assign_permission_to_role(
     """Assign permission to role (admin only)."""
     rbac = get_rbac_manager(db)
     success = rbac.assign_permission_to_role(role_name, permission_name)
-    
+
     if not success:
         raise HTTPException(status_code=400, detail="Role or permission not found")
-    
-    return {"message": f"Permission {permission_name.value} assigned to role {role_name.value}"}
+
+    return {
+        "message": f"Permission {permission_name.value} assigned to role {role_name.value}"
+    }
 
 
 # User role assignment
@@ -320,10 +332,10 @@ async def assign_role_to_user(
     """Assign role to user (admin only)."""
     rbac = get_rbac_manager(db)
     success = rbac.assign_role_to_user(user_id, role_name)
-    
+
     if not success:
         raise HTTPException(status_code=400, detail="User or role not found")
-    
+
     return {"message": f"Role {role_name.value} assigned to user {user_id}"}
 
 
@@ -337,10 +349,10 @@ async def remove_role_from_user(
     """Remove role from user (admin only)."""
     rbac = get_rbac_manager(db)
     success = rbac.remove_role_from_user(user_id, role_name)
-    
+
     if not success:
         raise HTTPException(status_code=400, detail="User or role not found")
-    
+
     return {"message": f"Role {role_name.value} removed from user {user_id}"}
 
 
@@ -356,7 +368,7 @@ async def grant_project_permission(
     """Grant project permission to user (admin only)."""
     rbac = get_rbac_manager(db)
     perm = rbac.grant_project_permission(user_id, project_id, role)
-    
+
     return {
         "id": perm.id,
         "user_id": perm.user_id,
@@ -375,10 +387,10 @@ async def revoke_project_permission(
     """Revoke project permission from user (admin only)."""
     rbac = get_rbac_manager(db)
     success = rbac.revoke_project_permission(user_id, project_id)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Permission not found")
-    
+
     return {"message": "Project permission revoked"}
 
 
@@ -390,26 +402,31 @@ async def list_project_permissions(
 ):
     """List all permissions for a project (user must have project access)."""
     rbac = get_rbac_manager(db)
-    
+
     # Check if user has access to this project
     if not rbac.check_project_access(current_user, project_id, RoleName.VIEWER):
         raise HTTPException(status_code=403, detail="Access denied to this project")
-    
+
     # Get all project permissions
-    from audiobook_studio.models.user import ProjectPermission
-    project_perms = db.query(ProjectPermission).filter(
-        ProjectPermission.project_id == project_id
-    ).all()
-    
+    from src.audiobook_studio.models.user import ProjectPermission
+
+    project_perms = (
+        db.query(ProjectPermission)
+        .filter(ProjectPermission.project_id == project_id)
+        .all()
+    )
+
     result = []
     for p in project_perms:
         user = rbac.get_user(p.user_id)
-        result.append({
-            "user_id": p.user_id,
-            "username": user.username if user else "unknown",
-            "role": p.role,
-        })
-    
+        result.append(
+            {
+                "user_id": p.user_id,
+                "username": user.username if user else "unknown",
+                "role": p.role,
+            }
+        )
+
     return result
 
 
@@ -420,6 +437,7 @@ async def initialize_rbac(
     db: Session = Depends(get_db),
 ):
     """Initialize default RBAC roles and permissions (admin only)."""
-    from audiobook_studio.auth.rbac import init_rbac
+    from src.audiobook_studio.auth.rbac import init_rbac
+
     init_rbac(db)
     return MessageResponse(message="RBAC initialized successfully")

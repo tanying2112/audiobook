@@ -1,18 +1,18 @@
 """FastAPI instrumentation and middleware for observability."""
 
-import time
 import logging
-from typing import Callable, Optional
+import time
 from functools import wraps
+from typing import Callable, Optional
 
-from fastapi import Request, Response, FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from opentelemetry import trace, metrics
+from fastapi import FastAPI, Request, Response
+from opentelemetry import metrics, trace
+from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
-from opentelemetry.metrics import Histogram, Counter
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from .metrics import create_counter, create_histogram, get_meter
 from .tracing import get_tracer
-from .metrics import get_meter, create_histogram, create_counter
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,16 @@ def _get_http_metrics():
             "http_request_duration_ms",
             "HTTP request latency in milliseconds",
             "ms",
-            explicit_bucket_boundaries_advisory=[50, 100, 200, 500, 1000, 2000, 5000, 10000],
+            explicit_bucket_boundaries_advisory=[
+                50,
+                100,
+                200,
+                500,
+                1000,
+                2000,
+                5000,
+                10000,
+            ],
         )
         _http_requests = meter.create_counter(
             "http_requests_total",
@@ -51,7 +60,13 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI, exclude_paths: Optional[list] = None):
         super().__init__(app)
-        self.exclude_paths = exclude_paths or ["/health", "/metrics", "/docs", "/openapi.json", "/redoc"]
+        self.exclude_paths = exclude_paths or [
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        ]
         self.tracer = get_tracer("audiobook_studio.http")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -79,26 +94,37 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 http_duration, http_requests, http_errors = _get_http_metrics()
 
-                http_duration.record(duration_ms, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": str(response.status_code),
-                })
-                http_requests.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": str(response.status_code),
-                })
+                http_duration.record(
+                    duration_ms,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": str(response.status_code),
+                    },
+                )
+                http_requests.add(
+                    1,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": str(response.status_code),
+                    },
+                )
 
                 # Add response attributes to span
                 span.set_attribute("http.status_code", response.status_code)
                 if response.status_code >= 400:
-                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                    span.set_status(
+                        Status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                    )
                     if response.status_code >= 500:
-                        http_errors.add(1, attributes={
-                            "method": request.method,
-                            "path": request.url.path,
-                        })
+                        http_errors.add(
+                            1,
+                            attributes={
+                                "method": request.method,
+                                "path": request.url.path,
+                            },
+                        )
                 else:
                     span.set_status(Status(StatusCode.OK))
 
@@ -109,20 +135,29 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 http_duration, http_requests, http_errors = _get_http_metrics()
 
-                http_duration.record(duration_ms, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": "500",
-                })
-                http_requests.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": "500",
-                })
-                http_errors.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                })
+                http_duration.record(
+                    duration_ms,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": "500",
+                    },
+                )
+                http_requests.add(
+                    1,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": "500",
+                    },
+                )
+                http_errors.add(
+                    1,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                    },
+                )
 
                 # Record exception in span
                 span.record_exception(e)
@@ -152,6 +187,7 @@ def instrument_app(
     """
     # Initialize tracing
     from .tracing import init_tracing
+
     init_tracing(
         service_name=service_name,
         service_version=service_version,
@@ -160,7 +196,8 @@ def instrument_app(
     )
 
     # Initialize metrics
-    from .metrics import init_metrics, create_slo_metrics
+    from .metrics import create_slo_metrics, init_metrics
+
     init_metrics(
         service_name=service_name,
         service_version=service_version,
@@ -175,6 +212,7 @@ def instrument_app(
 
     # Add Prometheus metrics endpoint
     from prometheus_client import make_asgi_app
+
     metrics_app = make_asgi_app()
     app.mount("/metrics", metrics_app)
 
@@ -191,6 +229,7 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable) -> Callable:
         tracer = get_tracer(func.__module__)
         name = span_name or f"{func.__module__}.{func.__name__}"
@@ -226,6 +265,7 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
                     raise
 
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
@@ -237,7 +277,12 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
 class trace_span:
     """Context manager for manual span creation."""
 
-    def __init__(self, name: str, attributes: Optional[dict] = None, tracer_name: str = "audiobook_studio"):
+    def __init__(
+        self,
+        name: str,
+        attributes: Optional[dict] = None,
+        tracer_name: str = "audiobook_studio",
+    ):
         self.tracer = get_tracer(tracer_name)
         self.name = name
         self.attributes = attributes or {}
