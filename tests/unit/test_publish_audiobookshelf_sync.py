@@ -90,7 +90,7 @@ def _resp(code=200, json_data=None, text="ok"):
 def _publisher_real():
     """Create a publisher in real (non-mock) mode with a MagicMock client."""
     with patch.dict("os.environ", {"MOCK_LLM": "false"}):
-        with patch("httpx.Client"):
+        with patch("src.audiobook_studio.publish.audiobookshelf.httpx.Client"):
             p = AudiobookshelfPublisher(_cfg())
             p.client = MagicMock()
             return p
@@ -105,7 +105,7 @@ class TestPublisherInit:
 
     def test_real_mode(self):
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
-            with patch("httpx.Client"):
+            with patch("src.audiobook_studio.publish.audiobookshelf.httpx.Client"):
                 p = AudiobookshelfPublisher(_cfg())
                 assert p.mock_mode is False
                 assert p.client is not None
@@ -117,7 +117,7 @@ class TestPublisherInit:
 
     def test_close_with_client(self):
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
-            with patch("httpx.Client"):
+            with patch("src.audiobook_studio.publish.audiobookshelf.httpx.Client"):
                 p = AudiobookshelfPublisher(_cfg())
                 p.client = MagicMock()
                 p.close()
@@ -607,7 +607,7 @@ class TestPrepareAudiobook:
 class TestGetMimeTypeSync:
     def _publisher(self):
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
-            with patch("httpx.Client"):
+            with patch("src.audiobook_studio.publish.audiobookshelf.httpx.Client"):
                 return AudiobookshelfPublisher(_cfg())
 
     def test_m4b(self):
