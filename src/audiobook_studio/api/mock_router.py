@@ -17,7 +17,7 @@ import json
 import logging
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -413,7 +413,7 @@ async def mock_health():
     return {
         "status": "ok",
         "mock_mode": True,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "endpoints": [
             "POST /api/mock/llm/chat-edit",
             "POST /api/mock/llm/chat-annotate",

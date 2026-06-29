@@ -1,6 +1,6 @@
 """Feedback API endpoints — 人工反馈收集与管理."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,7 +59,7 @@ async def create_feedback(feedback: FeedbackCreate):
     import uuid
 
     feedback_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Simple diff summary
     diff_summary = f"Modified {feedback.stage} output"

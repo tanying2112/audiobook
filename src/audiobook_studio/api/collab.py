@@ -3,7 +3,7 @@
 Implements commenting, approval, task status, and change history for team collaboration.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -187,7 +187,7 @@ def resolve_comment(comment_id: int, resolved_by: str, db: Session = Depends(get
 
     comment.resolved = True
     comment.resolved_by = resolved_by
-    comment.resolved_at = datetime.utcnow()
+    comment.resolved_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(comment)
     return comment
@@ -312,7 +312,7 @@ def get_collaboration_stats(db: Session = Depends(get_db)):
     return {
         "total_comments": db.query(CollaborationRecord).count(),
         "processed_comments": db.query(CollaborationRecord)
-        .filter(CollaborationRecord.processed == True)
+        .filter(CollaborationRecord.processed is True)
         .count(),
         "message": "Full collaboration statistics not yet implemented - placeholder",
     }

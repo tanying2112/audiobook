@@ -7,7 +7,7 @@ with async text extraction and WebSocket progress updates.
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -232,7 +232,7 @@ async def init_upload(
         "file_path": str(file_path),
         "chunks_received": set(),
         "total_chunks": 0,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
         "user_id": current_user.id,
     }
 
@@ -299,7 +299,7 @@ async def upload_chunk(
         # Finalize upload
         file_path = finalize_upload(upload_id)
         session["status"] = "uploaded"
-        session["completed_at"] = datetime.utcnow()
+        session["completed_at"] = datetime.now(timezone.utc)
 
         # Start extraction job
         job_id = await start_extraction_job(
@@ -384,8 +384,8 @@ async def start_extraction_job(
         status="pending",
         progress=0.0,
         current_step="initializing",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     extraction_jobs[job_id] = job
 
@@ -407,7 +407,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         job.status = "running"
         job.current_step = "extracting_text"
         job.progress = 0.1
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
 
         # Emit progress
         await emit_pipeline_event(
@@ -423,7 +423,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
 
         job.progress = 0.5
         job.current_step = "creating_chapters"
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -457,7 +457,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                     db.add(chapter)
                     job.extracted_chapters = i + 1
                     job.progress = 0.5 + (0.4 * (i + 1) / len(chapters))
-                    job.updated_at = datetime.utcnow()
+                    job.updated_at = datetime.now(timezone.utc)
 
                 db.commit()
 
@@ -473,8 +473,8 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         job.status = "completed"
         job.progress = 1.0
         job.current_step = "completed"
-        job.completed_at = datetime.utcnow()
-        job.updated_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -497,7 +497,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
     except Exception as e:
         job.status = "failed"
         job.error = str(e)
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
 
         await emit_pipeline_event(
             project_id=project_id,

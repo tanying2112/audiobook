@@ -24,7 +24,6 @@ def load_openapi_spec():
     if os.path.exists(spec_path):
         with open(spec_path, "r") as f:
             return json.load(f)
-    # Try relative path
     spec_path = os.path.join(os.getcwd(), "openapi.json")
     if os.path.exists(spec_path):
         with open(spec_path, "r") as f:
@@ -37,19 +36,39 @@ openapi_spec = load_openapi_spec()
 # Create schema from dict
 schema = schemathesis.openapi.from_dict(openapi_spec)
 
-# Test settings - exclude paths that don't need contract testing
+# Test settings - exclude paths
 EXCLUDE_PATHS = [
     r"/health",
     r"/metrics",
     r"/docs",
     r"/openapi.json",
     r"/redoc",
-    r"/ws/.*",  # WebSocket endpoints
-    r"/mock/.*",  # Mock endpoints
+    r"/ws/.*",
+    r"/mock/.*",
 ]
 
-# Get all operations from the schema
-all_operations = list(schema.get_all_operations())
+# Get all operations from the schema (Ok wrappers need .ok() to unwrap)
+_all_op_results = list(schema.get_all_operations())
+
+
+def _unwrap_operations():
+    """Unwrap operations from Ok results."""
+    ops = []
+    for result in _all_op_results:
+        op = result.ok()
+        if op is not None:
+            ops.append(op)
+    return ops
+
+
+all_operations = _unwrap_operations()
+
+
+def _path_found(path, method):
+    """Check if given path+method exists in the schema."""
+    return any(
+        op.path == path and op.method.upper() == method.upper() for op in all_operations
+    )
 
 
 def test_schema_loaded():
@@ -59,87 +78,62 @@ def test_schema_loaded():
     print(f"Loaded {len(all_operations)} operations from OpenAPI spec")
 
 
-@schema.parametrize()
-def test_api_conformance(case: schemathesis.Case):
+def test_api_conformance():
     """Test that all API endpoints conform to the OpenAPI spec."""
-    # Skip excluded paths
-    path = case.path
-    for excluded in EXCLUDE_PATHS:
-        if re.match(excluded, path):
-            pytest.skip(f"Skipping excluded path: {path}")
+    filtered = [
+        op
+        for op in all_operations
+        if not any(re.match(e, op.path) for e in EXCLUDE_PATHS)
+        and not op.path.startswith("/ws/")
+    ]
+    for op in filtered:
+        assert op.path is not None, f"Operation path should not be None: {op}"
+        assert op.method is not None, f"Operation method should not be None: {op}"
+    print(f"Filtered operations (non-excluded): {len(filtered)}")
+    assert len(filtered) > 0, "No operations left after filtering"
 
-    # Skip paths that require authentication or special setup
-    if path.startswith("/ws/"):
-        pytest.skip("WebSocket endpoint - requires separate testing")
 
-    # Test that the path exists in the schema
-    assert case.path is not None, "Path should not be None"
-
-
-# Additional targeted tests for key endpoints - filter inside test
-@schema.parametrize()
-def test_create_project_in_schema(case: schemathesis.Case):
+def test_create_project_in_schema():
     """Verify project creation endpoint is in the schema."""
-    if case.path != "/api/projects/" or case.method != "POST":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/api/projects/"
-    assert case.method == "POST"
+    assert _path_found("/api/projects/", "POST"), "POST /api/projects/ not found"
 
 
-@schema.parametrize()
-def test_list_projects_in_schema(case: schemathesis.Case):
+def test_list_projects_in_schema():
     """Verify list projects endpoint is in the schema."""
-    if case.path != "/api/projects/" or case.method != "GET":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/api/projects/"
-    assert case.method == "GET"
+    assert _path_found("/api/projects/", "GET"), "GET /api/projects/ not found"
 
 
-@schema.parametrize()
-def test_get_project_in_schema(case: schemathesis.Case):
+def test_get_project_in_schema():
     """Verify get project endpoint is in the schema."""
-    if case.path != "/api/projects/{project_id}" or case.method != "GET":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/api/projects/{project_id}"
-    assert case.method == "GET"
+    assert _path_found(
+        "/api/projects/{project_id}", "GET"
+    ), "GET /api/projects/{project_id} not found"
 
 
-@schema.parametrize()
-def test_health_in_schema(case: schemathesis.Case):
+def test_health_in_schema():
     """Verify health endpoint is in the schema."""
-    if case.path != "/health" or case.method != "GET":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/health"
-    assert case.method == "GET"
+    assert _path_found("/health", "GET"), "GET /health not found"
 
 
-@schema.parametrize()
-def test_golden_contribute_in_schema(case: schemathesis.Case):
+def test_golden_contribute_in_schema():
     """Verify golden contribute endpoint is in the schema."""
-    if case.path != "/api/golden/contribute" or case.method != "POST":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/api/golden/contribute"
-    assert case.method == "POST"
+    assert _path_found(
+        "/api/golden/contribute", "POST"
+    ), "POST /api/golden/contribute not found"
 
 
-@schema.parametrize()
-def test_golden_samples_in_schema(case: schemathesis.Case):
+def test_golden_samples_in_schema():
     """Verify golden samples endpoint is in the schema."""
-    if case.path != "/api/golden/samples" or case.method != "GET":
-        pytest.skip(f"Skipping: {case.method} {case.path}")
-    assert case.path == "/api/golden/samples"
-    assert case.method == "GET"
+    assert _path_found(
+        "/api/golden/samples", "GET"
+    ), "GET /api/golden/samples not found"
 
 
-# Test schema coverage - use raw spec
 def test_schema_coverage():
     """Test that we have good coverage of the schema."""
-    # Get all paths from raw spec
     paths = set(openapi_spec.get("paths", {}).keys())
-
     print(f"Total unique paths in schema: {len(paths)}")
 
-    # Expected core paths (with /api prefix)
     core_paths = {
         "/api/projects/",
         "/api/projects/{project_id}",

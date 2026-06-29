@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from ..base import AbstractAgent, AgentCapability, AgentMessage
@@ -29,7 +29,7 @@ class ExtractAgent(AbstractAgent):
                         task_type=message.content.get("task_type", "extract"),
                         input_data=message.content,
                         status="RUNNING",
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(timezone.utc),
                     )
                     db.add(task_record)
 
@@ -42,7 +42,7 @@ class ExtractAgent(AbstractAgent):
                 # Update task status
                 task_record.status = "COMPLETED"
                 task_record.output_data = extraction_result.model_dump()
-                task_record.completed_at = datetime.utcnow()
+                task_record.completed_at = datetime.now(timezone.utc)
                 db.commit()
             finally:
                 db.close()
@@ -73,7 +73,7 @@ class AnalyzeAgent(AbstractAgent):
             # Update task status
             task_record.status = "COMPLETED"
             task_record.output_data = analysis_result.model_dump()
-            task_record.completed_at = datetime.utcnow()
+            task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
         except Exception as e:
@@ -104,7 +104,7 @@ class SynthesizeAgent(AbstractAgent):
                 "audio_segments": [seg.to_dict() for seg in synthesis_result],
                 "book_id": message.content.get("book_id"),
             }
-            task_record.completed_at = datetime.utcnow()
+            task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
         except Exception as e:
@@ -131,7 +131,7 @@ class QualityAgent(AbstractAgent):
 
             task_record.status = "COMPLETED"
             task_record.output_data = quality_report.model_dump()
-            task_record.completed_at = datetime.utcnow()
+            task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
         except Exception as e:
