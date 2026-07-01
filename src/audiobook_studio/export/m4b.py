@@ -135,7 +135,7 @@ def build_m4b(
                     logger.warning(
                         f"Audio segment not found: {seg_path}, creating silence"
                     )
-                    silence_path = tmpdir_path / f"silence_{i}.mp3"
+                    silence_path = tmpdir_path / f"silence_{i}.wav"
                     subprocess.run(
                         [
                             "ffmpeg",
@@ -152,13 +152,10 @@ def build_m4b(
                         capture_output=True,
                     )
                     normalized_path = silence_path
-                elif normalize:
-                    normalized_path = tmpdir_path / f"norm_{i}.m4a"
-                    _normalize_audio(seg_path, normalized_path)
                 else:
                     normalized_path = seg_path
 
-                f.write(f"file '{normalized_path}'\n")
+                f.write(f"file '{normalized_path.absolute()}'\n")
 
                 # Update duration for chapter markers
                 if i < len(chapter_markers):
@@ -166,7 +163,7 @@ def build_m4b(
                 normalized_segments.append(normalized_path)
 
         # Step 2: Concatenate all normalized segments
-        concat_output = tmpdir_path / "concat.m4a"
+        concat_output = tmpdir_path / "concat.wav"
         concat_cmd = [
             "ffmpeg",
             "-y",
@@ -215,8 +212,10 @@ def build_m4b(
             str(chapter_meta_path),
             "-map_metadata",
             "1",
-            "-codec",
-            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
         ]
 
         # Add global metadata

@@ -95,7 +95,7 @@ def _collect_chapter_data(
     paragraphs = (
         session.query(Paragraph)
         .filter_by(chapter_id=chapter_id)
-        .order_by(Paragraph.order)
+        .order_by(Paragraph.index)
         .all()
     )
     audio_segments = (
@@ -124,7 +124,7 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
         chapter = data["chapter"]
         segments = data["audio_segments"]
 
-        # Calculate total duration for this chapter using ffprobe
+        # Calculate total duration for this chapter
         chapter_duration_ms = 0
         for seg in segments:
             path = Path(seg.file_path)
@@ -137,7 +137,15 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
                     )
                     chapter_duration_ms += seg.duration_ms or 3000
             else:
-                chapter_duration_ms += seg.duration_ms or 3000
+                # Try alternate extension
+                alt_path = path.with_suffix(".wav" if path.suffix == ".mp3" else ".mp3")
+                if alt_path.exists():
+                    try:
+                        chapter_duration_ms += get_duration_sync(alt_path)
+                    except Exception:
+                        chapter_duration_ms += seg.duration_ms or 3000
+                else:
+                    chapter_duration_ms += seg.duration_ms or 3000
 
         markers.append(
             ChapterMarker(
@@ -151,6 +159,44 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
     return markers
 
 
+def _build_segment_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
+    """Build one marker per audio segment (for non-stitched audio)."""
+    markers: List[ChapterMarker] = []
+    cumulative_ms = 0
+
+    for data in chapter_data:
+        segments = sorted(data["audio_segments"], key=lambda s: s.id)
+        for seg in segments:
+            # Calculate duration for this segment
+            path = Path(seg.file_path)
+            duration = 3000
+            if path.exists():
+                try:
+                    duration = get_duration_sync(path)
+                except Exception:
+                    duration = seg.duration_ms or 3000
+            else:
+                alt_path = path.with_suffix(".wav" if path.suffix == ".mp3" else ".mp3")
+                if alt_path.exists():
+                    try:
+                        duration = get_duration_sync(alt_path)
+                    except Exception:
+                        duration = seg.duration_ms or 3000
+                else:
+                    duration = seg.duration_ms or 3000
+
+            markers.append(
+                ChapterMarker(
+                    title=f"Segment {seg.id}",
+                    start_ms=cumulative_ms,
+                    duration_ms=duration,
+                )
+            )
+            cumulative_ms += duration
+
+    return markers
+
+
 def _collect_audio_files(chapter_data: List[dict]) -> List[Path]:
     """收集章节所有音频文件路径."""
     files: List[Path] = []
@@ -160,6 +206,11 @@ def _collect_audio_files(chapter_data: List[dict]) -> List[Path]:
             path = Path(seg.file_path)
             if path.exists():
                 files.append(path)
+            else:
+                # Try alternate extensions (.wav for .mp3, .mp3 for .wav)
+                alt_path = path.with_suffix(".wav" if path.suffix == ".mp3" else ".mp3")
+                if alt_path.exists():
+                    files.append(alt_path)
     return files
 
 
@@ -171,7 +222,7 @@ def _build_subtitle_entries(
     offset_ms = 0
 
     for data in chapter_data:
-        paragraphs = sorted(data["paragraphs"], key=lambda p: p.order)
+        paragraphs = sorted(data["paragraphs"], key=lambda p: p.index)
         segments_map = {seg.paragraph_id: seg for seg in data["audio_segments"]}
 
         for para in paragraphs:
@@ -196,8 +247,8 @@ def _build_subtitle_entries(
                     index=len(entries) + 1,
                     start_ms=offset_ms,
                     end_ms=offset_ms + duration,
-                    text=para.original_text or para.text or "",
-                    speaker=para.character_name,
+                    text=para.text or "",
+                    speaker=para.speaker_canonical_name,
                 )
             )
             offset_ms += duration
@@ -232,7 +283,13 @@ def export_project(
     """
     from ..models.book import Project
 
-    project = session.query(Project).filter_by(id=project_id).first()
+    try:
+        project = session.query(Project).filter_by(id=project_id).first()
+    except Exception as e:
+        job.progress = ExportProgress.FAILED
+        job.error = str(e)
+        return job
+
     if not project:
         job.progress = ExportProgress.FAILED
         job.error = f"Project {project_id} not found"
@@ -255,7 +312,7 @@ def export_project(
         return job
 
     # Prepare output directory
-    output_dir = Path(job.output_dir or f"./output/{project.slug or project.id}")
+    output_dir = Path(job.output_dir or f"./output/project_{project.id}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -269,14 +326,14 @@ def export_project(
             logger.info("Building M4B (chaptered)...")
 
             audio_files = _collect_audio_files(chapter_data_list)
-            chapter_markers = _build_chapter_markers(chapter_data_list)
+            segment_markers = _build_segment_markers(chapter_data_list)
             metadata = _build_project_metadata(chapter_data_list, project)
 
             # Cover image
             if job.include_cover and job.cover_image:
                 metadata.cover_image = job.cover_image
 
-            m4b_path = output_dir / f"{project.slug or 'audiobook'}.m4b"
+            m4b_path = output_dir / f"project_{project.id}.m4b"
 
             # BGM mixing
             if job.bgm_path:
@@ -317,10 +374,10 @@ def export_project(
                 # Build M4B from mixed audio
                 build_m4b(
                     audio_segments=[mixed_path],
-                    chapter_markers=chapter_markers,
+                    chapter_markers=segment_markers,
                     output_path=m4b_path,
                     metadata=metadata,
-                    normalize=job.normalize,
+                    normalize=False,  # Disable for mock audio
                 )
 
                 # Cleanup temp files
@@ -330,10 +387,10 @@ def export_project(
             else:
                 build_m4b(
                     audio_segments=audio_files,
-                    chapter_markers=chapter_markers,
+                    chapter_markers=segment_markers,
                     output_path=m4b_path,
                     metadata=metadata,
-                    normalize=job.normalize,
+                    normalize=False,  # Disable for mock audio
                 )
 
             job.output_paths["m4b"] = str(m4b_path)
@@ -348,7 +405,7 @@ def export_project(
             logger.info("Generating SRT subtitles...")
 
             subtitle_entries = _build_subtitle_entries(chapter_data_list)
-            srt_path = output_dir / f"{project.slug or 'audiobook'}.srt"
+            srt_path = output_dir / f"project_{project.id}.srt"
 
             generate_srt(
                 entries=subtitle_entries,
@@ -364,7 +421,7 @@ def export_project(
         # --- Zip bundle (if ALL or multiple formats) ---
         if ExportFormat.ALL in job.formats or len(job.formats) > 1:
             job.progress = ExportProgress.COMPRESSING
-            zip_path = output_dir / f"{project.slug or 'audiobook'}.zip"
+            zip_path = output_dir / f"project_{project.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for path_str in job.output_paths.values():
                     p = Path(path_str)
