@@ -67,32 +67,39 @@ class StageHandler(ABC):
 
 
 class StageRegistry:
-    """Registry for stage handlers with lazy initialization."""
+    """Registry for pipeline stage handlers (singleton pattern)."""
 
     _handlers: Dict[str, Type[StageHandler]] = {}
+    _instances: Dict[str, StageHandler] = {}  # Cached singleton instances
 
     @classmethod
     def register(cls, name: str, handler_class: Type[StageHandler]) -> None:
         """Register a stage handler class."""
         cls._handlers[name] = handler_class
+        # Clear cached instance when handler is re-registered
+        cls._instances.pop(name, None)
 
     @classmethod
     def unregister(cls, name: str) -> bool:
         """Unregister a stage handler. Returns True if was registered."""
         if name in cls._handlers:
             del cls._handlers[name]
+            cls._instances.pop(name, None)
             return True
         return False
 
     @classmethod
     def get(cls, name: str) -> StageHandler:
-        """Get a stage handler instance."""
+        """Get a stage handler instance (cached singleton)."""
         if name not in cls._handlers:
             raise ValueError(
                 f"Unknown pipeline stage: {name}. "
                 f"Registered stages: {list(cls._handlers.keys())}"
             )
-        return cls._handlers[name]()
+        # Return cached instance instead of creating new one each time
+        if name not in cls._instances:
+            cls._instances[name] = cls._handlers[name]()
+        return cls._instances[name]
 
     @classmethod
     def has(cls, name: str) -> bool:
@@ -103,6 +110,11 @@ class StageRegistry:
     def list_stages(cls) -> List[str]:
         """Get list of registered stage names."""
         return list(cls._handlers.keys())
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear all cached instances (for testing)."""
+        cls._instances.clear()
 
 
 # ── Built-in Stage Handlers ──────────────────────────────────────────────────
@@ -190,19 +202,75 @@ class AnnotateStage(StageHandler):
     """Annotate stage: annotate paragraph with prosody metadata."""
 
     def run(self, **kwargs) -> Any:
-        # Filter out orchestrator-internal params only
+        para = kwargs.get("paragraph")
+        chapter = kwargs.get("chapter")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
-        # Build ParagraphAnnotationInput from kwargs
+
+        paragraph_text = para.text if para else filtered.get("paragraph_text", "")
+
+        book_meta = None
+        character_voice_map = []
+        emotion_snapshot = None
+        story_line_summary = ""
+        global_style_notes = ""
+
+        if chapter and chapter.analyzed_json:
+            import json
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            from ..schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+            book_meta = BookMeta(**raw.get("book_meta", {}))
+            character_voice_map = [
+                CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])
+            ]
+            if raw.get("emotion_snapshots"):
+                emotion_snapshot = EmotionSnapshot(**raw.get("emotion_snapshots", [{}])[0])
+            story_line_summary = raw.get("story_line_summary", "默认故事主线摘要，用于测试目的。本书讲述了一个引人入胜的故事，主角经历种种挑战，最终实现成长与超越。")
+            global_style_notes = raw.get("global_style_notes", "保持自然叙述风格。")
+
+        if book_meta is None:
+            from ..schemas.book import BookMeta
+            book_meta = BookMeta(
+                title="Unknown Book",
+                author="Unknown Author",
+                genre="小说",
+                difficulty="B",
+                language="zh",
+                era="现代",
+                total_chapters_estimated=10,
+            )
+        if not character_voice_map:
+            from ..schemas.book import CharacterVoiceBinding
+            character_voice_map = [
+                CharacterVoiceBinding(
+                    canonical_name="_narrator_",
+                    aliases=[],
+                    gender="neutral",
+                    age_range="adult",
+                    suggested_voice_id="v1",
+                    sample_quote="旁白样本",
+                )
+            ]
+        if emotion_snapshot is None:
+            from ..schemas.book import EmotionSnapshot
+            emotion_snapshot = EmotionSnapshot(
+                chapter=1,
+                dominant_emotion="neutral",
+                intensity=0.5,
+                notes="默认情感快照",
+            )
+
         input_data = ParagraphAnnotationInput(
-            paragraph_text=filtered.get("paragraph_text", ""),
-            paragraph_index=filtered.get("paragraph_index", 0),
-            chapter_index=filtered.get("chapter_index", 1),
-            book_meta=filtered.get("book_meta"),
-            character_voice_map=filtered.get("character_voice_map", []),
-            emotion_snapshot=filtered.get("emotion_snapshot"),
-            story_line_summary=filtered.get("story_line_summary", ""),
-            global_style_notes=filtered.get("global_style_notes", ""),
+            paragraph_text=paragraph_text,
+            paragraph_index=para.index if para else filtered.get("paragraph_index", 0),
+            chapter_index=chapter.index if chapter else filtered.get("chapter_index", 1),
+            book_meta=book_meta,
+            character_voice_map=character_voice_map,
+            emotion_snapshot=emotion_snapshot,
+            story_line_summary=story_line_summary,
+            global_style_notes=global_style_notes,
             contract_version=filtered.get("contract_version", 2),
         )
         pipeline = AnnotateParagraphPipeline()
@@ -243,13 +311,32 @@ class EditStage(StageHandler):
     """Edit stage: edit text for TTS optimization."""
 
     def run(self, **kwargs) -> Any:
-        # Filter out orchestrator-internal params only
+        para = kwargs.get("paragraph")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
-        # Build TtsEditInput from kwargs
-        paragraph_annotation = filtered.get("paragraph_annotation")
+
+        # Build paragraph_annotation from paragraph DB record
+        paragraph_annotation = None
+        if para:
+            paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=para.index,
+                speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
+                is_dialogue=para.is_dialogue or False,
+                emotion=para.emotion or "neutral",
+                emotion_intensity=para.emotion_intensity or 0.5,
+                speech_rate=para.speech_rate or 1.0,
+                pitch_shift_semitones=para.pitch_shift_semitones or 0,
+                pause_before_ms=para.pause_before_ms or 300,
+                pause_after_ms=para.pause_after_ms or 500,
+                confidence=para.confidence or 0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+            )
+
+        paragraph_text = para.text if para else filtered.get("paragraph_text", "")
         input_data = TtsEditInput(
-            paragraph_text=filtered.get("paragraph_text", ""),
+            paragraph_text=paragraph_text,
             paragraph_annotation=paragraph_annotation,
             difficulty=filtered.get("difficulty", "B"),
             forbid_edit=filtered.get("forbid_edit", False),
@@ -355,36 +442,65 @@ class SynthesizeStage(StageHandler):
     """Synthesize stage: convert text to audio."""
 
     def run(self, **kwargs) -> Any:
-        # Filter out orchestrator-internal params only
-        exclude_keys = {"chapter", "paragraph", "db"}
-        filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
-        # Build TtsRoutingInput list from kwargs (single item for single paragraph synthesis)
-        voice_map = filtered.get("character_voice_map", [])
-        if not voice_map and filtered.get("voice_id"):
-            # Create minimal voice map from voice_id
+        para = kwargs.get("paragraph")
+        chapter = kwargs.get("chapter")
+
+        # Build paragraph_annotation from paragraph DB record
+        paragraph_annotation = None
+        if para:
+            paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=para.index,
+                speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
+                is_dialogue=para.is_dialogue or False,
+                emotion=para.emotion or "neutral",
+                emotion_intensity=para.emotion_intensity or 0.5,
+                speech_rate=para.speech_rate or 1.0,
+                pitch_shift_semitones=para.pitch_shift_semitones or 0,
+                pause_before_ms=para.pause_before_ms or 300,
+                pause_after_ms=para.pause_after_ms or 500,
+                confidence=para.confidence or 0.9,
+                difficulty="B",
+                needs_sfx=para.needs_sfx or False,
+                sfx_tags=para.sfx_tags or [],
+            )
+
+        # Build voice_map from chapter's analyzed_json
+        voice_map = []
+        if chapter and chapter.analyzed_json:
+            import json
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            voice_map = [
+                CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])
+            ]
+
+        if not voice_map:
             voice_map = [
                 CharacterVoiceBinding(
-                    canonical_name="旁白",
+                    canonical_name="_narrator_",
                     aliases=[],
                     gender="neutral",
                     age_range="adult",
-                    suggested_voice_id=filtered.get("voice_id"),
-                    sample_quote="",
+                    suggested_voice_id="v1",
+                    sample_quote="旁白样本",
                 )
             ]
-        paragraph_annotation = filtered.get("paragraph_annotation")
+
+        text = para.edited_text if para else ""
+
         input_data = TtsRoutingInput(
             paragraph_annotation=paragraph_annotation,
-            text=filtered.get("text", ""),
+            text=text,
             character_voice_map=voice_map,
-            book_id=str(filtered.get("project_id", "")),
-            chapter_index=filtered.get("chapter_index", 1),
-            paragraph_index=filtered.get("paragraph_index", 0),
-            cumulative_cost_usd=filtered.get("cumulative_cost_usd", 0.0),
-            cost_limit_per_book=filtered.get("cost_limit_per_book", 20.0),
-            cost_limit_per_chapter=filtered.get("cost_limit_per_chapter", 5.0),
-            prefer_local=filtered.get("prefer_local", True),
-            contract_version=filtered.get("contract_version", 1),
+            book_id=str(kwargs.get("project_id", "")),
+            chapter_index=chapter.index if chapter else 1,
+            paragraph_index=para.index if para else 0,
+            cumulative_cost_usd=0.0,
+            cost_limit_per_book=20.0,
+            cost_limit_per_chapter=5.0,
+            prefer_local=True,
+            contract_version=1,
         )
         pipeline = SynthesizePipeline()
         return pipeline.run([input_data])
@@ -436,21 +552,63 @@ class QualityStage(StageHandler):
     """Quality stage: judge synthesis quality."""
 
     def run(self, **kwargs) -> Any:
-        # Filter out orchestrator-internal params only
+        para = kwargs.get("paragraph")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
-        # Build input tuple list for quality check pipeline
-        # Input format: List[(audio_path, paragraph_annotation, routing_decision, reference_text)]
+
+        # Build annotation from paragraph
+        annotation = None
+        if para:
+            from ..schemas.paragraph import ParagraphAnnotation
+            annotation = ParagraphAnnotation(
+                paragraph_index=para.index,
+                speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
+                is_dialogue=para.is_dialogue or False,
+                emotion=para.emotion or "neutral",
+                emotion_intensity=para.emotion_intensity or 0.5,
+                speech_rate=para.speech_rate or 1.0,
+                pitch_shift_semitones=para.pitch_shift_semitones or 0,
+                pause_before_ms=para.pause_before_ms or 300,
+                pause_after_ms=para.pause_after_ms or 500,
+                confidence=para.confidence or 0.9,
+                difficulty="B",
+                needs_sfx=para.needs_sfx or False,
+                sfx_tags=para.sfx_tags or [],
+            )
+
+        # Build routing decision mock
+        from ..schemas.tts_routing import TtsRoutingDecision
+        routing = TtsRoutingDecision(
+            segment_id=f"seg_{para.id if para else 'unknown'}",
+            engine_choice="edge",
+            voice_id="v1",
+            fallback_engine="kokoro",
+            reasoning="Mock routing for quality check",
+            estimated_duration_ms=3000,
+        )
+
+        audio_path = ""
+        if para and para.audio_segment_id:
+            from ..models.audio_segment import AudioSegment
+            db = kwargs.get("db")
+            if db:
+                seg = db.query(AudioSegment).filter(
+                    AudioSegment.id == para.audio_segment_id
+                ).first()
+                if seg:
+                    audio_path = seg.file_path
+
         inputs = [
             (
-                filtered.get("audio_path", ""),
-                filtered.get("annotation"),
-                filtered.get("routing_decision"),
-                filtered.get("text", ""),
+                audio_path,
+                annotation,
+                routing,
+                para.edited_text if para else "",
             )
         ]
         pipeline = QualityCheckPipeline()
-        return pipeline.run(inputs)
+        results = pipeline.run(inputs)
+        return results[0] if results else None
 
     def persist(
         self,
@@ -466,6 +624,58 @@ class QualityStage(StageHandler):
             from .orchestrator import _write_quality
 
             _write_quality(db, project_id, chapter, paragraph, result)
+
+
+from .translate import TranslateAndDubPipeline
+
+
+class TranslateStage(StageHandler):
+    """Translate stage: multilingual translation dubbing."""
+
+    def __init__(self):
+        self.pipeline = TranslateAndDubPipeline()
+
+    def run(self, **kwargs) -> Any:
+        exclude_keys = {"chapter", "paragraph", "db"}
+        filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
+        segments = filtered.get("segments", [])
+        target_language = filtered.get("target_language", "en-US")
+        book_title = filtered.get("book_title", "")
+        author = filtered.get("author", "")
+        
+        return self.pipeline.translate_and_dub(
+            segments=segments,
+            target_language=target_language,
+            book_title=book_title,
+            author=author,
+        )
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Translate stage produces audio segments, similar to synthesize
+        if project_id and chapter and paragraph:
+            from .orchestrator import _write_synthesize
+
+            dubbed_segments, report = result
+            for seg in dubbed_segments:
+                seg_dict = {
+                    "file_path": seg.file_path,
+                    "duration_ms": seg.duration_ms,
+                    "engine": seg.engine,
+                    "voice_id": seg.voice_id,
+                    "format": (
+                        seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"
+                    ),
+                }
+                _write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
 
 def register_stage(name: str):
@@ -489,4 +699,5 @@ StageRegistry.register("edit", EditStage)
 StageRegistry.register("audio_postprocess", AudioPostprocessStage)
 StageRegistry.register("synthesize", SynthesizeStage)
 StageRegistry.register("quality", QualityStage)
+StageRegistry.register("translate", TranslateStage)
 from ..schemas.paragraph import ParagraphAnnotationInput

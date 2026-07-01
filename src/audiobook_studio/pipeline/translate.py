@@ -4,7 +4,6 @@
 """
 
 import logging
-import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..llm import create_router
@@ -13,9 +12,6 @@ from ..schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingInpu
 from ..tts.clone import VoiceCloningManager
 from .annotate_paragraph import AnnotateParagraphPipeline
 from .synthesize import SynthesizePipeline
-
-# Ensure real LLM/TTS pipeline (no mock)
-os.environ["MOCK_LLM"] = "false"
 
 logger = logging.getLogger(__name__)
 
@@ -213,17 +209,53 @@ class TranslateAndDubPipeline:
     def _get_target_voice(
         self, character_name: str, target_language: str, emotion: str
     ) -> dict:
-        """Return a voice configuration for the given target language.
-        In a real system, this would look up a voice database; for now we
-        use a default Kokoro narrator voice.
+        """Return a voice configuration for the given target language by querying
+        the character voice binding database. Falls back to default if not found.
         """
-        return {
-            "voice_id": "kokoro_narrator",
-            "language": target_language,
-            "base_pitch_shift": 0.0,
-            "base_speed_rate": 1.0,
-            "base_volume": 1.0,
-        }
+        from ..database import SessionLocal
+        from ..models import Character
+
+        db = SessionLocal()
+        try:
+            # 查找角色的声音绑定
+            character = db.query(Character).filter(
+                Character.canonical_name == character_name
+            ).first()
+            
+            if character and character.voice_mapping:
+                # 尝试获取目标语言的 voice_id
+                voice_mapping = character.voice_mapping
+                if isinstance(voice_mapping, dict):
+                    voice_id = voice_mapping.get(target_language)
+                    if voice_id:
+                        return {
+                            "voice_id": voice_id,
+                            "language": target_language,
+                            "base_pitch_shift": 0.0,
+                            "base_speed_rate": 1.0,
+                            "base_volume": 1.0,
+                        }
+            
+            # 如果没有找到特定语言的声音，使用默认映射
+            default_voices = {
+                "en-US": "en-US-JennyNeural",
+                "es-ES": "es-ES-ElviraNeural",
+                "ja-JP": "ja-JP-NanamiNeural",
+                "fr-FR": "fr-FR-DeniseNeural",
+                "de-DE": "de-DE-KatjaNeural",
+                "zh-CN": "zh-CN-XiaoyiNeural",
+            }
+            voice_id = default_voices.get(target_language, "en-US-JennyNeural")
+            
+            return {
+                "voice_id": voice_id,
+                "language": target_language,
+                "base_pitch_shift": 0.0,
+                "base_speed_rate": 1.0,
+                "base_volume": 1.0,
+            }
+        finally:
+            db.close()
 
     def _translate_text(
         self,

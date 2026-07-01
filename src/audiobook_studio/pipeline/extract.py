@@ -34,16 +34,9 @@ class ExtractPipeline:
         else:
             self.mock_mode = mock_mode
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if self.mock_mode:
-                os.environ["MOCK_LLM"] = "true"
-            self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
+            self.router = create_router(mock_mode=self.mock_mode)
         else:
             self.router = router
 
@@ -266,7 +259,7 @@ def extract_text(
     file_path: str,
     mime_type: str,
     detect_language: bool = True,
-    mock_mode: bool = True,
+    mock_mode: Optional[bool] = None,
 ) -> ExtractionResult:
     """Convenience function for text extraction."""
     input_data = ExtractionInput(

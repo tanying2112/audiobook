@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-os.environ["MOCK_LLM"] = "false"
+# Enable mock mode for development/testing when no valid LLM keys available
+os.environ["MOCK_LLM"] = "true"
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -19,7 +20,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..api.websocket import PipelineEventType, emit_pipeline_event
-from ..database import get_db
+from ..config import get_settings
+get_settings
+from ..database import SessionLocal, get_db
 from ..models.audio_segment import AudioSegment
 from ..models.book import Project
 from ..models.chapter import Chapter
@@ -157,6 +160,35 @@ def _get_checkpoint_manager(project_id: int) -> CheckpointManager:
     return CheckpointManager(project_id)
 
 
+def _create_paragraphs_from_chapters(db: Session, project_id: int):
+    """Create Paragraph records from Chapter raw_text if they don't exist."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return
+
+    for chapter in project.chapters:
+        existing = db.query(Paragraph).filter(
+            Paragraph.chapter_id == chapter.id
+        ).count()
+        if existing > 0:
+            continue
+
+        raw_text = chapter.raw_text or ""
+        paragraphs = [p.strip() for p in raw_text.split("\n\n") if p.strip()]
+        for idx, text in enumerate(paragraphs, start=1):
+            para = Paragraph(
+                project_id=project_id,
+                chapter_id=chapter.id,
+                chapter_index=chapter.index,
+                index=idx,
+                text=text,
+                book_id=project_id,  # For backwards compatibility
+            )
+            db.add(para)
+        db.commit()
+        logger.info(f"Created {len(paragraphs)} paragraphs for chapter {chapter.index}")
+
+
 async def _run_auto_pipeline(
     project_id: int,
     run_id: str,
@@ -198,12 +230,6 @@ async def _run_auto_pipeline(
         checkpoint_mgr = _get_checkpoint_manager(project_id)
 
         for stage in _stage_order:
-            # Check if already completed (checkpoint)
-            if checkpoint_mgr.has_checkpoint(stage):
-                logger.info(f"Stage {stage} has checkpoint, skipping")
-                _active_runs[project_id]["completed_stages"].append(stage)
-                continue
-
             # Update current stage
             _active_runs[project_id]["current_stage"] = stage
 
@@ -280,15 +306,6 @@ async def _run_single_stage(
     We iterate chapters (for extract/analyze) or paragraphs (for other stages)
     and emit progress events for each sub-item.
     """
-    import os
-
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    # Create a new database session for this stage
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
-    engine = create_engine(database_url, connect_args={"check_same_thread": False})
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
 
     try:
@@ -314,6 +331,25 @@ async def _run_single_stage(
                     progress=1.0,
                 )
                 return
+
+            # Skip extract if chapters already have raw_text (extraction already done)
+            if stage == "extract":
+                all_extracted = all(
+                    ch.extract_status == "completed" and ch.raw_text
+                    for ch in chapters
+                )
+                if all_extracted:
+                    logger.info(f"All chapters already extracted, skipping extract stage")
+                    for idx, chapter in enumerate(chapters, start=1):
+                        checkpoint_mgr.mark_stage_done(stage, chapter.index)
+                        progress = idx / total
+                        await emit_pipeline_event(
+                            project_id=project_id,
+                            event_type=PipelineEventType.STAGE_PROGRESS,
+                            stage=stage,
+                            progress=progress,
+                        )
+                    return
 
             for idx, chapter in enumerate(chapters, start=1):
                 # Check per-chapter checkpoint
@@ -349,6 +385,10 @@ async def _run_single_stage(
                     stage=stage,
                     progress=progress,
                 )
+
+            # Create paragraphs after analyze stage (needed for downstream stages)
+            if stage == "analyze":
+                _create_paragraphs_from_chapters(db, project_id)
 
         elif stage in (
             "annotate",

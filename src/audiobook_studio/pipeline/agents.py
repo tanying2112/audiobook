@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from ..base import AbstractAgent, AgentCapability, AgentMessage
-from ..database import SessionLocal, get_db
+from ..database import SessionLocal
 from ..models import TaskRecord
 from .analyze_structure import analyze_structure
 from .extract import extract_text
@@ -56,8 +56,8 @@ class AnalyzeAgent(AbstractAgent):
         super().__init__([AgentCapability.STRUCTURE_ANALYSIS])
 
     def _handle_message(self, message: AgentMessage):
+        db = SessionLocal()
         try:
-            db = next(get_db())
             task_record = (
                 db.query(TaskRecord).filter_by(id=self.context.task_id).first()
             )
@@ -78,6 +78,8 @@ class AnalyzeAgent(AbstractAgent):
 
         except Exception as e:
             self._handle_failure(e)
+        finally:
+            db.close()
 
 
 class SynthesizeAgent(AbstractAgent):
@@ -86,8 +88,8 @@ class SynthesizeAgent(AbstractAgent):
         self.pipeline = SynthesizePipeline()
 
     def _handle_message(self, message: AgentMessage):
+        db = SessionLocal()
         try:
-            db = next(get_db())
             task_record = (
                 db.query(TaskRecord).filter_by(id=self.context.task_id).first()
             )
@@ -109,6 +111,8 @@ class SynthesizeAgent(AbstractAgent):
 
         except Exception as e:
             self._handle_failure(e)
+        finally:
+            db.close()
 
 
 class QualityAgent(AbstractAgent):
@@ -117,8 +121,8 @@ class QualityAgent(AbstractAgent):
         self.pipeline = QualityCheckPipeline()
 
     def _handle_message(self, message: AgentMessage):
+        db = SessionLocal()
         try:
-            db = next(get_db())
             task_record = (
                 db.query(TaskRecord).filter_by(id=self.context.task_id).first()
             )
@@ -136,3 +140,5 @@ class QualityAgent(AbstractAgent):
 
         except Exception as e:
             self._handle_failure(e)
+        finally:
+            db.close()

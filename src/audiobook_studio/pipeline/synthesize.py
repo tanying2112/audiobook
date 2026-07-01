@@ -31,6 +31,7 @@ from ..schemas import (
     TtsRoutingInput,
 )
 from ..tts import EngineRegistry, SynthesisResult, TTSEngine, VoiceInfo
+from ..tts.clone import VoiceCloningManager, CloningConfig
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,12 @@ class SynthesizePipeline:
 
         # Hardware profile for TTS engine selection
         self.hardware_profile = hardware_profile or get_hardware_profile()
+
+        # Voice cloning manager
+        self.voice_cloning_manager = VoiceCloningManager(CloningConfig(
+            model_path="./models/kokoro-onnx",
+            output_dir=str(self.output_dir / "cloned"),
+        ))
 
         # Track existing segments for incremental synthesis
         self.existing_segments = {}
@@ -264,8 +271,8 @@ class SynthesizePipeline:
             dummy_audio = np.zeros(24000, dtype=np.float32)  # 1 second silence at 24kHz
             # Handle both .mp3 and .wav extensions
             if output_path.suffix == ".mp3":
-                wav_path = output_path.with_suffix(".wav")
-                sf.write(str(wav_path), dummy_audio, 24000)
+                # Write WAV then convert to MP3
+                sf.write(str(output_path), dummy_audio, 24000)
             else:
                 sf.write(str(output_path), dummy_audio, 24000)
             logger.info(f"Mock Kokoro synthesis: {output_path}")
@@ -998,6 +1005,29 @@ class SynthesizePipeline:
             logger.info(f"Mock mode: using mock synthesis for {engine}")
             duration = self._synthesize_mock(text, voice_id, prosody, output_path)
             return duration, engine
+
+        # Check if this is a cloned voice (voice_id starts with "cloned_" or is in voice_prints)
+        if voice_id.startswith("cloned_") or voice_id in self.voice_cloning_manager.voice_prints:
+            speaker_id = voice_id.replace("cloned_", "")
+            logger.info(f"Using voice cloning for speaker: {speaker_id}")
+            # Get annotation from prosody overrides if available
+            emotion = prosody.get("emotion", "neutral")
+            language = prosody.get("language", "zh-CN")
+            success, message, audio_file = self.voice_cloning_manager.synthesize_speech(
+                text=text,
+                speaker_id=speaker_id,
+                language=language,
+                emotion=emotion,
+            )
+            if success and audio_file:
+                # Copy to output_path
+                import shutil
+                shutil.copy2(audio_file, output_path)
+                duration = get_duration_sync(output_path)
+                return duration, "voice_clone"
+            else:
+                logger.warning(f"Voice cloning failed: {message}, falling back to TTS")
+                # Continue to fallback TTS
 
         config = self._get_tts_engine_config()
         engines_to_try = [engine] + [

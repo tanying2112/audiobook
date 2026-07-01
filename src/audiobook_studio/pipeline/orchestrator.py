@@ -41,6 +41,7 @@ from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .quality_check import QualityCheckPipeline
+from .checkpoint import CheckpointManager
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline
 
@@ -290,21 +291,35 @@ def _write_synthesize(
     para: Paragraph,
     segment_info: Dict[str, Any],
 ) -> AudioSegmentModel:
-    """Create an AudioSegment record from synthesis output."""
-    audio = AudioSegmentModel(
-        project_id=project_id,
-        chapter_id=chapter.id,
-        paragraph_id=para.id,
-        file_path=segment_info.get("file_path", ""),
-        format=segment_info.get("format", "mp3"),
-        duration_ms=segment_info.get("duration_ms", 0),
-        file_size_bytes=segment_info.get("file_size_bytes", 0),
-        engine=segment_info.get("engine", ""),
-        voice_id=segment_info.get("voice_id", ""),
-        prosody_overrides=segment_info.get("prosody_overrides"),
-        status="completed",
-    )
-    db.add(audio)
+    """Create or update an AudioSegment record from synthesis output."""
+    # Check if audio segment already exists for this paragraph
+    existing = db.query(AudioSegmentModel).filter(
+        AudioSegmentModel.paragraph_id == para.id
+    ).first()
+    
+    if existing:
+        # Update existing record
+        for attr in ["file_path", "format", "duration_ms", "file_size_bytes", "engine", "voice_id", "prosody_overrides"]:
+            if attr in segment_info:
+                setattr(existing, attr, segment_info[attr])
+        existing.status = "completed"
+        audio = existing
+    else:
+        audio = AudioSegmentModel(
+            project_id=project_id,
+            chapter_id=chapter.id,
+            paragraph_id=para.id,
+            file_path=segment_info.get("file_path", ""),
+            format=segment_info.get("format", "mp3"),
+            duration_ms=segment_info.get("duration_ms", 0),
+            file_size_bytes=segment_info.get("file_size_bytes", 0),
+            engine=segment_info.get("engine", ""),
+            voice_id=segment_info.get("voice_id", ""),
+            prosody_overrides=segment_info.get("prosody_overrides"),
+            status="completed",
+        )
+        db.add(audio)
+    
     db.commit()
     db.refresh(audio)
 
@@ -547,6 +562,10 @@ def run_stage(
             "paragraph_index": paragraph_index,
         }
 
+        # Inject raw_text from chapter for analyze stage
+        if stage == "analyze" and chapter and not context.get("raw_text"):
+            context["raw_text"] = chapter.raw_text or ""
+
         # Run stage logic
         result = handler.run(**context)
 
@@ -638,9 +657,10 @@ def run_pipeline(
     paragraph_index: Optional[int] = None,
     paragraph_id: Optional[int] = None,
     feedback_collector: Optional[FeedbackCollector] = None,
+    checkpoint_manager: Optional[CheckpointManager] = None,
     **kwargs,
 ) -> List[Any]:
-    """Run multiple pipeline stages sequentially with hooks.
+    """Run multiple pipeline stages sequentially with hooks and checkpoint support.
 
     Parameters
     ----------
@@ -660,6 +680,9 @@ def run_pipeline(
         DB primary key of the Paragraph.
     feedback_collector:
         Optional FeedbackCollector for capturing LLM inputs/outputs.
+    checkpoint_manager:
+        Optional CheckpointManager for resume-from-checkpoint support.
+        If provided, completed stages are skipped and progress is tracked.
     **kwargs:
         Forwarded to each stage's ``run()`` method.
 
@@ -682,6 +705,21 @@ def run_pipeline(
 
     try:
         for stage in stages:
+            # Checkpoint: skip already completed stages
+            if checkpoint_manager and chapter_index is not None:
+                if checkpoint_manager.is_stage_done(stage, chapter_index):
+                    logger.info(
+                        "Checkpoint: skipping stage '%s' for ch%d (already done)",
+                        stage,
+                        chapter_index,
+                    )
+                    results.append(None)
+                    continue
+
+            # Mark stage as started
+            if checkpoint_manager and chapter_index is not None:
+                checkpoint_manager.mark_stage_started(stage, chapter_index)
+
             result = run_stage(
                 stage,
                 db,
@@ -694,6 +732,11 @@ def run_pipeline(
                 **kwargs,
             )
             results.append(result)
+
+            # Mark stage as completed
+            if checkpoint_manager and chapter_index is not None:
+                checkpoint_manager.mark_stage_done(stage, chapter_index)
+
         _emit_pipeline_end(pipeline_context, results, None)
         return results
     except Exception as e:

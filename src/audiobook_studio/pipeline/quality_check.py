@@ -91,16 +91,9 @@ class QualityCheckPipeline:
         # instead of forcing the entire pipeline into mock mode.
         self._available_features = self._check_optional_dependencies()
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if self.mock_mode:
-                os.environ["MOCK_LLM"] = "true"
-            self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
+            self.router = create_router(mock_mode=self.mock_mode)
         else:
             self.router = router
 
