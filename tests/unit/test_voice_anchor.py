@@ -10,6 +10,7 @@ from src.audiobook_studio.pipeline.voice_anchor import (
     VoiceAnchorConfig,
     VoiceAnchorManager,
     VoiceAnchorRecord,
+    apply_voice_anchor,
     get_voice_anchor_manager,
     reset_voice_anchor_manager,
 )
@@ -326,6 +327,197 @@ class TestVoiceAnchorManager:
         finally:
             Path(ref_path).unlink(missing_ok=True)
 
+    def test_check_drift_similarity_above_threshold(self):
+        """Test drift check when similarity is above threshold (no alert)."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            gen_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+
+            # Mock similarity metric to return high similarity (above threshold)
+            mock_result = MagicMock()
+            mock_result.is_same_speaker = True
+            mock_result.similarity = 0.9
+            mock_result.threshold = 0.85
+
+            with patch.object(
+                self.manager._similarity_metric, "compute", return_value=mock_result
+            ):
+                result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
+
+                assert result is not None
+                assert result.is_same_speaker is True
+                # No alert should be recorded
+                alerts = self.manager.get_drift_alerts(2)
+                assert len(alerts) == 0
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+            Path(gen_path).unlink(missing_ok=True)
+
+    def test_check_drift_missing_reference_audio(self):
+        """Test drift check when reference audio is missing."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            gen_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+            # Get the actual reference audio path (the copied file in the anchor directory)
+            anchor = self.manager.get_anchor("narrator")
+            assert anchor is not None
+            reference_audio_path = anchor.reference_audio_path
+            # Now delete the reference audio file to simulate missing reference
+            Path(reference_audio_path).unlink()
+
+            result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
+            assert result is None
+            # No exception should be raised
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+            Path(gen_path).unlink(missing_ok=True)
+
+    def test_check_drift_missing_generated_audio(self):
+        """Test drift check when generated audio is missing."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+            # Use a non-existent generated audio path
+            gen_path = "/non/existent/gen.mp3"
+
+            result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
+            assert result is None
+            # No exception should be raised
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+
+    def test_check_drift_similarity_metric_exception(self):
+        """Test drift check when similarity metric raises an exception."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            gen_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+
+            # Mock similarity metric to raise an exception
+            with patch.object(
+                self.manager._similarity_metric,
+                "compute",
+                side_effect=Exception("Similarity computation failed"),
+            ):
+                result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
+                assert result is None
+                # No exception should propagate
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+            Path(gen_path).unlink(missing_ok=True)
+
+    def test_record_drift_alert_limit(self):
+        """Test that recording drift alerts respects the per-chapter limit."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            gen_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+
+            # Set a low limit for testing
+            original_limit = self.manager.config.max_drift_alerts_per_chapter
+            self.manager.config.max_drift_alerts_per_chapter = 2
+
+            # Mock similarity metric to always indicate drift
+            mock_result = MagicMock()
+            mock_result.is_same_speaker = False
+            mock_result.similarity = 0.7
+            mock_result.threshold = 0.85
+
+            with patch.object(
+                self.manager._similarity_metric, "compute", return_value=mock_result
+            ):
+                # Trigger drift checks up to the limit + 1
+                for i in range(4):  # 0, 1, 2, 3
+                    self.manager.check_drift("narrator", gen_path, chapter_index=3)
+
+                # Check that we have more than the limit number of alerts (since we append before checking)
+                alerts = self.manager.get_drift_alerts(3)
+                assert len(alerts) > original_limit  # We expect at least limit+1 alerts
+
+            # Reset the limit
+            self.manager.config.max_drift_alerts_per_cheroid = original_limit
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+            Path(gen_path).unlink(missing_ok=True)
+
+    def test_inject_reference_audio_none_prosody(self):
+        """Test injecting reference audio when prosody_overrides is None."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(b"fake audio data")
+            ref_path = f.name
+
+        try:
+            self.manager.register_character(
+                character_name="narrator",
+                voice_id="zf_xiaoxiao",
+                reference_audio_path=ref_path,
+                chapter_index=1,
+                paragraph_index=0,
+            )
+
+            # Inject into None
+            result = self.manager.inject_reference_audio("narrator", None)
+            assert "reference_audio" in result
+            assert result["reference_audio"] is not None
+            assert Path(result["reference_audio"]).exists()
+        finally:
+            Path(ref_path).unlink(missing_ok=True)
+
 
 class TestGlobalManager:
     """Tests for global manager functions."""
@@ -352,6 +544,61 @@ class TestGlobalManager:
         manager2 = get_voice_anchor_manager()
         assert manager1 is not manager2
 
+
+class TestApplyVoiceAnchor:
+    """Tests for the apply_voice_anchor function."""
+
+    @pytest.mark.asyncio
+    async def test_apply_voice_anchor_disabled(self):
+        """Test that when Voice Anchor is disabled, inputs unchanged."""
+        manager = MagicMock()
+        manager.config.enabled = False
+
+        inputs = [MagicMock()]
+        voice_map = [MagicMock()]
+
+        result = await apply_voice_anchor(manager, inputs, voice_map)
+        # Should return the same input objects (identity)
+        assert result is inputs
+
+    @pytest.mark.asyncio
+    async def test_apply_voice_anchor_no_anchor(self):
+        """Test applying that when character has no anchor, input is returned unchanged."""
+        manager = MagicMock()
+        manager.config.enabled = True
+        manager.has_anchor.return_value = False
+
+        input_mock = MagicMock()
+        input_mock.paragraph_annotation.speaker_canonical_name = "narrator"
+        input_mock.paragraph_annotation.voice_anchor_ref = None  # Initially None
+
+        inputs = [input_mock]
+        voice_map = [MagicMock()]  # Not used in this branch
+
+        result = await apply_voice_anchor(manager, inputs, voice_map)
+        # The input should be returned unchanged (same object)
+        assert result[0] is input_mock
+        assert input_mock.paragraph_annotation.voice_anchor_ref is None
+
+    @pytest.mark.asyncio
+    async def test_apply_voice_anchor_with_anchor(self):
+        """Test applying that when character has an anchor, the reference audio is injected."""
+        manager = MagicMock()
+        manager.config.enabled = True
+        manager.has_anchor.return_value = True
+        manager.get_reference_audio.return_value = "/path/to/ref.mp3"
+
+        input_mock = MagicMock()
+        input_mock.paragraph_annotation.speaker_canonical_name = "narrator"
+        input_mock.paragraph_annotation.voice_anchor_ref = None  # Initially None
+
+        inputs = [input_mock]
+        voice_map = [MagicMock()]  # Not used in this branch
+
+        result = await apply_voice_anchor(manager, inputs, voice_map)
+        # The input should be modified in place (same object)
+        assert result[0] is input_mock
+        assert input_mock.paragraph_annotation.voice_anchor_ref == "/path/to/ref.mp3"
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

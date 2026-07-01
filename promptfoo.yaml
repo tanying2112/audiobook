@@ -1,0 +1,6 @@
+# Minimal promptfoo config for CI
+prompt: |
+  Say hello in one word.
+providers:
+  - id: mock
+    config: {}

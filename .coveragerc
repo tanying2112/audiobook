@@ -1,0 +1,22 @@
+[run]
+source = src
+concurrency = multiprocessing, thread
+sigterm = True
+omit =
+    */tests/*
+    */migrations/*
+    */__init__.py
+    # Experimental modules requiring GPU hardware
+    src/audiobook_studio/tts/voice_cloning.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    @abstractmethod
+    pass
+    \.\.\.
+    TYPE_CHECKING
+show_missing = true
+precision = 2
