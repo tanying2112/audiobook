@@ -600,5 +600,6 @@ class TestApplyVoiceAnchor:
         assert result[0] is input_mock
         assert input_mock.paragraph_annotation.voice_anchor_ref == "/path/to/ref.mp3"
 
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

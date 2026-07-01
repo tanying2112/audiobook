@@ -36,9 +36,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_feedback_records_source", "feedback_records", ["source"])
     op.create_index("ix_feedback_records_stage", "feedback_records", ["stage"])
-    op.create_index(
-        "ix_feedback_records_processed", "feedback_records", ["processed"]
-    )
+    op.create_index("ix_feedback_records_processed", "feedback_records", ["processed"])
 
     # Quality index
     op.create_index("ix_qualities_paragraph_id", "qualities", ["paragraph_id"])

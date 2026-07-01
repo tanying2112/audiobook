@@ -29,10 +29,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
     """Inject test feedback records for self-iteration testing."""
-    from src.audiobook_studio.database import Base
-    from src.audiobook_studio.feedback.collector import capture_feedback
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
+    from src.audiobook_studio.database import Base
+    from src.audiobook_studio.feedback.collector import capture_feedback
 
     # Create session factory with correct database path
     db_path = Path(__file__).parent.parent / "audiobook_studio.db"
@@ -44,22 +45,52 @@ def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
 
     # Pattern types for testing
     patterns = [
-        ("emotion_mismatch", "neutral", "happy", "Fixed emotion from neutral to happy for dialogue"),
+        (
+            "emotion_mismatch",
+            "neutral",
+            "happy",
+            "Fixed emotion from neutral to happy for dialogue",
+        ),
         ("speaker_wrong", "narrator", "male_1", "Corrected speaker for dialogue"),
-        ("prosody_issues", {"rate": 1.0, "pitch": 1.0}, {"rate": 1.1, "pitch": 2.0}, "Adjusted speech rate and pitch"),
-        ("text_truncation", "short", "full text", "LLM truncated output, restored full content"),
-        ("emotion_intensity", {"intensity": 0.5}, {"intensity": 0.7}, "Increased emotion intensity"),
+        (
+            "prosody_issues",
+            {"rate": 1.0, "pitch": 1.0},
+            {"rate": 1.1, "pitch": 2.0},
+            "Adjusted speech rate and pitch",
+        ),
+        (
+            "text_truncation",
+            "short",
+            "full text",
+            "LLM truncated output, restored full content",
+        ),
+        (
+            "emotion_intensity",
+            {"intensity": 0.5},
+            {"intensity": 0.7},
+            "Increased emotion intensity",
+        ),
     ]
 
     db = session_factory()
     try:
         for i in range(count):
             pattern_idx = i % len(patterns)
-            pattern_name, wrong_output, correct_output, rationale = patterns[pattern_idx]
+            pattern_name, wrong_output, correct_output, rationale = patterns[
+                pattern_idx
+            ]
 
             # Prepare outputs
-            llm_output = {"emotion": wrong_output} if isinstance(wrong_output, str) else wrong_output
-            corrected_output = {"emotion": correct_output} if isinstance(correct_output, str) else correct_output
+            llm_output = (
+                {"emotion": wrong_output}
+                if isinstance(wrong_output, str)
+                else wrong_output
+            )
+            corrected_output = (
+                {"emotion": correct_output}
+                if isinstance(correct_output, str)
+                else correct_output
+            )
 
             record = capture_feedback(
                 db=db,
@@ -78,7 +109,9 @@ def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
                 pattern_tags=[pattern_name, "test_feedback"],
             )
             injected_ids.append(record.feedback_id)
-            print(f"✅ Injected feedback: {record.feedback_id} (pattern: {pattern_name})")
+            print(
+                f"✅ Injected feedback: {record.feedback_id} (pattern: {pattern_name})"
+            )
     finally:
         db.close()
 
@@ -87,10 +120,11 @@ def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
 
 def trigger_self_iteration(project_id: int) -> dict:
     """Trigger the self-iteration loop manually."""
-    from src.audiobook_studio.feedback.integration import create_self_iteration_loop
-    from src.audiobook_studio.database import Base
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
+    from src.audiobook_studio.database import Base
+    from src.audiobook_studio.feedback.integration import create_self_iteration_loop
 
     # Create session factory with correct database path
     db_path = Path(__file__).parent.parent / "audiobook_studio.db"
@@ -112,7 +146,9 @@ def trigger_self_iteration(project_id: int) -> dict:
     result = loop.trigger_iteration_now()
 
     if result:
-        print(f"\n🔄 Self-iteration triggered: {result.total_analyzed} records analyzed")
+        print(
+            f"\n🔄 Self-iteration triggered: {result.total_analyzed} records analyzed"
+        )
         print(f"Pattern count: {len(result.top_patterns)}")
         for p in result.top_patterns[:3]:
             print(f"  - {p}")
@@ -124,10 +160,16 @@ def trigger_self_iteration(project_id: int) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Inject test feedback for self-iteration verification")
+    parser = argparse.ArgumentParser(
+        description="Inject test feedback for self-iteration verification"
+    )
     parser.add_argument("--project-id", type=int, default=1, help="Project ID")
-    parser.add_argument("--count", type=int, default=10, help="Number of feedback records to inject")
-    parser.add_argument("--trigger", action="store_true", help="Trigger self-iteration after injection")
+    parser.add_argument(
+        "--count", type=int, default=10, help="Number of feedback records to inject"
+    )
+    parser.add_argument(
+        "--trigger", action="store_true", help="Trigger self-iteration after injection"
+    )
     args = parser.parse_args()
 
     print(f"Injecting {args.count} feedback records for project {args.project_id}")
