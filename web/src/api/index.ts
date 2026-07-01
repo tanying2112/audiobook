@@ -105,6 +105,60 @@ export async function fetchQualityResults(paragraphId: number): Promise<QualityR
   return data
 }
 
+// ── Upload ──────────────────────────────────────────────────────────────
+
+export interface UploadStatusResponse {
+  upload_id: string
+  project_id: number
+  filename: string
+  status: string
+  message: string
+}
+
+export async function uploadFile(
+  projectId: number,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<UploadStatusResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post(`/api/projects/${projectId}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
+  })
+  return data
+}
+
+// ── Export ──────────────────────────────────────────────────────────────
+
+export interface ExportRequest {
+  formats: string[]
+  normalize?: boolean
+  include_cover?: boolean
+  max_chars_per_line?: number
+}
+
+export interface ExportStatusResponse {
+  status: string
+  output_paths: Record<string, string>
+  error?: string
+  chapter_count: number
+}
+
+export async function startExport(projectId: number, config: ExportRequest): Promise<ExportStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/export/`, config)
+  return data
+}
+
+export async function getExportStatus(projectId: number): Promise<ExportStatusResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/export/status`)
+  return data
+}
+
 // ── Characters ──────────────────────────────────────────────────────────
 
 export async function fetchCharacters(projectId: number): Promise<Character[]> {

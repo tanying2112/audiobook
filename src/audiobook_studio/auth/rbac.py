@@ -345,12 +345,97 @@ class RBACManager:
 
 # Convenience functions for FastAPI dependencies
 def get_rbac_manager(db: Session = None) -> RBACManager:
-    """Get RBAC manager instance (for use as FastAPI dependency)."""
-    if db is None:
-        from src.audiobook_studio.database import get_db
+    """Get RBAC manager instance (for use as FastAPI dependency).
 
-        db = next(get_db())
+    Note: When db is None, a new session is created and the caller is
+    responsible for closing it. Prefer using the FastAPI dependency in
+    auth/dependencies.py which handles session lifecycle automatically.
+    """
+    if db is None:
+        from src.audiobook_studio.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            return RBACManager(db)
+        except Exception:
+            db.close()
+            raise
     return RBACManager(db)
+
+
+def init_rbac(db: Session) -> None:
+    """Initialize default roles and permissions if they don't exist.
+
+    Called at application startup to ensure the RBAC system has
+    the baseline roles and permissions.
+    """
+    rbac = RBACManager(db)
+
+    # Create all permissions
+    for perm_name in PermissionName:
+        if not rbac.get_permission(perm_name):
+            rbac.create_permission(perm_name)
+
+    # Create all roles
+    for role_name in RoleName:
+        if not rbac.get_role(role_name):
+            rbac.create_role(role_name)
+
+    # Assign permissions to roles (admin gets everything)
+    admin_perms = list(PermissionName)
+    for perm in admin_perms:
+        rbac.assign_permission_to_role(RoleName.ADMIN, perm)
+
+    # Project owner gets project + pipeline + export permissions
+    owner_perms = [
+        PermissionName.PROJECT_CREATE, PermissionName.PROJECT_READ,
+        PermissionName.PROJECT_UPDATE, PermissionName.PROJECT_DELETE,
+        PermissionName.PROJECT_LIST, PermissionName.CHAPTER_CREATE,
+        PermissionName.CHAPTER_READ, PermissionName.CHAPTER_UPDATE,
+        PermissionName.CHAPTER_DELETE, PermissionName.PARAGRAPH_READ,
+        PermissionName.PARAGRAPH_UPDATE, PermissionName.PARAGRAPH_ANNOTATE,
+        PermissionName.PARAGRAPH_EDIT, PermissionName.CHARACTER_CREATE,
+        PermissionName.CHARACTER_READ, PermissionName.CHARACTER_UPDATE,
+        PermissionName.CHARACTER_DELETE, PermissionName.PIPELINE_RUN,
+        PermissionName.PIPELINE_VIEW, PermissionName.PIPELINE_CANCEL,
+        PermissionName.EXPORT_CREATE, PermissionName.EXPORT_READ,
+        PermissionName.EXPORT_DOWNLOAD, PermissionName.TTS_ROUTE,
+        PermissionName.TTS_SYNTHESIZE, PermissionName.TTS_QUALITY_CHECK,
+        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+    ]
+    for perm in owner_perms:
+        rbac.assign_permission_to_role(RoleName.PROJECT_OWNER, perm)
+
+    # Editor gets read + edit + annotate + pipeline view
+    editor_perms = [
+        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
+        PermissionName.PARAGRAPH_UPDATE, PermissionName.PARAGRAPH_ANNOTATE,
+        PermissionName.PARAGRAPH_EDIT, PermissionName.CHARACTER_READ,
+        PermissionName.PIPELINE_VIEW, PermissionName.EXPORT_READ,
+        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+    ]
+    for perm in editor_perms:
+        rbac.assign_permission_to_role(RoleName.EDITOR, perm)
+
+    # Viewer gets read-only permissions
+    viewer_perms = [
+        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
+        PermissionName.CHARACTER_READ, PermissionName.PIPELINE_VIEW,
+        PermissionName.EXPORT_READ,
+    ]
+    for perm in viewer_perms:
+        rbac.assign_permission_to_role(RoleName.VIEWER, perm)
+
+    # Contributor gets read + feedback
+    contributor_perms = [
+        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
+        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+    ]
+    for perm in contributor_perms:
+        rbac.assign_permission_to_role(RoleName.CONTRIBUTOR, perm)
 
 
 # Permission checking helpers

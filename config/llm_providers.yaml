@@ -12,7 +12,7 @@ providers:
     priority: 5
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # Cerebras - 极速推理，免信用卡，1M tokens/天免费
@@ -24,7 +24,7 @@ providers:
     priority: 12
     max_tokens_per_minute: 100000
     max_requests_per_minute: 60
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # 阿里云百炼 - 中文理解最强之一，100万 Token 免费
@@ -36,7 +36,7 @@ providers:
     priority: 18
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # Gemini - Google 免费额度大，支持长上下文
@@ -47,7 +47,7 @@ providers:
     priority: 10
     max_tokens_per_minute: 30000
     max_requests_per_minute: 60
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # 智谱 AI - GLM-4-Flash 部分永久免费，中文优秀
@@ -59,7 +59,7 @@ providers:
     priority: 22
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # 硅基流动 SiliconCloud - 千万 Token 级测试包，永久额度
@@ -165,7 +165,7 @@ providers:
     priority: 30
     max_tokens_per_minute: 5000
     max_requests_per_minute: 20
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # Cloudflare Workers AI - 边缘推理，低延迟
@@ -189,7 +189,7 @@ providers:
     priority: 55
     max_tokens_per_minute: 10000
     max_requests_per_minute: 30
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # Groq 70B - 降级兜底（大模型质量高但限流严格）
@@ -211,28 +211,85 @@ providers:
     priority: 95
     max_tokens_per_minute: 5000
     max_requests_per_minute: 30
-    stages: [extract, analyze, annotate, edit, judge]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
   # 本地 Ollama - 零成本、无限制、离线可用（终极兜底）
-  - name: ollama_qwen25
+  - name: ollama_gemma4_e2b
+    provider: ollama
+    model: gemma4:e2b
+    base_url: http://localhost:11434
+    priority: 65
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0  # 0 = 无超时，给本地模型 Prefill 阶段留足喘息时间
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_qwen25_14b
     provider: ollama
     model: qwen2.5:14b
     base_url: http://localhost:11434
     priority: 70
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
-  - name: ollama_llama31
+  - name: ollama_llama31_8b
     provider: ollama
     model: llama3.1:8b
     base_url: http://localhost:11434
     priority: 75
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_llama32_3b
+    provider: ollama
+    model: llama3.2:3b
+    base_url: http://localhost:11434
+    priority: 80
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_deepseek_v4_flash
+    provider: ollama
+    model: deepseek-v4-flash
+    base_url: http://localhost:11434
+    priority: 66
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_qwen3_5
+    provider: ollama
+    model: qwen3.5:397b-cloud
+    base_url: http://localhost:11434
+    priority: 67
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_kimi_k2
+    provider: ollama
+    model: kimi-k2.6:cloud
+    base_url: http://localhost:11434
+    priority: 67
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
 # Prompt 压缩策略 - 激进模式以适应 TPM 限制

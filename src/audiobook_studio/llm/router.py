@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import time
 import threading
 import time
 from collections import defaultdict
@@ -150,6 +151,7 @@ class CostTracker:
     )
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _daily_limits: Dict[str, float] = field(default_factory=dict)
+    _global_daily_limit: float = 10.0  # Global daily limit in USD
     _alert_threshold: float = 0.8
 
     def add_cost(self, model: str, cost_usd: float):
@@ -176,9 +178,21 @@ class CostTracker:
         with self._lock:
             self._daily_limits[model] = limit_usd
 
+    def set_global_daily_limit(self, limit_usd: float):
+        """Set the global daily cost limit across all providers."""
+        with self._lock:
+            self._global_daily_limit = limit_usd
+
+    def is_global_limit_exceeded(self) -> bool:
+        """Check if the global daily cost limit has been exceeded."""
+        return self.get_total_daily_cost() >= self._global_daily_limit
+
     def is_limit_exceeded(self, model: str) -> bool:
         limit = self._daily_limits.get(model, float("inf"))
         current = self.get_daily_cost(model)
+        # Also check global limit
+        if self.is_global_limit_exceeded():
+            return True
         return current >= limit
 
     def is_alert_threshold(self, model: str) -> bool:
@@ -327,10 +341,6 @@ class LLMRouter:
         self._free_quota_success: Dict[str, int] = defaultdict(int)
         self._free_quota_fail: Dict[str, int] = defaultdict(int)
 
-        # Free tier tracking (legacy, kept for backward compatibility)
-        self._free_quota_success: Dict[str, int] = defaultdict(int)
-        self._free_quota_fail: Dict[str, int] = defaultdict(int)
-
         # Initialize components for each provider
         for provider in self.config.get_all_enabled():
             self.rate_limiters[provider.name] = ProviderRateLimiter(
@@ -355,6 +365,17 @@ class LLMRouter:
             self.cost_tracker.set_daily_limit(
                 provider.name, provider.max_daily_cost_usd
             )
+
+        # Set global daily cost limit from config
+        # Default $10/day, configurable via cost_control.daily_limit_usd in YAML
+        try:
+            cost_control = getattr(self.config, "cost_control", None)
+            if cost_control and hasattr(cost_control, "daily_limit_usd"):
+                self.cost_tracker.set_global_daily_limit(
+                    cost_control.daily_limit_usd
+                )
+        except Exception:
+            pass  # Use default if config doesn't have cost_control
 
         # Initialize Langfuse lazy attributes
         self._langfuse_enabled_cached = False
@@ -412,9 +433,17 @@ class LLMRouter:
                 and not self._langfuse_initialized
             ):
                 self._init_langfuse()
+
+            # Get API key from key pool (with rotation support)
+            pool_key = self.key_pool.get_key(provider.name)
+            if pool_key and provider.api_key_env:
+                # Set API key in environment for LiteLLM to pick up
+                os.environ[provider.api_key_env] = pool_key
+
             self.clients[key] = create_client(
                 provider.get_litellm_model_name(),
                 api_base=provider.base_url,
+                timeout=provider.timeout_seconds or None,  # 0 or None = no timeout
                 langfuse_public_key=self.langfuse_public_key,
                 langfuse_secret_key=self.langfuse_secret_key,
                 langfuse_host=self.langfuse_host,
@@ -491,73 +520,6 @@ class LLMRouter:
                 ordered.append(p)
 
         return ordered
-
-    def _select_provider(
-        self, providers: List[ProviderConfig], estimated_tokens: int
-    ) -> Optional[ProviderConfig]:
-        """Select the best available provider with multi-layer filtering."""
-        from ..monitoring.langfuse_client import span
-
-        with span(
-            "router.select_provider", metadata={"estimated_tokens": estimated_tokens}
-        ) as s:
-            for provider in providers:
-                # Layer 1: Circuit breaker check
-                cb = self.circuit_breakers.get(provider.name)
-                if cb and not cb.can_proceed():
-                    logger.debug(f"Circuit breaker open for {provider.name}, skipping")
-                    continue
-
-                # Layer 2: Rate limit check
-                if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
-                    logger.debug(f"Rate limit near for {provider.name}, skipping")
-                    continue
-
-                # Layer 3: Cost limit check
-                if self.cost_tracker.is_limit_exceeded(provider.name):
-                    logger.debug(f"Daily cost limit exceeded for {provider.name}")
-                    continue
-
-                # Layer 4: Health probe check (if available)
-                if self.health_probe and not self.health_probe.is_healthy(
-                    provider.name
-                ):
-                    logger.debug(
-                        f"Health probe reports {provider.name} unhealthy, skipping"
-                    )
-                    continue
-
-                # Layer 5: Quota registry check (for free-tier providers)
-                quota_status = self.quota_registry.get_quota_status(provider.name)
-                if quota_status.get("configured", False) and not quota_status.get(
-                    "healthy", True
-                ):
-                    logger.debug(
-                        f"Quota exhausted or unhealthy for {provider.name}: "
-                        f"daily_pct={quota_status['daily']['requests_pct']}%, "
-                        f"minute_pct={quota_status['minute']['requests_pct']}%"
-                    )
-                    continue
-
-                # Layer 6: Free quota prediction (legacy, kept for backward compatibility)
-                if provider.max_daily_cost_usd == 0:
-                    success = self._free_quota_success.get(provider.name, 0)
-                    fail = self._free_quota_fail.get(provider.name, 0)
-                    total = success + fail
-                    if total > 10 and (fail / total) > 0.3:
-                        logger.debug(
-                            f"Free tier {provider.name} has high failure rate "
-                            f"({fail}/{total}), skipping"
-                        )
-                        continue
-
-                if s:
-                    s.update(metadata={"selected_provider": provider.name})
-                return provider
-
-            if s:
-                s.update(metadata={"selected_provider": None})
-            return None
 
     def _heuristic_fallback(
         self, stage: str, response_model, segment_id: str, **context
@@ -724,102 +686,120 @@ class LLMRouter:
                 continue
 
             client = self.get_client(provider)
-            try:
-                # Pass full messages list to preserve system message (JSON enforcement)
-                result = client.call(
-                    prompt=messages,
-                    response_model=response_model,
-                    temperature=kwargs.get("temperature", 0.1),
-                    max_tokens=kwargs.get("max_tokens", 4000),
-                )
+            max_retries = 0 if self.mock_mode else 2
+            retry_delay = 1.0
 
-                # Validate the result matches expected model
-                if result.output is None:
-                    logger.warning(
-                        f"Provider {provider.name} returned None output for stage {stage}"
+            for attempt in range(max_retries + 1):
+                try:
+                    # Pass full messages list to preserve system message (JSON enforcement)
+                    result = client.call(
+                        prompt=messages,
+                        response_model=response_model,
+                        temperature=kwargs.get("temperature", 0.1),
+                        max_tokens=kwargs.get("max_tokens", 4000),
                     )
-                    raise ValueError("LLM returned None output")
 
-                # Defensive JSON parsing validation
-                # The raw_response should be validated before Pydantic validation
-                if hasattr(result, "raw_response") and result.raw_response is not None:
-                    from .client import validate_and_parse_llm_response
-
-                    try:
-                        validate_and_parse_llm_response(
-                            result.raw_response, response_model, stage
-                        )
-                    except LLMParseError as e:
+                    # Validate the result matches expected model
+                    if result.output is None:
                         logger.warning(
-                            f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}"
+                            f"Provider {provider.name} returned None output for stage {stage}"
                         )
-                        raise
+                        raise ValueError("LLM returned None output")
 
-                self.rate_limiters[provider.name].record_usage(
-                    result.tokens_in + result.tokens_out
-                )
-                self.cost_tracker.add_cost(provider.name, result.cost_usd)
+                    # Defensive JSON parsing validation
+                    # The raw_response should be validated before Pydantic validation
+                    if hasattr(result, "raw_response") and result.raw_response is not None:
+                        from .client import validate_and_parse_llm_response
 
-                # Record success for circuit breaker
-                if cb:
-                    cb.record_success()
+                        try:
+                            validate_and_parse_llm_response(
+                                result.raw_response, response_model, stage
+                            )
+                        except LLMParseError as e:
+                            logger.warning(
+                                f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}"
+                            )
+                            raise
 
-                # Track free tier usage
-                if provider.max_daily_cost_usd == 0:
-                    self._free_quota_success[provider.name] += 1
+                    self.rate_limiters[provider.name].record_usage(
+                        result.tokens_in + result.tokens_out
+                    )
+                    self.cost_tracker.add_cost(provider.name, result.cost_usd)
 
-                # Record quota usage
-                self.quota_registry.record_request(
-                    provider.name,
-                    tokens_used=result.tokens_in + result.tokens_out,
-                    success=True,
-                )
+                    # Record success for circuit breaker
+                    if cb:
+                        cb.record_success()
 
-                # Langfuse tracing - lazy import
-                if self._is_langfuse_enabled():
-                    try:
-                        from ..monitoring.langfuse_client import observe_llm_call
+                    # Track free tier usage
+                    if provider.max_daily_cost_usd == 0:
+                        self._free_quota_success[provider.name] += 1
 
-                        observe_llm_call(
-                            stage=stage,
-                            model=result.model,
-                            provider=provider.name,
-                            prompt_tokens=result.tokens_in,
-                            completion_tokens=result.tokens_out,
-                            total_tokens=result.tokens_in + result.tokens_out,
-                            cost_usd=result.cost_usd,
-                            latency_ms=result.latency_ms,
-                            metadata={
-                                "schema_compliance": result.schema_compliance,
-                                "contract_version": result.contract_version,
-                            },
+                    # Record quota usage
+                    self.quota_registry.record_request(
+                        provider.name,
+                        tokens_used=result.tokens_in + result.tokens_out,
+                        success=True,
+                    )
+
+                    # Langfuse tracing - lazy import
+                    if self._is_langfuse_enabled():
+                        try:
+                            from ..monitoring.langfuse_client import observe_llm_call
+
+                            observe_llm_call(
+                                stage=stage,
+                                model=result.model,
+                                provider=provider.name,
+                                prompt_tokens=result.tokens_in,
+                                completion_tokens=result.tokens_out,
+                                total_tokens=result.tokens_in + result.tokens_out,
+                                cost_usd=result.cost_usd,
+                                latency_ms=result.latency_ms,
+                                metadata={
+                                    "schema_compliance": result.schema_compliance,
+                                    "contract_version": result.contract_version,
+                                },
+                            )
+                        except Exception as e:
+                            logger.debug(f"Langfuse observe failed: {e}")
+
+                    logger.info(
+                        f"LLM call [{stage}] provider={provider.name} "
+                        f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
+                        f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
+                        f"schema_ok={result.schema_compliance}"
+                    )
+
+                    return result
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.info(
+                            f"Provider {provider.name} attempt {attempt+1}/{max_retries+1} "
+                            f"failed for stage {stage}: {e}. Retrying in {retry_delay:.1f}s..."
                         )
-                    except Exception as e:
-                        logger.debug(f"Langfuse observe failed: {e}")
-
-                logger.info(
-                    f"LLM call [{stage}] provider={provider.name} "
-                    f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
-                    f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
-                    f"schema_ok={result.schema_compliance}"
-                )
-
-                return result
-            except Exception as e:
-                logger.warning(
-                    f"Provider {provider.name} failed for stage {stage}: {e}"
-                )
-                # Record failure for circuit breaker
-                if cb:
-                    cb.record_failure()
-                # Record failure for free tier tracking
-                if provider.max_daily_cost_usd == 0:
-                    self._free_quota_fail[provider.name] += 1
-                # Record quota failure
-                self.quota_registry.record_request(
-                    provider.name, tokens_used=0, success=False
-                )
-                continue
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        # Rotate key on retry
+                        self.key_pool.record_failure(provider.name)
+                        continue
+                    else:
+                        logger.warning(
+                            f"Provider {provider.name} failed all {max_retries+1} attempts "
+                            f"for stage {stage}: {e}"
+                        )
+                        # Record failure for circuit breaker
+                        if cb:
+                            cb.record_failure()
+                        # Record failure for key pool
+                        self.key_pool.record_failure(provider.name)
+                        # Record failure for free tier tracking
+                        if provider.max_daily_cost_usd == 0:
+                            self._free_quota_fail[provider.name] += 1
+                        # Record quota failure
+                        self.quota_registry.record_request(
+                            provider.name, tokens_used=0, success=False
+                        )
+                        break  # Move to next provider
 
         # All providers failed — Kill Switch heuristic fallback
         # Pass segment_id for judge stage (required)

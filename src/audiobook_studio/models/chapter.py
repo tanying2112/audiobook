@@ -23,10 +23,10 @@ class Chapter(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    index: Mapped[int] = mapped_column(nullable=False)
+    index: Mapped[int] = mapped_column(nullable=False, index=True)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

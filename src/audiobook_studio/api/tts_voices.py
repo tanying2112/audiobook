@@ -1,10 +1,16 @@
 """TTS Voice enumeration API endpoint."""
 
 import logging
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+
+from ..tts.clone import VoiceCloningManager, VoiceSample, AudioQuality
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -334,3 +340,166 @@ async def preview_voice(voice_id: str, text: str = "这是一个语音试听样�
         "preview_url": f"/api/tts/preview/{voice_id}.mp3",
         "note": "Voice preview synthesis - placeholder implementation",
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice Cloning Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class CloneVoiceRequest(BaseModel):
+    """Request for voice cloning."""
+
+    speaker_id: str = Field(..., description="Speaker/character identifier")
+    language: str = Field(default="zh-CN", description="Target language")
+    text_content: str = Field(default="", description="Reference text content")
+
+
+class CloneVoiceResponse(BaseModel):
+    """Response for voice cloning."""
+
+    success: bool
+    speaker_id: str
+    voice_id: str
+    message: str
+    quality: Optional[str] = None
+    snr_db: Optional[float] = None
+    sample_count: Optional[int] = None
+
+
+@router.post("/voices/clone", response_model=CloneVoiceResponse)
+async def clone_voice(
+    file: UploadFile = File(..., description="15s+ audio sample (WAV/MP3)"),
+    speaker_id: str = Form(..., description="Speaker/character identifier"),
+    language: str = Form(default="zh-CN", description="Target language"),
+    text_content: str = Form(default="", description="Reference text content"),
+):
+    """
+    Clone a voice from an uploaded audio sample.
+
+    - Upload a 15+ second audio sample (WAV/MP3)
+    - System extracts voice embedding and creates voice print
+    - Returns voice_id that can be used for TTS synthesis
+
+    Requirements:
+    - Minimum 15 seconds duration
+    - SNR >= 20dB for good quality
+    - Supported formats: WAV, MP3
+
+    Response:
+    - success: True if cloning succeeded
+    - voice_id: The cloned voice identifier (use with /api/tts/voices)
+    - quality: Audio quality rating (excellent/good/fair/poor)
+    """
+    from ..tts.clone import AudioQuality
+
+    # Validate file type
+    allowed_types = {"audio/wav", "audio/wave", "audio/x-wav", "audio/mpeg", "audio/mp3"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format: {file.content_type}. Use WAV or MP3.",
+        )
+
+    # Save uploaded file to temp location
+    with tempfile.NamedTemporaryFile(
+        suffix=Path(file.filename).suffix, delete=False
+    ) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        # Initialize voice cloning manager
+        manager = VoiceCloningManager()
+
+        # Validate audio file
+        import soundfile as sf
+        audio_data, sr = sf.read(str(tmp_path))
+        duration = len(audio_data) / sr
+
+        # Estimate SNR
+        noise_floor = min(
+            np.std(audio_data[: min(100, len(audio_data))]),
+            np.std(audio_data[max(0, len(audio_data) - 100) :]),
+        )
+        signal_power = np.std(audio_data)
+        snr_db = 20 * np.log10(signal_power / noise_floor) if noise_floor > 0 else 50.0
+
+        if duration < 15.0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sample too short: {duration:.1f}s. Minimum 15 seconds required.",
+            )
+
+        if snr_db < 20.0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"SNR too low: {snr_db:.1f}dB. Minimum 20dB required.",
+            )
+
+        # Create voice sample
+        sample = VoiceSample(
+            id=f"clone_{speaker_id}",
+            file_path=tmp_path,
+            duration=duration,
+            sample_rate=sr,
+            snr_db=snr_db,
+            text_content=text_content or "Voice clone sample",
+            language=language,
+            speaker_id=speaker_id,
+        )
+
+        # Add sample (creates voice print)
+        success, message = manager.add_voice_sample(sample)
+
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
+
+        # Get voice info
+        voice_info = manager.get_voice_info(speaker_id)
+        voice_id = f"cloned_{speaker_id}"
+
+        return CloneVoiceResponse(
+            success=True,
+            speaker_id=speaker_id,
+            voice_id=voice_id,
+            message=message,
+            quality=voice_info.get("quality") if voice_info else None,
+            snr_db=voice_info.get("avg_snr_db") if voice_info else None,
+            sample_count=voice_info.get("sample_count") if voice_info else None,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Voice cloning failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice cloning failed: {str(e)}")
+    finally:
+        # Cleanup temp file
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
+@router.get("/voices/cloned")
+async def list_cloned_voices():
+    """
+    List all available cloned voices.
+    """
+    manager = VoiceCloningManager()
+    cloned_voices = []
+    for speaker_id, info in [
+        (sp_id, manager.get_voice_info(sp_id))
+        for sp_id in manager.voice_prints.keys()
+    ]:
+        if info:
+            cloned_voices.append(
+                {
+                    "speaker_id": speaker_id,
+                    "voice_id": f"cloned_{speaker_id}",
+                    "quality": info["quality"],
+                    "snr_db": info["avg_snr_db"],
+                    "sample_count": info["sample_count"],
+                    "created_at": info["created_at"],
+                }
+            )
+    return {"cloned_voices": cloned_voices, "count": len(cloned_voices)}

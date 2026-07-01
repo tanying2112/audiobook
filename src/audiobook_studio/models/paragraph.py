@@ -30,17 +30,17 @@ class Paragraph(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Simple CRUD API backwards compat
     book_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     speaker: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 基础字段
-    index: Mapped[int] = mapped_column(nullable=False)
+    index: Mapped[int] = mapped_column(nullable=False, index=True)
     chapter_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
 

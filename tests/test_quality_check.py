@@ -34,11 +34,18 @@ class TestQualityCheckPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        os.environ["MOCK_LLM"] = "false"
-        pipeline = QualityCheckPipeline()
-        assert not pipeline.mock_mode
-        assert pipeline.router is not None
-        assert pipeline.judge is not None
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "false"
+            pipeline = QualityCheckPipeline()
+            assert not pipeline.mock_mode
+            assert pipeline.router is not None
+            assert pipeline.judge is not None
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_init_custom_params(self):
         """Test pipeline initialization with custom parameters."""
@@ -51,9 +58,16 @@ class TestQualityCheckPipeline:
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        os.environ["MOCK_LLM"] = "true"
-        pipeline = QualityCheckPipeline()
-        assert pipeline.mock_mode
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "true"
+            pipeline = QualityCheckPipeline()
+            assert pipeline.mock_mode
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_analyze_audio_rules_mock(self):
         """Test rule-based audio analysis in mock mode."""

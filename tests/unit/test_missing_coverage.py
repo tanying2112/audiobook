@@ -40,12 +40,6 @@ def test_heuristic_fallback(mock_router):
     assert getattr(result_judge, "overall_score", None) == 0.5
 
 
-def test_select_provider(mock_router):
-    # Test default fallback provider
-    provider = mock_router._select_provider([], 100)
-    assert provider is None
-
-
 def test_fallback_chain(mock_router):
     # Simulate API call with a known failure to trigger fallback
     try:

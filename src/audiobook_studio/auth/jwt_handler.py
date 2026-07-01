@@ -1,13 +1,19 @@
-"""JWT Token handling for Audiobook Studio."""
-
+import hashlib
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from src.audiobook_studio.config import get_settings
+
+try:
+    import bcrypt
+    BCRYPT_AVAILABLE = True
+except ImportError:
+    BCRYPT_AVAILABLE = False
+    bcrypt = None
 
 
 class TokenPayload(BaseModel):
@@ -32,8 +38,44 @@ class JWTHandler:
         self.access_token_expire_minutes = self.settings.ACCESS_TOKEN_EXPIRE_MINUTES
         self.refresh_token_expire_days = self.settings.REFRESH_TOKEN_EXPIRE_DAYS
 
-        # Password hashing
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        # Password hashing — bcrypt preferred; fall back to SHA-256 if unavailable
+        # Install bcrypt for production: pip install bcrypt
+        if not BCRYPT_AVAILABLE:
+            import warnings
+
+            warnings.warn(
+                "bcrypt is not installed; falling back to SHA-256 hashing. "
+                "Install bcrypt for secure password hashing: pip install bcrypt",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    def _hash_password(self, password: str) -> str:
+        """Hash a password using bcrypt (or SHA-256 fallback)."""
+        password_bytes = password.encode('utf-8')
+        if BCRYPT_AVAILABLE:
+            salt = bcrypt.gensalt(rounds=12)
+            hashed = bcrypt.hashpw(password_bytes, salt)
+            return hashed.decode('utf-8')
+        # Fallback: SHA-256 + salt (not as secure as bcrypt)
+        salt = os.urandom(32)
+        hashed = hashlib.sha256(salt + password_bytes).digest()
+        return f"sha256${salt.hex()}${hashed.hex()}"
+
+    def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """Verify a password against its hash."""
+        password_bytes = plain_password.encode('utf-8')
+        if BCRYPT_AVAILABLE and not hashed_password.startswith("sha256$"):
+            hashed_bytes = hashed_password.encode('utf-8')
+            return bcrypt.checkpw(password_bytes, hashed_bytes)
+        if hashed_password.startswith("sha256$"):
+            parts = hashed_password.split("$")
+            if len(parts) != 3:
+                return False
+            salt = bytes.fromhex(parts[1])
+            expected = hashlib.sha256(salt + password_bytes).digest()
+            return expected.hex() == parts[2]
+        return False
 
     def create_access_token(
         self,
@@ -150,11 +192,11 @@ class JWTHandler:
 
     def hash_password(self, password: str) -> str:
         """Hash a password."""
-        return self.pwd_context.hash(password)
+        return self._hash_password(password)
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
-        return self.pwd_context.verify(plain_password, hashed_password)
+        return self._verify_password(plain_password, hashed_password)
 
     def refresh_access_token(self, refresh_token: str) -> Optional[str]:
         """Create a new access token from a valid refresh token."""

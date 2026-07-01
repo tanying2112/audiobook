@@ -1,0 +1,27 @@
+{
+  "project_id": 1,
+  "total_analyzed": 10,
+  "pattern_frequency": {
+    "dialogue_attribution": 4,
+    "speaker_wrong": 2
+  },
+  "stage_distribution": {
+    "annotate_paragraph": 10
+  },
+  "top_patterns": [
+    [
+      "dialogue_attribution",
+      4
+    ],
+    [
+      "speaker_wrong",
+      2
+    ]
+  ],
+  "recommendations": [
+    "高频模式 [dialogue_attribution] (4次): 错标/漏标对话归属",
+    "高频模式 [speaker_wrong] (2次): 说话人识别错误",
+    "环节 'annotate_paragraph' 有 10 条反馈，建议优先优化该环节的 Prompt"
+  ],
+  "generated_at": "2026-06-28T01:31:33.281620+00:00"
+}

@@ -25,15 +25,16 @@ class AudioSegment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
     chapter_id: Mapped[int] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True
     )
     paragraph_id: Mapped[int] = mapped_column(
         ForeignKey("paragraphs.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
+        index=True,
     )
 
     # 文件信息

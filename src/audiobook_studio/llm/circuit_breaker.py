@@ -46,8 +46,11 @@ class CircuitBreaker:
                     )
                     return True
                 return False
-            # half_open: allow limited calls
-            return self.half_open_calls < self.half_open_max_calls
+            # half_open: allow limited calls and increment counter
+            if self.half_open_calls < self.half_open_max_calls:
+                self.half_open_calls += 1
+                return True
+            return False
 
     def record_success(self) -> None:
         """Record a successful call."""

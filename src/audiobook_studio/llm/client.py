@@ -97,7 +97,7 @@ class LLMClientConfig:
     temperature: float = 0.1
     max_tokens: int = 4000
     max_retries: int = 3
-    timeout: int = 60
+    timeout: Optional[int] = 60  # None or 0 = no timeout (for local Ollama)
     mock_data_dir: str = "tests/golden"
     api_base: Optional[str] = None
     # Langfuse configuration
@@ -244,6 +244,11 @@ class LLMClient:
             call_kwargs = dict(kwargs)
             if self.config.api_base:
                 call_kwargs["api_base"] = self.config.api_base
+            # Pass timeout to LiteLLM: None or 0 = no timeout (for local Ollama)
+            if self.config.timeout is not None and self.config.timeout > 0:
+                call_kwargs["timeout"] = self.config.timeout
+            else:
+                call_kwargs["timeout"] = None  # No timeout for local models
             result = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=messages,
@@ -482,7 +487,7 @@ def create_client(
     temperature: float = 0.1,
     max_tokens: int = 4000,
     max_retries: int = 3,
-    timeout: int = 60,
+    timeout: Optional[int] = 60,  # None or 0 = no timeout
     api_base: Optional[str] = None,
     langfuse_public_key: Optional[str] = None,
     langfuse_secret_key: Optional[str] = None,

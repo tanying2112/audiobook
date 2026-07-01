@@ -28,17 +28,31 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        os.environ["MOCK_LLM"] = "false"
-        pipeline = AnnotateParagraphPipeline()
-        assert pipeline is not None
-        assert pipeline.mock_mode is False
-        assert pipeline.router is not None
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "false"
+            pipeline = AnnotateParagraphPipeline()
+            assert pipeline is not None
+            assert pipeline.mock_mode is False
+            assert pipeline.router is not None
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        os.environ["MOCK_LLM"] = "true"
-        pipeline = AnnotateParagraphPipeline()
-        assert pipeline.mock_mode is True
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "true"
+            pipeline = AnnotateParagraphPipeline()
+            assert pipeline.mock_mode is True
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_init_custom_router(self, mock_router):
         """Test pipeline with custom router."""

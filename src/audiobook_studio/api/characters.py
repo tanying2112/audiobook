@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from ..models import Character, Project
@@ -73,8 +73,7 @@ class CharacterResponse(CharacterBase):
     id: int
     project_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VoiceMappingResponse(BaseModel):

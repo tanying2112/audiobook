@@ -258,10 +258,10 @@ Difficulty: {request.difficulty or 'Unknown'}
                 content = chunk.choices[0].delta.content if chunk.choices else ""
                 if content:
                     response_chunks.append(content)
-                    # Send incremental updates
+                    # Send incremental token updates (frontend expects "token" type)
                     yield json.dumps(
                         {
-                            "type": "chunk",
+                            "type": "token",
                             "content": content,
                         },
                         ensure_ascii=False,
@@ -276,10 +276,23 @@ Difficulty: {request.difficulty or 'Unknown'}
             rationale = full_response
             confidence = 0.8
 
-            # Simple extraction - look for edited text between markers or use LLM output
+            # Send suggestion with full parsed data (frontend expects "suggestion" type)
             yield json.dumps(
                 {
-                    "type": "complete",
+                    "type": "suggestion",
+                    "edited_text": edited_text,
+                    "changes_made": changes_made,
+                    "rationale": rationale,
+                    "confidence": confidence,
+                    "forbid_edit": forbid_edit,
+                },
+                ensure_ascii=False,
+            )
+
+            # Signal completion (frontend expects "done" type)
+            yield json.dumps(
+                {
+                    "type": "done",
                     "edited_text": edited_text,
                     "changes_made": changes_made,
                     "rationale": rationale,
@@ -345,7 +358,7 @@ Current annotation: {json.dumps(request.current_annotation) if request.current_a
                     response_chunks.append(content)
                     yield json.dumps(
                         {
-                            "type": "chunk",
+                            "type": "token",
                             "content": content,
                         },
                         ensure_ascii=False,
@@ -354,9 +367,19 @@ Current annotation: {json.dumps(request.current_annotation) if request.current_a
             # Parse final response
             full_response = "".join(response_chunks)
 
+            # Send suggestion (frontend expects "suggestion" type)
             yield json.dumps(
                 {
-                    "type": "complete",
+                    "type": "suggestion",
+                    "rationale": full_response,
+                },
+                ensure_ascii=False,
+            )
+
+            # Signal completion (frontend expects "done" type)
+            yield json.dumps(
+                {
+                    "type": "done",
                     "rationale": full_response,
                 },
                 ensure_ascii=False,

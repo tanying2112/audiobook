@@ -1,6 +1,6 @@
 """User and RBAC models for Audiobook Studio."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, Column, DateTime
@@ -46,9 +46,9 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)
     )
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -98,7 +98,7 @@ class Role(Base):
         String(50), unique=True, index=True, nullable=False
     )
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
     users: Mapped[List["User"]] = relationship(
@@ -119,7 +119,7 @@ class Permission(Base):
         String(100), unique=True, index=True, nullable=False
     )
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
     roles: Mapped[List["Role"]] = relationship(
@@ -150,7 +150,7 @@ class ProjectPermission(Base):
         ),
         nullable=False,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
     granted_by: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True
     )

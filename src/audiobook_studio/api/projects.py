@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from ..models import Chapter, Paragraph, Project
@@ -50,8 +50,7 @@ class ProjectOut(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChapterOut(BaseModel):
@@ -71,8 +70,7 @@ class ChapterOut(BaseModel):
     token_count: int
     tts_chars: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ParagraphOut(BaseModel):
@@ -89,8 +87,7 @@ class ParagraphOut(BaseModel):
     edited_text: Optional[str] = None
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Project CRUD ──────────────────────────────────────────────────────────────
@@ -177,18 +174,18 @@ def list_chapters(
     )
 
 
-@router.get("/{project_id}/chapters/{chapter_index}", response_model=ChapterOut)
+@router.get("/{project_id}/chapters/{chapter_id}", response_model=ChapterOut)
 def get_chapter(
     project_id: int,
-    chapter_index: int,
+    chapter_id: int,
     db: Session = Depends(get_db),
 ):
-    """Get a single chapter by its 1-based index."""
+    """Get a single chapter by its DB ID."""
     chapter = (
         db.query(Chapter)
         .filter(
             Chapter.project_id == project_id,
-            Chapter.index == chapter_index,
+            Chapter.id == chapter_id,
         )
         .first()
     )
@@ -201,22 +198,22 @@ def get_chapter(
 
 
 @router.get(
-    "/{project_id}/chapters/{chapter_index}/paragraphs",
+    "/{project_id}/chapters/{chapter_id}/paragraphs",
     response_model=List[ParagraphOut],
 )
 def list_paragraphs(
     project_id: int,
-    chapter_index: int,
+    chapter_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    """List all paragraphs for a chapter."""
+    """List all paragraphs for a chapter (by chapter DB ID)."""
     chapter = (
         db.query(Chapter)
         .filter(
             Chapter.project_id == project_id,
-            Chapter.index == chapter_index,
+            Chapter.id == chapter_id,
         )
         .first()
     )
@@ -236,25 +233,56 @@ def list_paragraphs(
 
 
 @router.get(
-    "/{project_id}/chapters/{chapter_index}/paragraphs/{paragraph_index}",
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
     response_model=ParagraphOut,
 )
 def get_paragraph(
     project_id: int,
-    chapter_index: int,
-    paragraph_index: int,
+    chapter_id: int,
+    paragraph_id: int,
     db: Session = Depends(get_db),
 ):
-    """Get a single paragraph by its indices."""
+    """Get a single paragraph by its DB ID."""
     para = (
         db.query(Paragraph)
         .filter(
             Paragraph.project_id == project_id,
-            Paragraph.chapter_index == chapter_index,
-            Paragraph.index == paragraph_index,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
         )
         .first()
     )
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
+    return para
+
+
+@router.put(
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
+    response_model=ParagraphOut,
+)
+def update_paragraph(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Update a paragraph by its DB ID."""
+    para = (
+        db.query(Paragraph)
+        .filter(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+        .first()
+    )
+    if not para:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+    update_data = {k: v for k, v in payload.items() if k not in ("id",) and v is not None}
+    for field, value in update_data.items():
+        setattr(para, field, value)
+    db.commit()
+    db.refresh(para)
     return para

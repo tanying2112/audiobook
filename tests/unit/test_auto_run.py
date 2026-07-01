@@ -557,20 +557,19 @@ class TestRunSingleStage:
                 "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
             ) as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
-                # Patch the engine creation to return our mock db
-                with patch("sqlalchemy.create_engine"):
+                # Patch SessionLocal in the auto_run module directly
+                with patch(
+                    "src.audiobook_studio.api.auto_run.SessionLocal",
+                    return_value=mock_db,
+                ):
                     with patch(
-                        "sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db
+                        "src.audiobook_studio.api.auto_run.emit_pipeline_event",
+                        new_callable=AsyncMock,
                     ):
-                        with patch("os.getenv", return_value="sqlite:///./test.db"):
-                            with patch(
-                                "src.audiobook_studio.api.auto_run.emit_pipeline_event",
-                                new_callable=AsyncMock,
-                            ):
-                                with patch(
-                                    "src.audiobook_studio.api.auto_run.run_stage"
-                                ):
-                                    await _run_single_stage(9999, "extract", config)
+                        with patch(
+                            "src.audiobook_studio.api.auto_run.run_stage"
+                        ):
+                            await _run_single_stage(9999, "extract", config)
 
         # Should raise ValueError about project not found
         with pytest.raises(ValueError, match="Project 9999 not found"):
@@ -592,21 +591,20 @@ class TestRunSingleStage:
                 "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
             ) as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
-                with patch("sqlalchemy.create_engine"):
+                with patch(
+                    "src.audiobook_studio.api.auto_run.SessionLocal",
+                    return_value=mock_db,
+                ):
                     with patch(
-                        "sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db
-                    ):
-                        with patch("os.getenv", return_value="sqlite:///./test.db"):
-                            with patch(
-                                "src.audiobook_studio.api.auto_run.emit_pipeline_event",
-                                new_callable=AsyncMock,
-                            ) as mock_emit:
-                                await _run_single_stage(42, "extract", config)
-                                # Should emit progress=1.0 to signal empty chapter list
-                                calls = mock_emit.call_args_list
-                                assert any(
-                                    c.kwargs.get("progress") == 1.0 for c in calls
-                                )
+                        "src.audiobook_studio.api.auto_run.emit_pipeline_event",
+                        new_callable=AsyncMock,
+                    ) as mock_emit:
+                        await _run_single_stage(42, "extract", config)
+                        # Should emit progress=1.0 to signal empty chapter list
+                        calls = mock_emit.call_args_list
+                        assert any(
+                            c.kwargs.get("progress") == 1.0 for c in calls
+                        )
 
         _run_async(run())
 
@@ -626,20 +624,19 @@ class TestRunSingleStage:
                 "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
             ) as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
-                with patch("sqlalchemy.create_engine"):
+                with patch(
+                    "src.audiobook_studio.api.auto_run.SessionLocal",
+                    return_value=mock_db,
+                ):
                     with patch(
-                        "sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db
-                    ):
-                        with patch("os.getenv", return_value="sqlite:///./test.db"):
-                            with patch(
-                                "src.audiobook_studio.api.auto_run.emit_pipeline_event",
-                                new_callable=AsyncMock,
-                            ) as mock_emit:
-                                await _run_single_stage(42, "annotate", config)
-                                calls = mock_emit.call_args_list
-                                assert any(
-                                    c.kwargs.get("progress") == 1.0 for c in calls
-                                )
+                        "src.audiobook_studio.api.auto_run.emit_pipeline_event",
+                        new_callable=AsyncMock,
+                    ) as mock_emit:
+                        await _run_single_stage(42, "annotate", config)
+                        calls = mock_emit.call_args_list
+                        assert any(
+                            c.kwargs.get("progress") == 1.0 for c in calls
+                        )
 
         _run_async(run())
 
@@ -660,17 +657,16 @@ class TestRunSingleStage:
                 "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
             ) as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
-                with patch("sqlalchemy.create_engine"):
+                with patch(
+                    "src.audiobook_studio.api.auto_run.SessionLocal",
+                    return_value=mock_db,
+                ):
                     with patch(
-                        "sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db
+                        "src.audiobook_studio.api.auto_run.emit_pipeline_event",
+                        new_callable=AsyncMock,
                     ):
-                        with patch("os.getenv", return_value="sqlite:///./test.db"):
-                            with patch(
-                                "src.audiobook_studio.api.auto_run.emit_pipeline_event",
-                                new_callable=AsyncMock,
-                            ):
-                                # Should not raise, just warn
-                                await _run_single_stage(42, "nonexistent_stage", config)
+                        # Should not raise, just warn
+                        await _run_single_stage(42, "nonexistent_stage", config)
 
         _run_async(run())  # Should not raise
 
@@ -691,24 +687,23 @@ class TestRunSingleStage:
                 "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
             ) as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
-                with patch("sqlalchemy.create_engine"):
+                with patch(
+                    "src.audiobook_studio.api.auto_run.SessionLocal",
+                    return_value=mock_db,
+                ):
                     with patch(
-                        "sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db
+                        "src.audiobook_studio.api.auto_run.emit_pipeline_event",
+                        new_callable=AsyncMock,
                     ):
-                        with patch("os.getenv", return_value="sqlite:///./test.db"):
-                            with patch(
-                                "src.audiobook_studio.api.auto_run.emit_pipeline_event",
-                                new_callable=AsyncMock,
-                            ):
-                                with patch(
-                                    "src.audiobook_studio.api.auto_run.run_stage"
-                                ) as mock_run:
-                                    await _run_single_stage(42, "annotate", config)
-                                    mock_run.assert_called_once()
-                                    call_kwargs = mock_run.call_args
-                                    assert (
-                                        call_kwargs.kwargs.get("target_difficulty")
-                                        == "C"
-                                    )
+                        with patch(
+                            "src.audiobook_studio.api.auto_run.run_stage"
+                        ) as mock_run:
+                            await _run_single_stage(42, "annotate", config)
+                            mock_run.assert_called_once()
+                            call_kwargs = mock_run.call_args
+                            assert (
+                                call_kwargs.kwargs.get("target_difficulty")
+                                == "C"
+                            )
 
         _run_async(run())

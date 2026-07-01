@@ -404,6 +404,8 @@ class ABTestManager:
     def get_recent_tests(self, limit: int = 10) -> List[Dict[str, Any]]:
         """获取最近的测试结果."""
         recent = self.test_history[-limit:] if self.test_history else []
+        # Return most recent first
+        recent = list(reversed(recent))
         return [
             {
                 "test_id": r.test_id,

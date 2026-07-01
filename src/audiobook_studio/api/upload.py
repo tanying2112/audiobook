@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
 from ..auth.dependencies import get_current_active_user, require_project_permission
+from ..auth.models import RoleName
 from ..database import get_db
 from ..models import Chapter, Project
 from ..models.user import User
@@ -190,7 +191,7 @@ async def init_upload(
     filename: str = Form(...),
     file_size: int = Form(...),
     mime_type: str = Form(...),
-    current_user: User = Depends(require_project_permission("editor")),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: Session = Depends(get_db),
 ):
     """Initialize a multipart upload session."""
@@ -255,7 +256,7 @@ async def upload_chunk(
     total_chunks: int = Form(...),
     is_final: bool = Form(False),
     file: UploadFile = File(...),
-    current_user: User = Depends(require_project_permission("editor")),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: Session = Depends(get_db),
 ):
     """Upload a file chunk."""
@@ -326,7 +327,7 @@ async def upload_chunk(
 async def upload_file(
     project_id: int,
     file: UploadFile = File(...),
-    current_user: User = Depends(require_project_permission("editor")),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
@@ -419,7 +420,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         )
 
         # Extract text using pipeline
-        result = await extract_text(file_path, mime_type)
+        result = extract_text(file_path, mime_type)
 
         job.progress = 0.5
         job.current_step = "creating_chapters"
@@ -604,7 +605,7 @@ async def list_extractions(
 async def cancel_upload(
     project_id: int,
     upload_id: str,
-    current_user: User = Depends(require_project_permission("editor")),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: Session = Depends(get_db),
 ):
     """Cancel an upload session and cleanup."""

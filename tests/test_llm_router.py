@@ -239,17 +239,21 @@ class TestEnvironmentVariables:
     def test_mock_llm_env_var_false(self):
         """Test MOCK_LLM=false creates real client."""
         with patch.dict(os.environ, {"MOCK_LLM": "false"}):
-            client = create_client("gemini-2.0-flash")
-            assert client.config.mock_mode is False
-            # Real mode has an instructor client
+            with patch("src.audiobook_studio.llm.client.LLMClient._init_client") as mock_init:
+                client = create_client("gemini-2.0-flash")
+                assert client.config.mock_mode is False
+                # Real mode would have an instructor client
+                mock_init.assert_called_once()
 
     def test_mock_llm_default_false(self):
         """Test default without MOCK_LLM set uses non-mock mode."""
         with patch.dict(os.environ, {}, clear=True):
             # Remove MOCK_LLM from parent environment first
             os.environ.pop("MOCK_LLM", None)
-            client = create_client("gemini-2.0-flash")
-            assert client.config.mock_mode is False
+            with patch("src.audiobook_studio.llm.client.LLMClient._init_client") as mock_init:
+                client = create_client("gemini-2.0-flash")
+                assert client.config.mock_mode is False
+                mock_init.assert_called_once()
 
 
 if __name__ == "__main__":

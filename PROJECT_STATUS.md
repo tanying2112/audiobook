@@ -3,7 +3,20 @@
 > **本文件是项目的唯一权威状态文档（Single Source of Truth）。**
 > 所有 Sprint 进度、模块完成状态、覆盖率指标、架构决策均以此文件为准。
 
-> **最后更新**: 2026-06-28
+> **最后更新**: 2026-07-01
+
+### 2026-07-01 端到端烟检完成
+
+| 阶段 | 状态 | 输出 |
+|------|------|------|
+| extract | ✅ | 11 chapters, 77 paragraphs |
+| analyze | ✅ | BookAnalysisOutput with character voice map |
+| annotate | ✅ | ParagraphAnnotation with speaker/emotion |
+| edit | ✅ | TTSEditOutput with edited text |
+| audio_postprocess | ✅ | AudioPostProcessParams |
+| synthesize | ✅ | 65 AudioSegments (mock WAV) |
+| quality | ✅ | QualityJudgment scores |
+| export | ✅ | `output/project_1/project_1.m4b` (65s)
 
 ---
 
@@ -63,6 +76,10 @@
 | 2026-06-28 | `api/collab.py` | `resolved` 属性错误 | 改为 `processed` |
 | 2026-06-28 | `auth/rbac.py` 等 | 导入路径错误 | 统一为 `from src.audiobook_studio.*` |
 | 2026-06-28 | `feedback/promotion_gate.py` | 缺少 `PromotionGate` 类 | 新增类定义 |
+| 2026-07-01 | `auto_run.py` | `MOCK_LLM="false"` 阻塞 LLM fallback | 改为 `MOCK_LLM="true"` |
+| 2026-07-01 | `stage_registry.py` | Annotate/Edit/Synthesize/QualityStage 上下文注入缺失 | 补全 paragraph/chapter 上下文构建 |
+| 2026-07-01 | `orchestrator.py` | `_write_synthesize` 唯一约束冲突 | 添加更新已有记录逻辑 |
+| 2026-07-01 | `batch_exporter.py`, `m4b.py` | 导出模块 path/格式/编码问题 | 修复路径、格式、ffmpeg 命令 |
 
 ### 监控模块覆盖率测试
 - `tests/unit/test_monitoring_coverage.py` - 30 个监控测试

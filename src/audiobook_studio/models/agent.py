@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import JSON, Column, DateTime, String
@@ -16,7 +16,7 @@ class AgentKnowledge(Base):
     knowledge = Column(JSON)  # Structured domain knowledge
     source_agent = Column(String)
     confidence_score = Column(JSON)  # {'score': 0.9, 'factors': [...]}
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     last_accessed = Column(DateTime)
 
 
@@ -32,7 +32,7 @@ class TaskRecord(Base):
     assigned_agent = Column(String)
     status = Column(String)  # pending/running/completed/failed
     retries = Column(JSON)  # List of retry attempts
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     @property

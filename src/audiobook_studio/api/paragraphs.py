@@ -1,18 +1,25 @@
 """FastAPI router for ``Paragraph`` CRUD operations (legacy API)."""
 
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from ..models.audio_segment import AudioSegment
 from ..models.paragraph import Paragraph
 from ..models.quality import Quality
 from ..models.routing import Routing
 from ..models.tts_edit import TTSEdit
 from ..schemas.legacy import Paragraph as ParagraphSchema
+from ..storage import audio_dir
 from .dependencies import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/paragraphs", tags=["paragraphs"])
 
@@ -336,3 +343,155 @@ def get_paragraph_detail(
             else None
         ),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio serving endpoint (P0-3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/{paragraph_id}/audio")
+def serve_paragraph_audio(paragraph_id: int, db: Session = Depends(get_db)):
+    """Serve the audio file for a paragraph.
+
+    Looks up the AudioSegment record, then serves the file from storage.
+    Returns 404 if no audio has been generated for this paragraph.
+    """
+    segment = (
+        db.query(AudioSegment)
+        .filter(
+            AudioSegment.paragraph_id == paragraph_id,
+            AudioSegment.is_current.is_(True),
+        )
+        .first()
+    )
+    if not segment:
+        raise HTTPException(status_code=404, detail="No audio found for this paragraph")
+
+    file_path = Path(segment.file_path)
+    if not file_path.is_absolute():
+        # Resolve relative paths against storage root
+        file_path = audio_dir(segment.project_id) / file_path.name
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+
+    media_type = "audio/mpeg" if segment.format == "mp3" else "audio/wav"
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=f"paragraph_{paragraph_id}.{segment.format}",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio segments list endpoint (P0-3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AudioSegmentOut(BaseModel):
+    id: int
+    file_path: str
+    format: str = "mp3"
+    duration_ms: Optional[int] = None
+    engine: Optional[str] = None
+    voice_id: Optional[str] = None
+    status: str = "pending"
+    version: int = 1
+    is_current: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{paragraph_id}/audio-segments", response_model=List[AudioSegmentOut])
+def list_paragraph_audio_segments(
+    paragraph_id: int, db: Session = Depends(get_db)
+):
+    """List all audio segments for a paragraph (including old versions)."""
+    segments = (
+        db.query(AudioSegment)
+        .filter(AudioSegment.paragraph_id == paragraph_id)
+        .order_by(AudioSegment.version.desc())
+        .all()
+    )
+    return segments
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quality results endpoint (P0-4)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class QualityResultOut(BaseModel):
+    id: int
+    paragraph_id: Optional[int] = None
+    tts_edit_id: Optional[int] = None
+    overall_score: Optional[float] = None
+    speaker_clarity: Optional[float] = None
+    emotion_match: Optional[float] = None
+    prosody_naturalness: Optional[float] = None
+    text_audio_alignment: Optional[float] = None
+    needs_regeneration: bool = False
+    issues: Optional[list] = None
+    fix_suggestions: Optional[list] = None
+    judge_model: Optional[str] = None
+    judge_prompt_version: Optional[str] = None
+    audio_file_path: Optional[str] = None
+    audio_duration_ms: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{paragraph_id}/quality", response_model=List[QualityResultOut])
+def get_paragraph_quality(paragraph_id: int, db: Session = Depends(get_db)):
+    """Get quality check results for a paragraph."""
+    qualities = (
+        db.query(Quality)
+        .filter(Quality.paragraph_id == paragraph_id)
+        .order_by(Quality.id.desc())
+        .all()
+    )
+    return qualities
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regeneration endpoint (P0-5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/{paragraph_id}/regenerate")
+def trigger_paragraph_regeneration(
+    paragraph_id: int, db: Session = Depends(get_db)
+):
+    """Trigger audio regeneration for a single paragraph.
+
+    Marks the paragraph's audio for re-synthesis.
+    The actual synthesis will be picked up by the next pipeline run.
+    """
+    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+
+    # Mark current audio segment as not current
+    current_segment = (
+        db.query(AudioSegment)
+        .filter(
+            AudioSegment.paragraph_id == paragraph_id,
+            AudioSegment.is_current.is_(True),
+        )
+        .first()
+    )
+    if current_segment:
+        current_segment.is_current = False
+        db.commit()
+
+    # Reset paragraph status to trigger re-synthesis
+    p.status = "edited"
+    db.commit()
+
+    return {
+        "status": "queued",
+        "paragraph_id": paragraph_id,
+        "message": "Paragraph marked for regeneration",
+    }

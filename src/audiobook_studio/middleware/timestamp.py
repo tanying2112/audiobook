@@ -159,7 +159,7 @@ class ISOTimestampMiddleware(BaseHTTPMiddleware):
 
 from datetime import datetime as dt
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class ISOModel(BaseModel):
@@ -185,11 +185,12 @@ class ISOModel(BaseModel):
             return value.isoformat()
         return value
 
-    class Config:
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             dt: lambda v: (
                 v.isoformat()
                 if v.tzinfo
                 else v.replace(tzinfo=timezone.utc).isoformat()
             )
         }
+    )

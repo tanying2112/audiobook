@@ -15,6 +15,7 @@ from src.audiobook_studio.pipeline.agents import (
     SynthesizeAgent,
 )
 from src.audiobook_studio.pipeline.analyze_structure import BookAnalysisOutput
+from src.audiobook_studio.schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from src.audiobook_studio.pipeline.extract import ExtractionResult
 from src.audiobook_studio.pipeline.quality_check import QualityJudgment
 from src.audiobook_studio.pipeline.synthesize import AudioSegment
@@ -52,8 +53,8 @@ class TestExtractAgent:
             warnings=[],
         )
         with patch(
-            "src.audiobook_studio.database.SessionLocal", return_value=mock_session
-        ) as mock_session_local, patch(
+            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+        ) as _mock_session_local, patch(
             "src.audiobook_studio.pipeline.agents.extract_text"
         ) as mock_extract:
             mock_extract.return_value = mock_extract_result
@@ -75,8 +76,8 @@ class TestExtractAgent:
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
         with patch(
-            "src.audiobook_studio.database.SessionLocal", return_value=mock_session
-        ) as mock_session_local, patch(
+            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+        ) as _mock_session_local, patch(
             "src.audiobook_studio.pipeline.agents.extract_text"
         ) as mock_extract:
             mock_extract.side_effect = Exception("extract failed")
@@ -86,6 +87,62 @@ class TestExtractAgent:
             agent._handle_failure.assert_called_once()
             mock_session.commit.assert_not_called()
             mock_session.close.assert_called_once()
+
+    def test_handle_message_create_new_task_record(self):
+        """Test ExtractAgent when no existing task record is found (creates new record)."""
+        agent = make_agent(ExtractAgent)
+        mock_session = MagicMock()
+        # Simulate no existing task record found
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_extract_result = ExtractionResult(
+            raw_text="extracted text",
+            language="zh",
+            page_count=5,
+            has_ocr=False,
+            ocr_page_ratio=0.0,
+            warnings=[],
+        )
+        # To capture the task record when it's added to the session
+        added_task = None
+        def capture_task(task):
+            nonlocal added_task
+            added_task = task
+        mock_session.add.side_effect = capture_task
+
+        with patch(
+            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+        ) as _mock_session_local, patch(
+            "src.audiobook_studio.pipeline.agents.extract_text"
+        ) as mock_extract:
+            mock_extract.return_value = mock_extract_result
+            message = MagicMock()
+            message.content = {
+                "file_path": "/fake/path.txt",
+                "mime_type": "text/plain",
+                "task_type": "extract_test",
+            }
+            agent._handle_message(message)
+            mock_extract.assert_called_once_with(
+                file_path="/fake/path.txt", mime_type="text/plain"
+            )
+            # Verify that a new TaskRecord was created and added to the session
+            assert mock_session.add.call_count == 1
+            assert added_task is not None
+            assert isinstance(added_task, TaskRecord)
+            assert added_task.id == agent.context.task_id
+            assert added_task.task_type == "extract_test"
+            assert added_task.input_data == {
+                "file_path": "/fake/path.txt",
+                "mime_type": "text/plain",
+                "task_type": "extract_test",
+            }
+            # Verify that the task record was updated after processing
+            assert added_task.status == "COMPLETED"
+            assert added_task.output_data == mock_extract_result.model_dump()
+            assert added_task.completed_at is not None
+            mock_session.commit.assert_called_once()
+            mock_session.close.assert_called_once()
+            agent._handle_failure.assert_not_called()
 
 
 class TestAnalyzeAgent:
@@ -99,18 +156,43 @@ class TestAnalyzeAgent:
         agent = make_agent(AnalyzeAgent)
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
+        mock_book_meta = BookMeta(
+            title="测试书名",
+            author="测试作者",
+            genre="小说",
+            difficulty="B",
+            language="zh",
+            era="现代",
+            total_chapters_estimated=10,
+            contract_version=1,
+        )
+        mock_character_voice = CharacterVoiceBinding(
+            canonical_name="主角",
+            aliases=[],
+            gender="male",
+            age_range="adult",
+            sample_quote="今天天气真好。",
+            contract_version=1,
+        )
+        mock_emotion = EmotionSnapshot(
+            chapter=1,
+            dominant_emotion="neutral",
+            intensity=0.5,
+            notes="开场情绪",
+            contract_version=1,
+        )
         mock_analyze_result = BookAnalysisOutput(
-            book_meta=MagicMock(),
-            character_voice_map=[],
-            emotion_snapshots=[],
-            story_line_summary="summary",
+            book_meta=mock_book_meta,
+            character_voice_map=[mock_character_voice],
+            emotion_snapshots=[mock_emotion],
+            story_line_summary="这是一个关于测试的故事，讲述了主角在测试世界中经历的种种冒险与成长历程，故事结构完整，人物形象鲜明。全书通过细腻的笔触描绘了主角内心的挣扎与蜕变，为读者呈现了一个引人入胜的文学世界，值得细细品味，余韵悠长。",
             global_style_notes="notes",
             contract_version=1,
         )
-        with patch("src.audiobook_studio.pipeline.agents.get_db") as mock_get_db, patch(
+        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
             "src.audiobook_studio.pipeline.agents.analyze_structure"
         ) as mock_analyze:
-            mock_get_db.return_value = iter([mock_session])  # get_db is a generator
+            mock_session_local.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task_record
             )
@@ -133,18 +215,18 @@ class TestAnalyzeAgent:
             assert mock_task_record.output_data == mock_analyze_result.model_dump()
             assert mock_task_record.completed_at is not None
             mock_session.commit.assert_called_once()
-            # get_db session is not closed by agent (see code)
-            mock_session.close.assert_not_called()
+            # SessionLocal session is closed by agent in finally block
+            mock_session.close.assert_called_once()
             agent._handle_failure.assert_not_called()
 
     def test_handle_message_exception(self):
         agent = make_agent(AnalyzeAgent)
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
-        with patch("src.audiobook_studio.pipeline.agents.get_db") as mock_get_db, patch(
+        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
             "src.audiobook_studio.pipeline.agents.analyze_structure"
         ) as mock_analyze:
-            mock_get_db.return_value = iter([mock_session])
+            mock_session_local.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task_record
             )
@@ -153,12 +235,37 @@ class TestAnalyzeAgent:
             message.content = {
                 "raw_text": "test",
                 "title_hint": "title",
-                "author_roles": "author",
+                "author_hint": "author",
                 "target_difficulty": "B",
             }
             agent._handle_message(message)
             agent._handle_failure.assert_called_once()
             mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
+
+    def test_handle_message_missing_task_record(self):
+        """Test AnalyzeAgent when no existing task record is found (results in failure)."""
+        agent = make_agent(AnalyzeAgent)
+        mock_session = MagicMock()
+        # Simulate no existing task record found
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
+            "src.audiobook_studio.pipeline.agents.analyze_structure"
+        ) as mock_analyze:
+            mock_session_local.return_value = mock_session
+            mock_analyze.return_value = MagicMock()  # This won't be called due to the exception below
+            message = MagicMock()
+            message.content = {
+                "raw_text": "test raw text",
+                "title_hint": "title",
+                "author_hint": "author",
+                "target_difficulty": "B",
+            }
+            agent._handle_message(message)
+            # Since task_record is None, assigning status will raise AttributeError
+            agent._handle_failure.assert_called_once()
+            mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
 
 
 class TestSynthesizeAgent:
@@ -176,9 +283,9 @@ class TestSynthesizeAgent:
         mock_segment = MagicMock(spec=AudioSegment)
         mock_segment.to_dict.return_value = {"dummy": "segment"}
         with patch(
-            "src.audiobook_studio.pipeline.agents.get_db"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
-            mock_get_db.return_value = iter([mock_session])
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
+        ) as mock_session_local, patch.object(agent, "pipeline") as mock_pipeline:
+            mock_session_local.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task4
             )
@@ -203,7 +310,7 @@ class TestSynthesizeAgent:
             assert mock_task4.output_data["book_id"] == 1
             assert mock_task4.completed_at is not None
             mock_session.commit.assert_called_once()
-            mock_session.close.assert_not_called()
+            mock_session.close.assert_called_once()
             agent._handle_failure.assert_not_called()
 
     def test_handle_message_exception(self):
@@ -211,9 +318,9 @@ class TestSynthesizeAgent:
         mock_session = MagicMock()
         mock_task4 = MagicMock(spec=TaskRecord)
         with patch(
-            "src.audiobook_studio.pipeline.agents.get_db"
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
         ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
-            mock_get_db.return_value = iter([mock_session])
+            mock_get_db.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task4
             )
@@ -223,6 +330,26 @@ class TestSynthesizeAgent:
             agent._handle_message(message)
             agent._handle_failure.assert_called_once()
             mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
+
+    def test_handle_message_missing_task_record(self):
+        """Test SynthesizeAgent when no existing task record is found (results in failure)."""
+        agent = make_agent(SynthesizeAgent)
+        mock_session = MagicMock()
+        # Simulate no existing task record found
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        with patch(
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
+        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+            mock_get_db.return_value = mock_session
+            mock_pipeline.run.return_value = [MagicMock(spec=AudioSegment)]  # This won't be called
+            message = MagicMock()
+            message.content = {"text": "test", "voice_params": {}, "book_id": 1}
+            agent._handle_message(message)
+            # Since task_record is None, assigning status will raise AttributeError
+            agent._handle_failure.assert_called_once()
+            mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
 
 
 class TestQualityAgent:
@@ -240,9 +367,9 @@ class TestQualityAgent:
         mock_judgment = MagicMock(spec=QualityJudgment)
         mock_judgment.model_dump.return_value = {"dummy": "judgment"}
         with patch(
-            "src.audiobook_studio.pipeline.agents.get_db"
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
         ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
-            mock_get_db.return_value = iter([mock_session])
+            mock_get_db.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task4
             )
@@ -263,7 +390,7 @@ class TestQualityAgent:
             assert mock_task4.output_data == {"dummy": "judgment"}
             assert mock_task4.completed_at is not None
             mock_session.commit.assert_called_once()
-            mock_session.close.assert_not_called()
+            mock_session.close.assert_called_once()
             agent._handle_failure.assert_not_called()
 
     def test_handle_message_exception(self):
@@ -271,9 +398,9 @@ class TestQualityAgent:
         mock_session = MagicMock()
         mock_task4 = MagicMock(spec=TaskRecord)
         with patch(
-            "src.audiobook_studio.pipeline.agents.get_db"
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
         ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
-            mock_get_db.return_value = iter([mock_session])
+            mock_get_db.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = (
                 mock_task4
             )
@@ -287,6 +414,30 @@ class TestQualityAgent:
             agent._handle_message(message)
             agent._handle_failure.assert_called_once()
             mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
+
+    def test_handle_message_missing_task_record(self):
+        """Test QualityAgent when no existing task record is found (results in failure)."""
+        agent = make_agent(QualityAgent)
+        mock_session = MagicMock()
+        # Simulate no existing task record found
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        with patch(
+            "src.audiobook_studio.pipeline.agents.SessionLocal"
+        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+            mock_get_db.return_value = mock_session
+            mock_pipeline.run.return_value = MagicMock(spec=QualityJudgment)  # This won't be called
+            message = MagicMock()
+            message.content = {
+                "audio_segments": [],
+                "reference_text": "ref",
+                "book_id": 1,
+            }
+            agent._handle_message(message)
+            # Since task_record is None, assigning status will raise AttributeError
+            agent._handle_failure.assert_called_once()
+            mock_session.commit.assert_not_called()
+            mock_session.close.assert_called_once()
 
 
 if __name__ == "__main__":

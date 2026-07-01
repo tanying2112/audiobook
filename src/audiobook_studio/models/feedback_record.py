@@ -23,7 +23,7 @@ class FeedbackRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
     chapter_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
@@ -34,8 +34,8 @@ class FeedbackRecord(Base):
 
     # 反馈标识
     feedback_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    source: Mapped[str] = mapped_column(String, nullable=False)
-    stage: Mapped[str] = mapped_column(String, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     # 快照数据
     input_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -50,7 +50,7 @@ class FeedbackRecord(Base):
     pattern_tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
 
     # 处理状态
-    processed: Mapped[bool] = mapped_column(Boolean, default=False)
+    processed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     promoted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # 时间戳

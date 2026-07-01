@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from ..models.feedback_record import (
@@ -44,8 +44,7 @@ class CommentResponse(CommentBase):
     resolved_by: Optional[str] = None
     resolved_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskBase(BaseModel):
@@ -72,8 +71,7 @@ class TaskResponse(TaskBase):
     updated_at: datetime
     actual_hours: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApprovalRequestBase(BaseModel):
@@ -102,8 +100,7 @@ class ApprovalRequestResponse(ApprovalRequestBase):
         default_factory=dict
     )  # approver_id -> {status, comment, timestamp}
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApprovalResponseBase(BaseModel):

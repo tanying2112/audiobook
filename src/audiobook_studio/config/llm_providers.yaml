@@ -1,9 +1,9 @@
 # LLM Provider Configuration - 增量扩展模式
-# 新增提供商只需在 providers 下追加，无需改动代码
-# 优先级由 priority 决定，数值越小优先级越高
+# 新增提供商只需在 providers 下追加,无需改动代码
+# 优先级由 priority 决定,数值越小优先级越高
 
 providers:
-  # OpenCode Zen - 首选的 OpenAI 兼容路由，极速稳定
+  # OpenCode Zen - 首选的 OpenAI 兼容路由,极速稳定
   - name: opencode_zen
     provider: openai
     model: gpt-4o-mini
@@ -15,7 +15,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # Cerebras - 极速推理，免信用卡，1M tokens/天免费
+  # Cerebras - 极速推理,免信用卡,1M tokens/天免费
   - name: cerebras
     provider: cerebras
     model: llama-3.3-70b
@@ -27,7 +27,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # Gemini - Google 免费额度大，支持长上下文
+  # Gemini - Google 免费额度大,支持长上下文
   - name: gemini_flash
     provider: gemini
     model: gemini-2.0-flash
@@ -38,7 +38,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # 阿里云百炼 - 中文理解最强之一，100万 Token 免费
+  # 阿里云百炼 - 中文理解最强之一,100万 Token 免费
   - name: alibaba_bailian
     provider: alibaba
     model: qwen-max
@@ -50,7 +50,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # 智谱 AI - GLM-4-Flash 部分永久免费，中文优秀
+  # 智谱 AI - GLM-4-Flash 部分永久免费,中文优秀
   - name: zhipu_glm
     provider: zhipu
     model: glm-4-flash
@@ -62,7 +62,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # 硅基流动 SiliconCloud - 千万 Token 级测试包，永久额度
+  # 硅基流动 SiliconCloud - 千万 Token 级测试包,永久额度
   - name: siliconcloud
     provider: siliconcloud
     model: Qwen/Qwen2.5-72B-Instruct
@@ -85,7 +85,7 @@ providers:
     stages: [analyze, judge]
     enabled: true
 
-  # Mistral AI - 实验层最高 1B tokens/月，欧洲合规
+  # Mistral AI - 实验层最高 1B tokens/月,欧洲合规
   - name: mistral
     provider: mistral
     model: mistral-small-latest
@@ -97,7 +97,7 @@ providers:
     stages: [annotate, edit]
     enabled: true
 
-  # DeepSeek - 中文理解强，备选
+  # DeepSeek - 中文理解强,备选
   - name: deepseek
     provider: deepseek
     model: deepseek-chat
@@ -108,7 +108,7 @@ providers:
     stages: [annotate, edit, judge]
     enabled: true
 
-  # 百度千帆 - 文心+DeepSeek+Qwen，每模型 100 万 Token
+  # 百度千帆 - 文心+DeepSeek+Qwen,每模型 100 万 Token
   - name: baidu_qianfan
     provider: baidu_qianfan
     model: ernie-speed-128k
@@ -120,7 +120,7 @@ providers:
     stages: [annotate, edit]
     enabled: true
 
-  # OpenRouter - 聚合多模型，兜底
+  # OpenRouter - 聚合多模型,兜底
   - name: openrouter
     provider: openrouter
     model: meta-llama/llama-3.1-8b-instruct:free
@@ -131,7 +131,7 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # 火山引擎 - 豆包大模型，500 万 Token 活动额度
+  # 火山引擎 - 豆包大模型,500 万 Token 活动额度
   - name: volcengine
     provider: volcengine
     model: doubao-pro-32k
@@ -143,7 +143,7 @@ providers:
     stages: [annotate, edit]
     enabled: true
 
-  # 腾讯云混元 - 混元全系列，100 万 Token 有效期 1 年
+  # 腾讯云混元 - 混元全系列,100 万 Token 有效期 1 年
   - name: tencent_hunyuan
     provider: tencent
     model: hunyuan-standard
@@ -155,7 +155,7 @@ providers:
     stages: [annotate, edit]
     enabled: true
 
-  # Groq 70B - 降级兜底（大模型质量高但限流严格）
+  # Groq 70B - 降级兜底(大模型质量高但限流严格)
   - name: groq_70b
     provider: groq
     model: llama-3.3-70b-versatile
@@ -166,7 +166,7 @@ providers:
     stages: [analyze, judge]
     enabled: true
 
-  # HuggingFace - 数千开源模型，按模型限速
+  # HuggingFace - 数千开源模型,按模型限速
   - name: huggingface
     provider: huggingface
     model: Qwen/Qwen2.5-72B-Instruct
@@ -178,7 +178,7 @@ providers:
     stages: [extract, analyze]
     enabled: true
 
-  # Cloudflare Workers AI - 边缘推理，低延迟
+  # Cloudflare Workers AI - 边缘推理,低延迟
   - name: cloudflare_ai
     provider: cloudflare
     model: "@cf/meta/llama-3.3-70b"
@@ -190,7 +190,7 @@ providers:
     stages: [annotate, edit]
     enabled: true
 
-  # GitHub Models - 开发者免费，GitHub 生态集成
+  # GitHub Models - 开发者免费,GitHub 生态集成
   - name: github_models
     provider: github
     model: gpt-4o-mini
@@ -202,28 +202,85 @@ providers:
     stages: [extract, analyze, annotate, edit, judge]
     enabled: true
 
-  # 本地 Ollama - 零成本、无限制、离线可用（终极兜底）
-  - name: ollama_qwen25
+  # 本地 Ollama - 零成本、无限制、离线可用(终极兜底)
+  - name: ollama_gemma4_e2b
+    provider: ollama
+    model: gemma4:e2b
+    base_url: http://localhost:11434
+    priority: 65
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0  # 0 = 无超时,给本地模型 Prefill 阶段留足喘息时间
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_deepseek_v4_flash
+    provider: ollama
+    model: deepseek-v4-flash
+    base_url: http://localhost:11434
+    priority: 66
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_qwen3_5
+    provider: ollama
+    model: qwen3.5:397b-cloud
+    base_url: http://localhost:11434
+    priority: 67
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_kimi_k2
+    provider: ollama
+    model: kimi-k2.6:cloud
+    base_url: http://localhost:11434
+    priority: 67
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  - name: ollama_qwen25_14b
     provider: ollama
     model: qwen2.5:14b
     base_url: http://localhost:11434
     priority: 70
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
-  - name: ollama_llama31
+  - name: ollama_llama31_8b
     provider: ollama
     model: llama3.1:8b
     base_url: http://localhost:11434
     priority: 75
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, edit, judge]
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
 
-  # Groq 8B - 最后兜底（小模型快但上下文短）
+  - name: ollama_llama32_3b
+    provider: ollama
+    model: llama3.2:3b
+    base_url: http://localhost:11434
+    priority: 80
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  # Groq 8B - 最后兜底(小模型快但上下文短)
   - name: groq_8b
     provider: groq
     model: llama-3.1-8b-instant

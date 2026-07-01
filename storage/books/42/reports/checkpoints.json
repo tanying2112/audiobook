@@ -518,6 +518,349 @@
       ],
       "paragraphs_done": [],
       "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12506311584'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12454701648'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13235359424'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13191869984'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13397643952'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12372306848'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13220268752'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13103942352'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13032747568'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13080344096'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13071254928'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13087917456'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13072686720'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='13067710016'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12442306272'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12383575344'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12351686032'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12372939104'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12352924240'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12555754800'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12448213920'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12569367216'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12400971456'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12536275568'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12482196016'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12365907008'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12462508080'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12439580224'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12482487904'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12306257232'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12390322528'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12474905136'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12536269856'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12361266048'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12468091744'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12487866896'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12380102608'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12316961024'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12292840416'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12523821712'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12408668240'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12467624592'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12415472304'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12378409008'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12341359488'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12482340112'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12418303712'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12487512752'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "<MagicMock name='mock.query().filter().first().index' id='12475936992'>": {
+      "stages_done": [
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
     }
   },
   "version": 2

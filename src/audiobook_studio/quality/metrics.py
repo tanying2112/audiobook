@@ -989,7 +989,8 @@ class ASRWerMetric(QualityMetric):
 
         # 详细结果
         result = metric.compute(audio_path, reference_text)
-        print(result.wer, result.cer, result.insertions, result.deletions, result.substitutions)
+        logger.info("WER=%s CER=%s ins=%s del=%s sub=%s",
+                     result.wer, result.cer, result.insertions, result.deletions, result.substitutions)
 
         # 测试模式
         metric = ASRWerMetric(mock_mode=True)

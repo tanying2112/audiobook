@@ -4,7 +4,8 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
 
 # Install system dependencies (including audio processing tools + PostgreSQL client)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Create required directories
-RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data
+RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage
 
 # Copy only requirements first for caching
 COPY requirements.txt .

@@ -12,13 +12,28 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - AUDIO_OUTPUT_DIR=/app/output
       - CHECKPOINTS_DIR=/app/checkpoints
+      - PYTHONPATH=/app/src
     volumes:
-      - .:/app
       - ./output:/app/output
       - ./checkpoints:/app/checkpoints
+      - ./storage:/app/storage
+      - ./logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    volumes:
+      - ./web:/app
+    profiles:
+      - dev
 
   db:
     image: postgres:16-alpine

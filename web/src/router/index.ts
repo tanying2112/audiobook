@@ -38,6 +38,22 @@ const router = createRouter({
       name: 'harness-dashboard',
       component: () => import('../views/HarnessDashboard.vue'),
     },
+    {
+      path: '/projects/:id/upload',
+      name: 'upload',
+      component: () => import('../views/UploadView.vue'),
+    },
+    {
+      path: '/projects/:id/export',
+      name: 'export',
+      component: () => import('../views/ExportView.vue'),
+    },
+    {
+      // ⚠️ 临时验证路由，SSE/内联小窗验证通过后删除（含 SseDemo.vue）
+      path: '/sse-demo',
+      name: 'sse-demo',
+      component: () => import('../views/SseDemo.vue'),
+    },
   ],
 })
 

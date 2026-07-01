@@ -30,7 +30,7 @@ class Quality(Base):
         ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
     )
     paragraph_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     tts_edit_id: Mapped[int] = mapped_column(
         ForeignKey("tts_edits.id", ondelete="CASCADE"), nullable=False

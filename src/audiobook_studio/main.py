@@ -6,6 +6,10 @@ migrations instead of ``init_db``.
 """
 
 import os
+
+# Disable mock mode for all pipelines before any pipeline modules are imported
+os.environ["MOCK_LLM"] = "false"
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -83,22 +87,25 @@ app.add_middleware(
 )
 
 # Add ISO Timestamp Middleware (P1-8)
-app.add_middleware(ISOTimestampMiddleware)
+# Disabled: BaseHTTPMiddleware incompatible with Python 3.14 + Starlette 0.36
+# app.add_middleware(ISOTimestampMiddleware)
 
 # Add A/B Test Middleware
-app.add_middleware(ABTestMiddleware)
+# Disabled: BaseHTTPMiddleware incompatible with Python 3.14 + Starlette 0.36
+# app.add_middleware(ABTestMiddleware)
 
 # Instrument with OpenTelemetry
-instrument_app(
-    app,
-    service_name="audiobook-studio",
-    service_version="0.1.0",
-    otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-    enable_console_exporter=os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower()
-    == "true",
-    prometheus_port=int(os.getenv("PROMETHEUS_PORT", "9090")),
-    exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
-)
+# Disabled: ObservabilityMiddleware uses BaseHTTPMiddleware incompatible with Python 3.14
+# instrument_app(
+#     app,
+#     service_name="audiobook-studio",
+#     service_version="0.1.0",
+#     otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+#     enable_console_exporter=os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower()
+#     == "true",
+#     prometheus_port=int(os.getenv("PROMETHEUS_PORT", "9090")),
+#     exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
+# )
 
 # Include routers
 app.include_router(auth_router, prefix="/api")  # Auth endpoints at /api/auth/*
@@ -119,7 +126,8 @@ app.include_router(templates_router, prefix="/api")
 app.include_router(harness_router, prefix="/api")
 app.include_router(golden_router, prefix="/api")
 app.include_router(auto_run_router, prefix="/api")
-app.include_router(mock_router, prefix="/api")
+if settings.DEBUG or settings.ENVIRONMENT == "development":
+    app.include_router(mock_router, prefix="/api")
 app.include_router(tts_voices_router, prefix="/api")
 app.include_router(publish_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
@@ -146,7 +154,8 @@ def detailed_health_check():
     db = SessionLocal()
     db_status = "ok"
     try:
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"error: {e}"
     finally:
@@ -162,11 +171,12 @@ def detailed_health_check():
 @app.get("/health/db")
 def health_db():
     """Database health check for CI."""
+    from sqlalchemy import text
     from .database import SessionLocal
 
     db = SessionLocal()
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
         return {"status": "error", "database": str(e)}

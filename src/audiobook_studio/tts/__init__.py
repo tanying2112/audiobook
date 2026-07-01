@@ -4,6 +4,7 @@
 from .clone import (
     AudioQuality,
     VoiceCloner,
+    VoiceCloningManager,
     VoicePrint,
     VoiceSample,
     clone_voice,
@@ -44,6 +45,7 @@ __all__ = [
     "cleanup_all_engines",
     # Voice cloning
     "VoiceCloner",
+    "VoiceCloningManager",
     "VoiceSample",
     "VoicePrint",
     "AudioQuality",

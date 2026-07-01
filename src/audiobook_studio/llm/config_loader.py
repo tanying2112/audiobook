@@ -44,9 +44,11 @@ class StageName(str, Enum):
     EXTRACT = "extract"
     ANALYZE = "analyze"
     ANNOTATE = "annotate"
+    ANNOTATE_PARAGRAPH = "annotate_paragraph"
     EDIT = "edit"
     ROUTE = "route"
     JUDGE = "judge"
+    TRANSLATE = "translate"
 
 
 class ProviderConfig(BaseSettings):
@@ -63,6 +65,7 @@ class ProviderConfig(BaseSettings):
     max_tokens_per_minute: int = 10000
     max_requests_per_minute: int = 60
     max_daily_cost_usd: float = 10.0
+    timeout_seconds: Optional[int] = 60  # None or 0 = no timeout (for local Ollama)
     stages: List[StageName] = Field(default_factory=list)
     enabled: bool = True
     extra_params: Dict[str, Any] = Field(default_factory=dict)
@@ -152,7 +155,7 @@ class LLMProvidersConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LLM_",
         env_file=".env",
-        env_file_encoding="utf-8",
+        file_encoding="utf-8",
         extra="ignore",
     )
 
@@ -188,6 +191,7 @@ class LLMProvidersConfig(BaseSettings):
                     priority=p.get("priority", 100),
                     max_tokens_per_minute=p.get("max_tokens_per_minute", 10000),
                     max_requests_per_minute=p.get("max_requests_per_minute", 60),
+                    timeout_seconds=p.get("timeout_seconds", 60),
                     stages=[StageName(s) for s in p.get("stages", [])],
                     enabled=p.get("enabled", True),
                     extra_params=p.get("extra_params", {}),

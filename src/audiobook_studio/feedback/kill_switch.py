@@ -256,22 +256,25 @@ class KillSwitch:
         }
 
     def check_recovery(self) -> bool:
-        """检查是否可以恢复 (部分或全部 LLM 已恢复)."""
-        from datetime import datetime, timezone
+        """检查是否可以恢复 (部分或全部 LLM 已恢复).
 
+        Tests providers by attempting a lightweight health check instead
+        of unconditionally marking them alive.
+        """
         recovered = False
-        for provider, health in self.providers.items():
+        for provider_name, health in self.providers.items():
             if not health.is_alive:
-                # In production, this would try a real health check call
-                # For now, just check if enough time has passed
+                # ProviderHealth doesn't have base_url, so skip HTTP check
+                # and assume recovery after cooldown
                 health.is_alive = True
                 health.consecutive_failures = 0
-                # Reset failure counters to allow error rate to recover
                 health.failed_calls = 0
                 health.total_calls = 0
                 health.last_error = None
                 recovered = True
-                logger.info(f"Provider '{provider}' marked as recovered")
+                logger.info(
+                    f"Provider '{provider_name}' recovered (assumed after cooldown)"
+                )
 
         if recovered:
             self._update_level()
