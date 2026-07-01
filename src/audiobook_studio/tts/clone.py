@@ -542,19 +542,12 @@ class VoiceCloningEngine:
             logger.error(f"❌ {error_msg}")
             return False, error_msg, None
 
-        # If models not available, return mock success for testing
+        # 模型未就绪时抛出明确异常
         if not self._model_ready:
-            output_dir = Path(self.config.output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
-            output_file = (
-                output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}_MOCK.wav"
+            raise RuntimeError(
+                f"Kokoro-ONNX 模型不可用: models/kokoro-onnx 目录缺失. "
+                f"请先运行: python scripts/download_kokoro_model.py"
             )
-            output_file.touch()
-            logger.warning(
-                f"⚠️ Kokoro models not available - returning MOCK audio: {output_file.name}"
-            )
-            return True, f"MOCK模式合成 (模型缺失): {output_file.name}", output_file
 
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -613,9 +606,7 @@ class VoiceCloningEngine:
         except Exception as e:
             error_msg = f"语音合成失败: {str(e)}"
             logger.error(f"❌ {error_msg}")
-            # 回退到 mock 模式
-            output_file.touch()
-            return False, f"{error_msg} (使用 Mock 模式)", output_file
+            raise RuntimeError(error_msg) from e
 
     async def _do_synthesize(
         self,

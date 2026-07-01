@@ -8,6 +8,7 @@ Audiobook Studio — 本地声音克隆系统
 import hashlib
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -366,6 +367,84 @@ class VoiceCloningManager:
         else:
             return AudioQuality.POOR
 
+    def _synthesize_with_kokoro(
+        self,
+        text: str,
+        speaker_id: str,
+        language: str,
+        emotion: str,
+        output_path: Path,
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """使用 kokoro-onnx 进行真实语音合成"""
+        try:
+            import asyncio
+
+            from ..tts.kokoro_backend import KokoroBackend
+
+            # Map language to kokoro voice format
+            # For voice cloning, we use the speaker embedding directly
+            voice_print = self.voice_prints[speaker_id]
+
+            # Determine kokoro voice based on language
+            # Note: kokoro-onnx uses preset voices, for cloning we pass reference_audio
+            kokoro_voice_map = {
+                "zh-CN": "zf_xiaobei",
+                "en-US": "af_bella",
+                "es-ES": "ef_dora",
+                "fr-FR": "ff_siwis",
+                "ja-JP": "jf_alpha",
+                "ko-KR": "kf_alpha",
+            }
+            default_voice = kokoro_voice_map.get(language, "af_bella")
+
+            async def _synthesize():
+                kokoro = KokoroBackend(model_path=self.config.model_path)
+                await kokoro.initialize()
+
+                # Try to use a reference audio file from the samples
+                reference_audio = None
+                samples = self.voice_samples.get(speaker_id, [])
+                if samples:
+                    # Use the first valid sample as reference
+                    for sample in samples:
+                        if sample.file_path.exists():
+                            reference_audio = str(sample.file_path)
+                            break
+
+                result = await kokoro.synthesize(
+                    text=text,
+                    voice_id=default_voice,
+                    output_path=output_path,
+                    prosody={
+                        "rate": 1.0,
+                        "pitch": 0.0,
+                    },
+                    reference_audio=reference_audio,
+                )
+                await kokoro.cleanup()
+                return result.duration_ms
+
+            duration_ms = asyncio.run(_synthesize())
+
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return (
+                    True,
+                    f"语音合成成功: {output_path.name} ({duration_ms}ms)",
+                    output_path,
+                )
+            else:
+                return False, f"合成失败: 输出文件为空", None
+
+        except ImportError as e:
+            logger.warning(f"onnxruntime/kokoro-onnx 未安装: {e}")
+            return False, "依赖缺失", None
+        except FileNotFoundError as e:
+            logger.warning(f"Kokoro 模型文件未找到: {e}")
+            return False, "模型文件缺失", None
+        except Exception as e:
+            logger.error(f"Kokoro 语音合成失败: {e}")
+            return False, f"合成失败: {e}", None
+
     def synthesize_speech(
         self,
         text: str,
@@ -377,7 +456,7 @@ class VoiceCloningManager:
         使用克隆的声音合成语音
 
         Returns:
-            (是否成功, 消息, 输入音频文件路径)
+            (是否成功, 消息, 输出音频文件路径)
         """
         if speaker_id not in self.voice_prints:
             return False, f"找不到说话人 {speaker_id} 的声音指纹", None
@@ -392,9 +471,7 @@ class VoiceCloningManager:
                 None,
             )
 
-        # 在实际实现中，这里 zou 调用 kokoro-onnx 进行语音合成
-        # 为演示目的，我们模拟这个过程
-
+        # 创建输出目录
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -402,18 +479,21 @@ class VoiceCloningManager:
         text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
         output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
 
-        # 模拟合成过程
-        try:
-            # 这里 zou 是实际的 TTS 调用
-            # 例如: kokoro.synthesize(text, voice=voice_print.embedding, language=language, emotion=emotion)
+        # 尝试使用 kokoro-onnx 进行真实合成
+        success, message, audio_file = self._synthesize_with_kokoro(
+            text=text,
+            speaker_id=speaker_id,
+            language=language,
+            emotion=emotion,
+            output_path=output_file,
+        )
 
-            # 为演示创建一个空的音频文件
-            output_file.touch()
+        if success:
+            return True, message, audio_file
 
-            return True, f"语音合成成功: {output_file.name}", output_file
-
-        except Exception as e:
-            return False, f"语音合成失败: {str(e)}", None
+        # 如果失败，抛出明确异常
+        logger.error(f"Kokoro 合成失败: {message}")
+        raise RuntimeError(f"语音合成失败: {message}")
 
     def get_voice_info(self, speaker_id: str) -> Optional[Dict]:
         """获取说话人的声音信息"""

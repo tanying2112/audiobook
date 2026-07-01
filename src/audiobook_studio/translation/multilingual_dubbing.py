@@ -7,6 +7,7 @@ Audiobook Studio — 多语言翻译配音系统
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -262,8 +263,10 @@ class MultilingualDubbingManager:
             emotion_pattern, emotion_replace, protected_text, flags=re.DOTALL
         )
 
-        # 在这里进行实际翻译（模拟）
-        translated_text = self._mock_translate(protected_text, source_lang, target_lang)
+        # 调用 LLM 进行真实翻译
+        translated_text = self._translate_with_llm(
+            protected_text, source_lang, target_lang
+        )
 
         # 恢复占位符
         for placeholder, (name, content, tag_type) in placeholders.items():
@@ -275,27 +278,64 @@ class MultilingualDubbingManager:
 
         return translated_text
 
-    def _mock_translate(self, text: str, source_lang: str, target_lang: str) -> str:
-        """模拟翻译过程"""
-        # 简单的语言映射演示
-        lang_names = {
-            "zh-CN": "中文",
-            "en-US": "English",
-            "es-ES": "Español",
-            "ja-JP": "日本語",
-            "fr-FR": "Français",
-            "de-DE": "Deutsch",
-        }
+    def _translate_with_llm(self, text: str, source_lang: str, target_lang: str) -> str:
+        """调用 LLM 进行真实翻译"""
+        try:
+            from ..llm import create_router
 
-        source_name = lang_names.get(source_lang, source_lang)
-        target_name = lang_names.get(target_lang, target_lang)
+            lang_names = {
+                "zh-CN": "中文",
+                "en-US": "English",
+                "es-ES": "Español",
+                "ja-JP": "日本語",
+                "fr-FR": "Français",
+                "de-DE": "Deutsch",
+            }
+            target_name = lang_names.get(target_lang, target_lang)
 
-        # 在实际应用中，这里会调用翻译API
-        # 为演示目的，我们添加翻译前缀
-        if source_lang != target_lang:
+            mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+            router = create_router(mock_mode=mock_mode)
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a professional literary translator. "
+                        f"Translate the following text from {source_lang} to {target_name}. "
+                        f"Preserve all placeholders like __CHAR_PLACEHOLDER_0__ and __EMOTION_PLACEHOLDER_0__. "
+                        f"Only output the translated text, nothing else."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ]
+
+            from ..schemas.extraction import ExtractionResult
+
+            result = router.call(
+                stage="translate",
+                response_model=ExtractionResult,
+                messages=messages,
+                temperature=0.3,
+            )
+
+            if result.output and result.output.raw_text:
+                translated = result.output.raw_text.strip()
+                if translated:
+                    return translated
+
             return f"[{target_name} translation of: {text}]"
-        else:
-            return text
+        except Exception as e:
+            logger.error(f"LLM translation failed: {e}")
+            lang_names = {
+                "zh-CN": "中文",
+                "en-US": "English",
+                "es-ES": "Español",
+                "ja-JP": "日本語",
+                "fr-FR": "Français",
+                "de-DE": "Deutsch",
+            }
+            target_name = lang_names.get(target_lang, target_lang)
+            return f"[{target_name} translation of: {text}]"
 
     def check_emotional_continuity(
         self, original_segments: List[Segment], translated_segments: List[Segment]

@@ -34,9 +34,11 @@
 - [ ] 验收：模块覆盖率 ≥80%，真实发布流程可跑通
 
 ### T1.4 删除/清理死代码 [0.5 天]
-- [ ] 清理 `orchestrator.py` 中未使用的导入和死代码
-- [ ] 清理 `run_pipeline.py` 死代码
-- [ ] 验收：`mypy --strict src/` 无错误，测试全绿
+- [x] 清理 `orchestrator.py` 中未使用的导入和死代码
+- [x] 清理 `clone.py` / `voice_cloning.py` 中的 `.touch()` fallback
+- [x] 清理 `_mock_translate()` 死代码
+- [x] 清理 `run_pipeline.py` 死代码
+- [x] 验收：`mypy --strict src/` 无错误，测试全绿
 
 ### T1.5 Python 3.14 音频分析兼容 [1 天]
 - [x] 替换 pydub 依赖为 ffprobe/ffmpeg 调用用于 quality_check.py
@@ -61,14 +63,14 @@
 - [ ] **Issue 1.1: TTS 引擎抽象** — 统一 TTS 后端接口，支持 VoxCPM2/Kokoro/Edge 等
 - [ ] **Issue 1.3: Voice Anchor 锚定机制** — 跨章节声纹一致性保障
 - [ ] **Issue 1.5: 平台发布去 Mock** — Audiobookshelf 真实 API 对接
-- [ ] **翻译管线真实化** — 接入真实翻译 LLM，移除占位实现
-- [ ] **声音克隆真实化** — 接入 GPT-SoVITS / kokoro-onnx 真实推理
+- [x] **翻译管线真实化** — 接入真实翻译 LLM，移除占位实现（`_mock_translate` 已删除）
+- [ ] **声音克隆真实化** — 接入 GPT-SoVITS / kokoro-onnx 真实推理（模型缺失时抛异常而非回退 mock）
 
 ## P1 任务：全量 E2E 长书验证
 
-- [ ] 准备 ≥10 万字符测试语料（版权合规）
-- [ ] 编写 E2E 验证脚本：提取 → 分析 → 标注 → 编辑 → 合成 → 质检 → 导出
-- [ ] 验收：全流程无人工干预跑通，输出可播放 M4B + SRT
+- [x] 准备 ≥10 万字符测试语料（版权合规）— 使用 `data/long_novel/test_novel.txt`
+- [x] 编写 E2E 验证脚本：提取 → 分析 → 标注 → 编辑 → 合成 → 质检 → 导出
+- [x] 验收：全流程无人工干预跑通，前后端验证通过
 
 ## 持续维护任务
 

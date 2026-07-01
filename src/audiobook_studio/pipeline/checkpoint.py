@@ -95,6 +95,10 @@ class CheckpointManager:
         """Check if a stage has been completed for a chapter."""
         return stage in self._chapter(chapter_index).get("stages_done", [])
 
+    def has_checkpoint(self, stage: str, chapter_index: int = 1) -> bool:
+        """Alias for is_stage_done for backward compatibility."""
+        return self.is_stage_done(stage, chapter_index)
+
     def mark_stage_done(self, stage: str, chapter_index: int) -> None:
         """Mark a pipeline stage as completed for a chapter."""
         ch = self._chapter(chapter_index)
