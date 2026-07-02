@@ -41,9 +41,7 @@ class TestPRAutomationHelpers:
             result = _run_command(["echo", "hello"])
             assert result.returncode == 0
             assert result.stdout == "success"
-            mock_run.assert_called_once_with(
-                ["echo", "hello"], cwd=None, capture_output=True, text=True
-            )
+            mock_run.assert_called_once_with(["echo", "hello"], cwd=None, capture_output=True, text=True)
 
     def test_run_command_failure(self):
         with patch("subprocess.run") as mock_run:
@@ -150,8 +148,10 @@ class TestPRAutomationHelpers:
             assert result == []
 
     def test_create_pr_branch_success(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation._get_git_repo_root") as mock_root:
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation._get_git_repo_root") as mock_root,
+        ):
             mock_root.return_value = Path("/tmp/repo")
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
@@ -168,8 +168,10 @@ class TestPRAutomationHelpers:
             assert mock_run.call_count >= 2
 
     def test_create_pr_branch_failure(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation._get_git_repo_root") as mock_root:
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation._get_git_repo_root") as mock_root,
+        ):
             mock_root.return_value = Path("/tmp/repo")
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 1
@@ -180,8 +182,10 @@ class TestPRAutomationHelpers:
                 _create_pr_branch("main", "edit_for_tts", 2)
 
     def test_commit_prompt_changes_success(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("pathlib.Path.exists", return_value=True):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
             mock_run.return_value = mock_result
@@ -199,8 +203,10 @@ class TestPRAutomationHelpers:
             assert result is False
 
     def test_commit_prompt_changes_add_failure(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("pathlib.Path.exists", return_value=True):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             # First call (git add) fails, so commit won't be reached
             mock_result_add = MagicMock(spec=subprocess.CompletedProcess)
             mock_result_add.returncode = 1
@@ -211,8 +217,10 @@ class TestPRAutomationHelpers:
             assert result is False
 
     def test_commit_prompt_changes_commit_failure(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("pathlib.Path.exists", return_value=True):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             # First call (git add) succeeds, second call (git add) succeeds, third call (git commit) fails
             mock_result_success = MagicMock(spec=subprocess.CompletedProcess)
             mock_result_success.returncode = 0
@@ -269,9 +277,11 @@ class TestPRAutomationHelpers:
             assert result.error == "gh failed"
 
     def test_wait_for_ci_checks_timeout(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt, \
-             patch("time.sleep"):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
+            patch("time.sleep"),
+        ):
             # Simulate timeout by making datetime.now() always return a time before timeout
             mock_now = MagicMock()
             mock_now.timestamp.return_value = 1000.0
@@ -280,16 +290,18 @@ class TestPRAutomationHelpers:
 
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
-            mock_result.stdout = '[]'  # no checks
+            mock_result.stdout = "[]"  # no checks
             mock_run.return_value = mock_result
 
             result = _wait_for_ci_checks(123, timeout_seconds=1, poll_interval=1)
             assert result is False  # timed out
 
     def test_wait_for_ci_checks_success(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt, \
-             patch("time.sleep"):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
+            patch("time.sleep"),
+        ):
             # First call returns incomplete checks, second call returns completed and passed
             mock_result1 = MagicMock(spec=subprocess.CompletedProcess)
             mock_result1.returncode = 0
@@ -310,9 +322,11 @@ class TestPRAutomationHelpers:
             assert result is True
 
     def test_wait_for_ci_checks_failure(self):
-        with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt, \
-             patch("time.sleep"):
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
+            patch("time.sleep"),
+        ):
             # First call returns incomplete then completed but failed
             mock_result1 = MagicMock(spec=subprocess.CompletedProcess)
             mock_result1.returncode = 0
@@ -385,9 +399,9 @@ class TestPRAutomationHelpers:
         with patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run:
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
-            mock_result.stdout = '''[
+            mock_result.stdout = """[
                 {"number": 1, "title": "Test PR", "headRefName": "test-branch", "createdAt": "2023-01-01T00:00:00Z", "labels": [{"name": "prompt-upgrade"}]}
-            ]'''
+            ]"""
             mock_run.return_value = mock_result
 
             result = list_open_prompt_prs()
@@ -414,14 +428,13 @@ class TestPRAutomationHelpers:
                 mock_run.assert_not_called()
 
     def test_close_stale_prompt_prs_with_stale(self):
-        with patch("src.audiobook_studio.feedback.pr_automation.list_open_prompt_prs") as mock_list, \
-             patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run, \
-             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt:
+        with (
+            patch("src.audiobook_studio.feedback.pr_automation.list_open_prompt_prs") as mock_list,
+            patch("src.audiobook_studio.feedback.pr_automation._run_command") as mock_run,
+            patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
+        ):
             # Mock one stale PR (created 10 days ago)
-            mock_list.return_value = [{
-                "number": 123,
-                "createdAt": "2023-01-01T00:00:00Z"  # old date
-            }]
+            mock_list.return_value = [{"number": 123, "createdAt": "2023-01-01T00:00:00Z"}]  # old date
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
             mock_run.return_value = mock_result
@@ -453,10 +466,7 @@ class TestPRAutomationIntegration:
         mock_commit.return_value = True
         mock_push.return_value = True
         mock_create_pr_func.return_value = PRResult(
-            success=True,
-            pr_number=123,
-            pr_url="https://github.com/user/repo/pull/123",
-            branch_name="test-branch"
+            success=True, pr_number=123, pr_url="https://github.com/user/repo/pull/123", branch_name="test-branch"
         )
 
         result = create_prompt_upgrade_pr("edit_for_tts", 2)

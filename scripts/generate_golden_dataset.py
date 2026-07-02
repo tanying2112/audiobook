@@ -132,14 +132,8 @@ class ChapterSource(BaseModel):
     def verification_rate(self) -> float:
         return self.verified_paragraphs / max(self.total_paragraphs, 1)
 
-    def get_golden_samples(
-        self, min_quality: float = 0.8
-    ) -> List[ChapterSourceParagraph]:
-        return [
-            p
-            for p in self.paragraphs
-            if p.quality_score >= min_quality and p.human_verified
-        ]
+    def get_golden_samples(self, min_quality: float = 0.8) -> List[ChapterSourceParagraph]:
+        return [p for p in self.paragraphs if p.quality_score >= min_quality and p.human_verified]
 
 
 class ChapterSourceCollection(BaseModel):
@@ -173,9 +167,7 @@ def parse_chapters(text: str) -> List[dict]:
     return chapters
 
 
-def create_annotations(
-    chapter_idx: int, paragraphs: List[str]
-) -> List[ParagraphAnnotation]:
+def create_annotations(chapter_idx: int, paragraphs: List[str]) -> List[ParagraphAnnotation]:
     """Create paragraph annotations for a chapter."""
     annotations = []
 
@@ -239,14 +231,8 @@ def create_annotations(
                 pause_after_ms=500,
                 confidence=0.9 if not is_dialogue else 0.85,
                 difficulty="B",
-                needs_sfx=(
-                    "海" in text or "风" in text or "雷" in text or "雨" in text
-                ),
-                sfx_tags=(
-                    ["ambient"]
-                    if ("海" in text or "风" in text or "雷" in text or "雨" in text)
-                    else []
-                ),
+                needs_sfx=("海" in text or "风" in text or "雷" in text or "雨" in text),
+                sfx_tags=(["ambient"] if ("海" in text or "风" in text or "雷" in text or "雨" in text) else []),
                 notes="",
             )
         )
@@ -363,9 +349,7 @@ def main():
                 intensity=0.5,
                 notes="王子诞生与成长",
             ),
-            EmotionSnapshot(
-                chapter=2, dominant_emotion="tense", intensity=0.8, notes="多重危机爆发"
-            ),
+            EmotionSnapshot(chapter=2, dominant_emotion="tense", intensity=0.8, notes="多重危机爆发"),
             EmotionSnapshot(
                 chapter=3,
                 dominant_emotion="tense",
@@ -384,9 +368,7 @@ def main():
                 intensity=0.6,
                 notes="海盗问题根源分析",
             ),
-            EmotionSnapshot(
-                chapter=6, dominant_emotion="happy", intensity=0.7, notes="农业改革成果"
-            ),
+            EmotionSnapshot(chapter=6, dominant_emotion="happy", intensity=0.7, notes="农业改革成果"),
             EmotionSnapshot(
                 chapter=7,
                 dominant_emotion="tender",
@@ -402,9 +384,7 @@ def main():
             book_meta=book_meta,
             character_voice_map=character_voice_map,
             emotion_snapshot=(
-                emotion_snapshots[ch_idx - 1]
-                if ch_idx <= len(emotion_snapshots)
-                else emotion_snapshots[-1]
+                emotion_snapshots[ch_idx - 1] if ch_idx <= len(emotion_snapshots) else emotion_snapshots[-1]
             ),
             story_line_summary="年轻国王 Alexander 在多重危机爆发之际登基，面对北方雪狼部落入侵、南方海盗劫掠、宫廷保守派倒逼等内外交困的严峻局面，他没有选择武力对抗，而是以智慧与仁爱为指导，通过谈判、调查、改革等一系列组合拳，逐一化解危机：建立宫廷联合委员会化解内部矛盾，派遣无武装使团与雪狼部落和谈，实施渔业复兴计划安置海盗，启动国土绿化行动振兴农业，兴建国家图书馆与综合大学提升文化软实力。二十年治世后，他将治国心得系统传授，确立以理解为基、以仁爱为根、以长远利益为指南针的治国传统，这一传统在其逝世后三十年依然指引新一代领导人化解内部挑战，成为王国永续发展的精神基石。",
             global_style_notes="第三人称全知视角，夹叙夹议，中西文混排，包含历史感与哲理思考。",
@@ -435,18 +415,12 @@ def main():
 
     for ch in chapter_sources:
         ch_file = output_dir / f"chapter_{ch.chapter_index:02d}.json"
-        ch_file.write_text(
-            ch.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        ch_file.write_text(ch.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8")
 
     collection_file = Path("data/golden/hongloumeng/collection.json")
-    collection_file.write_text(
-        collection.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    collection_file.write_text(collection.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8")
 
-    print(
-        f"\nGenerated {len(chapter_sources)} chapters, {len(all_paragraphs)} total paragraphs"
-    )
+    print(f"\nGenerated {len(chapter_sources)} chapters, {len(all_paragraphs)} total paragraphs")
     print(f"Collection saved to {collection_file}")
 
 

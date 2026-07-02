@@ -9,16 +9,8 @@ import numpy as np
 import pytest
 
 from src.audiobook_studio.monitoring import record_stage_performance
-from src.audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    QualityCheckPipeline,
-    quality_check,
-)
-from src.audiobook_studio.schemas import (
-    ParagraphAnnotation,
-    QualityJudgment,
-    TtsRoutingDecision,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
+from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 
 
 class TestQualityCheckPipeline:
@@ -28,9 +20,7 @@ class TestQualityCheckPipeline:
         """Setup test fixtures."""
         self.mock_router = Mock()
         self.mock_judge = Mock()
-        self.pipeline = QualityCheckPipeline(
-            router=self.mock_router, judge=self.mock_judge, mock_mode=True
-        )
+        self.pipeline = QualityCheckPipeline(router=self.mock_router, judge=self.mock_judge, mock_mode=True)
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
@@ -49,9 +39,7 @@ class TestQualityCheckPipeline:
 
     def test_init_custom_params(self):
         """Test pipeline initialization with custom parameters."""
-        pipeline = QualityCheckPipeline(
-            router=self.mock_router, judge=self.mock_judge, mock_mode=False
-        )
+        pipeline = QualityCheckPipeline(router=self.mock_router, judge=self.mock_judge, mock_mode=False)
         assert pipeline.router == self.mock_router
         assert pipeline.judge == self.mock_judge
         assert not pipeline.mock_mode
@@ -77,9 +65,7 @@ class TestQualityCheckPipeline:
         audio_path = "/fake/path.mp3"
         expected_duration_ms = 3000
 
-        result = self.pipeline._analyze_audio_rules(
-            Path(audio_path), expected_duration_ms
-        )
+        result = self.pipeline._analyze_audio_rules(Path(audio_path), expected_duration_ms)
 
         assert isinstance(result, AudioAnalysisResult)
         assert result.duration_ms == expected_duration_ms
@@ -257,9 +243,7 @@ class TestQualityCheckPipeline:
         )
 
         # Patch the _analyze_audio_rules method to return our analysis with clipping
-        with patch.object(
-            self.pipeline, "_analyze_audio_rules", return_value=analysis_with_clipping
-        ):
+        with patch.object(self.pipeline, "_analyze_audio_rules", return_value=analysis_with_clipping):
             # Create test inputs
             audio_path = "/fake/path.mp3"
             annotation = ParagraphAnnotation(
@@ -301,10 +285,7 @@ class TestQualityCheckPipeline:
 
             # Should have fix suggestions
             assert len(judgment.fix_suggestions) > 0
-            assert any(
-                "重新合成以修复音频质量问题" in s.suggested_value
-                for s in judgment.fix_suggestions
-            )
+            assert any("重新合成以修复音频质量问题" in s.suggested_value for s in judgment.fix_suggestions)
 
     def test_run_with_silence_issue_triggers_regeneration(self):
         """Test that silence issues can trigger regeneration."""
@@ -337,9 +318,7 @@ class TestQualityCheckPipeline:
         )
 
         # Patch the _analyze_audio_rules method
-        with patch.object(
-            self.pipeline, "_analyze_audio_rules", return_value=analysis_with_silence
-        ):
+        with patch.object(self.pipeline, "_analyze_audio_rules", return_value=analysis_with_silence):
             # Create test inputs
             audio_path = "/fake/path.mp3"
             annotation = ParagraphAnnotation(
@@ -462,9 +441,7 @@ class TestQualityCheckNonMockPaths:
         """Setup test fixtures with real (non-mock) pipeline."""
         self.mock_router = Mock()
         self.mock_judge = Mock()
-        self.pipeline = QualityCheckPipeline(
-            router=self.mock_router, judge=self.mock_judge, mock_mode=False
-        )
+        self.pipeline = QualityCheckPipeline(router=self.mock_router, judge=self.mock_judge, mock_mode=False)
 
     def test_analyze_audio_rules_mock_mode(self):
         """Test _analyze_audio_rules in mock mode."""
@@ -497,58 +474,39 @@ class TestQualityCheckNonMockPaths:
     def test_get_threshold_none_config(self):
         """Test _get_threshold with None config."""
         self.pipeline.quality_thresholds = None
-        assert (
-            self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0)
-            == -40.0
-        )
+        assert self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0) == -40.0
 
     def test_get_threshold_non_dict_value(self):
         """Test _get_threshold when intermediate value is not a dict."""
         self.pipeline.quality_thresholds = {"audio": "not_a_dict"}
-        assert (
-            self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0)
-            == -40.0
-        )
+        assert self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0) == -40.0
 
     def test_get_threshold_missing_key(self):
         """Test _get_threshold when key is missing."""
         self.pipeline.quality_thresholds = {"audio": {"other_key": 123}}
-        assert (
-            self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0)
-            == -40.0
-        )
+        assert self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0) == -40.0
 
     def test_get_threshold_valid(self):
         """Test _get_threshold with valid nested path."""
         self.pipeline.quality_thresholds = {"audio": {"silence_threshold_db": -35.0}}
-        assert (
-            self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0)
-            == -35.0
-        )
+        assert self.pipeline._get_threshold("audio", "silence_threshold_db", default=-40.0) == -35.0
 
     def test_reload_config_if_changed(self):
         """Test hot-reload config."""
-        with patch(
-            "src.audiobook_studio.config.loader.reload_config_if_changed"
-        ) as mock_reload:
+        with patch("src.audiobook_studio.config.loader.reload_config_if_changed") as mock_reload:
             mock_reload.return_value = (
                 {"audio": {"silence_threshold_db": -35.0}},
                 123456.0,
             )
             self.pipeline._reload_config_if_changed()
-            assert (
-                self.pipeline.quality_thresholds["audio"]["silence_threshold_db"]
-                == -35.0
-            )
+            assert self.pipeline.quality_thresholds["audio"]["silence_threshold_db"] == -35.0
             assert self.pipeline._last_config_modified == 123456.0
 
     @patch("src.audiobook_studio.pipeline.quality_check.get_duration_sync")
     @patch("src.audiobook_studio.pipeline.quality_check.detect_silence_sync")
     @patch("src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync")
     @patch("src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync")
-    def test_analyze_with_ffprobe_success(
-        self, mock_read_pcm, mock_get_rms, mock_detect_silence, mock_get_duration
-    ):
+    def test_analyze_with_ffprobe_success(self, mock_read_pcm, mock_get_rms, mock_detect_silence, mock_get_duration):
         """Test successful ffprobe audio analysis path using utility functions."""
         # Mock utility function returns
         mock_get_duration.return_value = 4000
@@ -647,19 +605,13 @@ class TestQualityCheckNonMockPaths:
                     "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync",
                     return_value=(-20.0, -3.0),
                 ):
-                    with patch(
-                        "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync"
-                    ) as mock_read_pcm:
+                    with patch("src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync") as mock_read_pcm:
                         # Create mock PCM samples with enough clipping (> 10% threshold from config)
                         mock_samples = np.zeros(10000, dtype=np.float32)
-                        mock_samples[:1100] = (
-                            1.0  # 1100 clipped samples = 11% > 10% threshold
-                        )
+                        mock_samples[:1100] = 1.0  # 1100 clipped samples = 11% > 10% threshold
                         mock_read_pcm.return_value = mock_samples
 
-                        result = self.pipeline._analyze_with_ffprobe(
-                            Path("/fake/audio.mp3"), 3000
-                        )
+                        result = self.pipeline._analyze_with_ffprobe(Path("/fake/audio.mp3"), 3000)
 
                         assert result.has_clipping is True
                         assert "clipping" in " ".join(result.issues)

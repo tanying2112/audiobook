@@ -36,18 +36,12 @@ def get_quality(quality_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{quality_id}", response_model=QualitySchema)
-def update_quality(
-    quality_id: int, payload: QualitySchema, db: Session = Depends(get_db)
-):
+def update_quality(quality_id: int, payload: QualitySchema, db: Session = Depends(get_db)):
     i = db.query(Quality).filter(Quality.id == quality_id).first()
     if not i:
         raise HTTPException(status_code=404, detail="Quality not found")
     # Exclude id and foreign key from update
-    update_data = {
-        k: v
-        for k, v in payload.model_dump().items()
-        if k not in ("id", "tts_edit_id") and v is not None
-    }
+    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id", "tts_edit_id") and v is not None}
     for field, value in update_data.items():
         setattr(i, field, value)
     db.commit()

@@ -59,16 +59,13 @@ class SemanticCritic(BaseCritic):
         context: Optional[Dict[str, Any]] = None,
     ) -> CriticResult:
         """评估语义质量."""
-        prompt = self._build_prompt(
-            audio_path, annotation, routing_decision, reference_text, context
-        )
+        prompt = self._build_prompt(audio_path, annotation, routing_decision, reference_text, context)
 
         messages = [
             {
                 "role": "system",
                 "content": self._build_base_prompt(
-                    "评估音频的语义质量：语义连贯性、情感一致性、角色声音指纹。"
-                    "输出严格符合 CriticResult JSON 结构。"
+                    "评估音频的语义质量：语义连贯性、情感一致性、角色声音指纹。" "输出严格符合 CriticResult JSON 结构。"
                 ),
             },
             {"role": "user", "content": prompt},
@@ -123,9 +120,7 @@ class SemanticCritic(BaseCritic):
             for char in context["character_profiles"]:
                 char_voice_profile[char.get("canonical_name", "")] = {
                     "voice_id": char.get("suggested_voice_id", ""),
-                    "description": char.get(
-                        "语音描述", char.get("voice_description", "")
-                    ),
+                    "description": char.get("语音描述", char.get("voice_description", "")),
                     "gender": char.get("gender", ""),
                     "age_group": char.get("age_group", ""),
                 }

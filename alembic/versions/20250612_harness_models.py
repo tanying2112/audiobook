@@ -7,9 +7,8 @@ along with supporting tables for version tracking and backward compatibility.
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import sqlite
-
 from alembic import op
+from sqlalchemy.dialects import sqlite
 
 # revision identifiers, used by Alembic.
 revision = "20250612_harness_models"
@@ -38,12 +37,8 @@ def upgrade() -> None:
         sa.Column("current_stage", sa.String(), nullable=True),
         sa.Column("progress", sa.Float(), nullable=False, server_default="0.0"),
         sa.Column("total_cost_usd", sa.Float(), nullable=False, server_default="0.0"),
-        sa.Column(
-            "cost_limit_per_book", sa.Float(), nullable=False, server_default="20.0"
-        ),
-        sa.Column(
-            "cost_limit_per_chapter", sa.Float(), nullable=False, server_default="5.0"
-        ),
+        sa.Column("cost_limit_per_book", sa.Float(), nullable=False, server_default="20.0"),
+        sa.Column("cost_limit_per_chapter", sa.Float(), nullable=False, server_default="5.0"),
         sa.Column("created_at", sa.String(), nullable=True),
         sa.Column("updated_at", sa.String(), nullable=True),
         sa.Column("completed_at", sa.String(), nullable=True),
@@ -67,25 +62,13 @@ def upgrade() -> None:
         sa.Column("annotated_json", sqlite.JSON(), nullable=True),
         sa.Column("edited_json", sqlite.JSON(), nullable=True),
         sa.Column("status", sa.String(), nullable=False, server_default="pending"),
-        sa.Column(
-            "extract_status", sa.String(), nullable=False, server_default="pending"
-        ),
-        sa.Column(
-            "analyze_status", sa.String(), nullable=False, server_default="pending"
-        ),
-        sa.Column(
-            "annotate_status", sa.String(), nullable=False, server_default="pending"
-        ),
+        sa.Column("extract_status", sa.String(), nullable=False, server_default="pending"),
+        sa.Column("analyze_status", sa.String(), nullable=False, server_default="pending"),
+        sa.Column("annotate_status", sa.String(), nullable=False, server_default="pending"),
         sa.Column("edit_status", sa.String(), nullable=False, server_default="pending"),
-        sa.Column(
-            "route_status", sa.String(), nullable=False, server_default="pending"
-        ),
-        sa.Column(
-            "synthesize_status", sa.String(), nullable=False, server_default="pending"
-        ),
-        sa.Column(
-            "quality_status", sa.String(), nullable=False, server_default="pending"
-        ),
+        sa.Column("route_status", sa.String(), nullable=False, server_default="pending"),
+        sa.Column("synthesize_status", sa.String(), nullable=False, server_default="pending"),
+        sa.Column("quality_status", sa.String(), nullable=False, server_default="pending"),
         sa.Column("cost_usd", sa.Float(), nullable=False, server_default="0.0"),
         sa.Column("token_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("tts_chars", sa.Integer(), nullable=False, server_default="0"),
@@ -254,9 +237,7 @@ def upgrade() -> None:
     op.create_table(
         "legacy_paragraphs",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column(
-            "book_id", sa.Integer(), sa.ForeignKey("legacy_books.id"), nullable=False
-        ),
+        sa.Column("book_id", sa.Integer(), sa.ForeignKey("legacy_books.id"), nullable=False),
         sa.Column("index", sa.Integer(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("speaker", sa.String(), nullable=True),
@@ -305,54 +286,28 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("project_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("chapter_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("chapter_index", sa.Integer(), nullable=True))
-        batch_op.add_column(
-            sa.Column("speaker_canonical_name", sa.String(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("is_dialogue", sa.Boolean(), nullable=False, server_default="0")
-        )
+        batch_op.add_column(sa.Column("speaker_canonical_name", sa.String(), nullable=True))
+        batch_op.add_column(sa.Column("is_dialogue", sa.Boolean(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("emotion", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("emotion_intensity", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("speech_rate", sa.Float(), nullable=True))
-        batch_op.add_column(
-            sa.Column("pitch_shift_semitones", sa.Integer(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("needs_sfx", sa.Boolean(), nullable=False, server_default="0")
-        )
+        batch_op.add_column(sa.Column("pitch_shift_semitones", sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column("needs_sfx", sa.Boolean(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("sfx_tags", sqlite.JSON(), nullable=True))
-        batch_op.add_column(
-            sa.Column(
-                "pause_before_ms", sa.Integer(), nullable=False, server_default="0"
-            )
-        )
-        batch_op.add_column(
-            sa.Column(
-                "pause_after_ms", sa.Integer(), nullable=False, server_default="0"
-            )
-        )
+        batch_op.add_column(sa.Column("pause_before_ms", sa.Integer(), nullable=False, server_default="0"))
+        batch_op.add_column(sa.Column("pause_after_ms", sa.Integer(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("confidence", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("notes", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("edited_text", sa.Text(), nullable=True))
-        batch_op.add_column(
-            sa.Column("edit_changes_made", sqlite.JSON(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("edit_forbidden_removed", sqlite.JSON(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("edit_changes_made", sqlite.JSON(), nullable=True))
+        batch_op.add_column(sa.Column("edit_forbidden_removed", sqlite.JSON(), nullable=True))
         batch_op.add_column(sa.Column("edit_confidence", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("edit_rationale", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("edit_difficulty", sa.String(1), nullable=True))
-        batch_op.add_column(
-            sa.Column(
-                "edit_forbid_edit", sa.Boolean(), nullable=False, server_default="0"
-            )
-        )
+        batch_op.add_column(sa.Column("edit_forbid_edit", sa.Boolean(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("routing_engine", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("routing_voice_id", sa.String(), nullable=True))
-        batch_op.add_column(
-            sa.Column("routing_prosody_overrides", sqlite.JSON(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("routing_prosody_overrides", sqlite.JSON(), nullable=True))
         batch_op.add_column(sa.Column("routing_fallback", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("routing_reasoning", sa.Text(), nullable=True))
         batch_op.add_column(
@@ -371,25 +326,13 @@ def upgrade() -> None:
                 server_default="0",
             )
         )
-        batch_op.add_column(
-            sa.Column("quality_speaker_clarity", sa.Float(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("quality_emotion_match", sa.Float(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("quality_prosody_naturalness", sa.Float(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("quality_text_audio_alignment", sa.Float(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("quality_overall_score", sa.Float(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("quality_speaker_clarity", sa.Float(), nullable=True))
+        batch_op.add_column(sa.Column("quality_emotion_match", sa.Float(), nullable=True))
+        batch_op.add_column(sa.Column("quality_prosody_naturalness", sa.Float(), nullable=True))
+        batch_op.add_column(sa.Column("quality_text_audio_alignment", sa.Float(), nullable=True))
+        batch_op.add_column(sa.Column("quality_overall_score", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("quality_issues", sqlite.JSON(), nullable=True))
-        batch_op.add_column(
-            sa.Column("quality_fix_suggestions", sqlite.JSON(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("quality_fix_suggestions", sqlite.JSON(), nullable=True))
         batch_op.add_column(
             sa.Column(
                 "quality_needs_regeneration",
@@ -399,9 +342,7 @@ def upgrade() -> None:
             )
         )
         batch_op.add_column(sa.Column("audio_segment_id", sa.Integer(), nullable=True))
-        batch_op.add_column(
-            sa.Column("status", sa.String(), nullable=False, server_default="pending")
-        )
+        batch_op.add_column(sa.Column("status", sa.String(), nullable=False, server_default="pending"))
         batch_op.create_foreign_key(
             "fk_paragraphs_project",
             "projects",
@@ -428,19 +369,13 @@ def upgrade() -> None:
     with op.batch_alter_table("tts_edits") as batch_op:
         batch_op.add_column(sa.Column("project_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("chapter_id", sa.Integer(), nullable=True))
-        batch_op.add_column(
-            sa.Column("version", sa.Integer(), nullable=False, server_default="1")
-        )
+        batch_op.add_column(sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
         batch_op.add_column(sa.Column("changes_made", sqlite.JSON(), nullable=True))
-        batch_op.add_column(
-            sa.Column("forbidden_content_removed", sqlite.JSON(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("forbidden_content_removed", sqlite.JSON(), nullable=True))
         batch_op.add_column(sa.Column("confidence", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("rationale", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("difficulty", sa.String(1), nullable=True))
-        batch_op.add_column(
-            sa.Column("forbid_edit", sa.Boolean(), nullable=False, server_default="0")
-        )
+        batch_op.add_column(sa.Column("forbid_edit", sa.Boolean(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("source", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("llm_model", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("prompt_version", sa.String(), nullable=True))
@@ -466,16 +401,10 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("chapter_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("engine_choice", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("voice_id", sa.String(), nullable=True))
-        batch_op.add_column(
-            sa.Column("prosody_overrides", sqlite.JSON(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("prosody_overrides", sqlite.JSON(), nullable=True))
         batch_op.add_column(sa.Column("fallback_engine", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("reasoning", sa.Text(), nullable=True))
-        batch_op.add_column(
-            sa.Column(
-                "estimated_cost_usd", sa.Float(), nullable=False, server_default="0.0"
-            )
-        )
+        batch_op.add_column(sa.Column("estimated_cost_usd", sa.Float(), nullable=False, server_default="0.0"))
         batch_op.add_column(
             sa.Column(
                 "estimated_duration_ms",
@@ -486,12 +415,8 @@ def upgrade() -> None:
         )
         batch_op.add_column(sa.Column("actual_engine", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("actual_cost_usd", sa.Float(), nullable=True))
-        batch_op.add_column(
-            sa.Column("actual_duration_ms", sa.Integer(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("status", sa.String(), nullable=False, server_default="pending")
-        )
+        batch_op.add_column(sa.Column("actual_duration_ms", sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column("status", sa.String(), nullable=False, server_default="pending"))
         batch_op.add_column(sa.Column("created_at", sa.DateTime(), nullable=True))
         batch_op.add_column(sa.Column("completed_at", sa.DateTime(), nullable=True))
         batch_op.create_foreign_key(
@@ -517,21 +442,13 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("speaker_clarity", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("emotion_match", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("prosody_naturalness", sa.Float(), nullable=True))
-        batch_op.add_column(
-            sa.Column("text_audio_alignment", sa.Float(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("text_audio_alignment", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("overall_score", sa.Float(), nullable=True))
         batch_op.add_column(sa.Column("issues", sqlite.JSON(), nullable=True))
         batch_op.add_column(sa.Column("fix_suggestions", sqlite.JSON(), nullable=True))
-        batch_op.add_column(
-            sa.Column(
-                "needs_regeneration", sa.Boolean(), nullable=False, server_default="0"
-            )
-        )
+        batch_op.add_column(sa.Column("needs_regeneration", sa.Boolean(), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("judge_model", sa.String(), nullable=True))
-        batch_op.add_column(
-            sa.Column("judge_prompt_version", sa.String(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("judge_prompt_version", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("audio_file_path", sa.String(), nullable=True))
         batch_op.add_column(sa.Column("audio_duration_ms", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("created_at", sa.DateTime(), nullable=True))

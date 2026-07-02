@@ -9,13 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.audiobook_studio.database import (
-    DATABASE_URL,
-    Base,
-    SessionLocal,
-    engine,
-    init_db,
-)
+from src.audiobook_studio.database import DATABASE_URL, Base, SessionLocal, engine, init_db
 
 
 class TestDatabaseModule:
@@ -28,9 +22,7 @@ class TestDatabaseModule:
 
     def test_database_url_from_env(self):
         """Test DATABASE_URL from environment variable."""
-        with patch.dict(
-            os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}
-        ):
+        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}):
             # Verify env var is readable without reloading module (avoids psycopg2 import)
             assert os.environ["DATABASE_URL"] == "postgresql://user:pass@localhost/db"
             # The module reads DATABASE_URL at import time; verify the default is SQLite
@@ -117,9 +109,7 @@ class TestDatabaseModule:
 
                 # Verify tables exist by querying
                 with test_engine.connect() as conn:
-                    result = conn.execute(
-                        text("SELECT name FROM sqlite_master WHERE type='table'")
-                    )
+                    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
                     tables = [row[0] for row in result]
                     # Should have our model tables
                     assert len(tables) > 0

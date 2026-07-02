@@ -58,11 +58,7 @@ def check_env_keys():
     # Reject placeholder keys (e.g. "your-langfuse-public-key")
     _placeholder_patterns = ("your-", "example", "changeme", "xxx", "TODO")
     langfuse_real = bool(
-        langfuse_pk
-        and langfuse_sk
-        and not any(
-            p in (langfuse_pk + langfuse_sk).lower() for p in _placeholder_patterns
-        )
+        langfuse_pk and langfuse_sk and not any(p in (langfuse_pk + langfuse_sk).lower() for p in _placeholder_patterns)
     )
     langfuse_ok = langfuse_real
 
@@ -82,17 +78,13 @@ def check_env_keys():
 
     print("\n🔐 Environment Key Check:")
     print(f"   MOCK_LLM = {mock_mode}")
-    print(
-        f"   Langfuse: {'✅ configured' if langfuse_ok else '⚠️  NOT configured (tracing disabled)'}"
-    )
+    print(f"   Langfuse: {'✅ configured' if langfuse_ok else '⚠️  NOT configured (tracing disabled)'}")
     if langfuse_host:
         print(f"     LANGFUSE_HOST = {langfuse_host}")
 
     configured_llm = [k for k, v in llm_keys.items() if v]
     if mock_mode:
-        print(
-            f"   LLM keys: {len(configured_llm)} configured (mock mode — keys not required)"
-        )
+        print(f"   LLM keys: {len(configured_llm)} configured (mock mode — keys not required)")
     elif configured_llm:
         print(f"   LLM keys: ✅ {', '.join(configured_llm)}")
     else:
@@ -193,9 +185,7 @@ def run_annotate_paragraphs(
     )
 
     story_line_summary = analysis.story_line_summary
-    global_style_notes = getattr(
-        analysis, "global_style_notes", "Standard narrative style."
-    )
+    global_style_notes = getattr(analysis, "global_style_notes", "Standard narrative style.")
 
     for i, para_text in enumerate(paragraphs[:max_paragraphs]):
         try:
@@ -238,9 +228,7 @@ def run_edit_for_tts(
     edited_results = []
     total_chars = 0
 
-    for i, (para_text, annotation) in enumerate(
-        zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs])
-    ):
+    for i, (para_text, annotation) in enumerate(zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs])):
         try:
             result = edit_for_tts(
                 paragraph_text=para_text,
@@ -291,16 +279,10 @@ def run_synth(
     )
 
     tts_inputs = []
-    for i, (annotation, edited_result) in enumerate(
-        zip(annotations[:max_paragraphs], edited_results[:max_paragraphs])
-    ):
+    for i, (annotation, edited_result) in enumerate(zip(annotations[:max_paragraphs], edited_results[:max_paragraphs])):
         tts_input = TtsRoutingInput(
             paragraph_annotation=annotation,
-            text=(
-                edited_result.edited_text
-                if hasattr(edited_result, "edited_text")
-                else ""
-            ),
+            text=(edited_result.edited_text if hasattr(edited_result, "edited_text") else ""),
             character_voice_map=char_voice_map,
             book_id="long_novel",
             chapter_index=1,
@@ -346,9 +328,7 @@ def run_quality(
             synthesis[:max_paragraphs],
         )
     ):
-        reference_text = (
-            edited_result.edited_text if hasattr(edited_result, "edited_text") else ""
-        )
+        reference_text = edited_result.edited_text if hasattr(edited_result, "edited_text") else ""
         quality_inputs.append(
             (
                 segment.file_path,
@@ -376,11 +356,7 @@ def run_quality(
     duration = (time.time() - start) * 1000
 
     # Calculate quality summary
-    avg_score = (
-        sum(r.overall_score for r in quality_results) / len(quality_results)
-        if quality_results
-        else 0
-    )
+    avg_score = sum(r.overall_score for r in quality_results) / len(quality_results) if quality_results else 0
     total_issues = sum(len(r.issues) for r in quality_results)
     needs_regeneration_count = sum(1 for r in quality_results if r.needs_regeneration)
 
@@ -391,8 +367,7 @@ def run_quality(
         "score_distribution": {
             "speaker_clarity": (
                 round(
-                    sum(r.speaker_clarity for r in quality_results)
-                    / len(quality_results),
+                    sum(r.speaker_clarity for r in quality_results) / len(quality_results),
                     3,
                 )
                 if quality_results
@@ -400,8 +375,7 @@ def run_quality(
             ),
             "emotion_match": (
                 round(
-                    sum(r.emotion_match for r in quality_results)
-                    / len(quality_results),
+                    sum(r.emotion_match for r in quality_results) / len(quality_results),
                     3,
                 )
                 if quality_results
@@ -409,8 +383,7 @@ def run_quality(
             ),
             "prosody_naturalness": (
                 round(
-                    sum(r.prosody_naturalness for r in quality_results)
-                    / len(quality_results),
+                    sum(r.prosody_naturalness for r in quality_results) / len(quality_results),
                     3,
                 )
                 if quality_results
@@ -418,8 +391,7 @@ def run_quality(
             ),
             "text_audio_alignment": (
                 round(
-                    sum(r.text_audio_alignment for r in quality_results)
-                    / len(quality_results),
+                    sum(r.text_audio_alignment for r in quality_results) / len(quality_results),
                     3,
                 )
                 if quality_results
@@ -492,9 +464,7 @@ def run_e2e_long_book(
         )
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(
-            StageMetrics("analyze_structure", 0, False, error_message=str(e))
-        )
+        stage_metrics.append(StageMetrics("analyze_structure", 0, False, error_message=str(e)))
         return PipelineReport(
             book_id=book_id,
             book_title=title_hint,
@@ -511,18 +481,12 @@ def run_e2e_long_book(
     # Stage 3: Annotate
     print(f"\n🏷️  Stage 3: Paragraph Annotation (first {max_paragraphs} paragraphs)")
     try:
-        annotations, metrics = run_annotate_paragraphs(
-            paragraphs, analysis, max_paragraphs
-        )
+        annotations, metrics = run_annotate_paragraphs(paragraphs, analysis, max_paragraphs)
         stage_metrics.append(metrics)
-        print(
-            f"   ✅ {metrics.duration_ms:.1f}ms | Annotated: {len(annotations)} paragraphs"
-        )
+        print(f"   ✅ {metrics.duration_ms:.1f}ms | Annotated: {len(annotations)} paragraphs")
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(
-            StageMetrics("annotate_paragraph", 0, False, error_message=str(e))
-        )
+        stage_metrics.append(StageMetrics("annotate_paragraph", 0, False, error_message=str(e)))
         return PipelineReport(
             book_id=book_id,
             book_title=title_hint,
@@ -539,18 +503,12 @@ def run_e2e_long_book(
     # Stage 4: Edit for TTS
     print(f"\n🎛️  Stage 4: TTS Editing (first {max_paragraphs} paragraphs)")
     try:
-        edited_results, metrics = run_edit_for_tts(
-            paragraphs, annotations, max_paragraphs
-        )
+        edited_results, metrics = run_edit_for_tts(paragraphs, annotations, max_paragraphs)
         stage_metrics.append(metrics)
-        print(
-            f"   ✅ {metrics.duration_ms:.1f}ms | Edited: {len(edited_results)} paragraphs"
-        )
+        print(f"   ✅ {metrics.duration_ms:.1f}ms | Edited: {len(edited_results)} paragraphs")
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(
-            StageMetrics("edit_for_tts", 0, False, error_message=str(e))
-        )
+        stage_metrics.append(StageMetrics("edit_for_tts", 0, False, error_message=str(e)))
         return PipelineReport(
             book_id=book_id,
             book_title=title_hint,
@@ -567,14 +525,10 @@ def run_e2e_long_book(
     # Stage 5: Synthesize
     print(f"\n🔊 Stage 5: Audio Synthesis (first {max_paragraphs} paragraphs)")
     try:
-        synthesis, metrics = run_synth(
-            annotations, edited_results, analysis, max_paragraphs
-        )
+        synthesis, metrics = run_synth(annotations, edited_results, analysis, max_paragraphs)
         stage_metrics.append(metrics)
         total_audio_ms = sum(s.duration_ms for s in synthesis)
-        print(
-            f"   ✅ {metrics.duration_ms:.1f}ms | Segments: {len(synthesis)} | Total audio: {total_audio_ms}ms"
-        )
+        print(f"   ✅ {metrics.duration_ms:.1f}ms | Segments: {len(synthesis)} | Total audio: {total_audio_ms}ms")
     except Exception as e:
         print(f"   ❌ Failed: {e}")
         stage_metrics.append(StageMetrics("synthesize", 0, False, error_message=str(e)))
@@ -602,9 +556,7 @@ def run_e2e_long_book(
             fallback_engine="edge",
             reasoning="Mock routing decision for E2E verification",
             estimated_cost_usd=0.0,
-            estimated_duration_ms=(
-                synthesis[i].duration_ms if i < len(synthesis) else 3000
-            ),
+            estimated_duration_ms=(synthesis[i].duration_ms if i < len(synthesis) else 3000),
         )
         routing_decisions.append(routing)
 
@@ -615,9 +567,7 @@ def run_e2e_long_book(
             annotations, edited_results, synthesis, routing_decisions, max_paragraphs
         )
         stage_metrics.append(metrics)
-        print(
-            f"   ✅ {metrics.duration_ms:.1f}ms | Checked: {len(quality_results)} segments"
-        )
+        print(f"   ✅ {metrics.duration_ms:.1f}ms | Checked: {len(quality_results)} segments")
         print(
             f"   📊 Avg Score: {quality_summary['avg_overall_score']:.3f} | Issues: {quality_summary['total_issues']} | Regen needed: {quality_summary['needs_regeneration_count']}"
         )
@@ -625,9 +575,7 @@ def run_e2e_long_book(
             print(f"      {k}: {v:.3f}")
     except Exception as e:
         print(f"   ❌ Failed: {e}")
-        stage_metrics.append(
-            StageMetrics("quality_check", 0, False, error_message=str(e))
-        )
+        stage_metrics.append(StageMetrics("quality_check", 0, False, error_message=str(e)))
         quality_summary = {}
 
     # Final report
@@ -681,9 +629,7 @@ def print_summary(report: PipelineReport):
     print("-" * 70)
     for m in report.stages:
         status = "✅" if m.success else "❌"
-        print(
-            f"  {status} {m.stage_name:20s} | {m.duration_ms:8.1f}ms | in:{m.input_size:>8} | out:{m.output_size:>8}"
-        )
+        print(f"  {status} {m.stage_name:20s} | {m.duration_ms:8.1f}ms | in:{m.input_size:>8} | out:{m.output_size:>8}")
 
     if report.quality_summary:
         qs = report.quality_summary
@@ -705,9 +651,7 @@ def print_summary(report: PipelineReport):
         # Check if any stage took suspiciously long
         for m in report.stages:
             if m.duration_ms > 5000:  # >5 seconds in mock mode is unusual
-                print(
-                    f"   ⚠️  {m.stage_name} took {m.duration_ms:.1f}ms (unexpectedly slow for mock mode)"
-                )
+                print(f"   ⚠️  {m.stage_name} took {m.duration_ms:.1f}ms (unexpectedly slow for mock mode)")
 
 
 def main():

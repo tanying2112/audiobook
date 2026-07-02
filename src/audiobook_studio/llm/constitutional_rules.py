@@ -23,9 +23,7 @@ _BLOCKED_PATTERNS = [
 _BLOCKED_RE = [re.compile(p) for p in _BLOCKED_PATTERNS]
 
 
-def apply_constitutional_rules(
-    response: BaseModel, context: Optional[dict] = None
-) -> BaseModel:
+def apply_constitutional_rules(response: BaseModel, context: Optional[dict] = None) -> BaseModel:
     """Apply constitutional rules to an LLM response.
 
     Applies safety filters and returns the response. If the response
@@ -72,17 +70,13 @@ def apply_safety_filters(response: BaseModel) -> BaseModel:
     return response
 
 
-def apply_style_guidelines(
-    response: BaseModel, style_guide: Optional[dict] = None
-) -> BaseModel:
+def apply_style_guidelines(response: BaseModel, style_guide: Optional[dict] = None) -> BaseModel:
     """Apply style guidelines (tone, formality, etc.) to the response."""
     # Future: implement style enforcement based on style_guide
     return response
 
 
-def apply_domain_constraints(
-    response: BaseModel, domain: Optional[str] = None
-) -> BaseModel:
+def apply_domain_constraints(response: BaseModel, domain: Optional[str] = None) -> BaseModel:
     """Apply domain-specific constraints (e.g., medical, legal, financial)."""
     # Future: implement domain-specific rules
     return response

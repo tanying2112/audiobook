@@ -8,11 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.monitoring.alert import (
-    collect_logs,
-    collect_self_iteration_logs,
-    main,
-)
+from src.audiobook_studio.monitoring.alert import collect_logs, collect_self_iteration_logs, main
 
 
 def _write_perf_log(logs_dir, records):
@@ -33,15 +29,11 @@ def _write_self_iter_log(logs_dir, records):
 
 class TestMainNoData:
     def test_no_data(self, tmp_path):
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()
 
     def test_no_data_check_only(self, tmp_path):
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()  # Should print error JSON
 
 
@@ -74,9 +66,7 @@ class TestMainWithLLMData:
             }
         ] * 10
         _write_perf_log(tmp_path, records)
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()
 
     def test_send_alerts_dingtalk(self, tmp_path):
@@ -205,18 +195,14 @@ class TestMainWithSelfIteration:
         now = datetime.now().isoformat()
         records = [{"timestamp": now, "promoted": True, "feedback_count": 3}] * 5
         _write_self_iter_log(tmp_path, records)
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()
 
     def test_with_alerts(self, tmp_path):
         now = datetime.now().isoformat()
         records = [{"timestamp": now, "promoted": False, "feedback_count": 0}] * 10
         _write_self_iter_log(tmp_path, records)
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()
 
     def test_send_alerts(self, tmp_path):
@@ -286,9 +272,7 @@ class TestMainCombined:
         si_records = [{"timestamp": now, "promoted": True, "feedback_count": 3}] * 3
         _write_perf_log(tmp_path, perf_records)
         _write_self_iter_log(tmp_path, si_records)
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()
 
     def test_env_webhooks(self, tmp_path):
@@ -328,7 +312,5 @@ class TestMainCombined:
             }
         ] * 5
         _write_perf_log(tmp_path, records)
-        with patch(
-            "sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]
-        ):
+        with patch("sys.argv", ["alert.py", "--logs-dir", str(tmp_path), "--check-only"]):
             main()

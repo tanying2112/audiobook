@@ -49,6 +49,16 @@ const router = createRouter({
       component: () => import('../views/ExportView.vue'),
     },
     {
+      path: '/projects/:projectId/translation',
+      name: 'translation',
+      component: () => import('../views/TranslationView.vue'),
+    },
+    {
+      path: '/projects/:projectId/voice-clone',
+      name: 'voice-clone',
+      component: () => import('../views/VoiceCloneView.vue'),
+    },
+    {
       // ⚠️ 临时验证路由，SSE/内联小窗验证通过后删除（含 SseDemo.vue）
       path: '/sse-demo',
       name: 'sse-demo',

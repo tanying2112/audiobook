@@ -75,11 +75,7 @@ def _make_audio_file(tmp_path, fmt="m4b", size=None, chapters=None):
         format=fmt,
         bitrate_kbps=64,
         checksum_md5="abc",
-        chapters=(
-            chapters
-            if chapters is not None
-            else [{"title": "Ch1", "start": 0, "end": 1800}]
-        ),
+        chapters=(chapters if chapters is not None else [{"title": "Ch1", "start": 0, "end": 1800}]),
     )
 
 
@@ -106,9 +102,7 @@ async def _full_publish_mocks(client, item_id="i1", metadata_title="Test Book"):
 
     search_resp = MagicMock()
     search_resp.status_code = 200
-    search_resp.json.return_value = [
-        {"id": item_id, "media": {"metadata": {"title": metadata_title}}}
-    ]
+    search_resp.json.return_value = [{"id": item_id, "media": {"metadata": {"title": metadata_title}}}]
 
     patch_resp = MagicMock()
     patch_resp.status_code = 200
@@ -189,9 +183,7 @@ class TestValidation:
         ok, _ = i._validate_metadata(_make_metadata())
         assert ok
 
-    @pytest.mark.parametrize(
-        "field,val", [("title", " "), ("author", ""), ("narrator", "  ")]
-    )
+    @pytest.mark.parametrize("field,val", [("title", " "), ("author", ""), ("narrator", "  ")])
     def test_metadata_empty(self, field, val):
         i = _make_integrator()
         m = _make_metadata(**{field: val})
@@ -248,9 +240,7 @@ class TestValidation:
 class TestPrepareAudiobook:
     def test_ok(self, tmp_path):
         i = _make_integrator()
-        ok, _, data = _run(
-            i.prepare_audiobook(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, data = _run(i.prepare_audiobook(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and data["title"] == "Test Book"
 
     def test_unsupported_format_no_convert(self, tmp_path):
@@ -268,9 +258,7 @@ class TestPrepareAudiobook:
 
     def test_invalid_metadata(self, tmp_path):
         i = _make_integrator()
-        ok, _, _ = _run(
-            i.prepare_audiobook(_make_metadata(title=""), _make_audio_file(tmp_path))
-        )
+        ok, _, _ = _run(i.prepare_audiobook(_make_metadata(title=""), _make_audio_file(tmp_path)))
         assert not ok
 
 
@@ -363,18 +351,12 @@ class TestPublish:
         i = _make_integrator()
         client = _attach_client(i)
         _run(_full_publish_mocks(client, "item99"))
-        ok, msg, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, msg, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] == "item99"
 
     def test_prepare_fails(self, tmp_path):
         i = _make_integrator()
-        ok, _, _ = _run(
-            i.publish_to_audiobookshelf(
-                _make_metadata(title=""), _make_audio_file(tmp_path)
-            )
-        )
+        ok, _, _ = _run(i.publish_to_audiobookshelf(_make_metadata(title=""), _make_audio_file(tmp_path)))
         assert not ok
 
     def test_library_404(self, tmp_path):
@@ -384,9 +366,7 @@ class TestPublish:
         resp.status_code = 404
         client.get = AsyncMock(return_value=resp)
         client.post = AsyncMock()
-        ok, msg, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, msg, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok and "不存在" in msg
 
     def test_no_folders(self, tmp_path):
@@ -397,9 +377,7 @@ class TestPublish:
         resp.json.return_value = {"folders": []}
         client.get = AsyncMock(return_value=resp)
         client.post = AsyncMock()
-        ok, msg, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, msg, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok and "文件夹" in msg
 
     def test_library_exception(self, tmp_path):
@@ -407,17 +385,13 @@ class TestPublish:
         client = _attach_client(i)
         client.get = AsyncMock(side_effect=Exception("timeout"))
         client.post = AsyncMock()
-        ok, _, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok
 
     def test_empty_library_id(self, tmp_path):
         i = _make_integrator()
         i.config.library_id = ""
-        ok, msg, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, msg, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok and "未配置" in msg
 
     def test_non_200_library(self, tmp_path):
@@ -428,9 +402,7 @@ class TestPublish:
         resp.text = "Unavailable"
         client.get = AsyncMock(return_value=resp)
         client.post = AsyncMock()
-        ok, _, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -445,9 +417,7 @@ class TestPublish:
         upload_resp.text = "err"
         client.get = AsyncMock(return_value=lib_resp)
         client.post = AsyncMock(return_value=upload_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok and "所有文件上传失败" in resp["message"]
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -459,9 +429,7 @@ class TestPublish:
         lib_resp.json.return_value = {"folders": [{"id": "f1"}]}
         client.get = AsyncMock(return_value=lib_resp)
         client.post = AsyncMock(side_effect=Exception("io"))
-        ok, _, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -483,9 +451,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock()
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None and "未能确认项目 ID" in resp["message"]
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -499,9 +465,7 @@ class TestPublish:
         client.post = AsyncMock()
         af = AudiobookFile(Path("/nonexistent"), 100, 10, "m4b", 64, "h")
         ok, msg, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), af))
-        assert not ok and (
-            "未找到音频文件" in msg or "音频文件不存在" in msg or "不存在" in msg
-        )
+        assert not ok and ("未找到音频文件" in msg or "音频文件不存在" in msg or "不存在" in msg)
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
     def test_patch_fails_non_fatal(self, _, tmp_path):
@@ -509,9 +473,7 @@ class TestPublish:
         client = _attach_client(i)
         _run(_full_publish_mocks(client))
         client.patch = AsyncMock(return_value=MagicMock(status_code=500, text="err"))
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is not None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -520,9 +482,7 @@ class TestPublish:
         client = _attach_client(i)
         _run(_full_publish_mocks(client))
         client.patch = AsyncMock(side_effect=Exception("patch err"))
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is not None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -538,9 +498,7 @@ class TestPublish:
         scan_resp.status_code = 500
         search_resp = MagicMock()
         search_resp.status_code = 200
-        search_resp.json.return_value = [
-            {"id": "i1", "media": {"metadata": {"title": "Test Book"}}}
-        ]
+        search_resp.json.return_value = [{"id": "i1", "media": {"metadata": {"title": "Test Book"}}}]
         patch_resp = MagicMock()
         patch_resp.status_code = 200
 
@@ -553,9 +511,7 @@ class TestPublish:
         client.get = _get
         client.post = _post
         client.patch = AsyncMock(return_value=patch_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -569,9 +525,7 @@ class TestPublish:
         upload_resp.status_code = 200
         search_resp = MagicMock()
         search_resp.status_code = 200
-        search_resp.json.return_value = [
-            {"id": "i1", "media": {"metadata": {"title": "Test Book"}}}
-        ]
+        search_resp.json.return_value = [{"id": "i1", "media": {"metadata": {"title": "Test Book"}}}]
         patch_resp = MagicMock()
         patch_resp.status_code = 200
 
@@ -586,9 +540,7 @@ class TestPublish:
         client.get = _get
         client.post = _post
         client.patch = AsyncMock(return_value=patch_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -609,9 +561,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock()
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -625,9 +575,7 @@ class TestPublish:
         upload_resp.status_code = 200
         search_resp = MagicMock()
         search_resp.status_code = 200
-        search_resp.json.return_value = [
-            {"id": "i1", "media": {"metadata": {"title": "Other"}}}
-        ]
+        search_resp.json.return_value = [{"id": "i1", "media": {"metadata": {"title": "Other"}}}]
         patch_resp = MagicMock()
         patch_resp.status_code = 200
 
@@ -637,9 +585,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock(return_value=patch_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -660,9 +606,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock()
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -684,18 +628,14 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock()
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None
 
     def test_network_exception(self, tmp_path):
         i = _make_integrator()
         i.prepare_audiobook = AsyncMock(return_value=(True, "ok", {"title": "T"}))
         i._real_api_call = AsyncMock(side_effect=Exception("net"))
-        ok, msg, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, msg, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok and "网络错误" in msg
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -747,9 +687,7 @@ class TestPublish:
         i = _make_integrator()
         client = _attach_client(i)
         _run(_full_publish_mocks(client))
-        m = _make_metadata(
-            tags=["a", "b"], publisher="P", genres=["g1"], language="zh-CN"
-        )
+        m = _make_metadata(tags=["a", "b"], publisher="P", genres=["g1"], language="zh-CN")
         ok, _, _ = _run(i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path)))
         assert ok
         meta = client.patch.call_args[1]["json"]["metadata"]
@@ -786,12 +724,8 @@ class TestPublish:
 
         m = _make_metadata()
         m.cover_image_path = Path("/tmp/fake.jpg")
-        with patch.object(Path, "exists", return_value=True), patch(
-            "builtins.open", mock_open(read_data=b"fake")
-        ):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path))
-            )
+        with patch.object(Path, "exists", return_value=True), patch("builtins.open", mock_open(read_data=b"fake")):
+            ok, _, resp = _run(i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is not None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -812,12 +746,8 @@ class TestPublish:
 
         m = _make_metadata()
         m.cover_image_path = Path("/tmp/fake.jpg")
-        with patch.object(Path, "exists", return_value=True), patch(
-            "builtins.open", mock_open(read_data=b"fake")
-        ):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path))
-            )
+        with patch.object(Path, "exists", return_value=True), patch("builtins.open", mock_open(read_data=b"fake")):
+            ok, _, resp = _run(i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path)))
         assert ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -843,12 +773,8 @@ class TestPublish:
 
         m = _make_metadata()
         m.cover_image_path = Path("/tmp/fake.jpg")
-        with patch.object(Path, "exists", return_value=True), patch(
-            "builtins.open", mock_open(read_data=b"fake")
-        ):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path))
-            )
+        with patch.object(Path, "exists", return_value=True), patch("builtins.open", mock_open(read_data=b"fake")):
+            ok, _, resp = _run(i.publish_to_audiobookshelf(m, _make_audio_file(tmp_path)))
         assert ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -876,11 +802,7 @@ class TestPublish:
         client.patch = AsyncMock(return_value=patch_resp)
 
         with patch("shutil.copy2"), patch("pathlib.Path.mkdir"):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(
-                    _make_metadata(), _make_audio_file(tmp_path)
-                )
-            )
+            ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["uploaded_files"] == 1
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -901,14 +823,8 @@ class TestPublish:
         client.post = AsyncMock(return_value=scan_resp)
         client.patch = AsyncMock()
 
-        with patch("pathlib.Path.mkdir", side_effect=Exception("perm")), patch(
-            "shutil.copy2"
-        ):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(
-                    _make_metadata(), _make_audio_file(tmp_path)
-                )
-            )
+        with patch("pathlib.Path.mkdir", side_effect=Exception("perm")), patch("shutil.copy2"):
+            ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -929,14 +845,8 @@ class TestPublish:
         client.post = AsyncMock(return_value=scan_resp)
         client.patch = AsyncMock()
 
-        with patch("pathlib.Path.mkdir"), patch(
-            "shutil.copy2", side_effect=Exception("copy err")
-        ):
-            ok, _, resp = _run(
-                i.publish_to_audiobookshelf(
-                    _make_metadata(), _make_audio_file(tmp_path)
-                )
-            )
+        with patch("pathlib.Path.mkdir"), patch("shutil.copy2", side_effect=Exception("copy err")):
+            ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         # Still ok because one file fails but we only have one
         assert not ok  # 0 successful uploads
 
@@ -964,9 +874,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock(return_value=patch_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] == "correct1"
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -990,9 +898,7 @@ class TestPublish:
         client.get = _get
         client.post = AsyncMock(return_value=upload_resp)
         client.patch = AsyncMock(return_value=patch_resp)
-        ok, _, resp = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, resp = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert ok and resp["item_id"] is None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
@@ -1014,7 +920,5 @@ class TestPublish:
 
         client.post = _post
         client.patch = AsyncMock()
-        ok, _, _ = _run(
-            i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path))
-        )
+        ok, _, _ = _run(i.publish_to_audiobookshelf(_make_metadata(), _make_audio_file(tmp_path)))
         assert not ok

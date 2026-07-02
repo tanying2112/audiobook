@@ -12,7 +12,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-
 from tests.e2e.conftest import E2ETestConfig
 
 pytestmark = pytest.mark.e2e
@@ -98,10 +97,7 @@ class TestAzureTTS:
     @pytest.fixture(autouse=True)
     def setup(self):
         """Setup test fixtures."""
-        self.has_api_key = (
-            E2ETestConfig.check_api_key("azure")
-            or "AZURE_SPEECH_KEY" in __import__("os").environ
-        )
+        self.has_api_key = E2ETestConfig.check_api_key("azure") or "AZURE_SPEECH_KEY" in __import__("os").environ
         if not self.has_api_key:
             pytest.skip("No Azure API key available")
 
@@ -131,8 +127,7 @@ class TestGCPTTS:
     def setup(self):
         """Setup test fixtures."""
         self.has_api_key = (
-            E2ETestConfig.check_api_key("gcp")
-            or "GOOGLE_APPLICATION_CREDENTIALS" in __import__("os").environ
+            E2ETestConfig.check_api_key("gcp") or "GOOGLE_APPLICATION_CREDENTIALS" in __import__("os").environ
         )
         if not self.has_api_key:
             pytest.skip("No GCP credentials available")

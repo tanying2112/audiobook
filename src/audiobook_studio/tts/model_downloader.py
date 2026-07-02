@@ -89,17 +89,13 @@ def download_file(
     # Resume support - check existing partial download
     if temp_path.exists():
         headers["Range"] = f"bytes={temp_path.stat().st_size}-"
-        logger.info(
-            f"Resuming download: {filepath.name} (already have {temp_path.stat().st_size} bytes)"
-        )
+        logger.info(f"Resuming download: {filepath.name} (already have {temp_path.stat().st_size} bytes)")
 
     for attempt in range(MAX_RETRIES):
         try:
             response = requests.get(url, headers=headers, stream=True, timeout=30)
 
-            if (
-                response.status_code == 416
-            ):  # Range not satisfiable - file already complete
+            if response.status_code == 416:  # Range not satisfiable - file already complete
                 if temp_path.exists():
                     temp_path.rename(filepath)
                     return True, "Already complete"
@@ -123,24 +119,16 @@ def download_file(
             # Verify size if expected
             if expected_size_mb and total_size > 0:
                 actual_mb = temp_path.stat().st_size / (1024 * 1024)
-                if (
-                    abs(actual_mb - expected_size_mb) > expected_size_mb * 0.1
-                ):  # 10% tolerance
-                    logger.warning(
-                        f"Size mismatch: expected ~{expected_size_mb}MB, got {actual_mb:.1f}MB"
-                    )
+                if abs(actual_mb - expected_size_mb) > expected_size_mb * 0.1:  # 10% tolerance
+                    logger.warning(f"Size mismatch: expected ~{expected_size_mb}MB, got {actual_mb:.1f}MB")
 
             # Atomic rename
             temp_path.rename(filepath)
-            logger.info(
-                f"Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)"
-            )
+            logger.info(f"Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)")
             return True, ""
 
         except requests.exceptions.RequestException as e:
-            logger.warning(
-                f"Attempt {attempt + 1}/{MAX_RETRIES} failed for {filepath.name}: {e}"
-            )
+            logger.warning(f"Attempt {attempt + 1}/{MAX_RETRIES} failed for {filepath.name}: {e}")
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY * (attempt + 1))
             continue
@@ -168,9 +156,7 @@ def verify_model_files(model_dir: Path, files_spec: Dict) -> Tuple[bool, List[st
         size_mb = filepath.stat().st_size / (1024 * 1024)
         expected_mb = spec.get("size_mb", 0)
         if expected_mb and abs(size_mb - expected_mb) > expected_mb * 0.15:
-            issues.append(
-                f"Size mismatch: {filename} ({size_mb:.1f}MB vs expected ~{expected_mb}MB)"
-            )
+            issues.append(f"Size mismatch: {filename} ({size_mb:.1f}MB vs expected ~{expected_mb}MB)")
 
     return len(issues) == 0, issues
 
@@ -217,9 +203,7 @@ def download_all_models(
 
     # Download with progress tracking
     success_count = 0
-    with tqdm(
-        total=total_size, unit="B", unit_scale=True, desc="Downloading models"
-    ) as pbar:
+    with tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading models") as pbar:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(download_file, url, filepath, size_mb, pbar): filename
@@ -241,9 +225,7 @@ def download_all_models(
     # Verify final result
     valid, issues = verify_model_files(model_dir, files_spec)
     if valid:
-        logger.info(
-            f"All {success_count} model files downloaded and verified successfully!"
-        )
+        logger.info(f"All {success_count} model files downloaded and verified successfully!")
         return True
     else:
         logger.error(f"Verification failed: {issues}")

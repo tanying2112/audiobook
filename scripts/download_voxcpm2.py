@@ -16,9 +16,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -125,12 +123,8 @@ def main():
         default="models/VoxCPM2",
         help="Local model directory (default: models/VoxCPM2)",
     )
-    parser.add_argument(
-        "--revision", default="main", help="Git revision/branch (default: main)"
-    )
-    parser.add_argument(
-        "--token", default=None, help="HF token for private/gated models"
-    )
+    parser.add_argument("--revision", default="main", help="Git revision/branch (default: main)")
+    parser.add_argument("--token", default=None, help="HF token for private/gated models")
     parser.add_argument(
         "--verify-only",
         action="store_true",

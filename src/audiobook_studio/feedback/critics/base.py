@@ -154,8 +154,7 @@ class BaseCritic(ABC):
     def _build_base_prompt(self, task_description: str) -> str:
         """构建基础系统提示词."""
         return (
-            f"你是 {self.critic_type.value} 批评器。{task_description}\n"
-            "输出严格符合 JSON 格式的 CriticResult 结构。"
+            f"你是 {self.critic_type.value} 批评器。{task_description}\n" "输出严格符合 JSON 格式的 CriticResult 结构。"
         )
 
     def _parse_llm_response(self, response: Dict[str, Any]) -> CriticResult:
@@ -219,21 +218,15 @@ class CriticEnsembleEvaluator:
 
         # 运行各批评器
         if self.semantic_critic:
-            result = self.semantic_critic.evaluate(
-                audio_path, annotation, routing_decision, reference_text, context
-            )
+            result = self.semantic_critic.evaluate(audio_path, annotation, routing_decision, reference_text, context)
             results.append(result)
 
         if self.structural_critic:
-            result = self.structural_critic.evaluate(
-                audio_path, annotation, routing_decision, reference_text, context
-            )
+            result = self.structural_critic.evaluate(audio_path, annotation, routing_decision, reference_text, context)
             results.append(result)
 
         if self.objective_critic:
-            result = self.objective_critic.evaluate(
-                audio_path, annotation, routing_decision, reference_text, context
-            )
+            result = self.objective_critic.evaluate(audio_path, annotation, routing_decision, reference_text, context)
             results.append(result)
 
         # 融合结果
@@ -269,9 +262,7 @@ class CriticEnsembleEvaluator:
             verdicts[result.verdict] += 1
 
         final_score = weighted_score / total_weight if total_weight > 0 else 0.0
-        final_confidence = (
-            weighted_confidence / total_weight if total_weight > 0 else 0.0
-        )
+        final_confidence = weighted_confidence / total_weight if total_weight > 0 else 0.0
 
         # 确定最终裁决
         if verdicts[CriticVerdict.FAIL] > 0 and final_score < 0.5:

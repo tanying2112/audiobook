@@ -178,15 +178,9 @@ class AudioFinalizer:
                 num_inputs = 1 + len(sfx_inputs)
                 filter_complex = f"[0:a]{filter_complex}[main]"
                 for i in range(len(sfx_inputs)):
-                    filter_complex += (
-                        f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
-                    )
-                filter_complex += f";[main]" + "".join(
-                    f"[sfx{i}]" for i in range(len(sfx_inputs))
-                )
-                filter_complex += (
-                    f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
-                )
+                    filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
+                filter_complex += f";[main]" + "".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
+                filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
 
         # Apply filter and set output format
         if filter_complex:
@@ -240,14 +234,11 @@ class AudioFinalizer:
             metadata_embedded = self._embed_metadata(output_path, params)
 
         # 6. Measure final output
-        measured_i, measured_lra, measured_tp, measured_thresh = self._measure_loudness(
-            output_path
-        )
+        measured_i, measured_lra, measured_tp, measured_thresh = self._measure_loudness(output_path)
         duration_ms = self._get_duration(output_path)
 
         logger.info(
-            f"Audio finalized: {output_path.name}, "
-            f"duration={duration_ms}ms, loudness={measured_i:.1f} LUFS"
+            f"Audio finalized: {output_path.name}, " f"duration={duration_ms}ms, loudness={measured_i:.1f} LUFS"
         )
 
         return AudioFinalizeResult(
@@ -289,9 +280,7 @@ class AudioFinalizer:
         if params.fade_out_ms > 0:
             # Fade out will be applied from (duration - fade_out_ms) to end
             # We use a placeholder that gets resolved in post-processing
-            fade_parts.append(
-                f"afade=t=out:st=PLACEHOLDER:d={fade_out_sec}:{params.fade_shape}"
-            )
+            fade_parts.append(f"afade=t=out:st=PLACEHOLDER:d={fade_out_sec}:{params.fade_shape}")
 
         return ",".join(fade_parts) if fade_parts else "anull"
 

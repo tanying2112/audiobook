@@ -29,9 +29,7 @@ class TestCircuitBreaker:
         assert cb.can_proceed() is False
 
     def test_transitions_to_half_open_after_cooldown(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         assert cb.state == "open"
@@ -40,9 +38,7 @@ class TestCircuitBreaker:
         assert cb.state == "half_open"
 
     def test_half_open_closes_on_success(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         time.sleep(0.15)
@@ -52,9 +48,7 @@ class TestCircuitBreaker:
         assert cb.failure_count == 0
 
     def test_half_open_opens_on_failure(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         time.sleep(0.15)
@@ -218,9 +212,7 @@ class TestEnhancedRouter:
         from src.audiobook_studio.schemas import ParagraphAnnotation
 
         router = LLMRouter()
-        fallback = router._heuristic_fallback(
-            "annotate", ParagraphAnnotation, segment_id="test_segment"
-        )
+        fallback = router._heuristic_fallback("annotate", ParagraphAnnotation, segment_id="test_segment")
         assert fallback is not None
         assert fallback.speaker_canonical_name == "_narrator_"
         assert fallback.confidence == 0.2
@@ -230,9 +222,7 @@ class TestEnhancedRouter:
         from src.audiobook_studio.schemas import TtsEditOutput
 
         router = LLMRouter()
-        fallback = router._heuristic_fallback(
-            "edit", TtsEditOutput, segment_id="test_segment"
-        )
+        fallback = router._heuristic_fallback("edit", TtsEditOutput, segment_id="test_segment")
         assert fallback is not None
         assert "heuristic_fallback" in fallback.changes_made[0]
 
@@ -241,8 +231,6 @@ class TestEnhancedRouter:
         from src.audiobook_studio.schemas import QualityJudgment
 
         router = LLMRouter()
-        fallback = router._heuristic_fallback(
-            "judge", QualityJudgment, segment_id="test_segment"
-        )
+        fallback = router._heuristic_fallback("judge", QualityJudgment, segment_id="test_segment")
         assert fallback is not None
         assert fallback.needs_regeneration is True

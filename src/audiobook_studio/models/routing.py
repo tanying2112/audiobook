@@ -22,15 +22,9 @@ class Routing(Base):
     __tablename__ = "routings"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False)
 
     # HARNESS fields
     engine_choice: Mapped[Optional[str]] = mapped_column(String, nullable=True)

@@ -40,14 +40,7 @@ from sqlalchemy.orm import Session
 
 from src.audiobook_studio.database import SessionLocal
 from src.audiobook_studio.models import ProcessingRun
-from src.audiobook_studio.version_manager import (
-    diff_runs,
-    get_run,
-    list_runs,
-    restore_state,
-    rollback_to_run,
-    save_run,
-)
+from src.audiobook_studio.version_manager import diff_runs, get_run, list_runs, restore_state, rollback_to_run, save_run
 
 # ── Terminal colours (macOS / modern terminals) ──────────────────────────────
 _GREEN = "\033[92m"
@@ -99,19 +92,14 @@ def cmd_list(args: argparse.Namespace) -> None:
         return
 
     print(f"\n{_BOLD}Processing runs for project {args.project}:{_RESET}")
-    print(
-        f"{'ID':<5} {'Tag':<14} {'Status':<12} {'Score':<8} "
-        f"{'Stages':<30} {'Date':<22}"
-    )
+    print(f"{'ID':<5} {'Tag':<14} {'Status':<12} {'Score':<8} " f"{'Stages':<30} {'Date':<22}")
     print("-" * 90)
     for r in runs:
         tag = r.version_tag or "-"
         score = f"{r.golden_score:.3f}" if r.golden_score is not None else "-"
         stages = ", ".join(r.stages_completed or [])[:28]
         date = r.started_at.strftime("%Y-%m-%d %H:%M") if r.started_at else "-"
-        print(
-            f"{r.id:<5} {tag:<14} {r.status:<12} {score:<8} " f"{stages:<30} {date:<22}"
-        )
+        print(f"{r.id:<5} {tag:<14} {r.status:<12} {score:<8} " f"{stages:<30} {date:<22}")
     print()
 
 
@@ -126,11 +114,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"  Project ID:     {run.project_id}")
     print(f"  Status:         {run.status}")
     print(f"  Version Tag:    {run.version_tag or '-'}")
-    print(
-        f"  Golden Score:   {run.golden_score:.3f}"
-        if run.golden_score is not None
-        else "  Golden Score:   -"
-    )
+    print(f"  Golden Score:   {run.golden_score:.3f}" if run.golden_score is not None else "  Golden Score:   -")
     print(f"  Commit Message: {run.commit_message or '-'}")
     print(f"  Started:        {run.started_at}")
     print(f"  Completed:      {run.completed_at or '-'}")
@@ -216,9 +200,7 @@ def cmd_restore_state(args: argparse.Namespace) -> None:
     in the target run show as completed.
     """
     if not args.force:
-        print(
-            f"\n{_RED}{_BOLD}WARNING: This will modify chapter/paragraph status fields{_RESET}"
-        )
+        print(f"\n{_RED}{_BOLD}WARNING: This will modify chapter/paragraph status fields{_RESET}")
         print(f"  Project: {args.project}")
         target = get_run(args.project, run_id=args.run)
         if target:
@@ -230,9 +212,7 @@ def cmd_restore_state(args: argparse.Namespace) -> None:
             return
 
     result = restore_state(args.project, args.run)
-    _ok(
-        f"State restored: {result['chapters_updated']} chapters, {result['paragraphs_updated']} paragraphs updated"
-    )
+    _ok(f"State restored: {result['chapters_updated']} chapters, {result['paragraphs_updated']} paragraphs updated")
     print(f"  Active stages: {', '.join(result.get('stages', []))}")
 
 
@@ -275,9 +255,7 @@ Examples:
 
     # show
     p_show = sub.add_parser("show", help="Show run details")
-    p_show.add_argument(
-        "--project", "-p", type=int, default=0, help="Project ID (optional)"
-    )
+    p_show.add_argument("--project", "-p", type=int, default=0, help="Project ID (optional)")
     p_show.add_argument("--run", "-r", type=int, help="Run ID")
     p_show.add_argument("--tag", "-t", type=str, help="Version tag")
 
@@ -298,14 +276,10 @@ Examples:
         "restore-state",
         help="Restore chapter/paragraph status to target run (DESTRUCTIVE)",
     )
-    p_restore.add_argument(
-        "--project", "-p", type=int, required=True, help="Project ID"
-    )
+    p_restore.add_argument("--project", "-p", type=int, required=True, help="Project ID")
     p_restore.add_argument("--run", "-r", type=int, help="Target run ID")
     p_restore.add_argument("--tag", "-t", type=str, help="Target version tag")
-    p_restore.add_argument(
-        "--force", "-f", action="store_true", help="Skip confirmation"
-    )
+    p_restore.add_argument("--force", "-f", action="store_true", help="Skip confirmation")
 
     args = parser.parse_args()
 

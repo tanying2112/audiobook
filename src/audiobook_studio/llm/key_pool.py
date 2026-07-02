@@ -82,10 +82,7 @@ class ApiKeyPool:
         with self._lock:
             available = [k for k in self.keys if k.is_available]
             if not available:
-                logger.warning(
-                    f"All keys for {self.provider_name} in cooldown, "
-                    f"using least-cooldown key"
-                )
+                logger.warning(f"All keys for {self.provider_name} in cooldown, " f"using least-cooldown key")
                 available = sorted(self.keys, key=lambda k: k.cooldown_until)
 
             if self.strategy == "round_robin":

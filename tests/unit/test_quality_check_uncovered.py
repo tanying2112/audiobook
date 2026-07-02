@@ -14,10 +14,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    QualityCheckPipeline,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
 
@@ -140,9 +137,7 @@ class TestCheckOptionalDependenciesSuccess:
 
     def test_all_asr_fail(self):
         """All ASR backends unavailable → asr=False."""
-        with patch.dict(
-            sys.modules, {"funasr": None, "faster_whisper": None, "whisper": None}
-        ):
+        with patch.dict(sys.modules, {"funasr": None, "faster_whisper": None, "whisper": None}):
             features = QualityCheckPipeline._check_optional_dependencies()
             assert features["asr"] is False
 
@@ -295,9 +290,7 @@ class TestAnalyzeAudioRulesFileNotFound:
     def test_file_not_found_returns_default(self):
         """FileNotFoundError → returns default analysis with error issue."""
         pipeline = QualityCheckPipeline(mock_mode=False)
-        with patch.object(
-            pipeline, "_analyze_with_ffprobe", side_effect=FileNotFoundError("ffprobe")
-        ):
+        with patch.object(pipeline, "_analyze_with_ffprobe", side_effect=FileNotFoundError("ffprobe")):
             result = pipeline._analyze_audio_rules(Path("/fake.wav"), 5000)
         assert isinstance(result, AudioAnalysisResult)
         assert "ffprobe_not_found" in result.issues
@@ -306,9 +299,7 @@ class TestAnalyzeAudioRulesFileNotFound:
     def test_generic_exception_returns_error(self):
         """Generic exception → returns analysis with error issue."""
         pipeline = QualityCheckPipeline(mock_mode=False)
-        with patch.object(
-            pipeline, "_analyze_with_ffprobe", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(pipeline, "_analyze_with_ffprobe", side_effect=RuntimeError("boom")):
             result = pipeline._analyze_audio_rules(Path("/fake.wav"), 5000)
         assert isinstance(result, AudioAnalysisResult)
         assert any("analysis_error" in i for i in result.issues)
@@ -345,21 +336,27 @@ class TestAnalyzeWithFfprobe:
         if samples is None:
             samples = np.zeros(100, dtype=np.float32)
 
-        with patch(
-            "src.audiobook_studio.config.loader.reload_config_if_changed",
-            return_value=(pipeline.quality_thresholds, None),
-        ), patch(
-            "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
-            return_value=duration,
-        ), patch(
-            "src.audiobook_studio.pipeline.quality_check.detect_silence_sync",
-            return_value=silence,
-        ), patch(
-            "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync",
-            return_value=(rms_db, peak_db),
-        ), patch(
-            "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
-            return_value=samples,
+        with (
+            patch(
+                "src.audiobook_studio.config.loader.reload_config_if_changed",
+                return_value=(pipeline.quality_thresholds, None),
+            ),
+            patch(
+                "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
+                return_value=duration,
+            ),
+            patch(
+                "src.audiobook_studio.pipeline.quality_check.detect_silence_sync",
+                return_value=silence,
+            ),
+            patch(
+                "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync",
+                return_value=(rms_db, peak_db),
+            ),
+            patch(
+                "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
+                return_value=samples,
+            ),
         ):
             return pipeline._analyze_with_ffprobe(Path("/test.wav"), expected)
 
@@ -379,18 +376,14 @@ class TestAnalyzeWithFfprobe:
 
     def test_clipping_detected(self):
         pipeline = self._make_pipeline()
-        samples = np.concatenate(
-            [np.ones(20, dtype=np.float32) * 0.999, np.zeros(50, dtype=np.float32)]
-        )
+        samples = np.concatenate([np.ones(20, dtype=np.float32) * 0.999, np.zeros(50, dtype=np.float32)])
         result = self._run_analysis(pipeline, samples=samples)
         assert result.has_clipping is True
         assert any("clipping" in i for i in result.issues)
 
     def test_silence_detected(self):
         pipeline = self._make_pipeline()
-        result = self._run_analysis(
-            pipeline, silence=[(1000.0, 2000.0), (3000.0, 4000.0)]
-        )
+        result = self._run_analysis(pipeline, silence=[(1000.0, 2000.0), (3000.0, 4000.0)])
         assert result.has_silence is True
         assert any("silence" in i for i in result.issues)
 
@@ -414,20 +407,21 @@ class TestAnalyzeWithFfprobe:
     def test_empty_samples_zero_duration(self):
         """Empty samples with zero duration → issues=['no_audio_data']."""
         pipeline = self._make_pipeline()
-        result = self._run_analysis(
-            pipeline, duration=0, samples=np.array([], dtype=np.float32)
-        )
+        result = self._run_analysis(pipeline, duration=0, samples=np.array([], dtype=np.float32))
         assert "no_audio_data" in result.issues
 
     def test_generic_exception_in_ffprobe(self):
         """Generic exception at line 400 re-raises."""
         pipeline = self._make_pipeline()
-        with patch(
-            "src.audiobook_studio.config.loader.reload_config_if_changed",
-            return_value=(pipeline.quality_thresholds, None),
-        ), patch(
-            "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
-            side_effect=RuntimeError("ffprobe crashed"),
+        with (
+            patch(
+                "src.audiobook_studio.config.loader.reload_config_if_changed",
+                return_value=(pipeline.quality_thresholds, None),
+            ),
+            patch(
+                "src.audiobook_studio.pipeline.quality_check.get_duration_sync",
+                side_effect=RuntimeError("ffprobe crashed"),
+            ),
         ):
             with pytest.raises(RuntimeError, match="ffprobe crashed"):
                 pipeline._analyze_with_ffprobe(Path("/test.wav"), 5000)
@@ -463,12 +457,8 @@ class TestMockModeFixSuggestionMerge:
             annotation = _ann()
             routing = _routing()
 
-            with patch.object(
-                pipeline, "_analyze_audio_rules", return_value=mock_analysis
-            ):
-                results = pipeline.run(
-                    [(str(audio_path), annotation, routing, "测试文本")]
-                )
+            with patch.object(pipeline, "_analyze_audio_rules", return_value=mock_analysis):
+                results = pipeline.run([(str(audio_path), annotation, routing, "测试文本")])
 
             assert len(results) == 1
             assert any("silence" in i for i in results[0].issues)

@@ -93,9 +93,7 @@ class VoxCPM2Backend(TTSEngine):
 
         self._model = None
         self._tokenizer = None
-        self._voice_embeddings = dict(
-            VOXCPM2_VOICES
-        )  # Use predefined voices (copy to avoid mutating shared state)
+        self._voice_embeddings = dict(VOXCPM2_VOICES)  # Use predefined voices (copy to avoid mutating shared state)
         self._reference_audio_cache = {}
 
     @property
@@ -133,12 +131,9 @@ class VoxCPM2Backend(TTSEngine):
                 vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
                 if vram_gb < min_vram:
                     raise RuntimeError(
-                        f"Insufficient VRAM: {vram_gb:.1f} GB available, "
-                        f"need >={min_vram} GB for {self.dtype} mode"
+                        f"Insufficient VRAM: {vram_gb:.1f} GB available, " f"need >={min_vram} GB for {self.dtype} mode"
                     )
-                logger.info(
-                    f"GPU VRAM: {vram_gb:.1f} GB (need {min_vram} GB for {self.dtype})"
-                )
+                logger.info(f"GPU VRAM: {vram_gb:.1f} GB (need {min_vram} GB for {self.dtype})")
 
             # Resolve model path
             if self.model_path is None:
@@ -146,14 +141,10 @@ class VoxCPM2Backend(TTSEngine):
 
             model_dir = Path(self.model_path)
             if not model_dir.exists():
-                raise FileNotFoundError(
-                    f"VoxCPM2 model directory not found: {self.model_path}"
-                )
+                raise FileNotFoundError(f"VoxCPM2 model directory not found: {self.model_path}")
 
             # Load model (placeholder - real implementation loads VoxCPM2 weights)
-            logger.info(
-                f"Loading VoxCPM2 model from {self.model_path} with {self.dtype}..."
-            )
+            logger.info(f"Loading VoxCPM2 model from {self.model_path} with {self.dtype}...")
 
             # Simulate model loading - replace with actual VoxCPM2 loading
             # self._model = VoxCPM2.from_pretrained(self.model_path, dtype=self.dtype)
@@ -166,36 +157,24 @@ class VoxCPM2Backend(TTSEngine):
             # Load voice embeddings
             voice_emb_path = model_dir / "voice_embeddings.pt"
             if voice_emb_path.exists():
-                self._voice_embeddings = torch.load(
-                    voice_emb_path, map_location=self.device
-                )
+                self._voice_embeddings = torch.load(voice_emb_path, map_location=self.device)
             else:
-                logger.warning(
-                    "Voice embeddings not found, using random initialization"
-                )
+                logger.warning("Voice embeddings not found, using random initialization")
                 # Initialize default voice embeddings
                 for voice_id in VOXCPM2_VOICES:
-                    self._voice_embeddings[voice_id] = torch.randn(
-                        1, 256, device=self.device
-                    )
+                    self._voice_embeddings[voice_id] = torch.randn(1, 256, device=self.device)
 
             self._initialized = True
-            logger.info(
-                f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, device={self.device}"
-            )
+            logger.info(f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, device={self.device}")
 
         except ImportError:
-            logger.error(
-                "torch/torchaudio not installed. Run: pip install torch torchaudio"
-            )
+            logger.error("torch/torchaudio not installed. Run: pip install torch torchaudio")
             raise
         except Exception as e:
             logger.error(f"Failed to initialize VoxCPM2 backend: {e}")
             raise
 
-    def _get_voice_embedding(
-        self, voice_id: str, reference_audio: Optional[str] = None
-    ):
+    def _get_voice_embedding(self, voice_id: str, reference_audio: Optional[str] = None):
         """Get voice embedding, optionally from reference audio."""
 
         # If reference audio provided, compute embedding
@@ -349,9 +328,7 @@ class VoxCPM2Backend(TTSEngine):
 
         est_sec = chinese_chars / 5.0 + english_chars / 12.0
 
-        speed = (
-            kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
-        )
+        speed = kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
         est_sec = est_sec / speed
 
         return max(500, int(est_sec * 1000))
@@ -398,8 +375,6 @@ async def create_voxcpmp2_backend(
     **kwargs,
 ) -> VoxCPM2Backend:
     """Factory function to create and initialize VoxCPM2 backend."""
-    backend = VoxCPM2Backend(
-        model_path=model_path, device=device, dtype=dtype, **kwargs
-    )
+    backend = VoxCPM2Backend(model_path=model_path, device=device, dtype=dtype, **kwargs)
     await backend.initialize()
     return backend

@@ -109,9 +109,7 @@ class TestExtractPipeline:
         input_data = self.create_minimal_input()
 
         with patch.object(self.pipeline, "_extract_pdf") as mock_extract:
-            with patch(
-                "src.audiobook_studio.pipeline.extract.record_stage_performance"
-            ) as mock_record:
+            with patch("src.audiobook_studio.pipeline.extract.record_stage_performance") as mock_record:
                 self.pipeline.run(input_data)
                 # In mock mode, record_stage_performance should be called with mock data
                 mock_record.assert_called_once()
@@ -332,9 +330,7 @@ class TestExtractPipelineRealLogic:
 
         mock_item = Mock()
         mock_item.get_type.return_value = "application/xhtml+xml"
-        mock_item.get_content.return_value = (
-            "<html><body>EPUB 测试内容 " * 30 + "</body></html>"
-        ).encode("utf-8")
+        mock_item.get_content.return_value = ("<html><body>EPUB 测试内容 " * 30 + "</body></html>").encode("utf-8")
 
         mock_book = Mock()
         mock_book.get_items.return_value = [mock_item]
@@ -379,9 +375,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test.txt"
         test_file.write_text("纯文本测试内容 " * 20, encoding="utf-8")
 
-        input_data = ExtractionInput(
-            file_path=str(test_file), mime_type="text/plain", detect_language=True
-        )
+        input_data = ExtractionInput(file_path=str(test_file), mime_type="text/plain", detect_language=True)
 
         result = self.pipeline.run(input_data)
 
@@ -422,9 +416,7 @@ class TestExtractConvenienceFunction:
         Note: extract_text defaults to mock_mode=True, so we explicitly set mock_mode=False.
         """
         mock_page = Mock()
-        mock_page.extract_text.return_value = (
-            "集成测试文本内容" * 20
-        )  # > 100 chars to avoid OCR fallback
+        mock_page.extract_text.return_value = "集成测试文本内容" * 20  # > 100 chars to avoid OCR fallback
 
         mock_pdf = Mock()
         mock_pdf.pages = [mock_page]
@@ -434,9 +426,7 @@ class TestExtractConvenienceFunction:
         test_file.write_bytes(b"%PDF-1.4")
 
         # Explicitly set mock_mode=False for real extraction test
-        result = extract_text(
-            str(test_file), mime_type="application/pdf", mock_mode=False
-        )
+        result = extract_text(str(test_file), mime_type="application/pdf", mock_mode=False)
 
         assert "集成测试文本内容" in result.raw_text
         assert result.language == "zh"

@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-
 from scripts.promote import (
     CanaryConfig,
     CanaryMetrics,
@@ -362,11 +361,7 @@ class TestCLICommands:
         # Need to start canary first - use same CanaryRelease instance
         from datetime import datetime, timezone
 
-        from src.audiobook_studio.feedback.release import (
-            CanaryConfig,
-            CanaryMetrics,
-            CanaryRelease,
-        )
+        from src.audiobook_studio.feedback.release import CanaryConfig, CanaryMetrics, CanaryRelease
 
         config = CanaryConfig(rollback_threshold=0.95)
         canary = CanaryRelease(config)

@@ -1,6 +1,6 @@
 """Tests for feedback API endpoints - covers src/audiobook_studio/api/feedback.py"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -133,11 +133,7 @@ class TestFeedbackAPI:
 
     def test_list_feedback_with_data(self):
         """Test listing feedback with data."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            list_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, list_feedback
 
         # Create some feedback
         fb1 = FeedbackCreate(
@@ -171,11 +167,7 @@ class TestFeedbackAPI:
 
     def test_list_feedback_filter_by_book_id(self):
         """Test filtering feedback by book_id."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            list_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, list_feedback
 
         fb1 = FeedbackCreate(
             source="human_edit",
@@ -208,11 +200,7 @@ class TestFeedbackAPI:
 
     def test_list_feedback_filter_by_stage(self):
         """Test filtering feedback by stage."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            list_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, list_feedback
 
         fb1 = FeedbackCreate(
             source="human_edit",
@@ -245,11 +233,7 @@ class TestFeedbackAPI:
 
     def test_list_feedback_filter_by_source(self):
         """Test filtering feedback by source."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            list_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, list_feedback
 
         fb1 = FeedbackCreate(
             source="human_edit",
@@ -282,11 +266,7 @@ class TestFeedbackAPI:
 
     def test_list_feedback_pagination(self):
         """Test feedback list pagination."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            list_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, list_feedback
 
         for i in range(5):
             fb = FeedbackCreate(
@@ -319,11 +299,7 @@ class TestFeedbackAPI:
 
     def test_get_feedback_found(self):
         """Test getting specific feedback by ID."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            get_feedback,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, get_feedback
 
         fb = FeedbackCreate(
             source="human_edit",
@@ -360,11 +336,7 @@ class TestFeedbackAPI:
 
     def test_get_feedback_stats(self):
         """Test getting feedback statistics."""
-        from src.audiobook_studio.api.feedback import (
-            FeedbackCreate,
-            create_feedback,
-            get_feedback_stats,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackCreate, create_feedback, get_feedback_stats
 
         fb1 = FeedbackCreate(
             source="human_edit",
@@ -460,13 +432,13 @@ class TestFeedbackAPIModels:
 
     def test_feedback_response_model(self):
         """Test FeedbackResponse model."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         from src.audiobook_studio.api.feedback import FeedbackResponse
 
         fb = FeedbackResponse(
             id="test-id",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             source="human_edit",
             stage="edit_for_tts",
             book_id="book123",
@@ -484,16 +456,13 @@ class TestFeedbackAPIModels:
 
     def test_feedback_list_response_model(self):
         """Test FeedbackListResponse model."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
-        from src.audiobook_studio.api.feedback import (
-            FeedbackListResponse,
-            FeedbackResponse,
-        )
+        from src.audiobook_studio.api.feedback import FeedbackListResponse, FeedbackResponse
 
         fb = FeedbackResponse(
             id="test-id",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             source="human_edit",
             stage="edit_for_tts",
             book_id="book123",

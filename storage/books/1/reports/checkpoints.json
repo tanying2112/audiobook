@@ -43,42 +43,48 @@
     },
     "6": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null
     },
     "7": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null
     },
     "8": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null
     },
     "9": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null
     },
     "10": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null
     },
     "11": {
       "stages_done": [
-        "extract"
+        "extract",
+        "analyze"
       ],
       "paragraphs_done": [],
       "current_stage": null

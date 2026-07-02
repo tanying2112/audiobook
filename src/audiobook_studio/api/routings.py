@@ -36,9 +36,7 @@ def get_routing(routing_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{routing_id}", response_model=RoutingSchema)
-def update_routing(
-    routing_id: int, payload: RoutingSchema, db: Session = Depends(get_db)
-):
+def update_routing(routing_id: int, payload: RoutingSchema, db: Session = Depends(get_db)):
     i = db.query(Routing).filter(Routing.id == routing_id).first()
     if not i:
         raise HTTPException(status_code=404, detail="Routing not found")

@@ -39,18 +39,12 @@ class Settings(BaseSettings):
     )
 
     # Database
-    DATABASE_URL: str = Field(
-        default="sqlite:///./data/audiobook.db", alias="DATABASE_URL"
-    )
+    DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
 
     # JWT Authentication
-    JWT_SECRET_KEY: str = Field(
-        default="your-super-secret-key-change-in-production", alias="JWT_SECRET_KEY"
-    )
+    JWT_SECRET_KEY: str = Field(default="your-super-secret-key-change-in-production", alias="JWT_SECRET_KEY")
     JWT_ALGORITHM: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-        default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES"
-    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
     # Password hashing
@@ -71,28 +65,20 @@ class Settings(BaseSettings):
 
     # Storage
     STORAGE_PATH: str = Field(default="./storage", alias="STORAGE_PATH")
-    MAX_UPLOAD_SIZE: int = Field(
-        default=100 * 1024 * 1024, alias="MAX_UPLOAD_SIZE"
-    )  # 100MB
+    MAX_UPLOAD_SIZE: int = Field(default=100 * 1024 * 1024, alias="MAX_UPLOAD_SIZE")  # 100MB
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", alias="LOG_LEVEL")
     LOG_FORMAT: str = Field(default="json", alias="LOG_FORMAT")
 
     # Observability
-    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(
-        default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT"
-    )
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
     OTEL_CONSOLE_EXPORTER: bool = Field(default=False, alias="OTEL_CONSOLE_EXPORTER")
     PROMETHEUS_PORT: int = Field(default=9090, alias="PROMETHEUS_PORT")
 
     # Langfuse
-    LANGFUSE_PUBLIC_KEY: Optional[str] = Field(
-        default=None, alias="LANGFUSE_PUBLIC_KEY"
-    )
-    LANGFUSE_SECRET_KEY: Optional[str] = Field(
-        default=None, alias="LANGFUSE_SECRET_KEY"
-    )
+    LANGFUSE_PUBLIC_KEY: Optional[str] = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
+    LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, alias="LANGFUSE_SECRET_KEY")
     LANGFUSE_HOST: Optional[str] = Field(default=None, alias="LANGFUSE_HOST")
 
 

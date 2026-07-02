@@ -3,7 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -13,10 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 # Import the API router and dependencies
 from src.audiobook_studio.api.golden import router as golden_router
-from src.audiobook_studio.database import get_db as golden_get_db
 from src.audiobook_studio.database import Base
+from src.audiobook_studio.database import get_db as golden_get_db
 from src.audiobook_studio.models.feedback_record import FeedbackRecord
-
 
 # Create test app
 test_app = FastAPI()
@@ -29,15 +28,15 @@ def db_engine():
     """Create an in-memory SQLite engine for testing."""
     # Use file-based SQLite to avoid issues with in-memory DB in multi-threaded TestClient
     import tempfile
+
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    engine = create_engine(
-        f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()
     import os
+
     os.unlink(tmp.name)
 
 
@@ -55,6 +54,7 @@ def db_session(db_engine):
 @pytest.fixture
 def client(db_session):
     """FastAPI test client with database override."""
+
     def get_test_db():
         try:
             yield db_session
@@ -90,16 +90,17 @@ def golden_temp_dir(tmp_path):
         # Create few_shot.jsonl
         few_shot = stage_path / "few_shot.jsonl"
         few_shot.write_text(
-            json.dumps({"input": {"text": "test"}, "output": {"result": "extracted"}}) + "\n" +
-            json.dumps({"input": {"text": "test2"}, "output": {"result": "extracted2"}}) + "\n"
+            json.dumps({"input": {"text": "test"}, "output": {"result": "extracted"}})
+            + "\n"
+            + json.dumps({"input": {"text": "test2"}, "output": {"result": "extracted2"}})
+            + "\n"
         )
 
         # Create case file
         case_file = stage_path / "case_001.json"
-        case_file.write_text(json.dumps({
-            "input": {"text": "case input"},
-            "expected_output": {"result": "case output"}
-        }))
+        case_file.write_text(
+            json.dumps({"input": {"text": "case input"}, "expected_output": {"result": "case output"}})
+        )
 
     # Create reports directory
     reports_dir = golden_dir / "reports"
@@ -115,7 +116,7 @@ def golden_temp_dir(tmp_path):
         "pass_rate": 0.8,
         "by_stage": {"extract": {"passed": 3, "failed": 1}, "analyze": {"passed": 5, "failed": 1}},
         "results": [],
-        "prompt_versions_tested": {"extract": "v1", "analyze": "v2"}
+        "prompt_versions_tested": {"extract": "v1", "analyze": "v2"},
     }
     (reports_dir / "regression_12345.json").write_text(json.dumps(sample_report))
 
@@ -182,6 +183,7 @@ class TestGoldenContribution:
     def test_contribute_from_feedback_record(self, client, db_session, golden_temp_dir):
         """Test contributing a template from FeedbackRecord to golden dataset."""
         from datetime import datetime, timezone
+
         # Create a FeedbackRecord with all required fields
         feedback = FeedbackRecord(
             project_id=1,
@@ -200,12 +202,10 @@ class TestGoldenContribution:
         db_session.refresh(feedback)
 
         # Make contribution request
-        response = client.post("/golden/contribute", json={
-            "template_id": feedback.id,
-            "stage": "extract",
-            "quality_score": 0.9,
-            "notes": "Test contribution"
-        })
+        response = client.post(
+            "/golden/contribute",
+            json={"template_id": feedback.id, "stage": "extract", "quality_score": 0.9, "notes": "Test contribution"},
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -215,11 +215,14 @@ class TestGoldenContribution:
 
     def test_contribute_nonexistent_feedback(self, client, db_session, golden_temp_dir):
         """Test contributing from non-existent FeedbackRecord returns 404."""
-        response = client.post("/golden/contribute", json={
-            "template_id": 99999,
-            "stage": "extract",
-            "quality_score": 0.9,
-        })
+        response = client.post(
+            "/golden/contribute",
+            json={
+                "template_id": 99999,
+                "stage": "extract",
+                "quality_score": 0.9,
+            },
+        )
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
 
@@ -236,12 +239,16 @@ class TestGoldenApproval:
             # Create a mock sample file for approval
             stage_dir = golden_temp_dir / "extract"
             sample_file = stage_dir / "contrib_extract_12345.json"
-            sample_file.write_text(json.dumps({
-                "input": {"text": "test"},
-                "output": {"result": "test"},
-                "human_verified": False,
-                "source": "contribution"
-            }))
+            sample_file.write_text(
+                json.dumps(
+                    {
+                        "input": {"text": "test"},
+                        "output": {"result": "test"},
+                        "human_verified": False,
+                        "source": "contribution",
+                    }
+                )
+            )
 
             response = client.post("/golden/approve/contrib_extract_12345?stage=extract")
             assert response.status_code == 200
@@ -253,12 +260,16 @@ class TestGoldenApproval:
         """Test rejecting a pending golden sample."""
         stage_dir = golden_temp_dir / "extract"
         sample_file = stage_dir / "contrib_extract_67890.json"
-        sample_file.write_text(json.dumps({
-            "input": {"text": "test"},
-            "output": {"result": "test"},
-            "human_verified": False,
-            "source": "contribution"
-        }))
+        sample_file.write_text(
+            json.dumps(
+                {
+                    "input": {"text": "test"},
+                    "output": {"result": "test"},
+                    "human_verified": False,
+                    "source": "contribution",
+                }
+            )
+        )
 
         response = client.post("/golden/reject/contrib_extract_67890?stage=extract")
         assert response.status_code == 200
@@ -283,10 +294,7 @@ class TestGoldenRegression:
         mock_result.model_dump.return_value = {"result": "extracted"}
         mock_run_stage.return_value = mock_result
 
-        response = client.post("/golden/run-regression", json={
-            "stages": ["extract"],
-            "prompt_versions": {}
-        })
+        response = client.post("/golden/run-regression", json={"stages": ["extract"], "prompt_versions": {}})
 
         assert response.status_code == 200
         data = response.json()
@@ -335,11 +343,10 @@ class TestBootstrapFewshot:
 
     def test_bootstrap_fewshot(self, client, golden_temp_dir):
         """Test triggering few-shot optimization."""
-        response = client.post("/golden/bootstrap-fewshot", params={
-            "stage": "extract",
-            "max_samples": 5,
-            "optimization_target": "diversity"
-        })
+        response = client.post(
+            "/golden/bootstrap-fewshot",
+            params={"stage": "extract", "max_samples": 5, "optimization_target": "diversity"},
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "queued"
@@ -382,6 +389,7 @@ class TestGoldenSimilarity:
     def test_compute_output_similarity_exact_match(self):
         """Test similarity with exact match."""
         from src.audiobook_studio.api.golden import _compute_output_similarity
+
         actual = {"key1": "value1", "key2": 100}
         expected = {"key1": "value1", "key2": 100}
         assert _compute_output_similarity(actual, expected) == 1.0
@@ -389,6 +397,7 @@ class TestGoldenSimilarity:
     def test_compute_output_similarity_partial_match(self):
         """Test similarity with partial match."""
         from src.audiobook_studio.api.golden import _compute_output_similarity
+
         actual = {"key1": "value1", "key2": 100}
         expected = {"key1": "different", "key2": 100}
         sim = _compute_output_similarity(actual, expected)
@@ -397,6 +406,7 @@ class TestGoldenSimilarity:
     def test_compute_output_similarity_no_match(self):
         """Test similarity with no match."""
         from src.audiobook_studio.api.golden import _compute_output_similarity
+
         actual = {"key1": "value1"}
         expected = {"key2": "value2"}
         sim = _compute_output_similarity(actual, expected)
@@ -405,6 +415,7 @@ class TestGoldenSimilarity:
     def test_compute_output_similarity_empty(self):
         """Test similarity with empty dicts."""
         from src.audiobook_studio.api.golden import _compute_output_similarity
+
         # Current implementation returns 0.0 for empty dicts (edge case)
         assert _compute_output_similarity({}, {}) == 0.0
         assert _compute_output_similarity({"a": 1}, {}) == 0.0
@@ -413,6 +424,7 @@ class TestGoldenSimilarity:
     def test_compute_output_similarity_numeric_tolerance(self):
         """Test similarity with numeric values within tolerance."""
         from src.audiobook_studio.api.golden import _compute_output_similarity
+
         actual = {"score": 0.95}
         expected = {"score": 0.96}  # Within 10%
         sim = _compute_output_similarity(actual, expected)
@@ -425,6 +437,7 @@ class TestGoldenLoadSave:
     def test_load_golden_samples(self, golden_temp_dir):
         """Test loading golden samples from disk."""
         from src.audiobook_studio.api.golden import _load_golden_samples
+
         samples = _load_golden_samples("extract")
         assert len(samples) >= 2  # few_shot + case file
         assert all("id" in s for s in samples)
@@ -434,13 +447,17 @@ class TestGoldenLoadSave:
     def test_save_golden_sample(self, golden_temp_dir):
         """Test saving a golden sample."""
         from src.audiobook_studio.api.golden import _save_golden_sample
-        sample_id = _save_golden_sample("extract", {
-            "input": {"text": "new"},
-            "output": {"result": "new"},
-            "quality_score": 0.8,
-            "notes": "test note",
-            "pattern_tags": ["tag1"],
-        })
+
+        sample_id = _save_golden_sample(
+            "extract",
+            {
+                "input": {"text": "new"},
+                "output": {"result": "new"},
+                "quality_score": 0.8,
+                "notes": "test note",
+                "pattern_tags": ["tag1"],
+            },
+        )
         assert sample_id.startswith("contrib_extract_")
 
         # Verify file was created

@@ -81,12 +81,15 @@ class TestDetectSpeechSegments:
 
     def test_no_silence_detected(self):
         mock_audio_path = Path("/fake/audio.mp3")
-        with patch(
-            "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-            return_value=10000,
-        ), patch(
-            "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
-            return_value=[],
+        with (
+            patch(
+                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                return_value=10000,
+            ),
+            patch(
+                "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
+                return_value=[],
+            ),
         ):
             segments = detect_speech_segments(mock_audio_path)
 
@@ -100,12 +103,15 @@ class TestDetectSpeechSegments:
         mock_audio_path = Path("/fake/audio.mp3")
         silence_regions = [(2000, 3000), (6000, 7000)]
 
-        with patch(
-            "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-            return_value=10000,
-        ), patch(
-            "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
-            return_value=silence_regions,
+        with (
+            patch(
+                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                return_value=10000,
+            ),
+            patch(
+                "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
+                return_value=silence_regions,
+            ),
         ):
             segments = detect_speech_segments(mock_audio_path)
 
@@ -125,16 +131,17 @@ class TestDetectSpeechSegments:
 
     def test_custom_threshold(self):
         mock_audio_path = Path("/fake/audio.mp3")
-        with patch(
-            "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-            return_value=5000,
-        ), patch(
-            "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
-            return_value=[],
+        with (
+            patch(
+                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                return_value=5000,
+            ),
+            patch(
+                "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
+                return_value=[],
+            ),
         ):
-            segments = detect_speech_segments(
-                mock_audio_path, silence_threshold_db=-40.0
-            )
+            segments = detect_speech_segments(mock_audio_path, silence_threshold_db=-40.0)
 
         assert len(segments) == 1
 
@@ -143,12 +150,15 @@ class TestDetectSpeechSegments:
         mock_audio_path = Path("/fake/audio.mp3")
         silence_regions = [(100, 200)]  # Only 100ms of silence
 
-        with patch(
-            "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-            return_value=5000,
-        ), patch(
-            "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
-            return_value=silence_regions,
+        with (
+            patch(
+                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                return_value=5000,
+            ),
+            patch(
+                "src.audiobook_studio.export.audio_ducking.detect_silence_sync",
+                return_value=silence_regions,
+            ),
         ):
             segments = detect_speech_segments(mock_audio_path, min_speech_ms=200)
 
@@ -168,15 +178,17 @@ class TestMixWithDucking:
             speech_path.write_text("dummy speech")
             output_path = tmpdir_path / "output.m4a"
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-                return_value=5000,
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.detect_speech_segments",
-                return_value=[],
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
+            with (
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                    return_value=5000,
+                ),
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.detect_speech_segments",
+                    return_value=[],
+                ),
+                patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run,
+            ):
                 mock_run.return_value = MagicMock(returncode=0)
                 result = mix_with_ducking(
                     speech_path=speech_path,
@@ -196,17 +208,15 @@ class TestMixWithDucking:
             bgm_path.write_text("dummy bgm")
             output_path = tmpdir_path / "output.m4a"
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-                return_value=10000,
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.detect_speech_segments"
-            ) as mock_detect, patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
-                mock_detect.return_value = [
-                    DuckingSegment(0, 10000, "speech", label="speech")
-                ]
+            with (
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                    return_value=10000,
+                ),
+                patch("src.audiobook_studio.export.audio_ducking.detect_speech_segments") as mock_detect,
+                patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run,
+            ):
+                mock_detect.return_value = [DuckingSegment(0, 10000, "speech", label="speech")]
                 mock_run.return_value = MagicMock(returncode=0)
                 result = mix_with_ducking(
                     speech_path=speech_path,
@@ -236,17 +246,15 @@ class TestMixWithDucking:
                 silence_threshold_db=-40.0,
             )
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-                return_value=10000,
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.detect_speech_segments"
-            ) as mock_detect, patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
-                mock_detect.return_value = [
-                    DuckingSegment(0, 10000, "speech", label="speech")
-                ]
+            with (
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                    return_value=10000,
+                ),
+                patch("src.audiobook_studio.export.audio_ducking.detect_speech_segments") as mock_detect,
+                patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run,
+            ):
+                mock_detect.return_value = [DuckingSegment(0, 10000, "speech", label="speech")]
                 mock_run.return_value = MagicMock(returncode=0)
                 result = mix_with_ducking(
                     speech_path=speech_path,
@@ -279,12 +287,13 @@ class TestMixWithDucking:
                 DuckingSegment(5000, 10000, "speech", label="speech"),
             ]
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-                return_value=10000,
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
+            with (
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                    return_value=10000,
+                ),
+                patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run,
+            ):
                 mock_run.return_value = MagicMock(returncode=0)
                 result = mix_with_ducking(
                     speech_path=speech_path,
@@ -307,17 +316,15 @@ class TestMixWithDucking:
 
             import subprocess
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.get_duration_sync",
-                return_value=10000,
-            ), patch(
-                "src.audiobook_studio.export.audio_ducking.detect_speech_segments"
-            ) as mock_detect, patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
-                mock_detect.return_value = [
-                    DuckingSegment(0, 10000, "speech", label="speech")
-                ]
+            with (
+                patch(
+                    "src.audiobook_studio.export.audio_ducking.get_duration_sync",
+                    return_value=10000,
+                ),
+                patch("src.audiobook_studio.export.audio_ducking.detect_speech_segments") as mock_detect,
+                patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run,
+            ):
+                mock_detect.return_value = [DuckingSegment(0, 10000, "speech", label="speech")]
                 # First call times out, second call (fallback) succeeds
                 mock_run.side_effect = [
                     subprocess.TimeoutExpired("ffmpeg", 300),
@@ -345,9 +352,7 @@ class TestAddSfx:
             sfx_path.write_text("dummy sfx")
             output_path = tmpdir_path / "output.mp3"
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
+            with patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 result = add_sfx(
                     speech_path=speech_path,
@@ -371,9 +376,7 @@ class TestAddSfx:
             sfx_path.write_text("dummy sfx")
             output_path = tmpdir_path / "output.mp3"
 
-            with patch(
-                "src.audiobook_studio.export.audio_ducking.subprocess.run"
-            ) as mock_run:
+            with patch("src.audiobook_studio.export.audio_ducking.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 result = add_sfx(
                     speech_path=speech_path,

@@ -44,9 +44,7 @@ dimensions:
     def test_quality_thresholds_defaults_for_missing(self, loader, tmp_path):
         """Test missing fields get Pydantic defaults."""
         config_file = tmp_path / "thresholds.yaml"
-        config_file.write_text(
-            "overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8"
-        )
+        config_file.write_text("overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8")
 
         result = loader.load_quality_thresholds(str(config_file))
         # Missing fields should have defaults
@@ -153,12 +151,7 @@ constitutional_rules:
         assert "quality_thresholds" in result
         assert "constitutional_rules" in result
         assert result["quality_thresholds"]["overall"]["min_acceptable_score"] == 0.75
-        assert (
-            result["constitutional_rules"]["character_consistency"][
-                "min_consistency_score"
-            ]
-            == 0.92
-        )
+        assert result["constitutional_rules"]["character_consistency"]["min_consistency_score"] == 0.92
 
     def test_pipeline_config_cache(self, loader, tmp_path):
         """Test config caching."""

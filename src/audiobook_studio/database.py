@@ -43,9 +43,7 @@ DATABASE_URL = os.getenv(
 # check_same_thread required for SQLite in multithreaded FastAPI
 engine = create_engine(
     DATABASE_URL,
-    connect_args=(
-        {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-    ),
+    connect_args=({"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}),
     echo=False,
     pool_pre_ping=True,  # 连接池健康检查
 )

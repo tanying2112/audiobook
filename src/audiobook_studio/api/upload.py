@@ -11,16 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -148,9 +139,7 @@ def validate_file(file: UploadFile) -> None:
         )
 
     if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400, detail=f"MIME type {file.content_type} not allowed"
-        )
+        raise HTTPException(status_code=400, detail=f"MIME type {file.content_type} not allowed")
 
 
 async def save_upload_chunk(upload_id: str, chunk: bytes, chunk_index: int) -> None:
@@ -209,14 +198,10 @@ async def init_upload(
         )
 
     if mime_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400, detail=f"MIME type {mime_type} not allowed"
-        )
+        raise HTTPException(status_code=400, detail=f"MIME type {mime_type} not allowed")
 
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes"
-        )
+        raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes")
 
     # Create upload session
     upload_id = str(uuid.uuid4())
@@ -303,9 +288,7 @@ async def upload_chunk(
         session["completed_at"] = datetime.now(timezone.utc)
 
         # Start extraction job
-        job_id = await start_extraction_job(
-            upload_id, project_id, file_path, session["mime_type"]
-        )
+        job_id = await start_extraction_job(upload_id, project_id, file_path, session["mime_type"])
 
         return UploadCompleteResponse(
             upload_id=upload_id,
@@ -372,9 +355,7 @@ async def upload_file(
     )
 
 
-async def start_extraction_job(
-    upload_id: str, project_id: int, file_path: str, mime_type: str
-) -> str:
+async def start_extraction_job(upload_id: str, project_id: int, file_path: str, mime_type: str) -> str:
     """Start an async extraction job."""
     job_id = str(uuid.uuid4())
 
@@ -564,15 +545,11 @@ async def get_upload_status(
         "status": session.get("status", "initialized"),
         "chunks_received": len(session["chunks_received"]),
         "total_chunks": session["total_chunks"],
-        "progress": len(session["chunks_received"])
-        / max(session["total_chunks"], 1)
-        * 100,
+        "progress": len(session["chunks_received"]) / max(session["total_chunks"], 1) * 100,
     }
 
 
-@router.get(
-    "/{project_id}/extraction/{job_id}/status", response_model=ExtractionJobStatus
-)
+@router.get("/{project_id}/extraction/{job_id}/status", response_model=ExtractionJobStatus)
 async def get_extraction_status(
     project_id: int,
     job_id: str,

@@ -10,17 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from src.audiobook_studio.monitoring import record_stage_performance
-from src.audiobook_studio.pipeline.synthesize import (
-    AudioSegment,
-    SynthesizePipeline,
-    synthesize_paragraphs,
-)
-from src.audiobook_studio.schemas import (
-    CharacterVoiceBinding,
-    ParagraphAnnotation,
-    TtsRoutingDecision,
-    TtsRoutingInput,
-)
+from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline, synthesize_paragraphs
+from src.audiobook_studio.schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 
 
 class TestSynthesizePipeline:
@@ -29,9 +20,7 @@ class TestSynthesizePipeline:
     def setup_method(self):
         """Setup test fixtures."""
         self.mock_router = Mock()
-        self.pipeline = SynthesizePipeline(
-            router=self.mock_router, output_dir="./test_output", mock_mode=True
-        )
+        self.pipeline = SynthesizePipeline(router=self.mock_router, output_dir="./test_output", mock_mode=True)
         # Ensure test output directory exists
         Path("./test_output").mkdir(exist_ok=True)
 
@@ -61,9 +50,7 @@ class TestSynthesizePipeline:
     def test_init_custom_params(self):
         """Test pipeline initialization with custom parameters."""
         custom_dir = "/tmp/test_audio_output"
-        pipeline = SynthesizePipeline(
-            router=self.mock_router, output_dir=custom_dir, mock_mode=False
-        )
+        pipeline = SynthesizePipeline(router=self.mock_router, output_dir=custom_dir, mock_mode=False)
         assert pipeline.router == self.mock_router
         assert not pipeline.mock_mode
         assert pipeline.output_dir == Path(custom_dir)
@@ -436,9 +423,7 @@ class TestSynthesizePipeline:
         )
 
         # Test with mock_mode=True
-        segments = synthesize_paragraphs(
-            inputs=[inp], output_dir="./test_output_func", mock_mode=True
-        )
+        segments = synthesize_paragraphs(inputs=[inp], output_dir="./test_output_func", mock_mode=True)
 
         assert len(segments) == 1
         assert segments[0].segment_id == "test_book_ch1_p1"
@@ -478,9 +463,7 @@ class TestSynthesizeNonMockPaths:
     def setup_method(self):
         """Setup test fixtures with real (non-mock) pipeline."""
         self.mock_router = Mock()
-        self.pipeline = SynthesizePipeline(
-            router=self.mock_router, output_dir="./test_output_nonmock", mock_mode=False
-        )
+        self.pipeline = SynthesizePipeline(router=self.mock_router, output_dir="./test_output_nonmock", mock_mode=False)
         Path("./test_output_nonmock").mkdir(parents=True, exist_ok=True)
 
     def teardown_method(self):
@@ -587,24 +570,18 @@ class TestSynthesizeNonMockPaths:
                 text_hash="hash2",
             ),
         ]
-        total_duration = self.pipeline._crossfade_stitch(
-            segments, Path("./test_output_nonmock/combined.mp3")
-        )
+        total_duration = self.pipeline._crossfade_stitch(segments, Path("./test_output_nonmock/combined.mp3"))
         assert total_duration == 0  # No valid segment files found
 
     def test_crossfade_stitch_empty_segments(self):
         """Test crossfade stitching with empty segments."""
         self.pipeline.mock_mode = True
-        total_duration = self.pipeline._crossfade_stitch(
-            [], Path("./test_output_nonmock/combined.mp3")
-        )
+        total_duration = self.pipeline._crossfade_stitch([], Path("./test_output_nonmock/combined.mp3"))
         assert total_duration == 0
 
     @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_ffmpeg_success(
-        self, mock_get_duration, mock_subprocess_run, tmp_path
-    ):
+    def test_crossfade_stitch_ffmpeg_success(self, mock_get_duration, mock_subprocess_run, tmp_path):
         """Test crossfade stitching with ffmpeg success."""
         self.pipeline.mock_mode = False
         mock_subprocess_run.return_value = Mock(returncode=0, stdout="", stderr="")
@@ -640,9 +617,7 @@ class TestSynthesizeNonMockPaths:
         assert total_duration == 3000
 
     @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
-    def test_crossfade_stitch_ffmpeg_failure_fallback(
-        self, mock_subprocess_run, tmp_path
-    ):
+    def test_crossfade_stitch_ffmpeg_failure_fallback(self, mock_subprocess_run, tmp_path):
         """Test crossfade stitching falls back to simple concat on ffmpeg failure."""
         self.pipeline.mock_mode = False
         mock_subprocess_run.side_effect = FileNotFoundError("ffmpeg not found")
@@ -668,9 +643,7 @@ class TestSynthesizeNonMockPaths:
 
     @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_file_not_found(
-        self, mock_get_duration, mock_subprocess_run
-    ):
+    def test_crossfade_stitch_file_not_found(self, mock_get_duration, mock_subprocess_run):
         """Test crossfade stitching when segment file missing - returns 0 for no valid files."""
         self.pipeline.mock_mode = False
         mock_subprocess_run.return_value = Mock(returncode=0, stdout="", stderr="")
@@ -687,16 +660,12 @@ class TestSynthesizeNonMockPaths:
             ),
         ]
 
-        total_duration = self.pipeline._crossfade_stitch(
-            segments, Path("./test_output_nonmock/combined.mp3")
-        )
+        total_duration = self.pipeline._crossfade_stitch(segments, Path("./test_output_nonmock/combined.mp3"))
         assert total_duration == 0  # No valid files found
 
     @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_exception_fallback(
-        self, mock_get_duration, mock_subprocess_run, tmp_path
-    ):
+    def test_crossfade_stitch_exception_fallback(self, mock_get_duration, mock_subprocess_run, tmp_path):
         """Test crossfade stitching exception handling."""
         self.pipeline.mock_mode = False
         mock_subprocess_run.side_effect = Exception("ffmpeg error")
@@ -729,9 +698,7 @@ class TestSynthesizeNonMockPaths:
         mock_engine.engine_name = "kokoro"
         mock_engine.synthesize = AsyncMock(return_value=Mock(duration_ms=3000))
 
-        with patch.object(
-            self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine
-        ) as mock_get_engine:
+        with patch.object(self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine) as mock_get_engine:
             character_bindings = [
                 CharacterVoiceBinding(
                     canonical_name="narrator",
@@ -770,9 +737,7 @@ class TestSynthesizeNonMockPaths:
     def test_run_nonmock_edge(self):
         """Test run method in non-mock mode with edge engine."""
         self.pipeline.mock_mode = False
-        with patch.object(
-            self.pipeline, "_synthesize_edge", return_value=2800
-        ) as mock_edge:
+        with patch.object(self.pipeline, "_synthesize_edge", return_value=2800) as mock_edge:
             character_bindings = [
                 CharacterVoiceBinding(
                     canonical_name="narrator",
@@ -816,13 +781,9 @@ class TestSynthesizeNonMockPaths:
         mock_engine.engine_name = "kokoro"
         mock_engine.synthesize = AsyncMock(side_effect=Exception("kokoro failed"))
 
-        with patch.object(
-            self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine
-        ):
+        with patch.object(self.pipeline, "_get_engine_for_synthesis", return_value=mock_engine):
             # Also mock the edge synthesis
-            with patch.object(
-                self.pipeline, "_synthesize_edge", return_value=2800
-            ) as mock_edge:
+            with patch.object(self.pipeline, "_synthesize_edge", return_value=2800) as mock_edge:
                 character_bindings = [
                     CharacterVoiceBinding(
                         canonical_name="narrator",
@@ -906,9 +867,7 @@ class TestSynthesizeNonMockPaths:
                     prefer_local=True,
                 )
 
-                with pytest.raises(
-                    Exception, match="All TTS engines in fallback chain failed"
-                ):
+                with pytest.raises(Exception, match="All TTS engines in fallback chain failed"):
                     self.pipeline.run([inp])
 
                 assert recorded.get("stage") == "synthesize_kokoro"
@@ -916,9 +875,7 @@ class TestSynthesizeNonMockPaths:
 
     def test_resolve_edge_voice_full_format(self):
         """Test resolving Edge-TTS voice already in full format."""
-        full_voice = (
-            "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
-        )
+        full_voice = "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
         result = self.pipeline._resolve_edge_voice(full_voice)
         assert result == full_voice
 

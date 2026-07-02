@@ -1,6 +1,7 @@
 """Tests for pipeline/translate.py (83 miss) + pipeline/synthesize.py (116 miss)."""
+
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,33 +9,43 @@ import pytest
 class TestTranslateAndDubPipeline:
     def test_import(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
+
         assert callable(TranslateAndDubPipeline)
 
     def test_init_default(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
-        with patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"), \
-             patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"), \
-             patch("src.audiobook_studio.pipeline.translate.create_router"), \
-             patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"):
+
+        with (
+            patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"),
+            patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"),
+            patch("src.audiobook_studio.pipeline.translate.create_router"),
+            patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"),
+        ):
             p = TranslateAndDubPipeline()
             assert p is not None
 
     def test_init_custom(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
+
         mock_vcm = MagicMock()
         mock_ap = MagicMock()
-        with patch("src.audiobook_studio.pipeline.translate.create_router"), \
-             patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"):
+        with (
+            patch("src.audiobook_studio.pipeline.translate.create_router"),
+            patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"),
+        ):
             p = TranslateAndDubPipeline(voice_cloning_manager=mock_vcm, annotate_pipeline=mock_ap)
             assert p.voice_cloning_manager is mock_vcm
             assert p.annotate_pipeline is mock_ap
 
     def test_get_target_voice(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
-        with patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"), \
-             patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"), \
-             patch("src.audiobook_studio.pipeline.translate.create_router"), \
-             patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"):
+
+        with (
+            patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"),
+            patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"),
+            patch("src.audiobook_studio.pipeline.translate.create_router"),
+            patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline"),
+        ):
             p = TranslateAndDubPipeline()
             result = p._get_target_voice("narrator", "en", "neutral")
             assert isinstance(result, dict)
@@ -46,6 +57,7 @@ class TestTranslateAndDubPipeline:
     @patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline")
     def test_translate_text(self, mock_synth, mock_router_cls, mock_ap, mock_vcm):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
+
         mock_router = MagicMock()
         mock_router_cls.return_value = mock_router
         # router.call() returns object with .output.translated_text
@@ -65,6 +77,7 @@ class TestTranslateAndDubPipeline:
     @patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline")
     def test_translate_text_fallback(self, mock_synth, mock_router_cls, mock_ap, mock_vcm):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
+
         mock_router = MagicMock()
         mock_router_cls.return_value = mock_router
         mock_router.call.side_effect = Exception("LLM unavailable")
@@ -76,15 +89,18 @@ class TestTranslateAndDubPipeline:
 class TestSynthesizePipeline:
     def test_import(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         assert callable(SynthesizePipeline)
 
     def test_init_default(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         p = SynthesizePipeline(output_dir="/tmp/test_synth")
         assert p is not None
 
     def test_resolve_edge_voice(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         p = SynthesizePipeline(output_dir="/tmp/test_synth")
         result = p._resolve_edge_voice("zh-CN-XiaoxiaoNeural")
         assert isinstance(result, str)
@@ -92,6 +108,7 @@ class TestSynthesizePipeline:
 
     def test_text_hash(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         p = SynthesizePipeline(output_dir="/tmp/test_synth")
         h1 = p._text_hash("hello")
         h2 = p._text_hash("hello")
@@ -101,13 +118,15 @@ class TestSynthesizePipeline:
 
     def test_metadata_path(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         p = SynthesizePipeline(output_dir="/tmp/test_synth")
         path = p._metadata_path("seg_1")
         assert isinstance(path, Path)
         assert "seg_1" in str(path)
 
     def test_persist_segment_metadata(self, tmp_path):
-        from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline, AudioSegment
+        from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
+
         p = SynthesizePipeline(output_dir=str(tmp_path))
         seg = AudioSegment(
             segment_id="test_seg",
@@ -122,13 +141,16 @@ class TestSynthesizePipeline:
 
     def test_load_existing_segment_from_disk_not_found(self, tmp_path):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+
         p = SynthesizePipeline(output_dir=str(tmp_path))
         result = p._load_existing_segment_from_disk("nonexistent_seg", "hash_xyz")
         assert result is None
 
     def test_load_existing_segment_from_disk_found(self, tmp_path):
-        from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline, AudioSegment
         import json
+
+        from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
+
         p = SynthesizePipeline(output_dir=str(tmp_path))
         # Create the audio file so Path(file_path).exists() is True
         (tmp_path / "found.mp3").write_bytes(b"fake audio")

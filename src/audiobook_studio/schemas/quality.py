@@ -41,9 +41,7 @@ class FixSuggestion(BaseModel):
 
     target_text: str = Field(..., description="需要修改的目标文本片段")
 
-    current_value: Optional[str] = Field(
-        None, description="当前值（如当前语速、情感强度等）"
-    )
+    current_value: Optional[str] = Field(None, description="当前值（如当前语速、情感强度等）")
 
     suggested_value: str = Field(..., description="建议的新值")
 
@@ -51,9 +49,7 @@ class FixSuggestion(BaseModel):
 
     rationale: str = Field(default="", description="修改建议的理由或依据")
 
-    priority: Literal["low", "medium", "high"] = Field(
-        default="medium", description="优先级别"
-    )
+    priority: Literal["low", "medium", "high"] = Field(default="medium", description="优先级别")
 
 
 class QualityJudgment(BaseModel):
@@ -82,16 +78,10 @@ class QualityJudgment(BaseModel):
     fix_suggestions: list[FixSuggestion] = Field(
         default_factory=list, description="结构化修复建议列表，提供具体的改进指导"
     )
-    needs_regeneration: bool = Field(
-        ..., description="是否需重新合成 (任一维度<0.7 或致命问题)"
-    )
-    contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
-    )
+    needs_regeneration: bool = Field(..., description="是否需重新合成 (任一维度<0.7 或致命问题)")
+    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
     judge_model: Optional[str] = Field(default=None, description="评判使用的模型名称")
-    judge_prompt_version: Optional[str] = Field(
-        default=None, description="评判提示词版本"
-    )
+    judge_prompt_version: Optional[str] = Field(default=None, description="评判提示词版本")
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

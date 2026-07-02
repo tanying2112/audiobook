@@ -20,19 +20,8 @@ HARNESS 规范契约层 (Contract Layer) — 所有 Pydantic 模型定义。
 
 from .audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from .audio_postprocess import AudioPostProcessParams
-from .book import (
-    Book,
-    BookAnalysisInput,
-    BookAnalysisOutput,
-    BookMeta,
-    CharacterVoiceBinding,
-    EmotionSnapshot,
-)
-from .chapter_source import (
-    ChapterSource,
-    ChapterSourceCollection,
-    ChapterSourceParagraph,
-)
+from .book import Book, BookAnalysisInput, BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
+from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourceParagraph
 from .extraction import ExtractionInput, ExtractionResult
 from .feedback import FeedbackRecord
 from .feedback_analysis import FeedbackAnalysis

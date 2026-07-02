@@ -1,7 +1,7 @@
 """Tests for metrics.py."""
 
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -10,12 +10,12 @@ import pytest
 sys.path.insert(0, "src")
 
 from audiobook_studio.quality.metrics import (
-    DNSMOSResult,
     ASRResult,
-    WERResult,
+    DNSMOSResult,
+    QualityCheckResult,
     SpeakerEmbedding,
     SpeakerSimilarityResult,
-    QualityCheckResult,
+    WERResult,
 )
 
 
@@ -118,9 +118,7 @@ class TestDataClasses:
             model_name="test_model",
             sample_rate=16000,
         )
-        np.testing.assert_array_equal(
-            embedding.embedding, np.array([0.1, 0.2, 0.3], dtype=np.float32)
-        )
+        np.testing.assert_array_equal(embedding.embedding, np.array([0.1, 0.2, 0.3], dtype=np.float32))
         assert embedding.model_name == "test_model"
         assert embedding.sample_rate == 16000
 
@@ -163,9 +161,7 @@ class TestDataClasses:
         dnsmos = DNSMOSResult(4.0, 4.2, 3.8, 4.1, True)
         asr = ASRResult("hello", [], "en", 0.9, 500.0, True)
         wer = WERResult(0.1, 0.05, 0, 0, 0, 10, 10, True)
-        speaker_sim = SpeakerSimilarityResult(
-            0.85, 0.8, True, "ref1", "tgt1", True, None
-        )
+        speaker_sim = SpeakerSimilarityResult(0.85, 0.8, True, "ref1", "tgt1", True, None)
         result = QualityCheckResult(
             passed=True,
             dnsmos=dnsmos,

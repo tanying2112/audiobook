@@ -179,9 +179,7 @@ class EngineRegistry:
         if engine_name in self._engines:
             del self._engines[engine_name]
             if self._default_engine == engine_name:
-                self._default_engine = (
-                    next(iter(self._engines)) if self._engines else None
-                )
+                self._default_engine = next(iter(self._engines)) if self._engines else None
             logger.info(f"Unregistered TTS engine: {engine_name}")
 
     def get(self, engine_name: str) -> Optional[TTSEngine]:

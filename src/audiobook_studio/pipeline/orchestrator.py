@@ -17,12 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from ..exceptions import (
-    AudiobookError,
-    DataLoadError,
-    DataPersistError,
-    StageExecutionError,
-)
+from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
 from ..schemas import (
@@ -37,11 +32,11 @@ from ..schemas import (
 from .analyze_structure import AnalyzeStructurePipeline
 from .annotate_paragraph import AnnotateParagraphPipeline
 from .audio_postprocess import AudioPostProcessor
+from .checkpoint import CheckpointManager
 from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .quality_check import QualityCheckPipeline
-from .checkpoint import CheckpointManager
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline
 
@@ -121,9 +116,7 @@ def _emit_pipeline_start(context: Dict[str, Any]) -> None:
             logger.warning("Pipeline hook error (start): %s", e)
 
 
-def _emit_pipeline_end(
-    context: Dict[str, Any], result: Any = None, error: Exception | None = None
-) -> None:
+def _emit_pipeline_end(context: Dict[str, Any], result: Any = None, error: Exception | None = None) -> None:
     """Fire pipeline-end hooks (non-blocking)."""
     for h in _pipeline_hooks:
         try:
@@ -142,9 +135,7 @@ def _default_stage_hook(
 ) -> None:
     """Default logging hook - logs stage lifecycle events at INFO level."""
     if event == "stage_enter":
-        logger.info(
-            "[HOOK] ▶ Stage ENTER: %s | ctx_keys=%s", stage, list(context.keys())
-        )
+        logger.info("[HOOK] ▶ Stage ENTER: %s | ctx_keys=%s", stage, list(context.keys()))
     elif event == "stage_exit":
         status = "ERROR" if error else "OK"
         logger.info(
@@ -230,6 +221,7 @@ def _write_annotate(
             chapter_id=chapter.id,
             index=paragraph_index,
             chapter_index=chapter.index,
+            text=result.text or "",
         )
         db.add(para)
 
@@ -293,13 +285,19 @@ def _write_synthesize(
 ) -> AudioSegmentModel:
     """Create or update an AudioSegment record from synthesis output."""
     # Check if audio segment already exists for this paragraph
-    existing = db.query(AudioSegmentModel).filter(
-        AudioSegmentModel.paragraph_id == para.id
-    ).first()
-    
+    existing = db.query(AudioSegmentModel).filter(AudioSegmentModel.paragraph_id == para.id).first()
+
     if existing:
         # Update existing record
-        for attr in ["file_path", "format", "duration_ms", "file_size_bytes", "engine", "voice_id", "prosody_overrides"]:
+        for attr in [
+            "file_path",
+            "format",
+            "duration_ms",
+            "file_size_bytes",
+            "engine",
+            "voice_id",
+            "prosody_overrides",
+        ]:
             if attr in segment_info:
                 setattr(existing, attr, segment_info[attr])
         existing.status = "completed"
@@ -319,7 +317,7 @@ def _write_synthesize(
             status="completed",
         )
         db.add(audio)
-    
+
     db.commit()
     db.refresh(audio)
 
@@ -351,12 +349,7 @@ def _write_quality(
     from ..models import TTSEdit
 
     # Find the latest TTSEdit for this paragraph
-    tts_edit = (
-        db.query(TTSEdit)
-        .filter(TTSEdit.paragraph_id == para.id)
-        .order_by(TTSEdit.version.desc())
-        .first()
-    )
+    tts_edit = db.query(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).first()
 
     # If no TTSEdit exists, create a dummy one to satisfy NOT NULL constraint
     if tts_edit is None:
@@ -393,11 +386,7 @@ def _write_quality(
         text_audio_alignment=result.text_audio_alignment,
         overall_score=result.overall_score,
         issues=result.issues,
-        fix_suggestions=(
-            [s.model_dump() for s in result.fix_suggestions]
-            if result.fix_suggestions
-            else None
-        ),
+        fix_suggestions=([s.model_dump() for s in result.fix_suggestions] if result.fix_suggestions else None),
         needs_regeneration=result.needs_regeneration,
         judge_model=result.judge_model,
     )
@@ -412,11 +401,7 @@ def _write_quality(
     para.quality_text_audio_alignment = result.text_audio_alignment
     para.quality_overall_score = result.overall_score
     para.quality_issues = result.issues
-    para.quality_fix_suggestions = (
-        [s.model_dump() for s in result.fix_suggestions]
-        if result.fix_suggestions
-        else None
-    )
+    para.quality_fix_suggestions = [s.model_dump() for s in result.fix_suggestions] if result.fix_suggestions else None
     para.quality_needs_regeneration = result.needs_regeneration
     para.status = "quality_checked"
     db.commit()
@@ -570,9 +555,7 @@ def run_stage(
         result = handler.run(**context)
 
         # Persist result to database
-        handler.persist(
-            db, project_id, chapter, para, result, chapter_index, paragraph_index
-        )
+        handler.persist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
 
         # Capture feedback
         if feedback_capture:

@@ -119,9 +119,7 @@ class VoiceCloningManager:
         except Exception as e:
             logger.warning(f"⚠️ 保存声音指纹失败: {e}")
 
-    def _extract_real_embedding(
-        self, sample: VoiceSample, target_dim: int = 256
-    ) -> List[float]:
+    def _extract_real_embedding(self, sample: VoiceSample, target_dim: int = 256) -> List[float]:
         """从音频样本提取真实的声音特征向量.
 
         Args:
@@ -171,23 +169,15 @@ class VoiceCloningManager:
 
             # 频谱带宽 (Spectral Bandwidth) - 8 维
             for i in range(8):
-                segment = (
-                    audio_data[i * segment_size : (i + 1) * segment_size]
-                    if len(audio_data) > 100
-                    else audio_data
-                )
+                segment = audio_data[i * segment_size : (i + 1) * segment_size] if len(audio_data) > 100 else audio_data
                 if len(segment) > 0:
                     fft = np.fft.rfft(segment)
                     magnitudes = np.abs(fft)
                     if np.sum(magnitudes) > 0:
-                        center = np.sum(
-                            magnitudes * np.arange(len(magnitudes))
-                        ) / np.sum(magnitudes)
-                        bandwidth = np.sqrt(
-                            np.sum(
-                                magnitudes * (np.arange(len(magnitudes)) - center) ** 2
-                            )
-                        ) / np.sum(magnitudes)
+                        center = np.sum(magnitudes * np.arange(len(magnitudes))) / np.sum(magnitudes)
+                        bandwidth = np.sqrt(np.sum(magnitudes * (np.arange(len(magnitudes)) - center) ** 2)) / np.sum(
+                            magnitudes
+                        )
                         features.append(bandwidth / len(magnitudes))
 
             # 填充到 target_dim
@@ -509,8 +499,7 @@ class VoiceCloningManager:
             "avg_snr_db": round(vp.avg_snr, 1),
             "created_at": vp.created_at,
             "updated_at": vp.updated_at,
-            "is_available_for_cloning": vp.quality
-            in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
+            "is_available_for_cloning": vp.quality in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
         }
 
 
@@ -519,9 +508,7 @@ def main():
     logger.info("=== Audiobook Studio 本地声音克隆演示 ===\n")
 
     # 创建配置
-    config = CloningConfig(
-        min_sample_duration=15.0, min_snr_db=20.0, similarity_threshold=0.85
-    )
+    config = CloningConfig(min_sample_duration=15.0, min_snr_db=20.0, similarity_threshold=0.85)
 
     # 创建管理器
     cloning_manager = VoiceCloningManager(config)
@@ -610,16 +597,13 @@ def main():
     logger.info("\n" + "=" * 60)
     logger.info("🎙️ 当前所有声音指纹:")
     for sp_id, info in [
-        (sp_id, cloning_manager.get_voice_info(sp_id))
-        for sp_id in cloning_manager.voice_prints.keys()
+        (sp_id, cloning_manager.get_voice_info(sp_id)) for sp_id in cloning_manager.voice_prints.keys()
     ]:
         if info:
             logger.info(f"   👤 {sp_id}:")
             logger.info(f"      质量: {info['quality']} (SNR: {info['avg_snr_db']} dB)")
             logger.info(f"      样本: {info['sample_count']} 段")
-            logger.info(
-                f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}"
-            )
+            logger.info(f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}")
 
     logger.info("\n" + "=" * 60)
     logger.info("🎉 本地声音克隆演示完成")

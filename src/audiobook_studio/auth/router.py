@@ -316,9 +316,7 @@ async def assign_permission_to_role(
     if not success:
         raise HTTPException(status_code=400, detail="Role or permission not found")
 
-    return {
-        "message": f"Permission {permission_name.value} assigned to role {role_name.value}"
-    }
+    return {"message": f"Permission {permission_name.value} assigned to role {role_name.value}"}
 
 
 # User role assignment
@@ -410,11 +408,7 @@ async def list_project_permissions(
     # Get all project permissions
     from src.audiobook_studio.models.user import ProjectPermission
 
-    project_perms = (
-        db.query(ProjectPermission)
-        .filter(ProjectPermission.project_id == project_id)
-        .all()
-    )
+    project_perms = db.query(ProjectPermission).filter(ProjectPermission.project_id == project_id).all()
 
     result = []
     for p in project_perms:

@@ -133,9 +133,7 @@ def extract_voice_features(audio_path: Path, sample_rate: int = 24000) -> np.nda
 
         # 再次归一化
         features = np.array(features, dtype=np.float32)
-        features = (features - features.min()) / (
-            features.max() - features.min() + 1e-8
-        )
+        features = (features - features.min()) / (features.max() - features.min() + 1e-8)
 
         return features
 
@@ -151,9 +149,7 @@ class VoiceCloner:
     def __init__(self, engine: Optional[VoiceCloningEngine] = None):
         self.engine = engine or VoiceCloningEngine()
 
-    def clone_voice(
-        self, sample_path: Path, speaker_id: str
-    ) -> Tuple[bool, str, Optional[str]]:
+    def clone_voice(self, sample_path: Path, speaker_id: str) -> Tuple[bool, str, Optional[str]]:
         """从 15s 样本创建克隆声音.
 
         Args:
@@ -291,12 +287,8 @@ class VoiceCloningEngine:
                     data = json.load(f)
                     for sp_id, print_data in data.items():
                         # Convert quality string back to enum
-                        if "quality" in print_data and isinstance(
-                            print_data["quality"], str
-                        ):
-                            print_data["quality"] = AudioQuality(
-                                print_data["quality"].lower()
-                            )
+                        if "quality" in print_data and isinstance(print_data["quality"], str):
+                            print_data["quality"] = AudioQuality(print_data["quality"].lower())
                         self.voice_prints[sp_id] = VoicePrint(**print_data)
                 logger.info(f"📂 加载了 {len(self.voice_prints)} 个已有声音指纹")
             except Exception as e:
@@ -436,15 +428,9 @@ class VoiceCloningEngine:
 
             # 生成特征向量（真实 256 维）
             # 从第一个有效样本提取声音特征用于克隆
-            if (
-                self._model_ready
-                and valid_samples
-                and valid_samples[0].file_path.exists()
-            ):
+            if self._model_ready and valid_samples and valid_samples[0].file_path.exists():
                 # 使用真实的声音特征提取 (256 维)
-                embedding = extract_voice_features(
-                    valid_samples[0].file_path, valid_samples[0].sample_rate
-                ).tolist()
+                embedding = extract_voice_features(valid_samples[0].file_path, valid_samples[0].sample_rate).tolist()
             else:
                 # 模拟模式：生成基于统计的特征向量
                 embedding = [
@@ -536,9 +522,7 @@ class VoiceCloningEngine:
 
         # 检查声音质量是否足够
         if voice_print.quality == AudioQuality.POOR:
-            error_msg = (
-                f"说话人 {speaker_id} 的声音质量太差 (SNR: {voice_print.avg_snr:.1f}dB)"
-            )
+            error_msg = f"说话人 {speaker_id} 的声音质量太差 (SNR: {voice_print.avg_snr:.1f}dB)"
             logger.error(f"❌ {error_msg}")
             return False, error_msg, None
 
@@ -677,8 +661,7 @@ class VoiceCloningEngine:
             "avg_snr_db": round(vp.avg_snr, 1),
             "created_at": vp.created_at,
             "updated_at": vp.updated_at,
-            "is_available_for_cloning": vp.quality
-            in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
+            "is_available_for_cloning": vp.quality in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
         }
 
 
@@ -691,9 +674,7 @@ def main():
     logger.info("=== Audiobook Studio 本地声音克隆演示 ===\n")
 
     # 创建配置
-    config = CloningConfig(
-        min_sample_duration=15.0, min_snr_db=20.0, similarity_threshold=0.85
-    )
+    config = CloningConfig(min_sample_duration=15.0, min_snr_db=20.0, similarity_threshold=0.85)
 
     # 创建管理器
     cloning_manager = VoiceCloningEngine(config)
@@ -782,16 +763,13 @@ def main():
     logger.info("\n" + "=" * 60)
     logger.info("🎙️ 当前所有声音指纹:")
     for sp_id, info in [
-        (sp_id, cloning_manager.get_voice_info(sp_id))
-        for sp_id in cloning_manager.voice_prints.keys()
+        (sp_id, cloning_manager.get_voice_info(sp_id)) for sp_id in cloning_manager.voice_prints.keys()
     ]:
         if info:
             logger.info(f"   👤 {sp_id}:")
             logger.info(f"      质量: {info['quality']} (SNR: {info['avg_snr_db']} dB)")
             logger.info(f"      样本: {info['sample_count']} 段")
-            logger.info(
-                f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}"
-            )
+            logger.info(f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}")
 
     logger.info("\n" + "=" * 60)
     logger.info("🎉 本地声音克隆演示完成")

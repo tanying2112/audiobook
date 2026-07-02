@@ -127,13 +127,9 @@ class FeedbackCollector:
         if not record["llm_output"]:
             logger.warning("Feedback %s: llm_output is empty", capture.feedback_id)
         if not record["corrected_output"]:
-            logger.warning(
-                "Feedback %s: corrected_output is empty", capture.feedback_id
-            )
+            logger.warning("Feedback %s: corrected_output is empty", capture.feedback_id)
         if not record["rationale"] or len(record["rationale"]) < 10:
-            logger.warning(
-                "Feedback %s: rationale too short or missing", capture.feedback_id
-            )
+            logger.warning("Feedback %s: rationale too short or missing", capture.feedback_id)
 
         # Save to file
         filename = f"{capture.stage}_{capture.feedback_id}.json"
@@ -231,12 +227,7 @@ class StageCapture:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         # Auto-save if we have the minimum required data
-        if (
-            not self._disabled
-            and self.llm_output
-            and self.corrected_output
-            and self.rationale
-        ):
+        if not self._disabled and self.llm_output and self.corrected_output and self.rationale:
             self.collector.save_feedback(self)
 
     def set_llm_output(self, output: Dict[str, Any]) -> None:
@@ -264,9 +255,7 @@ class StageCapture:
         if source in ("human_edit", "quality_judge", "user_rating"):
             self.source = source
         else:
-            logger.warning(
-                "Unknown feedback source: %s, defaulting to human_edit", source
-            )
+            logger.warning("Unknown feedback source: %s, defaulting to human_edit", source)
             self.source = "human_edit"
 
     def set_input_snapshot(self, snapshot: Dict[str, Any]) -> None:
@@ -274,8 +263,6 @@ class StageCapture:
         self.input_snapshot = snapshot
 
 
-def create_feedback_collector(
-    project_id: int, enable: bool = True
-) -> FeedbackCollector:
+def create_feedback_collector(project_id: int, enable: bool = True) -> FeedbackCollector:
     """Factory function to create a FeedbackCollector."""
     return FeedbackCollector(project_id=project_id, enable=enable)

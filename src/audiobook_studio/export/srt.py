@@ -126,9 +126,7 @@ def generate_srt(
         if duration > cfg.max_duration_per_entry_ms:
             # Too long — split into multiple entries
             text_chunks = _split_long_text(entry.text, cfg.max_chars_per_line)
-            chunk_duration = max(
-                duration // len(text_chunks), cfg.min_duration_per_entry_ms
-            )
+            chunk_duration = max(duration // len(text_chunks), cfg.min_duration_per_entry_ms)
             chunk_start = entry.start_ms
 
             for chunk in text_chunks:
@@ -158,23 +156,17 @@ def generate_srt(
         duration = entry.end_ms - entry.start_ms
         if duration > cfg.max_duration_per_entry_ms:
             text_chunks = _split_long_text(entry.text, cfg.max_chars_per_line)
-            chunk_duration = max(
-                duration // len(text_chunks), cfg.min_duration_per_entry_ms
-            )
+            chunk_duration = max(duration // len(text_chunks), cfg.min_duration_per_entry_ms)
             chunk_start = entry.start_ms
             for chunk in text_chunks:
                 chunk_end = min(chunk_start + chunk_duration, entry.end_ms)
-                vtt_lines.append(
-                    f"{_ms_to_srt(chunk_start)} --> {_ms_to_srt(chunk_end)}"
-                )
+                vtt_lines.append(f"{_ms_to_srt(chunk_start)} --> {_ms_to_srt(chunk_end)}")
                 text = f"[{entry.speaker}] {chunk}" if entry.speaker else chunk
                 vtt_lines.append(text)
                 vtt_lines.append("")
                 chunk_start = chunk_end
         else:
-            vtt_lines.append(
-                f"{_ms_to_srt(entry.start_ms)} --> {_ms_to_srt(entry.end_ms)}"
-            )
+            vtt_lines.append(f"{_ms_to_srt(entry.start_ms)} --> {_ms_to_srt(entry.end_ms)}")
             text = f"[{entry.speaker}] {entry.text}" if entry.speaker else entry.text
             vtt_lines.append(text)
             vtt_lines.append("")
@@ -182,10 +174,7 @@ def generate_srt(
     vtt_path.write_text("\n".join(vtt_lines), encoding="utf-8")
 
     entry_count = srt_index - 1
-    logger.info(
-        f"SRT created: {output_path} ({entry_count} entries, "
-        f"{output_path.stat().st_size / 1024:.1f} KB)"
-    )
+    logger.info(f"SRT created: {output_path} ({entry_count} entries, " f"{output_path.stat().st_size / 1024:.1f} KB)")
     logger.info(f"VTT also created: {vtt_path}")
 
     return output_path

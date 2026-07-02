@@ -49,9 +49,7 @@ for fp, data in d.get("files", {}).items():
         cats[cat] = {"c": 0, "t": 0, "files": []}
     cats[cat]["c"] += c
     cats[cat]["t"] += t
-    cats[cat]["files"].append(
-        {"file": fp, "pct": p, "missing": len(data.get("missing_lines", []))}
-    )
+    cats[cat]["files"].append({"file": fp, "pct": p, "missing": len(data.get("missing_lines", []))})
 
 print("\nCategories:")
 targets = {
@@ -69,9 +67,7 @@ for cat, data in sorted(cats.items()):
         pct = data["c"] / data["t"] * 100
         target = targets.get(cat, "N/A")
         status = "PASS" if pct >= target else "FAIL"
-        print(
-            f"  {cat:15s} {pct:6.1f}% target={target}% [{status}] files={len(data['files'])}"
-        )
+        print(f"  {cat:15s} {pct:6.1f}% target={target}% [{status}] files={len(data['files'])}")
 
 # Low coverage files
 print("\nLow coverage (<50%, >10 lines):")

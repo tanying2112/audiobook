@@ -18,7 +18,6 @@ from src.audiobook_studio.auth.rbac import (
     require_role,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -272,9 +271,7 @@ class TestAssignPermissionToRole:
         perm = _make_permission()
         with patch.object(rbac, "get_role", return_value=role):
             with patch.object(rbac, "get_permission", return_value=perm):
-                assert rbac.assign_permission_to_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is True
+                assert rbac.assign_permission_to_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is True
         assert perm in role.permissions
         rbac.db.commit.assert_called_once()
 
@@ -284,9 +281,7 @@ class TestAssignPermissionToRole:
         role = _make_role(permissions=[perm])
         with patch.object(rbac, "get_role", return_value=role):
             with patch.object(rbac, "get_permission", return_value=perm):
-                assert rbac.assign_permission_to_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is True
+                assert rbac.assign_permission_to_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is True
         # commit not called because perm was already in role
         rbac.db.commit.assert_not_called()
 
@@ -294,17 +289,13 @@ class TestAssignPermissionToRole:
         rbac = _make_rbac()
         with patch.object(rbac, "get_role", return_value=None):
             with patch.object(rbac, "get_permission", return_value=_make_permission()):
-                assert rbac.assign_permission_to_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is False
+                assert rbac.assign_permission_to_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is False
 
     def test_perm_not_found(self):
         rbac = _make_rbac()
         with patch.object(rbac, "get_role", return_value=_make_role()):
             with patch.object(rbac, "get_permission", return_value=None):
-                assert rbac.assign_permission_to_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is False
+                assert rbac.assign_permission_to_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is False
 
 
 class TestRemovePermissionFromRole:
@@ -314,9 +305,7 @@ class TestRemovePermissionFromRole:
         role = _make_role(permissions=[perm])
         with patch.object(rbac, "get_role", return_value=role):
             with patch.object(rbac, "get_permission", return_value=perm):
-                assert rbac.remove_permission_from_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is True
+                assert rbac.remove_permission_from_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is True
         assert perm not in role.permissions
         rbac.db.commit.assert_called_once()
 
@@ -326,26 +315,20 @@ class TestRemovePermissionFromRole:
         role = _make_role(permissions=[])
         with patch.object(rbac, "get_role", return_value=role):
             with patch.object(rbac, "get_permission", return_value=perm):
-                assert rbac.remove_permission_from_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is True
+                assert rbac.remove_permission_from_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is True
         rbac.db.commit.assert_not_called()
 
     def test_role_not_found(self):
         rbac = _make_rbac()
         with patch.object(rbac, "get_role", return_value=None):
             with patch.object(rbac, "get_permission", return_value=_make_permission()):
-                assert rbac.remove_permission_from_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is False
+                assert rbac.remove_permission_from_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is False
 
     def test_perm_not_found(self):
         rbac = _make_rbac()
         with patch.object(rbac, "get_role", return_value=_make_role()):
             with patch.object(rbac, "get_permission", return_value=None):
-                assert rbac.remove_permission_from_role(
-                    RoleName.ADMIN, PermissionName.PROJECT_READ
-                ) is False
+                assert rbac.remove_permission_from_role(RoleName.ADMIN, PermissionName.PROJECT_READ) is False
 
 
 # ── User-Role Assignment ─────────────────────────────────────────────────────
@@ -466,16 +449,12 @@ class TestUserHasAnyPermission:
         perm = _make_permission(name="project:read")
         role = _make_role(permissions=[perm])
         user = _make_user(roles=[role])
-        assert rbac.user_has_any_permission(
-            user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]
-        ) is True
+        assert rbac.user_has_any_permission(user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]) is True
 
     def test_has_none(self):
         rbac = _make_rbac()
         user = _make_user(roles=[])
-        assert rbac.user_has_any_permission(
-            user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]
-        ) is False
+        assert rbac.user_has_any_permission(user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]) is False
 
 
 class TestUserHasAllPermissions:
@@ -485,18 +464,16 @@ class TestUserHasAllPermissions:
         perm2 = _make_permission(name="project:delete")
         role = _make_role(permissions=[perm1, perm2])
         user = _make_user(roles=[role])
-        assert rbac.user_has_all_permissions(
-            user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]
-        ) is True
+        assert rbac.user_has_all_permissions(user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]) is True
 
     def test_missing_one(self):
         rbac = _make_rbac()
         perm = _make_permission(name="project:read")
         role = _make_role(permissions=[perm])
         user = _make_user(roles=[role])
-        assert rbac.user_has_all_permissions(
-            user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]
-        ) is False
+        assert (
+            rbac.user_has_all_permissions(user, [PermissionName.PROJECT_READ, PermissionName.PROJECT_DELETE]) is False
+        )
 
 
 class TestGetUserPermissions:
@@ -654,9 +631,7 @@ class TestCheckPermission:
         user = _make_user()
         result = check_permission(user, PermissionName.PROJECT_READ, db)
         assert result is True
-        mock_rbac.user_has_permission.assert_called_once_with(
-            user, PermissionName.PROJECT_READ
-        )
+        mock_rbac.user_has_permission.assert_called_once_with(user, PermissionName.PROJECT_READ)
 
 
 class TestRequirePermission:

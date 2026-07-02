@@ -66,9 +66,7 @@ all_operations = _unwrap_operations()
 
 def _path_found(path, method):
     """Check if given path+method exists in the schema."""
-    return any(
-        op.path == path and op.method.upper() == method.upper() for op in all_operations
-    )
+    return any(op.path == path and op.method.upper() == method.upper() for op in all_operations)
 
 
 def test_schema_loaded():
@@ -83,8 +81,7 @@ def test_api_conformance():
     filtered = [
         op
         for op in all_operations
-        if not any(re.match(e, op.path) for e in EXCLUDE_PATHS)
-        and not op.path.startswith("/ws/")
+        if not any(re.match(e, op.path) for e in EXCLUDE_PATHS) and not op.path.startswith("/ws/")
     ]
     for op in filtered:
         assert op.path is not None, f"Operation path should not be None: {op}"
@@ -105,9 +102,7 @@ def test_list_projects_in_schema():
 
 def test_get_project_in_schema():
     """Verify get project endpoint is in the schema."""
-    assert _path_found(
-        "/api/projects/{project_id}", "GET"
-    ), "GET /api/projects/{project_id} not found"
+    assert _path_found("/api/projects/{project_id}", "GET"), "GET /api/projects/{project_id} not found"
 
 
 def test_health_in_schema():
@@ -117,16 +112,12 @@ def test_health_in_schema():
 
 def test_golden_contribute_in_schema():
     """Verify golden contribute endpoint is in the schema."""
-    assert _path_found(
-        "/api/golden/contribute", "POST"
-    ), "POST /api/golden/contribute not found"
+    assert _path_found("/api/golden/contribute", "POST"), "POST /api/golden/contribute not found"
 
 
 def test_golden_samples_in_schema():
     """Verify golden samples endpoint is in the schema."""
-    assert _path_found(
-        "/api/golden/samples", "GET"
-    ), "GET /api/golden/samples not found"
+    assert _path_found("/api/golden/samples", "GET"), "GET /api/golden/samples not found"
 
 
 def test_schema_coverage():
@@ -146,9 +137,7 @@ def test_schema_coverage():
     }
 
     for expected_path in core_paths:
-        assert (
-            expected_path in paths
-        ), f"Expected path {expected_path} not found in schema"
+        assert expected_path in paths, f"Expected path {expected_path} not found in schema"
 
 
 if __name__ == "__main__":

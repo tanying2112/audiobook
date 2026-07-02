@@ -20,25 +20,10 @@ from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring import record_stage_performance
-from ..monitoring.langfuse_client import (
-    is_enabled,
-    observe_quality_check,
-    trace_function,
-)
-from ..quality import (
-    DNSMOSResult,
-    QualityCheckResult,
-    QualityCheckSuite,
-    SpeakerSimilarityResult,
-    WERResult,
-)
+from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
+from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
-from ..utils.ffmpeg_probe import (
-    detect_silence_sync,
-    get_duration_sync,
-    get_rms_peak_sync,
-    read_pcm_samples_sync,
-)
+from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
 logger = logging.getLogger(__name__)
 
@@ -216,17 +201,9 @@ class QualityCheckPipeline:
         Hardware profile thresholds take precedence over file config.
         """
         # Check hardware profile thresholds first
-        if (
-            keys == ("audio", "dnsmos_min")
-            and hasattr(self, "_hw_dnsmos_min")
-            and self._hw_dnsmos_min is not None
-        ):
+        if keys == ("audio", "dnsmos_min") and hasattr(self, "_hw_dnsmos_min") and self._hw_dnsmos_min is not None:
             return self._hw_dnsmos_min
-        if (
-            keys == ("audio", "asr_wer_max")
-            and hasattr(self, "_hw_asr_wer_max")
-            and self._hw_asr_wer_max is not None
-        ):
+        if keys == ("audio", "asr_wer_max") and hasattr(self, "_hw_asr_wer_max") and self._hw_asr_wer_max is not None:
             return self._hw_asr_wer_max
         if (
             keys == ("audio", "speaker_sim_min")
@@ -245,9 +222,7 @@ class QualityCheckPipeline:
                 return default
         return value if value is not None else default
 
-    def _analyze_audio_rules(
-        self, audio_path: Path, expected_duration_ms: int
-    ) -> AudioAnalysisResult:
+    def _analyze_audio_rules(self, audio_path: Path, expected_duration_ms: int) -> AudioAnalysisResult:
         """Rule-based audio analysis using ffprobe/ffmpeg subprocess.
 
         Uses the ffmpeg_probe utility for Python 3.14+ compatibility.
@@ -294,30 +269,17 @@ class QualityCheckPipeline:
                 issues=[f"analysis_error: {str(e)}"],
             )
 
-    def _analyze_with_ffprobe(
-        self, audio_path: Path, expected_duration_ms: int
-    ) -> AudioAnalysisResult:
+    def _analyze_with_ffprobe(self, audio_path: Path, expected_duration_ms: int) -> AudioAnalysisResult:
         """Audio analysis using ffprobe/ffmpeg subprocess (Python 3.14+ compatible)."""
         # Hot-reload config if changed
         self._reload_config_if_changed()
 
         # Get thresholds from config
-        silence_threshold_db = self._get_threshold(
-            "audio", "silence_threshold_db", default=-40.0
-        )
-        clipping_threshold = self._get_threshold(
-            "audio", "clipping_threshold_percent", default=0.001
-        )
-        duration_match_threshold = (
-            self._get_threshold("audio", "duration_match_threshold_percent", default=30)
-            / 100.0
-        )
-        low_volume_threshold_db = self._get_threshold(
-            "audio", "low_volume_threshold_db", default=-30
-        )
-        high_volume_threshold_db = self._get_threshold(
-            "audio", "high_volume_threshold_db", default=-1
-        )
+        silence_threshold_db = self._get_threshold("audio", "silence_threshold_db", default=-40.0)
+        clipping_threshold = self._get_threshold("audio", "clipping_threshold_percent", default=0.001)
+        duration_match_threshold = self._get_threshold("audio", "duration_match_threshold_percent", default=30) / 100.0
+        low_volume_threshold_db = self._get_threshold("audio", "low_volume_threshold_db", default=-30)
+        high_volume_threshold_db = self._get_threshold("audio", "high_volume_threshold_db", default=-1)
 
         try:
             # Step 1: Get duration using utility
@@ -325,9 +287,7 @@ class QualityCheckPipeline:
 
             # Duration match check (from config)
             duration_match = (
-                abs(actual_duration_ms - expected_duration_ms)
-                / max(expected_duration_ms, 1)
-                < duration_match_threshold
+                abs(actual_duration_ms - expected_duration_ms) / max(expected_duration_ms, 1) < duration_match_threshold
             )
 
             # Step 2: Detect silence regions using utility
@@ -365,26 +325,16 @@ class QualityCheckPipeline:
             # Step 5: Compile issues
             issues = []
             if not duration_match:
-                issues.append(
-                    f"duration_mismatch: expected {expected_duration_ms}ms, got {actual_duration_ms}ms"
-                )
+                issues.append(f"duration_mismatch: expected {expected_duration_ms}ms, got {actual_duration_ms}ms")
             if has_clipping:
-                issues.append(
-                    f"clipping: {clipped_samples}/{total_samples} samples clipped"
-                )
+                issues.append(f"clipping: {clipped_samples}/{total_samples} samples clipped")
             if has_silence:
-                silence_report = "; ".join(
-                    f"{s:.0f}-{e:.0f}ms" for s, e in silence_regions[:5]
-                )
-                issues.append(
-                    f"silence: {len(silence_regions)} silent regions detected ({silence_report})"
-                )
+                silence_report = "; ".join(f"{s:.0f}-{e:.0f}ms" for s, e in silence_regions[:5])
+                issues.append(f"silence: {len(silence_regions)} silent regions detected ({silence_report})")
 
             # Volume thresholds from config (with defaults)
             if rms_db < low_volume_threshold_db:
-                issues.append(
-                    f"low_volume: RMS={rms_db:.1f}dB below threshold ({low_volume_threshold_db}dB)"
-                )
+                issues.append(f"low_volume: RMS={rms_db:.1f}dB below threshold ({low_volume_threshold_db}dB)")
             if rms_db > high_volume_threshold_db:
                 issues.append(f"high_volume: RMS={rms_db:.1f}dB may clip")
 
@@ -412,9 +362,7 @@ class QualityCheckPipeline:
             logger.error(f"ffprobe analysis failed: {e}")
             raise
 
-    def _build_audio_description(
-        self, analysis: AudioAnalysisResult, annotation: ParagraphAnnotation
-    ) -> str:
+    def _build_audio_description(self, analysis: AudioAnalysisResult, annotation: ParagraphAnnotation) -> str:
         """Build text description of audio for LLM judge."""
         desc = f"音频时长 {analysis.duration_ms}ms"
         if analysis.has_silence:
@@ -459,22 +407,16 @@ class QualityCheckPipeline:
         """
         # Check hardware profile for multimodal capability
         if not self._should_use_multimodal_judge():
-            logger.debug(
-                "Multimodal judge skipped: not enabled in current hardware profile"
-            )
+            logger.debug("Multimodal judge skipped: not enabled in current hardware profile")
             return None
 
         try:
             audio_b64 = self._encode_audio_base64(audio_path)
             if not audio_b64:
-                logger.warning(
-                    f"Could not encode audio for multimodal judge: {audio_path}"
-                )
+                logger.warning(f"Could not encode audio for multimodal judge: {audio_path}")
                 return None
 
-            prompt = self._build_multimodal_prompt(
-                segment_id, annotation, reference_text, audio_b64
-            )
+            prompt = self._build_multimodal_prompt(segment_id, annotation, reference_text, audio_b64)
 
             from ..schemas import QualityJudgment
 
@@ -528,9 +470,7 @@ class QualityCheckPipeline:
         lines.append(f"- 片段ID: {segment_id}")
         lines.append(f"- 说话人: {annotation.speaker_canonical_name}")
         lines.append(f"- 是否对话: {annotation.is_dialogue}")
-        lines.append(
-            f"- 期望情感: {annotation.emotion} (强度: {annotation.emotion_intensity})"
-        )
+        lines.append(f"- 期望情感: {annotation.emotion} (强度: {annotation.emotion_intensity})")
         lines.append(f"- 期望语速: {annotation.speech_rate}x")
         lines.append(f"- 期望音高偏移: {annotation.pitch_shift_semitones} 半音")
         lines.append(f"- 参考文本: {reference_text[:200]}...")
@@ -572,13 +512,9 @@ class QualityCheckPipeline:
         rather than failing the entire check.
         """
         # If no hard metric deps are available, skip entirely
-        any_available = any(
-            self._available_features.get(k) for k in ("dnsmos", "asr", "speaker_sim")
-        )
+        any_available = any(self._available_features.get(k) for k in ("dnsmos", "asr", "speaker_sim"))
         if not any_available:
-            logger.info(
-                "No hard metric dependencies available — skipping DNSMOS/ASR/SpeakerSim"
-            )
+            logger.info("No hard metric dependencies available — skipping DNSMOS/ASR/SpeakerSim")
             return QualityCheckResult(
                 passed=True,
                 overall_message="Hard metrics skipped (no optional dependencies available)",
@@ -608,16 +544,12 @@ class QualityCheckPipeline:
 
             # Rule-based analysis (runs in both mock and non-mock mode)
             rule_start_time = time.time()
-            analysis = self._analyze_audio_rules(
-                Path(audio_path), routing.estimated_duration_ms
-            )
+            analysis = self._analyze_audio_rules(Path(audio_path), routing.estimated_duration_ms)
             rule_latency_ms = (time.time() - rule_start_time) * 1000
 
             # Record rule-based quality check observation
             rule_passed = len(analysis.issues) == 0
-            rule_score = (
-                1.0 if rule_passed else max(0.0, 1.0 - len(analysis.issues) * 0.2)
-            )
+            rule_score = 1.0 if rule_passed else max(0.0, 1.0 - len(analysis.issues) * 0.2)
             observe_quality_check(
                 stage="rule_based",
                 passed=rule_passed,
@@ -682,9 +614,7 @@ class QualityCheckPipeline:
             if hard_result.wer and hard_result.wer.success:
                 audio_description += f"，ASR WER={hard_result.wer.wer:.1%}"
             if hard_result.speaker_sim and hard_result.speaker_sim.success:
-                audio_description += (
-                    f"，声纹相似度={hard_result.speaker_sim.similarity:.3f}"
-                )
+                audio_description += f"，声纹相似度={hard_result.speaker_sim.similarity:.3f}"
 
             # Start timing for LLM judgment
             judgment_start_time = time.time()
@@ -711,24 +641,18 @@ class QualityCheckPipeline:
                 # Incorporate hard quality check results into judgment
                 if not hard_result.passed:
                     judgment.needs_regeneration = True
-                    judgment.issues.append(
-                        f"Hard quality check failed: {hard_result.overall_message}"
-                    )
+                    judgment.issues.append(f"Hard quality check failed: {hard_result.overall_message}")
                     judgment.fix_suggestions.append("重新合成以通过硬质检门禁")
 
                 # Adjust scores based on hard checks
                 if hard_result.dnsmos and hard_result.dnsmos.success:
                     # DNSMOS 映射到 1-5 -> 0-1
                     dnsmos_score = hard_result.dnsmos.mos_ovr / 5.0
-                    judgment.speaker_clarity = (
-                        judgment.speaker_clarity + dnsmos_score
-                    ) / 2
+                    judgment.speaker_clarity = (judgment.speaker_clarity + dnsmos_score) / 2
 
                 if hard_result.speaker_sim and hard_result.speaker_sim.success:
                     # Speaker similarity directly maps to clarity
-                    judgment.speaker_clarity = (
-                        judgment.speaker_clarity + hard_result.speaker_sim.similarity
-                    ) / 2
+                    judgment.speaker_clarity = (judgment.speaker_clarity + hard_result.speaker_sim.similarity) / 2
 
                 logger.info(
                     f"Quality judgment: overall={judgment.overall_score:.2f} "
@@ -750,9 +674,7 @@ class QualityCheckPipeline:
                 )
 
                 # Record performance metric for quality check
-                input_chars = (
-                    len(audio_description) + len(str(annotation)) + len(reference_text)
-                )
+                input_chars = len(audio_description) + len(str(annotation)) + len(reference_text)
                 output_chars = len(str(judgment))
 
                 tokens_in = max(1, input_chars // 4)
@@ -781,12 +703,7 @@ class QualityCheckPipeline:
                     latency_ms=judgment_latency_ms,
                     tokens_in=max(
                         1,
-                        (
-                            len(audio_description)
-                            + len(str(annotation))
-                            + len(reference_text)
-                        )
-                        // 4,
+                        (len(audio_description) + len(str(annotation)) + len(reference_text)) // 4,
                     ),
                     tokens_out=max(1, 0),
                     cost_usd=0.002,

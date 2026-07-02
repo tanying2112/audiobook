@@ -1,25 +1,20 @@
-import sys
 import os
+import sys
 import tempfile
-from unittest.mock import MagicMock, patch
-import pytest
-import numpy as np
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
 
 # Add the src directory to the path so we can import the module as a package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
-from src.audiobook_studio.pipeline.quality_check import (
-    QualityCheckPipeline,
-    quality_check,
-    AudioAnalysisResult,
-)
-from src.audiobook_studio.schemas import (
-    QualityJudgment,
-    ParagraphAnnotation,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
+from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
+
 
 class TestQualityCheckPipelineNonMock:
     """Test QualityCheckPipeline class in non-mock mode."""
@@ -37,6 +32,7 @@ class TestQualityCheckPipelineNonMock:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -83,12 +79,15 @@ class TestQualityCheckPipelineNonMock:
     def test_analyze_audio_rules_non_mock_success(self):
         """Test _analyze_audio_rules in non-mock mode with successful ffprobe analysis."""
         # Mock the ffprobe analysis to return specific values
-        with patch('src.audiobook_studio.pipeline.quality_check.get_duration_sync', return_value=5000):
-            with patch('src.audiobook_studio.pipeline.quality_check.detect_silence_sync', return_value=[(1000, 1500)]):
-                with patch('src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync', return_value=(-20.0, -3.0)):
-                    with patch('src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync', return_value=np.array([0.1, 0.2, 0.3])):
+        with patch("src.audiobook_studio.pipeline.quality_check.get_duration_sync", return_value=5000):
+            with patch("src.audiobook_studio.pipeline.quality_check.detect_silence_sync", return_value=[(1000, 1500)]):
+                with patch("src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync", return_value=(-20.0, -3.0)):
+                    with patch(
+                        "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
+                        return_value=np.array([0.1, 0.2, 0.3]),
+                    ):
                         analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, 5000)
-                        
+
                         assert isinstance(analysis, AudioAnalysisResult)
                         assert analysis.duration_ms == 5000
                         assert analysis.has_silence is True
@@ -104,12 +103,22 @@ class TestQualityCheckPipelineNonMock:
     def test_analyze_audio_rules_non_mock_with_issues(self):
         """Test _analyze_audio_rules in non-mock mode with various issues detected."""
         # Mock the ffprobe analysis to return values that trigger issues
-        with patch('src.audiobook_studio.pipeline.quality_check.get_duration_sync', return_value=3000):  # Duration mismatch
-            with patch('src.audiobook_studio.pipeline.quality_check.detect_silence_sync', return_value=[(500, 1000), (2000, 2500)]):  # Silence detected
-                with patch('src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync', return_value=(1.0, -1.0)):  # High volume
-                    with patch('src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync', return_value=np.array([1.0] * 15 + [0.5] * 5)):  # Clipping
+        with patch(
+            "src.audiobook_studio.pipeline.quality_check.get_duration_sync", return_value=3000
+        ):  # Duration mismatch
+            with patch(
+                "src.audiobook_studio.pipeline.quality_check.detect_silence_sync",
+                return_value=[(500, 1000), (2000, 2500)],
+            ):  # Silence detected
+                with patch(
+                    "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync", return_value=(1.0, -1.0)
+                ):  # High volume
+                    with patch(
+                        "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
+                        return_value=np.array([1.0] * 15 + [0.5] * 5),
+                    ):  # Clipping
                         analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, 5000)
-                        
+
                         assert isinstance(analysis, AudioAnalysisResult)
                         assert analysis.duration_ms == 3000
                         assert analysis.has_silence is True
@@ -119,7 +128,7 @@ class TestQualityCheckPipelineNonMock:
                         assert analysis.peak_db == -1.0
                         assert analysis.duration_match is False  # 3000 != 5000
                         assert len(analysis.issues) > 0
-                        
+
                         # Check that issues contain expected problem types
                         issues_text = " ".join(analysis.issues)
                         assert "duration_mismatch" in issues_text
@@ -128,9 +137,9 @@ class TestQualityCheckPipelineNonMock:
 
     def test_analyze_audio_rules_non_mock_ffprobe_not_found(self):
         """Test _analyze_audio_rules when ffprobe is not found."""
-        with patch('src.audiobook_studio.pipeline.quality_check.get_duration_sync', side_effect=FileNotFoundError()):
+        with patch("src.audiobook_studio.pipeline.quality_check.get_duration_sync", side_effect=FileNotFoundError()):
             analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, 5000)
-            
+
             assert isinstance(analysis, AudioAnalysisResult)
             assert analysis.duration_ms == 5000  # Falls back to expected duration
             assert analysis.has_silence is False
@@ -142,9 +151,11 @@ class TestQualityCheckPipelineNonMock:
 
     def test_analyze_audio_rules_non_mock_analysis_error(self):
         """Test _analyze_audio_rules when analysis encounters an error."""
-        with patch('src.audiobook_studio.pipeline.quality_check.get_duration_sync', side_effect=Exception("Analysis failed")):
+        with patch(
+            "src.audiobook_studio.pipeline.quality_check.get_duration_sync", side_effect=Exception("Analysis failed")
+        ):
             analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, 5000)
-            
+
             assert isinstance(analysis, AudioAnalysisResult)
             assert analysis.duration_ms == 5000  # Falls back to expected duration
             assert analysis.has_silence is False
@@ -167,9 +178,9 @@ class TestQualityCheckPipelineNonMock:
             duration_match=True,
             issues=[],
         )
-        
+
         desc = self.pipeline._build_audio_description(analysis, annotation)
-        
+
         assert "音频时长 5000ms" in desc
         assert "检测到 1 处静音段" in desc
         assert "RMS -20.0dB" in desc
@@ -189,12 +200,12 @@ class TestQualityCheckPipelineNonMock:
             issues=[
                 "duration_mismatch: expected 5000ms, got 3000ms",
                 "clipping: 2/3 samples clipped",
-                "silence: 2 silent regions detected (500-1000ms; 2000-2500ms)"
+                "silence: 2 silent regions detected (500-1000ms; 2000-2500ms)",
             ],
         )
-        
+
         desc = self.pipeline._build_audio_description(analysis, annotation)
-        
+
         assert "音频时长 3000ms" in desc
         assert "检测到 2 处静音段" in desc
         assert "存在削波失真" in desc  # Chinese for clipping
@@ -217,15 +228,15 @@ class TestQualityCheckPipelineNonMock:
             needs_regeneration=False,
         )
         mock_judge.judge_quality.return_value = mock_judgment
-        
+
         pipeline = QualityCheckPipeline(judge=mock_judge, mock_mode=False)
         annotation = self.create_mock_annotation()
         routing = self.create_mock_routing_decision()
-        
+
         inputs = [(str(self.mock_audio_path), annotation, routing, "测试文本")]
-        
+
         results = pipeline.run(inputs)
-        
+
         assert results[0] == mock_judgment
         mock_judge.judge_quality.assert_called_once()
 
@@ -245,21 +256,30 @@ class TestQualityCheckPipelineNonMock:
             needs_regeneration=False,
         )
         mock_judge.judge_quality.return_value = mock_judgment
-        
+
         pipeline = QualityCheckPipeline(judge=mock_judge, mock_mode=False)
         annotation = self.create_mock_annotation()
         routing = self.create_mock_routing_decision()
-        
+
         # Create audio that will have issues when analyzed
-        with patch('src.audiobook_studio.pipeline.quality_check.get_duration_sync', return_value=3000):  # Duration mismatch
-            with patch('src.audiobook_studio.pipeline.quality_check.detect_silence_sync', return_value=[(500, 1000)]):  # Silence
-                with patch('src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync', return_value=(-10.0, -1.0)):  # High volume
-                    with patch('src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync', return_value=np.array([0.1, 0.2, 0.3])):  # No clipping
-                        
+        with patch(
+            "src.audiobook_studio.pipeline.quality_check.get_duration_sync", return_value=3000
+        ):  # Duration mismatch
+            with patch(
+                "src.audiobook_studio.pipeline.quality_check.detect_silence_sync", return_value=[(500, 1000)]
+            ):  # Silence
+                with patch(
+                    "src.audiobook_studio.pipeline.quality_check.get_rms_peak_sync", return_value=(-10.0, -1.0)
+                ):  # High volume
+                    with patch(
+                        "src.audiobook_studio.pipeline.quality_check.read_pcm_samples_sync",
+                        return_value=np.array([0.1, 0.2, 0.3]),
+                    ):  # No clipping
+
                         inputs = [(str(self.mock_audio_path), annotation, routing, "测试文本")]
-                        
+
                         results = pipeline.run(inputs)
-                        
+
                         assert isinstance(results[0], QualityJudgment)
                         # Should have rule-based issues incorporated
                         assert len(results[0].issues) > 0
@@ -271,9 +291,9 @@ class TestQualityCheckPipelineNonMock:
         """Test quality_check convenience function with mock_mode=False."""
         annotation = self.create_mock_annotation()
         routing = self.create_mock_routing_decision()
-        
+
         # Mock the judge to avoid actual LLM calls
-        with patch('src.audiobook_studio.pipeline.quality_check.create_judge') as mock_create_judge:
+        with patch("src.audiobook_studio.pipeline.quality_check.create_judge") as mock_create_judge:
             mock_judge = MagicMock()
             mock_judgment = QualityJudgment(
                 segment_id="test_seg",
@@ -288,15 +308,16 @@ class TestQualityCheckPipelineNonMock:
             )
             mock_judge.judge_quality.return_value = mock_judgment
             mock_create_judge.return_value = mock_judge
-            
+
             inputs = [(str(self.mock_audio_path), annotation, routing, "测试文本")]
-            
+
             results = quality_check(inputs, mock_mode=False)
-            
+
             assert isinstance(results, list)
             assert len(results) == 1
             assert isinstance(results[0], QualityJudgment)
             assert results[0].overall_score == 0.75
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -1,5 +1,5 @@
 import { setActivePinia, createPinia } from 'pinia'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useContextStore } from '../context'
 
 describe('useContextStore', () => {
@@ -115,7 +115,7 @@ describe('useContextStore', () => {
       store.openInlineChat(newAnchor)
 
       expect(store.activeAnchor).toEqual(newAnchor)
-      expect(store.activeAnchor.kind).toBe('param_control')
+      expect(store.activeAnchor?.kind).toBe('param_control')
     })
   })
 

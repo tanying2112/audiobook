@@ -149,16 +149,12 @@ def detect_hardware() -> HardwareProfile:
             text=True,
             timeout=5,
         )
-        hw.cpu_model = (
-            result.stdout.strip() if result.returncode == 0 else platform.processor()
-        )
+        hw.cpu_model = result.stdout.strip() if result.returncode == 0 else platform.processor()
     except Exception:
         hw.cpu_model = platform.processor()
 
     try:
-        result = subprocess.run(
-            ["sysctl", "-n", "hw.ncpu"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["sysctl", "-n", "hw.ncpu"], capture_output=True, text=True, timeout=5)
         hw.cpu_cores = int(result.stdout.strip()) if result.returncode == 0 else 4
     except Exception:
         hw.cpu_cores = 4
@@ -168,9 +164,7 @@ def detect_hardware() -> HardwareProfile:
 
     # Method 1: sysctl (macOS)
     try:
-        result = subprocess.run(
-            ["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and result.stdout.strip():
             hw.ram_gb = round(int(result.stdout.strip()) / 1e9, 1)
             ram_detected = True
@@ -229,10 +223,7 @@ def detect_hardware() -> HardwareProfile:
             import torch  # type: ignore
 
             hw.cuda_available = torch.cuda.is_available()
-            hw.mps_available = (
-                getattr(torch.backends, "mps", None) is not None
-                and torch.backends.mps.is_available()
-            )
+            hw.mps_available = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
     except Exception:
         pass
 
@@ -313,9 +304,7 @@ async def _run_edge_tts_async(text: str, output_path: str) -> float:
             text=True,
             timeout=10,
         )
-        return (
-            float(result.stdout.strip()) if result.returncode == 0 else len(text) / 5.0
-        )
+        return float(result.stdout.strip()) if result.returncode == 0 else len(text) / 5.0
     except Exception:
         # 粗略估算：中文平均 5 字/秒
         return len(text) / 5.0
@@ -384,13 +373,9 @@ def benchmark_edge_tts(skip: bool = False) -> List[TtsBenchmarkResult]:
                 engine="edge_tts",
                 text_length_chars=len(item["text"]),
                 audio_duration_sec=round(sum(durations) / len(durations), 3),
-                synthesis_time_sec=round(
-                    sum(synthesis_times) / len(synthesis_times), 3
-                ),
+                synthesis_time_sec=round(sum(synthesis_times) / len(synthesis_times), 3),
                 rtf=round(rtf_list[median_idx], 4),
-                throughput_cps=round(
-                    len(item["text"]) / (sum(synthesis_times) / len(synthesis_times)), 1
-                ),
+                throughput_cps=round(len(item["text"]) / (sum(synthesis_times) / len(synthesis_times)), 1),
                 success=success,
                 error=error_msg,
             )
@@ -404,10 +389,7 @@ def benchmark_edge_tts(skip: bool = False) -> List[TtsBenchmarkResult]:
         results.append(r)
         label = item["label"]
         status = "✅" if r.success else "❌"
-        print(
-            f"  {status} Edge-TTS [{label}]: RTF={r.rtf:.4f}, "
-            f"吞吐量={r.throughput_cps:.1f} chars/s"
-        )
+        print(f"  {status} Edge-TTS [{label}]: RTF={r.rtf:.4f}, " f"吞吐量={r.throughput_cps:.1f} chars/s")
 
     return results
 
@@ -453,17 +435,13 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
     # ---- VRAM 推算 ----
     params_bytes = VOXCPM2_PARAM_M * 1e6
 
-    proj.fp32_vram_gb = round(
-        (params_bytes * _BYTES_FP32) / 1e9 + _OVERHEAD_FP16_GB * 2, 2
-    )
+    proj.fp32_vram_gb = round((params_bytes * _BYTES_FP32) / 1e9 + _OVERHEAD_FP16_GB * 2, 2)
     proj.fp16_vram_gb = round(
         (params_bytes * _BYTES_FP16) / 1e9 + _OVERHEAD_FP16_GB + _BATCH4_ACTIVATION_GB,
         2,
     )
     proj.int8_vram_gb = round(
-        (params_bytes * _BYTES_INT8) / 1e9
-        + _OVERHEAD_INT8_GB
-        + _BATCH4_ACTIVATION_GB * 0.5,
+        (params_bytes * _BYTES_INT8) / 1e9 + _OVERHEAD_INT8_GB + _BATCH4_ACTIVATION_GB * 0.5,
         2,
     )
 
@@ -476,20 +454,14 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
     # CPU 推算（当前 i5-4690 无 GPU 加速）
     # 进一步修正：CPU 单核频率补偿，取较保守估计
     cpu_rtf_raw = _REF_RTF_FP16_A100 * _CPU_FACTOR
-    proj.cpu_rtf_estimate = round(
-        min(cpu_rtf_raw, 25.0), 2
-    )  # 上限 25x（约 25s 合成 1s 音频）
+    proj.cpu_rtf_estimate = round(min(cpu_rtf_raw, 25.0), 2)  # 上限 25x（约 25s 合成 1s 音频）
 
     # ---- 批量吞吐量推算 (chars/s, batch=4) ----
     # 基于 RTF 和平均语速（中文约 5 char/s 自然语速）
     avg_chars_per_audio_sec = 5.0
 
-    proj.fp16_throughput_cps_a100 = round(
-        (avg_chars_per_audio_sec / proj.fp16_rtf_a100) * 4, 0
-    )
-    proj.int8_throughput_cps_a100 = round(
-        (avg_chars_per_audio_sec / proj.int8_rtf_a100) * 4, 0
-    )
+    proj.fp16_throughput_cps_a100 = round((avg_chars_per_audio_sec / proj.fp16_rtf_a100) * 4, 0)
+    proj.int8_throughput_cps_a100 = round((avg_chars_per_audio_sec / proj.int8_rtf_a100) * 4, 0)
 
     # 针对当前硬件的说明
     vram_status = f"当前 GPU VRAM {hw.gpu_vram_gb} GB"
@@ -518,9 +490,7 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
 # ---------------------------------------------------------------------------
 
 
-def build_summary(
-    hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]
-) -> Dict:
+def build_summary(hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]) -> Dict:
     """生成摘要字典。"""
     edge_tts_rtf = None
     if tts_results:
@@ -569,9 +539,7 @@ def build_recommendations(hw: HardwareProfile, proj: VoxCPM2Projection) -> List[
             "Issue 1.1 TTS 引擎抽象暂无法引入 VoxCPM2，建议先以 Kokoro-ONNX 在 CPU 上运行。"
         )
     if not hw.meets_fp16_min:
-        recs.append(
-            "建议升级至 VRAM ≥16 GB 的 GPU（如 RTX 3090/4090 或 A100）以启用 FP16 推理。"
-        )
+        recs.append("建议升级至 VRAM ≥16 GB 的 GPU（如 RTX 3090/4090 或 A100）以启用 FP16 推理。")
 
     recs.append(
         "短期方案（cloud_hybrid 档）：继续使用 Kokoro-ONNX（CPU）+ Edge-TTS 回退，"
@@ -602,9 +570,7 @@ def build_acceptance_criteria(
         "rtf_benchmarked": proj.fp16_rtf_a100 > 0 and proj.int8_rtf_a100 > 0,
         "batch_throughput_documented": proj.fp16_throughput_cps_a100 > 0,
         "hardware_assessment_complete": hw.gpu_model != "",
-        "baseline_tts_benchmarked": (
-            any(r.success for r in tts_results) if tts_results else True
-        ),
+        "baseline_tts_benchmarked": (any(r.success for r in tts_results) if tts_results else True),
         "report_generated": True,
     }
 
@@ -682,9 +648,7 @@ def render_markdown_report(report: BenchmarkReport) -> str:
         rtf_str = f"{r.rtf:.4f}" if r.success and r.rtf > 0 else "N/A"
         cps_str = f"{r.throughput_cps:.1f}" if r.success else "N/A"
         note = "含网络延迟" if "simulated" not in r.engine else f"模拟值 ({r.error})"
-        lines.append(
-            f"| {r.text_length_chars} chars | {rtf_str} | {cps_str} | {status} {note} |"
-        )
+        lines.append(f"| {r.text_length_chars} chars | {rtf_str} | {cps_str} | {status} {note} |")
 
     lines += [
         "",
@@ -758,20 +722,14 @@ def render_markdown_report(report: BenchmarkReport) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="VoxCPM2 TTS 引擎性能基准测试 (Issue 0.4)"
-    )
-    parser.add_argument(
-        "--output", type=str, default="reports", help="报告输出目录（默认: reports/）"
-    )
+    parser = argparse.ArgumentParser(description="VoxCPM2 TTS 引擎性能基准测试 (Issue 0.4)")
+    parser.add_argument("--output", type=str, default="reports", help="报告输出目录（默认: reports/）")
     parser.add_argument(
         "--skip-tts",
         action="store_true",
         help="跳过 Edge-TTS 实测，使用模拟值（适用于离线环境）",
     )
-    parser.add_argument(
-        "--json-only", action="store_true", help="仅生成 JSON 报告，不生成 Markdown"
-    )
+    parser.add_argument("--json-only", action="store_true", help="仅生成 JSON 报告，不生成 Markdown")
     return parser.parse_args()
 
 

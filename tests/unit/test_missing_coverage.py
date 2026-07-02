@@ -27,16 +27,12 @@ def test_get_free_tier_health(mock_router):
 
 def test_heuristic_fallback(mock_router):
     # Test fallback logic for annotate
-    result_annotate = mock_router._heuristic_fallback(
-        "annotate", None, segment_id="test_segment_1"
-    )
+    result_annotate = mock_router._heuristic_fallback("annotate", None, segment_id="test_segment_1")
     assert result_annotate is not None
     assert getattr(result_annotate, "emotion", None) == "neutral"
 
     # Test fallback logic for judge
-    result_judge = mock_router._heuristic_fallback(
-        "judge", None, segment_id="test_segment_2"
-    )
+    result_judge = mock_router._heuristic_fallback("judge", None, segment_id="test_segment_2")
     assert getattr(result_judge, "overall_score", None) == 0.5
 
 

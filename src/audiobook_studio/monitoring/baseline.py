@@ -112,9 +112,7 @@ class BaselineRecorder:
         with open(file_path, "a") as f:
             f.write(json.dumps(data) + "\n")
 
-    def get_performance_baseline(
-        self, stage: str, lookback_hours: int = 168
-    ) -> Dict[str, float]:
+    def get_performance_baseline(self, stage: str, lookback_hours: int = 168) -> Dict[str, float]:
         """
         Get baseline performance metrics for a stage
         lookback_hours: how far back to look for baseline (default 1 week)
@@ -123,9 +121,7 @@ class BaselineRecorder:
 
         # Filter metrics for the stage and time window
         stage_metrics = [
-            m
-            for m in self._performance_cache
-            if m.stage == stage and m.timestamp >= cutoff_time and m.success
+            m for m in self._performance_cache if m.stage == stage and m.timestamp >= cutoff_time and m.success
         ]
 
         if not stage_metrics:
@@ -145,20 +141,15 @@ class BaselineRecorder:
             "cost_avg": sum(costs) / len(costs),
             "tokens_in_avg": sum(tokens_in) / len(tokens_in),
             "tokens_out_avg": sum(tokens_out) / len(tokens_out),
-            "success_rate": len([m for m in stage_metrics if m.success])
-            / len(stage_metrics),
+            "success_rate": len([m for m in stage_metrics if m.success]) / len(stage_metrics),
         }
 
-    def get_growth_baseline(
-        self, metric_name: str, lookback_hours: int = 720
-    ) -> Dict[str, Any]:  # 30 days default
+    def get_growth_baseline(self, metric_name: str, lookback_hours: int = 720) -> Dict[str, Any]:  # 30 days default
         """Get baseline for a growth metric"""
         cutoff_time = time.time() - (lookback_hours * 3600)
 
         metric_values = [
-            m.value
-            for m in self._growth_cache
-            if m.metric_name == metric_name and m.timestamp >= cutoff_time
+            m.value for m in self._growth_cache if m.metric_name == metric_name and m.timestamp >= cutoff_time
         ]
 
         if not metric_values:
@@ -187,17 +178,13 @@ class BaselineRecorder:
         regressions = []
 
         # Check latency regression
-        if current_metric.latency_ms > baseline["latency_p95"] * (
-            1 + threshold_pct / 100
-        ):
+        if current_metric.latency_ms > baseline["latency_p95"] * (1 + threshold_pct / 100):
             regressions.append(
                 {
                     "metric": "latency",
                     "current": current_metric.latency_ms,
                     "baseline_p95": baseline["latency_p95"],
-                    "exceeds_pct": (
-                        (current_metric.latency_ms / baseline["latency_p95"] - 1) * 100
-                    ),
+                    "exceeds_pct": ((current_metric.latency_ms / baseline["latency_p95"] - 1) * 100),
                 }
             )
 
@@ -208,18 +195,14 @@ class BaselineRecorder:
                     "metric": "cost",
                     "current": current_metric.cost_usd,
                     "baseline_avg": baseline["cost_avg"],
-                    "exceeds_pct": (
-                        (current_metric.cost_usd / baseline["cost_avg"] - 1) * 100
-                    ),
+                    "exceeds_pct": ((current_metric.cost_usd / baseline["cost_avg"] - 1) * 100),
                 }
             )
 
         # Check success rate regression (if we have enough samples)
         if baseline["count"] >= 10:
             current_success = 1.0 if current_metric.success else 0.0
-            if current_success < (
-                baseline.get("success_rate", 1.0) - threshold_pct / 100
-            ):
+            if current_success < (baseline.get("success_rate", 1.0) - threshold_pct / 100):
                 regressions.append(
                     {
                         "metric": "success_rate",
@@ -283,16 +266,12 @@ class BaselineRecorder:
         # Calculate baselines for all stages
         stages = set(m.stage for m in self._performance_cache)
         for stage in stages:
-            baselines[f"performance_{stage}"] = self.get_performance_baseline(
-                stage, lookback_hours=720
-            )
+            baselines[f"performance_{stage}"] = self.get_performance_baseline(stage, lookback_hours=720)
 
         # Calculate baselines for growth metrics
         metric_names = set(m.metric_name for m in self._growth_cache)
         for metric_name in metric_names:
-            baselines[f"growth_{metric_name}"] = self.get_growth_baseline(
-                metric_name, lookback_hours=720
-            )
+            baselines[f"growth_{metric_name}"] = self.get_growth_baseline(metric_name, lookback_hours=720)
 
         with self._lock:
             self._baselines = baselines
@@ -308,14 +287,10 @@ class BaselineRecorder:
                 "baselines_calculated": len(self._baselines),
                 "storage_dir": str(self.storage_dir),
                 "oldest_performance": (
-                    min([m.timestamp for m in self._performance_cache])
-                    if self._performance_cache
-                    else None
+                    min([m.timestamp for m in self._performance_cache]) if self._performance_cache else None
                 ),
                 "newest_performance": (
-                    max([m.timestamp for m in self._performance_cache])
-                    if self._performance_cache
-                    else None
+                    max([m.timestamp for m in self._performance_cache]) if self._performance_cache else None
                 ),
             }
 
@@ -439,9 +414,7 @@ if __name__ == "__main__":
         model="gemini-2.0-flash",
     )
 
-    regression = recorder.check_performance_regression(
-        "synthesize", current_metric, threshold_pct=20.0
-    )
+    regression = recorder.check_performance_regression("synthesize", current_metric, threshold_pct=20.0)
     if regression:
         logger.info("\nREGRESSION DETECTED:")
         logger.info(json.dumps(regression, indent=2))

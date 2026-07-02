@@ -102,10 +102,7 @@ class TestDataclasses:
 
     def test_comment_creation(self):
         """Test creating a Comment."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            Comment,
-            CommentType,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import Comment, CommentType
 
         comment = Comment(
             id="comment-1",
@@ -122,10 +119,7 @@ class TestDataclasses:
 
     def test_task_creation(self):
         """Test creating a Task."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            Task,
-            TaskStatus,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import Task, TaskStatus
 
         task = Task(
             id="task-1",
@@ -142,10 +136,7 @@ class TestDataclasses:
 
     def test_approval_request_creation(self):
         """Test creating an ApprovalRequest."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            ApprovalRequest,
-            ApprovalStatus,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import ApprovalRequest, ApprovalStatus
 
         request = ApprovalRequest(
             id="approval-1",
@@ -163,10 +154,7 @@ class TestDataclasses:
 
     def test_change_record_creation(self):
         """Test creating a ChangeRecord."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            ChangeRecord,
-            ChangeType,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import ChangeRecord, ChangeType
 
         record = ChangeRecord(
             id="change-1",
@@ -187,9 +175,7 @@ class TestCollaborationManager:
 
     def test_manager_creation(self, tmp_path):
         """Test creating a CollaborationManager."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager
 
         manager = CollaborationManager(storage_path=tmp_path)
         assert manager.team_members == {}
@@ -200,10 +186,7 @@ class TestCollaborationManager:
 
     def test_add_team_member(self, tmp_path):
         """Test adding a team member."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-            TeamMember,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager, TeamMember
 
         manager = CollaborationManager(storage_path=tmp_path)
         member = TeamMember(
@@ -220,11 +203,7 @@ class TestCollaborationManager:
 
     def test_add_comment(self, tmp_path):
         """Test adding a comment."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-            Comment,
-            CommentType,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager, Comment, CommentType
 
         manager = CollaborationManager(storage_path=tmp_path)
         comment = Comment(
@@ -242,11 +221,7 @@ class TestCollaborationManager:
 
     def test_add_task(self, tmp_path):
         """Test adding a task."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-            Task,
-            TaskStatus,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager, Task, TaskStatus
 
         manager = CollaborationManager(storage_path=tmp_path)
         task = Task(
@@ -265,11 +240,7 @@ class TestCollaborationManager:
 
     def test_update_task_status(self, tmp_path):
         """Test updating task status."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-            Task,
-            TaskStatus,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager, Task, TaskStatus
 
         manager = CollaborationManager(storage_path=tmp_path)
         task = Task(
@@ -288,10 +259,7 @@ class TestCollaborationManager:
 
     def test_update_task_status_not_found(self, tmp_path):
         """Test updating non-existent task."""
-        from src.audiobook_studio.collaboration.team_collaboration import (
-            CollaborationManager,
-            TaskStatus,
-        )
+        from src.audiobook_studio.collaboration.team_collaboration import CollaborationManager, TaskStatus
 
         manager = CollaborationManager(storage_path=tmp_path)
         result = manager.update_task_status("nonexistent", TaskStatus.DONE, "user-1")

@@ -60,9 +60,7 @@ class SemanticCoherenceChecker:
             from sentence_transformers import SentenceTransformer
 
             # 使用多语言模型以支持中英文等多语言场景
-            self.semantic_model = SentenceTransformer(
-                "paraphrase-multilingual-MiniLM-L12-v2"
-            )
+            self.semantic_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
             logger.info("✅ 已加载 Sentence-BERT 多语言模型")
         except ImportError:
             logger.warning("⚠️ sentence-transformers 未安装，将使用简化的语义检查")
@@ -114,25 +112,17 @@ class SemanticCoherenceChecker:
             semantic_scores.append(semantic_similarity)
 
             # 检查是否低于阈值
-            threshold = self.config.get("audio", {}).get(
-                "semantic_coherence_threshold", 0.75
-            )
+            threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
             if semantic_similarity < threshold:
-                issues.append(
-                    f"段落 {i+1}-{i+2} 语义连贯性不足: {semantic_similarity:.3f} < {threshold}"
-                )
+                issues.append(f"段落 {i+1}-{i+2} 语义连贯性不足: {semantic_similarity:.3f} < {threshold}")
 
         # 2. 如果需要，检查情感强度曲线连续性
         if check_emotional_curve:
             emotional_scores = self._check_emotional_curve_continuity(paragraphs)
             for i, score in enumerate(emotional_scores):
                 if score < 1.0:  # 情感曲线不连续
-                    threshold = self.config.get("audio", {}).get(
-                        "emotional_coherence_threshold", 0.80
-                    )
-                    issues.append(
-                        f"段落 {i+1}-{i+2} 情感强度曲线不连续: {score:.3f} < {threshold}"
-                    )
+                    threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
+                    issues.append(f"段落 {i+1}-{i+2} 情感强度曲线不连续: {score:.3f} < {threshold}")
 
         # 3. 如果有参考段落，检查翻译前后的一致性
         if reference_paragraphs and len(reference_paragraphs) == len(paragraphs):
@@ -146,13 +136,9 @@ class SemanticCoherenceChecker:
                 translation_scores.append(similarity)
 
                 # 检查翻译语义保持度
-                threshold = self.config.get("audio", {}).get(
-                    "semantic_coherence_threshold", 0.75
-                )
+                threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
                 if similarity < threshold:
-                    issues.append(
-                        f"段落 {i+1} 翻译语义保持度不足: {similarity:.3f} < {threshold}"
-                    )
+                    issues.append(f"段落 {i+1} 翻译语义保持度不足: {similarity:.3f} < {threshold}")
 
             # 翻译质量得分是所有段落的平均 similarity
             if translation_scores:
@@ -164,11 +150,7 @@ class SemanticCoherenceChecker:
 
         # 计算总体得分
         semantic_score = np.mean(semantic_scores) if semantic_scores else 1.0
-        emotional_score = (
-            np.mean(emotional_scores)
-            if emotional_scores and check_emotional_curve
-            else 1.0
-        )
+        emotional_score = np.mean(emotional_scores) if emotional_scores and check_emotional_curve else 1.0
 
         # 综合得分（可以根据需要调整权重）
         if check_emotional_curve:
@@ -177,12 +159,8 @@ class SemanticCoherenceChecker:
             overall_score = semantic_score
 
         # 检查是否通过所有阈值
-        semantic_threshold = self.config.get("audio", {}).get(
-            "semantic_coherence_threshold", 0.75
-        )
-        emotional_threshold = self.config.get("audio", {}).get(
-            "emotional_coherence_threshold", 0.80
-        )
+        semantic_threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
+        emotional_threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
 
         passed = semantic_score >= semantic_threshold and (
             not check_emotional_curve or emotional_score >= emotional_threshold
@@ -192,21 +170,15 @@ class SemanticCoherenceChecker:
             "passed": passed,
             "score": float(overall_score),
             "semantic_score": float(semantic_score),
-            "emotional_score": (
-                float(emotional_score) if check_emotional_curve else None
-            ),
-            "translation_quality": (
-                float(translation_quality) if translation_quality is not None else None
-            ),
+            "emotional_score": (float(emotional_score) if check_emotional_curve else None),
+            "translation_quality": (float(translation_quality) if translation_quality is not None else None),
             "issues": issues,
         }
 
         if passed:
             logger.info(f"✅ 语义连贯性检查通过: 得分 {overall_score:.3f}")
         else:
-            logger.warning(
-                f"⚠️ 语义连贯性检查失败: 得分 {overall_score:.3f}, 问题 {len(issues)} 个"
-            )
+            logger.warning(f"⚠️ 语义连贯性检查失败: 得分 {overall_score:.3f}, 问题 {len(issues)} 个")
 
         return result
 

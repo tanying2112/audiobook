@@ -137,9 +137,7 @@ class TestTemplatesHelperFunctions:
         # Mock query chain for TTSEdit
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            mock_tts_edit
-        )
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
 
         corrected = {
             "speaker_clarity": 0.9,
@@ -167,9 +165,7 @@ class TestTemplatesHelperFunctions:
 
         db = self._make_db()
         pa = self._make_para()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            None
-        )
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
         _apply_quality_template(db, pa, {"overall_score": 0.9})
         # Should not add quality record
@@ -193,9 +189,7 @@ class TestTemplatesBackgroundTask:
             with patch("sqlalchemy.orm.sessionmaker") as mock_sm:
                 mock_session = MagicMock()
                 # Template not found → ValueError
-                mock_session.query.return_value.filter.return_value.first.return_value = (
-                    None
-                )
+                mock_session.query.return_value.filter.return_value.first.return_value = None
                 mock_sm.return_value = MagicMock(return_value=mock_session)
 
                 import asyncio
@@ -231,9 +225,7 @@ class TestTemplatesBackgroundTask:
                 mock_template = MagicMock()
                 mock_template.processed = False
                 mock_template.promoted = False
-                mock_session.query.return_value.filter.return_value.first.return_value = (
-                    mock_template
-                )
+                mock_session.query.return_value.filter.return_value.first.return_value = mock_template
                 mock_sm.return_value = MagicMock(return_value=mock_session)
 
                 import asyncio

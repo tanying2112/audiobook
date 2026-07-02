@@ -207,15 +207,10 @@ def validate_emotions(
 
     pct = other_count / max(total, 1) * 100
     validation_summary = (
-        f"验证 {total} 个标注, "
-        f"{len(emotion_counter)} 种情感类型, "
-        f"'other' 出现 {other_count} 次 ({pct:.1f}%), "
+        f"验证 {total} 个标注, " f"{len(emotion_counter)} 种情感类型, " f"'other' 出现 {other_count} 次 ({pct:.1f}%), "
     )
     if unexpected_sorted:
-        validation_summary += (
-            f"非法情感类型: "
-            f"{', '.join(f'{e}({c})' for e, c in unexpected_sorted[:5])}"
-        )
+        validation_summary += f"非法情感类型: " f"{', '.join(f'{e}({c})' for e, c in unexpected_sorted[:5])}"
     else:
         validation_summary += "所有情感类型合法"
 
@@ -261,18 +256,10 @@ def _compute_text_difficulty(text: str) -> Dict[str, float]:
     # Character-level entropy (vocabulary richness)
     char_freq: Counter = Counter(text)
     total_chars = len(text)
-    entropy = -sum(
-        (c / total_chars) * math.log(c / total_chars)
-        for c in char_freq.values()
-        if c > 0
-    )
+    entropy = -sum((c / total_chars) * math.log(c / total_chars) for c in char_freq.values() if c > 0)
 
     # Sentence length
-    sentences = [
-        s.strip()
-        for s in text.replace("!", "。").replace("?", "。").split("。")
-        if s.strip()
-    ]
+    sentences = [s.strip() for s in text.replace("!", "。").replace("?", "。").split("。") if s.strip()]
     avg_sentence_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
 
     # Punctuation diversity
@@ -372,9 +359,7 @@ def get_free_tier_health() -> FreeTierHealth:
         try:
             import subprocess
 
-            result = subprocess.run(
-                ["sysctl", "hw.memsize"], capture_output=True, text=True
-            )
+            result = subprocess.run(["sysctl", "hw.memsize"], capture_output=True, text=True)
             if result.returncode == 0:
                 memory_bytes = int(result.stdout.split(":")[1].strip())
                 memory_gb = memory_bytes / (1024**3)
@@ -403,9 +388,7 @@ def get_free_tier_health() -> FreeTierHealth:
         if platform.system() == "Darwin":
             import subprocess
 
-            result = subprocess.run(
-                ["sysctl", "kern.boottime"], capture_output=True, text=True
-            )
+            result = subprocess.run(["sysctl", "kern.boottime"], capture_output=True, text=True)
             if result.returncode == 0:
                 # Parse "kern.boottime: { sec = 123456, usec = 0 }"
                 import re
@@ -495,9 +478,7 @@ class FalsePositiveTracker:
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         self.issues.append(issue)
-        logger.info(
-            f"False positive recorded: {issue_type} on {segment_id}: {reason[:60]}"
-        )
+        logger.info(f"False positive recorded: {issue_type} on {segment_id}: {reason[:60]}")
         return issue
 
     def get_false_positive_rate(

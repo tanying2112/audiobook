@@ -18,9 +18,7 @@ class ExtractAgent(AbstractAgent):
         try:
             db = SessionLocal()
             try:
-                task_record = (
-                    db.query(TaskRecord).filter_by(id=self.context.task_id).first()
-                )
+                task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
 
                 # Create new task record if not found
                 if task_record is None:
@@ -58,9 +56,7 @@ class AnalyzeAgent(AbstractAgent):
     def _handle_message(self, message: AgentMessage):
         db = SessionLocal()
         try:
-            task_record = (
-                db.query(TaskRecord).filter_by(id=self.context.task_id).first()
-            )
+            task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
 
             # Call existing analysis pipeline
             analysis_result = analyze_structure(
@@ -90,9 +86,7 @@ class SynthesizeAgent(AbstractAgent):
     def _handle_message(self, message: AgentMessage):
         db = SessionLocal()
         try:
-            task_record = (
-                db.query(TaskRecord).filter_by(id=self.context.task_id).first()
-            )
+            task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
 
             # Call existing synthesis pipeline
             synthesis_result = self.pipeline.run(
@@ -123,9 +117,7 @@ class QualityAgent(AbstractAgent):
     def _handle_message(self, message: AgentMessage):
         db = SessionLocal()
         try:
-            task_record = (
-                db.query(TaskRecord).filter_by(id=self.context.task_id).first()
-            )
+            task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
 
             quality_report = self.pipeline.run(
                 audio_segments=message.content["audio_segments"],

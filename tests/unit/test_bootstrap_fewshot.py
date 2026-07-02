@@ -37,9 +37,7 @@ class TestMultiObjectiveLoss:
 
     def test_custom_weights(self):
         """Custom weights should be accepted."""
-        loss = MultiObjectiveLoss(
-            weights={"character_recognition": 0.7, "voice_design": 0.3}
-        )
+        loss = MultiObjectiveLoss(weights={"character_recognition": 0.7, "voice_design": 0.3})
         assert loss.weights == {"character_recognition": 0.7, "voice_design": 0.3}
 
     def test_compute_loss_character_correct(self):
@@ -90,9 +88,7 @@ class TestEarlyStoppingStopper:
         stopper = EarlyStoppingStopper(patience=3)
         assert stopper([0.5]) is False
         assert stopper([0.6]) is False  # Improved
-        assert (
-            stopper([0.6]) is False
-        )  # Equal to best - no_improve_count increments to 1
+        assert stopper([0.6]) is False  # Equal to best - no_improve_count increments to 1
         assert stopper.no_improve_count == 1  # Equal score counts as no improvement
 
     def test_stop_after_patience(self):
@@ -228,9 +224,7 @@ class TestBootstrapFewShotOptimizer:
         optimizer = BootstrapFewShotOptimizer(stage="test", budget_limit=100)
 
         # Mock GEPA compile to avoid actual LLM calls
-        with patch(
-            "src.audiobook_studio.feedback.bootstrap_fewshot.GEPA"
-        ) as mock_gepa_class:
+        with patch("src.audiobook_studio.feedback.bootstrap_fewshot.GEPA") as mock_gepa_class:
             mock_gepa = Mock()
             mock_module = Mock()
             mock_module.detailed_results = None
@@ -260,9 +254,7 @@ class TestLoadTrainingExamples:
 
     def test_load_from_bootstrap_fallback(self):
         """Should fallback to bootstrap_examples.json if stage has no few_shot."""
-        prompt, examples = load_training_examples(
-            "nonexistent_stage", "tests/golden/bootstrap_examples.json"
-        )
+        prompt, examples = load_training_examples("nonexistent_stage", "tests/golden/bootstrap_examples.json")
 
         assert prompt is not None
         assert len(examples) >= 1  # At least some examples
@@ -282,9 +274,7 @@ class TestRunBootstrapOptimization:
     def test_run_with_valid_stage(self):
         """Should run optimization for valid stage."""
         # Mock GEPA to avoid actual LLM calls
-        with patch(
-            "src.audiobook_studio.feedback.bootstrap_fewshot.BootstrapFewShotOptimizer"
-        ) as mock_optimizer_class:
+        with patch("src.audiobook_studio.feedback.bootstrap_fewshot.BootstrapFewShotOptimizer") as mock_optimizer_class:
             mock_optimizer = Mock()
             mock_optimizer.optimize.return_value = OptimizationResult(
                 optimized_prompt="optimized",
@@ -307,9 +297,7 @@ class TestRunBootstrapOptimization:
 
     def test_run_with_no_training_data(self):
         """Should return None for stage with no training data."""
-        with patch(
-            "src.audiobook_studio.feedback.bootstrap_fewshot.load_training_examples"
-        ) as mock_load:
+        with patch("src.audiobook_studio.feedback.bootstrap_fewshot.load_training_examples") as mock_load:
             mock_load.return_value = ("prompt", [])
 
             result = run_bootstrap_optimization("empty_stage")
@@ -318,9 +306,7 @@ class TestRunBootstrapOptimization:
 
     def test_run_catches_exceptions(self):
         """Should catch and log exceptions gracefully."""
-        with patch(
-            "src.audiobook_studio.feedback.bootstrap_fewshot.load_training_examples"
-        ) as mock_load:
+        with patch("src.audiobook_studio.feedback.bootstrap_fewshot.load_training_examples") as mock_load:
             mock_load.side_effect = Exception("Test error")
 
             result = run_bootstrap_optimization("error_stage")

@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-# Enable mock mode for development/testing when no valid LLM keys available
-os.environ["MOCK_LLM"] = "true"
+if "MOCK_LLM" not in os.environ:
+    os.environ["MOCK_LLM"] = "false"
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..config import get_settings
+
 get_settings
 from ..database import SessionLocal, get_db
 from ..models.audio_segment import AudioSegment
@@ -46,21 +47,11 @@ class AutoRunConfig(BaseModel):
     """Configuration for auto-run pipeline."""
 
     target_difficulty: str = Field("B", description="Target difficulty: A/B/C/D")
-    primary_voice_preference: str = Field(
-        "female", description="Voice preference: male/female/neutral"
-    )
-    speech_rate_preference: str = Field(
-        "standard", description="Speech rate: slow/standard/fast"
-    )
-    cost_limit_usd: Optional[float] = Field(
-        None, description="Maximum cost limit in USD"
-    )
-    quality_threshold: float = Field(
-        0.7, ge=0, le=1, description="Quality threshold for auto-regen"
-    )
-    max_regeneration_attempts: int = Field(
-        3, ge=1, le=5, description="Max regen attempts per segment"
-    )
+    primary_voice_preference: str = Field("female", description="Voice preference: male/female/neutral")
+    speech_rate_preference: str = Field("standard", description="Speech rate: slow/standard/fast")
+    cost_limit_usd: Optional[float] = Field(None, description="Maximum cost limit in USD")
+    quality_threshold: float = Field(0.7, ge=0, le=1, description="Quality threshold for auto-regen")
+    max_regeneration_attempts: int = Field(3, ge=1, le=5, description="Max regen attempts per segment")
     enable_background_music: bool = Field(False, description="Enable BGM mixing")
     enable_sfx: bool = Field(True, description="Enable SFX tags")
 
@@ -89,18 +80,14 @@ class StagePausePoint(BaseModel):
 
     stage: str
     pause_after: bool = Field(True, description="Whether to pause after this stage")
-    requires_approval: bool = Field(
-        False, description="Whether user approval is needed"
-    )
+    requires_approval: bool = Field(False, description="Whether user approval is needed")
 
 
 class AutoRunStartRequest(BaseModel):
     """Request to start auto-run pipeline."""
 
     config: AutoRunConfig = Field(default_factory=AutoRunConfig)
-    pause_points: Optional[List[StagePausePoint]] = Field(
-        None, description="Stages to pause at"
-    )
+    pause_points: Optional[List[StagePausePoint]] = Field(None, description="Stages to pause at")
 
 
 class AutoRunActionResponse(BaseModel):
@@ -167,9 +154,7 @@ def _create_paragraphs_from_chapters(db: Session, project_id: int):
         return
 
     for chapter in project.chapters:
-        existing = db.query(Paragraph).filter(
-            Paragraph.chapter_id == chapter.id
-        ).count()
+        existing = db.query(Paragraph).filter(Paragraph.chapter_id == chapter.id).count()
         if existing > 0:
             continue
 
@@ -273,9 +258,7 @@ async def _run_auto_pipeline(
 
         # Completed
         _active_runs[project_id]["status"] = "completed"
-        _active_runs[project_id]["completed_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        _active_runs[project_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -321,9 +304,7 @@ async def _run_single_stage(
             chapters = project.chapters
             total = len(chapters)
             if total == 0:
-                logger.warning(
-                    f"No chapters found for project {project_id} in stage {stage}"
-                )
+                logger.warning(f"No chapters found for project {project_id} in stage {stage}")
                 await emit_pipeline_event(
                     project_id=project_id,
                     event_type=PipelineEventType.STAGE_PROGRESS,
@@ -334,10 +315,7 @@ async def _run_single_stage(
 
             # Skip extract if chapters already have raw_text (extraction already done)
             if stage == "extract":
-                all_extracted = all(
-                    ch.extract_status == "completed" and ch.raw_text
-                    for ch in chapters
-                )
+                all_extracted = all(ch.extract_status == "completed" and ch.raw_text for ch in chapters)
                 if all_extracted:
                     logger.info(f"All chapters already extracted, skipping extract stage")
                     for idx, chapter in enumerate(chapters, start=1):
@@ -354,9 +332,7 @@ async def _run_single_stage(
             for idx, chapter in enumerate(chapters, start=1):
                 # Check per-chapter checkpoint
                 if checkpoint_mgr.is_stage_done(stage, chapter.index):
-                    logger.info(
-                        f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping"
-                    )
+                    logger.info(f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping")
                     progress = idx / total
                     await emit_pipeline_event(
                         project_id=project_id,
@@ -401,9 +377,7 @@ async def _run_single_stage(
             paragraphs = project.paragraphs
             total = len(paragraphs)
             if total == 0:
-                logger.warning(
-                    f"No paragraphs found for project {project_id} in stage {stage}"
-                )
+                logger.warning(f"No paragraphs found for project {project_id} in stage {stage}")
                 await emit_pipeline_event(
                     project_id=project_id,
                     event_type=PipelineEventType.STAGE_PROGRESS,
@@ -443,9 +417,7 @@ async def _run_single_stage(
             seen_chapters: set = set()
             for para in paragraphs:
                 if para.chapter_id and para.chapter_id not in seen_chapters:
-                    chapter = (
-                        db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
-                    )
+                    chapter = db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
                     if chapter:
                         checkpoint_mgr.mark_stage_done(stage, chapter.index)
                     seen_chapters.add(para.chapter_id)
@@ -671,11 +643,7 @@ async def get_intermediate_product(
     # Helper to get first chapter if none specified
     def get_chapter(cid: Optional[int]) -> Chapter:
         if cid is not None:
-            chapter = (
-                db.query(Chapter)
-                .filter(Chapter.id == cid, Chapter.project_id == project_id)
-                .first()
-            )
+            chapter = db.query(Chapter).filter(Chapter.id == cid, Chapter.project_id == project_id).first()
             if not chapter:
                 raise HTTPException(
                     status_code=404,
@@ -683,16 +651,9 @@ async def get_intermediate_product(
                 )
             return chapter
         # Return first chapter
-        chapter = (
-            db.query(Chapter)
-            .filter(Chapter.project_id == project_id)
-            .order_by(Chapter.index)
-            .first()
-        )
+        chapter = db.query(Chapter).filter(Chapter.project_id == project_id).order_by(Chapter.index).first()
         if not chapter:
-            raise HTTPException(
-                status_code=404, detail=f"No chapters found for project {project_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"No chapters found for project {project_id}")
         return chapter
 
     chapter = get_chapter(chapter_id)
@@ -720,9 +681,7 @@ async def get_intermediate_product(
         # Need paragraphs for this chapter (maybe first paragraph only? we could list all)
         paragraphs = (
             db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
-            )
+            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
             .all()
         )
@@ -754,9 +713,7 @@ async def get_intermediate_product(
     elif stage == "edit":
         paragraphs = (
             db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
-            )
+            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
             .all()
         )
@@ -785,9 +742,7 @@ async def get_intermediate_product(
     elif stage == "audio_postprocess":
         paragraphs = (
             db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
-            )
+            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
             .all()
         )
@@ -814,20 +769,14 @@ async def get_intermediate_product(
         # Get audio segments via paragraphs
         paragraphs = (
             db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
-            )
+            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
             .all()
         )
         segments = []
         for para in paragraphs:
             if para.audio_segment_id:
-                seg = (
-                    db.query(AudioSegment)
-                    .filter(AudioSegment.id == para.audio_segment_id)
-                    .first()
-                )
+                seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
                 if seg:
                     segments.append(
                         {
@@ -852,20 +801,13 @@ async def get_intermediate_product(
     elif stage == "quality":
         paragraphs = (
             db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id
-            )
+            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
             .all()
         )
         quality_entries = []
         for para in paragraphs:
-            qual = (
-                db.query(Quality)
-                .filter(Quality.paragraph_id == para.id)
-                .order_by(Quality.id.desc())
-                .first()
-            )
+            qual = db.query(Quality).filter(Quality.paragraph_id == para.id).order_by(Quality.id.desc()).first()
             if qual:
                 quality_entries.append(
                     {
@@ -874,9 +816,7 @@ async def get_intermediate_product(
                         "quality_id": qual.id,
                         "speaker_clarity": qual.speaker_clarity,
                         "emotion_match": qual.emotion_match,
-                        "prosody_naturalness": getattr(
-                            qual, "prosody_naturalness", None
-                        ),
+                        "prosody_naturalness": getattr(qual, "prosody_naturalness", None),
                         "text_audio_alignment": qual.text_audio_alignment,
                         "overall_score": qual.overall_score,
                         "issues": qual.issues,

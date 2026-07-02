@@ -163,16 +163,24 @@ class TestQualityCheckResult:
         # Test the dataclass's to_dict method
         from src.audiobook_studio.quality.metrics import QualityCheckResult
 
-        dnsmos = DNSMOSResult(
-            mos_overall=4.0, mos_sig=4.0, mos_bak=4.0, mos_ovr=4.0, success=True
-        )
+        dnsmos = DNSMOSResult(mos_overall=4.0, mos_sig=4.0, mos_bak=4.0, mos_ovr=4.0, success=True)
         wer = WERResult(
-            wer=0.05, cer=0.05, insertions=0, deletions=0, substitutions=1,
-            reference_words=20, hypothesis_words=21, success=True,
+            wer=0.05,
+            cer=0.05,
+            insertions=0,
+            deletions=0,
+            substitutions=1,
+            reference_words=20,
+            hypothesis_words=21,
+            success=True,
         )
         spk_sim = SpeakerSimilarityResult(
-            similarity=0.93, threshold=0.85, is_same_speaker=True,
-            reference_id="ref1", target_id="tgt1", success=True,
+            similarity=0.93,
+            threshold=0.85,
+            is_same_speaker=True,
+            reference_id="ref1",
+            target_id="tgt1",
+            success=True,
         )
         r = QualityCheckResult(
             passed=True,

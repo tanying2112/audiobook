@@ -73,9 +73,7 @@ class TestDNSMOSMetric(unittest.TestCase):
     @patch.object(DNSMOSMetric, "_initialize")
     @patch.object(DNSMOSMetric, "_preprocess_audio")
     @patch.object(DNSMOSMetric, "_compute_dnsmos")
-    def test_compute_computation_failure(
-        self, mock_compute, mock_preprocess, mock_initialize
-    ):
+    def test_compute_computation_failure(self, mock_compute, mock_preprocess, mock_initialize):
         mock_preprocess.return_value = np.array([0.1, 0.2], dtype=np.float32)
         mock_compute.side_effect = Exception("Computation error")
         result = self.metric.compute_detailed(Path("dummy.wav"))
@@ -101,16 +99,12 @@ class TestDNSMOSMetric(unittest.TestCase):
         with patch.object(self.metric, "_ensure_model", return_value=True):
             # Mock the ONNX session
             mock_session = MagicMock()
-            mock_session.run.return_value = [
-                np.array([[3.5, 4.0, 3.8]], dtype=np.float32)
-            ]  # [SIG, BAK, OVR]
+            mock_session.run.return_value = [np.array([[3.5, 4.0, 3.8]], dtype=np.float32)]  # [SIG, BAK, OVR]
             self.metric._session = mock_session
             self.metric._initialized = True
 
             # Call the method
-            result = self.metric._compute_dnsmos(
-                np.random.randn(16000).astype(np.float32)
-            )
+            result = self.metric._compute_dnsmos(np.random.randn(16000).astype(np.float32))
 
             # Should return a tuple of 4 floats: (mos_overall, mos_sig, mos_bak, mos_ovr)
             self.assertEqual(len(result), 4)
@@ -131,18 +125,14 @@ class TestASRWerMetric(unittest.TestCase):
     def test_compute_wer_cer(self):
         # Test the WER/CER computation helper
         # English words
-        wer, cer, ins, dels, subs, ref_w, hyp_w = self.metric._compute_wer_cer(
-            "hello world", "hello word"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = self.metric._compute_wer_cer("hello world", "hello word")
         self.assertEqual(subs, 1)
         self.assertEqual(ins, 0)
         self.assertEqual(dels, 0)
         self.assertAlmostEqual(wer, 0.5)  # 1 substitution out of 2 words
 
         # Chinese characters - treat as characters
-        wer, cer, ins, dels, subs, ref_w, hyp_w = self.metric._compute_wer_cer(
-            "你好世界", "你好"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = self.metric._compute_wer_cer("你好世界", "你好")
         self.assertEqual(dels, 2)
         self.assertEqual(ins, 0)
         self.assertEqual(subs, 0)
@@ -179,12 +169,8 @@ class TestSpeakerSimilarityMetric(unittest.TestCase):
         mock_embedding = MagicMock()
         mock_embedding.embedding = np.array([0.1, 0.2])
         # Set up return_value to be used for both calls (reference and target)
-        with patch.object(
-            self.metric._backend, "extract_embedding", return_value=mock_embedding
-        ) as mock_extract:
-            result = self.metric.compute(
-                Path("ref.wav"), reference_audio=Path("ref.wav")
-            )
+        with patch.object(self.metric._backend, "extract_embedding", return_value=mock_embedding) as mock_extract:
+            result = self.metric.compute(Path("ref.wav"), reference_audio=Path("ref.wav"))
             self.assertTrue(hasattr(result, "success"))
             # extract_embedding should be called twice: once for ref, once for target
             self.assertEqual(mock_extract.call_count, 2)
@@ -198,9 +184,7 @@ class TestSpeakerSimilarityMetric(unittest.TestCase):
         mock_embedding = MagicMock()
         mock_embedding.embedding = np.array([0.1, 0.2])
         # First register a reference
-        with patch.object(
-            self.metric._backend, "extract_embedding", return_value=mock_embedding
-        ) as mock_extract:
+        with patch.object(self.metric._backend, "extract_embedding", return_value=mock_embedding) as mock_extract:
             # Register the reference
             self.metric.register_reference("test_ref", Path("ref.wav"))
             # Now compute with the reference_id
@@ -526,9 +510,7 @@ class TestQualityCheckSuite(unittest.TestCase):
     def test_quality_check_result_to_dict(self):
         result = QualityCheckResult(
             passed=True,
-            dnsmos=DNSMOSResult(
-                mos_overall=4.0, mos_sig=3.5, mos_bak=4.0, mos_ovr=3.8, success=True
-            ),
+            dnsmos=DNSMOSResult(mos_overall=4.0, mos_sig=3.5, mos_bak=4.0, mos_ovr=3.8, success=True),
             wer=WERResult(
                 wer=0.0,
                 cer=0.0,

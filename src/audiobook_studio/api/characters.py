@@ -31,11 +31,7 @@ def load_voice_mapping() -> Dict[str, Any]:
     global VOICE_MAPPING_CACHE
     if VOICE_MAPPING_CACHE is None:
         try:
-            config_path = (
-                Path(__file__).parent.parent.parent.parent
-                / "config"
-                / "voice_mapping.yaml"
-            )
+            config_path = Path(__file__).parent.parent.parent.parent / "config" / "voice_mapping.yaml"
             with open(config_path, "r", encoding="utf-8") as f:
                 VOICE_MAPPING_CACHE = yaml.safe_load(f)
         except Exception as e:
@@ -153,11 +149,7 @@ async def fetch_character(
     db: Session = Depends(get_db),
 ):
     """获取特定角色."""
-    character = (
-        db.query(Character)
-        .filter(Character.project_id == project_id, Character.id == character_id)
-        .first()
-    )
+    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
     return character
@@ -171,11 +163,7 @@ async def update_character(
     db: Session = Depends(get_db),
 ):
     """更新角色."""
-    character = (
-        db.query(Character)
-        .filter(Character.project_id == project_id, Character.id == character_id)
-        .first()
-    )
+    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
@@ -214,11 +202,7 @@ async def delete_character(
     db: Session = Depends(get_db),
 ):
     """删除角色."""
-    character = (
-        db.query(Character)
-        .filter(Character.project_id == project_id, Character.id == character_id)
-        .first()
-    )
+    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 

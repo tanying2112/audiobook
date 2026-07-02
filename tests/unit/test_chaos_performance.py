@@ -9,11 +9,7 @@ import pytest
 from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
 from src.audiobook_studio.llm.health_probe import HealthProbe, HealthStatus
 from src.audiobook_studio.llm.key_pool import ApiKeyPool
-from src.audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    ParagraphAnnotation,
-    QualityCheckPipeline,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, ParagraphAnnotation, QualityCheckPipeline
 from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
 
 
@@ -96,9 +92,7 @@ class TestChaosSimulation:
             except Exception as e:
                 errors.append(str(e))
 
-        threads = [
-            threading.Thread(target=synthesize_task, args=(i,)) for i in range(10)
-        ]
+        threads = [threading.Thread(target=synthesize_task, args=(i,)) for i in range(10)]
 
         for t in threads:
             t.start()
@@ -180,9 +174,7 @@ class TestChaosSimulationExtended:
 
     def test_api_timeout_recovery(self):
         """Test circuit breaker handles timeout scenarios."""
-        cb = CircuitBreaker(
-            "timeout_provider", failure_threshold=2, recovery_timeout_s=0.05
-        )
+        cb = CircuitBreaker("timeout_provider", failure_threshold=2, recovery_timeout_s=0.05)
 
         cb.record_failure()
         cb.record_failure()

@@ -76,11 +76,7 @@ class VoiceAnchorManager:
 
         # Speaker similarity metric for drift detection
         # Map embedding_model to backend
-        backend = (
-            "wavlm_large"
-            if self.config.embedding_model == "wavlm_large"
-            else "ecapa_tdnn"
-        )
+        backend = "wavlm_large" if self.config.embedding_model == "wavlm_large" else "ecapa_tdnn"
         self._similarity_metric = SpeakerSimilarityMetric(
             backend=backend,
             threshold=self.config.similarity_threshold,
@@ -263,10 +259,7 @@ class VoiceAnchorManager:
         self._drift_alerts[chapter_index].append(alert)
 
         # Check alert count limit
-        if (
-            len(self._drift_alerts[chapter_index])
-            > self.config.max_drift_alerts_per_chapter
-        ):
+        if len(self._drift_alerts[chapter_index]) > self.config.max_drift_alerts_per_chapter:
             logger.error(
                 "Max drift alerts (%d) exceeded for chapter %d",
                 self.config.max_drift_alerts_per_chapter,
@@ -302,9 +295,7 @@ class VoiceAnchorManager:
         if ref_audio:
             prosody_overrides = prosody_overrides or {}
             prosody_overrides["reference_audio"] = ref_audio
-            logger.debug(
-                "Injected reference audio for '%s': %s", character_name, ref_audio
-            )
+            logger.debug("Injected reference audio for '%s': %s", character_name, ref_audio)
 
         return prosody_overrides
 
@@ -313,9 +304,7 @@ class VoiceAnchorManager:
         return {
             "enabled": self.config.enabled,
             "total_anchors": len(self._anchors),
-            "anchors": {
-                name: anchor.to_dict() for name, anchor in self._anchors.items()
-            },
+            "anchors": {name: anchor.to_dict() for name, anchor in self._anchors.items()},
             "drift_alerts": {ch: alerts for ch, alerts in self._drift_alerts.items()},
             "config": {
                 "embedding_model": self.config.embedding_model,

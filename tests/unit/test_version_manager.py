@@ -589,9 +589,7 @@ class TestRestoreState:
 
         target = _make_run(id=5, stages_completed=["extract"])
 
-        ch = _make_chapter(
-            id=1, extract_status="completed", annotate_status="completed"
-        )
+        ch = _make_chapter(id=1, extract_status="completed", annotate_status="completed")
 
         para = MagicMock()
         para.status = "annotated"
@@ -656,9 +654,7 @@ class TestCollectStagesConfig:
 
         db = MagicMock()
 
-        ch1 = _make_chapter(
-            id=1, extract_status="completed", analyze_status="completed"
-        )
+        ch1 = _make_chapter(id=1, extract_status="completed", analyze_status="completed")
 
         chapter_q = MagicMock()
         chapter_q.filter.return_value.order_by.return_value.all.return_value = [ch1]

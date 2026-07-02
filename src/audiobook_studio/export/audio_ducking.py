@@ -74,9 +74,7 @@ def detect_speech_segments(
         speech_start_ms = int(prev_end)
         speech_end_ms = int(start_ms)
         if speech_end_ms - speech_start_ms >= min_speech_ms:
-            segments.append(
-                DuckingSegment(speech_start_ms, speech_end_ms, "speech", label="speech")
-            )
+            segments.append(DuckingSegment(speech_start_ms, speech_end_ms, "speech", label="speech"))
 
         # Silence segment
         silence_end_ms = int(end_ms)
@@ -94,9 +92,7 @@ def detect_speech_segments(
 
     # Trailing speech
     if prev_end < total_duration_ms:
-        segments.append(
-            DuckingSegment(int(prev_end), total_duration_ms, "speech", label="speech")
-        )
+        segments.append(DuckingSegment(int(prev_end), total_duration_ms, "speech", label="speech"))
 
     return segments
 
@@ -129,9 +125,7 @@ def mix_with_ducking(
     speech_duration_s = speech_duration_ms / 1000.0
 
     # Detect segments if not provided
-    segments = ducking_segments or detect_speech_segments(
-        speech_path, cfg.silence_threshold_db
-    )
+    segments = ducking_segments or detect_speech_segments(speech_path, cfg.silence_threshold_db)
 
     if not bgm_path:
         # No BGM — just apply post-processing (normalize + fade)
@@ -160,11 +154,7 @@ def mix_with_ducking(
     # Apply BGM with ducking using ffmpeg sidechain compression
     bgm_loop = [
         "-stream_loop",
-        (
-            "-1"
-            if speech_duration_s > 30
-            else str(int(30 / max(speech_duration_s, 1)) + 1)
-        ),
+        ("-1" if speech_duration_s > 30 else str(int(30 / max(speech_duration_s, 1)) + 1)),
         "-i",
         str(bgm_path),
     ]

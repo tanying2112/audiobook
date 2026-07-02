@@ -7,10 +7,8 @@ import {
   normalizeTimestamp,
   stageLabel,
   statusLabel,
-  PARAGRAPH_STATUS_FLOW,
-  PIPELINE_STAGE_ORDER,
 } from '../normalize'
-import type { NormalizeChapterInput, NormalizeParagraphInput } from '../types/pipeline'
+import type { NormalizeChapterInput, NormalizeParagraphInput } from '../../types/pipeline'
 
 describe('normalize.ts', () => {
   describe('normalizeParagraphStatus', () => {

@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import re
-import time
 import threading
 import time
 from collections import defaultdict
@@ -69,9 +68,7 @@ def _lazy_trace_function(stage: str):
             try:
                 from ..monitoring.langfuse_client import trace_function
 
-                return trace_function(name=func.__name__, stage=stage)(func)(
-                    *args, **kwargs
-                )
+                return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
             except Exception:
                 # If langfuse not available or any error, run without tracing
                 return func(*args, **kwargs)
@@ -131,10 +128,7 @@ class ProviderRateLimiter:
                 self._tokens_used = 0
                 self._requests_used = 0
                 self._window_start = now
-            return (
-                self._tokens_used + estimated_tokens <= self.max_tpm
-                and self._requests_used + 1 <= self.max_rpm
-            )
+            return self._tokens_used + estimated_tokens <= self.max_tpm and self._requests_used + 1 <= self.max_rpm
 
     def record_usage(self, tokens: int):
         with self._lock:
@@ -146,9 +140,7 @@ class ProviderRateLimiter:
 class CostTracker:
     """Tracks costs per model per day with thread safety."""
 
-    _costs: Dict[str, Dict[date, float]] = field(
-        default_factory=lambda: defaultdict(lambda: defaultdict(float))
-    )
+    _costs: Dict[str, Dict[date, float]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(float)))
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _daily_limits: Dict[str, float] = field(default_factory=dict)
     _global_daily_limit: float = 10.0  # Global daily limit in USD
@@ -204,17 +196,14 @@ class CostTracker:
         today = date.today()
         with self._lock:
             status = {}
-            for model in set(
-                list(self._costs.keys()) + list(self._daily_limits.keys())
-            ):
+            for model in set(list(self._costs.keys()) + list(self._daily_limits.keys())):
                 current = self._costs[model].get(today, 0.0)
                 limit = self._daily_limits.get(model, None)
                 status[model] = {
                     "daily_cost_usd": round(current, 6),
                     "daily_limit_usd": limit,
                     "limit_exceeded": current >= (limit or float("inf")),
-                    "alert_triggered": limit
-                    and current >= limit * self._alert_threshold,
+                    "alert_triggered": limit and current >= limit * self._alert_threshold,
                     "usage_pct": round(current / limit * 100, 1) if limit else 0,
                 }
             return status
@@ -362,18 +351,14 @@ class LLMRouter:
             )
 
             # Load daily limits from config
-            self.cost_tracker.set_daily_limit(
-                provider.name, provider.max_daily_cost_usd
-            )
+            self.cost_tracker.set_daily_limit(provider.name, provider.max_daily_cost_usd)
 
         # Set global daily cost limit from config
         # Default $10/day, configurable via cost_control.daily_limit_usd in YAML
         try:
             cost_control = getattr(self.config, "cost_control", None)
             if cost_control and hasattr(cost_control, "daily_limit_usd"):
-                self.cost_tracker.set_global_daily_limit(
-                    cost_control.daily_limit_usd
-                )
+                self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
         except Exception:
             pass  # Use default if config doesn't have cost_control
 
@@ -414,9 +399,7 @@ class LLMRouter:
         """Check if Langfuse is enabled (cached)."""
         if not self._langfuse_enabled_cached:
             try:
-                from ..monitoring.langfuse_client import (
-                    is_enabled as langfuse_is_enabled,
-                )
+                from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
 
                 self._langfuse_enabled_cached = langfuse_is_enabled()
             except Exception:
@@ -427,11 +410,7 @@ class LLMRouter:
         key = provider.name
         if key not in self.clients:
             # Initialize Langfuse if not already done
-            if (
-                self.langfuse_public_key
-                and self.langfuse_secret_key
-                and not self._langfuse_initialized
-            ):
+            if self.langfuse_public_key and self.langfuse_secret_key and not self._langfuse_initialized:
                 self._init_langfuse()
 
             # Get API key from key pool (with rotation support)
@@ -451,9 +430,7 @@ class LLMRouter:
             )
         return self.clients[key]
 
-    def _build_messages(
-        self, stage: StageName, prompt: str, schema_json: str, few_shot: str
-    ) -> list:
+    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list:
         """Build messages with explicit JSON output requirement."""
         system_content = (
             f"你是专业的有声书{stage.value}专家。"
@@ -522,7 +499,7 @@ class LLMRouter:
         return ordered
 
     def _heuristic_fallback(
-        self, stage: str, response_model, segment_id: str, **context
+        self, stage: str, response_model, segment_id: str, paragraph_index: int = 0, **context
     ) -> Optional[Any]:
         """Kill Switch: pure rule-based fallback when ALL LLM providers fail.
 
@@ -581,7 +558,7 @@ class LLMRouter:
                 )
             elif stage == "annotate":
                 result = ParagraphAnnotation(
-                    paragraph_index=0,
+                    paragraph_index=paragraph_index,
                     speaker_canonical_name="_narrator_",
                     is_dialogue=False,
                     emotion="neutral",
@@ -639,9 +616,7 @@ class LLMRouter:
             stage_models = self.hardware_profile.get_llm_stage_models(stage)
             if stage_models:
                 # Filter and reorder providers based on hardware profile priority
-                providers = self._apply_hardware_profile_routing(
-                    stage, providers, stage_models
-                )
+                providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
 
         if not providers:
             raise ValueError(f"No providers configured for stage: {stage}")
@@ -673,15 +648,11 @@ class LLMRouter:
 
             # Health probe check
             if self.health_probe and not self.health_probe.is_healthy(provider.name):
-                logger.warning(
-                    f"Health probe reports {provider.name} unhealthy, skipping"
-                )
+                logger.warning(f"Health probe reports {provider.name} unhealthy, skipping")
                 continue
 
             # Quota registry check before making request
-            if not self.quota_registry.can_make_request(
-                provider.name, estimated_tokens
-            ):
+            if not self.quota_registry.can_make_request(provider.name, estimated_tokens):
                 logger.warning(f"Quota exceeded for {provider.name}, skipping")
                 continue
 
@@ -701,9 +672,7 @@ class LLMRouter:
 
                     # Validate the result matches expected model
                     if result.output is None:
-                        logger.warning(
-                            f"Provider {provider.name} returned None output for stage {stage}"
-                        )
+                        logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
                         raise ValueError("LLM returned None output")
 
                     # Defensive JSON parsing validation
@@ -712,18 +681,12 @@ class LLMRouter:
                         from .client import validate_and_parse_llm_response
 
                         try:
-                            validate_and_parse_llm_response(
-                                result.raw_response, response_model, stage
-                            )
+                            validate_and_parse_llm_response(result.raw_response, response_model, stage)
                         except LLMParseError as e:
-                            logger.warning(
-                                f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}"
-                            )
+                            logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
                             raise
 
-                    self.rate_limiters[provider.name].record_usage(
-                        result.tokens_in + result.tokens_out
-                    )
+                    self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
                     self.cost_tracker.add_cost(provider.name, result.cost_usd)
 
                     # Record success for circuit breaker
@@ -784,8 +747,7 @@ class LLMRouter:
                         continue
                     else:
                         logger.warning(
-                            f"Provider {provider.name} failed all {max_retries+1} attempts "
-                            f"for stage {stage}: {e}"
+                            f"Provider {provider.name} failed all {max_retries+1} attempts " f"for stage {stage}: {e}"
                         )
                         # Record failure for circuit breaker
                         if cb:
@@ -796,19 +758,22 @@ class LLMRouter:
                         if provider.max_daily_cost_usd == 0:
                             self._free_quota_fail[provider.name] += 1
                         # Record quota failure
-                        self.quota_registry.record_request(
-                            provider.name, tokens_used=0, success=False
-                        )
+                        self.quota_registry.record_request(provider.name, tokens_used=0, success=False)
                         break  # Move to next provider
 
         # All providers failed — Kill Switch heuristic fallback
         # Pass segment_id for judge stage (required)
+        # Pass paragraph_index for annotate stage (required for correct paragraph alignment)
         segment_id = "unknown"
+        paragraph_index = None
         if stage == "judge":
             # Try to extract segment_id from kwargs
             segment_id = kwargs.get("segment_id", "unknown")
+        elif stage == "annotate":
+            # Try to extract paragraph_index from kwargs
+            paragraph_index = kwargs.get("paragraph_index", 0)
         fallback = self._heuristic_fallback(
-            stage, response_model, segment_id=segment_id
+            stage, response_model, segment_id=segment_id, paragraph_index=paragraph_index
         )
         if fallback:
             return LLMCallResult(
@@ -961,9 +926,7 @@ class LLMRouter:
         success_rate = total_success / total if total > 0 else 1.0
 
         # Check local model availability
-        local_available = any(
-            p.provider == ProviderType.OLLAMA and p.enabled for p in enabled
-        )
+        local_available = any(p.provider == ProviderType.OLLAMA and p.enabled for p in enabled)
 
         # Overall health assessment
         if success_rate >= 0.95 and healthy_count >= len(free_providers) * 0.5:

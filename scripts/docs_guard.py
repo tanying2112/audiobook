@@ -71,9 +71,7 @@ def get_changed_files(staged: bool = False) -> Set[str]:
                 check=True,
                 timeout=10,
             )
-        return (
-            set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
-        )
+        return set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return set()
 

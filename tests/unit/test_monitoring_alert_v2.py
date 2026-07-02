@@ -62,9 +62,7 @@ class TestAlertRecord:
 
     def test_with_context(self):
         ctx = {"key": "value"}
-        r = AlertRecord(
-            level=AlertLevel.CRITICAL, message="bad", timestamp=2.0, context=ctx
-        )
+        r = AlertRecord(level=AlertLevel.CRITICAL, message="bad", timestamp=2.0, context=ctx)
         assert r.context == ctx
 
 
@@ -211,9 +209,7 @@ class TestCollectSelfIterationLogs:
     def test_collect(self, tmp_path):
         f = tmp_path / "test_self_iteration.jsonl"
         now = datetime.now().isoformat()
-        f.write_text(
-            json.dumps({"timestamp": now, "promoted": True, "feedback_count": 3}) + "\n"
-        )
+        f.write_text(json.dumps({"timestamp": now, "promoted": True, "feedback_count": 3}) + "\n")
         records = collect_self_iteration_logs(tmp_path, 1)
         assert len(records) == 1
 
@@ -237,10 +233,7 @@ class TestComputeMetrics:
         assert m["alerts"] == []
 
     def test_compliant(self):
-        records = [
-            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 0.001}
-            for _ in range(10)
-        ]
+        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 0.001} for _ in range(10)]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 1.0
         assert m["fallback_rate"] == 0.0
@@ -248,30 +241,21 @@ class TestComputeMetrics:
         assert all(a["type"] != "schema_compliance" for a in m["alerts"])
 
     def test_low_compliance_warning(self):
-        records = [
-            {"schema_compliance": i < 9, "model": "gpt-4", "cost_usd": 0.001}
-            for i in range(10)
-        ]
+        records = [{"schema_compliance": i < 9, "model": "gpt-4", "cost_usd": 0.001} for i in range(10)]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 0.9
         types = [a["type"] for a in m["alerts"]]
         assert "schema_compliance" in types
 
     def test_low_compliance_critical(self):
-        records = [
-            {"schema_compliance": i < 5, "model": "gpt-4", "cost_usd": 0.001}
-            for i in range(10)
-        ]
+        records = [{"schema_compliance": i < 5, "model": "gpt-4", "cost_usd": 0.001} for i in range(10)]
         m = compute_metrics(records)
         assert m["schema_compliance_rate"] == 0.5
         critical = [a for a in m["alerts"] if a["type"] == "schema_compliance"]
         assert critical[0]["severity"] == "critical"
 
     def test_fallback_rate_warning(self):
-        records = [
-            {"schema_compliance": True, "model": "fallback-model", "cost_usd": 0.001}
-            for _ in range(10)
-        ]
+        records = [{"schema_compliance": True, "model": "fallback-model", "cost_usd": 0.001} for _ in range(10)]
         m = compute_metrics(records)
         assert m["fallback_rate"] == 1.0
         types = [a["type"] for a in m["alerts"]]
@@ -290,29 +274,20 @@ class TestComputeMetrics:
         assert m["fallback_rate"] == 1.0
 
     def test_cost_overrun(self):
-        records = [
-            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 1.0}
-            for _ in range(20)
-        ]
+        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 1.0} for _ in range(20)]
         m = compute_metrics(records, hours=1)
         assert m["total_cost_usd"] == 20.0
         types = [a["type"] for a in m["alerts"]]
         assert "cost_overrun" in types
 
     def test_cost_overrun_critical(self):
-        records = [
-            {"schema_compliance": True, "model": "gpt-4", "cost_usd": 50.0}
-            for _ in range(5)
-        ]
+        records = [{"schema_compliance": True, "model": "gpt-4", "cost_usd": 50.0} for _ in range(5)]
         m = compute_metrics(records, hours=1)
         cost_alerts = [a for a in m["alerts"] if a["type"] == "cost_overrun"]
         assert cost_alerts[0]["severity"] == "critical"
 
     def test_fallback_critical(self):
-        records = [
-            {"schema_compliance": True, "model": "fallback-x", "cost_usd": 0.001}
-            for _ in range(20)
-        ]
+        records = [{"schema_compliance": True, "model": "fallback-x", "cost_usd": 0.001} for _ in range(20)]
         m = compute_metrics(records)
         fallback_alerts = [a for a in m["alerts"] if a["type"] == "fallback_rate"]
         assert fallback_alerts[0]["severity"] == "critical"

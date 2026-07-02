@@ -4,9 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — SelfIterationLoop is a stub, not real usable code"
-)
+pytestmark = pytest.mark.skip(reason="Sprint G Placeholder — SelfIterationLoop is a stub, not real usable code")
 
 
 class TestCollectPipelineFeedback:

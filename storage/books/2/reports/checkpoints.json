@@ -1,0 +1,127 @@
+{
+  "project_id": 2,
+  "chapters": {
+    "1": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "2": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "3": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "4": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "5": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "6": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "7": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "8": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "9": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "10": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "11": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    }
+  },
+  "version": 2
+}

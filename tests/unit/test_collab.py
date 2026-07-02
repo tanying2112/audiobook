@@ -68,9 +68,7 @@ class TestCollabModels:
     def test_task_create(self):
         from src.audiobook_studio.api.collab import TaskCreate
 
-        task = TaskCreate(
-            title="New Task", description="Description", status="in_progress"
-        )
+        task = TaskCreate(title="New Task", description="Description", status="in_progress")
         assert task.title == "New Task"
         assert task.status == "in_progress"
 

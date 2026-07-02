@@ -10,16 +10,14 @@ Covers:
 """
 
 import sys
-sys.path.insert(0, "src")
 
-# Import all models FIRST to register tables with Base
-import src.audiobook_studio.models  # noqa: F401
+sys.path.insert(0, "src")
 
 import json
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -27,11 +25,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+# Import all models FIRST to register tables with Base
+import src.audiobook_studio.models  # noqa: F401
+
 # Import the API router and dependencies
 from src.audiobook_studio.api.upload import router as upload_router
-from src.audiobook_studio.database import get_db as upload_get_db
 from src.audiobook_studio.database import Base
-
+from src.audiobook_studio.database import get_db as upload_get_db
 
 # Create test app
 test_app = FastAPI()
@@ -41,8 +41,10 @@ test_app.include_router(upload_router)
 from src.audiobook_studio.auth.dependencies import get_current_active_user as real_get_current_active_user
 from src.audiobook_studio.auth.dependencies import require_project_permission as real_require_project_permission
 
+
 async def mock_get_current_active_user():
     from src.audiobook_studio.models.user import User
+
     user = User(
         id=1,
         username="testuser",
@@ -53,10 +55,13 @@ async def mock_get_current_active_user():
     )
     return user
 
+
 def mock_require_project_permission(required_role):
     async def permission_checker(project_id: int, current_user=mock_get_current_active_user(), db=None):
         return await mock_get_current_active_user()
+
     return permission_checker
+
 
 test_app.dependency_overrides[real_get_current_active_user] = mock_get_current_active_user
 test_app.dependency_overrides[real_require_project_permission] = mock_require_project_permission
@@ -67,6 +72,7 @@ test_app.dependency_overrides[real_require_project_permission] = mock_require_pr
 def db_engine():
     """Create a file-based SQLite engine for testing."""
     import tempfile
+
     from src.audiobook_studio.database import Base
 
     # Debug: check if models are registered
@@ -74,19 +80,19 @@ def db_engine():
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    engine = create_engine(
-        f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
 
     # Debug: check tables created
     from sqlalchemy import inspect
+
     inspector = inspect(engine)
     print(f"Tables created: {inspector.get_table_names()}")
 
     yield engine
     engine.dispose()
     import os
+
     os.unlink(tmp.name)
 
 
@@ -104,6 +110,7 @@ def db_session(db_engine):
 @pytest.fixture
 def client(db_session):
     """FastAPI test client with database override."""
+
     def get_test_db():
         try:
             yield db_session
@@ -114,6 +121,7 @@ def client(db_session):
     with TestClient(test_app) as client:
         # Debug: check if we can query the database
         from sqlalchemy import inspect, text
+
         inspector = inspect(db_session.get_bind())
         print(f"Client fixture - tables in session bind: {inspector.get_table_names()}")
         # Debug: try to query project_permissions
@@ -129,6 +137,7 @@ def client(db_session):
 def mock_user(db_session):
     """Create a real user in the test database."""
     from src.audiobook_studio.models.user import User
+
     user = User(
         id=1,
         username="testuser",
@@ -183,7 +192,8 @@ def auth_headers():
 @pytest.fixture(autouse=True)
 def clear_global_state():
     """Clear global state before each test."""
-    from src.audiobook_studio.api.upload import upload_sessions, extraction_jobs
+    from src.audiobook_studio.api.upload import extraction_jobs, upload_sessions
+
     upload_sessions.clear()
     extraction_jobs.clear()
     yield
@@ -668,6 +678,7 @@ class TestValidationHelpers:
     def test_validate_file_valid_pdf(self):
         """Test validate_file with valid PDF."""
         from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/pdf"
@@ -677,6 +688,7 @@ class TestValidationHelpers:
     def test_validate_file_valid_epub(self):
         """Test validate_file with valid EPUB."""
         from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.epub"
         mock_file.content_type = "application/epub+zip"
@@ -685,6 +697,7 @@ class TestValidationHelpers:
     def test_validate_file_valid_docx(self):
         """Test validate_file with valid DOCX."""
         from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.docx"
         mock_file.content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -693,6 +706,7 @@ class TestValidationHelpers:
     def test_validate_file_valid_txt(self):
         """Test validate_file with valid TXT."""
         from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.txt"
         mock_file.content_type = "text/plain"
@@ -700,8 +714,10 @@ class TestValidationHelpers:
 
     def test_validate_file_no_filename(self):
         """Test validate_file with no filename."""
-        from src.audiobook_studio.api.upload import validate_file
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = None
         mock_file.content_type = "application/pdf"
@@ -712,8 +728,10 @@ class TestValidationHelpers:
 
     def test_validate_file_invalid_extension(self):
         """Test validate_file with invalid extension."""
-        from src.audiobook_studio.api.upload import validate_file
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.exe"
         mock_file.content_type = "application/octet-stream"
@@ -724,8 +742,10 @@ class TestValidationHelpers:
 
     def test_validate_file_invalid_mime_type(self):
         """Test validate_file with invalid MIME type."""
-        from src.audiobook_studio.api.upload import validate_file
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import validate_file
+
         mock_file = MagicMock(spec=UploadFile)
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/exe"
@@ -741,8 +761,9 @@ class TestSaveUploadChunk:
     @pytest.mark.asyncio
     async def test_save_upload_chunk_success(self, patch_upload_dir):
         """Test saving upload chunk."""
-        from src.audiobook_studio.api.upload import save_upload_chunk, upload_sessions
         import uuid
+
+        from src.audiobook_studio.api.upload import save_upload_chunk, upload_sessions
 
         upload_id = str(uuid.uuid4())
         file_path = patch_upload_dir / f"{upload_id}_test.pdf"
@@ -763,8 +784,9 @@ class TestSaveUploadChunk:
     @pytest.mark.asyncio
     async def test_save_upload_chunk_invalid_session(self):
         """Test saving chunk for invalid session."""
-        from src.audiobook_studio.api.upload import save_upload_chunk
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import save_upload_chunk
 
         with pytest.raises(HTTPException) as exc_info:
             await save_upload_chunk("invalid", b"data", 0)
@@ -776,8 +798,9 @@ class TestFinalizeUpload:
 
     def test_finalize_upload_success(self, patch_upload_dir):
         """Test finalizing upload."""
-        from src.audiobook_studio.api.upload import finalize_upload, upload_sessions
         import uuid
+
+        from src.audiobook_studio.api.upload import finalize_upload, upload_sessions
 
         upload_id = str(uuid.uuid4())
         file_path = patch_upload_dir / f"{upload_id}_test.pdf"
@@ -794,8 +817,9 @@ class TestFinalizeUpload:
 
     def test_finalize_upload_invalid_session(self):
         """Test finalizing invalid session."""
-        from src.audiobook_studio.api.upload import finalize_upload
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import finalize_upload
 
         with pytest.raises(HTTPException) as exc_info:
             finalize_upload("invalid")
@@ -803,9 +827,11 @@ class TestFinalizeUpload:
 
     def test_finalize_upload_missing_chunks(self, patch_upload_dir):
         """Test finalizing with missing chunks."""
-        from src.audiobook_studio.api.upload import finalize_upload, upload_sessions
-        from fastapi import HTTPException
         import uuid
+
+        from fastapi import HTTPException
+
+        from src.audiobook_studio.api.upload import finalize_upload, upload_sessions
 
         upload_id = str(uuid.uuid4())
         file_path = patch_upload_dir / f"{upload_id}_test.pdf"
@@ -862,12 +888,14 @@ class TestSplitIntoChapters:
     def test_split_empty_text(self):
         """Test splitting empty text."""
         from src.audiobook_studio.api.upload import split_into_chapters
+
         chapters = split_into_chapters("")
         assert chapters == []
 
     def test_split_single_paragraph(self):
         """Test splitting single paragraph."""
         from src.audiobook_studio.api.upload import split_into_chapters
+
         chapters = split_into_chapters("Single paragraph only")
         assert len(chapters) == 1
         assert chapters[0] == "Single paragraph only"
@@ -879,7 +907,7 @@ class TestStartExtractionJob:
     @pytest.mark.asyncio
     async def test_start_extraction_job(self, patch_upload_dir):
         """Test starting extraction job."""
-        from src.audiobook_studio.api.upload import start_extraction_job, extraction_jobs
+        from src.audiobook_studio.api.upload import extraction_jobs, start_extraction_job
 
         job_id = await start_extraction_job("upload123", 1, "/tmp/test.pdf", "application/pdf")
 

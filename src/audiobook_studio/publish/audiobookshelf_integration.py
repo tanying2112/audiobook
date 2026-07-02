@@ -148,9 +148,7 @@ class AudiobookshelfIntegrator:
         if not metadata.narrator.strip():
             return False, "朗读者不能为空"
 
-        if metadata.publication_year and (
-            metadata.publication_year < 1000 or metadata.publication_year > 2100
-        ):
+        if metadata.publication_year and (metadata.publication_year < 1000 or metadata.publication_year > 2100):
             return False, f"出版年份不合理: {metadata.publication_year}"
 
         return True, "元数据验证通过"
@@ -188,11 +186,7 @@ class AudiobookshelfIntegrator:
             "flac": "audio/flac",
         }.get(audio_file.format)
 
-        if (
-            expected_mime
-            and mime_type
-            and not mime_type.startswith(expected_mime.split("/")[0])
-        ):
+        if expected_mime and mime_type and not mime_type.startswith(expected_mime.split("/")[0]):
             return (
                 False,
                 f"文件 MIME 类型不匹配: 期望 {expected_mime}, 实际 {mime_type}",
@@ -200,9 +194,7 @@ class AudiobookshelfIntegrator:
 
         return True, "音频文件验证通过"
 
-    def _prepare_upload_data(
-        self, metadata: AudiobookMetadata, audio_file: AudiobookFile
-    ) -> Dict:
+    def _prepare_upload_data(self, metadata: AudiobookMetadata, audio_file: AudiobookFile) -> Dict:
         """准备上传到 Audiobookshelf 的数据"""
         # 生成封面图片的 base64 (如果有的话)
         cover_data = None
@@ -286,9 +278,7 @@ class AudiobookshelfIntegrator:
         except Exception as e:
             return False, f"发布过程中出现网络错误: {str(e)}", None
 
-    async def _real_api_call(
-        self, upload_data: Dict, audio_file: AudiobookFile
-    ) -> Dict:
+    async def _real_api_call(self, upload_data: Dict, audio_file: AudiobookFile) -> Dict:
         """真实的 Audiobookshelf API 调用"""
         # 获取库 ID 和 API 密钥
         library_id = self.config.library_id
@@ -403,9 +393,7 @@ class AudiobookshelfIntegrator:
                             "title": book_title,
                             "author": author,
                         }
-                        resp = await self.client.post(
-                            f"{self.base_url}/api/upload", data=data, files=files
-                        )
+                        resp = await self.client.post(f"{self.base_url}/api/upload", data=data, files=files)
                     if resp.status_code in (200, 201):
                         upload_results.append(
                             {
@@ -441,9 +429,7 @@ class AudiobookshelfIntegrator:
 
         # 第四步：触发库扫描
         try:
-            scan_resp = await self.client.post(
-                f"{self.base_url}/api/libraries/{library_id}/scan"
-            )
+            scan_resp = await self.client.post(f"{self.base_url}/api/libraries/{library_id}/scan")
             if scan_resp.status_code not in (200, 201):
                 # 不致命，继续
                 pass
@@ -527,9 +513,7 @@ class AudiobookshelfIntegrator:
                 metadata_payload["metadata"]["chapters"] = chapters
 
             try:
-                resp = await self.client.patch(
-                    f"{self.base_url}/api/items/{item_id}/media", json=metadata_payload
-                )
+                resp = await self.client.patch(f"{self.base_url}/api/items/{item_id}/media", json=metadata_payload)
                 if resp.status_code not in (200, 204):
                     # 不致命，继续
                     pass
@@ -544,9 +528,7 @@ class AudiobookshelfIntegrator:
 
                     cover_bytes = base64.b64decode(cover_b64)
                     files = {"cover": ("cover.jpg", cover_bytes, "image/jpeg")}
-                    resp = await self.client.post(
-                        f"{self.base_url}/api/items/{item_id}/cover", files=files
-                    )
+                    resp = await self.client.post(f"{self.base_url}/api/items/{item_id}/cover", files=files)
                     if resp.status_code not in (200, 201):
                         # 不致命
                         pass

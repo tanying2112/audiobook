@@ -9,7 +9,6 @@ Tests the complete pipeline from raw text to finished audio:
 from pathlib import Path
 
 import pytest
-
 from tests.e2e.conftest import SAMPLE_TEXT, E2ETestConfig
 
 pytestmark = pytest.mark.e2e
@@ -169,9 +168,7 @@ class TestMonitoringIntegration:
 
     def test_langfuse_client_init(self):
         """Test Langfuse client initialization."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            is_enabled as langfuse_is_enabled,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import is_enabled as langfuse_is_enabled
 
         # Should not crash regardless of configuration
         enabled = langfuse_is_enabled()
@@ -198,10 +195,7 @@ class TestHardwareProfileIntegration:
 
     def test_hardware_profile_tts_routing(self):
         """Test hardware profile affects TTS routing."""
-        from src.audiobook_studio.config.hardware_profile import (
-            TTSEnginePriority,
-            get_hardware_profile,
-        )
+        from src.audiobook_studio.config.hardware_profile import TTSEnginePriority, get_hardware_profile
 
         profile = get_hardware_profile()
 

@@ -85,9 +85,7 @@ class TestVoxCPM2BackendMethods:
         backend = VoxCPM2Backend()
         embedding = backend._get_voice_embedding("zh_female_1")
         # Should return the predefined embedding from VOXCPM2_VOICES
-        assert isinstance(
-            embedding, dict
-        )  # Actually returns the dict from VOXCPM2_VOICES
+        assert isinstance(embedding, dict)  # Actually returns the dict from VOXCPM2_VOICES
         assert "name" in embedding
         assert embedding["name"] == "zh_female_1"
 
@@ -119,9 +117,7 @@ class TestVoxCPM2BackendMethods:
                 mock_md5.return_value = mock_hash
 
                 with patch.object(backend, "_reference_audio_cache", {}):
-                    embedding = backend._get_voice_embedding(
-                        "zh_female_1", str(ref_audio)
-                    )
+                    embedding = backend._get_voice_embedding("zh_female_1", str(ref_audio))
                     # Should return a tensor (placeholder implementation)
                     # In the actual implementation, this returns a torch tensor
                     assert embedding is not None
@@ -200,9 +196,7 @@ class TestVoxCPM2BackendMethods:
     @pytest.mark.asyncio
     async def test_create_voxcpmp2_backend(self):
         """Test factory function creates and initializes backend."""
-        with patch(
-            "src.audiobook_studio.tts.voxcpm2_backend.VoxCPM2Backend"
-        ) as mock_backend_class:
+        with patch("src.audiobook_studio.tts.voxcpm2_backend.VoxCPM2Backend") as mock_backend_class:
             mock_backend = MagicMock()
             mock_backend_class.return_value = mock_backend
             mock_backend.initialize = AsyncMock()
@@ -276,10 +270,6 @@ class TestEdgeCases:
             import os
 
             os.environ["MOCK_LLM"] = "false"
-            backend = VoxCPM2Backend(
-                mock_mode=False
-            )  # Not in mock mode to trigger import
-            with pytest.raises(
-                ImportError, match="import of torch halted; None in sys.modules"
-            ):
+            backend = VoxCPM2Backend(mock_mode=False)  # Not in mock mode to trigger import
+            with pytest.raises(ImportError, match="import of torch halted; None in sys.modules"):
                 await backend.initialize()

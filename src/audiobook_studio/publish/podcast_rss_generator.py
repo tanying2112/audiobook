@@ -49,9 +49,7 @@ class PodcastEpisode:
                 return hashlib.sha256(hash_input.encode()).hexdigest()
             else:
                 # 如果文件不存在，基于路径和标题生成
-                hash_input = (
-                    f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
-                )
+                hash_input = f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
                 return hashlib.sha256(hash_input.encode()).hexdigest()
         except Exception:
             # 后备方案：基于标题和时间
@@ -103,13 +101,9 @@ class PodcastRSSGenerator:
     def _reassign_episode_numbers(self):
         """重新分配 épisode 编号（基于发布顺序）"""
         # 只为没有手动设置编号的 épisode 重新分配
-        episodes_without_number = [
-            ep for ep in self.feed.episodes if ep.episode_number is None
-        ]
+        episodes_without_number = [ep for ep in self.feed.episodes if ep.episode_number is None]
         for i, episode in enumerate(episodes_without_number, 1):
-            episode.episode_number = (
-                len(self.feed.episodes) - len(episodes_without_number) + i
-            )
+            episode.episode_number = len(self.feed.episodes) - len(episodes_without_number) + i
 
     def generate_rss_xml(self) -> str:
         """生成 RSS XML 内容"""
@@ -152,16 +146,10 @@ class PodcastRSSGenerator:
             ET.SubElement(channel, "author").text = self.feed.author
 
         if self.feed.owner_name and self.feed.owner_email:
-            ET.SubElement(channel, "managingEditor").text = (
-                f"{self.feed.owner_email} ({self.feed.owner_name})"
-            )
-            ET.SubElement(channel, "webMaster").text = (
-                f"{self.feed.owner_email} ({self.feed.owner_name})"
-            )
+            ET.SubElement(channel, "managingEditor").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
+            ET.SubElement(channel, "webMaster").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
 
-        ET.SubElement(channel, "lastBuildDate").text = (
-            self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
-        )
+        ET.SubElement(channel, "lastBuildDate").text = self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
         ET.SubElement(channel, "generator").text = self.feed.generator
 
         # 添加分类
@@ -183,9 +171,7 @@ class PodcastRSSGenerator:
         if self.feed.itunes_owner_name and self.feed.itunes_owner_email:
             owner_elem = ET.SubElement(channel, "itunes:owner")
             ET.SubElement(owner_elem, "itunes:name").text = self.feed.itunes_owner_name
-            ET.SubElement(owner_elem, "itunes:email").text = (
-                self.feed.itunes_owner_email
-            )
+            ET.SubElement(owner_elem, "itunes:email").text = self.feed.itunes_owner_email
 
         ET.SubElement(channel, "itunes:explicit").text = self.feed.itunes_explicit
 
@@ -214,15 +200,11 @@ class PodcastRSSGenerator:
         ET.SubElement(item, "description").text = episode.description
         ET.SubElement(item, "guid").text = episode.guid
         ET.SubElement(item, "guid").set("isPermaLink", "false")
-        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime(
-            "%a, %d %b %Y %H:%M:%S %Z"
-        )
+        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
 
         # Enclosure (音频文件)
         enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set(
-            "url", str(episode.audio_file_path)
-        )  # 在实际应用中，这 zou 是可访问的URL
+        enclosure.set("url", str(episode.audio_file_path))  # 在实际应用中，这 zou 是可访问的URL
         enclosure.set(
             "length",
             str(
@@ -239,9 +221,7 @@ class PodcastRSSGenerator:
         if episode.season_number is not None:
             ET.SubElement(item, "itunes:season").text = str(episode.season_number)
         ET.SubElement(item, "itunes:episodeType").text = episode.episode_type
-        ET.SubElement(item, "itunes:explicit").text = (
-            "yes" if episode.explicit else "no"
-        )
+        ET.SubElement(item, "itunes:explicit").text = "yes" if episode.explicit else "no"
 
     def save_to_file(self, file_path: Path) -> Tuple[bool, str]:
         """将RSS Feed保存到文件"""
@@ -393,9 +373,7 @@ def main():
 
         generator.add_episode(episode)
         logger.info(f"   第{i+1}集: {chapter_data['title']}")
-        logger.info(
-            f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒"
-        )
+        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")
         logger.info(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
 
     logger.info("\n" + "=" * 60)
@@ -442,15 +420,9 @@ def main():
     logger.info("\n📈 Feed统计信息:")
     logger.info(f"   节目总数: {len(generator.feed.episodes)} 集")
     total_duration = sum(ep.duration_seconds for ep in generator.feed.episodes)
-    logger.info(
-        f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}"
-    )
-    logger.info(
-        f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}"
-    )
-    logger.info(
-        f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}"
-    )
+    logger.info(f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}")
+    logger.info(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
+    logger.info(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
 
     logger.info("\n" + "=" * 60)
     logger.info("🎉 Podcast RSS Feed 生成演示完成")

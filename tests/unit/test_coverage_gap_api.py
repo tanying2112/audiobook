@@ -4,11 +4,11 @@ Covers: config.py, collab.py, audio_segments.py, export.py, llm.py,
         dependencies.py, version_manager.py, main.py, mock_router.py
 """
 
-import tempfile
-import os
 import json
+import os
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock, mock_open
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from fastapi import FastAPI
@@ -17,7 +17,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.audiobook_studio.database import Base, get_db
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. dependencies.py
@@ -99,9 +98,7 @@ class TestCollabAPI:
 
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tmp.close()
-        engine = create_engine(
-            f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-        )
+        engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
         Base.metadata.create_all(bind=engine)
         TestSession = sessionmaker(bind=engine)
 
@@ -256,7 +253,7 @@ class TestVersionManager:
         assert hasattr(vm, "save_run")
 
     def test_instantiate_with_defaults(self):
-        from src.audiobook_studio.version_manager import save_run, list_runs
+        from src.audiobook_studio.version_manager import list_runs, save_run
 
         assert callable(save_run)
         assert callable(list_runs)

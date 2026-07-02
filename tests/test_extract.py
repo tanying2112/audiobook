@@ -61,9 +61,7 @@ class TestExtractPipeline:
             temp_path = f.name
 
         try:
-            input_data = ExtractionInput(
-                file_path=temp_path, mime_type="text/plain", detect_language=True
-            )
+            input_data = ExtractionInput(file_path=temp_path, mime_type="text/plain", detect_language=True)
 
             # Use non-mock pipeline for real file extraction
             pipeline = ExtractPipeline(router=self.mock_router, mock_mode=False)
@@ -90,9 +88,7 @@ class TestExtractPipeline:
             temp_path = f.name
 
         try:
-            input_data = ExtractionInput(
-                file_path=temp_path, mime_type="text/plain", detect_language=True
-            )
+            input_data = ExtractionInput(file_path=temp_path, mime_type="text/plain", detect_language=True)
 
             # Use non-mock pipeline for real file extraction
             pipeline = ExtractPipeline(router=self.mock_router, mock_mode=False)
@@ -158,9 +154,7 @@ class TestExtractPipelineMockMode:
 
     def test_mock_mode_returns_expected_result(self):
         """Test that mock mode returns expected mock result."""
-        input_data = ExtractionInput(
-            file_path="/fake/path.txt", mime_type="text/plain", detect_language=True
-        )
+        input_data = ExtractionInput(file_path="/fake/path.txt", mime_type="text/plain", detect_language=True)
 
         result = self.pipeline.run(input_data)
 
@@ -188,19 +182,15 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_extract_pdf_with_text_layer(self):
         """Test PDF extraction using pdfplumber text layer."""
-        with patch(
-            "src.audiobook_studio.pipeline.extract.pdfplumber.open"
-        ) as mock_open:
+        with patch("src.audiobook_studio.pipeline.extract.pdfplumber.open") as mock_open:
             # Mock pdfplumber to return pages with text (enough to avoid OCR)
             mock_page1 = Mock()
             mock_page1.extract_text.return_value = (
-                "Page 1 text content with sufficient length to exceed 100 characters. "
-                * 2
+                "Page 1 text content with sufficient length to exceed 100 characters. " * 2
             )
             mock_page2 = Mock()
             mock_page2.extract_text.return_value = (
-                "Page 2 text content with sufficient length to exceed 100 characters. "
-                * 2
+                "Page 2 text content with sufficient length to exceed 100 characters. " * 2
             )
             mock_pdf = Mock()
             mock_pdf.pages = [mock_page1, mock_page2]
@@ -208,9 +198,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
             # Also mock fitz to avoid any import issues
             with patch("src.audiobook_studio.pipeline.extract.fitz.open") as mock_fitz:
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf(
-                    "test.pdf"
-                )
+                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
 
                 assert page_count == 2
                 assert "Page 1 text content" in text
@@ -246,18 +234,14 @@ class TestExtractPipelineNonMock:  # noqa: E302
                 mock_doc.__getitem__ = lambda self, key: mock_page
                 mock_fitz.return_value = mock_doc
 
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf(
-                    "test.pdf"
-                )
+                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
 
                 assert page_count == 1
                 assert has_ocr  # Should attempt OCR
 
     def test_extract_pdf_text_insufficient_triggers_ocr(self):
         """Test OCR fallback when extracted text is too short."""
-        with patch(
-            "src.audiobook_studio.pipeline.extract.pdfplumber.open"
-        ) as mock_open:
+        with patch("src.audiobook_studio.pipeline.extract.pdfplumber.open") as mock_open:
             mock_page = Mock()
             mock_page.extract_text.return_value = "Short"  # < 100 chars
             mock_pdf = Mock()
@@ -289,9 +273,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
                 mock_fitz.return_value = MockDoc()
 
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf(
-                    "test.pdf"
-                )
+                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
 
                 assert has_ocr
                 assert page_count == 1
@@ -307,9 +289,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
                 "src.audiobook_studio.pipeline.extract.fitz.open",
                 side_effect=Exception("PyMuPDF failed"),
             ):
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf(
-                    "test.pdf"
-                )
+                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
 
                 assert text == ""
                 assert page_count == 0
@@ -323,15 +303,11 @@ class TestExtractPipelineNonMock:  # noqa: E302
             mock_book = Mock()
             mock_item = Mock()
             mock_item.get_type.return_value = "application/xhtml+xml"  # document type
-            mock_item.get_content.return_value = (
-                b"<html><body><p>EPUB content</p></body></html>"
-            )
+            mock_item.get_content.return_value = b"<html><body><p>EPUB content</p></body></html>"
             mock_book.get_items.return_value = [mock_item]
             mock_read.return_value = mock_book
 
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub(
-                "test.epub"
-            )
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub("test.epub")
 
             assert "EPUB content" in text
             assert page_count == 1
@@ -344,9 +320,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.epub.read_epub",
             side_effect=Exception("EPUB failed"),
         ):
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub(
-                "test.epub"
-            )
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub("test.epub")
 
             assert text == ""
             assert page_count == 0
@@ -364,9 +338,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             mock_doc.paragraphs = [mock_para1, mock_para2]
             mock_doc_class.return_value = mock_doc
 
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx(
-                "test.docx"
-            )
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx("test.docx")
 
             assert "Paragraph 1" in text
             assert "Paragraph 2" in text
@@ -380,9 +352,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.Document",
             side_effect=Exception("DOCX failed"),
         ):
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx(
-                "test.docx"
-            )
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx("test.docx")
 
             assert text == ""
             assert page_count == 0
@@ -393,9 +363,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
         """Test TXT extraction with UTF-8 encoding."""
         import tempfile
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
             f.write("UTF-8 text content")
             temp_path = f.name
 
@@ -427,12 +395,8 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_pdf(self):
         """Test run method with PDF."""
-        with patch.object(
-            self.pipeline, "_extract_pdf", return_value=("PDF text", 3, False, 0.0)
-        ):
-            input_data = ExtractionInput(
-                file_path="test.pdf", mime_type="application/pdf", detect_language=True
-            )
+        with patch.object(self.pipeline, "_extract_pdf", return_value=("PDF text", 3, False, 0.0)):
+            input_data = ExtractionInput(file_path="test.pdf", mime_type="application/pdf", detect_language=True)
             result = self.pipeline.run(input_data)
 
             assert result.raw_text == "PDF text"
@@ -441,9 +405,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_epub(self):
         """Test run method with EPUB."""
-        with patch.object(
-            self.pipeline, "_extract_epub", return_value=("EPUB text", 5, False, 0.0)
-        ):
+        with patch.object(self.pipeline, "_extract_epub", return_value=("EPUB text", 5, False, 0.0)):
             input_data = ExtractionInput(
                 file_path="test.epub",
                 mime_type="application/epub+zip",
@@ -456,9 +418,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_docx(self):
         """Test run method with DOCX."""
-        with patch.object(
-            self.pipeline, "_extract_docx", return_value=("DOCX text", 2, False, 0.0)
-        ):
+        with patch.object(self.pipeline, "_extract_docx", return_value=("DOCX text", 2, False, 0.0)):
             input_data = ExtractionInput(
                 file_path="test.docx",
                 mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -471,12 +431,8 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_txt(self):
         """Test run method with TXT."""
-        with patch.object(
-            self.pipeline, "_extract_txt", return_value=("TXT text", 1, False, 0.0)
-        ):
-            input_data = ExtractionInput(
-                file_path="test.txt", mime_type="text/plain", detect_language=True
-            )
+        with patch.object(self.pipeline, "_extract_txt", return_value=("TXT text", 1, False, 0.0)):
+            input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
             result = self.pipeline.run(input_data)
 
             assert result.raw_text == "TXT text"
@@ -489,9 +445,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
         from src.audiobook_studio.schemas import ExtractionInput
 
-        input_data = ExtractionInput(
-            file_path="test.xyz", mime_type="text/plain", detect_language=True
-        )
+        input_data = ExtractionInput(file_path="test.xyz", mime_type="text/plain", detect_language=True)
         # Modify the mime_type after validation to test the run method logic
         input_data.mime_type = "application/unknown"
         with pytest.raises(ValueError, match="Unsupported MIME type"):
@@ -499,12 +453,8 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_short_text_warning(self):
         """Test run method warns when text is too short."""
-        with patch.object(
-            self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)
-        ):
-            input_data = ExtractionInput(
-                file_path="test.txt", mime_type="text/plain", detect_language=True
-            )
+        with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)):
+            input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
             result = self.pipeline.run(input_data)
 
             assert len(result.warnings) > 0
@@ -521,12 +471,8 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.record_stage_performance",
             side_effect=capture_record,
         ):
-            with patch.object(
-                self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)
-            ):
-                input_data = ExtractionInput(
-                    file_path="test.txt", mime_type="text/plain", detect_language=True
-                )
+            with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)):
+                input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
                 result = self.pipeline.run(input_data)
 
                 assert recorded.get("quality_score") == 0.5
@@ -543,9 +489,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.record_stage_performance",
             side_effect=capture_record,
         ):
-            with patch.object(
-                self.pipeline, "_extract_pdf", return_value=("OCR text", 2, True, 0.5)
-            ):
+            with patch.object(self.pipeline, "_extract_pdf", return_value=("OCR text", 2, True, 0.5)):
                 input_data = ExtractionInput(
                     file_path="test.pdf",
                     mime_type="application/pdf",
@@ -584,12 +528,8 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_detect_language_false(self):
         """Test run method when detect_language is False."""
-        with patch.object(
-            self.pipeline, "_extract_txt", return_value=("English text", 1, False, 0.0)
-        ):
-            input_data = ExtractionInput(
-                file_path="test.txt", mime_type="text/plain", detect_language=False
-            )
+        with patch.object(self.pipeline, "_extract_txt", return_value=("English text", 1, False, 0.0)):
+            input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=False)
             result = self.pipeline.run(input_data)
 
             assert result.language == "zh"  # Default when detect_language=False
@@ -606,9 +546,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             side_effect=capture_record,
         ):
             pipeline = ExtractPipeline()
-            input_data = ExtractionInput(
-                file_path="/fake/path.txt", mime_type="text/plain", detect_language=True
-            )
+            input_data = ExtractionInput(file_path="/fake/path.txt", mime_type="text/plain", detect_language=True)
             result = pipeline.run(input_data)
 
             assert recorded.get("stage") == "extract_mock"

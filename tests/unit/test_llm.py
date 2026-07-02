@@ -370,9 +370,7 @@ class TestQuotaRegistry:
         from src.audiobook_studio.llm.quota_registry import QuotaConfig, QuotaRegistry
 
         reg = QuotaRegistry()
-        reg.register_config(
-            QuotaConfig(provider_name="healthy_p", requests_per_day=100)
-        )
+        reg.register_config(QuotaConfig(provider_name="healthy_p", requests_per_day=100))
         healthy = reg.get_healthy_providers()
         assert "healthy_p" in healthy
 
@@ -511,30 +509,21 @@ class TestUtils:
 
     def test_validate_none_response(self):
         """None 响应抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="None"):
             validate_and_parse_llm_response(None, MagicMock, "test")
 
     def test_validate_empty_string(self):
         """空字符串响应抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="empty"):
             validate_and_parse_llm_response("", MagicMock, "test")
 
     def test_validate_invalid_json_string(self):
         """无效 JSON 字符串抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="invalid JSON"):
             validate_and_parse_llm_response("not json", MagicMock, "test")
@@ -548,30 +537,21 @@ class TestUtils:
 
     def test_validate_non_dict(self):
         """非 dict 类型抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="not a JSON object"):
             validate_and_parse_llm_response([1, 2], MagicMock, "test")
 
     def test_validate_empty_dict(self):
         """空 dict {} 抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="empty"):
             validate_and_parse_llm_response({}, MagicMock, "test")
 
     def test_validate_judge_missing_segment_id(self):
         """judge 阶段缺少 segment_id 抛出 LLMParseError。"""
-        from src.audiobook_studio.llm.utils import (
-            LLMParseError,
-            validate_and_parse_llm_response,
-        )
+        from src.audiobook_studio.llm.utils import LLMParseError, validate_and_parse_llm_response
 
         with pytest.raises(LLMParseError, match="segment_id"):
             validate_and_parse_llm_response({"a": 1}, MagicMock, "judge")
@@ -580,9 +560,7 @@ class TestUtils:
         """judge 阶段有 segment_id 时正常返回。"""
         from src.audiobook_studio.llm.utils import validate_and_parse_llm_response
 
-        result = validate_and_parse_llm_response(
-            {"segment_id": "s1", "score": 0.8}, MagicMock, "judge"
-        )
+        result = validate_and_parse_llm_response({"segment_id": "s1", "score": 0.8}, MagicMock, "judge")
         assert result["segment_id"] == "s1"
 
 
@@ -609,11 +587,7 @@ class TestLLMClient:
 
     def test_mock_mode_call(self):
         """mock_mode 下返回 mock 结果。"""
-        from src.audiobook_studio.llm.client import (
-            LLMClient,
-            LLMClientConfig,
-            create_client,
-        )
+        from src.audiobook_studio.llm.client import LLMClient, LLMClientConfig, create_client
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             client = create_client(model="test-model")
@@ -823,9 +797,7 @@ class TestLLMJudge:
 class TestConstitutionalRules:
     def test_apply_constitutional_rules_returns_response(self):
         """apply_constitutional_rules 返回原始响应（占位符实现）。"""
-        from src.audiobook_studio.llm.constitutional_rules import (
-            apply_constitutional_rules,
-        )
+        from src.audiobook_studio.llm.constitutional_rules import apply_constitutional_rules
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
         output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
@@ -834,9 +806,7 @@ class TestConstitutionalRules:
 
     def test_apply_constitutional_rules_with_context(self):
         """apply_constitutional_rules 接受上下文参数。"""
-        from src.audiobook_studio.llm.constitutional_rules import (
-            apply_constitutional_rules,
-        )
+        from src.audiobook_studio.llm.constitutional_rules import apply_constitutional_rules
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
         output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")
@@ -863,9 +833,7 @@ class TestConstitutionalRules:
 
     def test_apply_domain_constraints(self):
         """apply_domain_constraints 返回原始响应（占位符实现）。"""
-        from src.audiobook_studio.llm.constitutional_rules import (
-            apply_domain_constraints,
-        )
+        from src.audiobook_studio.llm.constitutional_rules import apply_domain_constraints
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
         output = TtsEditOutput(edited_text="test", confidence=0.9, rationale="test")

@@ -8,17 +8,12 @@ import pytest
 from src.audiobook_studio.base import AgentCapability
 from src.audiobook_studio.database import SessionLocal, get_db
 from src.audiobook_studio.models import TaskRecord
-from src.audiobook_studio.pipeline.agents import (
-    AnalyzeAgent,
-    ExtractAgent,
-    QualityAgent,
-    SynthesizeAgent,
-)
+from src.audiobook_studio.pipeline.agents import AnalyzeAgent, ExtractAgent, QualityAgent, SynthesizeAgent
 from src.audiobook_studio.pipeline.analyze_structure import BookAnalysisOutput
-from src.audiobook_studio.schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from src.audiobook_studio.pipeline.extract import ExtractionResult
 from src.audiobook_studio.pipeline.quality_check import QualityJudgment
 from src.audiobook_studio.pipeline.synthesize import AudioSegment
+from src.audiobook_studio.schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
 
 def make_agent(agent_class):
@@ -41,9 +36,7 @@ class TestExtractAgent:
         agent = make_agent(ExtractAgent)
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
-        mock_session.query.return_value.filter_by.return_value.first.return_value = (
-            mock_task_record
-        )
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task_record
         mock_extract_result = ExtractionResult(
             raw_text="extracted text",
             language="zh",
@@ -52,18 +45,17 @@ class TestExtractAgent:
             ocr_page_ratio=0.0,
             warnings=[],
         )
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-        ) as _mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.extract_text"
-        ) as mock_extract:
+        with (
+            patch(
+                "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+            ) as _mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
+        ):
             mock_extract.return_value = mock_extract_result
             message = MagicMock()
             message.content = {"file_path": "/fake/path.txt", "mime_type": "text/plain"}
             agent._handle_message(message)
-            mock_extract.assert_called_once_with(
-                file_path="/fake/path.txt", mime_type="text/plain"
-            )
+            mock_extract.assert_called_once_with(file_path="/fake/path.txt", mime_type="text/plain")
             assert mock_task_record.status == "COMPLETED"
             assert mock_task_record.output_data == mock_extract_result.model_dump()
             assert mock_task_record.completed_at is not None
@@ -75,11 +67,12 @@ class TestExtractAgent:
         agent = make_agent(ExtractAgent)
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-        ) as _mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.extract_text"
-        ) as mock_extract:
+        with (
+            patch(
+                "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+            ) as _mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
+        ):
             mock_extract.side_effect = Exception("extract failed")
             message = MagicMock()
             message.content = {"file_path": "/fake/path.txt", "mime_type": "text/plain"}
@@ -104,16 +97,19 @@ class TestExtractAgent:
         )
         # To capture the task record when it's added to the session
         added_task = None
+
         def capture_task(task):
             nonlocal added_task
             added_task = task
+
         mock_session.add.side_effect = capture_task
 
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-        ) as _mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.extract_text"
-        ) as mock_extract:
+        with (
+            patch(
+                "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
+            ) as _mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
+        ):
             mock_extract.return_value = mock_extract_result
             message = MagicMock()
             message.content = {
@@ -122,9 +118,7 @@ class TestExtractAgent:
                 "task_type": "extract_test",
             }
             agent._handle_message(message)
-            mock_extract.assert_called_once_with(
-                file_path="/fake/path.txt", mime_type="text/plain"
-            )
+            mock_extract.assert_called_once_with(file_path="/fake/path.txt", mime_type="text/plain")
             # Verify that a new TaskRecord was created and added to the session
             assert mock_session.add.call_count == 1
             assert added_task is not None
@@ -189,13 +183,12 @@ class TestAnalyzeAgent:
             global_style_notes="notes",
             contract_version=1,
         )
-        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.analyze_structure"
-        ) as mock_analyze:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.analyze_structure") as mock_analyze,
+        ):
             mock_session_local.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task_record
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task_record
             mock_analyze.return_value = mock_analyze_result
             message = MagicMock()
             message.content = {
@@ -223,13 +216,12 @@ class TestAnalyzeAgent:
         agent = make_agent(AnalyzeAgent)
         mock_session = MagicMock()
         mock_task_record = MagicMock(spec=TaskRecord)
-        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.analyze_structure"
-        ) as mock_analyze:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.analyze_structure") as mock_analyze,
+        ):
             mock_session_local.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task_record
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task_record
             mock_analyze.side_effect = Exception("analyze failed")
             message = MagicMock()
             message.content = {
@@ -249,9 +241,10 @@ class TestAnalyzeAgent:
         mock_session = MagicMock()
         # Simulate no existing task record found
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
-        with patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local, patch(
-            "src.audiobook_studio.pipeline.agents.analyze_structure"
-        ) as mock_analyze:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local,
+            patch("src.audiobook_studio.pipeline.agents.analyze_structure") as mock_analyze,
+        ):
             mock_session_local.return_value = mock_session
             mock_analyze.return_value = MagicMock()  # This won't be called due to the exception below
             message = MagicMock()
@@ -282,13 +275,12 @@ class TestSynthesizeAgent:
         mock_task4 = MagicMock(spec=TaskRecord)
         mock_segment = MagicMock(spec=AudioSegment)
         mock_segment.to_dict.return_value = {"dummy": "segment"}
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_session_local, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_session_local,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_session_local.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task4
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task4
             mock_pipeline.run.return_value = [mock_segment]
             message = MagicMock()
             message.content = {
@@ -317,13 +309,12 @@ class TestSynthesizeAgent:
         agent = make_agent(SynthesizeAgent)
         mock_session = MagicMock()
         mock_task4 = MagicMock(spec=TaskRecord)
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_get_db,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_get_db.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task4
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task4
             mock_pipeline.run.side_effect = Exception("synth failed")
             message = MagicMock()
             message.content = {"text": "test", "voice_params": {}, "book_id": 1}
@@ -338,9 +329,10 @@ class TestSynthesizeAgent:
         mock_session = MagicMock()
         # Simulate no existing task record found
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_get_db,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_get_db.return_value = mock_session
             mock_pipeline.run.return_value = [MagicMock(spec=AudioSegment)]  # This won't be called
             message = MagicMock()
@@ -366,13 +358,12 @@ class TestQualityAgent:
         mock_task4 = MagicMock(spec=TaskRecord)
         mock_judgment = MagicMock(spec=QualityJudgment)
         mock_judgment.model_dump.return_value = {"dummy": "judgment"}
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_get_db,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_get_db.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task4
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task4
             mock_pipeline.run.return_value = mock_judgment
             message = MagicMock()
             message.content = {
@@ -397,13 +388,12 @@ class TestQualityAgent:
         agent = make_agent(QualityAgent)
         mock_session = MagicMock()
         mock_task4 = MagicMock(spec=TaskRecord)
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_get_db,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_get_db.return_value = mock_session
-            mock_session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_task4
-            )
+            mock_session.query.return_value.filter_by.return_value.first.return_value = mock_task4
             mock_pipeline.run.side_effect = Exception("quality failed")
             message = MagicMock()
             message.content = {
@@ -422,9 +412,10 @@ class TestQualityAgent:
         mock_session = MagicMock()
         # Simulate no existing task record found
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
-        with patch(
-            "src.audiobook_studio.pipeline.agents.SessionLocal"
-        ) as mock_get_db, patch.object(agent, "pipeline") as mock_pipeline:
+        with (
+            patch("src.audiobook_studio.pipeline.agents.SessionLocal") as mock_get_db,
+            patch.object(agent, "pipeline") as mock_pipeline,
+        ):
             mock_get_db.return_value = mock_session
             mock_pipeline.run.return_value = MagicMock(spec=QualityJudgment)  # This won't be called
             message = MagicMock()

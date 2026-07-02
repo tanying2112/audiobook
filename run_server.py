@@ -2,8 +2,6 @@ import os
 
 import uvicorn
 
-os.environ["MOCK_LLM"] = "false"
-
 from src.audiobook_studio.main import app
 
 if __name__ == "__main__":

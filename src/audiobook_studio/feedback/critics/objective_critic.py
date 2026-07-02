@@ -16,12 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ...quality.metrics import (
-    ASRWerMetric,
-    DNSMOSMetric,
-    QualityCheckSuite,
-    SpeakerSimilarityMetric,
-)
+from ...quality.metrics import ASRWerMetric, DNSMOSMetric, QualityCheckSuite, SpeakerSimilarityMetric
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
 from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
 
@@ -175,9 +170,7 @@ class ObjectiveCritic(BaseCritic):
         else:
             metrics["speaker_sim"] = 0.8
             if result.speaker_sim:
-                logger.warning(
-                    "Speaker similarity failed: %s", result.speaker_sim.error
-                )
+                logger.warning("Speaker similarity failed: %s", result.speaker_sim.error)
 
         return metrics
 
@@ -231,9 +224,7 @@ class ObjectiveCritic(BaseCritic):
 
         return score, evidence, tags, reasoning
 
-    def _compute_confidence(
-        self, metrics: Dict[str, float], evidence: Dict[str, float]
-    ) -> float:
+    def _compute_confidence(self, metrics: Dict[str, float], evidence: Dict[str, float]) -> float:
         """计算置信度."""
         # Confidence based on metric reliability
         # DNSMOS and SpeakerSim are generally reliable

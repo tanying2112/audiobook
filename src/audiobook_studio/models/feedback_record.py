@@ -22,15 +22,9 @@ class FeedbackRecord(Base):
     __tablename__ = "feedback_records"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
-    paragraph_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
+    paragraph_id: Mapped[Optional[int]] = mapped_column(ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True)
 
     # 反馈标识
     feedback_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
@@ -57,9 +51,5 @@ class FeedbackRecord(Base):
     created_at: Mapped[datetime] = mapped_column(nullable=False)
 
     # Relationships
-    project: Mapped[Project] = relationship(
-        "Project", back_populates="feedback_records"
-    )
-    paragraph: Mapped[Paragraph] = relationship(
-        "Paragraph", back_populates="feedback_records"
-    )
+    project: Mapped[Project] = relationship("Project", back_populates="feedback_records")
+    paragraph: Mapped[Paragraph] = relationship("Paragraph", back_populates="feedback_records")

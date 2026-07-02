@@ -38,9 +38,7 @@ class LLMCallTrace:
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-    usage: Optional[Dict[str, int]] = (
-        None  # prompt_tokens, completion_tokens, total_tokens
-    )
+    usage: Optional[Dict[str, int]] = None  # prompt_tokens, completion_tokens, total_tokens
     cost_usd: Optional[float] = None
     error: Optional[str] = None
     tags: List[str] = field(default_factory=list)
@@ -136,11 +134,7 @@ class LangfuseClient:
                 },
                 tags=trace.tags,
                 start_time=datetime.fromtimestamp(trace.start_time, tz=timezone.utc),
-                end_time=(
-                    datetime.fromtimestamp(trace.end_time, tz=timezone.utc)
-                    if trace.end_time
-                    else None
-                ),
+                end_time=(datetime.fromtimestamp(trace.end_time, tz=timezone.utc) if trace.end_time else None),
             )
 
             # If usage data available, create generation
@@ -154,14 +148,8 @@ class LangfuseClient:
                     usage=trace.usage,
                     cost=trace.cost_usd,
                     metadata=trace.metadata,
-                    start_time=datetime.fromtimestamp(
-                        trace.start_time, tz=timezone.utc
-                    ),
-                    end_time=(
-                        datetime.fromtimestamp(trace.end_time, tz=timezone.utc)
-                        if trace.end_time
-                        else None
-                    ),
+                    start_time=datetime.fromtimestamp(trace.start_time, tz=timezone.utc),
+                    end_time=(datetime.fromtimestamp(trace.end_time, tz=timezone.utc) if trace.end_time else None),
                 )
 
             self.client.flush()
@@ -207,9 +195,7 @@ class LangfuseClient:
             if trace.cost_usd:
                 summary["by_group"][group_key]["cost_usd"] += trace.cost_usd
             if trace.usage:
-                summary["by_group"][group_key]["tokens"] += trace.usage.get(
-                    "total_tokens", 0
-                )
+                summary["by_group"][group_key]["tokens"] += trace.usage.get("total_tokens", 0)
 
         return summary
 
@@ -240,9 +226,7 @@ def trace_llm_call(
             client = get_langfuse_client()
             with client.trace(name, input_data, metadata, tags) as trace:
                 result = func(*args, **kwargs)
-                trace.output_data = (
-                    result if isinstance(result, dict) else {"result": str(result)}
-                )
+                trace.output_data = result if isinstance(result, dict) else {"result": str(result)}
                 return result
 
         return wrapper

@@ -135,9 +135,7 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={
-                    "edited_text": "much longer and better output text with more content"
-                },
+                output_b={"edited_text": "much longer and better output text with more content"},
                 version_a=1,
                 version_b=2,
             ),
@@ -146,9 +144,7 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={
-                    "edited_text": "much longer and better output text with more content"
-                },
+                output_b={"edited_text": "much longer and better output text with more content"},
                 version_a=1,
                 version_b=2,
             ),
@@ -157,9 +153,7 @@ class TestRunABTest:
                 stage="edit_for_tts",
                 input_data={},
                 output_a={"edited_text": "short"},
-                output_b={
-                    "edited_text": "much longer and better output text with more content"
-                },
+                output_b={"edited_text": "much longer and better output text with more content"},
                 version_a=1,
                 version_b=2,
             ),
@@ -425,8 +419,7 @@ class TestIntegration:
 
         # 3. Apply human blind evaluation on subset
         human_ratings = [
-            {"sample_id": r.sample_id, "score_a": r.score_a, "score_b": r.score_b + 0.1}
-            for r in report.results[:2]
+            {"sample_id": r.sample_id, "score_a": r.score_a, "score_b": r.score_b + 0.1} for r in report.results[:2]
         ]
 
         final_report = blind_evaluate(report, human_ratings)

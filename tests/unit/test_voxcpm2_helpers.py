@@ -98,9 +98,7 @@ class TestVoxCPM2VoiceEmbedding:
     def test_get_voice_embedding_reference_nonexistent(self, tmp_path: Path):
         b = VoxCPM2Backend()
         # Reference audio path that doesn't exist: falls back to voice_id lookup
-        embedding = b._get_voice_embedding(
-            "zh_male_1", reference_audio="/no/such/path/file.wav"
-        )
+        embedding = b._get_voice_embedding("zh_male_1", reference_audio="/no/such/path/file.wav")
         assert embedding is not None
         assert embedding["name"] == "zh_male_1"
 

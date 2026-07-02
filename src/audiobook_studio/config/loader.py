@@ -138,12 +138,8 @@ class TextNormsConfig(BaseModel):
 class ConstitutionalRulesConfig(BaseModel):
     """Complete constitutional rules configuration."""
 
-    character_consistency: CharacterConsistencyRules = Field(
-        default_factory=CharacterConsistencyRules
-    )
-    emotion_coherence: EmotionCoherenceRules = Field(
-        default_factory=EmotionCoherenceRules
-    )
+    character_consistency: CharacterConsistencyRules = Field(default_factory=CharacterConsistencyRules)
+    emotion_coherence: EmotionCoherenceRules = Field(default_factory=EmotionCoherenceRules)
     text_norms: TextNormsConfig = Field(default_factory=TextNormsConfig)
     safety: Dict[str, Any] = Field(default_factory=dict)
     quality: Dict[str, Any] = Field(default_factory=dict)
@@ -262,9 +258,7 @@ class PromotionThresholdsConfig(BaseModel):
     """Complete promotion thresholds configuration."""
 
     quality_score_delta: float = Field(default=0.02, ge=0)
-    golden_regression_baseline: GoldenRegressionBaseline = Field(
-        default_factory=GoldenRegressionBaseline
-    )
+    golden_regression_baseline: GoldenRegressionBaseline = Field(default_factory=GoldenRegressionBaseline)
     cost_efficiency: CostEfficiencyConfig = Field(default_factory=CostEfficiencyConfig)
     latency: LatencyConfig = Field(default_factory=LatencyConfig)
     stability: StabilityConfig = Field(default_factory=StabilityConfig)
@@ -277,21 +271,11 @@ class PromotionThresholdsConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Complete pipeline configuration schema."""
 
-    quality_thresholds: QualityThresholdsConfig = Field(
-        default_factory=QualityThresholdsConfig
-    )
-    constitutional_rules: ConstitutionalRulesConfig = Field(
-        default_factory=ConstitutionalRulesConfig
-    )
-    difficulty_weights: DifficultyWeightsConfig = Field(
-        default_factory=DifficultyWeightsConfig
-    )
-    voice_mapping: VoiceMappingConfig = Field(
-        default_factory=lambda: _get_default_voice_mapping()
-    )
-    promotion_thresholds: PromotionThresholdsConfig = Field(
-        default_factory=PromotionThresholdsConfig
-    )
+    quality_thresholds: QualityThresholdsConfig = Field(default_factory=QualityThresholdsConfig)
+    constitutional_rules: ConstitutionalRulesConfig = Field(default_factory=ConstitutionalRulesConfig)
+    difficulty_weights: DifficultyWeightsConfig = Field(default_factory=DifficultyWeightsConfig)
+    voice_mapping: VoiceMappingConfig = Field(default_factory=lambda: _get_default_voice_mapping())
+    promotion_thresholds: PromotionThresholdsConfig = Field(default_factory=PromotionThresholdsConfig)
 
 
 def _get_default_voice_mapping() -> VoiceMappingConfig:
@@ -449,9 +433,7 @@ class ValidationConfig(BaseModel):
 class ContractVersionsConfig(BaseModel):
     """Complete contract versions configuration."""
 
-    global_contract: GlobalContract = Field(
-        default_factory=GlobalContract, alias="global"
-    )
+    global_contract: GlobalContract = Field(default_factory=GlobalContract, alias="global")
     stages: Dict[str, StageContract] = Field(default_factory=dict)
     compatibility: CompatibilityConfig = Field(default_factory=CompatibilityConfig)
     deprecation: DeprecationConfig = Field(default_factory=DeprecationConfig)
@@ -531,22 +513,15 @@ class ConfigLoader:
             validated = model_class.model_validate(data)
             return validated.model_dump(mode="json", exclude_none=True)
         except ValidationError as e:
-            logger.warning(
-                f"Config validation warning for {config_name}: {e.error_count()} errors"
-            )
+            logger.warning(f"Config validation warning for {config_name}: {e.error_count()} errors")
             for error in e.errors():
                 logger.warning(
-                    f"  - {'.'.join(str(x) for x in error['loc'])}: {error['msg']} "
-                    f"(type={error['type']})"
+                    f"  - {'.'.join(str(x) for x in error['loc'])}: {error['msg']} " f"(type={error['type']})"
                 )
             # Return data with defaults merged for missing fields
-            return model_class.model_validate(data).model_dump(
-                mode="json", exclude_none=True
-            )
+            return model_class.model_validate(data).model_dump(mode="json", exclude_none=True)
 
-    def load_quality_thresholds(
-        self, config_path: str = "./config/quality_thresholds.yaml"
-    ) -> Dict[str, Any]:
+    def load_quality_thresholds(self, config_path: str = "./config/quality_thresholds.yaml") -> Dict[str, Any]:
         """Load and validate quality thresholds configuration."""
         path = Path(config_path)
 
@@ -558,17 +533,13 @@ class ConfigLoader:
             data = self._load_yaml_safe(path)
 
             # Validate against Pydantic model
-            return self._validate_with_pydantic(
-                data, QualityThresholdsConfig, "quality_thresholds"
-            )
+            return self._validate_with_pydantic(data, QualityThresholdsConfig, "quality_thresholds")
 
     def _get_default_quality_thresholds(self) -> Dict[str, Any]:
         """Return default quality thresholds."""
         return QualityThresholdsConfig().model_dump(mode="json", exclude_none=True)
 
-    def load_constitutional_rules(
-        self, config_path: str = "./config/constitutional_rules.yaml"
-    ) -> Dict[str, Any]:
+    def load_constitutional_rules(self, config_path: str = "./config/constitutional_rules.yaml") -> Dict[str, Any]:
         """Load and validate constitutional rules configuration."""
         path = Path(config_path)
 
@@ -586,14 +557,10 @@ class ConfigLoader:
                 validated = ConstitutionalRulesConfig.model_validate(data)
                 return validated.model_dump(mode="json", exclude_none=True)
             except ValidationError as e:
-                logger.warning(
-                    f"Constitutional rules validation warning: {e.error_count()} errors"
-                )
+                logger.warning(f"Constitutional rules validation warning: {e.error_count()} errors")
                 return data
 
-    def load_contract_versions(
-        self, config_path: str = "./config/contract_versions.yaml"
-    ) -> Dict[str, Any]:
+    def load_contract_versions(self, config_path: str = "./config/contract_versions.yaml") -> Dict[str, Any]:
         """Load and validate contract versions configuration."""
         path = Path(config_path)
 
@@ -603,23 +570,17 @@ class ConfigLoader:
                 return self._get_default_contract_versions()
 
             data = self._load_yaml_safe(path)
-            return self._validate_with_pydantic(
-                data, ContractVersionsConfig, "contract_versions"
-            )
+            return self._validate_with_pydantic(data, ContractVersionsConfig, "contract_versions")
 
     def _get_default_contract_versions(self) -> Dict[str, Any]:
         """Return default contract versions."""
-        default = ContractVersionsConfig().model_dump(
-            mode="json", exclude_none=True, by_alias=True
-        )
+        default = ContractVersionsConfig().model_dump(mode="json", exclude_none=True, by_alias=True)
         # Ensure 'global' key is used instead of 'global_contract'
         if "global_contract" in default:
             default["global"] = default.pop("global_contract")
         return default
 
-    def load_pipeline_config(
-        self, config_path: str = "./config/pipeline.yaml"
-    ) -> Dict[str, Any]:
+    def load_pipeline_config(self, config_path: str = "./config/pipeline.yaml") -> Dict[str, Any]:
         """Load pipeline configuration with hot-reload support and schema validation."""
         path = Path(config_path)
 
@@ -640,9 +601,7 @@ class ConfigLoader:
                 data = self._load_yaml_safe(path)
 
                 # Validate against full pipeline schema
-                validated = self._validate_with_pydantic(
-                    data, PipelineConfig, "pipeline_config"
-                )
+                validated = self._validate_with_pydantic(data, PipelineConfig, "pipeline_config")
 
                 # Merge with defaults for missing top-level keys
                 defaults = self._get_default_pipeline_config()
@@ -650,9 +609,7 @@ class ConfigLoader:
 
                 # Update cache
                 self._cache[config_path] = (merged, current_mtime)
-                logger.info(
-                    f"Loaded and validated pipeline configuration from {config_path}"
-                )
+                logger.info(f"Loaded and validated pipeline configuration from {config_path}")
 
                 return merged
 
@@ -667,10 +624,7 @@ class ConfigLoader:
                 self._cache.pop(config_path, None)
             else:
                 self._cache.clear()
-        logger.info(
-            "Configuration cache cleared"
-            + (f" for {config_path}" if config_path else "")
-        )
+        logger.info("Configuration cache cleared" + (f" for {config_path}" if config_path else ""))
 
     def reload_if_changed(
         self, config_path: str, last_modified: Optional[float] = None

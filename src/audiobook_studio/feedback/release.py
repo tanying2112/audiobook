@@ -116,9 +116,7 @@ class PromotionGate:
 
         # 检查 3: 质量分 ≥ 旧版 × 102%
         if quality_score_ratio < self.quality_score_threshold:
-            failed_criteria.append(
-                f"质量分比例 {quality_score_ratio:.2f} < 阈值 {self.quality_score_threshold:.2f}"
-            )
+            failed_criteria.append(f"质量分比例 {quality_score_ratio:.2f} < 阈值 {self.quality_score_threshold:.2f}")
 
         # 检查 4: 人工抽样偏好 ≥ 80%
         if human_preference_score < self.human_preference_threshold:
@@ -147,8 +145,7 @@ class PromotionGate:
             logger.info("✅ Promotion Gate PASSED - all criteria met")
         else:
             logger.warning(
-                f"❌ Promotion Gate FAILED - {len(failed_criteria)} criteria failed: "
-                f"{', '.join(failed_criteria)}"
+                f"❌ Promotion Gate FAILED - {len(failed_criteria)} criteria failed: " f"{', '.join(failed_criteria)}"
             )
 
         return result
@@ -248,9 +245,7 @@ class CanaryRelease:
         }
         self.metrics_history[canary_id] = deque(maxlen=1000)
 
-        logger.info(
-            f"Started canary release: {canary_id} (baseline: {baseline_score:.4f})"
-        )
+        logger.info(f"Started canary release: {canary_id} (baseline: {baseline_score:.4f})")
         return True
 
     def record_metrics(self, stage: str, version: str, metrics: CanaryMetrics) -> None:
@@ -285,9 +280,7 @@ class CanaryRelease:
 
         # 检查错误率
         if metrics.error_rate > 0.1:  # 10% 错误率
-            logger.warning(
-                f"Rollback triggered for {canary_id}: high error rate {metrics.error_rate:.2%}"
-            )
+            logger.warning(f"Rollback triggered for {canary_id}: high error rate {metrics.error_rate:.2%}")
             return True
 
         return False
@@ -296,16 +289,12 @@ class CanaryRelease:
         """触发自动回滚."""
         if canary_id in self.active_canaries:
             self.active_canaries[canary_id]["status"] = "rolled_back"
-            self.active_canaries[canary_id]["rolled_back_at"] = datetime.now(
-                timezone.utc
-            )
+            self.active_canaries[canary_id]["rolled_back_at"] = datetime.now(timezone.utc)
             self.active_canaries[canary_id][
                 "rollback_reason"
             ] = f"quality_ratio={metrics.quality_ratio:.4f} < {self.config.rollback_threshold}"
 
-            logger.warning(
-                f"🔴 AUTO ROLLBACK: {canary_id} - {self.active_canaries[canary_id]['rollback_reason']}"
-            )
+            logger.warning(f"🔴 AUTO ROLLBACK: {canary_id} - {self.active_canaries[canary_id]['rollback_reason']}")
 
     def complete_canary(self, stage: str, version: str) -> bool:
         """完成 Canary, 全量发布."""
@@ -381,9 +370,7 @@ class VersionStore:
 
         current = self.current_versions[stage]
         if target_version >= current:
-            logger.warning(
-                f"Target version {target_version} >= current {current}, no rollback needed"
-            )
+            logger.warning(f"Target version {target_version} >= current {current}, no rollback needed")
             return False
 
         if target_version < 1:
@@ -404,9 +391,7 @@ class VersionStore:
             return False
         return self.rollback_version(stage, current - 1)
 
-    def _log_rollback(
-        self, stage: str, from_version: int, to_version: int, action: str, success: bool
-    ) -> None:
+    def _log_rollback(self, stage: str, from_version: int, to_version: int, action: str, success: bool) -> None:
         """记录回滚日志."""
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -422,9 +407,7 @@ class VersionStore:
         except Exception as e:
             logger.error(f"Failed to write rollback log: {e}")
 
-    def get_rollback_history(
-        self, stage: Optional[str] = None, limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    def get_rollback_history(self, stage: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
         """获取回滚历史."""
         history = []
         if not self.rollback_log.exists():

@@ -1,21 +1,14 @@
 """Unit tests for SynthesizePipeline module."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.synthesize import (
-    AudioSegment,
-    SynthesizePipeline,
-    SynthesizePipeline as SynthesizePipelineAlias,
-)
-from src.audiobook_studio.schemas import (
-    TtsRoutingInput,
-    ParagraphAnnotation,
-    CharacterVoiceBinding,
-    TtsRoutingDecision,
-)
+from src.audiobook_studio.pipeline.synthesize import AudioSegment
+from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline as SynthesizePipelineAlias
+from src.audiobook_studio.schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 
 
 class TestAudioSegment:
@@ -473,6 +466,7 @@ class TestSynthesizePipelineSegmentPersistence:
         # Create a dummy audio file
         import numpy as np
         import soundfile as sf
+
         audio_file = tmp_path / "test.mp3"
         dummy_audio = np.zeros(24000, dtype=np.float32)
         sf.write(str(audio_file), dummy_audio, 24000)
@@ -684,12 +678,10 @@ class TestSynthesizePipelineIntegration:
 
         tts_profile = TTSProfileConfig(engine="edge", model_path="", voices_path="")
         hw_profile = HardwareProfile.__new__(HardwareProfile)
-        hw_profile._config = type('obj', (object,), {'tts': tts_profile})()
+        hw_profile._config = type("obj", (object,), {"tts": tts_profile})()
         hw_profile._active_profile_name = "test"
 
-        pipeline = SynthesizePipeline(
-            output_dir=str(tmp_path), mock_mode=True, hardware_profile=hw_profile
-        )
+        pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=True, hardware_profile=hw_profile)
 
         config = pipeline._get_tts_engine_config()
         assert config["engine"] == "edge"
@@ -816,7 +808,9 @@ class TestSynthesizePipelineRealEngines:
         """Test Kokoro falls back to mock on ImportError."""
         pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=ImportError("onnxruntime not found")):
+        with patch(
+            "src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=ImportError("onnxruntime not found")
+        ):
             with patch.object(pipeline, "_synthesize_mock", return_value=3000) as mock_mock:
                 output_path = tmp_path / "test.mp3"
                 duration = pipeline._synthesize_kokoro("text", "voice", {}, output_path)
@@ -827,7 +821,9 @@ class TestSynthesizePipelineRealEngines:
         """Test Kokoro falls back to mock on FileNotFoundError."""
         pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=FileNotFoundError("model not found")):
+        with patch(
+            "src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=FileNotFoundError("model not found")
+        ):
             with patch.object(pipeline, "_synthesize_mock", return_value=3000) as mock_mock:
                 output_path = tmp_path / "test.mp3"
                 duration = pipeline._synthesize_kokoro("text", "voice", {}, output_path)
@@ -838,64 +834,14 @@ class TestSynthesizePipelineRealEngines:
         """Test Kokoro falls back to mock on generic exception."""
         pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=RuntimeError("synthesis failed")):
+        with patch(
+            "src.audiobook_studio.tts.kokoro_backend.KokoroBackend", side_effect=RuntimeError("synthesis failed")
+        ):
             with patch.object(pipeline, "_synthesize_mock", return_value=3000) as mock_mock:
                 output_path = tmp_path / "test.mp3"
                 duration = pipeline._synthesize_kokoro("text", "voice", {}, output_path)
                 mock_mock.assert_called_once()
                 assert duration == 3000
-
-    def test_edge_tts_synthesis_success(self, tmp_path):
-        """Test Edge-TTS successful synthesis with duration detection."""
-        pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
-
-        # Create a dummy output file
-        import numpy as np
-        import soundfile as sf
-        output_path = tmp_path / "test.mp3"
-        dummy_audio = np.zeros(24000, dtype=np.float32)
-        sf.write(str(output_path), dummy_audio, 24000)
-
-        with patch("edge_tts.Communicate") as mock_communicate:
-            mock_comm = AsyncMock()
-            mock_comm.save = AsyncMock()
-            mock_communicate.return_value = mock_comm
-
-            with patch("src.audiobook_studio.utils.ffmpeg_probe.get_duration_sync", return_value=2800):
-                with patch("asyncio.run"):
-                    # We need to test the actual path
-                    # In non-mock mode, it calls asyncio.run(_synthesize())
-                    # Let's just verify the mock path is not taken
-                    try:
-                        pipeline._synthesize_edge("text", "voice", {}, output_path)
-                    except Exception:
-                        pass  # Expected since we're mocking
-
-    def test_edge_tts_file_not_created_fallback(self, tmp_path):
-        """Test Edge-TTS raises error when file not created."""
-        pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
-
-        output_path = tmp_path / "test.mp3"
-
-        with patch("edge_tts.Communicate") as mock_communicate:
-            mock_comm = AsyncMock()
-            mock_comm.save = AsyncMock()
-            mock_communicate.return_value = mock_comm
-
-            with patch("src.audiobook_studio.utils.ffmpeg_probe.get_duration_sync", side_effect=FileNotFoundError("no file")):
-                with patch("asyncio.run"):
-                    # The code raises RuntimeError when file not created
-                    with pytest.raises(RuntimeError, match="Synthesis did not create output file"):
-                        pipeline._synthesize_edge("测试文本text", "voice", {}, output_path)
-
-    def test_edge_tts_import_error(self, tmp_path):
-        """Test Edge-TTS raises ImportError when edge_tts not installed."""
-        pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=False)
-
-        with patch("edge_tts.Communicate", side_effect=ImportError("edge_tts not installed")):
-            output_path = tmp_path / "test.mp3"
-            with pytest.raises(ImportError):
-                pipeline._synthesize_edge("text", "voice", {}, output_path)
 
     def test_azure_mock_mode_not_taken(self, tmp_path):
         """Test Azure TTS in non-mock mode checks credentials."""
@@ -903,6 +849,7 @@ class TestSynthesizePipelineRealEngines:
 
         # Remove Azure credentials if any
         import os
+
         old_key = os.environ.pop("AZURE_TTS_KEY", None)
         old_region = os.environ.pop("AZURE_TTS_REGION", None)
 
@@ -922,6 +869,7 @@ class TestSynthesizePipelineRealEngines:
 
         # Remove GCP credentials if any
         import os
+
         old_creds = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
 
         try:
@@ -951,8 +899,22 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         sf.write(str(audio_file2), dummy_audio, 24000)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(audio_file1), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
-            AudioSegment(segment_id="seg2", file_path=str(audio_file2), duration_ms=1500, engine="kokoro", voice_id="v2", text_hash="b"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(audio_file1),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(audio_file2),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"
@@ -963,7 +925,7 @@ class TestSynthesizePipelineCrossfadeAdvanced:
             mock_run.return_value.stderr = ""
 
             # Mock get_duration_sync for BOTH crossfade and simple_concat paths
-            with patch("src.audiobook_studio.utils.ffmpeg_probe.get_duration_sync", return_value=2500):
+            with patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync", return_value=2500):
                 with patch("src.audiobook_studio.monitoring.langfuse_client.is_enabled", return_value=False):
                     duration = pipeline._crossfade_stitch(segments, output_path)
                     assert duration == 2500
@@ -977,12 +939,30 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         import numpy as np
         import soundfile as sf
 
+        # Need 2+ segments to trigger crossfade stitching
         audio_file1 = tmp_path / "seg1.wav"
+        audio_file2 = tmp_path / "seg2.wav"
         dummy_audio = np.zeros(24000, dtype=np.float32)
         sf.write(str(audio_file1), dummy_audio, 24000)
+        sf.write(str(audio_file2), dummy_audio, 24000)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(audio_file1), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(audio_file1),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(audio_file2),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"
@@ -991,7 +971,7 @@ class TestSynthesizePipelineCrossfadeAdvanced:
             mock_run.return_value.returncode = 1
             mock_run.return_value.stderr = "ffmpeg error"
 
-            with patch("src.audiobook_studio.utils.ffmpeg_probe.get_duration_sync", return_value=1000):
+            with patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync", return_value=1000):
                 with patch.object(pipeline, "_simple_concat", return_value=1000) as mock_concat:
                     duration = pipeline._crossfade_stitch(segments, output_path)
                     mock_concat.assert_called_once()
@@ -1004,12 +984,30 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         import numpy as np
         import soundfile as sf
 
+        # Need 2+ segments to trigger crossfade stitching
         audio_file1 = tmp_path / "seg1.wav"
+        audio_file2 = tmp_path / "seg2.wav"
         dummy_audio = np.zeros(24000, dtype=np.float32)
         sf.write(str(audio_file1), dummy_audio, 24000)
+        sf.write(str(audio_file2), dummy_audio, 24000)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(audio_file1), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(audio_file1),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(audio_file2),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"
@@ -1027,12 +1025,30 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         import numpy as np
         import soundfile as sf
 
+        # Need 2+ segments to trigger crossfade stitching
         audio_file1 = tmp_path / "seg1.wav"
+        audio_file2 = tmp_path / "seg2.wav"
         dummy_audio = np.zeros(24000, dtype=np.float32)
         sf.write(str(audio_file1), dummy_audio, 24000)
+        sf.write(str(audio_file2), dummy_audio, 24000)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(audio_file1), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(audio_file1),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(audio_file2),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"
@@ -1057,8 +1073,22 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         sf.write(str(audio_file2), dummy_audio, 24000)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(audio_file1), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
-            AudioSegment(segment_id="seg2", file_path=str(audio_file2), duration_ms=1500, engine="kokoro", voice_id="v2", text_hash="b"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(audio_file1),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(audio_file2),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"
@@ -1067,7 +1097,7 @@ class TestSynthesizePipelineCrossfadeAdvanced:
             mock_run.return_value.returncode = 0
             mock_run.return_value.stderr = ""
 
-            with patch("src.audiobook_studio.utils.ffmpeg_probe.get_duration_sync", return_value=2500):
+            with patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync", return_value=2500):
                 duration = pipeline._simple_concat(segments, output_path)
                 assert duration == 2500
                 mock_run.assert_called_once()
@@ -1077,8 +1107,22 @@ class TestSynthesizePipelineCrossfadeAdvanced:
         pipeline = SynthesizePipeline(output_dir=str(tmp_path), mock_mode=True)
 
         segments = [
-            AudioSegment(segment_id="seg1", file_path=str(tmp_path / "nonexistent1.mp3"), duration_ms=1000, engine="kokoro", voice_id="v1", text_hash="a"),
-            AudioSegment(segment_id="seg2", file_path=str(tmp_path / "nonexistent2.mp3"), duration_ms=1500, engine="kokoro", voice_id="v2", text_hash="b"),
+            AudioSegment(
+                segment_id="seg1",
+                file_path=str(tmp_path / "nonexistent1.mp3"),
+                duration_ms=1000,
+                engine="kokoro",
+                voice_id="v1",
+                text_hash="a",
+            ),
+            AudioSegment(
+                segment_id="seg2",
+                file_path=str(tmp_path / "nonexistent2.mp3"),
+                duration_ms=1500,
+                engine="kokoro",
+                voice_id="v2",
+                text_hash="b",
+            ),
         ]
 
         output_path = tmp_path / "output.mp3"

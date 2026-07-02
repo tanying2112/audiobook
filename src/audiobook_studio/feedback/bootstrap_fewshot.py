@@ -110,9 +110,7 @@ class BookTrainingData:
 
     book_name: str
     book_path: str
-    character_examples: List[
-        Tuple[str, Dict[str, Any]]
-    ]  # (paragraph_text, {character, voice})
+    character_examples: List[Tuple[str, Dict[str, Any]]]  # (paragraph_text, {character, voice})
     num_paragraphs: int
     unique_characters: int
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -166,8 +164,7 @@ class MultiObjectiveLoss:
         Uses weighted accuracy combination.
         """
         return (
-            self.weights["character_recognition"]
-            * metrics.character_recognition_accuracy
+            self.weights["character_recognition"] * metrics.character_recognition_accuracy
             + self.weights["voice_design"] * metrics.voice_design_accuracy
         )
 
@@ -183,8 +180,7 @@ class CharacterRecognitionModule(dspy.Module):
         self.predict = dspy.Predict(
             dspy.Signature(
                 "paragraph_text -> character_name",
-                instructions=prompt_template
-                or "Extract the character name mentioned in the paragraph text.",
+                instructions=prompt_template or "Extract the character name mentioned in the paragraph text.",
             )
         )
 
@@ -216,9 +212,7 @@ class VoiceDesignModule(dspy.Module):
             )
         )
 
-    def forward(
-        self, paragraph_text: str, character_name: str, emotion: str = "neutral"
-    ) -> str:
+    def forward(self, paragraph_text: str, character_name: str, emotion: str = "neutral") -> str:
         result = self.predict(
             paragraph_text=paragraph_text,
             character_name=character_name,
@@ -227,9 +221,7 @@ class VoiceDesignModule(dspy.Module):
         return result.voice_design
 
 
-def extract_paragraphs_from_text(
-    text: str, max_paragraphs: Optional[int] = None
-) -> List[Dict[str, Any]]:
+def extract_paragraphs_from_text(text: str, max_paragraphs: Optional[int] = None) -> List[Dict[str, Any]]:
     """Extract paragraphs from raw book text.
 
     Args:
@@ -318,9 +310,7 @@ def create_multi_objective_metric(
     The metric is used by GEPA to evaluate and guide optimization.
     """
 
-    def metric(
-        gold: Example, pred: Prediction, trace=None, pred_name=None, pred_trace=None
-    ) -> ScoreWithFeedback:
+    def metric(gold: Example, pred: Prediction, trace=None, pred_name=None, pred_trace=None) -> ScoreWithFeedback:
         # Get predicted output - handle both dict and object formats
         if isinstance(pred, dict):
             pred_output = pred
@@ -330,55 +320,33 @@ def create_multi_objective_metric(
             pred_output = {}
 
         # Extract character prediction
-        pred_char = (
-            pred_output.get("character_name", "")
-            if isinstance(pred_output, dict)
-            else ""
-        )
-        ground_char = (
-            gold.character
-            if hasattr(gold, "character")
-            else gold.outputs.get("character", "")
-        )
+        pred_char = pred_output.get("character_name", "") if isinstance(pred_output, dict) else ""
+        ground_char = gold.character if hasattr(gold, "character") else gold.outputs.get("character", "")
 
         # Handle nested ground truth
         if isinstance(ground_char, dict):
-            ground_char = ground_char.get(
-                "speaker_canonical_name", ""
-            ) or ground_char.get("character", "")
+            ground_char = ground_char.get("speaker_canonical_name", "") or ground_char.get("character", "")
 
         char_correct = False
         if pred_char and ground_char:
             char_correct = pred_char.strip().lower() == str(ground_char).strip().lower()
 
         # Extract voice prediction
-        pred_voice = (
-            pred_output.get("voice_design", "") if isinstance(pred_output, dict) else ""
-        )
-        ground_voice = (
-            gold.voice if hasattr(gold, "voice") else gold.outputs.get("voice", "")
-        )
+        pred_voice = pred_output.get("voice_design", "") if isinstance(pred_output, dict) else ""
+        ground_voice = gold.voice if hasattr(gold, "voice") else gold.outputs.get("voice", "")
 
         voice_correct = False
         if pred_voice and ground_voice:
-            voice_correct = (
-                pred_voice.strip().lower() == str(ground_voice).strip().lower()
-            )
+            voice_correct = pred_voice.strip().lower() == str(ground_voice).strip().lower()
 
         # Combined score (higher is better, range 0-1)
-        score = char_weight * (1.0 if char_correct else 0.0) + voice_weight * (
-            1.0 if voice_correct else 0.0
-        )
+        score = char_weight * (1.0 if char_correct else 0.0) + voice_weight * (1.0 if voice_correct else 0.0)
 
         feedback_parts = []
         if pred_char or ground_char:
-            feedback_parts.append(
-                f"Character: predicted='{pred_char}', expected='{ground_char}'"
-            )
+            feedback_parts.append(f"Character: predicted='{pred_char}', expected='{ground_char}'")
         if pred_voice or ground_voice:
-            feedback_parts.append(
-                f"Voice: predicted='{pred_voice}', expected='{ground_voice}'"
-            )
+            feedback_parts.append(f"Voice: predicted='{pred_voice}', expected='{ground_voice}'")
         feedback = f"Multi-objective score {score:.2f}. " + "; ".join(feedback_parts)
 
         return ScoreWithFeedback(score=score, feedback=feedback)
@@ -484,11 +452,7 @@ def run_pipeline_on_book_data(
 
         # Extract character voice map from analysis
         character_voice_map = book_analysis.character_voice_map
-        emotion_snapshot = (
-            book_analysis.emotion_snapshots[0]
-            if book_analysis.emotion_snapshots
-            else None
-        )
+        emotion_snapshot = book_analysis.emotion_snapshots[0] if book_analysis.emotion_snapshots else None
         story_line_summary = book_analysis.story_line_summary
         global_style_notes = book_analysis.global_style_notes
         book_meta = book_analysis.book_meta
@@ -591,17 +555,13 @@ def prepare_training_data_from_books(
     total_characters = set()
 
     for book_data in books_data:
-        book_data = run_pipeline_on_book_data(
-            book_data, stage, mock_mode, max_paragraphs_per_book
-        )
+        book_data = run_pipeline_on_book_data(book_data, stage, mock_mode, max_paragraphs_per_book)
         all_examples.extend(book_data.character_examples)
         total_paragraphs += book_data.num_paragraphs
         if "unique_characters" in book_data.metadata:
             total_characters.update(book_data.metadata["unique_characters"])
 
-    logger.info(
-        f"Total training examples from {len(books_data)} books: {len(all_examples)}"
-    )
+    logger.info(f"Total training examples from {len(books_data)} books: {len(all_examples)}")
     logger.info(f"Total unique characters: {len(total_characters)}")
 
     return all_examples
@@ -778,14 +738,10 @@ class BootstrapFewShotOptimizer:
             optimized_module = character_module
 
         # Extract optimized prompt from the compiled module
-        optimized_prompt = self._extract_prompt_from_module(
-            optimized_module, initial_prompt
-        )
+        optimized_prompt = self._extract_prompt_from_module(optimized_module, initial_prompt)
 
         # Compute final metrics from GEPA results
-        metrics = self._compute_metrics_from_gepa_result(
-            optimized_module, dspy_examples, training_examples
-        )
+        metrics = self._compute_metrics_from_gepa_result(optimized_module, dspy_examples, training_examples)
 
         # Check if early stopped (budget reached or patience exhausted)
         stopped_early = metrics.inference_calls_used >= self.budget_limit
@@ -827,22 +783,13 @@ class BootstrapFewShotOptimizer:
         # Extract scores from GEPA detailed results if available
         if hasattr(module, "detailed_results"):
             results = module.detailed_results
-            if (
-                hasattr(results, "val_aggregate_scores")
-                and results.val_aggregate_scores
-            ):
+            if hasattr(results, "val_aggregate_scores") and results.val_aggregate_scores:
                 # Use GEPA scores to estimate accuracy
                 # Scores are in range [0, 1] from our metric
-                avg_score = sum(results.val_aggregate_scores) / len(
-                    results.val_aggregate_scores
-                )
+                avg_score = sum(results.val_aggregate_scores) / len(results.val_aggregate_scores)
                 # Distribute score between character and voice based on weights
-                char_correct = int(
-                    avg_score * self.loss_fn.weights["character_recognition"] * total
-                )
-                voice_correct = int(
-                    avg_score * self.loss_fn.weights["voice_design"] * total
-                )
+                char_correct = int(avg_score * self.loss_fn.weights["character_recognition"] * total)
+                voice_correct = int(avg_score * self.loss_fn.weights["voice_design"] * total)
 
         # Count metric calls from GEPA
         metric_calls = self.budget_limit  # GEPA tracks this internally
@@ -852,9 +799,7 @@ class BootstrapFewShotOptimizer:
             voice_design_accuracy=voice_correct / total if total > 0 else 0.0,
             overall_score=self.loss_fn.compute_pareto_score(
                 OptimizationMetrics(
-                    character_recognition_accuracy=(
-                        char_correct / total if total > 0 else 0.0
-                    ),
+                    character_recognition_accuracy=(char_correct / total if total > 0 else 0.0),
                     voice_design_accuracy=voice_correct / total if total > 0 else 0.0,
                 )
             ),
@@ -871,19 +816,14 @@ class BootstrapFewShotOptimizer:
             return max(0.0, improvement)  # Cap at 0 for negative improvements
         return 0.0
 
-    def _extract_pareto_frontier(
-        self, module: dspy.Module
-    ) -> Optional[List[Dict[str, Any]]]:
+    def _extract_pareto_frontier(self, module: dspy.Module) -> Optional[List[Dict[str, Any]]]:
         """Extract Pareto frontier scores from GEPA result."""
         if hasattr(module, "detailed_results"):
             results = module.detailed_results
             if hasattr(results, "val_aggregate_scores"):
                 return [{"score": float(s)} for s in results.val_aggregate_scores]
             if hasattr(results, "highest_score_achieved_per_val_task"):
-                return [
-                    {"score": float(s)}
-                    for s in results.highest_score_achieved_per_val_task
-                ]
+                return [{"score": float(s)} for s in results.highest_score_achieved_per_val_task]
         return None
 
 
@@ -989,9 +929,7 @@ def run_bootstrap_optimization(
             logger.warning(f"No training examples found for stage: {stage}")
             return None
 
-        logger.info(
-            f"Starting bootstrap optimization for {stage} with {len(training_data)} examples"
-        )
+        logger.info(f"Starting bootstrap optimization for {stage} with {len(training_data)} examples")
 
         optimizer = BootstrapFewShotOptimizer(stage)
         result = optimizer.optimize(initial_prompt, training_data)
@@ -1016,13 +954,7 @@ if __name__ == "__main__":
     stage = sys.argv[1] if len(sys.argv) > 1 else "annotate_paragraph"
     result = run_bootstrap_optimization(stage)
     if result:
-        logger.info(
-            f"Optimization complete: improvement={result.improvement_ratio:.2%}"
-        )
-        logger.info(
-            f"Character accuracy: {result.metrics.character_recognition_accuracy:.2%}"
-        )
-        logger.info(
-            f"Voice design accuracy: {result.metrics.voice_design_accuracy:.2%}"
-        )
+        logger.info(f"Optimization complete: improvement={result.improvement_ratio:.2%}")
+        logger.info(f"Character accuracy: {result.metrics.character_recognition_accuracy:.2%}")
+        logger.info(f"Voice design accuracy: {result.metrics.voice_design_accuracy:.2%}")
         logger.info(f"Budget used: {result.iterations_completed}/{BUDGET_LIMIT}")

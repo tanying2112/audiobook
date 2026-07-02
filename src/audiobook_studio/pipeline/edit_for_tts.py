@@ -27,11 +27,7 @@ class EditForTtsPipeline:
         prompt_dir=None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = (
-            mock_mode
-            if mock_mode is not None
-            else os.environ.get("MOCK_LLM", "false").lower() == "true"
-        )
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
         # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
@@ -63,12 +59,8 @@ class EditForTtsPipeline:
         formatted = []
         for i, ex in enumerate(examples[:3], 1):
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
     def _build_prompt(self, input_data):
@@ -141,9 +133,7 @@ class EditForTtsPipeline:
                 tokens_out=result.tokens_out,
                 cost_usd=result.cost_usd,
                 success=True,
-                provider=(
-                    result.model.split("/")[0] if "/" in result.model else result.model
-                ),
+                provider=(result.model.split("/")[0] if "/" in result.model else result.model),
                 model=result.model,
                 difficulty=input_data.difficulty,
             )

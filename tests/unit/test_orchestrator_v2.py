@@ -192,9 +192,7 @@ class TestRunStage:
     def _mock_db(self):
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            None
-        )
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
         return db
 
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
@@ -210,9 +208,7 @@ class TestRunStage:
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
-                raise AudiobookError(
-                    stage="test", reason="provider failed", provider="gpt-4"
-                )
+                raise AudiobookError(stage="test", reason="provider failed", provider="gpt-4")
 
             @staticmethod
             def persist(*a):
@@ -289,9 +285,7 @@ class TestRunStage:
         para = MagicMock()
         para.id = 20
         db.query.return_value.filter.return_value.first.side_effect = [chapter, para]
-        result = run_stage(
-            "annotate", db, project_id=1, chapter_index=1, paragraph_index=1
-        )
+        result = run_stage("annotate", db, project_id=1, chapter_index=1, paragraph_index=1)
         assert result == "done"
 
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")

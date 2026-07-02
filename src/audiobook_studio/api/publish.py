@@ -163,14 +163,8 @@ async def publish_project(
         job_id=job_id,
         project_id=project_id,
         destinations=request.destinations,
-        audiobookshelf_config=(
-            request.audiobookshelf_config.model_dump()
-            if request.audiobookshelf_config
-            else None
-        ),
-        podcast_config=(
-            request.podcast_config.model_dump() if request.podcast_config else None
-        ),
+        audiobookshelf_config=(request.audiobookshelf_config.model_dump() if request.audiobookshelf_config else None),
+        podcast_config=(request.podcast_config.model_dump() if request.podcast_config else None),
     )
 
     return PublishJobOut(
@@ -318,9 +312,7 @@ async def _publish_to_audiobookshelf(
             async with session.get(f"{server_url}/api/libraries") as list_resp:
                 if list_resp.status != 200:
                     error_text = await list_resp.text()
-                    raise ValueError(
-                        f"Failed to list libraries ({list_resp.status}): {error_text}"
-                    )
+                    raise ValueError(f"Failed to list libraries ({list_resp.status}): {error_text}")
                 libraries = await list_resp.json()
                 if not libraries:
                     raise ValueError("No libraries found on Audiobookshelf server")
@@ -334,14 +326,10 @@ async def _publish_to_audiobookshelf(
                 async with session.get(f"{server_url}/api/libraries") as list_resp:
                     available = await list_resp.json()
                 available_ids = [lib.get("id") for lib in available]
-                raise ValueError(
-                    f"Library {library_id} not found. Available: {available_ids}"
-                )
+                raise ValueError(f"Library {library_id} not found. Available: {available_ids}")
             elif lib_resp.status != 200:
                 error_text = await lib_resp.text()
-                raise ValueError(
-                    f"Failed to access library ({lib_resp.status}): {error_text}"
-                )
+                raise ValueError(f"Failed to access library ({lib_resp.status}): {error_text}")
 
             library_info = await lib_resp.json()
             folders = library_info.get("folders", [])
@@ -440,9 +428,7 @@ async def _publish_to_audiobookshelf(
                         content_type=_mime_type(audio_file),
                     )
 
-                    async with session.post(
-                        f"{server_url}/api/upload", data=data
-                    ) as upload_resp:
+                    async with session.post(f"{server_url}/api/upload", data=data) as upload_resp:
                         if upload_resp.status in (200, 201):
                             upload_results.append(
                                 {
@@ -464,19 +450,13 @@ async def _publish_to_audiobookshelf(
         if successful_uploads == 0:
             raise ValueError(
                 "All file uploads failed: "
-                + "; ".join(
-                    r.get("error", "unknown")
-                    for r in upload_results
-                    if not r.get("success")
-                )
+                + "; ".join(r.get("error", "unknown") for r in upload_results if not r.get("success"))
             )
 
         # ─────────────────────────────────────────────────────────────
         # Step 4: Trigger library scan
         # ─────────────────────────────────────────────────────────────
-        async with session.post(
-            f"{server_url}/api/libraries/{library_id}/scan"
-        ) as scan_resp:
+        async with session.post(f"{server_url}/api/libraries/{library_id}/scan") as scan_resp:
             scan_ok = scan_resp.status in (200, 201)
             if not scan_ok:
                 logger.warning(f"Scan trigger returned {scan_resp.status}")
@@ -566,11 +546,7 @@ async def _publish_to_audiobookshelf(
                             "cover",
                             cover_f,
                             filename=cover_path.name,
-                            content_type=(
-                                "image/jpeg"
-                                if cover_path.suffix == ".jpg"
-                                else "image/png"
-                            ),
+                            content_type=("image/jpeg" if cover_path.suffix == ".jpg" else "image/png"),
                         )
                         async with session.post(
                             f"{server_url}/api/items/{item_id}/cover",
@@ -579,9 +555,7 @@ async def _publish_to_audiobookshelf(
                             if cover_resp.status in (200, 201):
                                 logger.info(f"Cover uploaded for item {item_id}")
                             else:
-                                logger.warning(
-                                    f"Cover upload returned {cover_resp.status}"
-                                )
+                                logger.warning(f"Cover upload returned {cover_resp.status}")
                     break  # Only upload the first found cover
 
         # ─────────────────────────────────────────────────────────────
@@ -666,9 +640,7 @@ async def get_publish_job(project_id: int, job_id: str):
         raise HTTPException(status_code=404, detail="Publish job not found")
 
     if job["project_id"] != project_id:
-        raise HTTPException(
-            status_code=400, detail="Job does not belong to this project"
-        )
+        raise HTTPException(status_code=400, detail="Job does not belong to this project")
 
     return PublishJobOut(**job)
 
@@ -740,8 +712,7 @@ async def get_podcast_rss_feed(
 
     # Build config from query params with project defaults
     config = {
-        "feed_title": feed_title
-        or f"Podcast {project.title or f'Project {project_id}'}",
+        "feed_title": feed_title or f"Podcast {project.title or f'Project {project_id}'}",
         "feed_description": feed_description or project.story_line_summary or "",
         "feed_link": feed_link or public_url,
         "feed_language": feed_language or project.language or "zh-CN",

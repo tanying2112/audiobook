@@ -6,10 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.audiobook_studio.pipeline.audio_finalize import AudioFinalizer
-from src.audiobook_studio.schemas.audio_finalize import (
-    AudioFinalizeParams,
-    AudioFinalizeResult,
-)
+from src.audiobook_studio.schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 
 
 class TestAudioFinalizeParams:
@@ -148,9 +145,7 @@ class TestAudioFinalizer:
             metadata_album="Test Album",
         )
 
-        result = finalizer.finalize(
-            input_path, output_path, params, ["ambient_cheerful"]
-        )
+        result = finalizer.finalize(input_path, output_path, params, ["ambient_cheerful"])
 
         assert result.input_path == str(input_path)
         assert result.output_path == str(output_path)
@@ -158,9 +153,7 @@ class TestAudioFinalizer:
         assert result.loudnorm_applied is True
         assert result.fade_applied is True
         assert result.sfx_applied is True
-        assert (
-            result.metadata_embedded is True
-        )  # Mock mode sets True when metadata_title is provided
+        assert result.metadata_embedded is True  # Mock mode sets True when metadata_title is provided
 
     def test_finalize_mock_no_sfx(self):
         """Test finalize without SFX in mock mode."""
@@ -180,9 +173,7 @@ class TestAudioFinalizer:
         output_path = Path("/tmp/test_output.mp3")
         params = AudioFinalizeParams(apply_sfx=False)
 
-        result = finalizer.finalize(
-            input_path, output_path, params, ["ambient_cheerful"]
-        )
+        result = finalizer.finalize(input_path, output_path, params, ["ambient_cheerful"])
 
         assert result.sfx_applied is False
 
@@ -205,9 +196,7 @@ class TestAudioFinalizer:
         )
 
         # Mock _measure_loudness and _get_duration
-        with patch.object(
-            finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)
-        ):
+        with patch.object(finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)):
             with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 
@@ -230,9 +219,7 @@ class TestAudioFinalizer:
         finalizer = AudioFinalizer(mock_mode=False)
         params = AudioFinalizeParams()
 
-        with patch.object(
-            finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)
-        ):
+        with patch.object(finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)):
             with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 

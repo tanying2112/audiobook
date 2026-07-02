@@ -462,9 +462,7 @@ class PromptRegistry:
 
         if version is None:
             if request_id is None:
-                raise ValueError(
-                    "request_id required when version is None (for experiment routing)"
-                )
+                raise ValueError("request_id required when version is None (for experiment routing)")
             prompt_version = self.select_version_for_request(stage, request_id)
         else:
             prompt_version = self.get_version(stage, version)
@@ -481,9 +479,7 @@ class PromptRegistry:
             return rendered_system, rendered_user
 
         except TemplateError as e:
-            logger.error(
-                f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}"
-            )
+            logger.error(f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}")
             raise ValueError(f"Template rendering failed: {e}")
 
     def load_prompts_from_directory(self) -> int:
@@ -527,9 +523,7 @@ class PromptRegistry:
         logger.info(f"Loaded {count} prompt templates from {self.prompts_dir}")
         return count
 
-    def list_versions(
-        self, stage: Optional[PromptStage] = None
-    ) -> Dict[str, List[str]]:
+    def list_versions(self, stage: Optional[PromptStage] = None) -> Dict[str, List[str]]:
         """List all registered prompt versions.
 
         Args:
@@ -540,15 +534,12 @@ class PromptRegistry:
         """
         if stage:
             return {stage.value: list(self._state.versions.get(stage.value, {}).keys())}
-        return {
-            stage: list(versions.keys())
-            for stage, versions in self._state.versions.items()
-        }
+        return {stage: list(versions.keys()) for stage, versions in self._state.versions.items()}
 
     @property
     def state(self) -> PromptRegistryState:
         """Get current registry state."""
-        return self._state.copy()
+        return self._state.model_copy()
 
 
 # Global registry instance (lazy initialization)

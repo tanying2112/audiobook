@@ -72,9 +72,7 @@ class AbstractAgent:
         raise NotImplementedError
 
     # --- 3. 增强：更智能的错误处理 ---
-    def _handle_failure(
-        self, error: Exception, severity: ErrorSeverity = ErrorSeverity.FATAL
-    ) -> None:
+    def _handle_failure(self, error: Exception, severity: ErrorSeverity = ErrorSeverity.FATAL) -> None:
         """增强的错误处理：记录堆栈、分类级别，并上报"""
         error_msg = f"Agent {self.agent_id} failed: {str(error)}"
         self.logger.error(error_msg)

@@ -57,9 +57,7 @@ def init_metrics(
 
     metrics.set_meter_provider(_meter_provider)
 
-    logger.info(
-        f"OpenTelemetry metrics initialized for {service_name} v{service_version}"
-    )
+    logger.info(f"OpenTelemetry metrics initialized for {service_name} v{service_version}")
     logger.info(f"Prometheus metrics available at :{prometheus_port}/metrics")
 
     return _meter_provider

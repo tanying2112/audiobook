@@ -28,11 +28,7 @@ class AnalyzeStructurePipeline:
         prompt_dir: Optional[str] = None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = (
-            mock_mode
-            if mock_mode is not None
-            else os.environ.get("MOCK_LLM", "false").lower() == "true"
-        )
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
         # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
@@ -69,12 +65,8 @@ class AnalyzeStructurePipeline:
         formatted = []
         for i, ex in enumerate(examples[:1], 1):  # Limit to 3 examples
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
     def _build_prompt(self, input_data: BookAnalysisInput) -> str:
@@ -97,9 +89,7 @@ class AnalyzeStructurePipeline:
 
     def run(self, input_data: BookAnalysisInput) -> BookAnalysisOutput:
         """Execute the analysis pipeline."""
-        logger.info(
-            f"Starting structure analysis for: {input_data.title_hint or 'untitled'}"
-        )
+        logger.info(f"Starting structure analysis for: {input_data.title_hint or 'untitled'}")
 
         # Build prompt
         prompt = self._build_prompt(input_data)

@@ -53,9 +53,7 @@ class StageComplianceSummary:
 
     @property
     def avg_quality_score(self) -> float:
-        return (
-            self.total_quality_score / self.total_calls if self.total_calls > 0 else 0.0
-        )
+        return self.total_quality_score / self.total_calls if self.total_calls > 0 else 0.0
 
     @property
     def avg_cost_usd(self) -> float:
@@ -70,9 +68,7 @@ class ComplianceMonitor:
     """
 
     def __init__(self, storage_path: Optional[str] = None):
-        self.storage_path = (
-            Path(storage_path) if storage_path else Path("./reports/compliance")
-        )
+        self.storage_path = Path(storage_path) if storage_path else Path("./reports/compliance")
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.records: List[ComplianceRecord] = []
@@ -161,8 +157,7 @@ class ComplianceMonitor:
 
         for stage, summary in self.stage_summaries.items():
             stage_pass = (
-                summary.compliance_rate >= min_compliance_rate
-                and summary.avg_quality_score >= min_quality_score
+                summary.compliance_rate >= min_compliance_rate and summary.avg_quality_score >= min_quality_score
             )
             if not stage_pass:
                 results["overall_pass"] = False

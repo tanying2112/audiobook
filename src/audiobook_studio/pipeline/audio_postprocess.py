@@ -145,11 +145,7 @@ class AudioPostProcessor:
 
         # 2. 角色级覆盖 (通过 voice_map 查找角色特定声学配置)
         if voice_map and annotation.speaker_canonical_name:
-            matched = [
-                v
-                for v in voice_map
-                if v.canonical_name == annotation.speaker_canonical_name
-            ]
+            matched = [v for v in voice_map if v.canonical_name == annotation.speaker_canonical_name]
             if matched and hasattr(matched[0], "voice_preset"):
                 vp = matched[0].voice_preset
                 if vp:
@@ -163,9 +159,7 @@ class AudioPostProcessor:
         if intensity is not None:
             if intensity > 0.8:
                 speech_rate = min(1.3, speech_rate + 0.05)
-                pitch_shift = max(
-                    -5, min(5, pitch_shift + (1 if pitch_shift >= 0 else -1))
-                )
+                pitch_shift = max(-5, min(5, pitch_shift + (1 if pitch_shift >= 0 else -1)))
             elif intensity < 0.3:
                 speech_rate = max(0.7, speech_rate - 0.05)
 

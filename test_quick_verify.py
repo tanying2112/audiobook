@@ -18,30 +18,17 @@ from audiobook_studio.pipeline import (
     quality_check,
     synthesize_paragraphs,
 )
-from audiobook_studio.pipeline.analyze_structure import (
-    AnalyzeStructurePipeline,
-    analyze_structure,
-)
-from audiobook_studio.pipeline.annotate_paragraph import (
-    AnnotateParagraphPipeline,
-    annotate_paragraph,
-)
+from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
+from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from audiobook_studio.pipeline.checkpoint import CheckpointManager
 from audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline, edit_for_tts
 
 # Test imports
 from audiobook_studio.pipeline.extract import ExtractPipeline, extract_text
-from audiobook_studio.pipeline.feedback_collector import (
-    FeedbackCollector,
-    StageCapture,
-    create_feedback_collector,
-)
+from audiobook_studio.pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from audiobook_studio.pipeline.orchestrator import run_stage
 from audiobook_studio.pipeline.quality_check import QualityCheckPipeline, quality_check
-from audiobook_studio.pipeline.synthesize import (
-    SynthesizePipeline,
-    synthesize_paragraphs,
-)
+from audiobook_studio.pipeline.synthesize import SynthesizePipeline, synthesize_paragraphs
 
 print("✅ All pipeline imports successful")
 

@@ -156,9 +156,7 @@ class TestEditForTtsPipeline:
 
     def test_run_mock_mode_difficulty_a_preserves_original(self):
         """Test run() in mock mode with difficulty A preserves original."""
-        input_data = self.create_minimal_input(
-            difficulty="A", paragraph_text="第1章 标题\n\n这是正文内容。"
-        )
+        input_data = self.create_minimal_input(difficulty="A", paragraph_text="第1章 标题\n\n这是正文内容。")
         result = self.pipeline.run(input_data)
 
         assert isinstance(result, TtsEditOutput)
@@ -169,9 +167,7 @@ class TestEditForTtsPipeline:
 
     def test_run_mock_mode_forbid_edit_preserves_original(self):
         """Test run() in mock mode with forbid_edit=True preserves original."""
-        input_data = self.create_minimal_input(
-            forbid_edit=True, paragraph_text="张三在2023年去了北京。"
-        )
+        input_data = self.create_minimal_input(forbid_edit=True, paragraph_text="张三在2023年去了北京。")
         result = self.pipeline.run(input_data)
 
         assert isinstance(result, TtsEditOutput)
@@ -218,9 +214,7 @@ class TestEditForTtsPipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        with patch(
-            "src.audiobook_studio.monitoring.record_stage_performance"
-        ) as mock_record:
+        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
@@ -237,9 +231,7 @@ class TestEditForTtsPipeline:
         mock_router = MagicMock()
         mock_router.call.side_effect = Exception("API Error")
 
-        with patch(
-            "src.audiobook_studio.monitoring.record_stage_performance"
-        ) as mock_record:
+        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
@@ -356,9 +348,7 @@ class TestEditForTtsEdgeCases:
 
     def test_whitespace_only_text(self):
         """Test edit with whitespace-heavy text."""
-        input_data = self.create_base_input(
-            paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  "
-        )
+        input_data = self.create_base_input(paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  ")
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
 
@@ -372,9 +362,7 @@ class TestEditForTtsEdgeCases:
 
     def test_unicode_content(self):
         """Test edit with unicode content (emoji, special chars)."""
-        input_data = self.create_base_input(
-            paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡"
-        )
+        input_data = self.create_base_input(paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡")
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
 
@@ -387,9 +375,7 @@ class TestEditForTtsEdgeCases:
 
     def test_forbid_edit_flag(self):
         """Test forbid_edit flag preserves original text."""
-        input_data = self.create_base_input(
-            forbid_edit=True, paragraph_text="张三在2023年去了北京。"
-        )
+        input_data = self.create_base_input(forbid_edit=True, paragraph_text="张三在2023年去了北京。")
         result = self.pipeline.run(input_data)
         assert result.edited_text == "张三在2023年去了北京。"
         assert "difficulty_A_or_forbid_edit_preserved_original" in result.changes_made
@@ -422,9 +408,7 @@ class TestEditForTtsEdgeCases:
 
     def test_chapter_marker_preservation(self):
         """Test chapter markers are preserved in mock mode."""
-        input_data = self.create_base_input(
-            paragraph_text="第 1 章 开始\n\n内容\n\n第 2 章 继续\n\n更多内容"
-        )
+        input_data = self.create_base_input(paragraph_text="第 1 章 开始\n\n内容\n\n第 2 章 继续\n\n更多内容")
         result = self.pipeline.run(input_data)
         assert isinstance(result, TtsEditOutput)
         # In mock mode, original text is preserved

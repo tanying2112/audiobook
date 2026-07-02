@@ -54,9 +54,7 @@ class AlertManager:
     def __init__(self, config: Optional[AlertConfig] = None):
         self.config = config or AlertConfig()
 
-    def trigger_alert(
-        self, level: AlertLevel, message: str, context: Optional[Dict[str, Any]] = None
-    ):
+    def trigger_alert(self, level: AlertLevel, message: str, context: Optional[Dict[str, Any]] = None):
         logger.info(f"[{level}] ALERT: {message} | Context: {context}")
         return True
 
@@ -186,14 +184,10 @@ def compute_self_iteration_metrics(records: List[Dict[str, Any]]) -> Dict[str, A
 
     # Average feedback per iteration
     feedback_counts = [r.get("feedback_count", 0) for r in records]
-    avg_feedback = (
-        sum(feedback_counts) / len(feedback_counts) if feedback_counts else 0.0
-    )
+    avg_feedback = sum(feedback_counts) / len(feedback_counts) if feedback_counts else 0.0
 
     # System health score (from canary validation)
-    health_scores = [
-        r.get("system_health_score", 100) for r in records if "system_health_score" in r
-    ]
+    health_scores = [r.get("system_health_score", 100) for r in records if "system_health_score" in r]
     avg_health = sum(health_scores) / len(health_scores) if health_scores else 100.0
 
     # Check alert conditions
@@ -244,9 +238,7 @@ def compute_self_iteration_metrics(records: List[Dict[str, Any]]) -> Dict[str, A
     }
 
 
-def compute_metrics(
-    records: List[Dict[str, Any]], hours: float = 1.0
-) -> Dict[str, Any]:
+def compute_metrics(records: List[Dict[str, Any]], hours: float = 1.0) -> Dict[str, Any]:
     """Compute metrics for alerting."""
     if not records:
         return {
@@ -260,19 +252,12 @@ def compute_metrics(
     total_records = len(records)
 
     # Schema compliance rate
-    schema_compliant = sum(
-        1 for r in records if r.get("schema_compliance", False) is True
-    )
-    schema_compliance_rate = (
-        schema_compliant / total_records if total_records > 0 else 0.0
-    )
+    schema_compliant = sum(1 for r in records if r.get("schema_compliance", False) is True)
+    schema_compliance_rate = schema_compliant / total_records if total_records > 0 else 0.0
 
     # Fallback rate (heuristic_fallback or fallback in model name)
     fallback_count = sum(
-        1
-        for r in records
-        if "fallback" in r.get("model", "").lower()
-        or "heuristic" in r.get("model", "").lower()
+        1 for r in records if "fallback" in r.get("model", "").lower() or "heuristic" in r.get("model", "").lower()
     )
     fallback_rate = fallback_count / total_records if total_records > 0 else 0.0
 
@@ -317,11 +302,7 @@ def compute_metrics(
         alerts.append(
             {
                 "type": "cost_overrun",
-                "severity": (
-                    "warning"
-                    if estimated_daily_cost <= daily_limit * 1.5
-                    else "critical"
-                ),
+                "severity": ("warning" if estimated_daily_cost <= daily_limit * 1.5 else "critical"),
                 "message": f"预估日成本超阈值: ${estimated_daily_cost:.2f} (阈值: ≤${daily_limit})",
                 "value": estimated_daily_cost,
                 "threshold": daily_limit,
@@ -410,9 +391,7 @@ def main():
     if not log_records and not self_iteration_records:
         logger.warning("警告: 未找到性能记录数据")
         if args.check_only:
-            logger.error(
-                json.dumps({"error": "No data found"}, indent=2, ensure_ascii=False)
-            )
+            logger.error(json.dumps({"error": "No data found"}, indent=2, ensure_ascii=False))
         return
 
     # Always print metrics
@@ -435,9 +414,7 @@ def main():
         logger.info("--- Self-Iteration Metrics ---")
         logger.info(f"总迭代次数: {m['total_iterations']}")
         logger.info(f"提升通过率: {m['promotion_rate']:.1%} (阈值: ≥30%)")
-        logger.info(
-            f"平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f} (阈值: ≥1.0)"
-        )
+        logger.info(f"平均反馈/迭代: {m['avg_feedback_per_iteration']:.1f} (阈值: ≥1.0)")
         logger.info(f"系统健康度: {m['system_health_score']:.1f}/100 (阈值: ≥50)")
         logger.info("")
 

@@ -97,9 +97,7 @@ def init_tracing(
     except Exception as e:
         logger.warning(f"Requests instrumentation failed: {e}")
 
-    logger.info(
-        f"OpenTelemetry tracing initialized for {service_name} v{service_version}"
-    )
+    logger.info(f"OpenTelemetry tracing initialized for {service_name} v{service_version}")
     return _tracer_provider
 
 

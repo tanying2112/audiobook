@@ -47,9 +47,7 @@ def _create_test_engine() -> "Engine":
     connection can be used across multiple sessions within a single test run.
     """
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    engine = create_engine(
-        f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     return engine
 
@@ -274,9 +272,7 @@ async def test_character_crud(async_client: AsyncClient):
 
     # Update character
     update_payload = {"canonical_name": "更新角色", "gender": "female"}
-    resp = await async_client.put(
-        f"/api/projects/{project_id}/characters/{char_id}", json=update_payload
-    )
+    resp = await async_client.put(f"/api/projects/{project_id}/characters/{char_id}", json=update_payload)
     assert resp.status_code == 200
     assert resp.json()["canonical_name"] == "更新角色"
     assert resp.json()["gender"] == "female"

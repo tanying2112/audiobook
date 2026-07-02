@@ -22,9 +22,7 @@ class ExtractionInput(BaseModel):
         "image/*",
     ] = Field(..., description="文件 MIME 类型")
     detect_language: bool = Field(default=True, description="是否自动检测语言")
-    contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
-    )
+    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 
 class ExtractionResult(BaseModel):
@@ -37,14 +35,8 @@ class ExtractionResult(BaseModel):
     language: str = Field(..., description="ISO 639-1 语言代码")
     page_count: int = Field(..., ge=0, description="总页数")
     has_ocr: bool = Field(default=False, description="是否使用了 OCR")
-    ocr_page_ratio: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="OCR 处理页占比"
-    )
-    warnings: list[str] = Field(
-        default_factory=list, description="提取过程中的警告信息"
-    )
-    contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
-    )
+    ocr_page_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="OCR 处理页占比")
+    warnings: list[str] = Field(default_factory=list, description="提取过程中的警告信息")
+    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
     model_config = {"from_attributes": True, "extra": "forbid"}

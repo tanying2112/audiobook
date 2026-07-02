@@ -16,15 +16,10 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    QualityCheckPipeline,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
-from src.audiobook_studio.schemas.tts_routing import (
-    TtsRoutingDecision as TtsRoutingDecisionSchema,
-)
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 
 def _make_annotation(**overrides):
@@ -96,9 +91,7 @@ class TestMultimodalJudgeFullPath:
             pipeline.router.call.return_value = mock_result
 
             annotation = _make_annotation()
-            result = pipeline._multimodal_judge_quality(
-                "seg_001", audio_path, annotation, "参考文本"
-            )
+            result = pipeline._multimodal_judge_quality("seg_001", audio_path, annotation, "参考文本")
 
             assert result is not None
             assert result.overall_score == pytest.approx(0.87)
@@ -115,9 +108,7 @@ class TestMultimodalJudgeFullPath:
             pipeline.hardware_profile = hp
 
             annotation = _make_annotation()
-            result = pipeline._multimodal_judge_quality(
-                "seg_001", audio_path, annotation, "ref"
-            )
+            result = pipeline._multimodal_judge_quality("seg_001", audio_path, annotation, "ref")
             assert result is None
 
     def test_multimodal_judge_router_returns_none_output(self):
@@ -137,9 +128,7 @@ class TestMultimodalJudgeFullPath:
             pipeline.router.call.return_value = mock_result
 
             annotation = _make_annotation()
-            result = pipeline._multimodal_judge_quality(
-                "seg_001", audio_path, annotation, "ref"
-            )
+            result = pipeline._multimodal_judge_quality("seg_001", audio_path, annotation, "ref")
             assert result is None
 
     def test_multimodal_judge_router_raises(self):
@@ -157,9 +146,7 @@ class TestMultimodalJudgeFullPath:
             pipeline.router.call.side_effect = RuntimeError("API down")
 
             annotation = _make_annotation()
-            result = pipeline._multimodal_judge_quality(
-                "seg_001", audio_path, annotation, "ref"
-            )
+            result = pipeline._multimodal_judge_quality("seg_001", audio_path, annotation, "ref")
             assert result is None
 
 
@@ -229,9 +216,7 @@ class TestReloadConfigIfChanged:
 
     def test_reload_config_calls_loader(self):
         pipeline = QualityCheckPipeline(mock_mode=True)
-        with patch(
-            "src.audiobook_studio.config.loader.reload_config_if_changed"
-        ) as mock_reload:
+        with patch("src.audiobook_studio.config.loader.reload_config_if_changed") as mock_reload:
             mock_reload.return_value = (pipeline.quality_thresholds, None)
             pipeline._reload_config_if_changed()
             mock_reload.assert_called_once()
@@ -290,14 +275,11 @@ class TestNonMockHardCheckMerge:
                 issues=[],
             )
 
-            with patch.object(
-                pipeline, "_run_hard_quality_checks", return_value=mock_hard_result
-            ), patch.object(
-                pipeline, "_analyze_with_ffprobe", return_value=mock_analysis
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.observe_quality_check"
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.record_stage_performance"
+            with (
+                patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
+                patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
+                patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
+                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
@@ -355,14 +337,11 @@ class TestNonMockHardCheckMerge:
                 issues=[],
             )
 
-            with patch.object(
-                pipeline, "_run_hard_quality_checks", return_value=mock_hard_result
-            ), patch.object(
-                pipeline, "_analyze_with_ffprobe", return_value=mock_analysis
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.observe_quality_check"
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.record_stage_performance"
+            with (
+                patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
+                patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
+                patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
+                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
@@ -410,15 +389,12 @@ class TestNonMockHardCheckMerge:
                 issues=[],
             )
 
-            with patch.object(
-                pipeline, "_run_hard_quality_checks", return_value=mock_hard_result
-            ), patch.object(
-                pipeline, "_analyze_with_ffprobe", return_value=mock_analysis
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.observe_quality_check"
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.record_stage_performance"
-            ) as mock_perf:
+            with (
+                patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
+                patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
+                patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
+                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance") as mock_perf,
+            ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
                 with pytest.raises(RuntimeError, match="LLM API error"):
@@ -482,14 +458,11 @@ class TestNonMockHardCheckMerge:
                 ],
             )
 
-            with patch.object(
-                pipeline, "_run_hard_quality_checks", return_value=mock_hard_result
-            ), patch.object(
-                pipeline, "_analyze_with_ffprobe", return_value=mock_analysis
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.observe_quality_check"
-            ), patch(
-                "src.audiobook_studio.pipeline.quality_check.record_stage_performance"
+            with (
+                patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
+                patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
+                patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
+                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]

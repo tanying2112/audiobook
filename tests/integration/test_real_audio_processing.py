@@ -87,9 +87,7 @@ class TestFfmpegProbeFunctions:
         }
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = str(
-            mock_data
-        )  # json.dumps would be ideal but eval works for testing
+        mock_result.stdout = str(mock_data)  # json.dumps would be ideal but eval works for testing
 
         async def run():
             import json
@@ -112,10 +110,7 @@ class TestFfmpegProbeFunctions:
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stderr = (
-            "lavfi.astats.Overall.RMS_level=-15.23\n"
-            "lavfi.astats.Overall.Peak_level=-3.45\n"
-        )
+        mock_result.stderr = "lavfi.astats.Overall.RMS_level=-15.23\n" "lavfi.astats.Overall.Peak_level=-3.45\n"
 
         async def run():
             with patch(
@@ -280,9 +275,7 @@ class TestCheckOptionalDependencies:
 
         features = QualityCheckPipeline._check_optional_dependencies()
         for key, value in features.items():
-            assert isinstance(
-                value, bool
-            ), f"Feature '{key}' should be bool, got {type(value)}"
+            assert isinstance(value, bool), f"Feature '{key}' should be bool, got {type(value)}"
 
     @patch.dict("sys.modules", {"onnxruntime": None})
     def test_dnsmos_false_when_onnxruntime_missing(self):
@@ -292,9 +285,7 @@ class TestCheckOptionalDependencies:
         features = QualityCheckPipeline._check_optional_dependencies()
         assert features["dnsmos"] is False
 
-    @patch.dict(
-        "sys.modules", {"onnxruntime": MagicMock(), "onnxruntime.capi": MagicMock()}
-    )
+    @patch.dict("sys.modules", {"onnxruntime": MagicMock(), "onnxruntime.capi": MagicMock()})
     def test_dnsmos_true_when_onnxruntime_present(self):
         """dnsmos should be True when onnxruntime is importable."""
         from src.audiobook_studio.pipeline.quality_check import QualityCheckPipeline
@@ -328,21 +319,13 @@ class TestNoPydubInCriticalPath:
         # Use the module file path directly since the pipeline __init__
         # exports a function named `quality_check` that shadows the module.
         source_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "src"
-            / "audiobook_studio"
-            / "pipeline"
-            / "quality_check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "audiobook_studio" / "pipeline" / "quality_check.py"
         )
         source_file = source_path.read_text()
         # Should not have 'import pydub' or 'from pydub'
         for i, line in enumerate(source_file.split("\n"), 1):
             stripped = line.strip()
-            if (
-                stripped.startswith("#")
-                or stripped.startswith('"""')
-                or stripped.startswith("'''")
-            ):
+            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
                 continue
             assert "import pydub" not in stripped, f"pydub imported at line {i}"
             assert "from pydub" not in stripped, f"pydub imported at line {i}"
@@ -356,11 +339,7 @@ class TestNoPydubInCriticalPath:
         lines = source_file.split("\n")
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
-            if (
-                stripped.startswith("#")
-                or stripped.startswith('"""')
-                or stripped.startswith("'''")
-            ):
+            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
                 continue
             assert "import pydub" not in stripped, f"pydub imported at line {i}"
             assert "from pydub" not in stripped, f"pydub imported at line {i}"

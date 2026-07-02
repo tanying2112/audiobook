@@ -126,9 +126,7 @@ class PromptVersion(BaseModel):
     metrics: PromptVersionMetrics = Field(default_factory=PromptVersionMetrics)
 
     # Additional configuration
-    fallback_to: Optional[str] = Field(
-        default=None
-    )  # Version to fallback to on failure
+    fallback_to: Optional[str] = Field(default=None)  # Version to fallback to on failure
     tags: List[str] = Field(default_factory=list)
 
     # Validation notes
@@ -182,9 +180,7 @@ class PromptExperiment(BaseModel):
 
     @field_validator("variants")
     @classmethod
-    def validate_traffic_sum(
-        cls, variants: List[ExperimentVariant]
-    ) -> List[ExperimentVariant]:
+    def validate_traffic_sum(cls, variants: List[ExperimentVariant]) -> List[ExperimentVariant]:
         total = sum(v.traffic_percentage for v in variants)
         if total != 100:
             raise ValueError(f"Traffic percentages must sum to 100, got {total}")

@@ -18,7 +18,6 @@ from src.audiobook_studio.export.audio_ducking import (
     mix_with_ducking,
 )
 
-
 # ── DuckingSegment ───────────────────────────────────────────────────────────
 
 
@@ -30,9 +29,7 @@ class TestDuckingSegment:
         assert s.label == ""
 
     def test_custom(self):
-        s = DuckingSegment(
-            start_ms=1000, end_ms=3000, type="silence", duck_gain_db=0, label="quiet"
-        )
+        s = DuckingSegment(start_ms=1000, end_ms=3000, type="silence", duck_gain_db=0, label="quiet")
         assert s.type == "silence"
         assert s.duck_gain_db == 0
 
@@ -122,9 +119,7 @@ class TestMixWithDucking:
         mock_detect.return_value = [DuckingSegment(0, 60000, "speech")]
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "out.m4a"
-            result = mix_with_ducking(
-                Path("/speech.mp3"), output, bgm_path="/bgm.mp3"
-            )
+            result = mix_with_ducking(Path("/speech.mp3"), output, bgm_path="/bgm.mp3")
             assert result == output
             mock_run.assert_called_once()
 
@@ -139,9 +134,7 @@ class TestMixWithDucking:
                 subprocess.TimeoutExpired("ffmpeg", 300),
                 MagicMock(returncode=0),
             ]
-            result = mix_with_ducking(
-                Path("/speech.mp3"), output, bgm_path="/bgm.mp3"
-            )
+            result = mix_with_ducking(Path("/speech.mp3"), output, bgm_path="/bgm.mp3")
             assert result == output
             assert mock_run.call_count == 2
 
@@ -153,9 +146,7 @@ class TestMixWithDucking:
         cfg = MixConfig(bgm_volume_db=-15, duck_ratio=6.0)
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "out.m4a"
-            mix_with_ducking(
-                Path("/speech.mp3"), output, bgm_path="/bgm.mp3", config=cfg
-            )
+            mix_with_ducking(Path("/speech.mp3"), output, bgm_path="/bgm.mp3", config=cfg)
             mock_run.assert_called_once()
 
     @patch("src.audiobook_studio.export.audio_ducking.subprocess.run")
@@ -164,9 +155,7 @@ class TestMixWithDucking:
         segments = [DuckingSegment(0, 5000, "speech"), DuckingSegment(5000, 10000, "silence")]
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "out.m4a"
-            mix_with_ducking(
-                Path("/speech.mp3"), output, bgm_path="/bgm.mp3", ducking_segments=segments
-            )
+            mix_with_ducking(Path("/speech.mp3"), output, bgm_path="/bgm.mp3", ducking_segments=segments)
             mock_run.assert_called_once()
 
 
@@ -178,9 +167,7 @@ class TestAddSfx:
     def test_success(self, mock_run):
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "out.m4a"
-            result = add_sfx(
-                Path("/speech.mp3"), Path("/sfx.mp3"), output, insert_at_ms=5000
-            )
+            result = add_sfx(Path("/speech.mp3"), Path("/sfx.mp3"), output, insert_at_ms=5000)
             assert result == output
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]

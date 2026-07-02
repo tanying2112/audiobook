@@ -93,9 +93,7 @@ class Project(Base):
     emotion_snapshots: Mapped[List[EmotionSnapshot]] = relationship(
         "EmotionSnapshot", back_populates="project", cascade="all, delete-orphan"
     )
-    chapters: Mapped[List[Chapter]] = relationship(
-        "Chapter", back_populates="project", cascade="all, delete-orphan"
-    )
+    chapters: Mapped[List[Chapter]] = relationship("Chapter", back_populates="project", cascade="all, delete-orphan")
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
         "FeedbackRecord", back_populates="project", cascade="all, delete-orphan"
     )
@@ -108,6 +106,4 @@ class Project(Base):
     processing_runs: Mapped[List[ProcessingRun]] = relationship(
         "ProcessingRun", back_populates="project", cascade="all, delete-orphan"
     )
-    permissions: Mapped[List[ProjectPermission]] = relationship(
-        "ProjectPermission", back_populates="project"
-    )
+    permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project")

@@ -8,7 +8,9 @@ migrations instead of ``init_db``.
 import os
 
 # Disable mock mode for all pipelines before any pipeline modules are imported
-os.environ["MOCK_LLM"] = "false"
+# unless overridden by environment variable
+if "MOCK_LLM" not in os.environ:
+    os.environ["MOCK_LLM"] = "false"
 
 from contextlib import asynccontextmanager
 
@@ -28,6 +30,7 @@ from .api.harness import router as harness_router
 from .api.llm import router as llm_router
 from .api.mock_router import router as mock_router
 from .api.paragraphs import router as paragraphs_router
+from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
 from .api.publish import router as publish_router
 from .api.qualities import router as qualities_router
@@ -131,6 +134,7 @@ if settings.DEBUG or settings.ENVIRONMENT == "development":
 app.include_router(tts_voices_router, prefix="/api")
 app.include_router(publish_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
+app.include_router(pipeline_router, prefix="/api")
 
 
 # Health check endpoint for CI verification
@@ -155,6 +159,7 @@ def detailed_health_check():
     db_status = "ok"
     try:
         from sqlalchemy import text
+
         db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"error: {e}"
@@ -172,6 +177,7 @@ def detailed_health_check():
 def health_db():
     """Database health check for CI."""
     from sqlalchemy import text
+
     from .database import SessionLocal
 
     db = SessionLocal()

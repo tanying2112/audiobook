@@ -21,9 +21,7 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
         cmd = [sys.executable, script_path, "--mock"]
 
         # 只在不输出到文件时捕获输出
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60  # 60秒超时
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)  # 60秒超时
 
         if result.returncode != 0:
             print(f"警告: 基准脚本 {script_path} 失败:")
@@ -46,9 +44,7 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
             output_file,
         ]
 
-        result = subprocess.run(
-            cmd_with_output, capture_output=True, text=True, timeout=60
-        )
+        result = subprocess.run(cmd_with_output, capture_output=True, text=True, timeout=60)
 
         if result.returncode != 0:
             print(f"警告: 基准脚本 {script_path} 带输出失败:")
@@ -68,9 +64,7 @@ def run_benchmark(script_path: str, mock: bool = True) -> Optional[Dict[str, flo
                 else:
                     # 尝试找到任何数值数据
                     for key, value in data.items():
-                        if isinstance(value, dict) and all(
-                            isinstance(v, (int, float)) for v in value.values()
-                        ):
+                        if isinstance(value, dict) and all(isinstance(v, (int, float)) for v in value.values()):
                             return value
                     return {}
         else:
@@ -99,9 +93,7 @@ def load_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
                 else:
                     # 尝试找到任何数值数据
                     for key, value in data.items():
-                        if isinstance(value, dict) and all(
-                            isinstance(v, (int, float)) for v in value.values()
-                        ):
+                        if isinstance(value, dict) and all(isinstance(v, (int, float)) for v in value.values()):
                             return value
                     return {}
         else:
@@ -150,19 +142,11 @@ def compare_performance(
 
 def main():
     parser = argparse.ArgumentParser(description="Audiobook Studio CI性能检查")
-    parser.add_argument(
-        "--latency-script", default="scripts/bench_latency.py", help="延迟基准脚本路径"
-    )
-    parser.add_argument(
-        "--cost-script", default="scripts/bench_cost.py", help="成本基准脚本路径"
-    )
+    parser.add_argument("--latency-script", default="scripts/bench_latency.py", help="延迟基准脚本路径")
+    parser.add_argument("--cost-script", default="scripts/bench_cost.py", help="成本基准脚本路径")
     parser.add_argument("--baselines-dir", default="baselines", help="基准文件目录")
-    parser.add_argument(
-        "--threshold", type=float, default=110.0, help="性能退化阈值百分比"
-    )
-    parser.add_argument(
-        "--fail-on-error", action="store_true", help="如果任何基准运行失败则退出错误"
-    )
+    parser.add_argument("--threshold", type=float, default=110.0, help="性能退化阈值百分比")
+    parser.add_argument("--fail-on-error", action="store_true", help="如果任何基准运行失败则退出错误")
 
     args = parser.parse_args()
 
@@ -204,15 +188,11 @@ def main():
 
     # 检查延迟基准
     if latency_current:
-        latency_baseline_path = os.path.join(
-            args.baselines_dir, "latency_baseline.json"
-        )
+        latency_baseline_path = os.path.join(args.baselines_dir, "latency_baseline.json")
         latency_baseline = load_baseline(latency_baseline_path)
         if latency_baseline:
             print("正在比较延迟性能...")
-            latency_passed, latency_issues = compare_performance(
-                latency_current, latency_baseline, args.threshold
-            )
+            latency_passed, latency_issues = compare_performance(latency_current, latency_baseline, args.threshold)
             if not latency_passed:
                 all_passed = False
                 print("🚨 延迟性能退化检测:")
@@ -235,9 +215,7 @@ def main():
                 "latency_ms": latency_current,
             }
             os.makedirs(args.baselines_dir, exist_ok=True)
-            with open(
-                os.path.join(args.baselines_dir, "latency_baseline.json"), "w"
-            ) as f:
+            with open(os.path.join(args.baselines_dir, "latency_baseline.json"), "w") as f:
                 json.dump(baseline_data, f, indent=2)
 
     print()
@@ -248,9 +226,7 @@ def main():
         cost_baseline = load_baseline(cost_baseline_path)
         if cost_baseline:
             print("正在比较成本性能...")
-            cost_passed, cost_issues = compare_performance(
-                cost_current, cost_baseline, args.threshold
-            )
+            cost_passed, cost_issues = compare_performance(cost_current, cost_baseline, args.threshold)
             if not cost_passed:
                 all_passed = False
                 print("🚨 成本性能退化检测:")

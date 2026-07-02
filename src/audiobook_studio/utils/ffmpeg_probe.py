@@ -18,9 +18,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-async def _run_ffprobe(
-    args: List[str], timeout: int = 30
-) -> subprocess.CompletedProcess:
+async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
     """Run ffprobe asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
         "ffprobe",
@@ -42,9 +40,7 @@ async def _run_ffprobe(
         raise
 
 
-async def _run_ffmpeg(
-    args: List[str], timeout: int = 60
-) -> subprocess.CompletedProcess:
+async def _run_ffmpeg(args: List[str], timeout: int = 60) -> subprocess.CompletedProcess:
     """Run ffmpeg asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg",
@@ -257,9 +253,7 @@ async def get_audio_info(path: Path) -> dict:
     return json.loads(result.stdout)
 
 
-async def read_pcm_samples(
-    path: Path, sample_rate: int = 16000, channels: int = 1
-) -> np.ndarray:
+async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
     """Read raw PCM samples from audio file using ffmpeg.
 
     Args:
@@ -291,11 +285,7 @@ async def read_pcm_samples(
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")
 
-    raw_bytes = (
-        result.stdout.encode("latin-1")
-        if isinstance(result.stdout, str)
-        else result.stdout
-    )
+    raw_bytes = result.stdout.encode("latin-1") if isinstance(result.stdout, str) else result.stdout
     if not raw_bytes:
         return np.array([], dtype=np.float32)
 
@@ -328,9 +318,7 @@ def get_audio_info_sync(path: Path) -> dict:
     return asyncio.run(get_audio_info(path))
 
 
-def read_pcm_samples_sync(
-    path: Path, sample_rate: int = 16000, channels: int = 1
-) -> np.ndarray:
+def read_pcm_samples_sync(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
     """Synchronous wrapper for read_pcm_samples."""
     return asyncio.run(read_pcm_samples(path, sample_rate, channels))
 

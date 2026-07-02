@@ -23,11 +23,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..feedback.critics.base import CriticEnsembleEvaluator, CriticResult, CriticType
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
-from ..feedback.processor import (
-    analyze_batch,
-    analyze_single_feedback,
-    get_trend_report,
-)
+from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
 from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
 from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
 from ..models.feedback_record import FeedbackRecord
@@ -226,9 +222,7 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
             )
             _iteration_loops[project_id] = loop
         except Exception as e:
-            logger.error(
-                f"Failed to create SelfIterationLoop for project {project_id}: {e}"
-            )
+            logger.error(f"Failed to create SelfIterationLoop for project {project_id}: {e}")
             return None
     return _iteration_loops.get(project_id)
 
@@ -250,12 +244,7 @@ async def get_harness_status(
     the FeedbackRecord table for unprocessed counts.
     """
     # Query unprocessed feedback count from DB
-    unprocessed_count = (
-        db.query(func.count(FeedbackRecord.id))
-        .filter(FeedbackRecord.processed == False)
-        .scalar()
-        or 0
-    )
+    unprocessed_count = db.query(func.count(FeedbackRecord.id)).filter(FeedbackRecord.processed == False).scalar() or 0
 
     # If project_id given, try to get iteration loop status
     if project_id:
@@ -366,10 +355,7 @@ async def get_pattern_heatmap(
             )
         )
 
-    by_stage = {
-        stage: [tag for tag, _ in sc.most_common(5)]
-        for stage, sc in stage_patterns.items()
-    }
+    by_stage = {stage: [tag for tag, _ in sc.most_common(5)] for stage, sc in stage_patterns.items()}
     top_patterns = [tag for tag, _ in tag_counter.most_common(5)]
 
     return PatternHeatmapResponse(
@@ -405,9 +391,7 @@ async def get_prompt_timeline(stage: Optional[str] = None):
 
             # Get file modification time as creation time
             try:
-                mtime = datetime.fromtimestamp(
-                    prompt_file.stat().st_mtime, tz=timezone.utc
-                )
+                mtime = datetime.fromtimestamp(prompt_file.stat().st_mtime, tz=timezone.utc)
                 created_at = mtime.isoformat()
             except OSError:
                 created_at = ""
@@ -418,10 +402,7 @@ async def get_prompt_timeline(stage: Optional[str] = None):
             elif ver < current_ver:
                 # Check rollback log
                 history = _version_store.get_rollback_history(stage=s, limit=50)
-                was_rolled_back = any(
-                    h.get("to_version") == ver and h.get("action") == "rollback"
-                    for h in history
-                )
+                was_rolled_back = any(h.get("to_version") == ver and h.get("action") == "rollback" for h in history)
                 status = "rolled_back" if was_rolled_back else "superseded"
             else:
                 status = "draft"
@@ -616,11 +597,7 @@ async def get_latest_critic_results(
     from ..models.paragraph import Paragraph
 
     # Find the latest paragraph with quality scores
-    query = (
-        db.query(Paragraph)
-        .filter(Paragraph.quality_overall_score.isnot(None))
-        .order_by(Paragraph.id.desc())
-    )
+    query = db.query(Paragraph).filter(Paragraph.quality_overall_score.isnot(None)).order_by(Paragraph.id.desc())
 
     if project_id:
         query = query.filter(Paragraph.project_id == project_id)
@@ -639,31 +616,19 @@ async def get_latest_critic_results(
     verdicts = [
         CriticVerdict(
             critic_type="semantic",
-            verdict=(
-                "accept"
-                if (latest_para.quality_emotion_match or 0) >= 0.7
-                else "needs_revision"
-            ),
+            verdict=("accept" if (latest_para.quality_emotion_match or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_emotion_match or 0.0,
             reasoning=f"Emotion match score: {latest_para.quality_emotion_match or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="structural",
-            verdict=(
-                "accept"
-                if (latest_para.quality_prosody_naturalness or 0) >= 0.7
-                else "needs_revision"
-            ),
+            verdict=("accept" if (latest_para.quality_prosody_naturalness or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_prosody_naturalness or 0.0,
             reasoning=f"Prosody naturalness score: {latest_para.quality_prosody_naturalness or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="objective",
-            verdict=(
-                "accept"
-                if (latest_para.quality_text_audio_alignment or 0) >= 0.7
-                else "needs_revision"
-            ),
+            verdict=("accept" if (latest_para.quality_text_audio_alignment or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_text_audio_alignment or 0.0,
             reasoning=f"Text-audio alignment: {latest_para.quality_text_audio_alignment or 0:.2f}",
         ),
@@ -715,9 +680,7 @@ async def trigger_iteration(
                     f"found {len(result.top_patterns)} patterns"
                 )
             else:
-                logger.info(
-                    "Iteration triggered but no new analysis (no unprocessed feedback)"
-                )
+                logger.info("Iteration triggered but no new analysis (no unprocessed feedback)")
         except Exception as e:
             logger.error(f"Error during triggered iteration: {e}")
 

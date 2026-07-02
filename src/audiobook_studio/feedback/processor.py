@@ -154,37 +154,21 @@ def _infer_pattern_tags(
     if any(kw in rationale_lower for kw in ["对话", "dialogue", "归属", "角色"]):
         tags.append("dialogue_attribution")
     if any(kw in rationale_lower for kw in ["情感", "情绪", "感情"]):
-        if (
-            "强烈" in rationale_lower
-            or "不足" in rationale_lower
-            or "太淡" in rationale_lower
-        ):
+        if "强烈" in rationale_lower or "不足" in rationale_lower or "太淡" in rationale_lower:
             tags.append("emotion_too_mild")
-        elif (
-            "过度" in rationale_lower
-            or "过强" in rationale_lower
-            or "太强" in rationale_lower
-        ):
+        elif "过度" in rationale_lower or "过强" in rationale_lower or "太强" in rationale_lower:
             tags.append("emotion_too_strong")
         else:
             tags.append("emotion_wrong")
     if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker", "旁白"]):
         tags.append("speaker_wrong")
     if any(kw in rationale_lower for kw in ["停顿", "pause", "停顿"]):
-        if (
-            "缺少" in rationale_lower
-            or "加" in rationale_lower
-            or "需要" in rationale_lower
-        ):
+        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
             tags.append("pause_missing")
         else:
             tags.append("pause_too_long")
     if any(kw in rationale_lower for kw in ["音效", "sfx", "场景"]):
-        if (
-            "缺少" in rationale_lower
-            or "加" in rationale_lower
-            or "需要" in rationale_lower
-        ):
+        if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
             tags.append("sfx_missing")
         else:
             tags.append("sfx_wrong")
@@ -197,9 +181,7 @@ def _infer_pattern_tags(
     if stage in ("edit_for_tts", "annotate", "translate"):
         if any(kw in rationale_lower for kw in ["口语", "书面", "自然", "翻译"]):
             llm_text = str(llm_output.get("edited_text", llm_output.get("text", "")))
-            cor_text = str(
-                corrected_output.get("edited_text", corrected_output.get("text", ""))
-            )
+            cor_text = str(corrected_output.get("edited_text", corrected_output.get("text", "")))
             if len(llm_text) > len(cor_text):
                 tags.append("text_colloquial")
             else:
@@ -271,9 +253,7 @@ def analyze_single_feedback(
             analysis_source = "llm"
             logger.debug(f"LLM 语义分析成功: {record.feedback_id} → {pattern_tags}")
         except Exception as e:
-            logger.warning(
-                f"LLM 语义分析失败，降级到关键词匹配: {record.feedback_id} — {e}"
-            )
+            logger.warning(f"LLM 语义分析失败，降级到关键词匹配: {record.feedback_id} — {e}")
             pattern_tags = _infer_pattern_tags(
                 stage=record.stage,
                 llm_output=llm_output,
@@ -402,9 +382,7 @@ def _generate_recommendations(
     # Stage-specific recommendations
     for stage, count in stage_dist.items():
         if count >= 5:
-            recs.append(
-                f"环节 '{stage}' 有 {count} 条反馈，建议优先优化该环节的 Prompt"
-            )
+            recs.append(f"环节 '{stage}' 有 {count} 条反馈，建议优先优化该环节的 Prompt")
 
     return recs
 
@@ -418,9 +396,7 @@ def get_trend_report(
     from datetime import datetime, timedelta, timezone
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    query = db.query(FeedbackRecordModel).filter(
-        FeedbackRecordModel.created_at >= since
-    )
+    query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.created_at >= since)
     if project_id:
         query = query.filter(FeedbackRecordModel.project_id == project_id)
 

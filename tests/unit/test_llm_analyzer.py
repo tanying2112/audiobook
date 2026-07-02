@@ -245,9 +245,7 @@ class TestAnalyzeSuccess:
         assert result.severity == "medium"
         assert result.confidence == 0.85
 
-    def test_analyze_passes_messages_with_system_and_user(
-        self, analyzer, mock_router, sample_feedback_simple
-    ):
+    def test_analyze_passes_messages_with_system_and_user(self, analyzer, mock_router, sample_feedback_simple):
         """analyze 应构建 system + user 消息."""
         mock_result = MagicMock()
         mock_result.output = FeedbackAnalysis()
@@ -285,18 +283,14 @@ class TestAnalyzeSuccess:
 class TestAnalyzeFailure:
     """测试 analyze 方法 LLM 调用失败."""
 
-    def test_analyze_raises_on_llm_failure(
-        self, analyzer, mock_router, sample_feedback
-    ):
+    def test_analyze_raises_on_llm_failure(self, analyzer, mock_router, sample_feedback):
         """LLM 调用失败时应抛出异常（由调用方捕获降级）."""
         mock_router.call.side_effect = Exception("LLM API timeout")
 
         with pytest.raises(Exception, match="LLM API timeout"):
             analyzer.analyze(**sample_feedback)
 
-    def test_analyze_raises_on_invalid_response(
-        self, analyzer, mock_router, sample_feedback
-    ):
+    def test_analyze_raises_on_invalid_response(self, analyzer, mock_router, sample_feedback):
         """LLM 返回无效数据时应抛出异常."""
         mock_router.call.side_effect = ValueError("Invalid response format")
 
@@ -411,9 +405,7 @@ class TestFeedbackAnalysisSchema:
 
     def test_custom_tags_allowed(self):
         """允许 LLM 自定义新标签."""
-        fa = FeedbackAnalysis(
-            pattern_tags=["custom_tag_from_llm", "another_new_pattern"]
-        )
+        fa = FeedbackAnalysis(pattern_tags=["custom_tag_from_llm", "another_new_pattern"])
         assert len(fa.pattern_tags) == 2
 
     def test_serialization(self):

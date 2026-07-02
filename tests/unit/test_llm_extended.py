@@ -256,9 +256,7 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test", api_base="http://custom.api")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5}
-            }
+            mock_result._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -275,9 +273,7 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="gemini-2.0-flash")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {
-                "usage": {"prompt_tokens": 1000, "completion_tokens": 500}
-            }
+            mock_result._raw_response = {"usage": {"prompt_tokens": 1000, "completion_tokens": 500}}
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -293,9 +289,7 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1}
-            }
+            mock_result._raw_response = {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             msgs = [
@@ -312,9 +306,7 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             client._client = MagicMock()
-            client._client.chat.completions.create.side_effect = RuntimeError(
-                "API down"
-            )
+            client._client.chat.completions.create.side_effect = RuntimeError("API down")
             with pytest.raises(RuntimeError, match="API down"):
                 client.call("hello", MagicMock)
 

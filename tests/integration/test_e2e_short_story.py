@@ -39,12 +39,7 @@ def test_e2e_short_story_mock():
     """Run the full pipeline in mock mode with a short story."""
     # 1. Extract text (simulate from a file)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(
-            "第一章  这是一个非常短的测试故事。"
-            "主人公旁白介绍了背景。"
-            "主角说了话。"
-            "故事结束。"
-        )
+        f.write("第一章  这是一个非常短的测试故事。" "主人公旁白介绍了背景。" "主角说了话。" "故事结束。")
         temp_path = f.name
 
     extraction: ExtractionResult = extract_text(
@@ -58,9 +53,7 @@ def test_e2e_short_story_mock():
     assert extraction.language == "zh"
 
     # 2. Analyze structure
-    analysis: BookAnalysisOutput = analyze_structure(
-        extraction.raw_text, title_hint="测试故事", mock_mode=True
-    )
+    analysis: BookAnalysisOutput = analyze_structure(extraction.raw_text, title_hint="测试故事", mock_mode=True)
     assert isinstance(analysis, BookAnalysisOutput)
     assert analysis.book_meta.title
     assert len(analysis.character_voice_map) >= 1
@@ -89,9 +82,7 @@ def test_e2e_short_story_mock():
         mock_mode=True,
     )
     assert isinstance(annotation, ParagraphAnnotation)
-    assert annotation.speaker_canonical_name in [
-        v.canonical_name for v in character_voice_map
-    ]
+    assert annotation.speaker_canonical_name in [v.canonical_name for v in character_voice_map]
     assert annotation.confidence > 0
 
     # 4. Edit for TTS
@@ -129,9 +120,7 @@ def test_e2e_short_story_mock():
     routing_decision = TtsRoutingDecision(
         segment_id="test_ch1_p0",
         engine_choice=segments[0].engine,
-        voice_id=(
-            character_voice_map[0].suggested_voice_id if character_voice_map else "v1"
-        ),
+        voice_id=(character_voice_map[0].suggested_voice_id if character_voice_map else "v1"),
         prosody_overrides={},
         fallback_engine="edge",
         reasoning="mock",

@@ -6,11 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.audiobook_studio.config.loader import (
-    load_contract_versions,
-    load_quality_thresholds,
-    load_rules,
-)
+from src.audiobook_studio.config.loader import load_contract_versions, load_quality_thresholds, load_rules
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -120,10 +116,7 @@ async def update_constitutional_rules(request: RuleUpdateRequest):
     current = _load_rules()
     return ConfigReloadResponse(
         success=True,
-        message=(
-            "Rules update requested (in-memory only). "
-            "To persist, update config/constitutional_rules.yaml"
-        ),
+        message=("Rules update requested (in-memory only). " "To persist, update config/constitutional_rules.yaml"),
         config=current,
     )
 
@@ -134,9 +127,6 @@ async def update_quality_thresholds(request: ThresholdUpdateRequest):
     current = load_quality_thresholds()
     return ConfigReloadResponse(
         success=True,
-        message=(
-            "Thresholds update requested (in-memory only). "
-            "To persist, update config/quality_thresholds.yaml"
-        ),
+        message=("Thresholds update requested (in-memory only). " "To persist, update config/quality_thresholds.yaml"),
         config=current,
     )

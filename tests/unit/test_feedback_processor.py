@@ -254,9 +254,7 @@ class TestAnalyzeBatch:
             "src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
             return_value=[mock_record1, mock_record2],
         ):
-            with patch(
-                "src.audiobook_studio.feedback.collector.mark_feedback_processed"
-            ) as mock_mark:
+            with patch("src.audiobook_studio.feedback.collector.mark_feedback_processed") as mock_mark:
                 result = analyze_batch(mock_db, limit=10)
 
                 assert result.total_analyzed == 2

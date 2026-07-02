@@ -24,9 +24,7 @@ class TestPublishSchemas:
     def test_audiobookshelf_config(self):
         from src.audiobook_studio.api.publish import AudiobookshelfConfig
 
-        cfg = AudiobookshelfConfig(
-            server_url="http://localhost:13378", api_key="key123"
-        )
+        cfg = AudiobookshelfConfig(server_url="http://localhost:13378", api_key="key123")
         assert cfg.library_id is None
 
     def test_podcast_rss_config(self):
@@ -52,9 +50,7 @@ class TestPublishSchemas:
     def test_publish_job_out_defaults(self):
         from src.audiobook_studio.api.publish import PublishJobOut
 
-        job = PublishJobOut(
-            job_id="j1", project_id=1, destinations=["audiobookshelf"], created_at="now"
-        )
+        job = PublishJobOut(job_id="j1", project_id=1, destinations=["audiobookshelf"], created_at="now")
         assert job.status == "pending"
         assert job.error is None
         assert job.completed_at is None
@@ -106,9 +102,7 @@ class TestPublishEndpoint:
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = (
-            self._make_project(status="processing")
-        )
+        db.query.return_value.filter.return_value.first.return_value = self._make_project(status="processing")
         req = PublishRequest(destinations=["audiobookshelf"])
 
         with pytest.raises(HTTPException) as exc_info:
@@ -128,9 +122,7 @@ class TestPublishEndpoint:
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = (
-            self._make_project()
-        )
+        db.query.return_value.filter.return_value.first.return_value = self._make_project()
         req = PublishRequest(destinations=["invalid_service"])
 
         with pytest.raises(HTTPException) as exc_info:
@@ -145,16 +137,10 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_valid_publish_creates_job(self):
-        from src.audiobook_studio.api.publish import (
-            PublishRequest,
-            _publish_jobs,
-            publish_project,
-        )
+        from src.audiobook_studio.api.publish import PublishRequest, _publish_jobs, publish_project
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = (
-            self._make_project()
-        )
+        db.query.return_value.filter.return_value.first.return_value = self._make_project()
         req = PublishRequest(destinations=["audiobookshelf", "podcast_rss"])
         bg = MagicMock()
 
@@ -184,9 +170,7 @@ class TestPublishEndpoint:
         )
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = (
-            self._make_project()
-        )
+        db.query.return_value.filter.return_value.first.return_value = self._make_project()
         ab_config = AudiobookshelfConfig(server_url="http://abs:13378", api_key="key")
         req = PublishRequest(
             destinations=["audiobookshelf"],
@@ -335,11 +319,7 @@ class TestPublishBackground:
         import asyncio
 
         # Should not raise — just logs error and returns
-        asyncio.run(
-            _publish_background(
-                job_id="nonexistent", project_id=1, destinations=["audiobookshelf"]
-            )
-        )
+        asyncio.run(_publish_background(job_id="nonexistent", project_id=1, destinations=["audiobookshelf"]))
 
     @pytest.mark.asyncio
     async def test_audiobookshelf_success(self):
@@ -359,9 +339,7 @@ class TestPublishBackground:
             new_callable=AsyncMock,
             return_value={"book_url": "http://abs/1"},
         ):
-            await _publish_background(
-                job_id="j1", project_id=1, destinations=["audiobookshelf"]
-            )
+            await _publish_background(job_id="j1", project_id=1, destinations=["audiobookshelf"])
 
         job = _publish_jobs["j1"]
         assert job["status"] == "completed"
@@ -387,9 +365,7 @@ class TestPublishBackground:
             new_callable=AsyncMock,
             side_effect=ValueError("Connection refused"),
         ):
-            await _publish_background(
-                job_id="j2", project_id=2, destinations=["audiobookshelf"]
-            )
+            await _publish_background(job_id="j2", project_id=2, destinations=["audiobookshelf"])
 
         job = _publish_jobs["j2"]
         assert job["status"] == "failed"
@@ -414,9 +390,7 @@ class TestPublishBackground:
             new_callable=AsyncMock,
             return_value={"rss_url": "http://x/feed.xml", "episode_count": 5},
         ):
-            await _publish_background(
-                job_id="j3", project_id=3, destinations=["podcast_rss"]
-            )
+            await _publish_background(job_id="j3", project_id=3, destinations=["podcast_rss"])
 
         job = _publish_jobs["j3"]
         assert job["status"] == "completed"
@@ -541,9 +515,7 @@ class TestPodcastRSSFeedEndpoint:
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = project
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
-            segments
-        )
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = segments
 
         import asyncio
 
@@ -665,15 +637,11 @@ class TestGeneratePodcastRss:
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
-            mock_segments
-        )
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_segments
 
         AudioSegment.index = MagicMock(name="index_col")
         try:
-            with patch(
-                "src.audiobook_studio.database.SessionLocal", return_value=mock_db
-            ):
+            with patch("src.audiobook_studio.database.SessionLocal", return_value=mock_db):
                 result = await _generate_podcast_rss(project_id=5, config={})
         finally:
             try:

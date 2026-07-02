@@ -14,7 +14,7 @@ mock_st_instance = MagicMock()
 # Mock the encode method to return two embedding vectors
 mock_st_instance.encode.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
 mock_sentence_transformers.SentenceTransformer.return_value = mock_st_instance
-sys.modules['sentence_transformers'] = mock_sentence_transformers
+sys.modules["sentence_transformers"] = mock_sentence_transformers
 
 from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
@@ -46,9 +46,7 @@ class TestSemanticCoherenceChecker:
         }
         assert checker.config == expected_config
         # Check that the SentenceTransformer was called to create the model
-        mock_sentence_transformers.SentenceTransformer.assert_called_once_with(
-            "paraphrase-multilingual-MiniLM-L12-v2"
-        )
+        mock_sentence_transformers.SentenceTransformer.assert_called_once_with("paraphrase-multilingual-MiniLM-L12-v2")
         # Check that the model was set on the instance
         assert checker.model == mock_st_instance
 

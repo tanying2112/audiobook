@@ -50,11 +50,10 @@ class TestTranslateAndDubPipeline:
 
     def test_pipeline_initialization_defaults(self):
         # Test with defaults (no mocks)
-        with patch(
-            "src.audiobook_studio.pipeline.translate.VoiceCloningManager"
-        ) as mock_vc, patch(
-            "src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"
-        ) as mock_ap:
+        with (
+            patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager") as mock_vc,
+            patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline") as mock_ap,
+        ):
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
 
@@ -190,27 +189,19 @@ class TestTranslateAndDubPipeline:
     def test_translate_text(self, pipeline):
         """Test text translation."""
         # Same language - should return original
-        result = pipeline._translate_text(
-            "测试文本", "zh-CN", "zh-CN", "旁白", "neutral"
-        )
+        result = pipeline._translate_text("测试文本", "zh-CN", "zh-CN", "旁白", "neutral")
         assert result == "测试文本"
 
         # Different language - should translate
-        result = pipeline._translate_text(
-            "测试文本", "zh-CN", "en-US", "旁白", "neutral"
-        )
+        result = pipeline._translate_text("测试文本", "zh-CN", "en-US", "旁白", "neutral")
         assert "[English translation of:" in result
         assert "测试文本" in result
 
         # Other target languages
-        result = pipeline._translate_text(
-            "测试文本", "zh-CN", "es-ES", "旁白", "neutral"
-        )
+        result = pipeline._translate_text("测试文本", "zh-CN", "es-ES", "旁白", "neutral")
         assert "[Español translation of:" in result
 
-        result = pipeline._translate_text(
-            "测试文本", "zh-CN", "ja-JP", "旁白", "neutral"
-        )
+        result = pipeline._translate_text("测试文本", "zh-CN", "ja-JP", "旁白", "neutral")
         assert "[日本語 translation of:" in result
 
     def test_apply_voice_characteristics(self, pipeline):
@@ -310,9 +301,7 @@ class TestTranslateAndDubPipeline:
         }
 
         # Longer text should produce longer duration
-        dubbed_short = pipeline._synthesize_dubbed_segment(
-            original, "Short.", "en-US", voice_params
-        )
+        dubbed_short = pipeline._synthesize_dubbed_segment(original, "Short.", "en-US", voice_params)
         dubbed_long = pipeline._synthesize_dubbed_segment(
             original,
             "This is a much longer text that should take more time to speak.",
@@ -341,9 +330,7 @@ class TestTranslateAndDubPipeline:
             "volume": 1.0,
         }
 
-        dubbed = pipeline._synthesize_dubbed_segment(
-            original, "A", "en-US", voice_params
-        )
+        dubbed = pipeline._synthesize_dubbed_segment(original, "A", "en-US", voice_params)
 
         # Minimum duration should be 1000ms
         assert dubbed.duration_ms >= 1000
@@ -354,11 +341,10 @@ class TestTranslateAndDubPipelineEdgeCases:
 
     @pytest.fixture
     def pipeline(self):
-        with patch(
-            "src.audiobook_studio.pipeline.translate.VoiceCloningManager"
-        ) as mock_vc, patch(
-            "src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"
-        ) as mock_ap:
+        with (
+            patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager") as mock_vc,
+            patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline") as mock_ap,
+        ):
             mock_vc.return_value = MagicMock()
             mock_ap.return_value = MagicMock()
             return TranslateAndDubPipeline()

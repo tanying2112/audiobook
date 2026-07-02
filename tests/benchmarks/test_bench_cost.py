@@ -100,9 +100,7 @@ class TestLoadBaseline:
     def test_load_baseline_valid_file(self, tmp_path):
         """Test loading valid baseline file."""
         baseline_file = tmp_path / "baseline.json"
-        baseline_file.write_text(
-            json.dumps({"cost_usd": {"extract": 0.001, "analyze": 0.005}})
-        )
+        baseline_file.write_text(json.dumps({"cost_usd": {"extract": 0.001, "analyze": 0.005}}))
 
         result = load_baseline(str(baseline_file))
         assert result == {"extract": 0.001, "analyze": 0.005}

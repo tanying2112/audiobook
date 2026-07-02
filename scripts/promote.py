@@ -69,21 +69,11 @@ Examples:
 
     # evaluate command
     eval_parser = subparsers.add_parser("evaluate", help="Evaluate promotion gate")
-    eval_parser.add_argument(
-        "--stage", type=str, required=True, help="Pipeline stage name"
-    )
-    eval_parser.add_argument(
-        "--format", type=float, required=True, help="Format compliance rate (0-1)"
-    )
-    eval_parser.add_argument(
-        "--golden", type=float, required=True, help="Golden dataset pass rate (0-1)"
-    )
-    eval_parser.add_argument(
-        "--quality", type=float, required=True, help="Quality score ratio (e.g., 1.03)"
-    )
-    eval_parser.add_argument(
-        "--human", type=float, required=True, help="Human preference score (0-1)"
-    )
+    eval_parser.add_argument("--stage", type=str, required=True, help="Pipeline stage name")
+    eval_parser.add_argument("--format", type=float, required=True, help="Format compliance rate (0-1)")
+    eval_parser.add_argument("--golden", type=float, required=True, help="Golden dataset pass rate (0-1)")
+    eval_parser.add_argument("--quality", type=float, required=True, help="Quality score ratio (e.g., 1.03)")
+    eval_parser.add_argument("--human", type=float, required=True, help="Human preference score (0-1)")
     eval_parser.add_argument("--threshold-format", type=float, default=0.99)
     eval_parser.add_argument("--threshold-golden", type=float, default=0.95)
     eval_parser.add_argument("--threshold-quality", type=float, default=1.02)
@@ -93,12 +83,8 @@ Examples:
     canary_start = subparsers.add_parser("canary-start", help="Start canary release")
     canary_start.add_argument("--stage", type=str, required=True)
     canary_start.add_argument("--version", type=str, required=True)
-    canary_start.add_argument(
-        "--baseline", type=float, required=True, help="Baseline quality score"
-    )
-    canary_start.add_argument(
-        "--traffic", type=float, default=0.1, help="Traffic percentage (0-1)"
-    )
+    canary_start.add_argument("--baseline", type=float, required=True, help="Baseline quality score")
+    canary_start.add_argument("--traffic", type=float, default=0.1, help="Traffic percentage (0-1)")
     canary_start.add_argument("--min-samples", type=int, default=100)
     canary_start.add_argument("--rollback-threshold", type=float, default=0.95)
 
@@ -107,20 +93,12 @@ Examples:
     canary_record.add_argument("--stage", type=str, required=True)
     canary_record.add_argument("--version", type=str, required=True)
     canary_record.add_argument("--samples", type=int, required=True)
-    canary_record.add_argument(
-        "--quality", type=float, required=True, help="Current average quality"
-    )
-    canary_record.add_argument(
-        "--baseline", type=float, required=True, help="Baseline quality"
-    )
-    canary_record.add_argument(
-        "--errors", type=float, default=0.0, help="Error rate (0-1)"
-    )
+    canary_record.add_argument("--quality", type=float, required=True, help="Current average quality")
+    canary_record.add_argument("--baseline", type=float, required=True, help="Baseline quality")
+    canary_record.add_argument("--errors", type=float, default=0.0, help="Error rate (0-1)")
 
     # canary complete command
-    canary_complete = subparsers.add_parser(
-        "canary-complete", help="Complete canary, promote to 100%"
-    )
+    canary_complete = subparsers.add_parser("canary-complete", help="Complete canary, promote to 100%")
     canary_complete.add_argument("--stage", type=str, required=True)
     canary_complete.add_argument("--version", type=str, required=True)
 
@@ -133,13 +111,9 @@ Examples:
     subparsers.add_parser("canary-list", help="List all active canaries")
 
     # rollback command
-    rollback_parser = subparsers.add_parser(
-        "rollback", help="Rollback to previous version"
-    )
+    rollback_parser = subparsers.add_parser("rollback", help="Rollback to previous version")
     rollback_parser.add_argument("--stage", type=str, required=True)
-    rollback_parser.add_argument(
-        "--target", type=int, help="Target version (default: previous)"
-    )
+    rollback_parser.add_argument("--target", type=int, help="Target version (default: previous)")
 
     # status command
     subparsers.add_parser("status", help="Show current versions")
@@ -218,9 +192,7 @@ def cmd_canary_record(args):
         timestamp=datetime.now(timezone.utc),
     )
     canary.record_metrics(args.stage, args.version, metrics)
-    print(
-        f"Recorded metrics for {args.stage}-{args.version}: quality_ratio={metrics.quality_ratio:.4f}"
-    )
+    print(f"Recorded metrics for {args.stage}-{args.version}: quality_ratio={metrics.quality_ratio:.4f}")
 
     # Check if rollback was triggered
     status = canary.get_canary_status(args.stage, args.version)
@@ -307,11 +279,7 @@ def cmd_demo(args):
     print("Promotion Gate Criteria:")
     status = gate.get_status()
     for criterion, threshold in status["thresholds"].items():
-        print(
-            f"  {criterion}: ≥ {threshold:.0%}"
-            if "ratio" not in criterion
-            else f"  {criterion}: ≥ {threshold:.2f}x"
-        )
+        print(f"  {criterion}: ≥ {threshold:.0%}" if "ratio" not in criterion else f"  {criterion}: ≥ {threshold:.2f}x")
     print()
 
     # 测试案例1: 所有指标达标

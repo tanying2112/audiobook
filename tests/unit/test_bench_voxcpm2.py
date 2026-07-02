@@ -227,10 +227,7 @@ class TestVoxCPM2Projection:
 
     def test_int8_throughput_higher_than_fp16(self, sample_projection):
         """INT8 批量吞吐量应高于 FP16。"""
-        assert (
-            sample_projection.int8_throughput_cps_a100
-            > sample_projection.fp16_throughput_cps_a100
-        )
+        assert sample_projection.int8_throughput_cps_a100 > sample_projection.fp16_throughput_cps_a100
 
     def test_notes_not_empty(self, sample_projection):
         assert len(sample_projection.notes) > 0
@@ -281,29 +278,21 @@ class TestEdgeTtsBenchmark:
 
 
 class TestBuildSummary:
-    def test_summary_has_hardware_assessment(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
+    def test_summary_has_hardware_assessment(self, sample_hw_low, sample_projection, sample_tts_results):
         s = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         assert "hardware_assessment" in s
         assert s["hardware_assessment"]["vram_gb"] == 4.0
 
-    def test_summary_has_vram_footprint(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
+    def test_summary_has_vram_footprint(self, sample_hw_low, sample_projection, sample_tts_results):
         s = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         assert "voxcpm2_vram_footprint" in s
         assert s["voxcpm2_vram_footprint"]["fp16_gb"] == sample_projection.fp16_vram_gb
 
-    def test_summary_has_rtf_projections(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
+    def test_summary_has_rtf_projections(self, sample_hw_low, sample_projection, sample_tts_results):
         s = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         assert "voxcpm2_rtf_projections" in s
 
-    def test_summary_edge_tts_avg_rtf(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
+    def test_summary_edge_tts_avg_rtf(self, sample_hw_low, sample_projection, sample_tts_results):
         s = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         avg_rtf = s["baseline_edge_tts"]["avg_rtf"]
         assert avg_rtf is not None
@@ -330,48 +319,32 @@ class TestBuildRecommendations:
 
 
 class TestAcceptanceCriteria:
-    def test_all_criteria_met_with_valid_data(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
-        criteria = build_acceptance_criteria(
-            sample_hw_low, sample_projection, sample_tts_results
-        )
+    def test_all_criteria_met_with_valid_data(self, sample_hw_low, sample_projection, sample_tts_results):
+        criteria = build_acceptance_criteria(sample_hw_low, sample_projection, sample_tts_results)
         assert criteria["vram_footprint_documented"] is True
         assert criteria["rtf_benchmarked"] is True
         assert criteria["batch_throughput_documented"] is True
         assert criteria["hardware_assessment_complete"] is True
         assert criteria["report_generated"] is True
 
-    def test_baseline_tts_benchmarked_with_success(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ):
-        criteria = build_acceptance_criteria(
-            sample_hw_low, sample_projection, sample_tts_results
-        )
+    def test_baseline_tts_benchmarked_with_success(self, sample_hw_low, sample_projection, sample_tts_results):
+        criteria = build_acceptance_criteria(sample_hw_low, sample_projection, sample_tts_results)
         assert criteria["baseline_tts_benchmarked"] is True
 
     def test_baseline_tts_false_all_failed(self, sample_hw_low, sample_projection):
-        failed_results = [
-            TtsBenchmarkResult(engine="edge_tts", success=False, error="timeout")
-        ]
-        criteria = build_acceptance_criteria(
-            sample_hw_low, sample_projection, failed_results
-        )
+        failed_results = [TtsBenchmarkResult(engine="edge_tts", success=False, error="timeout")]
+        criteria = build_acceptance_criteria(sample_hw_low, sample_projection, failed_results)
         assert criteria["baseline_tts_benchmarked"] is False
 
 
 class TestMarkdownReport:
     @pytest.fixture()
-    def full_report(
-        self, sample_hw_low, sample_projection, sample_tts_results
-    ) -> BenchmarkReport:
+    def full_report(self, sample_hw_low, sample_projection, sample_tts_results) -> BenchmarkReport:
         import datetime
 
         summary = build_summary(sample_hw_low, sample_projection, sample_tts_results)
         recs = build_recommendations(sample_hw_low, sample_projection)
-        criteria = build_acceptance_criteria(
-            sample_hw_low, sample_projection, sample_tts_results
-        )
+        criteria = build_acceptance_criteria(sample_hw_low, sample_projection, sample_tts_results)
         return BenchmarkReport(
             timestamp=datetime.datetime.now().isoformat(),
             hardware=sample_hw_low,

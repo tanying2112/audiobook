@@ -127,9 +127,7 @@ class CheckpointManager:
 
     # ── Paragraph-level tracking ───────────────────────────────────────────
 
-    def are_paragraphs_done(
-        self, chapter_index: int, paragraph_indices: Set[int]
-    ) -> bool:
+    def are_paragraphs_done(self, chapter_index: int, paragraph_indices: Set[int]) -> bool:
         """Check if all given paragraphs have been processed."""
         done = set(self._chapter(chapter_index).get("paragraphs_done", []))
         return paragraph_indices.issubset(done)
@@ -143,9 +141,7 @@ class CheckpointManager:
             self._dirty = True
             self._flush()
 
-    def mark_paragraphs_done(
-        self, chapter_index: int, paragraph_indices: List[int]
-    ) -> None:
+    def mark_paragraphs_done(self, chapter_index: int, paragraph_indices: List[int]) -> None:
         """Mark multiple paragraphs as processed (batch)."""
         ch = self._chapter(chapter_index)
         pd_set: Set[int] = set(ch.get("paragraphs_done", []))

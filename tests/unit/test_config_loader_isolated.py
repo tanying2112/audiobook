@@ -52,9 +52,7 @@ dimensions:
     def test_quality_thresholds_defaults_for_missing(self, loader, tmp_path):
         """Test missing fields get Pydantic defaults."""
         config_file = tmp_path / "thresholds.yaml"
-        config_file.write_text(
-            "overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8"
-        )
+        config_file.write_text("overall:\n  min_acceptable_score: 0.8\n", encoding="utf-8")
 
         result = loader.load_quality_thresholds(str(config_file))
         assert result["overall"]["excellent_score"] == 0.9  # default

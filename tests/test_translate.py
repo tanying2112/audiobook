@@ -71,17 +71,13 @@ class TestTranslateAndDubPipeline:
     def test_translate_text_same_language(self):
         """Test _translate_text returns same text when languages match."""
         text = "测试文本"
-        result = self.pipeline._translate_text(
-            text, "zh-CN", "zh-CN", "character1", "neutral"
-        )
+        result = self.pipeline._translate_text(text, "zh-CN", "zh-CN", "character1", "neutral")
         assert result == text
 
     def test_translate_text_different_language(self):
         """Test _translate_text adds translation prefix for different languages."""
         text = "测试文本"
-        result = self.pipeline._translate_text(
-            text, "zh-CN", "en-US", "character1", "neutral"
-        )
+        result = self.pipeline._translate_text(text, "zh-CN", "en-US", "character1", "neutral")
         assert "[English translation of: 测试文本]" in result
 
     def test_translate_text_various_languages(self):
@@ -92,9 +88,7 @@ class TestTranslateAndDubPipeline:
             ("es-ES", "Español"),
             ("ja-JP", "日本語"),
         ]:
-            result = self.pipeline._translate_text(
-                text, "zh-CN", target_lang, "char", "neutral"
-            )
+            result = self.pipeline._translate_text(text, "zh-CN", target_lang, "char", "neutral")
             assert f"[{expected_name} translation of:" in result
 
     def test_apply_voice_characteristics(self):
@@ -183,9 +177,7 @@ class TestTranslateAndDubPipeline:
         target_language = "en-US"
         voice_params = {"pitch_shift": 0.0, "speed_rate": 1.0, "volume": 1.0}
 
-        result = self.pipeline._synthesize_dubbed_segment(
-            original, translated_text, target_language, voice_params
-        )
+        result = self.pipeline._synthesize_dubbed_segment(original, translated_text, target_language, voice_params)
 
         assert isinstance(result, AudioSegment)
         assert result.project_id == 1
@@ -198,9 +190,7 @@ class TestTranslateAndDubPipeline:
     def test_translate_and_dub_empty_segments(self):
         """Test translate_and_dub with empty segments list."""
         segments = []
-        result_segments, report = self.pipeline.translate_and_dub(
-            segments, "en-US", "Test Book", "Test Author"
-        )
+        result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert result_segments == []
         assert report["source_segments"] == 0
         assert report["successful_translations"] == 0
@@ -224,9 +214,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             side_effect=ImportError,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert len(result_segments) == 1
         assert report["source_segments"] == 1
         assert report["successful_translations"] == 1
@@ -254,9 +242,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             side_effect=ImportError,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert len(result_segments) == 3
         assert report["source_segments"] == 3
         assert report["successful_translations"] == 3
@@ -292,9 +278,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             side_effect=ImportError,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert len(result_segments) == 1
         assert report["successful_translations"] == 1
 
@@ -323,9 +307,7 @@ class TestTranslateAndDubPipeline:
                 "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
                 side_effect=ImportError,
             ):
-                result_segments, report = self.pipeline.translate_and_dub(
-                    segments, "en-US", "Test Book", "Test Author"
-                )
+                result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         # Should still return a segment (failed one)
         assert len(result_segments) == 1
         assert report["failed_translations"] == 1
@@ -352,9 +334,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             side_effect=ImportError,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert len(result_segments) == 2
         # Semantic coherence check should be skipped (ImportError caught)
         assert report["semantic_coherence_score"] is None
@@ -391,9 +371,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             return_value=mock_checker,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert report["semantic_coherence_score"] == 0.95
         assert report["emotional_continuity_passed"] is True
         assert report["continuity_issues"] == []
@@ -427,9 +405,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             return_value=mock_checker,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         assert report["semantic_coherence_score"] == 0.45
         assert report["emotional_continuity_passed"] is False
         assert len(report["continuity_issues"]) == 1
@@ -459,9 +435,7 @@ class TestTranslateAndDubPipeline:
             "src.audiobook_studio.quality.semantic_coherence.SemanticCoherenceChecker",
             return_value=mock_checker,
         ):
-            result_segments, report = self.pipeline.translate_and_dub(
-                segments, "en-US", "Test Book", "Test Author"
-            )
+            result_segments, report = self.pipeline.translate_and_dub(segments, "en-US", "Test Book", "Test Author")
         # Should still complete but with warning
         assert "情感连贯性检查失败" in str(report["warnings"])
 

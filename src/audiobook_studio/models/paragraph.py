@@ -70,25 +70,17 @@ class Paragraph(Base):
     # 环节⑤路由决策
     routing_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    routing_prosody_overrides: Mapped[Optional[dict]] = mapped_column(
-        JSON, nullable=True
-    )
+    routing_prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     routing_fallback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     routing_estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
     routing_estimated_duration: Mapped[int] = mapped_column(Integer, default=0)
 
     # 环节⑥质检
-    quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_emotion_match: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    quality_prosody_naturalness: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    quality_text_audio_alignment: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    quality_prosody_naturalness: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    quality_text_audio_alignment: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_issues: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     quality_fix_suggestions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
@@ -111,12 +103,8 @@ class Paragraph(Base):
         uselist=False,
         foreign_keys="AudioSegment.paragraph_id",
     )
-    tts_edits: Mapped[List[TTSEdit]] = relationship(
-        "TTSEdit", back_populates="paragraph", cascade="all, delete-orphan"
-    )
-    routings: Mapped[List[Routing]] = relationship(
-        "Routing", back_populates="paragraph", cascade="all, delete-orphan"
-    )
+    tts_edits: Mapped[List[TTSEdit]] = relationship("TTSEdit", back_populates="paragraph", cascade="all, delete-orphan")
+    routings: Mapped[List[Routing]] = relationship("Routing", back_populates="paragraph", cascade="all, delete-orphan")
     quality_records: Mapped[List[Quality]] = relationship(
         "Quality", back_populates="paragraph", cascade="all, delete-orphan"
     )

@@ -24,11 +24,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from ..models import FeedbackRecord as FeedbackRecordModel
-from ..pipeline.feedback_collector import (
-    FeedbackCollector,
-    StageCapture,
-    create_feedback_collector,
-)
+from ..pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from ..storage import project_dir
 from .ab_test import build_ab_samples, run_ab_test
 from .auto_processor import FeedbackAutoProcessor, create_auto_processor
@@ -39,12 +35,7 @@ from .collector import (
     list_unprocessed_feedback,
     mark_feedback_processed,
 )
-from .pr_automation import (
-    MergeResult,
-    PRResult,
-    create_prompt_upgrade_pr,
-    monitor_and_merge_pr,
-)
+from .pr_automation import MergeResult, PRResult, create_prompt_upgrade_pr, monitor_and_merge_pr
 from .processor import AggregateAnalysis, analyze_batch, analyze_single_feedback
 from .promotion_gate import PromotionVerdict, _golden_to_pipeline_stage
 from .promotion_gate import _load_golden_examples
@@ -178,10 +169,7 @@ class SelfIterationLoop:
             try:
                 # Check if auto processor has new analysis
                 status = self.auto_processor.get_status()
-                if (
-                    status["unprocessed_feedback_count"]
-                    >= self.auto_processor.min_feedback_count
-                ):
+                if status["unprocessed_feedback_count"] >= self.auto_processor.min_feedback_count:
                     # Trigger analysis manually if auto didn't
                     result = self.auto_processor.trigger_now()
                     if result and result != self._last_analysis_result:
@@ -194,9 +182,7 @@ class SelfIterationLoop:
 
     def _handle_new_analysis(self, analysis: AggregateAnalysis) -> None:
         """Process new analysis results: upgrade prompts, validate, promote."""
-        logger.info(
-            f"New analysis received: {analysis.total_analyzed} records, {len(analysis.top_patterns)} patterns"
-        )
+        logger.info(f"New analysis received: {analysis.total_analyzed} records, {len(analysis.top_patterns)} patterns")
 
         # 1. Upgrade prompts based on patterns
         self._upgraded_prompts = batch_upgrade(analysis, min_pattern_threshold=3)
@@ -214,9 +200,7 @@ class SelfIterationLoop:
             )
             return
 
-        logger.info(
-            f"Upgraded prompts for stages: {list(self._upgraded_prompts.keys())}"
-        )
+        logger.info(f"Upgraded prompts for stages: {list(self._upgraded_prompts.keys())}")
 
         # 2. Run canary validation with upgraded prompts
         validation_results = self._run_canary_validation()
@@ -255,27 +239,20 @@ class SelfIterationLoop:
             )
 
             if promotion_result.passed:
-                logger.info(
-                    f"✅ Promoted new prompt for {stage}: {prompt_path} (v{old_version} → v{new_version})"
-                )
+                logger.info(f"✅ Promoted new prompt for {stage}: {prompt_path} (v{old_version} → v{new_version})")
                 promoted_any = True
 
                 # 4. Run A/B test for promoted prompts
                 ab_test_result = None
                 try:
-                    ab_test_result = self._run_ab_test_for_stage(
-                        stage, old_version, new_version
-                    )
+                    ab_test_result = self._run_ab_test_for_stage(stage, old_version, new_version)
                 except Exception as e:
                     logger.error(f"Failed to run A/B test for {stage}: {e}")
 
                 # 5. Create PR if A/B test confirms promotion and auto PR is enabled
                 if self.enable_auto_pr and ab_test_result:
                     # Check if A/B test confirms (significant and B wins)
-                    if (
-                        ab_test_result.is_significant
-                        and ab_test_result.b_wins > ab_test_result.a_wins
-                    ):
+                    if ab_test_result.is_significant and ab_test_result.b_wins > ab_test_result.a_wins:
                         try:
                             pr_result = self._create_pr_for_promotion(
                                 stage=stage,
@@ -300,9 +277,7 @@ class SelfIterationLoop:
 
                                 # 6. Auto-merge if enabled
                                 if self.enable_auto_merge and pr_result.pr_number:
-                                    logger.info(
-                                        f"Waiting for CI and auto-merging PR #{pr_result.pr_number}..."
-                                    )
+                                    logger.info(f"Waiting for CI and auto-merging PR #{pr_result.pr_number}...")
                                     merge_result = monitor_and_merge_pr(
                                         pr_number=pr_result.pr_number,
                                         timeout_seconds=self.ci_timeout_seconds,
@@ -318,21 +293,13 @@ class SelfIterationLoop:
                                             f"❌ Auto-merge failed for PR #{pr_result.pr_number}: {merge_result.error}"
                                         )
                             else:
-                                logger.warning(
-                                    f"❌ Failed to create PR for {stage} v{new_version}: {pr_result.error}"
-                                )
+                                logger.warning(f"❌ Failed to create PR for {stage} v{new_version}: {pr_result.error}")
                         except Exception as e:
-                            logger.error(
-                                f"Failed to create PR for {stage} v{new_version}: {e}"
-                            )
+                            logger.error(f"Failed to create PR for {stage} v{new_version}: {e}")
                     else:
-                        logger.info(
-                            f"A/B test did not confirm promotion for {stage}, skipping PR creation"
-                        )
+                        logger.info(f"A/B test did not confirm promotion for {stage}, skipping PR creation")
             else:
-                logger.warning(
-                    f"❌ Not promoted for {stage}: {promotion_result.summary}"
-                )
+                logger.warning(f"❌ Not promoted for {stage}: {promotion_result.summary}")
 
         # Log iteration summary
         health = get_free_tier_health()
@@ -369,9 +336,7 @@ class SelfIterationLoop:
             # Get golden examples for this stage
             golden_examples = _load_golden_examples(stage)
             if not golden_examples:
-                logger.warning(
-                    f"No golden dataset found for {stage}, using mock validation"
-                )
+                logger.warning(f"No golden dataset found for {stage}, using mock validation")
                 results[stage] = self._mock_validation_result(health)
                 continue
 
@@ -400,18 +365,14 @@ class SelfIterationLoop:
 
                 try:
                     # Run with NEW prompt version
-                    new_output = _run_stage_with_prompt_version(
-                        pipeline_stage, new_version, input_data, mock_mode=True
-                    )
+                    new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
                     if hasattr(new_output, "model_dump"):
                         new_output = new_output.model_dump()
                     elif hasattr(new_output, "dict"):
                         new_output = new_output.dict()
 
                     # Run with OLD prompt version (baseline)
-                    old_output = _run_stage_with_prompt_version(
-                        pipeline_stage, old_version, input_data, mock_mode=True
-                    )
+                    old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=True)
                     if hasattr(old_output, "model_dump"):
                         old_output = old_output.model_dump()
                     elif hasattr(old_output, "dict"):
@@ -421,9 +382,7 @@ class SelfIterationLoop:
                     from .promotion_gate import _compute_output_similarity
 
                     similarity = _compute_output_similarity(new_output, expected_output)
-                    baseline_similarity = _compute_output_similarity(
-                        old_output, expected_output
-                    )
+                    baseline_similarity = _compute_output_similarity(old_output, expected_output)
 
                     # Quality improvement: new should be >= baseline * 1.02
                     if baseline_similarity > 0:
@@ -453,9 +412,7 @@ class SelfIterationLoop:
                         )
 
                 except Exception as e:
-                    logger.warning(
-                        f"Canary validation failed for {stage} example {i}: {e}"
-                    )
+                    logger.warning(f"Canary validation failed for {stage} example {i}: {e}")
                     failed_details.append(
                         {
                             "index": i,
@@ -466,11 +423,7 @@ class SelfIterationLoop:
             # Aggregate results
             total = len(validation_scores)
             pass_rate = passed_count / total if total > 0 else 0.0
-            avg_quality_ratio = (
-                sum(s["quality_ratio"] for s in validation_scores) / total
-                if total > 0
-                else 0.0
-            )
+            avg_quality_ratio = sum(s["quality_ratio"] for s in validation_scores) / total if total > 0 else 0.0
 
             # Run semantic coherence check
             coherence_results = []
@@ -485,27 +438,17 @@ class SelfIterationLoop:
                 "pass_rate": pass_rate,
                 "avg_quality_ratio": avg_quality_ratio,
                 "avg_similarity": (
-                    sum(s["similarity_to_expected"] for s in validation_scores) / total
-                    if total > 0
-                    else 0.0
+                    sum(s["similarity_to_expected"] for s in validation_scores) / total if total > 0 else 0.0
                 ),
                 "avg_baseline_similarity": (
-                    sum(s["baseline_similarity"] for s in validation_scores) / total
-                    if total > 0
-                    else 0.0
+                    sum(s["baseline_similarity"] for s in validation_scores) / total if total > 0 else 0.0
                 ),
                 "semantic_coherence": {
                     "is_coherent": pass_rate >= 0.8,
-                    "mean_score": (
-                        sum(coherence_results) / len(coherence_results)
-                        if coherence_results
-                        else 0.75
-                    ),
+                    "mean_score": (sum(coherence_results) / len(coherence_results) if coherence_results else 0.75),
                 },
                 "emotion_validation": {
-                    "validation_summary": (
-                        "OK" if pass_rate >= 0.8 else "Below threshold"
-                    ),
+                    "validation_summary": ("OK" if pass_rate >= 0.8 else "Below threshold"),
                 },
                 "quality_improvement": {
                     "delta": avg_quality_ratio - 1.0,
@@ -561,9 +504,7 @@ class SelfIterationLoop:
             "failed_details": [],
         }
 
-    def _run_ab_test_for_stage(
-        self, stage: str, old_version: int, new_version: int
-    ) -> None:
+    def _run_ab_test_for_stage(self, stage: str, old_version: int, new_version: int) -> None:
         """Run A/B test for a specific stage comparing old vs new prompt versions."""
         logger.info(f"Running A/B test for {stage}: v{old_version} vs v{new_version}")
 
@@ -632,17 +573,11 @@ class SelfIterationLoop:
 
         # Check if A/B test confirms the promotion
         if ab_report.is_significant and ab_report.b_wins > ab_report.a_wins:
-            logger.info(
-                f"✅ A/B test confirms promotion for {stage}: {ab_report.recommendation}"
-            )
+            logger.info(f"✅ A/B test confirms promotion for {stage}: {ab_report.recommendation}")
         elif ab_report.is_significant and ab_report.a_wins > ab_report.b_wins:
-            logger.warning(
-                f"⚠️ A/B test contradicts promotion for {stage}: {ab_report.recommendation}"
-            )
+            logger.warning(f"⚠️ A/B test contradicts promotion for {stage}: {ab_report.recommendation}")
         else:
-            logger.info(
-                f"🔶 A/B test inconclusive for {stage}: {ab_report.recommendation}"
-            )
+            logger.info(f"🔶 A/B test inconclusive for {stage}: {ab_report.recommendation}")
 
         return ab_report
 
@@ -684,23 +619,14 @@ class SelfIterationLoop:
         auto_status = self.auto_processor.get_status()
         return {
             "project_id": self.project_id,
-            "running": self._worker_thread is not None
-            and self._worker_thread.is_alive(),
+            "running": self._worker_thread is not None and self._worker_thread.is_alive(),
             "iteration_count": self._iteration_count,
             "auto_processor": auto_status,
             "upgraded_prompts": {k: str(v) for k, v in self._upgraded_prompts.items()},
             "last_analysis": (
                 {
-                    "total_analyzed": (
-                        self._last_analysis_result.total_analyzed
-                        if self._last_analysis_result
-                        else 0
-                    ),
-                    "top_patterns": (
-                        self._last_analysis_result.top_patterns[:5]
-                        if self._last_analysis_result
-                        else []
-                    ),
+                    "total_analyzed": (self._last_analysis_result.total_analyzed if self._last_analysis_result else 0),
+                    "top_patterns": (self._last_analysis_result.top_patterns[:5] if self._last_analysis_result else []),
                 }
                 if self._last_analysis_result
                 else None

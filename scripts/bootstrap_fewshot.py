@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run BootstrapFewShot DSPy optimization for pipeline stages"
-    )
+    parser = argparse.ArgumentParser(description="Run BootstrapFewShot DSPy optimization for pipeline stages")
     parser.add_argument(
         "stage",
         nargs="?",
@@ -84,9 +82,7 @@ def main():
 
     try:
         # Load training data
-        initial_prompt, training_data = load_training_examples(
-            args.stage, args.few_shot
-        )
+        initial_prompt, training_data = load_training_examples(args.stage, args.few_shot)
 
         if not training_data:
             logger.error(f"No training examples found for stage: {args.stage}")
@@ -113,9 +109,7 @@ def main():
         print(f"Improvement ratio: {result.improvement_ratio:.2%}")
         print(f"Iterations completed: {result.iterations_completed}")
         print(f"Early stopped: {result.stopped_early}")
-        print(
-            f"Character recognition accuracy: {result.metrics.character_recognition_accuracy:.2%}"
-        )
+        print(f"Character recognition accuracy: {result.metrics.character_recognition_accuracy:.2%}")
         print(f"Voice design accuracy: {result.metrics.voice_design_accuracy:.2%}")
         print(f"Overall score: {result.metrics.overall_score:.2%}")
 

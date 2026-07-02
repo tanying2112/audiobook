@@ -379,9 +379,7 @@ from src.audiobook_studio.monitoring.compliance import (
     record_pipeline_compliance,
 )
 from src.audiobook_studio.monitoring.cost_dashboard import CostBreakdown, CostDashboard
-from src.audiobook_studio.monitoring.cost_dashboard import (
-    collect_logs as cost_collect_logs,
-)
+from src.audiobook_studio.monitoring.cost_dashboard import collect_logs as cost_collect_logs
 from src.audiobook_studio.monitoring.cost_dashboard import (
     compute_cost_breakdown,
     enrich_records_with_context,
@@ -756,9 +754,7 @@ class TestAlertModule:
     def test_alert_manager_trigger_alert(self):
         """Test triggering an alert."""
         manager = AlertManager()
-        result = manager.trigger_alert(
-            AlertLevel.WARNING, "Test message", {"test": "context"}
-        )
+        result = manager.trigger_alert(AlertLevel.WARNING, "Test message", {"test": "context"})
         assert result is True
 
     def test_collect_self_iteration_logs_empty(self):
@@ -819,28 +815,19 @@ class TestAlertModule:
 
     def test_compute_self_iteration_metrics_low_promotion(self):
         """Test low promotion rate alert."""
-        records = [
-            {"promoted": False, "feedback_count": 1, "system_health_score": 80}
-            for _ in range(5)
-        ]
+        records = [{"promoted": False, "feedback_count": 1, "system_health_score": 80} for _ in range(5)]
         metrics = compute_self_iteration_metrics(records)
         assert any(a["type"] == "low_promotion_rate" for a in metrics["alerts"])
 
     def test_compute_self_iteration_metrics_insufficient_feedback(self):
         """Test insufficient feedback alert."""
-        records = [
-            {"promoted": True, "feedback_count": 0, "system_health_score": 80}
-            for _ in range(5)
-        ]
+        records = [{"promoted": True, "feedback_count": 0, "system_health_score": 80} for _ in range(5)]
         metrics = compute_self_iteration_metrics(records)
         assert any(a["type"] == "insufficient_feedback" for a in metrics["alerts"])
 
     def test_compute_self_iteration_metrics_health_degraded(self):
         """Test system health degraded alert."""
-        records = [
-            {"promoted": True, "feedback_count": 5, "system_health_score": 30}
-            for _ in range(5)
-        ]
+        records = [{"promoted": True, "feedback_count": 5, "system_health_score": 30} for _ in range(5)]
         metrics = compute_self_iteration_metrics(records)
         assert any(a["type"] == "system_health_degraded" for a in metrics["alerts"])
 
@@ -872,10 +859,7 @@ class TestAlertModule:
 
     def test_compute_metrics_schema_compliance_alert(self):
         """Test schema compliance rate alert."""
-        records = [
-            {"schema_compliance": False, "model": "gemini", "cost_usd": 0.001}
-            for _ in range(100)
-        ]
+        records = [{"schema_compliance": False, "model": "gemini", "cost_usd": 0.001} for _ in range(100)]
         metrics = compute_metrics(records)
         assert any(a["type"] == "schema_compliance" for a in metrics["alerts"])
 
@@ -966,9 +950,7 @@ class TestCostDashboardModule:
 
     def test_cost_breakdown_model(self):
         """Test CostBreakdown Pydantic model."""
-        breakdown = CostBreakdown(
-            prompt_tokens=100, completion_tokens=50, total_cost=0.001
-        )
+        breakdown = CostBreakdown(prompt_tokens=100, completion_tokens=50, total_cost=0.001)
         assert breakdown.prompt_tokens == 100
         assert breakdown.completion_tokens == 50
         assert breakdown.total_cost == 0.001
@@ -1184,12 +1166,8 @@ class TestMetricsExporterModule:
         """Test exporting circuit breaker metrics."""
         from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
 
-        cb1 = CircuitBreaker(
-            provider_name="provider1", failure_threshold=5, recovery_timeout_s=30
-        )
-        cb2 = CircuitBreaker(
-            provider_name="provider2", failure_threshold=3, recovery_timeout_s=60
-        )
+        cb1 = CircuitBreaker(provider_name="provider1", failure_threshold=5, recovery_timeout_s=30)
+        cb2 = CircuitBreaker(provider_name="provider2", failure_threshold=3, recovery_timeout_s=60)
 
         circuit_breakers = {"provider1": cb1, "provider2": cb2}
         result = export_circuit_breaker_metrics(circuit_breakers)
@@ -1324,9 +1302,7 @@ class TestMetricsExporterModule:
                 monitor.record(stage=stage, schema_compliance=True, contract_version=1)
 
         output_path = str(tmp_path / "metrics_test.json")
-        result = export_all_metrics(
-            router=router, monitor=monitor, output_path=output_path
-        )
+        result = export_all_metrics(router=router, monitor=monitor, output_path=output_path)
 
         assert "exported_at" in result
         assert "format_version" in result
@@ -1505,9 +1481,7 @@ class TestOfflineMonitoringModule:
 
     def test_dummy_offline_monitor(self):
         """Test DummyOfflineMonitor stub class."""
-        from src.audiobook_studio.monitoring.offline_monitoring import (
-            DummyOfflineMonitor,
-        )
+        from src.audiobook_studio.monitoring.offline_monitoring import DummyOfflineMonitor
 
         dummy = DummyOfflineMonitor()
         dummy.start()
@@ -1516,10 +1490,7 @@ class TestOfflineMonitoringModule:
 
     def test_create_offline_monitor(self):
         """Test create_offline_monitor factory function."""
-        from src.audiobook_studio.monitoring.offline_monitoring import (
-            DummyOfflineMonitor,
-            create_offline_monitor,
-        )
+        from src.audiobook_studio.monitoring.offline_monitoring import DummyOfflineMonitor, create_offline_monitor
 
         result = create_offline_monitor()
         assert isinstance(result, DummyOfflineMonitor)
@@ -1536,10 +1507,7 @@ class TestLangfuseClientModule:
 
     def test_init_langfuse_disabled(self):
         """Test init with enabled=False."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            init_langfuse,
-            is_enabled,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import init_langfuse, is_enabled
 
         result = init_langfuse(enabled=False)
         assert result is False
@@ -1547,10 +1515,7 @@ class TestLangfuseClientModule:
 
     def test_init_langfuse_no_keys(self, monkeypatch):
         """Test init without API keys."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            init_langfuse,
-            is_enabled,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import init_langfuse, is_enabled
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
@@ -1562,10 +1527,7 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_init_langfuse_with_keys(self, mock_langfuse, monkeypatch):
         """Test init with API keys."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            get_langfuse_client,
-            init_langfuse,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import get_langfuse_client, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
@@ -1578,10 +1540,7 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_flush_langfuse(self, mock_langfuse, monkeypatch):
         """Test flush_langfuse function."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            flush_langfuse,
-            init_langfuse,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import flush_langfuse, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
@@ -1593,16 +1552,11 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_flush_langfuse_error(self, mock_langfuse, monkeypatch):
         """Test flush_langfuse with error."""
-        from src.audiobook_studio.monitoring.langfuse_client import (
-            flush_langfuse,
-            init_langfuse,
-        )
+        from src.audiobook_studio.monitoring.langfuse_client import flush_langfuse, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
-        mock_langfuse.return_value.flush = lambda: (_ for _ in ()).throw(
-            ConnectionError("Network error")
-        )
+        mock_langfuse.return_value.flush = lambda: (_ for _ in ()).throw(ConnectionError("Network error"))
 
         init_langfuse()
         flush_langfuse()

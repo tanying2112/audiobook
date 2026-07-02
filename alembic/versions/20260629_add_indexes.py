@@ -26,14 +26,10 @@ def upgrade() -> None:
     # AudioSegment indexes
     op.create_index("ix_audio_segments_project_id", "audio_segments", ["project_id"])
     op.create_index("ix_audio_segments_chapter_id", "audio_segments", ["chapter_id"])
-    op.create_index(
-        "ix_audio_segments_paragraph_id", "audio_segments", ["paragraph_id"]
-    )
+    op.create_index("ix_audio_segments_paragraph_id", "audio_segments", ["paragraph_id"])
 
     # FeedbackRecord indexes
-    op.create_index(
-        "ix_feedback_records_project_id", "feedback_records", ["project_id"]
-    )
+    op.create_index("ix_feedback_records_project_id", "feedback_records", ["project_id"])
     op.create_index("ix_feedback_records_source", "feedback_records", ["source"])
     op.create_index("ix_feedback_records_stage", "feedback_records", ["stage"])
     op.create_index("ix_feedback_records_processed", "feedback_records", ["processed"])

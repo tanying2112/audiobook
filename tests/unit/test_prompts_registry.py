@@ -4,11 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.prompts.models import (
-    ExperimentType,
-    PromptStage,
-    PromptStatus,
-)
+from src.audiobook_studio.prompts.models import ExperimentType, PromptStage, PromptStatus
 from src.audiobook_studio.prompts.registry import PromptRegistry, get_prompt_registry
 
 
@@ -282,9 +278,7 @@ class TestGetActiveExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[
-                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
-            ],
+            variants=[{"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}],
         )
 
         result = registry.get_active_experiment(PromptStage.EXTRACT)
@@ -303,9 +297,7 @@ class TestGetActiveExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[
-                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
-            ],
+            variants=[{"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}],
         )
         registry.complete_experiment("exp1")
 
@@ -327,9 +319,7 @@ class TestSelectVersionForRequest:
             is_default=True,
         )
 
-        result = registry.select_version_for_request(
-            PromptStage.ANALYZE_STRUCTURE, "req123"
-        )
+        result = registry.select_version_for_request(PromptStage.ANALYZE_STRUCTURE, "req123")
         assert result.version == "v1"
 
     def test_select_version_with_experiment(self):
@@ -525,9 +515,7 @@ class TestCompleteExperiment:
             experiment_id="exp1",
             name="Test",
             stage=PromptStage.SYNTHESIZE,
-            variants=[
-                {"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}
-            ],
+            variants=[{"variant_id": "A", "prompt_version": "v1", "traffic_percentage": 100}],
         )
 
         registry.complete_experiment("exp1")

@@ -29,9 +29,7 @@ from src.audiobook_studio.tts.model_downloader import (
     verify_models,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -44,20 +42,14 @@ def main():
         default=DEFAULT_MODEL_DIR,
         help="Directory to store model files",
     )
-    parser.add_argument(
-        "--force", action="store_true", help="Force re-download even if files exist"
-    )
+    parser.add_argument("--force", action="store_true", help="Force re-download even if files exist")
     parser.add_argument(
         "--verify-only",
         action="store_true",
         help="Only verify existing files, don't download",
     )
-    parser.add_argument(
-        "--fallback", action="store_true", help="Use fallback URLs (GitHub releases)"
-    )
-    parser.add_argument(
-        "--workers", type=int, default=3, help="Number of parallel downloads"
-    )
+    parser.add_argument("--fallback", action="store_true", help="Use fallback URLs (GitHub releases)")
+    parser.add_argument("--workers", type=int, default=3, help="Number of parallel downloads")
     parser.add_argument(
         "--show-paths",
         action="store_true",

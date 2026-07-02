@@ -10,12 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ..schemas import (
-    AudioPostProcessParams,
-    FixSuggestion,
-    ParagraphAnnotation,
-    QualityJudgment,
-)
+from ..schemas import AudioPostProcessParams, FixSuggestion, ParagraphAnnotation, QualityJudgment
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -36,9 +31,7 @@ class JudgeConfig:
 class LLMJudge:
     """LLM-as-a-Judge for quality evaluation."""
 
-    def __init__(
-        self, config: Optional[JudgeConfig] = None, router: Optional[LLMRouter] = None
-    ):
+    def __init__(self, config: Optional[JudgeConfig] = None, router: Optional[LLMRouter] = None):
         self.config = config or JudgeConfig()
         self.router = router or create_router()
 

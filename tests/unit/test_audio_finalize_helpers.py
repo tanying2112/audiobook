@@ -7,15 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.audio_finalize import (
-    AudioFinalizer,
-    DEFAULT_SFX_LIBRARY_PATH,
-    finalize_audio,
-)
-from src.audiobook_studio.schemas.audio_finalize import (
-    AudioFinalizeParams,
-    AudioFinalizeResult,
-)
+from src.audiobook_studio.pipeline.audio_finalize import DEFAULT_SFX_LIBRARY_PATH, AudioFinalizer, finalize_audio
+from src.audiobook_studio.schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 
 
 def make_params(**overrides) -> AudioFinalizeParams:
@@ -130,9 +123,7 @@ class TestBuildLoudnormFilter:
 class TestBuildFadeFilter:
     def test_fade_in_only(self):
         f = AudioFinalizer(mock_mode=True)
-        params = make_params(
-            fade_in_ms=1000, fade_out_ms=0, fade_shape="tri"
-        )
+        params = make_params(fade_in_ms=1000, fade_out_ms=0, fade_shape="tri")
         result = f._build_fade_filter(params)
         assert "afade=t=in" in result
         assert "st=0" in result
@@ -140,9 +131,7 @@ class TestBuildFadeFilter:
 
     def test_fade_out_with_placeholder(self):
         f = AudioFinalizer(mock_mode=True)
-        params = make_params(
-            fade_in_ms=0, fade_out_ms=2000, fade_shape="sin"
-        )
+        params = make_params(fade_in_ms=0, fade_out_ms=2000, fade_shape="sin")
         result = f._build_fade_filter(params)
         assert "afade=t=out" in result
         assert "PLACEHOLDER" in result
@@ -150,9 +139,7 @@ class TestBuildFadeFilter:
 
     def test_fade_both(self):
         f = AudioFinalizer(mock_mode=True)
-        params = make_params(
-            fade_in_ms=500, fade_out_ms=500, fade_shape="tri"
-        )
+        params = make_params(fade_in_ms=500, fade_out_ms=500, fade_shape="tri")
         result = f._build_fade_filter(params)
         assert "afade=t=in" in result
         assert "afade=t=out" in result

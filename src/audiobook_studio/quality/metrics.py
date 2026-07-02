@@ -317,17 +317,13 @@ class DNSMOSMetric(QualityMetric):
             return True
 
         model_url = self._get_model_url()
-        logger.info(
-            f"Downloading DNSMOS model from {model_url} to {self.model_path}..."
-        )
+        logger.info(f"Downloading DNSMOS model from {model_url} to {self.model_path}...")
         try:
             import urllib.error
             import urllib.request
 
             # 设置超时和重试
-            req = urllib.request.Request(
-                model_url, headers={"User-Agent": "audiobook-studio/1.0"}
-            )
+            req = urllib.request.Request(model_url, headers={"User-Agent": "audiobook-studio/1.0"})
             with urllib.request.urlopen(req, timeout=60) as response:
                 with open(self.model_path, "wb") as f:
                     f.write(response.read())
@@ -335,9 +331,7 @@ class DNSMOSMetric(QualityMetric):
             # 验证文件大小 (官方模型约 2.5MB)
             file_size = self.model_path.stat().st_size
             if file_size < 1_000_000:  # 小于 1MB 可能是下载失败
-                logger.error(
-                    f"Downloaded model file too small ({file_size} bytes), removing"
-                )
+                logger.error(f"Downloaded model file too small ({file_size} bytes), removing")
                 self.model_path.unlink(missing_ok=True)
                 return False
 
@@ -364,8 +358,7 @@ class DNSMOSMetric(QualityMetric):
 
         if not self._ensure_model():
             raise RuntimeError(
-                "DNSMOS model not available. "
-                "Set mock_mode=True for testing, or check network connectivity."
+                "DNSMOS model not available. " "Set mock_mode=True for testing, or check network connectivity."
             )
 
         try:
@@ -373,9 +366,7 @@ class DNSMOSMetric(QualityMetric):
 
             # 优化 ONNX Runtime 会话选项
             sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = (
-                ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            )
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             sess_options.intra_op_num_threads = 1
             sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
@@ -394,9 +385,7 @@ class DNSMOSMetric(QualityMetric):
             logger.debug(f"DNSMOS model outputs: {[o.name for o in outputs]}")
 
         except ImportError:
-            raise RuntimeError(
-                "onnxruntime not installed. Install with: pip install onnxruntime"
-            )
+            raise RuntimeError("onnxruntime not installed. Install with: pip install onnxruntime")
         except Exception as e:
             logger.error(f"Failed to initialize DNSMOS model: {e}")
             raise
@@ -508,9 +497,7 @@ class DNSMOSMetric(QualityMetric):
             # 计算分数
             mos_overall, mos_sig, mos_bak, mos_ovr = self._compute_dnsmos(audio)
 
-            logger.debug(
-                f"DNSMOS: overall={mos_overall:.3f} sig={mos_sig:.3f} bak={mos_bak:.3f} ovr={mos_ovr:.3f}"
-            )
+            logger.debug(f"DNSMOS: overall={mos_overall:.3f} sig={mos_sig:.3f} bak={mos_bak:.3f} ovr={mos_ovr:.3f}")
 
             return mos_overall
 
@@ -647,9 +634,7 @@ class FunASRBackend(ASRBackend):
         if self._initialized:
             return
         if self.mock_mode:
-            logger.info(
-                f"FunASR ({self.original_model_name} -> {self.model_name}) running in mock_mode"
-            )
+            logger.info(f"FunASR ({self.original_model_name} -> {self.model_name}) running in mock_mode")
             self._initialized = True
             return
         try:
@@ -861,20 +846,14 @@ class WhisperBackend(ASRBackend):
             else:
                 import whisper
 
-                self._model = whisper.load_model(
-                    self.model_size, device=self.device, download_root=str(cache_dir)
-                )
+                self._model = whisper.load_model(self.model_size, device=self.device, download_root=str(cache_dir))
             self._initialized = True
             logger.info(f"Whisper ({self.model_size}) initialized on {self.device}")
         except ImportError:
             if self.use_faster:
-                raise RuntimeError(
-                    "faster-whisper not installed. pip install faster-whisper"
-                )
+                raise RuntimeError("faster-whisper not installed. pip install faster-whisper")
             else:
-                raise RuntimeError(
-                    "openai-whisper not installed. pip install openai-whisper"
-                )
+                raise RuntimeError("openai-whisper not installed. pip install openai-whisper")
         except Exception as e:
             logger.error(f"Failed to initialize Whisper: {e}")
             raise
@@ -1025,9 +1004,7 @@ class ASRWerMetric(QualityMetric):
         self.reference_text = reference_text
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir
-        self._backend = self._create_backend(
-            backend, model_name, device, compute_type, use_faster_whisper
-        )
+        self._backend = self._create_backend(backend, model_name, device, compute_type, use_faster_whisper)
 
     def _create_backend(
         self,
@@ -1056,9 +1033,7 @@ class ASRWerMetric(QualityMetric):
         else:
             raise ValueError(f"Unknown ASR backend: {backend}")
 
-    def _compute_wer_cer(
-        self, reference: str, hypothesis: str
-    ) -> Tuple[float, float, int, int, int, int, int]:
+    def _compute_wer_cer(self, reference: str, hypothesis: str) -> Tuple[float, float, int, int, int, int, int]:
         """计算 WER 和 CER.
 
         Returns:
@@ -1140,9 +1115,7 @@ class ASRWerMetric(QualityMetric):
 
         return wer, cer, insertions, deletions, substitutions, total_ref, total_hyp
 
-    def compute(
-        self, audio_path: Path, reference_text: Optional[str] = None
-    ) -> WERResult:
+    def compute(self, audio_path: Path, reference_text: Optional[str] = None) -> WERResult:
         """计算音频的 WER (详细结果).
 
         Args:
@@ -1181,9 +1154,7 @@ class ASRWerMetric(QualityMetric):
                     error=asr_result.error,
                 )
 
-            wer, cer, ins, dels, subs, ref_w, hyp_w = self._compute_wer_cer(
-                ref_text, asr_result.text
-            )
+            wer, cer, ins, dels, subs, ref_w, hyp_w = self._compute_wer_cer(ref_text, asr_result.text)
 
             return WERResult(
                 wer=wer,
@@ -1209,9 +1180,7 @@ class ASRWerMetric(QualityMetric):
                 error=str(e),
             )
 
-    def compute_wer(
-        self, audio_path: Path, reference_text: Optional[str] = None
-    ) -> float:
+    def compute_wer(self, audio_path: Path, reference_text: Optional[str] = None) -> float:
         """计算音频的 WER (简化版，仅返回 float).
 
         Args:
@@ -1273,10 +1242,7 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
         """
         self.device = device
         self.mock_mode = mock_mode
-        self.cache_dir = (
-            cache_dir
-            or Path.home() / ".cache" / "audiobook_studio" / "models" / "speechbrain"
-        )
+        self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "speechbrain"
         self._model = None
         self._initialized = False
 
@@ -1305,13 +1271,9 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
                 savedir=str(self.cache_dir / "spkrec-ecapa-voxceleb"),
             )
             self._initialized = True
-            logger.info(
-                f"ECAPA-TDNN model loaded on {self.device} from {self.cache_dir}"
-            )
+            logger.info(f"ECAPA-TDNN model loaded on {self.device} from {self.cache_dir}")
         except ImportError:
-            raise RuntimeError(
-                "SpeechBrain not installed. Install with: pip install speechbrain"
-            )
+            raise RuntimeError("SpeechBrain not installed. Install with: pip install speechbrain")
         except Exception as e:
             logger.error(f"Failed to load ECAPA-TDNN model: {e}")
             raise
@@ -1351,9 +1313,7 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
 
             # 重采样到 16kHz
             if sample_rate != self.SAMPLE_RATE:
-                resampler = torchaudio.transforms.Resample(
-                    sample_rate, self.SAMPLE_RATE
-                )
+                resampler = torchaudio.transforms.Resample(sample_rate, self.SAMPLE_RATE)
                 waveform = resampler(waveform)
 
             # SpeechBrain 需要 (batch, time) 格式
@@ -1377,9 +1337,7 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
             )
 
         except Exception as e:
-            logger.error(
-                f"ECAPA-TDNN embedding extraction failed for {audio_path}: {e}"
-            )
+            logger.error(f"ECAPA-TDNN embedding extraction failed for {audio_path}: {e}")
             raise
 
     def get_name(self) -> str:
@@ -1420,10 +1378,7 @@ class WavLMBackend(SpeakerEmbeddingBackend):
         self.original_model_name = model_name
         self.device = device
         self.mock_mode = mock_mode
-        self.cache_dir = (
-            cache_dir
-            or Path.home() / ".cache" / "audiobook_studio" / "models" / "transformers"
-        )
+        self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "transformers"
         self._model = None
         self._feature_extractor = None
         self._initialized = False
@@ -1436,9 +1391,7 @@ class WavLMBackend(SpeakerEmbeddingBackend):
         if self._initialized:
             return
         if self.mock_mode:
-            logger.info(
-                f"WavLM ({self.original_model_name} -> {self.model_name}) running in mock_mode"
-            )
+            logger.info(f"WavLM ({self.original_model_name} -> {self.model_name}) running in mock_mode")
             self._initialized = True
             return
 
@@ -1453,15 +1406,11 @@ class WavLMBackend(SpeakerEmbeddingBackend):
             self._feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
                 self.model_name, cache_dir=str(self.cache_dir)
             )
-            self._model = WavLMModel.from_pretrained(
-                self.model_name, cache_dir=str(self.cache_dir)
-            ).to(self.device)
+            self._model = WavLMModel.from_pretrained(self.model_name, cache_dir=str(self.cache_dir)).to(self.device)
             self._model.eval()
 
             self._initialized = True
-            logger.info(
-                f"WavLM ({self.model_name}) loaded on {self.device} from {self.cache_dir}"
-            )
+            logger.info(f"WavLM ({self.model_name}) loaded on {self.device} from {self.cache_dir}")
         except ImportError:
             raise RuntimeError(
                 "transformers or torch not installed. Install with: pip install transformers torch torchaudio"
@@ -1506,9 +1455,7 @@ class WavLMBackend(SpeakerEmbeddingBackend):
 
             # 重采样到 16kHz
             if sample_rate != self.SAMPLE_RATE:
-                resampler = torchaudio.transforms.Resample(
-                    sample_rate, self.SAMPLE_RATE
-                )
+                resampler = torchaudio.transforms.Resample(sample_rate, self.SAMPLE_RATE)
                 waveform = resampler(waveform)
 
             # 使用特征提取器预处理
@@ -1602,17 +1549,11 @@ class SpeakerSimilarityMetric(QualityMetric):
     def _create_backend(self, backend: str, device: str) -> SpeakerEmbeddingBackend:
         """创建指定的后端实例."""
         if backend == "ecapa_tdnn":
-            mock_mode = self.mock_mode or not (
-                _speechbrain_available and _torch_available and _torchaudio_available
-            )
-            return ECAPATDNNBackend(
-                device=device, mock_mode=mock_mode, cache_dir=self.cache_dir
-            )
+            mock_mode = self.mock_mode or not (_speechbrain_available and _torch_available and _torchaudio_available)
+            return ECAPATDNNBackend(device=device, mock_mode=mock_mode, cache_dir=self.cache_dir)
         elif backend in ("wavlm_large", "wavlm_base_plus", "wavlm_base", "wavlm"):
             model_name = backend if backend != "wavlm" else self.wavlm_model
-            mock_mode = self.mock_mode or not (
-                _torch_available and _torchaudio_available and _transformers_available
-            )
+            mock_mode = self.mock_mode or not (_torch_available and _torchaudio_available and _transformers_available)
             return WavLMBackend(
                 model_name=model_name,
                 device=device,
@@ -1678,9 +1619,7 @@ class SpeakerSimilarityMetric(QualityMetric):
             if reference_audio is not None:
                 ref_embedding = self._backend.extract_embedding(reference_audio)
                 ref_id = str(reference_audio)
-            elif (
-                reference_id is not None and reference_id in self._reference_embeddings
-            ):
+            elif reference_id is not None and reference_id in self._reference_embeddings:
                 ref_embedding = self._reference_embeddings[reference_id]
                 ref_id = reference_id
             else:
@@ -1698,9 +1637,7 @@ class SpeakerSimilarityMetric(QualityMetric):
                 similarity=0.0,
                 threshold=self.threshold,
                 is_same_speaker=False,
-                reference_id=(
-                    str(reference_audio) if reference_audio else (reference_id or "")
-                ),
+                reference_id=(str(reference_audio) if reference_audio else (reference_id or "")),
                 target_id=str(target_audio),
                 success=False,
                 error=str(e),
@@ -1765,9 +1702,7 @@ class QualityCheckSuite:
         # 默认阈值
         self.dnsmos_min = self.config.get("thresholds", {}).get("dnsmos_min", 3.5)
         self.asr_wer_max = self.config.get("thresholds", {}).get("asr_wer_max", 0.05)
-        self.speaker_sim_min = self.config.get("thresholds", {}).get(
-            "speaker_sim_min", 0.85
-        )
+        self.speaker_sim_min = self.config.get("thresholds", {}).get("speaker_sim_min", 0.85)
 
         # 初始化三件套 (延迟初始化)
         self._dnsmos: Optional[DNSMOSMetric] = None
@@ -1805,11 +1740,7 @@ class QualityCheckSuite:
                     model_name=asr_model,
                     device="cpu" if self.hardware_profile != "pro_studio" else "cuda",
                     mock_mode=qc_config.get("mock_mode", False),
-                    cache_dir=(
-                        Path(qc_config["cache_dir"])
-                        if qc_config.get("cache_dir")
-                        else None
-                    ),
+                    cache_dir=(Path(qc_config["cache_dir"]) if qc_config.get("cache_dir") else None),
                     compute_type=qc_config.get("whisper_compute_type", "int8"),
                     use_faster_whisper=qc_config.get("use_faster_whisper", True),
                 )
@@ -1825,17 +1756,11 @@ class QualityCheckSuite:
                     device="cpu" if self.hardware_profile != "pro_studio" else "cuda",
                     threshold=self.speaker_sim_min,
                     mock_mode=qc_config.get("mock_mode", False),
-                    cache_dir=(
-                        Path(qc_config["cache_dir"])
-                        if qc_config.get("cache_dir")
-                        else None
-                    ),
+                    cache_dir=(Path(qc_config["cache_dir"]) if qc_config.get("cache_dir") else None),
                     wavlm_model=qc_config.get("wavlm_model", "wavlm_large"),
                 )
             except Exception as e:
-                logger.warning(
-                    f"Speaker Similarity metric disabled (dependency unavailable): {e}"
-                )
+                logger.warning(f"Speaker Similarity metric disabled (dependency unavailable): {e}")
 
         self._initialized = True
 
@@ -1863,16 +1788,12 @@ class QualityCheckSuite:
         issues = []
 
         # 1. DNSMOS
-        if self._dnsmos and self.config.get("quality_check", {}).get(
-            "dnsmos_enabled", True
-        ):
+        if self._dnsmos and self.config.get("quality_check", {}).get("dnsmos_enabled", True):
             dnsmos_result = self._dnsmos.compute_detailed(audio_path)
             result.dnsmos = dnsmos_result
 
             if dnsmos_result.success and dnsmos_result.mos_ovr < self.dnsmos_min:
-                issues.append(
-                    f"DNSMOS overall {dnsmos_result.mos_ovr:.2f} < {self.dnsmos_min}"
-                )
+                issues.append(f"DNSMOS overall {dnsmos_result.mos_ovr:.2f} < {self.dnsmos_min}")
             logger.info(
                 f"DNSMOS: overall={dnsmos_result.mos_ovr:.2f} sig={dnsmos_result.mos_sig:.2f} bak={dnsmos_result.mos_bak:.2f}"
             )
@@ -1884,14 +1805,10 @@ class QualityCheckSuite:
 
             if wer_result.success and wer_result.wer > self.asr_wer_max:
                 issues.append(f"ASR WER {wer_result.wer:.2%} > {self.asr_wer_max:.0%}")
-            logger.info(
-                f"ASR WER: {wer_result.wer:.2%} ({wer_result.reference_words} ref words)"
-            )
+            logger.info(f"ASR WER: {wer_result.wer:.2%} ({wer_result.reference_words} ref words)")
 
         # 3. Speaker Similarity
-        if self._speaker_sim and self.config.get("quality_check", {}).get(
-            "speaker_similarity_enabled", True
-        ):
+        if self._speaker_sim and self.config.get("quality_check", {}).get("speaker_similarity_enabled", True):
             sim_result = self._speaker_sim.compute(
                 audio_path,
                 reference_id=reference_speaker_id,
@@ -1900,18 +1817,14 @@ class QualityCheckSuite:
             result.speaker_sim = sim_result
 
             if sim_result.success and not sim_result.is_same_speaker:
-                issues.append(
-                    f"Speaker similarity {sim_result.similarity:.3f} < {self.speaker_sim_min}"
-                )
+                issues.append(f"Speaker similarity {sim_result.similarity:.3f} < {self.speaker_sim_min}")
             logger.info(
                 f"Speaker Sim: {sim_result.similarity:.3f} (threshold={self.speaker_sim_min}) same={sim_result.is_same_speaker}"
             )
 
         # 综合判定
         result.passed = len(issues) == 0
-        result.overall_message = (
-            "All checks passed" if result.passed else f"Failed: {', '.join(issues)}"
-        )
+        result.overall_message = "All checks passed" if result.passed else f"Failed: {', '.join(issues)}"
 
         return result
 

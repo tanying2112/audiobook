@@ -23,7 +23,6 @@ from src.audiobook_studio.export.batch_exporter import (
     export_project,
 )
 
-
 # ── Enums ────────────────────────────────────────────────────────────────────
 
 
@@ -223,11 +222,13 @@ class TestBuildSubtitleEntries:
         para = MagicMock(id=1, original_text="Hello", text="Hello", character_name="Alice", order=1)
         seg = MagicMock(paragraph_id=1, file_path="/a.mp3", duration_ms=5000)
         chapter = MagicMock(title="Ch1", index=1)
-        data = [{
-            "chapter": chapter,
-            "paragraphs": [para],
-            "audio_segments": [seg],
-        }]
+        data = [
+            {
+                "chapter": chapter,
+                "paragraphs": [para],
+                "audio_segments": [seg],
+            }
+        ]
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "a.mp3").write_bytes(b"fake")
             seg.file_path = str(Path(tmpdir) / "a.mp3")
@@ -242,11 +243,13 @@ class TestBuildSubtitleEntries:
         para = MagicMock(id=1, original_text="Test", text="Test", character_name=None, order=1)
         seg = MagicMock(paragraph_id=1, file_path="/a.mp3", duration_ms=3000)
         chapter = MagicMock(title="Ch1", index=1)
-        data = [{
-            "chapter": chapter,
-            "paragraphs": [para],
-            "audio_segments": [seg],
-        }]
+        data = [
+            {
+                "chapter": chapter,
+                "paragraphs": [para],
+                "audio_segments": [seg],
+            }
+        ]
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "a.mp3").write_bytes(b"fake")
             seg.file_path = str(Path(tmpdir) / "a.mp3")
@@ -258,11 +261,13 @@ class TestBuildSubtitleEntries:
         para = MagicMock(id=1, original_text="Missing", text="Missing", character_name=None, order=1)
         seg = MagicMock(paragraph_id=1, file_path="/nonexistent/file.mp3", duration_ms=4500)
         chapter = MagicMock(title="Ch1", index=1)
-        data = [{
-            "chapter": chapter,
-            "paragraphs": [para],
-            "audio_segments": [seg],
-        }]
+        data = [
+            {
+                "chapter": chapter,
+                "paragraphs": [para],
+                "audio_segments": [seg],
+            }
+        ]
         entries = _build_subtitle_entries(data)
         assert len(entries) == 1
         assert entries[0].end_ms - entries[0].start_ms == 4500
@@ -323,8 +328,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
     def test_m4b_srt_export_success(
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_m4b, mock_srt
+        self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_m4b, mock_srt
     ):
         session = MagicMock()
         project = MagicMock()
@@ -389,10 +393,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
-    def test_all_format_export( 
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_m4b, mock_srt
-    ):
+    def test_all_format_export(self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_m4b, mock_srt):
         session = MagicMock()
         project = MagicMock()
         project.title = "Book"
@@ -426,8 +427,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
     def test_zip_bundle_writes_real_files(
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_m4b, mock_srt
+        self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_m4b, mock_srt
     ):
         """Covers line 372: zip file actually writes existing output files."""
         import zipfile
@@ -477,8 +477,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
     def test_export_with_bgm(
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_m4b, mock_subprocess, mock_ducking
+        self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_m4b, mock_subprocess, mock_ducking
     ):
         session = MagicMock()
         project = MagicMock()
@@ -516,8 +515,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
     def test_export_with_cover_image(
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_m4b, mock_srt
+        self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_m4b, mock_srt
     ):
         session = MagicMock()
         project = MagicMock()
@@ -559,10 +557,7 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_subtitle_entries")
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
-    def test_export_srt_only(
-        self, mock_collect, mock_sub, mock_audio, mock_markers,
-        mock_meta, mock_srt
-    ):
+    def test_export_srt_only(self, mock_collect, mock_sub, mock_audio, mock_markers, mock_meta, mock_srt):
         session = MagicMock()
         project = MagicMock()
         project.id = 1

@@ -7,11 +7,7 @@ sys.path.insert(0, "src")
 
 # Test feedback_collector
 try:
-    from audiobook_studio.pipeline.feedback_collector import (
-        FeedbackCollector,
-        StageCapture,
-        create_feedback_collector,
-    )
+    from audiobook_studio.pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 
     print("✓ feedback_collector import OK")
 except Exception as e:
@@ -44,11 +40,7 @@ except Exception as e:
 
 # Test pipeline __init__ exports
 try:
-    from audiobook_studio.pipeline import (
-        FeedbackCollector,
-        StageCapture,
-        create_feedback_collector,
-    )
+    from audiobook_studio.pipeline import FeedbackCollector, StageCapture, create_feedback_collector
 
     print("✓ pipeline __init__ exports OK")
 except Exception as e:
@@ -56,11 +48,7 @@ except Exception as e:
 
 # Test feedback __init__ exports
 try:
-    from audiobook_studio.feedback import (
-        FeedbackAutoProcessor,
-        create_auto_processor,
-        run_feedback_analysis_cli,
-    )
+    from audiobook_studio.feedback import FeedbackAutoProcessor, create_auto_processor, run_feedback_analysis_cli
 
     print("✓ feedback __init__ exports OK")
 except Exception as e:

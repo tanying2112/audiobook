@@ -13,9 +13,7 @@ class TestLangfuseInit:
     def test_init_langfuse_without_keys_disables_client(self):
         """init_langfuse without API keys should disable the client."""
         with patch.dict(os.environ, {}, clear=True):
-            from src.audiobook_studio.observability.langfuse_client import (
-                LangfuseClient,
-            )
+            from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
             client = LangfuseClient(public_key=None, secret_key=None, enabled=True)
             assert client.enabled is False
@@ -27,15 +25,11 @@ class TestLangfuseInit:
             "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
             True,
         ):
-            with patch(
-                "src.audiobook_studio.observability.langfuse_client.Langfuse"
-            ) as mock_langfuse:
+            with patch("src.audiobook_studio.observability.langfuse_client.Langfuse") as mock_langfuse:
                 mock_instance = Mock()
                 mock_langfuse.return_value = mock_instance
 
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LangfuseClient,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
                 client = LangfuseClient(
                     public_key="pk_test",
@@ -66,15 +60,11 @@ class TestLangfuseInit:
                 "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
                 True,
             ):
-                with patch(
-                    "src.audiobook_studio.observability.langfuse_client.Langfuse"
-                ) as mock_langfuse:
+                with patch("src.audiobook_studio.observability.langfuse_client.Langfuse") as mock_langfuse:
                     mock_instance = Mock()
                     mock_langfuse.return_value = mock_instance
 
-                    from src.audiobook_studio.observability.langfuse_client import (
-                        LangfuseClient,
-                    )
+                    from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
                     client = LangfuseClient(enabled=True)
 
@@ -104,9 +94,7 @@ class TestLangfuseInit:
             "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
             False,
         ):
-            from src.audiobook_studio.observability.langfuse_client import (
-                LangfuseClient,
-            )
+            from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
             client = LangfuseClient(
                 public_key="pk_test",
@@ -134,15 +122,11 @@ class TestIsEnabled:
             "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
             True,
         ):
-            with patch(
-                "src.audiobook_studio.observability.langfuse_client.Langfuse"
-            ) as mock_langfuse:
+            with patch("src.audiobook_studio.observability.langfuse_client.Langfuse") as mock_langfuse:
                 mock_instance = Mock()
                 mock_langfuse.return_value = mock_instance
 
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LangfuseClient,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
                 client = LangfuseClient(
                     public_key="pk_test",
@@ -158,10 +142,7 @@ class TestTraceContextManager:
 
     def test_trace_yields_none_when_disabled(self):
         """trace context manager should yield trace object even when disabled (local tracking)."""
-        from src.audiobook_studio.observability.langfuse_client import (
-            LangfuseClient,
-            LLMCallTrace,
-        )
+        from src.audiobook_studio.observability.langfuse_client import LangfuseClient, LLMCallTrace
 
         client = LangfuseClient(enabled=False)
 
@@ -178,10 +159,7 @@ class TestTraceContextManager:
             True,
         ):
             with patch("src.audiobook_studio.observability.langfuse_client.Langfuse"):
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LangfuseClient,
-                    LLMCallTrace,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LangfuseClient, LLMCallTrace
 
                 client = LangfuseClient(
                     public_key="pk_test",
@@ -189,9 +167,7 @@ class TestTraceContextManager:
                     enabled=True,
                 )
 
-                with client.trace(
-                    name="test_llm", input_data={"prompt": "hello"}
-                ) as trace:
+                with client.trace(name="test_llm", input_data={"prompt": "hello"}) as trace:
                     assert trace is not None
                     assert isinstance(trace, LLMCallTrace)
                     assert trace.name == "test_llm"
@@ -287,15 +263,11 @@ class TestObserveLLMCall:
             "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
             True,
         ):
-            with patch(
-                "src.audiobook_studio.observability.langfuse_client.Langfuse"
-            ) as mock_langfuse:
+            with patch("src.audiobook_studio.observability.langfuse_client.Langfuse") as mock_langfuse:
                 mock_client = Mock()
                 mock_langfuse.return_value = mock_client
 
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LangfuseClient,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
                 client = LangfuseClient(
                     public_key="pk_test",
@@ -381,18 +353,14 @@ class TestTraceFunctionDecorator:
         from src.audiobook_studio.observability.langfuse_client import trace_llm_call
 
         # Mock the global client to be disabled
-        with patch(
-            "src.audiobook_studio.observability.langfuse_client._langfuse_client"
-        ) as mock_client:
+        with patch("src.audiobook_studio.observability.langfuse_client._langfuse_client") as mock_client:
             mock_client.enabled = False
 
             @contextmanager
             def mock_trace(*args, **kwargs):
                 import uuid
 
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LLMCallTrace,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LLMCallTrace
 
                 trace = LLMCallTrace(
                     trace_id=str(uuid.uuid4()),
@@ -440,9 +408,7 @@ class TestTraceFunctionDecorator:
                 # Manually set as global
                 lfc_module._langfuse_client = client
 
-                @trace_llm_call(
-                    "test_func", {"input": "data"}, metadata={"model": "gpt-4"}
-                )
+                @trace_llm_call("test_func", {"input": "data"}, metadata={"model": "gpt-4"})
                 def my_function(x, y):
                     return x + y
 
@@ -488,15 +454,11 @@ class TestFlushLangfuse:
             "src.audiobook_studio.observability.langfuse_client.LANGFUSE_AVAILABLE",
             True,
         ):
-            with patch(
-                "src.audiobook_studio.observability.langfuse_client.Langfuse"
-            ) as mock_langfuse:
+            with patch("src.audiobook_studio.observability.langfuse_client.Langfuse") as mock_langfuse:
                 mock_client = Mock()
                 mock_langfuse.return_value = mock_client
 
-                from src.audiobook_studio.observability.langfuse_client import (
-                    LangfuseClient,
-                )
+                from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
                 client = LangfuseClient(
                     public_key="pk_test",

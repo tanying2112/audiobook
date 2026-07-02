@@ -222,8 +222,7 @@ class TestF1ScoreAcceptance:
         """F1 macro on default calibration set >= 0.7."""
         result = critic.calibrate()
         assert result.f1_macro >= 0.7, (
-            f"F1 macro {result.f1_macro} < 0.7 threshold. "
-            f"Per-class: {result.f1_per_class}"
+            f"F1 macro {result.f1_macro} < 0.7 threshold. " f"Per-class: {result.f1_per_class}"
         )
 
     def test_f1_per_class_all_positive(self, critic):
@@ -290,9 +289,7 @@ class TestAdaptiveWeights:
 
     def test_adaptive_with_custom_samples(self, critic, custom_samples):
         """Adaptive calibration works with custom samples."""
-        result = critic.calibrate_with_adaptive_weights(
-            samples=custom_samples, n_iterations=5
-        )
+        result = critic.calibrate_with_adaptive_weights(samples=custom_samples, n_iterations=5)
         assert result.total_samples == 3
         assert result.f1_macro > 0
 

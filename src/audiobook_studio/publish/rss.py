@@ -67,8 +67,7 @@ class RssFeedGenerator:
 
         description_elem = ET.SubElement(channel, "description")
         description_elem.text = (
-            f"由Audiobook Studio自动生成的有声书：《{book.title}》"
-            f" 作者：{book.author or '未知'}"
+            f"由Audiobook Studio自动生成的有声书：《{book.title}》" f" 作者：{book.author or '未知'}"
         )
 
         language_elem = ET.SubElement(channel, "language")
@@ -126,9 +125,7 @@ class RssFeedGenerator:
                 continue
 
             # 计算章节总时长
-            total_duration_ms = sum(
-                seg.duration_ms for seg in audio_segments if seg.duration_ms
-            )
+            total_duration_ms = sum(seg.duration_ms for seg in audio_segments if seg.duration_ms)
             total_duration_seconds = total_duration_ms // 1000
             hours = total_duration_seconds // 3600
             minutes = (total_duration_seconds % 3600) // 60
@@ -159,9 +156,7 @@ class RssFeedGenerator:
             if isinstance(pub_date, datetime):
                 item_pub_date.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
             else:
-                item_pub_date.text = datetime.now().strftime(
-                    "%a, %d %b %Y %H:%M:%S GMT"
-                )
+                item_pub_date.text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
             item_guid = ET.SubElement(item_elem, "guid")
             item_guid.text = f"{book.id}-chapter-{chapter_id}"

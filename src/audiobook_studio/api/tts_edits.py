@@ -36,9 +36,7 @@ def get_tts_edit(edit_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{edit_id}", response_model=TTSEditSchema)
-def update_tts_edit(
-    edit_id: int, payload: TTSEditSchema, db: Session = Depends(get_db)
-):
+def update_tts_edit(edit_id: int, payload: TTSEditSchema, db: Session = Depends(get_db)):
     e = db.query(TTSEdit).filter(TTSEdit.id == edit_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="TTSEdit not found")

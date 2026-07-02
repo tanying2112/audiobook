@@ -24,9 +24,7 @@ import pytest
 
 # Skip E2E tests by default - require explicit --e2e flag
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "e2e: mark test as end-to-end test (requires API keys)"
-    )
+    config.addinivalue_line("markers", "e2e: mark test as end-to-end test (requires API keys)")
 
 
 def pytest_collection_modifyitems(config, items):

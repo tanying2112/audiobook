@@ -24,12 +24,8 @@ class AudioSegment(Base):
     __tablename__ = "audio_segments"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    chapter_id: Mapped[int] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True)
     paragraph_id: Mapped[int] = mapped_column(
         ForeignKey("paragraphs.id", ondelete="CASCADE"),
         nullable=False,
@@ -53,14 +49,10 @@ class AudioSegment(Base):
     # 版本控制
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
-    parent_segment_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("audio_segments.id"), nullable=True
-    )
+    parent_segment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("audio_segments.id"), nullable=True)
 
     # 质检关联
-    quality_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True
-    )
+    quality_id: Mapped[Optional[int]] = mapped_column(ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True)
 
     # 状态
     status: Mapped[str] = mapped_column(String, default="pending")
@@ -78,6 +70,4 @@ class AudioSegment(Base):
         uselist=False,
         foreign_keys="AudioSegment.paragraph_id",
     )
-    quality: Mapped[Optional[Quality]] = relationship(
-        "Quality", back_populates="audio_segment", uselist=False
-    )
+    quality: Mapped[Optional[Quality]] = relationship("Quality", back_populates="audio_segment", uselist=False)

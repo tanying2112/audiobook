@@ -98,9 +98,7 @@ class KillSwitch:
             try:
                 import yaml
 
-                self.rule_cache["difficulty_weights"] = yaml.safe_load(
-                    weights_path.read_text()
-                )
+                self.rule_cache["difficulty_weights"] = yaml.safe_load(weights_path.read_text())
                 logger.info("Loaded difficulty weights cache")
             except Exception as e:
                 logger.warning(f"Failed to load difficulty weights: {e}")
@@ -272,9 +270,7 @@ class KillSwitch:
                 health.total_calls = 0
                 health.last_error = None
                 recovered = True
-                logger.info(
-                    f"Provider '{provider_name}' recovered (assumed after cooldown)"
-                )
+                logger.info(f"Provider '{provider_name}' recovered (assumed after cooldown)")
 
         if recovered:
             self._update_level()

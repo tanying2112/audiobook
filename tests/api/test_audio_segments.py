@@ -129,9 +129,7 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        with patch.object(Path, "exists", return_value=True), patch.object(
-            Path, "glob", return_value=mock_files
-        ):
+        with patch.object(Path, "exists", return_value=True), patch.object(Path, "glob", return_value=mock_files):
             segments = list_audio_segments("test_book", db=FakeDB())
             # Should return list (may be empty if mocking not applied correctly)
             assert isinstance(segments, list)
@@ -232,3 +230,71 @@ class TestBusinessLogic:
         assert result["status"] == "success"
         assert "Reordered 3 segments" in result["message"]
         assert result["crossfade_ms"] == 100
+
+
+class TestGetAudioSegment:
+    """Test get_audio_segment endpoint - lines 90-95."""
+
+    @patch("pathlib.Path.exists", return_value=False)
+    def test_get_audio_segment_not_found(self, mock_exists):
+        """Test 404 when segment file doesn't exist (line 92-93)."""
+        from fastapi import HTTPException
+
+        from src.audiobook_studio.api.audio_segments import get_audio_segment
+
+        class FakeDB:
+            pass
+
+        with pytest.raises(HTTPException) as exc_info:
+            get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Segment not found"
+
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_get_audio_segment_success(self, mock_exists):
+        """Test successful segment retrieval (lines 95-99)."""
+        from src.audiobook_studio.api.audio_segments import get_audio_segment
+
+        class FakeDB:
+            pass
+
+        result = get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        assert isinstance(result, AudioSegmentResponse)
+        assert result.id == "seg_1"
+        assert "seg_1.mp3" in result.file_path
+        assert result.duration_ms == 5000
+
+
+class TestDeleteAudioSegment:
+    """Test delete_audio_segment endpoint - lines 192-198."""
+
+    @patch("pathlib.Path.exists", return_value=False)
+    def test_delete_audio_segment_not_found(self, mock_exists):
+        """Test 404 when segment file doesn't exist (line 194-195)."""
+        from fastapi import HTTPException
+
+        from src.audiobook_studio.api.audio_segments import delete_audio_segment
+
+        class FakeDB:
+            pass
+
+        with pytest.raises(HTTPException) as exc_info:
+            delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Segment not found"
+
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_delete_audio_segment_success(self, mock_exists):
+        """Test successful segment deletion (line 197-198).
+
+        Note: Current implementation doesn't actually delete the file
+        (comment says 'In production: os.remove(storage_path)'),
+        so we just verify it returns None without raising.
+        """
+        from src.audiobook_studio.api.audio_segments import delete_audio_segment
+
+        class FakeDB:
+            pass
+
+        result = delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        assert result is None

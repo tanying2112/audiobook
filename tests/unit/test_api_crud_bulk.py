@@ -3,19 +3,21 @@
 Covers: books, paragraphs, tts_edits, routings, qualities (0% → ~100%).
 """
 
-import tempfile, os
+import os
+import tempfile
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.audiobook_studio.database import Base, get_db
 from src.audiobook_studio.api.books import router as books_router
 from src.audiobook_studio.api.paragraphs import router as paragraphs_router
-from src.audiobook_studio.api.tts_edits import router as tts_router
-from src.audiobook_studio.api.routings import router as routings_router
 from src.audiobook_studio.api.qualities import router as qualities_router
+from src.audiobook_studio.api.routings import router as routings_router
+from src.audiobook_studio.api.tts_edits import router as tts_router
+from src.audiobook_studio.database import Base, get_db
 
 app = FastAPI()
 app.include_router(books_router)
@@ -23,6 +25,7 @@ app.include_router(paragraphs_router)
 app.include_router(tts_router)
 app.include_router(routings_router)
 app.include_router(qualities_router)
+
 
 @pytest.fixture()
 def client():

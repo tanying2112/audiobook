@@ -8,9 +8,7 @@ import pytest
 
 
 def _make_integrator():
-    from src.audiobook_studio.publish.audiobookshelf_integration import (
-        AudiobookshelfIntegrator,
-    )
+    from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfIntegrator
 
     cfg = MagicMock()
     cfg.api_url = "http://localhost:8080"
@@ -90,9 +88,7 @@ class TestIntegrationRealAPI:
     @pytest.mark.asyncio
     async def test_no_audio_file(self):
         integ = _make_integrator()
-        from src.audiobook_studio.publish.audiobookshelf_integration import (
-            AudiobookFile,
-        )
+        from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
 
         af = AudiobookFile(
             file_path=Path("/nonexistent.m4b"),
@@ -102,9 +98,7 @@ class TestIntegrationRealAPI:
             bitrate_kbps=64,
             checksum_md5="x",
         )
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         r = await integ._real_api_call(_upload_data(), af)
         assert r["success"] is False
 
@@ -132,9 +126,7 @@ class TestIntegrationRealAPI:
         integ = _make_integrator()
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
-            integ.client.get = AsyncMock(
-                return_value=_resp(200, {"folders": [{"id": "f1"}]})
-            )
+            integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
             integ.client.post = AsyncMock(return_value=_resp(500, text="err"))
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 r = await integ._real_api_call(_upload_data(), af)
@@ -145,9 +137,7 @@ class TestIntegrationRealAPI:
         integ = _make_integrator()
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
-            integ.client.get = AsyncMock(
-                return_value=_resp(200, {"folders": [{"id": "f1"}]})
-            )
+            integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
             integ.client.post = AsyncMock(side_effect=ConnectionError("refused"))
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 r = await integ._real_api_call(_upload_data(), af)
@@ -158,9 +148,7 @@ class TestIntegrationRealAPI:
         integ = _make_integrator()
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
-            integ.client.get = AsyncMock(
-                return_value=_resp(200, {"folders": [{"id": "f1"}]})
-            )
+            integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
             integ.client.post = AsyncMock(return_value=_resp(201))
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 r = await integ._real_api_call(_upload_data(), af)
@@ -248,9 +236,7 @@ class TestIntegrationRealAPI:
     @pytest.mark.asyncio
     async def test_get_library_status_ok(self):
         integ = _make_integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"mediaCount": 10, "duration": 7200})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"mediaCount": 10, "duration": 7200}))
         s = await integ.get_library_status()
         assert s["total_books"] == 10
 

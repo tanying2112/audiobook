@@ -12,12 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from src.audiobook_studio.tts.engine import (
-    EngineRegistry,
-    SynthesisResult,
-    TTSEngine,
-    VoiceInfo,
-)
+from src.audiobook_studio.tts.engine import EngineRegistry, SynthesisResult, TTSEngine, VoiceInfo
 
 
 class TestEngineRegistryEdgeCases:

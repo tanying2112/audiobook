@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 class ExtractPipeline:
     """Pipeline for text extraction from various formats."""
 
-    def __init__(
-        self, router: Optional[LLMRouter] = None, mock_mode: Optional[bool] = None
-    ):
+    def __init__(self, router: Optional[LLMRouter] = None, mock_mode: Optional[bool] = None):
         # Default mock_mode from environment if not specified
         if mock_mode is None:
             self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
@@ -75,9 +73,7 @@ class ExtractPipeline:
                     # In production: use pytesseract.image_to_string(pix.tobytes())
                     # For now, try to get text blocks
                     blocks = page.get_text("dict")["blocks"]
-                    page_text = "\n".join(
-                        [b.get("text", "") for b in blocks if b.get("text", "").strip()]
-                    )
+                    page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
                     if page_text.strip():
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
@@ -151,9 +147,7 @@ class ExtractPipeline:
         # MOCK: 待真实实现
         # Mock mode: return simulated result
         if self.mock_mode:
-            mock_text = (
-                "用于测试的模拟提取文本。这是模拟数据，用于测试 extract 功能。" * 10
-            )
+            mock_text = "用于测试的模拟提取文本。这是模拟数据，用于测试 extract 功能。" * 10
 
             # Record mock performance
             record_stage_performance(
@@ -187,10 +181,7 @@ class ExtractPipeline:
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_pdf(file_path)
         elif mime_type == "application/epub+zip":
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_epub(file_path)
-        elif (
-            mime_type
-            == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ):
+        elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_docx(file_path)
         elif mime_type == "text/plain":
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_txt(file_path)
@@ -200,9 +191,7 @@ class ExtractPipeline:
         if not raw_text or len(raw_text) < 50:
             warnings.append("Extracted text too short, may need manual review")
 
-        language = (
-            self._detect_language(raw_text) if input_data.detect_language else "zh"
-        )
+        language = self._detect_language(raw_text) if input_data.detect_language else "zh"
 
         # Calculate extraction metrics
         extraction_time_ms = (time.time() - start_time) * 1000
@@ -234,12 +223,8 @@ class ExtractPipeline:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=cost_usd,
-            success=bool(
-                raw_text and len(raw_text) >= 50
-            ),  # Success if we got reasonable text
-            quality_score=(
-                1.0 if (raw_text and len(raw_text) >= 50) else 0.5
-            ),  # Quality based on text length
+            success=bool(raw_text and len(raw_text) >= 50),  # Success if we got reasonable text
+            quality_score=(1.0 if (raw_text and len(raw_text) >= 50) else 0.5),  # Quality based on text length
             provider=provider,
             model="unknown",
             schema_compliance=None,

@@ -58,9 +58,7 @@ def _build_ffmpeg_chapter_metadata(
         end_ms = min(ch.start_ms + ch.duration_ms, total_duration_ms)
         lines.append(f"END={end_ms}")
         # Escape = and ; and \n in title
-        safe_title = (
-            ch.title.replace("=", "\\=").replace(";", "\\;").replace("\n", " ").strip()
-        )
+        safe_title = ch.title.replace("=", "\\=").replace(";", "\\;").replace("\n", " ").strip()
         lines.append(f"title={safe_title or f'Chapter {i+1}'}")
     return "\n".join(lines)
 
@@ -132,9 +130,7 @@ def build_m4b(
             for i, seg_path in enumerate(audio_segments):
                 seg_path = Path(seg_path)
                 if not seg_path.exists():
-                    logger.warning(
-                        f"Audio segment not found: {seg_path}, creating silence"
-                    )
+                    logger.warning(f"Audio segment not found: {seg_path}, creating silence")
                     silence_path = tmpdir_path / f"silence_{i}.wav"
                     subprocess.run(
                         [
@@ -173,8 +169,12 @@ def build_m4b(
             "0",
             "-i",
             str(concat_list),
-            "-c",
-            "copy",
+            "-c:a",
+            "pcm_s16le",
+            "-ar",
+            "44100",
+            "-ac",
+            "1",
             str(concat_output),
         ]
         logger.info(f"Concatenating segments: {' '.join(concat_cmd)}")
@@ -196,9 +196,7 @@ def build_m4b(
 
         # Step 3: Write chapter metadata
         chapter_meta_path = tmpdir_path / "chapters.txt"
-        chapter_meta = _build_ffmpeg_chapter_metadata(
-            chapter_markers, total_duration_ms
-        )
+        chapter_meta = _build_ffmpeg_chapter_metadata(chapter_markers, total_duration_ms)
         chapter_meta_path.write_text(chapter_meta, encoding="utf-8")
         logger.info(f"Chapter metadata:\n{chapter_meta}")
 
@@ -212,10 +210,16 @@ def build_m4b(
             str(chapter_meta_path),
             "-map_metadata",
             "1",
+            "-map",
+            "0:a",
             "-c:a",
             "aac",
             "-b:a",
             "128k",
+            "-ar",
+            "44100",
+            "-ac",
+            "1",
         ]
 
         # Add global metadata
@@ -276,9 +280,7 @@ def build_m4b_single_source(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
         chapter_meta_path = tmpdir_path / "chapters.txt"
-        chapter_meta = _build_ffmpeg_chapter_metadata(
-            chapter_markers, total_duration_ms
-        )
+        chapter_meta = _build_ffmpeg_chapter_metadata(chapter_markers, total_duration_ms)
         chapter_meta_path.write_text(chapter_meta, encoding="utf-8")
 
         cmd = [
@@ -290,7 +292,9 @@ def build_m4b_single_source(
             str(chapter_meta_path),
             "-map_metadata",
             "1",
-            "-codec",
+            "-map",
+            "0:a",
+            "-codec:a",
             "copy",
         ]
 

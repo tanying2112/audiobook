@@ -151,9 +151,7 @@ class TestDetectSilence:
         )
         mock_dur.return_value = 5000
 
-        result = await detect_silence(
-            Path("test.mp3"), threshold_db=-40, min_duration_ms=500
-        )
+        result = await detect_silence(Path("test.mp3"), threshold_db=-40, min_duration_ms=500)
         assert len(result) == 1
         assert result[0] == (1000.0, 3000.0)
 
@@ -182,8 +180,7 @@ class TestGetRmsPeak:
         """Test RMS/Peak extraction via astats."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stderr="frame:0 lavfi.astats.Overall.RMS_level=-20.5\n"
-            "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
+            stderr="frame:0 lavfi.astats.Overall.RMS_level=-20.5\n" "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
         )
         rms, peak = await get_rms_peak(Path("test.mp3"))
         assert rms == -20.5
@@ -322,8 +319,7 @@ class TestSyncWrappers:
         """Test sync get_rms_peak."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stderr="frame:0 lavfi.astats.Overall.RMS_level=-15.0\n"
-            "frame:0 lavfi.astats.Overall.Peak_level=-1.0\n",
+            stderr="frame:0 lavfi.astats.Overall.RMS_level=-15.0\n" "frame:0 lavfi.astats.Overall.Peak_level=-1.0\n",
         )
         rms, peak = get_rms_peak_sync(Path("test.mp3"))
         assert rms == -15.0

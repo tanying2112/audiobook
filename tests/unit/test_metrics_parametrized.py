@@ -86,9 +86,7 @@ class TestComputeWerCer:
         expected_del,
         expected_sub,
     ):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            reference, hypothesis
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -125,9 +123,7 @@ class TestComputeWerCer:
         expected_del,
         expected_sub,
     ):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            reference, hypothesis
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -156,9 +152,7 @@ class TestComputeWerCer:
         expected_del,
         expected_sub,
     ):
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            reference, hypothesis
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(reference, hypothesis)
         assert wer == pytest.approx(expected_wer, abs=0.01)
         assert cer == pytest.approx(expected_cer, abs=0.01)
         assert ins == expected_ins
@@ -167,18 +161,14 @@ class TestComputeWerCer:
 
     def test_token_counts_correct(self, wer_metric):
         """reference_words and hypothesis_words are the token counts."""
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            "hello world foo", "hello bar foo"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer("hello world foo", "hello bar foo")
         assert ref_w == 3
         assert hyp_w == 3
         assert ins + dels + subs >= 1
 
     def test_chinese_tokenization_strips_spaces(self, wer_metric):
         """Chinese text should be tokenized by character, spaces removed."""
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            "你 好 世 界", "你好世界"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer("你 好 世 界", "你好世界")
         # Chinese tokenization strips spaces → "你好世界" → 4 chars
         assert ref_w == 4
         assert hyp_w == 4
@@ -203,27 +193,21 @@ class TestComputeWerCer:
 
     def test_insertion_dominates(self, wer_metric):
         """When hypothesis is much longer, insertions dominate."""
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            "a", "a b c d e f g h i j"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer("a", "a b c d e f g h i j")
         assert ins == 9
         assert dels == 0
         assert subs == 0
 
     def test_deletion_dominates(self, wer_metric):
         """When hypothesis is much shorter, deletions dominate."""
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            "a b c d e f g h i j", "a"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer("a b c d e f g h i j", "a")
         assert ins == 0
         assert dels == 9
         assert subs == 0
 
     def test_substitution_dominates(self, wer_metric):
         """When all tokens mismatch but counts match, substitutions dominate."""
-        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer(
-            "cat dog bird", "bat fog nerd"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = wer_metric._compute_wer_cer("cat dog bird", "bat fog nerd")
         assert ins == 0
         assert dels == 0
         assert subs == 3
@@ -323,9 +307,7 @@ class TestDNSMOSResultToDict:
             (3.5, 3.0, 4.0, 3.8, False, "Inference error"),
         ],
     )
-    def test_dnsmos_to_dict(
-        self, mos_overall, mos_sig, mos_bak, mos_ovr, success, error
-    ):
+    def test_dnsmos_to_dict(self, mos_overall, mos_sig, mos_bak, mos_ovr, success, error):
         from src.audiobook_studio.quality.metrics import DNSMOSResult
 
         r = DNSMOSResult(mos_overall, mos_sig, mos_bak, mos_ovr, success, error)
@@ -375,9 +357,7 @@ class TestASRResultToDict:
             ),
         ],
     )
-    def test_asr_to_dict(
-        self, text, words, language, confidence, duration_ms, success, error
-    ):
+    def test_asr_to_dict(self, text, words, language, confidence, duration_ms, success, error):
         from src.audiobook_studio.quality.metrics import ASRResult
 
         r = ASRResult(
@@ -457,9 +437,7 @@ class TestSpeakerSimilarityResultToDict:
             (1.0, 1.0, True, "ref", "target", True, None),
         ],
     )
-    def test_similarity_to_dict(
-        self, similarity, threshold, is_same, ref_id, target_id, success, error
-    ):
+    def test_similarity_to_dict(self, similarity, threshold, is_same, ref_id, target_id, success, error):
         from src.audiobook_studio.quality.metrics import SpeakerSimilarityResult
 
         r = SpeakerSimilarityResult(
@@ -500,9 +478,7 @@ class TestSpeakerEmbeddingRoundTrip:
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
 
         emb = np.random.randn(embedding_dim).astype(np.float32)
-        se = SpeakerEmbedding(
-            embedding=emb, model_name=model_name, sample_rate=sample_rate
-        )
+        se = SpeakerEmbedding(embedding=emb, model_name=model_name, sample_rate=sample_rate)
 
         d = se.to_dict()
         assert d["dim"] == embedding_dim
@@ -541,9 +517,7 @@ class TestSpeakerEmbeddingRoundTrip:
         from src.audiobook_studio.quality.metrics import SpeakerEmbedding
 
         emb = np.random.randn(1024).astype(np.float32)
-        se = SpeakerEmbedding(
-            embedding=emb, model_name="wav2vec_large", sample_rate=16000
-        )
+        se = SpeakerEmbedding(embedding=emb, model_name="wav2vec_large", sample_rate=16000)
         d = se.to_dict()
         restored = SpeakerEmbedding.from_dict(d)
         assert restored.embedding.shape == (1024,)
@@ -569,9 +543,7 @@ class TestWERResultNoReference:
         """Empty/None reference triggers the no-reference error branch."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
 
-        metric = ASRWerMetric(
-            backend="funasr", model_name="test", reference_text="init"
-        )
+        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="init")
         metric._backend = MagicMock()
         metric.reference_text = ref_text  # Force it to None/empty
 
@@ -585,9 +557,7 @@ class TestWERResultNoReference:
         """Constructor reference_text is used when compute() gets no param."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
 
-        metric = ASRWerMetric(
-            backend="funasr", model_name="test", reference_text="hello"
-        )
+        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="hello")
         metric._backend = MagicMock()
 
         mock_asr = MagicMock()
@@ -619,9 +589,7 @@ class TestWERResultNoReference:
         """When compute() param is None, falls back to constructor reference."""
         from src.audiobook_studio.quality.metrics import ASRWerMetric
 
-        metric = ASRWerMetric(
-            backend="funasr", model_name="test", reference_text="fallback"
-        )
+        metric = ASRWerMetric(backend="funasr", model_name="test", reference_text="fallback")
         metric._backend = MagicMock()
 
         mock_asr = MagicMock()
@@ -666,19 +634,13 @@ class TestASRWerMetricCreateBackend:
 
 class TestSpeakerSimilarityCreateBackend:
     def test_ecapa_backend(self):
-        from src.audiobook_studio.quality.metrics import (
-            ECAPATDNNBackend,
-            SpeakerSimilarityMetric,
-        )
+        from src.audiobook_studio.quality.metrics import ECAPATDNNBackend, SpeakerSimilarityMetric
 
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn")
         assert isinstance(metric._backend, ECAPATDNNBackend)
 
     def test_wavlm_backend(self):
-        from src.audiobook_studio.quality.metrics import (
-            SpeakerSimilarityMetric,
-            WavLMBackend,
-        )
+        from src.audiobook_studio.quality.metrics import SpeakerSimilarityMetric, WavLMBackend
 
         metric = SpeakerSimilarityMetric(backend="wavlm_large")
         assert isinstance(metric._backend, WavLMBackend)
@@ -708,10 +670,7 @@ class TestSpeakerSimilarityCompute:
         assert result.is_same_speaker is False
 
     def test_registered_reference_used(self):
-        from src.audiobook_studio.quality.metrics import (
-            SpeakerEmbedding,
-            SpeakerSimilarityMetric,
-        )
+        from src.audiobook_studio.quality.metrics import SpeakerEmbedding, SpeakerSimilarityMetric
 
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn", threshold=0.85)
 
@@ -739,10 +698,7 @@ class TestSpeakerSimilarityCompute:
 
     def test_reference_id_not_found_falls_to_audio(self):
         """When reference_id is not in _reference_embeddings, checks reference_audio path."""
-        from src.audiobook_studio.quality.metrics import (
-            SpeakerEmbedding,
-            SpeakerSimilarityMetric,
-        )
+        from src.audiobook_studio.quality.metrics import SpeakerEmbedding, SpeakerSimilarityMetric
 
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn")
 
@@ -778,10 +734,7 @@ class TestSpeakerSimilarityCompute:
 
     def test_threshold_boundary(self):
         """is_same_speaker depends on similarity >= threshold."""
-        from src.audiobook_studio.quality.metrics import (
-            SpeakerEmbedding,
-            SpeakerSimilarityMetric,
-        )
+        from src.audiobook_studio.quality.metrics import SpeakerEmbedding, SpeakerSimilarityMetric
 
         metric = SpeakerSimilarityMetric(backend="ecapa_tdnn", threshold=0.85)
 

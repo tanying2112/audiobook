@@ -30,10 +30,7 @@ from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline
 from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline
 from audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline
 from audiobook_studio.pipeline.extract import ExtractPipeline
-from audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    QualityCheckPipeline,
-)
+from audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
 from audiobook_studio.pipeline.synthesize import SynthesizePipeline
 from audiobook_studio.schemas import (  # noqa: E402
     BookAnalysisInput,
@@ -78,9 +75,7 @@ class TestGoldenDatasetExtract:
         """Test mock mode returns valid ExtractionResult."""
         from audiobook_studio.schemas import ExtractionInput
 
-        input_data = ExtractionInput(
-            file_path="/fake/test.txt", mime_type="text/plain", detect_language=True
-        )
+        input_data = ExtractionInput(file_path="/fake/test.txt", mime_type="text/plain", detect_language=True)
         result = pipeline.run(input_data)
         assert hasattr(result, "raw_text")
         assert hasattr(result, "language")
@@ -139,12 +134,8 @@ class TestGoldenDatasetAnalyzeStructure:
                 pytest.fail(f"Schema compliance failed for sample: {e}")
 
         compliance_rate = compliant / total if total > 0 else 0
-        print(
-            f"\nAnalyze Structure Compliance Rate: {compliance_rate:.1%} ({compliant}/{total})"
-        )
-        assert (
-            compliance_rate >= 0.7
-        ), f"Compliance rate {compliance_rate:.1%} below 70% target"
+        print(f"\nAnalyze Structure Compliance Rate: {compliance_rate:.1%} ({compliant}/{total})")
+        assert compliance_rate >= 0.7, f"Compliance rate {compliance_rate:.1%} below 70% target"
 
     def test_character_consistency(self, pipeline):
         """Test character voice bindings are consistent."""
@@ -156,9 +147,7 @@ class TestGoldenDatasetAnalyzeStructure:
 
             # Check canonical names are unique
             canonical_names = [c.canonical_name for c in result.character_voice_map]
-            assert len(canonical_names) == len(
-                set(canonical_names)
-            ), "Duplicate canonical names"
+            assert len(canonical_names) == len(set(canonical_names)), "Duplicate canonical names"
 
             # Check each character has required fields
             for char in result.character_voice_map:
@@ -231,12 +220,7 @@ class TestGoldenDatasetAnnotateParagraph:
     def test_mock_mode_returns_valid_annotation(self, pipeline):
         """Test mock mode returns valid ParagraphAnnotation."""
         # Create minimal valid input
-        from audiobook_studio.schemas import (
-            BookMeta,
-            CharacterVoiceBinding,
-            EmotionSnapshot,
-            ParagraphAnnotationInput,
-        )
+        from audiobook_studio.schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot, ParagraphAnnotationInput
 
         book_meta = BookMeta(
             title="Test Book",
@@ -255,9 +239,7 @@ class TestGoldenDatasetAnnotateParagraph:
                 sample_quote="test",
             )
         ]
-        emotion_snapshot = EmotionSnapshot(
-            chapter=1, dominant_emotion="neutral", intensity=0.5
-        )
+        emotion_snapshot = EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5)
 
         input_data = ParagraphAnnotationInput(
             paragraph_text="这是一个测试段落文本内容。",
@@ -363,9 +345,7 @@ class TestGoldenDatasetQualityJudge:
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("quality_judge")
-        assert (
-            len(samples) >= 3
-        ), f"Quality judge stage needs ≥3 samples, got {len(samples)}"
+        assert len(samples) >= 3, f"Quality judge stage needs ≥3 samples, got {len(samples)}"
 
     def test_mock_mode_returns_valid_judgment(self, pipeline):
         """Test mock mode returns valid QualityJudgment."""
@@ -402,9 +382,7 @@ class TestGoldenDatasetQualityJudge:
             estimated_duration_ms=3000,
         )
 
-        results = pipeline.run(
-            [(str(mock_audio_path), annotation, routing, "测试文本")]
-        )
+        results = pipeline.run([(str(mock_audio_path), annotation, routing, "测试文本")])
 
         import shutil
 
@@ -435,9 +413,7 @@ class TestGoldenDatasetTtsRouting:
 
     def test_golden_samples_exist(self):
         samples = load_golden_samples("tts_routing")
-        assert (
-            len(samples) >= 3
-        ), f"TTS routing stage needs ≥3 samples, got {len(samples)}"
+        assert len(samples) >= 3, f"TTS routing stage needs ≥3 samples, got {len(samples)}"
 
     def test_mock_mode_returns_valid_decisions(self, pipeline):
         """Test mock mode returns valid routing decisions via run()."""

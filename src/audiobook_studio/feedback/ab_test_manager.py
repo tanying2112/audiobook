@@ -106,9 +106,7 @@ class ABTestManager:
             ]
 
         logger.info(f"Starting A/B test: {test_name}")
-        logger.info(
-            f"Testing {len(test_segments)} segments with {len(judge_criteria)} criteria"
-        )
+        logger.info(f"Testing {len(test_segments)} segments with {len(judge_criteria)} criteria")
 
         # 创建测试配置
         test_config = ABTestConfig(
@@ -132,28 +130,18 @@ class ABTestManager:
         # 添加到历史
         self.test_history.append(result)
 
-        logger.info(
-            f"A/B test completed: {result.winner} wins with {result.confidence:.2%} confidence"
-        )
+        logger.info(f"A/B test completed: {result.winner} wins with {result.confidence:.2%} confidence")
 
         # 返回结果字典（供 self_iteration_loop.py 使用）
         return {
             "test_id": result.test_id,
             "test_name": result.test_id,  # 使用 test_id 作为名称
             "variant_a": {
-                "prompt": (
-                    current_prompt[:100] + "..."
-                    if len(current_prompt) > 100
-                    else current_prompt
-                ),
+                "prompt": (current_prompt[:100] + "..." if len(current_prompt) > 100 else current_prompt),
                 "score": result.variant_a_score,
             },
             "variant_b": {
-                "prompt": (
-                    proposed_prompt[:100] + "..."
-                    if len(proposed_prompt) > 100
-                    else proposed_prompt
-                ),
+                "prompt": (proposed_prompt[:100] + "..." if len(proposed_prompt) > 100 else proposed_prompt),
                 "score": result.variant_b_score,
             },
             "winner": result.winner,
@@ -161,11 +149,7 @@ class ABTestManager:
             "passed_quality_gate": result.passed_quality_gate,
             "details": {
                 "p_value": result.p_value,
-                "sample_size": (
-                    len(test_segments) * result.details.__len__()
-                    if result.details
-                    else 0
-                ),
+                "sample_size": (len(test_segments) * result.details.__len__() if result.details else 0),
                 "judge_criteria": judge_criteria,
             },
         }
@@ -215,15 +199,10 @@ class ABTestManager:
             detailed_results.append(
                 {
                     "segment_id": i,
-                    "segment_preview": segment[:50]
-                    + ("..." if len(segment) > 50 else ""),
+                    "segment_preview": segment[:50] + ("..." if len(segment) > 50 else ""),
                     "variant_a_score": round(score_a, 3),
                     "variant_b_score": round(score_b, 3),
-                    "winner": (
-                        "A"
-                        if score_a > score_b
-                        else "B" if score_b > score_a else "TIE"
-                    ),
+                    "winner": ("A" if score_a > score_b else "B" if score_b > score_a else "TIE"),
                     "score_difference": round(abs(score_b - score_a), 3),
                 }
             )
@@ -242,16 +221,8 @@ class ABTestManager:
 
         # 计算置信度（基于得分差异和一致性）
         score_diff = abs(avg_score_b - avg_score_a)
-        consistency_a = (
-            1.0 - (max(variant_a_scores) - min(variant_a_scores))
-            if len(variant_a_scores) > 1
-            else 1.0
-        )
-        consistency_b = (
-            1.0 - (max(variant_b_scores) - min(variant_b_scores))
-            if len(variant_b_scores) > 1
-            else 1.0
-        )
+        consistency_a = 1.0 - (max(variant_a_scores) - min(variant_a_scores)) if len(variant_a_scores) > 1 else 1.0
+        consistency_b = 1.0 - (max(variant_b_scores) - min(variant_b_scores)) if len(variant_b_scores) > 1 else 1.0
         avg_consistency = (consistency_a + consistency_b) / 2
 
         # 置信度基于得分差异和一致性
@@ -263,9 +234,7 @@ class ABTestManager:
 
         # 判断是否通过质量门禁（这里使用简单规则：B 版本必须显著优于 A 才算通过）
         passed_quality_gate = (
-            winner == "B"
-            and score_diff > 0.1  # B 版本获胜
-            and confidence > 0.75  # 有足够的改进幅度  # 有足够的置信度
+            winner == "B" and score_diff > 0.1 and confidence > 0.75  # B 版本获胜  # 有足够的改进幅度  # 有足够的置信度
         )
 
         result = ABTestResult(
@@ -437,10 +406,7 @@ def main():
     ab_test_manager = ABTestManager()
 
     # 定义测试用的提示词
-    current_prompt = (
-        "你是一个专业的有声书内容分析助手。请分析以下文本，"
-        "识别角色、情感、语速和音高信息。"
-    )
+    current_prompt = "你是一个专业的有声书内容分析助手。请分析以下文本，" "识别角色、情感、语速和音高信息。"
 
     proposed_prompt = (
         "你是一个专业的有声书内容分析助手。请分析以下文本，"
@@ -469,9 +435,7 @@ def main():
     logger.info(f"  Variant B (Proposed) Score: {result['variant_b']['score']:.3f}")
     logger.info(f"  Winner: {result['winner']}")
     logger.info(f"  Confidence: {result['confidence']:.2%}")
-    logger.info(
-        f"  Passed Quality Gate: {'YES' if result['passed_quality_gate'] else 'NO'}"
-    )
+    logger.info(f"  Passed Quality Gate: {'YES' if result['passed_quality_gate'] else 'NO'}")
     logger.info(f"  P-value: {result['details']['p_value']:.3f}")
 
     logger.info("\n" + "=" * 50)

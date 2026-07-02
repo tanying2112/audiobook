@@ -19,9 +19,7 @@ class LLMParseError(Exception):
         self.stage = stage
 
 
-def validate_and_parse_llm_response(
-    raw_response: Any, response_model: Type[T], stage: str
-) -> T:
+def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], stage: str) -> T:
     """
     Pre-validate LLM response before Pydantic model validation.
 
@@ -33,9 +31,7 @@ def validate_and_parse_llm_response(
     """
     # Handle None or empty response
     if raw_response is None:
-        raise LLMParseError(
-            "LLM returned None response", raw_response=str(raw_response), stage=stage
-        )
+        raise LLMParseError("LLM returned None response", raw_response=str(raw_response), stage=stage)
 
     # Handle empty string
     if isinstance(raw_response, str):
@@ -65,9 +61,7 @@ def validate_and_parse_llm_response(
 
     # Check for empty dict
     if not raw_response:
-        raise LLMParseError(
-            "LLM returned empty JSON object {}", raw_response="{}", stage=stage
-        )
+        raise LLMParseError("LLM returned empty JSON object {}", raw_response="{}", stage=stage)
 
     # Stage-specific validation
     if stage == "judge":

@@ -13,17 +13,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.quality_check import (
-    AudioAnalysisResult,
-    QualityCheckPipeline,
-    quality_check,
-)
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
-from src.audiobook_studio.schemas.tts_routing import (
-    TtsRoutingDecision as TtsRoutingDecisionSchema,
-)
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 
 class TestQualityCheckPipeline:
@@ -98,18 +92,14 @@ class TestQualityCheckPipeline:
         """Test pipeline initialization with custom router and judge."""
         mock_router = Mock()
         mock_judge = Mock()
-        pipeline = QualityCheckPipeline(
-            router=mock_router, judge=mock_judge, mock_mode=True
-        )
+        pipeline = QualityCheckPipeline(router=mock_router, judge=mock_judge, mock_mode=True)
         assert pipeline.router == mock_router
         assert pipeline.judge == mock_judge
 
     def test_analyze_audio_rules_mock_mode(self):
         """Test _analyze_audio_rules in mock mode returns defaults."""
         expected_duration = 5000
-        analysis = self.pipeline._analyze_audio_rules(
-            self.mock_audio_path, expected_duration
-        )
+        analysis = self.pipeline._analyze_audio_rules(self.mock_audio_path, expected_duration)
 
         assert isinstance(analysis, AudioAnalysisResult)
         assert analysis.duration_ms == expected_duration
@@ -183,9 +173,7 @@ class TestQualityCheckPipeline:
         annotation = self.create_mock_annotation()
         routing = self.create_mock_routing_decision()
 
-        inputs = [
-            (str(self.mock_audio_path), annotation, routing, "这是测试文本内容。")
-        ]
+        inputs = [(str(self.mock_audio_path), annotation, routing, "这是测试文本内容。")]
 
         results = self.pipeline.run(inputs)
 
@@ -211,15 +199,9 @@ class TestQualityCheckPipeline:
             audio_paths.append(str(p))
 
         annotations = [self.create_mock_annotation(paragraph_index=i) for i in range(3)]
-        routings = [
-            self.create_mock_routing_decision(segment_id=f"book_001_ch1_p{i}")
-            for i in range(3)
-        ]
+        routings = [self.create_mock_routing_decision(segment_id=f"book_001_ch1_p{i}") for i in range(3)]
 
-        inputs = [
-            (audio_paths[i], annotations[i], routings[i], f"段落 {i} 内容。")
-            for i in range(3)
-        ]
+        inputs = [(audio_paths[i], annotations[i], routings[i], f"段落 {i} 内容。") for i in range(3)]
 
         results = self.pipeline.run(inputs)
 
@@ -505,9 +487,7 @@ class TestQualityCheckNonMockPathsExtended:
             notes="Test",
             contract_version=1,
         )
-        prompt = pipeline._build_multimodal_prompt(
-            "test_seg_001", annotation, "参考文本内容", "base64data123"
-        )
+        prompt = pipeline._build_multimodal_prompt("test_seg_001", annotation, "参考文本内容", "base64data123")
         assert "test_seg_001" in prompt
         assert "张三" in prompt
         assert "happy" in prompt
@@ -535,9 +515,7 @@ class TestQualityCheckNonMockPathsExtended:
             notes="Test",
             contract_version=1,
         )
-        result = pipeline._multimodal_judge_quality(
-            "test_seg", audio_path, annotation, "ref text"
-        )
+        result = pipeline._multimodal_judge_quality("test_seg", audio_path, annotation, "ref text")
         assert result is None
 
     def test_run_hard_quality_checks_real_mode(self):

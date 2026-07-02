@@ -109,9 +109,7 @@ class AudiobookshelfPublisher:
         response = self._real_api_call(upload_data, audio_file)
 
         if response.get("success"):
-            success_msg = (
-                f"有声书已成功发布到 Audiobookshelf (ID: {response.get('item_id')})"
-            )
+            success_msg = f"有声书已成功发布到 Audiobookshelf (ID: {response.get('item_id')})"
             logger.info(f"✅ {success_msg}")
             return True, success_msg, response
         else:
@@ -173,9 +171,7 @@ class AudiobookshelfPublisher:
         if not metadata.narrator.strip():
             return False, "朗读者不能为空"
 
-        if metadata.publication_year and (
-            metadata.publication_year < 1000 or metadata.publication_year > 2100
-        ):
+        if metadata.publication_year and (metadata.publication_year < 1000 or metadata.publication_year > 2100):
             return False, f"出版年份不合理: {metadata.publication_year}"
 
         return True, "元数据验证通过"
@@ -213,11 +209,7 @@ class AudiobookshelfPublisher:
             "flac": "audio/flac",
         }.get(audio_file.format)
 
-        if (
-            expected_mime
-            and mime_type
-            and not mime_type.startswith(expected_mime.split("/")[0])
-        ):
+        if expected_mime and mime_type and not mime_type.startswith(expected_mime.split("/")[0]):
             return (
                 False,
                 f"文件 MIME 类型不匹配: 期望 {expected_mime}, 实际 {mime_type}",
@@ -225,9 +217,7 @@ class AudiobookshelfPublisher:
 
         return True, "音频文件验证通过"
 
-    def _prepare_upload_data(
-        self, metadata: AudiobookMetadata, audio_file: AudiobookFile
-    ) -> Dict:
+    def _prepare_upload_data(self, metadata: AudiobookMetadata, audio_file: AudiobookFile) -> Dict:
         """准备上传到 Audiobookshelf 的数据"""
         logger.debug("📋 准备 Audiobookshelf 上传数据")
 
@@ -316,9 +306,7 @@ class AudiobookshelfPublisher:
             "success": True,
             "message": "书籍已成功导入",
             "book_id": book_id,
-            "import_id": hashlib.md5(f"{book_id}{datetime.now()}".encode()).hexdigest()[
-                :16
-            ],
+            "import_id": hashlib.md5(f"{book_id}{datetime.now()}".encode()).hexdigest()[:16],
             "book": {
                 "id": book_id,
                 "title": upload_data.get("title"),
@@ -455,9 +443,7 @@ class AudiobookshelfPublisher:
                             "title": book_title,
                             "author": author,
                         }
-                        resp = self.client.post(
-                            f"{self.base_url}/api/upload", data=data, files=files
-                        )
+                        resp = self.client.post(f"{self.base_url}/api/upload", data=data, files=files)
                     if resp.status_code in (200, 201):
                         upload_results.append(
                             {
@@ -493,9 +479,7 @@ class AudiobookshelfPublisher:
 
         # 第四步：触发库扫描
         try:
-            scan_resp = self.client.post(
-                f"{self.base_url}/api/libraries/{library_id}/scan"
-            )
+            scan_resp = self.client.post(f"{self.base_url}/api/libraries/{library_id}/scan")
             if scan_resp.status_code not in (200, 201):
                 logger.warning(f"触发扫描返回状态码 {scan_resp.status_code}")
         except Exception as e:
@@ -577,13 +561,9 @@ class AudiobookshelfPublisher:
                 metadata_payload["metadata"]["chapters"] = chapters
 
             try:
-                resp = self.client.patch(
-                    f"{self.base_url}/api/items/{item_id}/media", json=metadata_payload
-                )
+                resp = self.client.patch(f"{self.base_url}/api/items/{item_id}/media", json=metadata_payload)
                 if resp.status_code not in (200, 204):
-                    logger.warning(
-                        f"更新元数据返回状态码 {resp.status_code}: {resp.text}"
-                    )
+                    logger.warning(f"更新元数据返回状态码 {resp.status_code}: {resp.text}")
             except Exception as e:
                 logger.warning(f"更新元数据失败: {e}")
 
@@ -596,13 +576,9 @@ class AudiobookshelfPublisher:
 
                     cover_bytes = base64.b64decode(cover_path)
                     files = {"cover": ("cover.jpg", cover_bytes, "image/jpeg")}
-                    resp = self.client.post(
-                        f"{self.base_url}/api/items/{item_id}/cover", files=files
-                    )
+                    resp = self.client.post(f"{self.base_url}/api/items/{item_id}/cover", files=files)
                     if resp.status_code not in (200, 201):
-                        logger.warning(
-                            f"上传封面返回状态码 {resp.status_code}: {resp.text}"
-                        )
+                        logger.warning(f"上传封面返回状态码 {resp.status_code}: {resp.text}")
                 except Exception as e:
                     logger.warning(f"处理封面图片失败: {e}")
 
@@ -789,9 +765,7 @@ def main():
     else:
         logger.error(f"   ❌ {message}")
         if response and response.get("is_duplicate"):
-            logger.info(
-                "   💡 提示: 这可能是一本重复的书籍，您可以选择更新现有条目或跳过"
-            )
+            logger.info("   💡 提示: 这可能是一本重复的书籍，您可以选择更新现有条目或跳过")
 
     logger.info("\n" + "=" * 60)
 

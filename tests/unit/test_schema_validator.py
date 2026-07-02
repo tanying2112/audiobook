@@ -275,7 +275,4 @@ class TestSyncSchemaValidator:
             sync_schema_validator()
         # The function uses logger.info - check caplog for the log messages
         log_output = caplog.text
-        assert (
-            "Schema Synchronization Report" in log_output
-            or "Total pairs checked" in log_output
-        )
+        assert "Schema Synchronization Report" in log_output or "Total pairs checked" in log_output

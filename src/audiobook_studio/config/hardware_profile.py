@@ -239,9 +239,7 @@ class HardwareProfileConfig(BaseSettings):
     routing: RoutingProfileConfig
     cost_control: CostControlProfileConfig
     dspy: DSPyProfileConfig = Field(default_factory=DSPyProfileConfig)
-    voice_anchor: VoiceAnchorProfileConfig = Field(
-        default_factory=VoiceAnchorProfileConfig
-    )
+    voice_anchor: VoiceAnchorProfileConfig = Field(default_factory=VoiceAnchorProfileConfig)
 
 
 class HardwareProfile:
@@ -283,9 +281,7 @@ class HardwareProfile:
         if auto_detect.get("enabled", True) and not os.getenv("HARDWARE_PROFILE"):
             recommended = self._auto_recommend_profile()
             if recommended != self._active_profile_name:
-                logger.info(
-                    f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})"
-                )
+                logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
 
     def _parse_profile(self, name: str, data: Dict[str, Any]) -> HardwareProfileConfig:
         """Parse profile data into typed config objects."""
@@ -335,9 +331,7 @@ class HardwareProfile:
 
     @property
     def quality_check(self) -> QualityCheckProfileConfig:
-        return (
-            self._config.quality_check if self._config else QualityCheckProfileConfig()
-        )
+        return self._config.quality_check if self._config else QualityCheckProfileConfig()
 
     @property
     def routing(self) -> RoutingProfileConfig:
@@ -428,9 +422,7 @@ if __name__ == "__main__":
     logger.info("Detected Hardware:")
     logger.info(f"  CPU: {specs.cpu_cores} cores ({specs.cpu_arch})")
     logger.info(f"  RAM: {specs.ram_gb:.1f} GB")
-    logger.info(
-        f"  GPU: {specs.gpu_enabled} ({specs.gpu_name}, VRAM: {specs.vram_gb:.1f} GB)"
-    )
+    logger.info(f"  GPU: {specs.gpu_enabled} ({specs.gpu_name}, VRAM: {specs.vram_gb:.1f} GB)")
 
     # Load profile
     profile = get_hardware_profile()

@@ -61,9 +61,7 @@ class TranslateAndDubPipeline:
 
         # 导入语义连贯性检查器
         try:
-            from src.audiobook_studio.quality.semantic_coherence import (
-                SemanticCoherenceChecker,
-            )
+            from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
             semantic_checker = SemanticCoherenceChecker()
         except ImportError:
@@ -130,9 +128,7 @@ class TranslateAndDubPipeline:
                 )
 
                 # 5. 应用角色和情感到声音参数
-                voice_params = self._apply_voice_characteristics(
-                    annotation, target_voice
-                )
+                voice_params = self._apply_voice_characteristics(annotation, target_voice)
 
                 # 6. 合成目标语言的音频
                 # 在实际实现中，这里会调用TTS引擎
@@ -166,14 +162,11 @@ class TranslateAndDubPipeline:
             try:
                 # 这里我们需要提取文本进行语义连贯性检查
                 # 在实际实现中，这会更复杂
-                source_texts = [
-                    getattr(s, "text", "") for s in segments if hasattr(s, "text")
-                ]
+                source_texts = [getattr(s, "text", "") for s in segments if hasattr(s, "text")]
                 dubbed_texts = [
                     getattr(s, "text", "")
                     for s in dubbed_segments
-                    if hasattr(s, "text")
-                    and not (hasattr(s, "segment_id") and "_FAILED" in s.segment_id)
+                    if hasattr(s, "text") and not (hasattr(s, "segment_id") and "_FAILED" in s.segment_id)
                 ]
 
                 if source_texts and dubbed_texts:
@@ -183,32 +176,23 @@ class TranslateAndDubPipeline:
                     )
 
                     report["semantic_coherence_score"] = coherence_result.get("score")
-                    report["emotional_continuity_passed"] = coherence_result.get(
-                        "passed", False
-                    )
+                    report["emotional_continuity_passed"] = coherence_result.get("passed", False)
                     report["continuity_issues"] = coherence_result.get("issues", [])
 
                     if report["emotional_continuity_passed"]:
                         logger.info("✅ 情感连贯性检查通过")
                     else:
-                        logger.warning(
-                            f"⚠️ 情感连贯性检查失败: {len(report['continuity_issues'])} 个问题"
-                        )
+                        logger.warning(f"⚠️ 情感连贯性检查失败: {len(report['continuity_issues'])} 个问题")
 
             except Exception as e:
                 logger.error(f"❌ 情感连贯性检查过程中出错: {str(e)}")
                 report["warnings"].append(f"情感连贯性检查失败: {str(e)}")
 
-        logger.info(
-            f"📊 翻译完成: {report['successful_translations']} 成功, "
-            f"{report['failed_translations']} 失败"
-        )
+        logger.info(f"📊 翻译完成: {report['successful_translations']} 成功, " f"{report['failed_translations']} 失败")
 
         return dubbed_segments, report
 
-    def _get_target_voice(
-        self, character_name: str, target_language: str, emotion: str
-    ) -> dict:
+    def _get_target_voice(self, character_name: str, target_language: str, emotion: str) -> dict:
         """Return a voice configuration for the given target language by querying
         the character voice binding database. Falls back to default if not found.
         """
@@ -218,10 +202,8 @@ class TranslateAndDubPipeline:
         db = SessionLocal()
         try:
             # 查找角色的声音绑定
-            character = db.query(Character).filter(
-                Character.canonical_name == character_name
-            ).first()
-            
+            character = db.query(Character).filter(Character.canonical_name == character_name).first()
+
             if character and character.voice_mapping:
                 # 尝试获取目标语言的 voice_id
                 voice_mapping = character.voice_mapping
@@ -235,7 +217,7 @@ class TranslateAndDubPipeline:
                             "base_speed_rate": 1.0,
                             "base_volume": 1.0,
                         }
-            
+
             # 如果没有找到特定语言的声音，使用默认映射
             default_voices = {
                 "en-US": "en-US-JennyNeural",
@@ -246,7 +228,7 @@ class TranslateAndDubPipeline:
                 "zh-CN": "zh-CN-XiaoyiNeural",
             }
             voice_id = default_voices.get(target_language, "en-US-JennyNeural")
-            
+
             return {
                 "voice_id": voice_id,
                 "language": target_language,
@@ -297,9 +279,7 @@ class TranslateAndDubPipeline:
             # Fallback to a simple placeholder if translation fails
             return f"[{target_language}] {text}"
 
-    def _apply_voice_characteristics(
-        self, annotation: ParagraphAnnotation, voice_config: dict
-    ) -> dict:
+    def _apply_voice_characteristics(self, annotation: ParagraphAnnotation, voice_config: dict) -> dict:
         """Convert emotion to speech_rate and pitch_shift_semitones adjustments."""
         emotion_adjustments = {
             "neutral": (1.0, 0.0),

@@ -22,12 +22,8 @@ class FeedbackRecord(BaseModel):
     """统一反馈记录契约."""
 
     id: str = Field(..., description="唯一反馈 ID (UUID)")
-    timestamp: datetime = Field(
-        default_factory=datetime.now(timezone.utc), description="反馈时间戳"
-    )
-    source: Literal["human_edit", "quality_judge", "user_rating"] = Field(
-        ..., description="反馈来源"
-    )
+    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc), description="反馈时间戳")
+    source: Literal["human_edit", "quality_judge", "user_rating"] = Field(..., description="反馈来源")
     stage: Literal[
         "extract",
         "analyze_structure",
@@ -46,9 +42,7 @@ class FeedbackRecord(BaseModel):
     corrected_output: dict[str, Any] = Field(..., description="人工/期望的修正输出")
 
     # 核心：修改理由 (必填，用于差异分析)
-    rationale: str = Field(
-        ..., min_length=10, description="修改理由 (必填，供 Agent 学习)"
-    )
+    rationale: str = Field(..., min_length=10, description="修改理由 (必填，供 Agent 学习)")
 
     # Agent 自动生成
     diff_summary: str = Field(default="", description="差异摘要 (Agent 自动生成)")
@@ -56,8 +50,6 @@ class FeedbackRecord(BaseModel):
         default_factory=list,
         description="模式标签 (如: missed_dialogue_attribution, emotion_too_mild)",
     )
-    contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
-    )
+    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
     model_config = {"from_attributes": True, "extra": "forbid"}

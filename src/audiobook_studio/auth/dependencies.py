@@ -3,11 +3,7 @@
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException, Security, status
-from fastapi.security import (
-    OAuth2PasswordBearer,
-    OAuth2PasswordRequestForm,
-    SecurityScopes,
-)
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
 from jose import JWTError
 from sqlalchemy.orm import Session
 
@@ -39,11 +35,7 @@ async def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     """Get current authenticated user from JWT token."""
-    authenticate_value = (
-        f'Bearer scope="{security_scopes.scope_str}"'
-        if security_scopes.scopes
-        else "Bearer"
-    )
+    authenticate_value = f'Bearer scope="{security_scopes.scope_str}"' if security_scopes.scopes else "Bearer"
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,10 +70,7 @@ async def get_current_user(
 
     # Check scopes if required
     for scope in security_scopes.scopes:
-        if (
-            scope not in token_data.permissions
-            and scope != "admin" not in token_data.roles
-        ):
+        if scope not in token_data.permissions and (scope != "admin" or "admin" not in token_data.roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Not enough permissions. Required: {scope}",

@@ -230,14 +230,31 @@ def disable_langfuse(monkeypatch):
     lfc._enabled = False
     lfc._langfuse_client = None
 
-    with patch.object(lfc, "observe_llm_call", return_value=None), patch.object(
-        lfc, "observe_tts_synthesis", return_value=None
-    ), patch.object(lfc, "observe_quality_check", return_value=None), patch.object(
-        lfc, "flush_langfuse", return_value=None
-    ), patch.object(
-        lfc, "score_trace", return_value=None
+    with (
+        patch.object(lfc, "observe_llm_call", return_value=None),
+        patch.object(lfc, "observe_tts_synthesis", return_value=None),
+        patch.object(lfc, "observe_quality_check", return_value=None),
+        patch.object(lfc, "flush_langfuse", return_value=None),
+        patch.object(lfc, "score_trace", return_value=None),
     ):
         yield
 
     lfc._enabled = original_enabled
     lfc._langfuse_client = original_client
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_tmp_repo():
+    os.makedirs("/tmp/repo", exist_ok=True)
+
+
+# Ignore SAWarning about foreign key cycles in SQLite drop_all
+import warnings
+
+from sqlalchemy.exc import SAWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message="Can't sort tables for DROP; an unresolvable foreign key dependency exists between tables:.*",
+    category=SAWarning,
+)

@@ -25,9 +25,7 @@ class AudioSegmentResponse(BaseModel):
     id: str = Field(description="Segment identifier")
     file_path: str = Field(description="Path to audio file")
     duration_ms: int = Field(description="Duration in milliseconds")
-    text_hash: Optional[str] = Field(
-        default=None, description="Text hash for cache validation"
-    )
+    text_hash: Optional[str] = Field(default=None, description="Text hash for cache validation")
     speaker: Optional[str] = Field(default=None, description="Speaker name")
     paragraph_index: Optional[int] = Field(default=None, description="Paragraph index")
 
@@ -36,9 +34,7 @@ class ReorderRequest(BaseModel):
     """Reorder request schema."""
 
     segment_ids: List[str] = Field(description="Ordered list of segment IDs")
-    crossfade_ms: int = Field(
-        default=50, description="Crossfade duration in milliseconds"
-    )
+    crossfade_ms: int = Field(default=50, description="Crossfade duration in milliseconds")
 
 
 class TrimRequest(BaseModel):
@@ -75,9 +71,7 @@ def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
                 id=audio_file.stem,
                 file_path=str(audio_file),
                 duration_ms=5000,  # Mock 5 seconds
-                paragraph_index=(
-                    int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0
-                ),
+                paragraph_index=(int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0),
             )
         )
 
@@ -167,9 +161,7 @@ def merge_segments(
         Merged segment metadata
     """
     if len(request.segment_ids) < 2:
-        raise HTTPException(
-            status_code=400, detail="At least 2 segments required for merge"
-        )
+        raise HTTPException(status_code=400, detail="At least 2 segments required for merge")
 
     output_path = request.output_path or f"storage/books/{book_id}/audio/merged.mp3"
 

@@ -108,7 +108,11 @@ class HealthProbe:
         start = time.time()
         try:
             with httpx.Client(timeout=self.timeout_s) as client:
-                resp = client.get(f"{base_url}/models", headers=headers)
+                # Ollama uses /api/tags endpoint instead of /models
+                if base_url == "http://localhost:11434" or base_url and "11434" in base_url:
+                    resp = client.get(f"{base_url}/api/tags", headers=headers)
+                else:
+                    resp = client.get(f"{base_url}/models", headers=headers)
                 latency = (time.time() - start) * 1000
 
                 quota_remaining = None
@@ -150,9 +154,7 @@ class HealthProbe:
     def probe_now(self, name: str) -> HealthStatus:
         """Immediately probe a specific provider and return status."""
         if name not in self.providers:
-            return HealthStatus(
-                provider=name, is_healthy=False, error_message="not found"
-            )
+            return HealthStatus(provider=name, is_healthy=False, error_message="not found")
         self._probe_provider(name, self.providers[name])
         return self.statuses[name]
 

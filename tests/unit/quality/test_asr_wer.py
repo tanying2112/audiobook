@@ -109,38 +109,28 @@ class TestASRWerMetric(unittest.TestCase):
         m = self.metric
         # English tokenization (space)
         # Identical
-        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer(
-            "hello world", "hello world"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer("hello world", "hello world")
         self.assertEqual((wer, cer, ins, dels, subs), (0.0, 0.0, 0, 0, 0))
         # Substitution
-        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer(
-            "hello world", "hello word"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer("hello world", "hello word")
         self.assertEqual(subs, 1)
         self.assertEqual(ins, 0)
         self.assertEqual(dels, 0)
         self.assertAlmostEqual(wer, 0.5)
         # Insertion
-        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer(
-            "hello world", "hello awesome world"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer("hello world", "hello awesome world")
         self.assertEqual(ins, 1)
         self.assertEqual(dels, 0)
         self.assertEqual(subs, 0)
         self.assertAlmostEqual(wer, 0.5)
         # Deletion
-        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer(
-            "hello world", "hello"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer("hello world", "hello")
         self.assertEqual(dels, 1)
         self.assertEqual(ins, 0)
         self.assertEqual(subs, 0)
         self.assertAlmostEqual(wer, 0.5)
         # Mixed: one substitution, one insertion
-        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer(
-            "the cat sat", "the cat sat on the mat"
-        )
+        wer, cer, ins, dels, subs, ref_w, hyp_w = m._compute_wer_cer("the cat sat", "the cat sat on the mat")
         self.assertEqual(ins, 3)
         self.assertEqual(dels, 0)
         self.assertEqual(subs, 0)

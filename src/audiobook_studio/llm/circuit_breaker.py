@@ -41,8 +41,7 @@ class CircuitBreaker:
                     self.state = "half_open"
                     self.half_open_calls = 0
                     logger.info(
-                        f"Circuit breaker [{self.provider_name}] "
-                        f"OPEN → HALF_OPEN after {elapsed:.0f}s cooldown"
+                        f"Circuit breaker [{self.provider_name}] " f"OPEN → HALF_OPEN after {elapsed:.0f}s cooldown"
                     )
                     return True
                 return False
@@ -59,10 +58,7 @@ class CircuitBreaker:
                 self.state = "closed"
                 self.failure_count = 0
                 self.half_open_calls = 0
-                logger.info(
-                    f"Circuit breaker [{self.provider_name}] "
-                    f"HALF_OPEN → CLOSED (success)"
-                )
+                logger.info(f"Circuit breaker [{self.provider_name}] " f"HALF_OPEN → CLOSED (success)")
             elif self.state == "closed":
                 self.failure_count = max(0, self.failure_count - 1)
 
@@ -74,10 +70,7 @@ class CircuitBreaker:
 
             if self.state == "half_open":
                 self.state = "open"
-                logger.warning(
-                    f"Circuit breaker [{self.provider_name}] "
-                    f"HALF_OPEN → OPEN (failure during recovery)"
-                )
+                logger.warning(f"Circuit breaker [{self.provider_name}] " f"HALF_OPEN → OPEN (failure during recovery)")
             elif self.failure_count >= self.failure_threshold:
                 self.state = "open"
                 logger.warning(
@@ -91,9 +84,7 @@ class CircuitBreaker:
             self.state = "closed"
             self.failure_count = 0
             self.half_open_calls = 0
-            logger.info(
-                f"Circuit breaker [{self.provider_name}] manually reset to CLOSED"
-            )
+            logger.info(f"Circuit breaker [{self.provider_name}] manually reset to CLOSED")
 
     def get_status(self) -> Dict[str, Any]:
         """Get current circuit breaker status."""
@@ -104,8 +95,6 @@ class CircuitBreaker:
             "failure_threshold": self.failure_threshold,
             "recovery_timeout_s": self.recovery_timeout_s,
             "seconds_since_last_failure": (
-                round(time.time() - self.last_failure_time, 1)
-                if self.last_failure_time > 0
-                else None
+                round(time.time() - self.last_failure_time, 1) if self.last_failure_time > 0 else None
             ),
         }

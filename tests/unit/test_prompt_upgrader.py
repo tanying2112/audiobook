@@ -186,9 +186,7 @@ class TestUpgradePrompt:
         mock_apply.return_value = ("Original prompt", [])
         mock_write.return_value = Path("prompts/edit_for_tts/v2.j2")
 
-        result = upgrade_prompt(
-            "edit_for_tts", [], additional_fixes=["Custom fix instruction"]
-        )
+        result = upgrade_prompt("edit_for_tts", [], additional_fixes=["Custom fix instruction"])
 
         assert result == Path("prompts/edit_for_tts/v2.j2")
 
@@ -217,9 +215,7 @@ class TestBatchUpgrade:
 
         assert "edit_for_tts" in results
         assert "quality_judge" in results
-        assert (
-            mock_upgrade.call_count == 2
-        )  # Only 2 stages had patterns above threshold
+        assert mock_upgrade.call_count == 2  # Only 2 stages had patterns above threshold
 
 
 class TestMapPatternToStage:

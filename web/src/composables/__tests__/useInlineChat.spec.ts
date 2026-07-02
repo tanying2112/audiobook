@@ -14,6 +14,16 @@ vi.mock('../../api/sse', () => ({
 
 import { streamChatEdit } from '../../api/sse'
 
+/** 构造符合 DOMRect 完整接口的 mock（含 bottom/left/right/top/toJSON） */
+function mockDomRect(overrides: Partial<DOMRect> = {}): DOMRect {
+  return {
+    x: 10, y: 20, width: 100, height: 30,
+    top: 20, bottom: 50, left: 10, right: 110,
+    toJSON: () => ({}),
+    ...overrides,
+  } as DOMRect
+}
+
 describe('useInlineChat composable', () => {
   let ctxStore: ReturnType<typeof useContextStore>
 
@@ -45,9 +55,9 @@ describe('useInlineChat composable', () => {
 
   describe('open / close', () => {
     it('open 应该设置 context store 的 activeAnchor', () => {
-      const { open, close, active, anchor } = useInlineChat()
+      const { open, active, anchor } = useInlineChat()
       const mockEl = document.createElement('div')
-      mockEl.getBoundingClientRect = () => ({ x: 10, y: 20, width: 100, height: 30 })
+      mockEl.getBoundingClientRect = () => mockDomRect()
 
       open(mockEl, {
         kind: 'text_selection',
@@ -67,7 +77,7 @@ describe('useInlineChat composable', () => {
     it('close 应该清空 anchor 和重置对话', () => {
       const { open, close, active, anchor, messages } = useInlineChat()
       const mockEl = document.createElement('div')
-      mockEl.getBoundingClientRect = () => ({ x: 10, y: 20, width: 100, height: 30 })
+      mockEl.getBoundingClientRect = () => mockDomRect()
 
       open(mockEl, {
         kind: 'text_selection',

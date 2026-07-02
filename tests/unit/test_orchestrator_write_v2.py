@@ -40,9 +40,7 @@ def mock_db():
     para.edited_text = ""
 
     db.query.return_value.filter.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-        None
-    )
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
     return db, chapter, para
 
 
@@ -86,9 +84,7 @@ class TestWriteAnalyze:
                     "sample_quote": "Hello world",
                 }
             ],
-            emotion_snapshots=[
-                {"chapter": 1, "dominant_emotion": "neutral", "intensity": 0.5}
-            ],
+            emotion_snapshots=[{"chapter": 1, "dominant_emotion": "neutral", "intensity": 0.5}],
             story_line_summary="A" * 100,
             global_style_notes="n",
         )
@@ -109,9 +105,7 @@ class TestWriteAnnotate:
             emotion_intensity=0.8,
             confidence=0.9,
         )
-        _write_annotate(
-            db, project_id=1, chapter=chapter, paragraph_index=1, result=result
-        )
+        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
         db.add.assert_called()
         db.commit.assert_called()
 
@@ -126,9 +120,7 @@ class TestWriteAnnotate:
             emotion_intensity=0.5,
             confidence=0.7,
         )
-        _write_annotate(
-            db, project_id=1, chapter=chapter, paragraph_index=1, result=result
-        )
+        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
         db.commit.assert_called()
 
 
@@ -175,9 +167,7 @@ class TestWriteSynthesize:
             "engine": "kokoro",
             "voice_id": "v1",
         }
-        _write_synthesize(
-            db, project_id=1, chapter=chapter, para=para, segment_info=seg
-        )
+        _write_synthesize(db, project_id=1, chapter=chapter, para=para, segment_info=seg)
         db.add.assert_called()
         db.commit.assert_called()
         assert para.status == "synthesized"
@@ -188,9 +178,7 @@ class TestWriteQuality:
         db, chapter, para = mock_db
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            mock_tts_edit
-        )
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
         result = QualityJudgment(
             segment_id="seg1",
             speaker_clarity=0.9,

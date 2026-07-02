@@ -104,15 +104,12 @@ class FeedbackAutoProcessor:
         # Count unprocessed feedback in database
         db = self.db_session_factory()
         try:
-            unprocessed = list_unprocessed_feedback(
-                db, project_id=self.project_id, limit=10000
-            )
+            unprocessed = list_unprocessed_feedback(db, project_id=self.project_id, limit=10000)
             count = len(unprocessed)
 
             if count >= self.min_feedback_count and count != self._last_analysis_count:
                 logger.info(
-                    f"Feedback threshold reached: {count} unprocessed records "
-                    f"(threshold={self.min_feedback_count})"
+                    f"Feedback threshold reached: {count} unprocessed records " f"(threshold={self.min_feedback_count})"
                 )
                 self._trigger_analysis(db)
                 self._last_analysis_count = count
@@ -174,9 +171,7 @@ class FeedbackAutoProcessor:
         """Get current status of the auto processor."""
         db = self.db_session_factory()
         try:
-            unprocessed = list_unprocessed_feedback(
-                db, project_id=self.project_id, limit=10000
-            )
+            unprocessed = list_unprocessed_feedback(db, project_id=self.project_id, limit=10000)
             return {
                 "project_id": self.project_id,
                 "running": self._worker_thread_alive(),
@@ -185,9 +180,7 @@ class FeedbackAutoProcessor:
                 "check_interval_seconds": self.check_interval_seconds,
                 "unprocessed_feedback_count": len(unprocessed),
                 "last_analysis_count": self._last_analysis_count,
-                "next_check_in_seconds": (
-                    self.check_interval_seconds if self._worker_thread_alive() else None
-                ),
+                "next_check_in_seconds": (self.check_interval_seconds if self._worker_thread_alive() else None),
             }
         finally:
             db.close()

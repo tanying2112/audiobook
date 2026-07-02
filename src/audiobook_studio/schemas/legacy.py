@@ -28,9 +28,7 @@ class Paragraph(BaseModel):
     book_id: int = Field(..., description="Foreign key to Book")
     index: int = Field(..., description="Paragraph order index")
     text: str = Field(..., description="Paragraph text content")
-    speaker: Optional[str] = Field(
-        default=None, description="Speaker name if applicable"
-    )
+    speaker: Optional[str] = Field(default=None, description="Speaker name if applicable")
 
     model_config = {"from_attributes": True}
 
@@ -41,9 +39,7 @@ class TTSEdit(BaseModel):
     id: Optional[int] = Field(default=None, description="Database primary key")
     paragraph_id: int = Field(..., description="Foreign key to Paragraph")
     edited_text: str = Field(..., description="Edited text for TTS")
-    voice: Optional[str] = Field(
-        default=None, description="Voice identifier for synthesis"
-    )
+    voice: Optional[str] = Field(default=None, description="Voice identifier for synthesis")
 
     model_config = {"from_attributes": True}
 
@@ -54,9 +50,7 @@ class Routing(BaseModel):
     id: Optional[int] = Field(default=None, description="Database primary key")
     paragraph_id: int = Field(..., description="Foreign key to Paragraph")
     voice: str = Field(..., description="Selected voice identifier")
-    confidence: Optional[float] = Field(
-        default=None, description="Confidence score (0-1)"
-    )
+    confidence: Optional[float] = Field(default=None, description="Confidence score (0-1)")
 
     model_config = {"from_attributes": True}
 

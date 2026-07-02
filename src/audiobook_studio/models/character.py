@@ -20,9 +20,7 @@ class Character(Base):
     __tablename__ = "characters"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
 
     canonical_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     aliases: Mapped[Optional[List[str]]] = mapped_column(JSON, default=list)

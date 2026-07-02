@@ -10,7 +10,7 @@
   依赖后端：uvicorn src.audiobook_studio.main:app --port 8000
 -->
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useInlineChat } from '../composables/useInlineChat'
 import { useInlineChatPosition } from '../composables/useInlineChatPosition'
 import {
@@ -53,7 +53,7 @@ const {
 
 // ── 2. 智能定位（防飘移核心）──────────────────────────────────────────
 // 实时读取 anchorEl 位置 + 视口边界检测 + 智能翻转，页面滚动/缩放时小窗始终跟随锚点。
-const { popoverStyle, placement, anchorVisible, recalculate } = useInlineChatPosition(
+const { popoverStyle, placement, anchorVisible } = useInlineChatPosition(
   anchorEl,
   {
     active,

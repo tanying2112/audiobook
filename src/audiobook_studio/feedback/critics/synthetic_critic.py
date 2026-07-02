@@ -23,14 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .base import (
-    BaseCritic,
-    CriticEnsemble,
-    CriticEnsembleEvaluator,
-    CriticResult,
-    CriticType,
-    CriticVerdict,
-)
+from .base import BaseCritic, CriticEnsemble, CriticEnsembleEvaluator, CriticResult, CriticType, CriticVerdict
 
 logger = logging.getLogger(__name__)
 
@@ -351,9 +344,7 @@ class CalibrationResult:
         }
 
 
-def _compute_confusion_matrix(
-    y_true: List[str], y_pred: List[str], labels: List[str]
-) -> Dict[str, Dict[str, int]]:
+def _compute_confusion_matrix(y_true: List[str], y_pred: List[str], labels: List[str]) -> Dict[str, Dict[str, int]]:
     """计算混淆矩阵."""
     matrix = {lt: {lp: 0 for lp in labels} for lt in labels}
     for true, pred in zip(y_true, y_pred):
@@ -361,9 +352,7 @@ def _compute_confusion_matrix(
     return matrix
 
 
-def _compute_f1_per_class(
-    confusion_matrix: Dict[str, Dict[str, int]], labels: List[str]
-) -> Dict[str, float]:
+def _compute_f1_per_class(confusion_matrix: Dict[str, Dict[str, int]], labels: List[str]) -> Dict[str, float]:
     """计算每类 F1 分数."""
     f1_scores = {}
     for label in labels:
@@ -373,11 +362,7 @@ def _compute_f1_per_class(
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = (
-            2 * precision * recall / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
         f1_scores[label] = round(f1, 4)
 
     return f1_scores
@@ -459,9 +444,7 @@ class SyntheticCritic:
                 reference_text,
                 context,
             )
-        return self._ensemble.evaluate(
-            audio_path, annotation, routing_decision, reference_text, context
-        )
+        return self._ensemble.evaluate(audio_path, annotation, routing_decision, reference_text, context)
 
     # ─── 校准与 F1 评估 ────────────────────────────────────────────────
 
@@ -488,9 +471,7 @@ class SyntheticCritic:
                 verdict=self._score_to_verdict(sample.semantic_score),
                 score=sample.semantic_score,
                 confidence=0.8,
-                reasoning=(
-                    f"[Calibration] semantic score = " f"{sample.semantic_score}"
-                ),
+                reasoning=(f"[Calibration] semantic score = " f"{sample.semantic_score}"),
                 evidence={"score": sample.semantic_score},
             )
             structural_result = CriticResult(
@@ -498,9 +479,7 @@ class SyntheticCritic:
                 verdict=self._score_to_verdict(sample.structural_score),
                 score=sample.structural_score,
                 confidence=0.75,
-                reasoning=(
-                    f"[Calibration] structural score = " f"{sample.structural_score}"
-                ),
+                reasoning=(f"[Calibration] structural score = " f"{sample.structural_score}"),
                 evidence={"score": sample.structural_score},
             )
             objective_result = CriticResult(
@@ -508,9 +487,7 @@ class SyntheticCritic:
                 verdict=self._score_to_verdict(sample.objective_score),
                 score=sample.objective_score,
                 confidence=0.9,
-                reasoning=(
-                    f"[Calibration] objective score = " f"{sample.objective_score}"
-                ),
+                reasoning=(f"[Calibration] objective score = " f"{sample.objective_score}"),
                 evidence={"score": sample.objective_score},
             )
 
@@ -634,10 +611,7 @@ class SyntheticCritic:
             self._ensemble.weights = best_weights
 
         if best_result:
-            logger.info(
-                f"Adaptive calibration: best F1={best_f1:.4f}, "
-                f"weights={best_weights}"
-            )
+            logger.info(f"Adaptive calibration: best F1={best_f1:.4f}, " f"weights={best_weights}")
             return best_result
 
         return self.calibrate(samples)

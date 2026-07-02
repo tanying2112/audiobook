@@ -7,11 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.audiobook_studio.publish.podcast_rss_generator import (
-    PodcastEpisode,
-    PodcastFeed,
-    PodcastRSSGenerator,
-)
+from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode, PodcastFeed, PodcastRSSGenerator
 
 
 def _feed(**kw):

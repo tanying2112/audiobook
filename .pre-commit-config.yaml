@@ -39,6 +39,13 @@ repos:
         additional_dependencies: ["pydantic>=2.7,<3.0", "pydantic-settings>=2.0", "sqlalchemy>=2.0"]
   - repo: local
     hooks:
+      - id: coverage-check
+        name: Coverage Check - Enforce minimum 80% coverage (unit tests only)
+        entry: .venv/bin/python scripts/pre-commit-coverage.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-push]
       - id: docs-guard
         name: Docs Guard - Check documentation updates
         entry: python scripts/docs_guard.py

@@ -14,10 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.analyze_structure import (
-    AnalyzeStructurePipeline,
-    analyze_structure,
-)
+from src.audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from src.audiobook_studio.schemas import (
     BookAnalysisInput,
     BookAnalysisOutput,
@@ -253,9 +250,7 @@ class TestAnalyzeStructureConvenienceFunction:
                 ),
             ],
             emotion_snapshots=[
-                EmotionSnapshot(
-                    chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
-                ),
+                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"),
             ],
             story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
             * 3,
@@ -270,9 +265,7 @@ class TestAnalyzeStructureConvenienceFunction:
 
         from src.audiobook_studio.llm.router import create_router
 
-        with patch(
-            "src.audiobook_studio.pipeline.analyze_structure.create_router"
-        ) as mock_create_router:
+        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:
             mock_router = MagicMock()
             mock_router.call.return_value = mock_result
             mock_create_router.return_value = mock_router
@@ -310,9 +303,7 @@ class TestAnalyzeStructureConvenienceFunction:
                 ),
             ],
             emotion_snapshots=[
-                EmotionSnapshot(
-                    chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
-                ),
+                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"),
             ],
             story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
             * 3,
@@ -377,9 +368,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def test_unicode_content(self):
         """Test analysis with unicode content (emoji, special chars)."""
-        input_data = self.create_base_input(
-            raw_text="第1章 🎉\n\n这是测试内容 📚\n\n第2章 🎊\n\n更多内容 🎈"
-        )
+        input_data = self.create_base_input(raw_text="第1章 🎉\n\n这是测试内容 📚\n\n第2章 🎊\n\n更多内容 🎈")
         prompt = self.pipeline._build_prompt(input_data)
         assert "🎉" in prompt
         assert "第1章" in prompt
@@ -393,9 +382,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def test_title_and_author_hints(self):
         """Test title and author hints are passed through."""
-        input_data = self.create_base_input(
-            title_hint="特定书名", author_hint="特定作者"
-        )
+        input_data = self.create_base_input(title_hint="特定书名", author_hint="特定作者")
         prompt = self.pipeline._build_prompt(input_data)
         assert "特定书名" in prompt
         assert "特定作者" in prompt

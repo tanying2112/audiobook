@@ -48,18 +48,12 @@ def get_paragraph(paragraph_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{paragraph_id}", response_model=ParagraphSchema)
-def update_paragraph(
-    paragraph_id: int, payload: ParagraphSchema, db: Session = Depends(get_db)
-):
+def update_paragraph(paragraph_id: int, payload: ParagraphSchema, db: Session = Depends(get_db)):
     p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Paragraph not found")
     # Exclude id and other read-only fields from update
-    update_data = {
-        k: v
-        for k, v in payload.model_dump().items()
-        if k not in ("id",) and v is not None
-    }
+    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
     for field, value in update_data.items():
         setattr(p, field, value)
     db.commit()
@@ -191,32 +185,15 @@ def get_paragraph_detail(
         raise HTTPException(status_code=404, detail="Paragraph not found")
 
     # Get latest TTS edit
-    tts_edit_record = (
-        db.query(TTSEdit)
-        .filter(TTSEdit.paragraph_id == paragraph_id)
-        .order_by(TTSEdit.id.desc())
-        .first()
-    )
+    tts_edit_record = db.query(TTSEdit).filter(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()).first()
     # Get latest Routing
-    routing_record = (
-        db.query(Routing)
-        .filter(Routing.paragraph_id == paragraph_id)
-        .order_by(Routing.id.desc())
-        .first()
-    )
+    routing_record = db.query(Routing).filter(Routing.paragraph_id == paragraph_id).order_by(Routing.id.desc()).first()
     # Get latest Quality
-    quality_record = (
-        db.query(Quality)
-        .filter(Quality.paragraph_id == paragraph_id)
-        .order_by(Quality.id.desc())
-        .first()
-    )
+    quality_record = db.query(Quality).filter(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()).first()
 
     # Build annotation data from paragraph attributes (with fallback to placeholder defaults)
     annotation_data = {
-        "speaker_canonical_name": getattr(
-            p, "speaker_canonical_name", getattr(p, "speaker", None)
-        ),
+        "speaker_canonical_name": getattr(p, "speaker_canonical_name", getattr(p, "speaker", None)),
         "is_dialogue": getattr(p, "is_dialogue", False),
         "emotion": getattr(p, "emotion", "neutral"),
         "emotion_intensity": getattr(p, "emotion_intensity", 0.5),
@@ -226,19 +203,13 @@ def get_paragraph_detail(
         "pause_after_ms": getattr(p, "pause_after_ms", 500),
         "confidence": getattr(p, "confidence", 0.9),
         "difficulty": getattr(p, "edit_difficulty", getattr(p, "difficulty", "B")),
-        "forbid_edit": getattr(
-            p, "edit_forbid_edit", getattr(p, "difficulty", "B") == "A"
-        ),
+        "forbid_edit": getattr(p, "edit_forbid_edit", getattr(p, "difficulty", "B") == "A"),
     }
 
     # Build tts_edit data
     if tts_edit_record:
         tts_edit_data = {
-            "changes_made": (
-                tts_edit_record.changes_made
-                if hasattr(tts_edit_record, "changes_made")
-                else []
-            ),
+            "changes_made": (tts_edit_record.changes_made if hasattr(tts_edit_record, "changes_made") else []),
             "edited_text": getattr(tts_edit_record, "edited_text", None),
             "edit_reason": getattr(tts_edit_record, "rationale", None),
         }
@@ -246,9 +217,7 @@ def get_paragraph_detail(
         # Fallback to paragraph's edited_text or text, and empty changes_made, no edit_reason
         tts_edit_data = {
             "changes_made": [],
-            "edited_text": getattr(
-                p, "edited_text", p.text if hasattr(p, "text") else None
-            ),
+            "edited_text": getattr(p, "edited_text", p.text if hasattr(p, "text") else None),
             "edit_reason": None,
         }
 
@@ -259,9 +228,7 @@ def get_paragraph_detail(
             "voice_id": getattr(routing_record, "voice_id", "kokoro_narrator"),
             "fallback_engine": getattr(routing_record, "fallback_engine", "edge"),
             "estimated_cost_usd": getattr(routing_record, "estimated_cost_usd", 0.001),
-            "estimated_duration_ms": getattr(
-                routing_record, "estimated_duration_ms", 5000
-            ),
+            "estimated_duration_ms": getattr(routing_record, "estimated_duration_ms", 5000),
             "reasoning": getattr(routing_record, "reasoning", None),
         }
     else:
@@ -281,9 +248,7 @@ def get_paragraph_detail(
             "speaker_clarity": getattr(quality_record, "speaker_clarity", 0.5),
             "emotion_match": getattr(quality_record, "emotion_match", 0.5),
             "prosody_naturalness": getattr(quality_record, "prosody_naturalness", 0.5),
-            "text_audio_alignment": getattr(
-                quality_record, "text_audio_alignment", 0.5
-            ),
+            "text_audio_alignment": getattr(quality_record, "text_audio_alignment", 0.5),
             "needs_regeneration": getattr(quality_record, "needs_regeneration", False),
             "issues": getattr(quality_record, "issues", []),
             "fix_suggestions": getattr(quality_record, "fix_suggestions", []),
@@ -332,16 +297,8 @@ def get_paragraph_detail(
         tts_edit=ParagraphTTSEditDetail(**tts_edit_data),
         routing=ParagraphRoutingDetail(**routing_data),
         quality=ParagraphQualityDetail(**quality_data),
-        created_at=(
-            getattr(p, "created_at", datetime.now()).isoformat()
-            if hasattr(p, "created_at")
-            else None
-        ),
-        updated_at=(
-            getattr(p, "updated_at", datetime.now()).isoformat()
-            if hasattr(p, "updated_at")
-            else None
-        ),
+        created_at=(getattr(p, "created_at", datetime.now()).isoformat() if hasattr(p, "created_at") else None),
+        updated_at=(getattr(p, "updated_at", datetime.now()).isoformat() if hasattr(p, "updated_at") else None),
     )
 
 
@@ -404,9 +361,7 @@ class AudioSegmentOut(BaseModel):
 
 
 @router.get("/{paragraph_id}/audio-segments", response_model=List[AudioSegmentOut])
-def list_paragraph_audio_segments(
-    paragraph_id: int, db: Session = Depends(get_db)
-):
+def list_paragraph_audio_segments(paragraph_id: int, db: Session = Depends(get_db)):
     """List all audio segments for a paragraph (including old versions)."""
     segments = (
         db.query(AudioSegment)
@@ -446,12 +401,7 @@ class QualityResultOut(BaseModel):
 @router.get("/{paragraph_id}/quality", response_model=List[QualityResultOut])
 def get_paragraph_quality(paragraph_id: int, db: Session = Depends(get_db)):
     """Get quality check results for a paragraph."""
-    qualities = (
-        db.query(Quality)
-        .filter(Quality.paragraph_id == paragraph_id)
-        .order_by(Quality.id.desc())
-        .all()
-    )
+    qualities = db.query(Quality).filter(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()).all()
     return qualities
 
 
@@ -461,9 +411,7 @@ def get_paragraph_quality(paragraph_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{paragraph_id}/regenerate")
-def trigger_paragraph_regeneration(
-    paragraph_id: int, db: Session = Depends(get_db)
-):
+def trigger_paragraph_regeneration(paragraph_id: int, db: Session = Depends(get_db)):
     """Trigger audio regeneration for a single paragraph.
 
     Marks the paragraph's audio for re-synthesis.

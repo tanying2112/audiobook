@@ -29,32 +29,22 @@ class ChatEditRequest(BaseModel):
     paragraph_id: int = Field(..., description="Paragraph index or ID")
     project_id: int = Field(..., description="Project ID")
     original_text: str = Field(..., description="Original paragraph text")
-    intent: str = Field(
-        ..., description="User's editing intent, e.g., 'make it more colloquial'"
-    )
+    intent: str = Field(..., description="User's editing intent, e.g., 'make it more colloquial'")
     annotation_context: Optional[Dict[str, Any]] = Field(
         None, description="Current annotation (speaker, emotion, etc.)"
     )
-    conversation_history: Optional[List[Dict[str, str]]] = Field(
-        None, description="Previous conversation turns"
-    )
-    difficulty: Optional[str] = Field(
-        None, description="Paragraph difficulty (A/B/C/D)"
-    )
+    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="Previous conversation turns")
+    difficulty: Optional[str] = Field(None, description="Paragraph difficulty (A/B/C/D)")
 
 
 class ChatEditResponse(BaseModel):
     """Response from LLM edit suggestion."""
 
     edited_text: str = Field(..., description="Suggested edited text")
-    changes_made: List[str] = Field(
-        default_factory=list, description="List of changes made"
-    )
+    changes_made: List[str] = Field(default_factory=list, description="List of changes made")
     rationale: str = Field(..., description="LLM's reasoning for the changes")
     confidence: float = Field(0.0, ge=0, le=1, description="Confidence score 0-1")
-    forbid_edit: bool = Field(
-        False, description="Whether editing is forbidden (difficulty lock)"
-    )
+    forbid_edit: bool = Field(False, description="Whether editing is forbidden (difficulty lock)")
 
 
 class ChatAnnotateRequest(BaseModel):
@@ -63,16 +53,12 @@ class ChatAnnotateRequest(BaseModel):
     paragraph_id: int = Field(..., description="Paragraph index or ID")
     project_id: int = Field(..., description="Project ID")
     original_text: str = Field(..., description="Paragraph text")
-    current_annotation: Optional[Dict[str, Any]] = Field(
-        None, description="Current annotation"
-    )
+    current_annotation: Optional[Dict[str, Any]] = Field(None, description="Current annotation")
     user_instruction: str = Field(
         ...,
         description="User's instruction, e.g., 'this is said by Zhang San, more angry'",
     )
-    conversation_history: Optional[List[Dict[str, str]]] = Field(
-        None, description="Previous conversation turns"
-    )
+    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="Previous conversation turns")
 
 
 class ChatAnnotateResponse(BaseModel):
@@ -80,9 +66,7 @@ class ChatAnnotateResponse(BaseModel):
 
     speaker_canonical_name: Optional[str] = Field(None, description="Suggested speaker")
     emotion: Optional[str] = Field(None, description="Suggested emotion")
-    emotion_intensity: Optional[float] = Field(
-        None, ge=0, le=1, description="Emotion intensity"
-    )
+    emotion_intensity: Optional[float] = Field(None, ge=0, le=1, description="Emotion intensity")
     is_dialogue: Optional[bool] = Field(None, description="Whether it's dialogue")
     speech_rate: Optional[float] = Field(None, description="Speech rate 0.7-1.3")
     pitch_shift: Optional[float] = Field(None, description="Pitch shift in semitones")
@@ -90,9 +74,7 @@ class ChatAnnotateResponse(BaseModel):
     pause_after_ms: Optional[int] = Field(None, description="Pause after in ms")
     rationale: str = Field(..., description="LLM's reasoning")
     confidence: float = Field(0.0, ge=0, le=1, description="Confidence score 0-1")
-    needs_new_character: bool = Field(
-        False, description="Whether a new character needs to be created"
-    )
+    needs_new_character: bool = Field(False, description="Whether a new character needs to be created")
 
 
 class BatchAnnotateRequest(BaseModel):
@@ -100,17 +82,13 @@ class BatchAnnotateRequest(BaseModel):
 
     chapter_id: int = Field(..., description="Chapter ID")
     project_id: int = Field(..., description="Project ID")
-    paragraph_ids: Optional[List[int]] = Field(
-        None, description="Specific paragraphs to annotate, or None for all"
-    )
+    paragraph_ids: Optional[List[int]] = Field(None, description="Specific paragraphs to annotate, or None for all")
 
 
 class BatchAnnotateResponse(BaseModel):
     """Response with batch annotation suggestions."""
 
-    suggestions: List[Dict[str, Any]] = Field(
-        default_factory=list, description="Annotation suggestions per paragraph"
-    )
+    suggestions: List[Dict[str, Any]] = Field(default_factory=list, description="Annotation suggestions per paragraph")
     total_count: int = Field(0, description="Total paragraphs processed")
 
 
@@ -118,18 +96,14 @@ class AssistantRequest(BaseModel):
     """Request for global AI assistant."""
 
     question: str = Field(..., description="User's question")
-    context: Optional[Dict[str, Any]] = Field(
-        None, description="Current UI context (project, chapter, paragraph)"
-    )
+    context: Optional[Dict[str, Any]] = Field(None, description="Current UI context (project, chapter, paragraph)")
 
 
 class AssistantResponse(BaseModel):
     """Response from AI assistant."""
 
     answer: str = Field(..., description="LLM's answer")
-    suggested_actions: Optional[List[Dict[str, str]]] = Field(
-        None, description="Suggested UI actions"
-    )
+    suggested_actions: Optional[List[Dict[str, str]]] = Field(None, description="Suggested UI actions")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,9 +172,7 @@ Return a JSON object with:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-async def stream_json_lines(
-    data_stream: AsyncGenerator[str, None]
-) -> AsyncGenerator[bytes, None]:
+async def stream_json_lines(data_stream: AsyncGenerator[str, None]) -> AsyncGenerator[bytes, None]:
     """Stream JSON lines for SSE."""
     async for chunk in data_stream:
         yield f"data: {chunk}\n\n".encode("utf-8")

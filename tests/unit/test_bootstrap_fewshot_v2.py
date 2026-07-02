@@ -139,9 +139,7 @@ class TestMultiObjectiveLoss:
 
     def test_compute_pareto_score(self):
         loss = MultiObjectiveLoss()
-        m = OptimizationMetrics(
-            character_recognition_accuracy=0.8, voice_design_accuracy=0.6
-        )
+        m = OptimizationMetrics(character_recognition_accuracy=0.8, voice_design_accuracy=0.6)
         score = loss.compute_pareto_score(m)
         assert abs(score - 0.7) < 1e-6
 
@@ -208,9 +206,7 @@ class TestCreateMetric:
         from dspy import Example
 
         metric = create_multi_objective_metric()
-        gold = Example(paragraph_text="t", character="A", voice="v").with_inputs(
-            "paragraph_text"
-        )
+        gold = Example(paragraph_text="t", character="A", voice="v").with_inputs("paragraph_text")
         pred = {"character_name": "X", "voice_design": "Y"}
         result = metric(gold, pred)
         assert result.score == 0.0
@@ -219,9 +215,7 @@ class TestCreateMetric:
         from dspy import Example
 
         metric = create_multi_objective_metric(char_weight=0.5, voice_weight=0.5)
-        gold = Example(paragraph_text="t", character="A", voice="v").with_inputs(
-            "paragraph_text"
-        )
+        gold = Example(paragraph_text="t", character="A", voice="v").with_inputs("paragraph_text")
         pred = {"character_name": "A", "voice_design": "Z"}
         result = metric(gold, pred)
         assert result.score == 0.5
@@ -230,9 +224,7 @@ class TestCreateMetric:
         from dspy import Example
 
         metric = create_multi_objective_metric()
-        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs(
-            "paragraph_text"
-        )
+        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         pred = {"character_name": "A", "voice_design": "V"}
         result = metric(gold, pred)
         assert result.score == 1.0
@@ -241,9 +233,7 @@ class TestCreateMetric:
         from dspy import Example, Prediction
 
         metric = create_multi_objective_metric()
-        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs(
-            "paragraph_text"
-        )
+        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         # Prediction.__dict__ stores in _store, metric uses __dict__.get which fails
         # So score will be 0
         pred = Prediction(character_name="A", voice_design="V")
@@ -254,9 +244,7 @@ class TestCreateMetric:
         from dspy import Example
 
         metric = create_multi_objective_metric()
-        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs(
-            "paragraph_text"
-        )
+        gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         pred = {}
         result = metric(gold, pred)
         assert 0.0 <= result.score <= 1.0
@@ -382,9 +370,7 @@ class TestLoadTrainingExamples:
         data = {
             "input": {
                 "paragraph_text": "text1",
-                "character_voice_map": [
-                    {"canonical_name": "Alice", "suggested_voice_id": "v1"}
-                ],
+                "character_voice_map": [{"canonical_name": "Alice", "suggested_voice_id": "v1"}],
             },
             "expected_output": {"speaker_canonical_name": "Alice"},
         }
@@ -399,14 +385,8 @@ class TestLoadTrainingExamples:
         monkeypatch.chdir(tmp_path)
         bootstrap_file = tmp_path / "tests" / "golden" / "bootstrap_examples.json"
         bootstrap_file.parent.mkdir(parents=True)
-        bootstrap_file.write_text(
-            json.dumps(
-                {"examples": [{"text": "hello", "character": "Bob", "voice": "v2"}]}
-            )
-        )
-        prompt, examples = load_training_examples(
-            "nonexistent_stage", str(bootstrap_file)
-        )
+        bootstrap_file.write_text(json.dumps({"examples": [{"text": "hello", "character": "Bob", "voice": "v2"}]}))
+        prompt, examples = load_training_examples("nonexistent_stage", str(bootstrap_file))
         assert len(examples) == 1
         assert examples[0][1]["character"] == "Bob"
 
@@ -425,7 +405,5 @@ class TestLoadTrainingExamples:
 class TestRunBootstrapOptimization:
     def test_no_examples_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        result = run_bootstrap_optimization(
-            "nonexistent_stage", str(tmp_path / "no_file.json")
-        )
+        result = run_bootstrap_optimization("nonexistent_stage", str(tmp_path / "no_file.json"))
         assert result is None

@@ -13,8 +13,7 @@ import sys
 import pytest
 
 pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — translate/publish/self-iteration are stub "
-    "implementations, not real usable code"
+    reason="Sprint G Placeholder — translate/publish/self-iteration are stub " "implementations, not real usable code"
 )
 
 sys.path.insert(0, "src")
@@ -96,10 +95,7 @@ def test_voice_cloning_instantiation():
 
 def test_audiobookshelf_publisher_instantiation():
     """Test that audiobookshelf publisher can be instantiated."""
-    from audiobook_studio.publish.audiobookshelf import (
-        AudiobookshelfConfig,
-        AudiobookshelfPublisher,
-    )
+    from audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
     config = AudiobookshelfConfig(
         api_url="http://localhost:8080/api",

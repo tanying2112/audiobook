@@ -54,9 +54,7 @@ class TestRssFeedGenerator:
         generator = RssFeedGenerator(base_url="http://localhost:8000/")
         assert generator.base_url == "http://localhost:8000"
 
-    def test_generate_rss_feed_basic(
-        self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter
-    ):
+    def test_generate_rss_feed_basic(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         rss_content = generator.generate_rss_feed(
             book=mock_book,
             chapters=mock_chapters,
@@ -87,9 +85,7 @@ class TestRssFeedGenerator:
         assert "<author>测试作者</author>" in rss_content
         assert "© 2026 测试作者" in rss_content
 
-    def test_generate_rss_feed_itunes_tags(
-        self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter
-    ):
+    def test_generate_rss_feed_itunes_tags(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         rss_content = generator.generate_rss_feed(
             book=mock_book,
             chapters=mock_chapters,
@@ -122,9 +118,7 @@ class TestRssFeedGenerator:
         assert "<title>测试有声书 封面</title>" in rss_content
         assert "<link>http://localhost:8000</link>" in rss_content
 
-    def test_generate_rss_feed_items(
-        self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter
-    ):
+    def test_generate_rss_feed_items(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         rss_content = generator.generate_rss_feed(
             book=mock_book,
             chapters=mock_chapters,
@@ -142,9 +136,7 @@ class TestRssFeedGenerator:
         assert "&lt;![CDATA[第1章的正文内容...]]&gt;" in rss_content
         assert '<guid isPermaLink="false">1-chapter-1</guid>' in rss_content
 
-    def test_generate_rss_feed_enclosure(
-        self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter
-    ):
+    def test_generate_rss_feed_enclosure(self, generator, mock_book, mock_chapters, mock_audio_segments_by_chapter):
         rss_content = generator.generate_rss_feed(
             book=mock_book,
             chapters=mock_chapters,
@@ -172,9 +164,7 @@ class TestRssFeedGenerator:
         assert "<itunes:episode>3</itunes:episode>" in rss_content
         assert "<itunes:episodeType>full</itunes:episodeType>" in rss_content
 
-    def test_generate_rss_feed_skips_empty_chapters(
-        self, generator, mock_book, mock_chapters
-    ):
+    def test_generate_rss_feed_skips_empty_chapters(self, generator, mock_book, mock_chapters):
         # Chapter 2 has no audio segments
         mock_audio_segments_by_chapter = {
             1: [MagicMock(duration_ms=1800000)],
@@ -207,7 +197,9 @@ class TestRssFeedGenerator:
         assert "<pubDate>Mon, 15 Jan 2024 10:30:00 GMT</pubDate>" in rss_content
 
     def test_save_rss_feed(self, generator, tmp_path):
-        rss_content = '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Test</title></channel></rss>'
+        rss_content = (
+            '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Test</title></channel></rss>'
+        )
         file_path = tmp_path / "test_feed.xml"
 
         result = generator.save_rss_feed(rss_content, str(file_path))

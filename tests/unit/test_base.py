@@ -5,13 +5,7 @@ import threading
 
 import pytest
 
-from src.audiobook_studio.base import (
-    AbstractAgent,
-    AgentCapability,
-    AgentContext,
-    AgentMessage,
-    ErrorSeverity,
-)
+from src.audiobook_studio.base import AbstractAgent, AgentCapability, AgentContext, AgentMessage, ErrorSeverity
 
 
 class ConcreteAgent(AbstractAgent):

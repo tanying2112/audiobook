@@ -85,24 +85,13 @@ def _collect_chapter_data(
     from ..models.chapter import Chapter
     from ..models.paragraph import Paragraph
 
-    chapter = (
-        session.query(Chapter).filter_by(id=chapter_id, project_id=project_id).first()
-    )
+    chapter = session.query(Chapter).filter_by(id=chapter_id, project_id=project_id).first()
     if not chapter:
         logger.warning(f"Chapter {chapter_id} not found in project {project_id}")
         return None
 
-    paragraphs = (
-        session.query(Paragraph)
-        .filter_by(chapter_id=chapter_id)
-        .order_by(Paragraph.index)
-        .all()
-    )
-    audio_segments = (
-        session.query(AudioSegment)
-        .filter_by(chapter_id=chapter_id, is_current=True)
-        .all()
-    )
+    paragraphs = session.query(Paragraph).filter_by(chapter_id=chapter_id).order_by(Paragraph.index).all()
+    audio_segments = session.query(AudioSegment).filter_by(chapter_id=chapter_id, is_current=True).all()
 
     if not audio_segments:
         logger.warning(f"No audio segments for chapter {chapter_id}")
@@ -132,9 +121,7 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
                 try:
                     chapter_duration_ms += get_duration_sync(path)
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to probe duration for {path}: {e}, using fallback"
-                    )
+                    logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
                     chapter_duration_ms += seg.duration_ms or 3000
             else:
                 # Try alternate extension
@@ -235,9 +222,7 @@ def _build_subtitle_entries(
                     try:
                         duration = get_duration_sync(path)
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to probe duration for {path}: {e}, using fallback"
-                        )
+                        logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
                         duration = seg.duration_ms or 3000
                 else:
                     duration = seg.duration_ms or 3000
@@ -296,9 +281,7 @@ def export_project(
         return job
 
     # Collect chapter data
-    chapters_to_export = job.chapter_ids or [
-        ch.id for ch in sorted(project.chapters, key=lambda c: c.index)
-    ]
+    chapters_to_export = job.chapter_ids or [ch.id for ch in sorted(project.chapters, key=lambda c: c.index)]
 
     chapter_data_list: List[dict] = []
     for ch_id in chapters_to_export:
@@ -317,11 +300,7 @@ def export_project(
 
     try:
         # --- M4B export ---
-        if (
-            ExportFormat.M4B in job.formats
-            or ExportFormat.M4B_SRT in job.formats
-            or ExportFormat.ALL in job.formats
-        ):
+        if ExportFormat.M4B in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
             job.progress = ExportProgress.CONCATENATING
             logger.info("Building M4B (chaptered)...")
 
@@ -396,11 +375,7 @@ def export_project(
             job.output_paths["m4b"] = str(m4b_path)
 
         # --- SRT export ---
-        if (
-            ExportFormat.SRT in job.formats
-            or ExportFormat.M4B_SRT in job.formats
-            or ExportFormat.ALL in job.formats
-        ):
+        if ExportFormat.SRT in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
             job.progress = ExportProgress.SUBTITLES
             logger.info("Generating SRT subtitles...")
 
@@ -466,9 +441,7 @@ def export_chapter(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Concatenate into single M4B chapter file
-    chapter_output = (
-        out_dir / f"ch{chapter.index:02d}_{chapter.title or chapter.index}.m4b"
-    )
+    chapter_output = out_dir / f"ch{chapter.index:02d}_{chapter.title or chapter.index}.m4b"
 
     # Calculate total duration using ffprobe
     total_duration_ms = 0
@@ -478,9 +451,7 @@ def export_chapter(
             try:
                 total_duration_ms += get_duration_sync(path)
             except Exception as e:
-                logger.warning(
-                    f"Failed to probe duration for {path}: {e}, using fallback"
-                )
+                logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
                 total_duration_ms += seg.duration_ms or 3000
         else:
             total_duration_ms += seg.duration_ms or 3000

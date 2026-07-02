@@ -10,9 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from ..models.feedback_record import (
-    FeedbackRecord as CollaborationRecord,  # Reusing existing model for now
-)
+from ..models.feedback_record import FeedbackRecord as CollaborationRecord  # Reusing existing model for now
 from ..schemas.feedback import FeedbackRecord as CollaborationRecordSchema
 from .dependencies import get_db
 
@@ -22,9 +20,7 @@ router = APIRouter(prefix="/collab", tags=["collaboration"])
 # Pydantic models for collaboration features
 class CommentBase(BaseModel):
     content: str = Field(..., min_length=1, max_length=2000)
-    comment_type: str = Field(
-        ..., description="comment, suggestion, question, or issue"
-    )
+    comment_type: str = Field(..., description="comment, suggestion, question, or issue")
     task_id: Optional[int] = None
     file_path: Optional[str] = None
     line_number: Optional[int] = None
@@ -91,23 +87,17 @@ class ApprovalRequestCreate(ApprovalRequestBase):
 class ApprovalRequestResponse(ApprovalRequestBase):
     id: int
     requester_id: str
-    status: str = Field(
-        ..., description="pending, approved, rejected, or needs_changes"
-    )
+    status: str = Field(..., description="pending, approved, rejected, or needs_changes")
     created_at: datetime
     updated_at: datetime
-    approvals: dict = Field(
-        default_factory=dict
-    )  # approver_id -> {status, comment, timestamp}
+    approvals: dict = Field(default_factory=dict)  # approver_id -> {status, comment, timestamp}
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ApprovalResponseBase(BaseModel):
     approver_id: str
-    status: str = Field(
-        ..., description="pending, approved, rejected, or needs_changes"
-    )
+    status: str = Field(..., description="pending, approved, rejected, or needs_changes")
     comment: Optional[str] = None
 
 
@@ -119,9 +109,7 @@ class ApprovalResponseCreate(ApprovalResponseBase):
 
 
 # Comment endpoints
-@router.post(
-    "/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
 def create_comment(comment: CommentCreate, db: Session = Depends(get_db)):
     """创建新评论"""
     # For now, we'll reuse the FeedbackRecord model
@@ -145,11 +133,7 @@ def create_comment(comment: CommentCreate, db: Session = Depends(get_db)):
 @router.get("/comments/{comment_id}", response_model=CommentResponse)
 def get_comment(comment_id: int, db: Session = Depends(get_db)):
     """获取特定评论"""
-    comment = (
-        db.query(CollaborationRecord)
-        .filter(CollaborationRecord.id == comment_id)
-        .first()
-    )
+    comment = db.query(CollaborationRecord).filter(CollaborationRecord.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     return comment
@@ -174,11 +158,7 @@ def list_comments(
 @router.put("/comments/{comment_id}/resolve", response_model=CommentResponse)
 def resolve_comment(comment_id: int, resolved_by: str, db: Session = Depends(get_db)):
     """解决评论"""
-    comment = (
-        db.query(CollaborationRecord)
-        .filter(CollaborationRecord.id == comment_id)
-        .first()
-    )
+    comment = db.query(CollaborationRecord).filter(CollaborationRecord.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
 
@@ -225,9 +205,7 @@ def list_tasks(
 
 
 @router.put("/tasks/{task_id}/status", response_model=TaskResponse)
-def update_task_status(
-    task_id: int, status: str, updated_by: str, db: Session = Depends(get_db)
-):
+def update_task_status(task_id: int, status: str, updated_by: str, db: Session = Depends(get_db)):
     """更新任务状态"""
     raise HTTPException(
         status_code=501,
@@ -241,9 +219,7 @@ def update_task_status(
     response_model=ApprovalRequestResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_approval_request(
-    approval: ApprovalRequestCreate, db: Session = Depends(get_db)
-):
+def create_approval_request(approval: ApprovalRequestCreate, db: Session = Depends(get_db)):
     """创建新审批请求"""
     # For now, we'll create a simplified approval representation
     # In a full implementation, we'd have dedicated Approval model
@@ -276,9 +252,7 @@ def list_approval_requests(
 
 
 @router.post("/approvals/{approval_id}/respond", response_model=ApprovalRequestResponse)
-def respond_to_approval(
-    approval_id: int, response: ApprovalResponseCreate, db: Session = Depends(get_db)
-):
+def respond_to_approval(approval_id: int, response: ApprovalResponseCreate, db: Session = Depends(get_db)):
     """响应审批请求"""
     raise HTTPException(
         status_code=501,
@@ -308,8 +282,6 @@ def get_collaboration_stats(db: Session = Depends(get_db)):
     # In a full implementation, we'd compute real statistics from various tables
     return {
         "total_comments": db.query(CollaborationRecord).count(),
-        "processed_comments": db.query(CollaborationRecord)
-        .filter(CollaborationRecord.processed is True)
-        .count(),
+        "processed_comments": db.query(CollaborationRecord).filter(CollaborationRecord.processed is True).count(),
         "message": "Full collaboration statistics not yet implemented - placeholder",
     }

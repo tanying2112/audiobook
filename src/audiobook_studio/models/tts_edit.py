@@ -22,22 +22,14 @@ class TTSEdit(Base):
     __tablename__ = "tts_edits"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False)
 
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     edited_text: Mapped[str] = mapped_column(Text, nullable=False)
     changes_made: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    forbidden_content_removed: Mapped[Optional[list]] = mapped_column(
-        JSON, default=list
-    )
+    forbidden_content_removed: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     difficulty: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)

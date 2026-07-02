@@ -483,18 +483,14 @@ class TestPrepareAudiobook:
     def test_invalid_year_too_low(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = p._prepare_audiobook(
-                _meta(publication_year=500), _audio_file(td)
-            )
+            ok, msg, _ = p._prepare_audiobook(_meta(publication_year=500), _audio_file(td))
             assert not ok
             assert "年份" in msg
 
     def test_invalid_year_too_high(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = p._prepare_audiobook(
-                _meta(publication_year=3000), _audio_file(td)
-            )
+            ok, msg, _ = p._prepare_audiobook(_meta(publication_year=3000), _audio_file(td))
             assert not ok
 
     def test_unsupported_format_auto_convert(self):
@@ -579,9 +575,7 @@ class TestPrepareAudiobook:
         with tempfile.TemporaryDirectory() as td:
             cover = Path(td) / "cover.jpg"
             cover.write_bytes(b"\xff\xd8\xff\xe0img")
-            ok, msg, data = p._prepare_audiobook(
-                _meta(cover_image_path=cover), _audio_file(td)
-            )
+            ok, msg, data = p._prepare_audiobook(_meta(cover_image_path=cover), _audio_file(td))
             assert ok
             assert data["coverImage"] is not None
 
@@ -597,9 +591,7 @@ class TestPrepareAudiobook:
     def test_year_none(self):
         p = self._publisher()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, data = p._prepare_audiobook(
-                _meta(publication_year=None), _audio_file(td)
-            )
+            ok, msg, data = p._prepare_audiobook(_meta(publication_year=None), _audio_file(td))
             assert ok
             assert data["year"] is None
 
@@ -617,10 +609,7 @@ class TestGetMimeTypeSync:
         assert self._publisher()._get_mime_type(Path("a.mp3")) == "audio/mpeg"
 
     def test_unknown(self):
-        assert (
-            self._publisher()._get_mime_type(Path("a.xyz"))
-            == "application/octet-stream"
-        )
+        assert self._publisher()._get_mime_type(Path("a.xyz")) == "application/octet-stream"
 
 
 class TestGetLibraryStatus:

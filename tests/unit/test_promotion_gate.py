@@ -135,14 +135,10 @@ class TestCheckGoldenDataset:
         assert result.passed is False
         assert "Prompt v2 not found" in result.details
 
-    @patch(
-        "src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version"
-    )
+    @patch("src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_golden_examples")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_golden_dataset_pass(
-        self, mock_load_prompt, mock_load_golden, mock_run_stage
-    ):
+    def test_golden_dataset_pass(self, mock_load_prompt, mock_load_golden, mock_run_stage):
         mock_load_golden.return_value = [
             {
                 "input": {
@@ -174,23 +170,17 @@ class TestCheckGoldenDataset:
         # Mock stage output to match expected
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
-        mock_run_stage.return_value = TtsEditOutput(
-            edited_text="test content", confidence=0.9, rationale="mock"
-        )
+        mock_run_stage.return_value = TtsEditOutput(edited_text="test content", confidence=0.9, rationale="mock")
 
         result = check_golden_dataset("edit_for_tts", 2, threshold=0.0)
 
         assert result.passed is True  # threshold 0.0 so anything passes
         assert "1/1 用例通过" in result.details
 
-    @patch(
-        "src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version"
-    )
+    @patch("src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_golden_examples")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_golden_dataset_partial(
-        self, mock_load_prompt, mock_load_golden, mock_run_stage
-    ):
+    def test_golden_dataset_partial(self, mock_load_prompt, mock_load_golden, mock_run_stage):
         mock_load_golden.return_value = [
             {
                 "input": {
@@ -222,9 +212,7 @@ class TestCheckGoldenDataset:
         mock_load_prompt.return_value = "prompt content"
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
-        mock_run_stage.return_value = TtsEditOutput(
-            edited_text="test content", confidence=0.9, rationale="mock"
-        )
+        mock_run_stage.return_value = TtsEditOutput(edited_text="test content", confidence=0.9, rationale="mock")
 
         result = check_golden_dataset("edit_for_tts", 2, threshold=0.0)
 
@@ -255,19 +243,14 @@ class TestCheckQualityImprovement:
         assert result.passed is False
         assert "无法加载 prompt" in result.details
 
-    @patch(
-        "src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version"
-    )
+    @patch("src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_golden_examples")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_quality_improvement_pass(
-        self, mock_load_prompt, mock_load_golden, mock_run_stage
-    ):
+    def test_quality_improvement_pass(self, mock_load_prompt, mock_load_golden, mock_run_stage):
         # Old prompt with some patterns, new prompt with more patterns and longer
         old_prompt = "Basic prompt with dialogue_attribution"
         new_prompt = (
-            "Enhanced prompt with dialogue_attribution emotion_too_mild emotion_wrong speaker_wrong "
-            + "x" * 2000
+            "Enhanced prompt with dialogue_attribution emotion_too_mild emotion_wrong speaker_wrong " + "x" * 2000
         )
         mock_load_prompt.side_effect = [old_prompt, new_prompt]
         mock_load_golden.return_value = [
@@ -300,26 +283,18 @@ class TestCheckQualityImprovement:
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
         # Return identical outputs for both old and new (score ratio = 1.0)
-        mock_run_stage.return_value = TtsEditOutput(
-            edited_text="test content", confidence=0.9, rationale="mock"
-        )
+        mock_run_stage.return_value = TtsEditOutput(edited_text="test content", confidence=0.9, rationale="mock")
 
         result = check_quality_improvement("edit_for_tts", 1, 2, threshold=1.0)
 
         # Both versions produce same output in mock mode, score = 1.0 >= 1.0 threshold
         assert result.score == 1.0  # Both outputs identical
 
-    @patch(
-        "src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version"
-    )
+    @patch("src.audiobook_studio.feedback.promotion_gate._run_stage_with_prompt_version")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_golden_examples")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_quality_no_improvement(
-        self, mock_load_prompt, mock_load_golden, mock_run_stage
-    ):
-        old_prompt = (
-            "Enhanced prompt with dialogue_attribution emotion_too_mild " + "x" * 5000
-        )
+    def test_quality_no_improvement(self, mock_load_prompt, mock_load_golden, mock_run_stage):
+        old_prompt = "Enhanced prompt with dialogue_attribution emotion_too_mild " + "x" * 5000
         new_prompt = "Basic prompt"
         mock_load_prompt.side_effect = [old_prompt, new_prompt]
         mock_load_golden.return_value = [
@@ -351,9 +326,7 @@ class TestCheckQualityImprovement:
         ]
         from src.audiobook_studio.schemas.tts_edit import TtsEditOutput
 
-        mock_run_stage.return_value = TtsEditOutput(
-            edited_text="test content", confidence=0.9, rationale="mock"
-        )
+        mock_run_stage.return_value = TtsEditOutput(edited_text="test content", confidence=0.9, rationale="mock")
 
         result = check_quality_improvement("edit_for_tts", 1, 2, threshold=1.0)
 
@@ -417,9 +390,7 @@ class TestEvaluatePromotion:
     @patch("src.audiobook_studio.feedback.promotion_gate.check_quality_improvement")
     @patch("src.audiobook_studio.feedback.promotion_gate.check_human_sample")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_all_gates_pass(
-        self, mock_load_prompt, mock_human, mock_quality, mock_golden, mock_format
-    ):
+    def test_all_gates_pass(self, mock_load_prompt, mock_human, mock_quality, mock_golden, mock_format):
         mock_load_prompt.return_value = "new prompt"
         mock_format.return_value = GateResult("格式合规率", True, 1.0, 0.99)
         mock_golden.return_value = GateResult("黄金数据集通过率", True, 0.95, 0.95)
@@ -440,9 +411,7 @@ class TestEvaluatePromotion:
     @patch("src.audiobook_studio.feedback.promotion_gate.check_quality_improvement")
     @patch("src.audiobook_studio.feedback.promotion_gate.check_human_sample")
     @patch("src.audiobook_studio.feedback.promotion_gate._load_prompt_version")
-    def test_some_gates_fail(
-        self, mock_load_prompt, mock_human, mock_quality, mock_golden, mock_format
-    ):
+    def test_some_gates_fail(self, mock_load_prompt, mock_human, mock_quality, mock_golden, mock_format):
         mock_load_prompt.return_value = "new prompt"
         mock_format.return_value = GateResult("格式合规率", True, 1.0, 0.99)
         mock_golden.return_value = GateResult("黄金数据集通过率", False, 0.8, 0.95)

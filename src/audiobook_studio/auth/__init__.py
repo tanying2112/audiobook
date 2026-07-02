@@ -5,12 +5,7 @@ and project-level permission isolation.
 """
 
 # Dependencies
-from .dependencies import (
-    authenticate_user,
-    get_current_active_user,
-    get_current_superuser,
-    get_current_user,
-)
+from .dependencies import authenticate_user, get_current_active_user, get_current_superuser, get_current_user
 from .dependencies import get_rbac_manager as get_rbac_dep
 from .dependencies import require_permission, require_project_permission, require_role
 

@@ -90,15 +90,11 @@ class TestBuildChapterMarkers:
         chapter_data = [
             {
                 "chapter": MagicMock(title="Chapter 1", index=1),
-                "audio_segments": [
-                    MagicMock(file_path="/path/seg1.mp3", duration_ms=1000)
-                ],
+                "audio_segments": [MagicMock(file_path="/path/seg1.mp3", duration_ms=1000)],
             },
             {
                 "chapter": MagicMock(title="Chapter 2", index=2),
-                "audio_segments": [
-                    MagicMock(file_path="/path/seg2.mp3", duration_ms=2000)
-                ],
+                "audio_segments": [MagicMock(file_path="/path/seg2.mp3", duration_ms=2000)],
             },
         ]
 
@@ -117,9 +113,7 @@ class TestBuildChapterMarkers:
         chapter_data = [
             {
                 "chapter": MagicMock(title="Chapter 1", index=1),
-                "audio_segments": [
-                    MagicMock(file_path="/nonexistent/seg.mp3", duration_ms=5000)
-                ],
+                "audio_segments": [MagicMock(file_path="/nonexistent/seg.mp3", duration_ms=5000)],
             },
         ]
 
@@ -133,9 +127,7 @@ class TestBuildChapterMarkers:
         chapter_data = [
             {
                 "chapter": MagicMock(title="Chapter 1", index=1),
-                "audio_segments": [
-                    MagicMock(file_path="/path/seg.mp3", duration_ms=None)
-                ],
+                "audio_segments": [MagicMock(file_path="/path/seg.mp3", duration_ms=None)],
             },
         ]
 
@@ -185,9 +177,7 @@ class TestBuildSubtitleEntriesExtended:
                     ),
                 ],
                 "audio_segments": [
-                    MagicMock(
-                        paragraph_id=1, file_path="/path/seg.mp3", duration_ms=4000
-                    ),
+                    MagicMock(paragraph_id=1, file_path="/path/seg.mp3", duration_ms=4000),
                 ],
             },
         ]
@@ -214,9 +204,7 @@ class TestBuildSubtitleEntriesExtended:
                     ),
                 ],
                 "audio_segments": [
-                    MagicMock(
-                        paragraph_id=1, file_path="/path/seg.mp3", duration_ms=2000
-                    ),
+                    MagicMock(paragraph_id=1, file_path="/path/seg.mp3", duration_ms=2000),
                 ],
             },
         ]
@@ -243,9 +231,7 @@ class TestBuildSubtitleEntriesExtended:
                     ),
                 ],
                 "audio_segments": [
-                    MagicMock(
-                        paragraph_id=1, file_path="/missing/seg.mp3", duration_ms=3000
-                    ),
+                    MagicMock(paragraph_id=1, file_path="/missing/seg.mp3", duration_ms=3000),
                 ],
             },
         ]
@@ -291,31 +277,19 @@ class TestExportProjectExtended:
         mock_session.query().filter_by().first.return_value = mock_project
         mock_project.chapters = [mock_chapter]
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.return_value = {
                 "chapter": mock_chapter,
                 "paragraphs": [],
                 "audio_segments": [mock_segment],
             }
-            with patch(
-                "src.audiobook_studio.export.batch_exporter._collect_audio_files"
-            ) as mock_audio:
+            with patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio:
                 mock_audio.return_value = [Path(tmp_path / "seg.mp3")]
-                with patch(
-                    "src.audiobook_studio.export.batch_exporter"
-                    "._build_chapter_markers"
-                ) as mock_markers:
+                with patch("src.audiobook_studio.export.batch_exporter" "._build_chapter_markers") as mock_markers:
                     mock_markers.return_value = MagicMock()
-                    with patch(
-                        "src.audiobook_studio.export.batch_exporter"
-                        "._build_project_metadata"
-                    ) as mock_meta:
+                    with patch("src.audiobook_studio.export.batch_exporter" "._build_project_metadata") as mock_meta:
                         mock_meta.return_value = MagicMock()
-                        with patch(
-                            "src.audiobook_studio.export.batch_exporter" ".build_m4b"
-                        ):
+                        with patch("src.audiobook_studio.export.batch_exporter" ".build_m4b"):
                             job = ExportJob(project_id=1, formats={ExportFormat.M4B})
                             result = export_project(1, mock_session, job)
 
@@ -341,35 +315,20 @@ class TestExportProjectExtended:
         mock_session.query().filter_by().first.return_value = mock_project
         mock_project.chapters = [mock_chapter]
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.return_value = {
                 "chapter": mock_chapter,
                 "paragraphs": [],
                 "audio_segments": [mock_segment],
             }
-            with patch(
-                "src.audiobook_studio.export.batch_exporter._collect_audio_files"
-            ) as mock_audio:
+            with patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio:
                 mock_audio.return_value = [Path(tmp_path / "seg.mp3")]
-                with patch(
-                    "src.audiobook_studio.export.batch_exporter"
-                    "._build_chapter_markers"
-                ) as mock_markers:
+                with patch("src.audiobook_studio.export.batch_exporter" "._build_chapter_markers") as mock_markers:
                     mock_markers.return_value = MagicMock()
-                    with patch(
-                        "src.audiobook_studio.export.batch_exporter"
-                        "._build_project_metadata"
-                    ) as mock_meta:
+                    with patch("src.audiobook_studio.export.batch_exporter" "._build_project_metadata") as mock_meta:
                         mock_meta.return_value = MagicMock()
-                        with patch(
-                            "src.audiobook_studio.export.batch_exporter" ".build_m4b"
-                        ):
-                            with patch(
-                                "src.audiobook_studio.export.batch_exporter"
-                                ".mix_with_ducking"
-                            ):
+                        with patch("src.audiobook_studio.export.batch_exporter" ".build_m4b"):
+                            with patch("src.audiobook_studio.export.batch_exporter" ".mix_with_ducking"):
                                 with patch("subprocess.run"):
                                     job = ExportJob(
                                         project_id=1,
@@ -391,9 +350,7 @@ class TestExportProjectExtended:
             duration_ms=3000,
             is_current=True,
         )
-        mock_paragraph = MagicMock(
-            id=1, order=1, text="Test", original_text=None, character_name=None
-        )
+        mock_paragraph = MagicMock(id=1, order=1, text="Test", original_text=None, character_name=None)
 
         (tmp_path / "seg.mp3").write_bytes(b"fake audio")
 
@@ -401,26 +358,17 @@ class TestExportProjectExtended:
         mock_session.query().filter_by().first.return_value = mock_project
         mock_project.chapters = [mock_chapter]
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.return_value = {
                 "chapter": mock_chapter,
                 "paragraphs": [mock_paragraph],
                 "audio_segments": [mock_segment],
             }
-            with patch(
-                "src.audiobook_studio.export.batch_exporter._collect_audio_files"
-            ) as mock_audio:
+            with patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio:
                 mock_audio.return_value = []
-                with patch(
-                    "src.audiobook_studio.export.batch_exporter"
-                    "._build_subtitle_entries"
-                ) as mock_entries:
+                with patch("src.audiobook_studio.export.batch_exporter" "._build_subtitle_entries") as mock_entries:
                     mock_entries.return_value = MagicMock()
-                    with patch(
-                        "src.audiobook_studio.export.batch_exporter" ".generate_srt"
-                    ):
+                    with patch("src.audiobook_studio.export.batch_exporter" ".generate_srt"):
                         job = ExportJob(project_id=1, formats={ExportFormat.SRT})
                         result = export_project(1, mock_session, job)
 
@@ -432,9 +380,7 @@ class TestExportProjectExtended:
         mock_session = MagicMock()
         mock_session.query().filter_by().first.return_value = mock_project
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.side_effect = RuntimeError("Unexpected error")
             job = ExportJob(project_id=1)
             result = export_project(1, mock_session, job)
@@ -449,29 +395,21 @@ class TestExportChapterExtended:
     def test_export_chapter_with_audio(self, tmp_path):
         """Test successful chapter export."""
         mock_chapter = MagicMock(id=1, index=1, title="Test Chapter")
-        mock_segment = MagicMock(
-            id=1, file_path=str(tmp_path / "seg.mp3"), duration_ms=5000, is_current=True
-        )
+        mock_segment = MagicMock(id=1, file_path=str(tmp_path / "seg.mp3"), duration_ms=5000, is_current=True)
         (tmp_path / "seg.mp3").write_bytes(b"fake audio")
 
         mock_session = MagicMock()
         mock_session.query().filter_by().first.return_value = MagicMock()
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.return_value = {
                 "chapter": mock_chapter,
                 "paragraphs": [],
                 "audio_segments": [mock_segment],
             }
-            with patch(
-                "src.audiobook_studio.export.batch_exporter.build_m4b"
-            ) as mock_build:
+            with patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build:
                 mock_build.return_value = MagicMock()
-                result = export_chapter(
-                    1, 1, mock_session, output_dir=str(tmp_path / "out")
-                )
+                result = export_chapter(1, 1, mock_session, output_dir=str(tmp_path / "out"))
 
         assert result is not None
 
@@ -488,17 +426,13 @@ class TestExportChapterExtended:
         mock_session = MagicMock()
         mock_session.query().filter_by().first.return_value = mock_chapter
 
-        with patch(
-            "src.audiobook_studio.export.batch_exporter._collect_chapter_data"
-        ) as mock_collect:
+        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect:
             mock_collect.return_value = {
                 "chapter": mock_chapter,
                 "paragraphs": [],
                 "audio_segments": [mock_segment],
             }
-            result = export_chapter(
-                1, 1, mock_session, output_dir=str(tmp_path / "out")
-            )
+            result = export_chapter(1, 1, mock_session, output_dir=str(tmp_path / "out"))
 
         assert result is None
 

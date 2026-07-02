@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { streamChatEdit, streamChatAnnotate, _parseSSEFrame, _sse } from '../../api/sse'
-import type { ChatEditRequest, ChatEditStreamEvent, ChatSuggestion } from '../../types/pipeline'
+import { streamChatEdit, streamChatAnnotate, _parseSSEFrame, _sse } from '../sse'
 
 describe('api/sse.ts', () => {
   beforeEach(() => {
@@ -138,6 +137,7 @@ describe('api/sse.ts', () => {
           project_id: 1,
           chapter_index: 1,
           paragraph_index: 0,
+          target_stage: 'annotate',
           intent: '标注测试',
           conversation_history: [],
         },

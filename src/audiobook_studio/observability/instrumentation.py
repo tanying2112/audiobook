@@ -114,9 +114,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 # Add response attributes to span
                 span.set_attribute("http.status_code", response.status_code)
                 if response.status_code >= 400:
-                    span.set_status(
-                        Status(StatusCode.ERROR, f"HTTP {response.status_code}")
-                    )
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
                     if response.status_code >= 500:
                         http_errors.add(
                             1,

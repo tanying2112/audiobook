@@ -54,10 +54,7 @@ def capture_feedback(
 
     # Validate rationale length
     if len(rationale.strip()) < 10:
-        logger.warning(
-            f"Feedback rationale too short ({len(rationale.strip())} chars), "
-            f"padding with placeholder"
-        )
+        logger.warning(f"Feedback rationale too short ({len(rationale.strip())} chars), " f"padding with placeholder")
         rationale = rationale + " (自动采集反馈记录)"
 
     record = FeedbackRecordModel(
@@ -99,8 +96,7 @@ def capture_feedback(
     )
 
     logger.info(
-        f"FeedbackRecord [{source}/{stage}]: id={feedback_id} "
-        f"project={project_id} rationale={rationale[:60]}..."
+        f"FeedbackRecord [{source}/{stage}]: id={feedback_id} " f"project={project_id} rationale={rationale[:60]}..."
     )
     return record
 
@@ -177,9 +173,7 @@ def list_unprocessed_feedback(
     limit: int = 500,
 ) -> List[FeedbackRecordModel]:
     """列出未处理的反馈记录 (供差异分析 Agent 消费)."""
-    query = db.query(FeedbackRecordModel).filter(
-        FeedbackRecordModel.processed == False  # noqa: E712
-    )
+    query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.processed == False)  # noqa: E712
     if project_id:
         query = query.filter(FeedbackRecordModel.project_id == project_id)
     return query.order_by(FeedbackRecordModel.created_at.asc()).limit(limit).all()
@@ -192,11 +186,7 @@ def mark_feedback_processed(
     diff_summary: str = "",
 ) -> None:
     """标记反馈已处理 (差异分析完成后)."""
-    record = (
-        db.query(FeedbackRecordModel)
-        .filter(FeedbackRecordModel.feedback_id == feedback_id)
-        .first()
-    )
+    record = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.feedback_id == feedback_id).first()
     if record:
         record.processed = True
         if pattern_tags:

@@ -4,7 +4,6 @@ Generated manually to avoid requiring the ``alembic revision`` command.
 """
 
 import sqlalchemy as sa
-
 from alembic import op
 
 # revision identifiers, used by Alembic.

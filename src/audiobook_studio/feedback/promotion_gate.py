@@ -70,13 +70,9 @@ def _convert_input_to_model(pipeline_stage: str, input_dict: Dict[str, Any]) -> 
         from ..schemas.tts_edit import TtsEditInput
 
         # Convert paragraph_annotation dict to ParagraphAnnotation model
-        if "paragraph_annotation" in input_dict and isinstance(
-            input_dict["paragraph_annotation"], dict
-        ):
+        if "paragraph_annotation" in input_dict and isinstance(input_dict["paragraph_annotation"], dict):
             input_dict = dict(input_dict)
-            input_dict["paragraph_annotation"] = ParagraphAnnotation(
-                **input_dict["paragraph_annotation"]
-            )
+            input_dict["paragraph_annotation"] = ParagraphAnnotation(**input_dict["paragraph_annotation"])
         return TtsEditInput(**input_dict)
     elif pipeline_stage == "annotate":
         from ..schemas.paragraph import ParagraphAnnotationInput
@@ -133,23 +129,17 @@ def _compute_text_quality_metrics(
     metrics = {}
 
     # 1. Output similarity to expected (base metric)
-    metrics["output_similarity"] = _compute_output_similarity(
-        actual_output, expected_output
-    )
+    metrics["output_similarity"] = _compute_output_similarity(actual_output, expected_output)
 
     # 2. For edit stage: check edited_text quality
     if "edited_text" in actual_output and "edited_text" in expected_output:
         edited_text = actual_output["edited_text"]
         expected_text = expected_output["edited_text"]
-        metrics["text_similarity"] = _compute_output_similarity(
-            {"text": edited_text}, {"text": expected_text}
-        )
+        metrics["text_similarity"] = _compute_output_similarity({"text": edited_text}, {"text": expected_text})
 
         # Semantic coherence (if we have multiple paragraphs, but we only have one here)
         # Use fallback character n-gram similarity
-        metrics["semantic_coherence"] = _char_ngram_similarity(
-            edited_text, expected_text
-        )
+        metrics["semantic_coherence"] = _char_ngram_similarity(edited_text, expected_text)
 
         # Check if changes_made are reasonable
         if "changes_made" in actual_output:
@@ -157,9 +147,7 @@ def _compute_text_quality_metrics(
             # Penalize too many or too few changes
             expected_changes = len(expected_output.get("changes_made", []))
             if expected_changes > 0:
-                metrics["change_ratio"] = min(
-                    metrics["change_count"] / max(expected_changes, 1), 2.0
-                )
+                metrics["change_ratio"] = min(metrics["change_count"] / max(expected_changes, 1), 2.0)
             else:
                 metrics["change_ratio"] = 1.0 if metrics["change_count"] == 0 else 0.5
 
@@ -179,15 +167,11 @@ def _compute_audio_quality_metrics(
     metrics = {}
 
     # Base output similarity
-    metrics["output_similarity"] = _compute_output_similarity(
-        actual_output, expected_output
-    )
+    metrics["output_similarity"] = _compute_output_similarity(actual_output, expected_output)
 
     # For quality_check stage, check quality judgment scores
     if "overall_score" in actual_output and "overall_score" in expected_output:
-        metrics["overall_score_match"] = 1.0 - abs(
-            actual_output["overall_score"] - expected_output["overall_score"]
-        )
+        metrics["overall_score_match"] = 1.0 - abs(actual_output["overall_score"] - expected_output["overall_score"])
 
         # Check individual quality dimensions
         for dim in [
@@ -197,9 +181,7 @@ def _compute_audio_quality_metrics(
             "text_audio_alignment",
         ]:
             if dim in actual_output and dim in expected_output:
-                metrics[f"{dim}_match"] = 1.0 - abs(
-                    actual_output[dim] - expected_output[dim]
-                )
+                metrics[f"{dim}_match"] = 1.0 - abs(actual_output[dim] - expected_output[dim])
 
     return metrics
 
@@ -211,9 +193,7 @@ def _compute_structure_quality_metrics(
 ) -> Dict[str, float]:
     """Compute quality metrics for structure analysis stage."""
     metrics = {}
-    metrics["output_similarity"] = _compute_output_similarity(
-        actual_output, expected_output
-    )
+    metrics["output_similarity"] = _compute_output_similarity(actual_output, expected_output)
 
     # Check key structural elements
     for key in [
@@ -224,9 +204,7 @@ def _compute_structure_quality_metrics(
         "global_style_notes",
     ]:
         if key in actual_output and key in expected_output:
-            metrics[f"{key}_similarity"] = _compute_output_similarity(
-                actual_output[key], expected_output[key]
-            )
+            metrics[f"{key}_similarity"] = _compute_output_similarity(actual_output[key], expected_output[key])
 
     return metrics
 
@@ -281,9 +259,7 @@ def _aggregate_quality_score(metrics: Dict[str, float], stage_type: str) -> floa
         # Add weights for structural elements if present
         for key in metrics:
             if key.endswith("_similarity") and key != "output_similarity":
-                weights[key] = 0.5 / max(
-                    len([k for k in metrics if k.endswith("_similarity")]), 1
-                )
+                weights[key] = 0.5 / max(len([k for k in metrics if k.endswith("_similarity")]), 1)
     elif stage_type == "audio_synthesis" or stage_type == "audio_quality":
         weights = {
             "output_similarity": 0.4,
@@ -291,9 +267,7 @@ def _aggregate_quality_score(metrics: Dict[str, float], stage_type: str) -> floa
         }
         for key in metrics:
             if key.endswith("_match") and key not in weights:
-                weights[key] = 0.3 / max(
-                    len([k for k in metrics if k.endswith("_match")]), 1
-                )
+                weights[key] = 0.3 / max(len([k for k in metrics if k.endswith("_match")]), 1)
     else:
         weights = {"output_similarity": 1.0}
 
@@ -341,9 +315,7 @@ def _run_stage_with_prompt_version(
     target_path = prompt_dir / f"v{version}.j2"
 
     if not target_path.exists():
-        raise FileNotFoundError(
-            f"Prompt version {version} not found for stage {prompt_dir_name}"
-        )
+        raise FileNotFoundError(f"Prompt version {version} not found for stage {prompt_dir_name}")
 
     # Backup original v1.j2
     v1_backup = v1_path.read_text(encoding="utf-8") if v1_path.exists() else None
@@ -394,9 +366,7 @@ def _run_stage_with_prompt_version(
             v1_path.unlink()
 
 
-def _compute_output_similarity(
-    actual: Dict[str, Any], expected: Dict[str, Any]
-) -> float:
+def _compute_output_similarity(actual: Dict[str, Any], expected: Dict[str, Any]) -> float:
     """Compute similarity between actual and expected output (0-1).
 
     Uses recursive comparison for nested structures.
@@ -570,9 +540,7 @@ def check_format_compliance(
         block_opens = prompt_content.count("{%")
         block_closes = prompt_content.count("%}")
         if block_opens != block_closes:
-            issues.append(
-                f"未闭合的块: {block_opens}个 '{{%' 但 {block_closes}个 '}}%'"
-            )
+            issues.append(f"未闭合的块: {block_opens}个 '{{%' 但 {block_closes}个 '}}%'")
 
     # Check for common format issues
     if prompt_content.count("\n\n\n\n") > 0:
@@ -592,11 +560,7 @@ def check_format_compliance(
         passed=passed,
         score=score,
         threshold=threshold,
-        details=(
-            "全部格式检查通过"
-            if not issues
-            else f"发现问题 ({len(issues)}): {'; '.join(issues)}"
-        ),
+        details=("全部格式检查通过" if not issues else f"发现问题 ({len(issues)}): {'; '.join(issues)}"),
     )
 
 
@@ -644,9 +608,7 @@ def check_golden_dataset(
     for i, example in enumerate(examples):
         # Expect golden dataset format: {"input": {...}, "expected_output": {...}}
         if "input" not in example or "expected_output" not in example:
-            logger.warning(
-                f"Golden example {i} missing 'input' or 'expected_output' field"
-            )
+            logger.warning(f"Golden example {i} missing 'input' or 'expected_output' field")
             continue
 
         input_data = example["input"]
@@ -655,18 +617,14 @@ def check_golden_dataset(
         # Check if input has required fields for this pipeline stage
         required_fields = _get_required_input_fields(pipeline_stage)
         if not all(field in input_data for field in required_fields):
-            logger.debug(
-                f"Golden example {i} missing required fields for {pipeline_stage}: {required_fields}"
-            )
+            logger.debug(f"Golden example {i} missing required fields for {pipeline_stage}: {required_fields}")
             continue
 
         valid_examples += 1
 
         try:
             # Run pipeline with new prompt version
-            actual_output = _run_stage_with_prompt_version(
-                pipeline_stage, new_version, input_data, mock_mode=True
-            )
+            actual_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
 
             # Convert to dict if needed for comparison
             if hasattr(actual_output, "model_dump"):
@@ -769,18 +727,14 @@ def check_quality_improvement(
 
         try:
             # Run with old version
-            old_output = _run_stage_with_prompt_version(
-                pipeline_stage, old_version, input_data, mock_mode=True
-            )
+            old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=True)
             if hasattr(old_output, "model_dump"):
                 old_output = old_output.model_dump()
             elif hasattr(old_output, "dict"):
                 old_output = old_output.dict()
 
             # Run with new version
-            new_output = _run_stage_with_prompt_version(
-                pipeline_stage, new_version, input_data, mock_mode=True
-            )
+            new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
             if hasattr(new_output, "model_dump"):
                 new_output = new_output.model_dump()
             elif hasattr(new_output, "dict"):
@@ -788,38 +742,18 @@ def check_quality_improvement(
 
             # Compute quality metrics based on stage type
             if stage_type in ("text_edit", "text_annotation"):
-                old_metrics = _compute_text_quality_metrics(
-                    old_output, expected_output, input_data
-                )
-                new_metrics = _compute_text_quality_metrics(
-                    new_output, expected_output, input_data
-                )
+                old_metrics = _compute_text_quality_metrics(old_output, expected_output, input_data)
+                new_metrics = _compute_text_quality_metrics(new_output, expected_output, input_data)
             elif stage_type in ("audio_synthesis", "audio_quality"):
-                old_metrics = _compute_audio_quality_metrics(
-                    old_output, expected_output, input_data
-                )
-                new_metrics = _compute_audio_quality_metrics(
-                    new_output, expected_output, input_data
-                )
+                old_metrics = _compute_audio_quality_metrics(old_output, expected_output, input_data)
+                new_metrics = _compute_audio_quality_metrics(new_output, expected_output, input_data)
             elif stage_type == "structure_analysis":
-                old_metrics = _compute_structure_quality_metrics(
-                    old_output, expected_output, input_data
-                )
-                new_metrics = _compute_structure_quality_metrics(
-                    new_output, expected_output, input_data
-                )
+                old_metrics = _compute_structure_quality_metrics(old_output, expected_output, input_data)
+                new_metrics = _compute_structure_quality_metrics(new_output, expected_output, input_data)
             else:
                 # Fallback to simple similarity
-                old_metrics = {
-                    "output_similarity": _compute_output_similarity(
-                        old_output, expected_output
-                    )
-                }
-                new_metrics = {
-                    "output_similarity": _compute_output_similarity(
-                        new_output, expected_output
-                    )
-                }
+                old_metrics = {"output_similarity": _compute_output_similarity(old_output, expected_output)}
+                new_metrics = {"output_similarity": _compute_output_similarity(new_output, expected_output)}
 
             # Aggregate into single quality score
             old_quality = _aggregate_quality_score(old_metrics, stage_type)
@@ -897,9 +831,7 @@ def check_human_sample(
         passed=passed_flag,
         score=score,
         threshold=threshold,
-        details=(
-            f"{passed}/{total} 抽样通过 ({score * 100:.1f}% ≥ {threshold * 100:.0f}%)"
-        ),
+        details=(f"{passed}/{total} 抽样通过 ({score * 100:.1f}% ≥ {threshold * 100:.0f}%)"),
     )
 
 
@@ -951,8 +883,7 @@ def evaluate_promotion(
         summary=(
             f"✅ 全部门禁通过 (v{old_version} → v{new_version})"
             if all_passed
-            else f"❌ {len(gates) - sum(1 for g in gates if g.passed)}/4 门禁未通过 "
-            f"(通过率 {pass_rate * 100:.0f}%)"
+            else f"❌ {len(gates) - sum(1 for g in gates if g.passed)}/4 门禁未通过 " f"(通过率 {pass_rate * 100:.0f}%)"
         ),
         version_from=old_version,
         version_to=new_version,

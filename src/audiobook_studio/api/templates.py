@@ -13,12 +13,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Paragraph, Quality, Routing, TTSEdit
 from ..models.feedback_record import FeedbackRecord as FeedbackRecordModel
-from ..schemas import (
-    ParagraphAnnotation,
-    QualityJudgment,
-    TtsEditOutput,
-    TtsRoutingDecision,
-)
+from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +61,8 @@ class TemplateApplyRequest(BaseModel):
 
     template_id: int = Field(..., description="Template (feedback record) ID")
     scope: str = Field(..., description="Scope: 'all', 'chapter', 'pattern'")
-    chapter_ids: Optional[List[int]] = Field(
-        None, description="Chapter IDs if scope=chapter"
-    )
-    pattern_filter: Optional[str] = Field(
-        None, description="Pattern tag filter if scope=pattern"
-    )
+    chapter_ids: Optional[List[int]] = Field(None, description="Chapter IDs if scope=chapter")
+    pattern_filter: Optional[str] = Field(None, description="Pattern tag filter if scope=pattern")
 
 
 class TemplateApplyProgress(BaseModel):
@@ -100,11 +91,7 @@ def _feedback_to_template(record: FeedbackRecordModel) -> TemplateItem:
         pattern_tags=record.pattern_tags or [],
         diff_summary=record.diff_summary,
         rationale=record.rationale,
-        created_at=(
-            record.created_at.isoformat()
-            if record.created_at
-            else datetime.now(timezone.utc).isoformat()
-        ),
+        created_at=(record.created_at.isoformat() if record.created_at else datetime.now(timezone.utc).isoformat()),
         input_snapshot=record.input_snapshot,
         llm_output=record.llm_output,
         corrected_output=record.corrected_output,
@@ -137,9 +124,7 @@ async def list_templates(
     - pattern_tag: Filter by specific pattern tag
     - pending_only: Only show unprocessed feedback (pending confirmation)
     """
-    query = db.query(FeedbackRecordModel).filter(
-        FeedbackRecordModel.project_id == project_id
-    )
+    query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.project_id == project_id)
 
     if source:
         query = query.filter(FeedbackRecordModel.source == source)
@@ -155,9 +140,7 @@ async def list_templates(
         query = query.filter(FeedbackRecordModel.processed == False)
     else:
         # Show confirmed templates
-        query = query.filter(
-            FeedbackRecordModel.processed == True, FeedbackRecordModel.promoted == True
-        )
+        query = query.filter(FeedbackRecordModel.processed == True, FeedbackRecordModel.promoted == True)
 
     records = query.order_by(FeedbackRecordModel.created_at.desc()).limit(100).all()
 
@@ -265,9 +248,7 @@ async def apply_template(
             detail="Template not confirmed. Please confirm template first.",
         )
 
-    task_id = (
-        f"apply_{project_id}_{request.template_id}_{int(datetime.now().timestamp())}"
-    )
+    task_id = f"apply_{project_id}_{request.template_id}_{int(datetime.now().timestamp())}"
 
     # Schedule background task
     background_tasks.add_task(
@@ -315,12 +296,7 @@ async def _apply_template_background(
     # Import models
     from ..models import FeedbackRecord as FeedbackRecordModel
     from ..models import Paragraph, Quality, Routing, TTSEdit
-    from ..schemas import (
-        ParagraphAnnotation,
-        QualityJudgment,
-        TtsEditOutput,
-        TtsRoutingDecision,
-    )
+    from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
 
     # Simple in-memory progress tracking (shared across tasks)
     if not hasattr(_apply_template_background, "progress"):
@@ -351,9 +327,7 @@ async def _apply_template_background(
             .first()
         )
         if not template:
-            raise ValueError(
-                f"Template {template_id} not found for project {project_id}"
-            )
+            raise ValueError(f"Template {template_id} not found for project {project_id}")
 
         if not template.processed or not template.promoted:
             raise ValueError(f"Template {template_id} is not confirmed")
@@ -370,9 +344,7 @@ async def _apply_template_background(
             # the template's pattern_tags (e.g. "dialogue", "sfx",
             # "emotion:anger", "speaker:Narrator").
             if pattern_filter:
-                pattern_tags = [
-                    t.strip() for t in pattern_filter.split(",") if t.strip()
-                ]
+                pattern_tags = [t.strip() for t in pattern_filter.split(",") if t.strip()]
             else:
                 pattern_tags = template.pattern_tags or []
 
@@ -396,9 +368,7 @@ async def _apply_template_background(
                         tag_filters.append(Paragraph.needs_sfx == True)  # noqa: E712
                     elif tag_lower.startswith("speaker:"):
                         speaker_val = tag.split(":", 1)[1]
-                        tag_filters.append(
-                            Paragraph.speaker_canonical_name.ilike(f"%{speaker_val}%")
-                        )
+                        tag_filters.append(Paragraph.speaker_canonical_name.ilike(f"%{speaker_val}%"))
                     else:
                         # Fallback: keyword search in notes column
                         tag_filters.append(Paragraph.notes.ilike(f"%{tag}%"))
@@ -417,12 +387,8 @@ async def _apply_template_background(
         for idx, para in enumerate(paragraphs):
             # Update progress
             _apply_template_background.progress[task_id]["processed"] = idx + 1
-            _apply_template_background.progress[task_id][
-                "current_paragraph_id"
-            ] = para.id
-            _apply_template_background.progress[task_id][
-                "current_stage"
-            ] = template.stage
+            _apply_template_background.progress[task_id]["current_paragraph_id"] = para.id
+            _apply_template_background.progress[task_id]["current_stage"] = template.stage
 
             try:
                 # Apply template based on stage
@@ -562,16 +528,9 @@ def _apply_routing_template(db: Session, pa: Paragraph, corrected_output: dict):
 def _apply_quality_template(db: Session, pa: Paragraph, corrected_output: dict):
     """Apply quality template: create new Quality record linked to latest TTSEdit."""
     # Get latest TTSEdit for this paragraph
-    latest_tts_edit = (
-        db.query(TTSEdit)
-        .filter(TTSEdit.paragraph_id == pa.id)
-        .order_by(TTSEdit.id.desc())
-        .first()
-    )
+    latest_tts_edit = db.query(TTSEdit).filter(TTSEdit.paragraph_id == pa.id).order_by(TTSEdit.id.desc()).first()
     if not latest_tts_edit:
-        logger.warning(
-            f"No TTSEdit found for paragraph {pa.id}, skipping quality application"
-        )
+        logger.warning(f"No TTSEdit found for paragraph {pa.id}, skipping quality application")
         return
 
     # corrected_output should match QualityJudgment schema

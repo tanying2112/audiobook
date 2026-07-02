@@ -215,20 +215,14 @@ def print_summary(report: dict):
             f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%"
         )
 
-    overall_status = (
-        "✅ ALL TARGETS MET"
-        if report["targets_check"]["overall_pass"]
-        else "❌ SOME TARGETS MISSED"
-    )
+    overall_status = "✅ ALL TARGETS MET" if report["targets_check"]["overall_pass"] else "❌ SOME TARGETS MISSED"
     print(f"\n{overall_status}")
 
     if report["low_coverage_files"]:
         print(f"\nLow Coverage Files (< 50%, >10 lines):")
         print("-" * 70)
         for f in report["low_coverage_files"][:20]:
-            print(
-                f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)"
-            )
+            print(f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)")
 
     print("=" * 70)
 

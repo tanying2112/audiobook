@@ -4,13 +4,7 @@ Provides distributed tracing, metrics, and logging instrumentation.
 """
 
 from .instrumentation import instrument_app
-from .metrics import (
-    create_counter,
-    create_gauge,
-    create_histogram,
-    get_meter,
-    init_metrics,
-)
+from .metrics import create_counter, create_gauge, create_histogram, get_meter, init_metrics
 from .tracing import get_tracer, init_tracing
 
 __all__ = [

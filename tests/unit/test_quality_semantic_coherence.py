@@ -1,7 +1,7 @@
 """Tests for semantic_coherence.py."""
 
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

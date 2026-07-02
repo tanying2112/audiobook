@@ -2,9 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   PIPELINE_STAGE_ORDER,
   PARAGRAPH_STATUS_FLOW,
-  type PipelineStage,
-  type StageStatus,
-  type ParagraphStatus,
   type InlineChatAnchor,
   type ChatSuggestion,
   type ChatMessage,

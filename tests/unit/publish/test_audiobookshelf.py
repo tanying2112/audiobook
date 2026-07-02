@@ -124,9 +124,7 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
     @patch("pathlib.Path.is_file")
     @patch("pathlib.Path.stat")
     @patch("mimetypes.guess_type")
-    def test_validate_audio_file_valid(
-        self, mock_guess, mock_stat, mock_is_file, mock_exists
-    ):
+    def test_validate_audio_file_valid(self, mock_guess, mock_stat, mock_is_file, mock_exists):
         # Setup mocks
         mock_exists.return_value = True
         mock_is_file.return_value = True
@@ -237,9 +235,7 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
 
             # In mock mode, publish uses _mock_api_call internally
             self.publisher.mock_mode = True
-            success, message, response = self.publisher.publish_audiobook(
-                metadata, audio_file
-            )
+            success, message, response = self.publisher.publish_audiobook(metadata, audio_file)
             # Mock mode may succeed or fail randomly
             self.assertIn("success", response)
         finally:
@@ -267,9 +263,7 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
                 description="A book to publish",
             )
 
-            success, message, response = self.publisher.publish_audiobook(
-                metadata, audio_file
-            )
+            success, message, response = self.publisher.publish_audiobook(metadata, audio_file)
             self.assertFalse(success)
             self.assertIn("标题不能为空", message)
         finally:
@@ -298,9 +292,7 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
             )
 
             self.publisher.mock_mode = True
-            success, message, response = self.publisher.publish_audiobook(
-                metadata, audio_file
-            )
+            success, message, response = self.publisher.publish_audiobook(metadata, audio_file)
             self.assertFalse(success)
         finally:
             if os.path.exists(tmp_path):
@@ -391,9 +383,7 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
                 description="A book to publish",
             )
 
-            valid, message, upload_data = self.publisher._prepare_audiobook(
-                metadata, audio_file
-            )
+            valid, message, upload_data = self.publisher._prepare_audiobook(metadata, audio_file)
             self.assertTrue(valid)
         finally:
             if os.path.exists(tmp_path):

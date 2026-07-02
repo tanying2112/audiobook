@@ -168,9 +168,7 @@ def check_targets(category_coverage: Dict[str, Any]) -> Dict[str, Any]:
             # Total across all source files
             total_covered = sum(v["covered_lines"] for v in category_coverage.values())
             total_lines = sum(v["total_lines"] for v in category_coverage.values())
-            actual = (
-                round((total_covered / total_lines) * 100, 1) if total_lines > 0 else 0
-            )
+            actual = round((total_covered / total_lines) * 100, 1) if total_lines > 0 else 0
         else:
             actual = category_coverage.get(cat, {}).get("percent_covered", 0.0)
 
@@ -222,9 +220,7 @@ def generate_report():
     return report
 
 
-def _get_low_coverage_files(
-    category_coverage: Dict[str, Any], threshold: float = 50.0
-) -> list:
+def _get_low_coverage_files(category_coverage: Dict[str, Any], threshold: float = 50.0) -> list:
     """Get files below coverage threshold."""
     low = []
     for cat_data in category_coverage.values():
@@ -233,9 +229,7 @@ def _get_low_coverage_files(
                 low.append(
                     {
                         "file": f["file"],
-                        "category": cat_data.get(
-                            "file_count", ""
-                        ),  # Will fill properly
+                        "category": cat_data.get("file_count", ""),  # Will fill properly
                         "percent": f["percent"],
                         "missing_lines_count": len(f["missing_lines"]),
                     }
@@ -263,12 +257,7 @@ def print_summary(report: Dict[str, Any]):
     print("-" * 70)
     for cat, data in report["categories"].items():
         if data["total_lines"] > 0:
-            status = (
-                "✅"
-                if data["percent_covered"]
-                >= report["targets_check"].get(cat, {}).get("target", 0)
-                else "⚠️"
-            )
+            status = "✅" if data["percent_covered"] >= report["targets_check"].get(cat, {}).get("target", 0) else "⚠️"
             target = report["targets_check"].get(cat, {}).get("target", "N/A")
             print(
                 f"  {status} {cat:15s} | {data['percent_covered']:6.1f}% (target: {target}%) | {data['file_count']} files"
@@ -284,20 +273,14 @@ def print_summary(report: Dict[str, Any]):
             f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%"
         )
 
-    overall_status = (
-        "✅ ALL TARGETS MET"
-        if report["targets_check"]["overall_pass"]
-        else "❌ SOME TARGETS MISSED"
-    )
+    overall_status = "✅ ALL TARGETS MET" if report["targets_check"]["overall_pass"] else "❌ SOME TARGETS MISSED"
     print(f"\n{overall_status}")
 
     if report["low_coverage_files"]:
         print(f"\nLow Coverage Files (< 50%, >10 lines):")
         print("-" * 70)
         for f in report["low_coverage_files"][:20]:  # Top 20
-            print(
-                f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)"
-            )
+            print(f"  ⚠️  {f['file']}: {f['percent']:.1f}% ({f['missing_lines_count']} missing)")
 
     print("=" * 70)
 
@@ -306,9 +289,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate coverage baseline report")
-    parser.add_argument(
-        "--output", default="reports/coverage_baseline.json", help="Output report path"
-    )
+    parser.add_argument("--output", default="reports/coverage_baseline.json", help="Output report path")
     parser.add_argument(
         "--fail-under",
         type=int,
@@ -327,9 +308,7 @@ def main():
 
     if args.fail_under is not None:
         if report["overall_percent_covered"] < args.fail_under:
-            print(
-                f"\n❌ Overall coverage {report['overall_percent_covered']:.1f}% below threshold {args.fail_under}%"
-            )
+            print(f"\n❌ Overall coverage {report['overall_percent_covered']:.1f}% below threshold {args.fail_under}%")
             sys.exit(1)
 
     if not report["targets_check"]["overall_pass"]:

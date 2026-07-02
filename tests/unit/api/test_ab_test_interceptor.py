@@ -1,6 +1,8 @@
-from src.audiobook_studio.api.ab_test_interceptor import ABTestAllocator, get_prompt_version
-from unittest.mock import MagicMock
 import asyncio
+from unittest.mock import MagicMock
+
+from src.audiobook_studio.api.ab_test_interceptor import ABTestAllocator, get_prompt_version
+
 
 def test_allocator_get_prompt_version():
     allocator = ABTestAllocator()
@@ -10,6 +12,7 @@ def test_allocator_get_prompt_version():
     # Test that we get 1 for an unknown stage (should default to 1)
     version = allocator.get_prompt_version("unknown_stage", book_id="book1", user_id="user1")
     assert version == 1
+
 
 def test_get_prompt_version_dependency():
     # Mock a request with state

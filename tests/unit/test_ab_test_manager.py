@@ -9,11 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.feedback.ab_test_manager import (
-    ABTestConfig,
-    ABTestResult,
-    ABTestManager,
-)
+from src.audiobook_studio.feedback.ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
 
 
 class TestABTestManager:
@@ -31,9 +27,11 @@ class TestABTestManager:
 
     def test_run_comparison_test_default_parameters(self):
         """Test run_comparison_test with default parameters."""
-        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"), \
-             patch.object(ABTestManager, '_execute_ab_test') as mock_execute, \
-             patch.object(ABTestManager, '_save_test_result') as mock_save:
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch.object(ABTestManager, "_execute_ab_test") as mock_execute,
+            patch.object(ABTestManager, "_save_test_result") as mock_save,
+        ):
 
             mock_execute.return_value = ABTestResult(
                 test_id="test123",
@@ -48,10 +46,7 @@ class TestABTestManager:
             )
 
             manager = ABTestManager("/tmp/test")
-            result = manager.run_comparison_test(
-                current_prompt="current",
-                proposed_prompt="proposed"
-            )
+            result = manager.run_comparison_test(current_prompt="current", proposed_prompt="proposed")
 
             # Check that the mocks were called
             mock_execute.assert_called_once()
@@ -69,9 +64,11 @@ class TestABTestManager:
 
     def test_run_comparison_test_custom_segments_and_criteria(self):
         """Test run_comparison_test with custom segments and criteria."""
-        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"), \
-             patch.object(ABTestManager, '_execute_ab_test') as mock_execute, \
-             patch.object(ABTestManager, '_save_test_result'):
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch.object(ABTestManager, "_execute_ab_test") as mock_execute,
+            patch.object(ABTestManager, "_save_test_result"),
+        ):
 
             mock_execute.return_value = ABTestResult(
                 test_id="test456",
@@ -94,7 +91,7 @@ class TestABTestManager:
                 proposed_prompt="proposed",
                 test_name="test",
                 test_segments=custom_segments,
-                judge_criteria=custom_criteria
+                judge_criteria=custom_criteria,
             )
 
             # Check that the config passed to _execute_ab_test has the custom values
@@ -106,9 +103,11 @@ class TestABTestManager:
 
     def test_execute_ab_test_mocked(self):
         """Test _execute_ab_test with mocked random to get deterministic results."""
-        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"), \
-             patch("random.uniform") as mock_uniform, \
-             patch("random.random") as mock_random:
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch("random.uniform") as mock_uniform,
+            patch("random.random") as mock_random,
+        ):
 
             # Make the random values deterministic
             mock_uniform.side_effect = [0.8, 0.05, 0.85, 0.02, 0.75, 0.03, 0.88, 0.01]  # enough calls
@@ -142,8 +141,10 @@ class TestABTestManager:
 
     def test_save_test_result(self, tmp_path):
         """Test _save_test_result creates files."""
-        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"), \
-             patch("src.audiobook_studio.feedback.ab_test_manager.json.dump") as mock_dump:
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch("src.audiobook_studio.feedback.ab_test_manager.json.dump") as mock_dump,
+        ):
 
             manager = ABTestManager(str(tmp_path))
             # Provide a detailed result with all expected fields
@@ -154,14 +155,16 @@ class TestABTestManager:
                 winner="B",
                 confidence=0.85,
                 p_value=0.02,
-                details=[{
-                    "segment_id": 0,
-                    "segment_preview": "主人公走进了昏暗的房间，心跳急剧加速。",
-                    "variant_a_score": 0.75,
-                    "variant_b_score": 0.85,
-                    "winner": "B",
-                    "score_difference": 0.1
-                }],
+                details=[
+                    {
+                        "segment_id": 0,
+                        "segment_preview": "主人公走进了昏暗的房间，心跳急剧加速。",
+                        "variant_a_score": 0.75,
+                        "variant_b_score": 0.85,
+                        "winner": "B",
+                        "score_difference": 0.1,
+                    }
+                ],
                 timestamp=datetime(2023, 1, 1, 12, 0, 0),
                 passed_quality_gate=True,
             )
@@ -239,7 +242,6 @@ class TestABTestManager:
 
 # Helper to mock open for file writing
 from unittest.mock import mock_open
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

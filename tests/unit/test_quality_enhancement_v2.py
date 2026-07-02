@@ -225,9 +225,7 @@ class TestGradeDifficulty:
         assert result["level"] in ("medium", "hard")
 
     def test_custom_weights(self):
-        w = DifficultyWeights(
-            {"text_length": 5.0, "vocabulary_rarity": 5.0, "narrative_complexity": 5.0}
-        )
+        w = DifficultyWeights({"text_length": 5.0, "vocabulary_rarity": 5.0, "narrative_complexity": 5.0})
         result = grade_difficulty("hello", weights=w)
         assert "overall_score" in result
 
@@ -285,9 +283,7 @@ class TestFalsePositiveTracker:
 
     def test_record_auto(self):
         t = FalsePositiveTracker()
-        issue = t.record_false_positive(
-            "seg1", "wer", "desc", "reason", reported_by="auto"
-        )
+        issue = t.record_false_positive("seg1", "wer", "desc", "reason", reported_by="auto")
         assert issue.reported_by == "auto"
 
     def test_get_false_positive_rate(self):

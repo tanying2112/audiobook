@@ -206,12 +206,13 @@ class TestFeedbackAutoProcessor:
 
         # Mock list_unprocessed_feedback to return 12 items (above threshold)
         fake_feedback = list(range(12))
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
-            return_value=fake_feedback,
-        ) as mock_list, patch.object(
-            processor, "_trigger_analysis", return_value="result"
-        ) as mock_trigger:
+        with (
+            patch(
+                "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
+                return_value=fake_feedback,
+            ) as mock_list,
+            patch.object(processor, "_trigger_analysis", return_value="result") as mock_trigger,
+        ):
             processor._check_and_trigger()
             # Should have called _trigger_analysis
             mock_trigger.assert_called_once_with(mock_db)
@@ -232,10 +233,13 @@ class TestFeedbackAutoProcessor:
 
         # Still 15 unprocessed (same as last_analysis_count)
         fake_feedback = list(range(15))
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
-            return_value=fake_feedback,
-        ), patch.object(processor, "_trigger_analysis") as mock_trigger:
+        with (
+            patch(
+                "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
+                return_value=fake_feedback,
+            ),
+            patch.object(processor, "_trigger_analysis") as mock_trigger,
+        ):
             processor._check_and_trigger()
             # Should NOT have called _trigger_analysis
             mock_trigger.assert_not_called()
@@ -259,18 +263,17 @@ class TestFeedbackAutoProcessor:
         fake_analysis.recommendations = ["rec1"]
         fake_analysis.generated_at = datetime.now(timezone.utc)
 
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.analyze_batch",
-            return_value=fake_analysis,
-        ) as mock_analyze, patch.object(
-            processor, "_save_analysis_report", return_path=Path("/tmp/report.json")
-        ) as mock_save:
+        with (
+            patch(
+                "src.audiobook_studio.feedback.auto_processor.analyze_batch",
+                return_value=fake_analysis,
+            ) as mock_analyze,
+            patch.object(processor, "_save_analysis_report", return_path=Path("/tmp/report.json")) as mock_save,
+        ):
             result = processor._trigger_analysis(mock_db)
 
             # Should have called analyze_batch with correct args
-            mock_analyze.assert_called_once_with(
-                mock_db, project_id=1, limit=1000
-            )
+            mock_analyze.assert_called_once_with(mock_db, project_id=1, limit=1000)
             # Should have called _save_analysis_report with the analysis
             mock_save.assert_called_once_with(fake_analysis)
             # Should have returned the analysis
@@ -310,15 +313,12 @@ class TestFeedbackAutoProcessor:
         fake_analysis.recommendations = ["rec1", "rec2"]
         fake_analysis.generated_at = fixed_time
 
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.Path.mkdir"
-        ) as mock_mkdir, patch(
-            "builtins.open", mock_open()
-        ) as mock_file:
+        with (
+            patch("src.audiobook_studio.feedback.auto_processor.Path.mkdir") as mock_mkdir,
+            patch("builtins.open", mock_open()) as mock_file,
+        ):
             # We need to mock the _feedback_dir as well
-            with patch.object(
-                processor, "_feedback_dir", Path("/tmp/fake/feedback/raw")
-            ):
+            with patch.object(processor, "_feedback_dir", Path("/tmp/fake/feedback/raw")):
                 result_path = processor._save_analysis_report(fake_analysis)
 
                 # Should have called mkdir on the analysis directory
@@ -375,11 +375,12 @@ class TestFeedbackAutoProcessor:
         mock_db = MagicMock()
         db_session_factory.return_value = mock_db
         # Mock list_unprocessed_feedback to return 3 items
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
-            return_value=[1, 2, 3],
-        ), patch.object(
-            processor, "_worker_thread_alive", return_value=True
+        with (
+            patch(
+                "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
+                return_value=[1, 2, 3],
+            ),
+            patch.object(processor, "_worker_thread_alive", return_value=True),
         ):
             status = processor.get_status()
             assert status["project_id"] == 7
@@ -428,19 +429,20 @@ class TestFeedbackAutoProcessor:
         fake_result = MagicMock(spec=AggregateAnalysis)
         fake_result.total_analyzed = 100
         fake_result.recommendations = ["rec1", "rec2"]
-        with patch(
-            "src.audiobook_studio.feedback.auto_processor.analyze_batch",
-            return_value=fake_result,
-        ) as mock_analyze, caplog.at_level("INFO"):
+        with (
+            patch(
+                "src.audiobook_studio.feedback.auto_processor.analyze_batch",
+                return_value=fake_result,
+            ) as mock_analyze,
+            caplog.at_level("INFO"),
+        ):
             result = run_feedback_analysis_cli(
                 db_session_factory=db_session_factory,
                 project_id=55,
                 limit=500,
             )
             # Should have called analyze_batch with correct args
-            mock_analyze.assert_called_once_with(
-                mock_db, project_id=55, limit=500
-            )
+            mock_analyze.assert_called_once_with(mock_db, project_id=55, limit=500)
             # Should have logged the start and completion
             assert "Running manual feedback analysis for project 55" in caplog.text
             assert "Analysis complete: 100 records processed" in caplog.text

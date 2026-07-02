@@ -62,9 +62,7 @@ def merge_category(name: str, config: dict, dry_run: bool = False) -> bool:
     root = Path(__file__).parent.parent
     merged_content = []
     merged_content.append(f"# {config['title']}\n")
-    merged_content.append(
-        f"> 自动生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-    )
+    merged_content.append(f"> 自动生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
     merged_content.append("---\n")
 
     files_merged = 0
@@ -163,9 +161,7 @@ def create_docs_index(root: Path, dry_run: bool = False) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Consolidate documentation files")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Preview without writing files"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     parser.add_argument(
         "--output-dir",
         type=str,

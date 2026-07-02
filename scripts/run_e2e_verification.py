@@ -44,9 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def create_test_book(
-    book_dir: Path, num_chapters: int = 3, paragraphs_per_chapter: int = 5
-) -> Path:
+def create_test_book(book_dir: Path, num_chapters: int = 3, paragraphs_per_chapter: int = 5) -> Path:
     """创建测试用书籍文件."""
     book_path = book_dir / "test_book.txt"
     content = []
@@ -241,11 +239,7 @@ def test_ab_test() -> Dict[str, Any]:
 
     import uuid
 
-    from src.audiobook_studio.feedback.ab_test import (
-        ABTestSample,
-        build_ab_samples,
-        run_ab_test,
-    )
+    from src.audiobook_studio.feedback.ab_test import ABTestSample, build_ab_samples, run_ab_test
 
     # 创建测试样本
     samples = [
@@ -254,9 +248,7 @@ def test_ab_test() -> Dict[str, Any]:
             stage="edit_for_tts",
             input_data={"text": f"test {i}"},
             output_a={"edited_text": "short"},
-            output_b={
-                "edited_text": "much longer and better output text with more content"
-            },
+            output_b={"edited_text": "much longer and better output text with more content"},
             version_a=1,
             version_b=2,
         )
@@ -282,11 +274,7 @@ def test_canary_release() -> Dict[str, Any]:
 
     from datetime import datetime, timezone
 
-    from src.audiobook_studio.feedback.release import (
-        CanaryConfig,
-        CanaryMetrics,
-        CanaryRelease,
-    )
+    from src.audiobook_studio.feedback.release import CanaryConfig, CanaryMetrics, CanaryRelease
 
     # 创建 canary release
     config = CanaryConfig(min_samples=50, rollback_threshold=0.95)
@@ -328,10 +316,7 @@ def test_canary_release() -> Dict[str, Any]:
     status_after_complete = canary.get_canary_status("edit_for_tts", "v2")
 
     return {
-        "success": (
-            status_after_good["status"] == "running"
-            and status_after_bad["status"] == "rolled_back"
-        ),
+        "success": (status_after_good["status"] == "running" and status_after_bad["status"] == "rolled_back"),
         "good_metrics_status": status_after_good["status"],
         "bad_metrics_status": status_after_bad["status"],
         "final_status": status_after_complete["status"],
@@ -460,9 +445,7 @@ def run_all_tests(project_id: int = 1) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(description="Run E2E verification")
-    parser.add_argument(
-        "--project-id", type=int, default=1, help="Project ID for testing"
-    )
+    parser.add_argument("--project-id", type=int, default=1, help="Project ID for testing")
     parser.add_argument("--output", type=str, help="Output JSON file for results")
     args = parser.parse_args()
 

@@ -55,9 +55,7 @@ class OfflineMonitor:
         import random
 
         if random.random() < 0.7:  # 70% 的时间成功
-            logger.info(
-                f"✅ 性能数据已发送到外部监控: {metrics.get('stage', 'unknown')}"
-            )
+            logger.info(f"✅ 性能数据已发送到外部监控: {metrics.get('stage', 'unknown')}")
             return True
         else:
             raise ConnectionError("外部监控服务暂时不可用")

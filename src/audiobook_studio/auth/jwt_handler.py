@@ -10,6 +10,7 @@ from src.audiobook_studio.config import get_settings
 
 try:
     import bcrypt
+
     BCRYPT_AVAILABLE = True
 except ImportError:
     BCRYPT_AVAILABLE = False
@@ -52,11 +53,11 @@ class JWTHandler:
 
     def _hash_password(self, password: str) -> str:
         """Hash a password using bcrypt (or SHA-256 fallback)."""
-        password_bytes = password.encode('utf-8')
+        password_bytes = password.encode("utf-8")
         if BCRYPT_AVAILABLE:
             salt = bcrypt.gensalt(rounds=12)
             hashed = bcrypt.hashpw(password_bytes, salt)
-            return hashed.decode('utf-8')
+            return hashed.decode("utf-8")
         # Fallback: SHA-256 + salt (not as secure as bcrypt)
         salt = os.urandom(32)
         hashed = hashlib.sha256(salt + password_bytes).digest()
@@ -64,9 +65,9 @@ class JWTHandler:
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
-        password_bytes = plain_password.encode('utf-8')
+        password_bytes = plain_password.encode("utf-8")
         if BCRYPT_AVAILABLE and not hashed_password.startswith("sha256$"):
-            hashed_bytes = hashed_password.encode('utf-8')
+            hashed_bytes = hashed_password.encode("utf-8")
             return bcrypt.checkpw(password_bytes, hashed_bytes)
         if hashed_password.startswith("sha256$"):
             parts = hashed_password.split("$")
@@ -92,9 +93,7 @@ class JWTHandler:
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
-            expire = datetime.now(timezone.utc) + timedelta(
-                minutes=self.access_token_expire_minutes
-            )
+            expire = datetime.now(timezone.utc) + timedelta(minutes=self.access_token_expire_minutes)
 
         to_encode = {
             "sub": str(user_id),
@@ -119,9 +118,7 @@ class JWTHandler:
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
-            expire = datetime.now(timezone.utc) + timedelta(
-                days=self.refresh_token_expire_days
-            )
+            expire = datetime.now(timezone.utc) + timedelta(days=self.refresh_token_expire_days)
 
         to_encode = {
             "sub": str(user_id),
@@ -228,9 +225,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Create an access token."""
-    return jwt_handler.create_access_token(
-        user_id, username, roles, permissions, expires_delta
-    )
+    return jwt_handler.create_access_token(user_id, username, roles, permissions, expires_delta)
 
 
 def create_refresh_token(

@@ -80,19 +80,13 @@ class LegacyTTSEdit(Base):
     __tablename__ = "legacy_tts_edits"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("legacy_paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("legacy_paragraphs.id", ondelete="CASCADE"), nullable=False)
     edited_text: Mapped[str] = mapped_column(Text, nullable=False)
     voice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    paragraph: Mapped[LegacyParagraph] = relationship(
-        "LegacyParagraph", back_populates="tts_edits"
-    )
-    quality: Mapped[Optional[LegacyQuality]] = relationship(
-        "LegacyQuality", back_populates="tts_edit", uselist=False
-    )
+    paragraph: Mapped[LegacyParagraph] = relationship("LegacyParagraph", back_populates="tts_edits")
+    quality: Mapped[Optional[LegacyQuality]] = relationship("LegacyQuality", back_populates="tts_edit", uselist=False)
 
     def to_schema(self):
         from ..schemas.legacy import TTSEdit as TTSEditSchema
@@ -111,16 +105,12 @@ class LegacyRouting(Base):
     __tablename__ = "legacy_routings"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("legacy_paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("legacy_paragraphs.id", ondelete="CASCADE"), nullable=False)
     voice: Mapped[str] = mapped_column(String, nullable=False)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Relationships
-    paragraph: Mapped[LegacyParagraph] = relationship(
-        "LegacyParagraph", back_populates="routings"
-    )
+    paragraph: Mapped[LegacyParagraph] = relationship("LegacyParagraph", back_populates="routings")
 
     def to_schema(self):
         from ..schemas.legacy import Routing as RoutingSchema
@@ -139,16 +129,12 @@ class LegacyQuality(Base):
     __tablename__ = "legacy_qualities"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    tts_edit_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("legacy_tts_edits.id"), nullable=True
-    )
+    tts_edit_id: Mapped[Optional[int]] = mapped_column(ForeignKey("legacy_tts_edits.id"), nullable=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     comments: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    tts_edit: Mapped[Optional[LegacyTTSEdit]] = relationship(
-        "LegacyTTSEdit", back_populates="quality"
-    )
+    tts_edit: Mapped[Optional[LegacyTTSEdit]] = relationship("LegacyTTSEdit", back_populates="quality")
 
     def to_schema(self):
         from ..schemas.legacy import Quality as QualitySchema

@@ -193,16 +193,12 @@ class TestHeuristicFallback:
         router = self._make_router_for_fallback()
         from src.audiobook_studio.schemas import BookAnalysisOutput
 
-        result = router._heuristic_fallback(
-            "analyze", BookAnalysisOutput, segment_id="s1"
-        )
+        result = router._heuristic_fallback("analyze", BookAnalysisOutput, segment_id="s1")
         assert isinstance(result, BookAnalysisOutput)
 
     def test_fallback_annotate(self):
         router = self._make_router_for_fallback()
-        result = router._heuristic_fallback(
-            "annotate", ParagraphAnnotation, segment_id="s1"
-        )
+        result = router._heuristic_fallback("annotate", ParagraphAnnotation, segment_id="s1")
         assert isinstance(result, ParagraphAnnotation)
 
     def test_fallback_edit(self):
@@ -217,9 +213,7 @@ class TestHeuristicFallback:
 
     def test_fallback_unknown_stage(self):
         router = self._make_router_for_fallback()
-        result = router._heuristic_fallback(
-            "unknown_stage", ParagraphAnnotation, segment_id="s1"
-        )
+        result = router._heuristic_fallback("unknown_stage", ParagraphAnnotation, segment_id="s1")
         assert result is None
 
 
@@ -258,9 +252,7 @@ class TestApplyHardwareProfileRouting:
             {"provider": "provider_b", "model": "m1", "priority": 1},
             {"provider": "provider_a", "model": "m2", "priority": 2},
         ]
-        result = router._apply_hardware_profile_routing(
-            "judge", providers, stage_models
-        )
+        result = router._apply_hardware_profile_routing("judge", providers, stage_models)
         # provider_b should be first (priority 1)
         assert result[0].name == "provider_b"
         reset_app_container()
@@ -281,9 +273,7 @@ class TestApplyHardwareProfileRouting:
         stage_models = [
             {"provider": "nonexistent", "model": "m1", "priority": 1},
         ]
-        result = router._apply_hardware_profile_routing(
-            "judge", providers, stage_models
-        )
+        result = router._apply_hardware_profile_routing("judge", providers, stage_models)
         # Unknown provider not found; but remaining providers are still appended
         assert len(result) == 1  # p1 appended as "remaining"
         # The unknown provider is not in the ordered list
@@ -667,9 +657,7 @@ class TestLazyTraceFunction:
         mock_self = MagicMock()
         # When langfuse is not available, the decorator catches the exception
         # and falls through to the original function
-        with patch.dict(
-            "sys.modules", {"src.audiobook_studio.monitoring.langfuse_client": None}
-        ):
+        with patch.dict("sys.modules", {"src.audiobook_studio.monitoring.langfuse_client": None}):
             result = my_func(mock_self)
         assert result == "result"
 

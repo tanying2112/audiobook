@@ -514,9 +514,7 @@ class TestAudioHash:
     def test_different_data_different_hash(self, engine):
         d1 = np.zeros(24000, dtype=np.float32)
         d2 = np.ones(24000, dtype=np.float32)
-        assert engine._calculate_audio_hash(d1, 24000) != engine._calculate_audio_hash(
-            d2, 24000
-        )
+        assert engine._calculate_audio_hash(d1, 24000) != engine._calculate_audio_hash(d2, 24000)
 
 
 class TestEstimateSNR:

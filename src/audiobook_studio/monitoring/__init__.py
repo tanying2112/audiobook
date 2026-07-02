@@ -2,14 +2,7 @@
 Monitoring and Baseline Recording Package
 """
 
-from .alert import (
-    AlertConfig,
-    AlertLevel,
-    AlertManager,
-    AlertRecord,
-    send_dingtalk_alert,
-    send_slack_alert,
-)
+from .alert import AlertConfig, AlertLevel, AlertManager, AlertRecord, send_dingtalk_alert, send_slack_alert
 from .baseline import (
     BaselineRecorder,
     GrowthMetric,
@@ -26,12 +19,7 @@ from .compliance import (
     record_pipeline_compliance,
 )
 from .cost_dashboard import CostBreakdown, CostDashboard, generate_cost_report
-from .dashboard import (
-    MonitoringDashboard,
-    collect_logs,
-    compute_summary,
-    format_dashboard,
-)
+from .dashboard import MonitoringDashboard, collect_logs, compute_summary, format_dashboard
 from .langfuse_client import (
     flush_langfuse,
     get_langfuse_client,

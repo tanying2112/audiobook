@@ -133,16 +133,12 @@ class TestComplianceMonitor:
         self.monitor.record("extract", False, quality_score=0.5)
 
         # Should pass at 0.8 compliance rate
-        result = self.monitor.check_thresholds(
-            min_compliance_rate=0.8, min_quality_score=0.7
-        )
+        result = self.monitor.check_thresholds(min_compliance_rate=0.8, min_quality_score=0.7)
         assert result["overall_pass"] is True
         assert result["stage_results"]["extract"]["pass"] is True
 
         # Should fail at 0.95 compliance rate
-        result = self.monitor.check_thresholds(
-            min_compliance_rate=0.95, min_quality_score=0.7
-        )
+        result = self.monitor.check_thresholds(min_compliance_rate=0.95, min_quality_score=0.7)
         assert result["overall_pass"] is False
         assert result["stage_results"]["extract"]["pass"] is False
 

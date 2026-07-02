@@ -6,11 +6,11 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from ..tts.clone import VoiceCloningManager, VoiceSample, AudioQuality
-import numpy as np
+from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,7 @@ class TTSEngine(BaseModel):
     available: bool = Field(..., description="Whether engine is available")
     voices: List[TTSVoice] = Field(default_factory=list, description="Available voices")
     priority: int = Field(0, description="Engine priority (lower = higher priority)")
-    supports_prosody: bool = Field(
-        True, description="Whether engine supports prosody controls"
-    )
+    supports_prosody: bool = Field(True, description="Whether engine supports prosody controls")
     supports_ssml: bool = Field(False, description="Whether engine supports SSML")
 
 
@@ -303,9 +301,7 @@ async def get_recommended_voices(
     # Context-based recommendations
     if context == "narration":
         # Narrator voices (neutral, calm)
-        recommendations = [
-            v for v in all_voices if v.gender == "neutral" or "晓" in v.name
-        ]
+        recommendations = [v for v in all_voices if v.gender == "neutral" or "晓" in v.name]
     elif context == "dialogue":
         # Expressive voices for dialogue
         recommendations = [v for v in all_voices if v.gender in ("male", "female")]
@@ -402,9 +398,7 @@ async def clone_voice(
         )
 
     # Save uploaded file to temp location
-    with tempfile.NamedTemporaryFile(
-        suffix=Path(file.filename).suffix, delete=False
-    ) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = Path(tmp.name)
 
@@ -414,6 +408,7 @@ async def clone_voice(
 
         # Validate audio file
         import soundfile as sf
+
         audio_data, sr = sf.read(str(tmp_path))
         duration = len(audio_data) / sr
 
@@ -487,10 +482,7 @@ async def list_cloned_voices():
     """
     manager = VoiceCloningManager()
     cloned_voices = []
-    for speaker_id, info in [
-        (sp_id, manager.get_voice_info(sp_id))
-        for sp_id in manager.voice_prints.keys()
-    ]:
+    for speaker_id, info in [(sp_id, manager.get_voice_info(sp_id)) for sp_id in manager.voice_prints.keys()]:
         if info:
             cloned_voices.append(
                 {

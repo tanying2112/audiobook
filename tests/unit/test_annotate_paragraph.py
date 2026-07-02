@@ -14,10 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.annotate_paragraph import (
-    AnnotateParagraphPipeline,
-    annotate_paragraph,
-)
+from src.audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from src.audiobook_studio.schemas import (
     BookMeta,
     CharacterVoiceBinding,
@@ -284,9 +281,7 @@ class TestAnnotateParagraphPipeline:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        with patch(
-            "src.audiobook_studio.monitoring.record_stage_performance"
-        ) as mock_record:
+        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = AnnotateParagraphPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
@@ -305,9 +300,7 @@ class TestAnnotateParagraphPipeline:
         mock_router.call.side_effect = Exception("API Error")
 
         # Explicitly set mock_mode=False for real mode test
-        with patch(
-            "src.audiobook_studio.monitoring.record_stage_performance"
-        ) as mock_record:
+        with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             pipeline = AnnotateParagraphPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
 
@@ -466,9 +459,7 @@ class TestAnnotateParagraphEdgeCases:
 
     def test_whitespace_only_text(self):
         """Test annotation with whitespace-heavy text (meeting min length)."""
-        input_data = self.create_base_input(
-            paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  "
-        )
+        input_data = self.create_base_input(paragraph_text="   这是一个包含大量空白字符的测试文本内容。   \n\t  ")
         result = self.pipeline.run(input_data)
         assert result.paragraph_index == 0
         assert result.confidence == 0.9
@@ -483,9 +474,7 @@ class TestAnnotateParagraphEdgeCases:
 
     def test_unicode_content(self):
         """Test annotation with unicode content (emoji, special chars)."""
-        input_data = self.create_base_input(
-            paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡"
-        )
+        input_data = self.create_base_input(paragraph_text="Hello 世界! 🌍 你好 👋 特殊字符：①②③㈠㈡")
         result = self.pipeline.run(input_data)
         assert result.paragraph_index == 0
 

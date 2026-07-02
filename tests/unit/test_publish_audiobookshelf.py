@@ -319,9 +319,7 @@ class TestAudiobookshelfPublisher:
         assert upload_data["format"] == "m4b"
         assert upload_data["fileName"] == audio_file.file_path.name
 
-    def test_prepare_upload_data_generates_default_chapter(
-        self, publisher, metadata, audio_file
-    ):
+    def test_prepare_upload_data_generates_default_chapter(self, publisher, metadata, audio_file):
         # Audio file without chapters but with duration
         audio_file.chapters = []
         audio_file.duration_seconds = 7200
@@ -345,9 +343,7 @@ class TestAudiobookshelfPublisher:
         assert upload_data["chapters"][0]["start"] == 0
         assert upload_data["chapters"][0]["end"] == 7200
 
-    def test_prepare_upload_data_uses_existing_chapters(
-        self, publisher, metadata, audio_file
-    ):
+    def test_prepare_upload_data_uses_existing_chapters(self, publisher, metadata, audio_file):
         chapters = [
             {"title": "Chapter 1", "start": 0, "end": 1800},
             {"title": "Chapter 2", "start": 1800, "end": 3600},

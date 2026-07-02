@@ -1,10 +1,10 @@
 """Tests for api/harness.py — HARNESS dashboard endpoints (320 lines, 34.7% coverage)."""
 
 import json
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI

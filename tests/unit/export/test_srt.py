@@ -18,7 +18,6 @@ from src.audiobook_studio.export.srt import (
     generate_srt,
 )
 
-
 # ── _ms_to_srt ───────────────────────────────────────────────────────────────
 
 
@@ -49,16 +48,12 @@ class TestSubtitleEntry:
         assert block == "1\n00:00:00,000 --> 00:00:05,000\nHello"
 
     def test_to_srt_block_with_speaker(self):
-        entry = SubtitleEntry(
-            index=2, start_ms=1000, end_ms=3000, text="World", speaker="Alice"
-        )
+        entry = SubtitleEntry(index=2, start_ms=1000, end_ms=3000, text="World", speaker="Alice")
         block = entry.to_srt_block()
         assert "[Alice] World" in block
 
     def test_to_srt_block_no_speaker(self):
-        entry = SubtitleEntry(
-            index=3, start_ms=5000, end_ms=8000, text="Test", speaker=None
-        )
+        entry = SubtitleEntry(index=3, start_ms=5000, end_ms=8000, text="Test", speaker=None)
         block = entry.to_srt_block()
         assert "Test" in block
         assert "[" not in block.split("\n")[-1]

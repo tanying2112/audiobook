@@ -8,19 +8,20 @@ Covers:
 """
 
 import json
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from src.audiobook_studio.api.templates import _apply_template_background
+from src.audiobook_studio.database import get_db
+
 # Import the FastAPI app
 from src.audiobook_studio.main import app
-from src.audiobook_studio.database import get_db
+from src.audiobook_studio.models import Paragraph, Quality, Routing, TTSEdit
 from src.audiobook_studio.models.feedback_record import FeedbackRecord as FeedbackRecordModel
-from src.audiobook_studio.models import Paragraph, TTSEdit, Routing, Quality
-from src.audiobook_studio.api.templates import _apply_template_background
 
 client = TestClient(app)
 # Disable raise_server_exceptions to allow catching 500 errors in tests
@@ -31,6 +32,7 @@ client = TestClient(app, raise_server_exceptions=False)
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_db_session():
     """Mock database session."""
@@ -40,9 +42,10 @@ def mock_db_session():
 @pytest.fixture(autouse=True)
 def override_get_db(mock_db_session):
     """Override get_db dependency for all tests."""
+
     def _get_db():
         yield mock_db_session
-    
+
     app.dependency_overrides[get_db] = _get_db
     yield
     app.dependency_overrides.clear()
@@ -111,21 +114,22 @@ def sample_paragraph():
 # Helper: Create query chain mock
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def setup_query_mock(mock_db_session, return_records=None, return_count=0):
     """Setup mock query chain for FeedbackRecord queries."""
     mock_query = MagicMock()
     mock_db_session.query.return_value = mock_query
-    
+
     # filter, order_by, limit all return the same mock_query
     mock_query.filter.return_value = mock_query
     mock_query.order_by.return_value = mock_query
     mock_query.limit.return_value = mock_query
-    
+
     if return_records is not None:
         mock_query.all.return_value = return_records
     if return_count is not None:
         mock_query.count.return_value = return_count
-    
+
     return mock_query
 
 
@@ -141,6 +145,7 @@ def setup_first_query_mock(mock_db_session, return_record=None):
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: List Templates
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestListTemplates:
     """Tests for GET /api/projects/{project_id}/templates"""
@@ -169,8 +174,8 @@ class TestListTemplates:
                 "source": "human_edit",
                 "stage": "edit_for_tts",
                 "pattern_tag": "emotion_too_mild",
-                "pending_only": "true"
-            }
+                "pending_only": "true",
+            },
         )
 
         assert response.status_code == 200
@@ -193,6 +198,7 @@ class TestListTemplates:
 # Test: Confirm / Reject Template
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestConfirmTemplate:
     """Tests for POST /api/projects/{project_id}/templates/{template_id}/confirm"""
 
@@ -203,8 +209,7 @@ class TestConfirmTemplate:
         setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
 
         response = client.post(
-            "/api/projects/1/templates/1/confirm",
-            json={"action": "confirm", "pattern_tags": ["new_tag"]}
+            "/api/projects/1/templates/1/confirm", json={"action": "confirm", "pattern_tags": ["new_tag"]}
         )
 
         assert response.status_code == 200
@@ -220,10 +225,7 @@ class TestConfirmTemplate:
         sample_feedback_record.promoted = False
         setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
 
-        response = client.post(
-            "/api/projects/1/templates/1/confirm",
-            json={"action": "reject"}
-        )
+        response = client.post("/api/projects/1/templates/1/confirm", json={"action": "reject"})
 
         assert response.status_code == 200
         data = response.json()
@@ -235,26 +237,21 @@ class TestConfirmTemplate:
         """Should return 400 for invalid action."""
         setup_first_query_mock(mock_db_session, return_record=MagicMock())
 
-        response = client.post(
-            "/api/projects/1/templates/1/confirm",
-            json={"action": "invalid"}
-        )
+        response = client.post("/api/projects/1/templates/1/confirm", json={"action": "invalid"})
         assert response.status_code == 400
 
     def test_confirm_template_not_found(self, mock_db_session):
         """Should return 404 for non-existent template."""
         setup_first_query_mock(mock_db_session, return_record=None)
 
-        response = client.post(
-            "/api/projects/1/templates/999/confirm",
-            json={"action": "confirm"}
-        )
+        response = client.post("/api/projects/1/templates/999/confirm", json={"action": "confirm"})
         assert response.status_code == 404
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: Apply Template (Batch)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestApplyTemplate:
     """Tests for POST /api/projects/{project_id}/templates/apply"""
@@ -265,12 +262,7 @@ class TestApplyTemplate:
 
         response = client.post(
             "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "all",
-                "chapter_ids": None,
-                "pattern_filter": None
-            }
+            json={"template_id": 1, "scope": "all", "chapter_ids": None, "pattern_filter": None},
         )
 
         assert response.status_code == 200
@@ -285,10 +277,7 @@ class TestApplyTemplate:
         sample_feedback_record.promoted = False  # Not promoted
         setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
 
-        response = client.post(
-            "/api/projects/1/templates/apply",
-            json={"template_id": 1, "scope": "all"}
-        )
+        response = client.post("/api/projects/1/templates/apply", json={"template_id": 1, "scope": "all"})
 
         assert response.status_code == 400
         assert "not confirmed" in response.json()["detail"]
@@ -297,10 +286,7 @@ class TestApplyTemplate:
         """Should return 404 for non-existent template."""
         setup_first_query_mock(mock_db_session, return_record=None)
 
-        response = client.post(
-            "/api/projects/1/templates/apply",
-            json={"template_id": 999, "scope": "all"}
-        )
+        response = client.post("/api/projects/1/templates/apply", json={"template_id": 999, "scope": "all"})
 
         assert response.status_code == 404
 
@@ -309,12 +295,7 @@ class TestApplyTemplate:
         setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
 
         response = client.post(
-            "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "chapter",
-                "chapter_ids": [1, 2, 3]
-            }
+            "/api/projects/1/templates/apply", json={"template_id": 1, "scope": "chapter", "chapter_ids": [1, 2, 3]}
         )
 
         assert response.status_code == 200
@@ -327,11 +308,7 @@ class TestApplyTemplate:
 
         response = client.post(
             "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "pattern",
-                "pattern_filter": "emotion:anger, speaker:Narrator"
-            }
+            json={"template_id": 1, "scope": "pattern", "pattern_filter": "emotion:anger, speaker:Narrator"},
         )
 
         assert response.status_code == 200
@@ -342,6 +319,7 @@ class TestApplyTemplate:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: Background Template Application (Direct Function Tests)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestApplyTemplateBackground:
     """Tests for _apply_template_background helper functions."""
@@ -362,7 +340,7 @@ class TestApplyTemplateBackground:
             "confidence": 0.95,
             "needs_sfx": True,
             "sfx_tags": ["door_slam"],
-            "notes": "Applied via template"
+            "notes": "Applied via template",
         }
         template.pattern_tags = ["emotion_too_mild"]
 
@@ -398,7 +376,7 @@ class TestApplyTemplateBackground:
             "forbid_edit": False,
             "source": "template",
             "llm_model": "gpt-4",
-            "prompt_version": "v1"
+            "prompt_version": "v1",
         }
 
         _apply_edit_template(mock_db_session, sample_paragraph, template.corrected_output)
@@ -428,7 +406,7 @@ class TestApplyTemplateBackground:
             "estimated_duration_ms": 3000,
             "status": "completed",
             "voice": "zh-CN-XiaoxiaoNeural",
-            "confidence": 0.92
+            "confidence": 0.92,
         }
 
         _apply_routing_template(mock_db_session, sample_paragraph, template.corrected_output)
@@ -460,7 +438,7 @@ class TestApplyTemplateBackground:
             "overall_score": 0.9,
             "score": 90,
             "comments": "质量很好",
-            "issues": []
+            "issues": [],
         }
 
         # Mock the query chain for TTSEdit lookup
@@ -492,7 +470,7 @@ class TestApplyTemplateBackground:
         mock_query.order_by.return_value = mock_query
         mock_query.first.return_value = None
 
-        with patch('src.audiobook_studio.api.templates.logger') as mock_logger:
+        with patch("src.audiobook_studio.api.templates.logger") as mock_logger:
             _apply_quality_template(mock_db_session, sample_paragraph, template.corrected_output)
             mock_logger.warning.assert_called()
 
@@ -500,6 +478,7 @@ class TestApplyTemplateBackground:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: Downstream Pipeline Re-run
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestRerunDownstreamStages:
     """Tests for _rerun_downstream_stages function."""
@@ -510,7 +489,7 @@ class TestRerunDownstreamStages:
 
         paragraphs = [sample_paragraph]
 
-        with patch('src.audiobook_studio.pipeline.orchestrator.run_stage') as mock_run:
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             _rerun_downstream_stages(mock_db_session, 1, "annotate", paragraphs)
 
             # Should trigger downstream stages
@@ -522,7 +501,7 @@ class TestRerunDownstreamStages:
 
         paragraphs = [sample_paragraph]
 
-        with patch('src.audiobook_studio.pipeline.orchestrator.run_stage') as mock_run:
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             _rerun_downstream_stages(mock_db_session, 1, "edit_for_tts", paragraphs)
 
             # Should trigger routing and quality
@@ -534,7 +513,7 @@ class TestRerunDownstreamStages:
 
         paragraphs = [sample_paragraph]
 
-        with patch('src.audiobook_studio.pipeline.orchestrator.run_stage') as mock_run:
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             _rerun_downstream_stages(mock_db_session, 1, "routing", paragraphs)
 
             # Should trigger quality
@@ -546,7 +525,7 @@ class TestRerunDownstreamStages:
 
         paragraphs = [sample_paragraph]
 
-        with patch('src.audiobook_studio.pipeline.orchestrator.run_stage') as mock_run:
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             _rerun_downstream_stages(mock_db_session, 1, "quality", paragraphs)
 
             # No downstream stages after quality
@@ -557,25 +536,29 @@ class TestRerunDownstreamStages:
 # Test: Pattern Matching (Scope: pattern)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPatternMatching:
     """Tests for pattern tag based paragraph filtering."""
 
     def test_pattern_emotion_tag(self, mock_db_session, sample_paragraph):
         """Should match paragraphs by emotion tag."""
         sample_paragraph.emotion = "anger"
-        setup_first_query_mock(mock_db_session, return_record=MagicMock(
-            spec=FeedbackRecordModel,
-            id=1, stage="annotate", pattern_tags=["emotion:anger"],
-            processed=True, promoted=True, corrected_output={"emotion": "angry"}
-        ))
+        setup_first_query_mock(
+            mock_db_session,
+            return_record=MagicMock(
+                spec=FeedbackRecordModel,
+                id=1,
+                stage="annotate",
+                pattern_tags=["emotion:anger"],
+                processed=True,
+                promoted=True,
+                corrected_output={"emotion": "angry"},
+            ),
+        )
 
         response = client.post(
             "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "pattern",
-                "pattern_filter": "emotion:anger"
-            }
+            json={"template_id": 1, "scope": "pattern", "pattern_filter": "emotion:anger"},
         )
 
         assert response.status_code == 200
@@ -583,19 +566,22 @@ class TestPatternMatching:
     def test_pattern_speaker_tag(self, mock_db_session, sample_paragraph):
         """Should match paragraphs by speaker tag."""
         sample_paragraph.speaker_canonical_name = "Narrator"
-        setup_first_query_mock(mock_db_session, return_record=MagicMock(
-            spec=FeedbackRecordModel,
-            id=1, stage="annotate", pattern_tags=["speaker:Narrator"],
-            processed=True, promoted=True, corrected_output={"speaker_canonical_name": "Narrator"}
-        ))
+        setup_first_query_mock(
+            mock_db_session,
+            return_record=MagicMock(
+                spec=FeedbackRecordModel,
+                id=1,
+                stage="annotate",
+                pattern_tags=["speaker:Narrator"],
+                processed=True,
+                promoted=True,
+                corrected_output={"speaker_canonical_name": "Narrator"},
+            ),
+        )
 
         response = client.post(
             "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "pattern",
-                "pattern_filter": "speaker:Narrator"
-            }
+            json={"template_id": 1, "scope": "pattern", "pattern_filter": "speaker:Narrator"},
         )
 
         assert response.status_code == 200
@@ -603,19 +589,21 @@ class TestPatternMatching:
     def test_pattern_dialogue_tag(self, mock_db_session, sample_paragraph):
         """Should match dialogue paragraphs."""
         sample_paragraph.is_dialogue = True
-        setup_first_query_mock(mock_db_session, return_record=MagicMock(
-            spec=FeedbackRecordModel,
-            id=1, stage="annotate", pattern_tags=["dialogue"],
-            processed=True, promoted=True, corrected_output={"is_dialogue": True}
-        ))
+        setup_first_query_mock(
+            mock_db_session,
+            return_record=MagicMock(
+                spec=FeedbackRecordModel,
+                id=1,
+                stage="annotate",
+                pattern_tags=["dialogue"],
+                processed=True,
+                promoted=True,
+                corrected_output={"is_dialogue": True},
+            ),
+        )
 
         response = client.post(
-            "/api/projects/1/templates/apply",
-            json={
-                "template_id": 1,
-                "scope": "pattern",
-                "pattern_filter": "dialogue"
-            }
+            "/api/projects/1/templates/apply", json={"template_id": 1, "scope": "pattern", "pattern_filter": "dialogue"}
         )
 
         assert response.status_code == 200
@@ -624,6 +612,7 @@ class TestPatternMatching:
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: Progress Tracking (Unit test for in-memory dict)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestTemplateApplyProgress:
     """Tests for background task progress tracking (in-memory dict)."""
@@ -654,7 +643,7 @@ class TestTemplateApplyProgress:
             "status": "running",
             "error": None,
             "current_paragraph_id": 42,
-            "current_stage": "annotate"
+            "current_stage": "annotate",
         }
 
         progress = _apply_template_background.progress.get(task_id)
@@ -670,6 +659,7 @@ class TestTemplateApplyProgress:
 # Test: Error Handling (Endpoint level)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestTemplateErrorHandling:
     """Tests for error handling in template operations."""
 
@@ -680,19 +670,16 @@ class TestTemplateErrorHandling:
         setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
         mock_db_session.commit.side_effect = Exception("Commit failed")
 
-        response = client.post(
-            "/api/projects/1/templates/1/confirm",
-            json={"action": "confirm"}
-        )
+        response = client.post("/api/projects/1/templates/1/confirm", json={"action": "confirm"})
 
         # The endpoint catches exception and returns 500
         assert response.status_code == 500
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: Progress Endpoint
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestTemplateProgressEndpoint:
     """Tests for GET /apply/{task_id}/progress endpoint."""
@@ -714,7 +701,7 @@ class TestTemplateProgressEndpoint:
             "status": "running",
             "error": None,
             "current_paragraph_id": 6,
-            "current_stage": "annotate"
+            "current_stage": "annotate",
         }
 
         response = client.get(f"/api/projects/1/templates/apply/{task_id}/progress")
@@ -759,7 +746,7 @@ class TestTemplateProgressEndpoint:
             "status": "completed",
             "error": None,
             "current_paragraph_id": 20,
-            "current_stage": "quality"
+            "current_stage": "quality",
         }
 
         response = client.get(f"/api/projects/1/templates/apply/{task_id}/progress")
@@ -785,7 +772,7 @@ class TestTemplateProgressEndpoint:
             "status": "failed",
             "error": "Database connection lost",
             "current_paragraph_id": 6,
-            "current_stage": "edit"
+            "current_stage": "edit",
         }
 
         response = client.get(f"/api/projects/1/templates/apply/{task_id}/progress")
@@ -796,6 +783,7 @@ class TestTemplateProgressEndpoint:
         assert data["error"] == "Database connection lost"
         assert data["current_paragraph_id"] == 6
         assert data["current_stage"] == "edit"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Run tests

@@ -4,10 +4,10 @@ Tests verify route registration, schemas, and business logic without
 TestClient (which has Python 3.14 / httpx compatibility issues).
 """
 
+import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-import unittest
 
 import pytest
 
@@ -229,10 +229,12 @@ class TestPublishToAudiobookshelf:
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_segment]
 
         # Setup mock file existence
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.is_file", return_value=True), \
-             patch("pathlib.Path.stat") as mock_stat, \
-             patch("builtins.open", unittest.mock.mock_open(read_data=b"fake audio data")):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat") as mock_stat,
+            patch("builtins.open", unittest.mock.mock_open(read_data=b"fake audio data")),
+        ):
             mock_stat.return_value.st_size = 1024000
 
             # Setup mock aiohttp session properly
@@ -260,6 +262,7 @@ class TestPublishToAudiobookshelf:
                 def __await__(self):
                     async def dummy():
                         return self
+
                     return dummy().__await__()
 
             def make_resp(status, json_data=None):
@@ -278,10 +281,7 @@ class TestPublishToAudiobookshelf:
             mock_scan = make_resp(200)
 
             # Mock search response
-            mock_search = make_resp(200, [{
-                "id": "item_1",
-                "media": {"metadata": {"title": "Test Book"}}
-            }])
+            mock_search = make_resp(200, [{"id": "item_1", "media": {"metadata": {"title": "Test Book"}}}])
 
             # Mock metadata patch response
             mock_meta = make_resp(200)
@@ -352,15 +352,18 @@ class TestPublishToAudiobookshelf:
                     def __await__(self):
                         async def dummy():
                             return self
+
                         return dummy().__await__()
 
                 def make_resp(status, json_data=None):
                     return MockResponse(status, json_data)
 
-                mock_session.get = MagicMock(side_effect=[
-                    make_resp(200, [{"id": "lib_1"}]),  # library list
-                    make_resp(200, {"id": "lib_1", "folders": [{"id": "folder_1"}]}),  # library detail
-                ])
+                mock_session.get = MagicMock(
+                    side_effect=[
+                        make_resp(200, [{"id": "lib_1"}]),  # library list
+                        make_resp(200, {"id": "lib_1", "folders": [{"id": "folder_1"}]}),  # library detail
+                    ]
+                )
 
                 with pytest.raises(ValueError, match="Project 1 not found"):
                     await _publish_to_audiobookshelf(1, config)
@@ -423,6 +426,7 @@ class TestGeneratePodcastRSS:
 
         # Also patch AudioSegment model to have index attribute for order_by
         import src.audiobook_studio.models.audio_segment as audio_segment_module
+
         audio_segment_module.AudioSegment.index = 1
 
         config = {
@@ -472,6 +476,7 @@ class TestGeneratePodcastRSS:
 
         # Also patch AudioSegment model to have index attribute for order_by
         import src.audiobook_studio.models.audio_segment as audio_segment_module
+
         audio_segment_module.AudioSegment.index = 1
 
         config = {
@@ -749,6 +754,7 @@ class TestRSSFeedGeneration:
 
         # Also patch AudioSegment model to have index attribute for order_by
         import src.audiobook_studio.models.audio_segment as audio_segment_module
+
         audio_segment_module.AudioSegment.index = 1
 
         # Mock Path.exists for cover image check
@@ -776,8 +782,9 @@ class TestRSSFeedGeneration:
     @pytest.mark.asyncio
     async def test_get_podcast_rss_feed_project_not_found(self, mock_db_class):
         """Test RSS feed when project not found."""
-        from src.audiobook_studio.api.publish import get_podcast_rss_feed
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
         mock_db = MagicMock()
         mock_db_class.return_value = mock_db
@@ -832,6 +839,7 @@ class TestRSSFeedGeneration:
 
         # Also patch AudioSegment model to have index attribute for order_by
         import src.audiobook_studio.models.audio_segment as audio_segment_module
+
         audio_segment_module.AudioSegment.index = 1
 
         with patch("pathlib.Path.exists", return_value=False):
@@ -861,8 +869,9 @@ class TestJobEndpoints:
     @pytest.mark.asyncio
     async def test_get_publish_job_success(self):
         """Test getting a publish job by ID."""
-        from src.audiobook_studio.api.publish import get_publish_job
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.publish import get_publish_job
 
         job_data = {
             "job_id": "test_job_1",
@@ -883,8 +892,9 @@ class TestJobEndpoints:
     @pytest.mark.asyncio
     async def test_get_publish_job_not_found(self):
         """Test getting a non-existent job."""
-        from src.audiobook_studio.api.publish import get_publish_job
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.publish import get_publish_job
 
         with pytest.raises(HTTPException) as exc_info:
             await get_publish_job(project_id=1, job_id="nonexistent")
@@ -894,8 +904,9 @@ class TestJobEndpoints:
     @pytest.mark.asyncio
     async def test_get_publish_job_wrong_project(self):
         """Test getting a job for wrong project."""
-        from src.audiobook_studio.api.publish import get_publish_job
         from fastapi import HTTPException
+
+        from src.audiobook_studio.api.publish import get_publish_job
 
         job_data = {
             "job_id": "test_job_1",
@@ -925,8 +936,8 @@ class TestJobEndpoints:
                 "status": "completed" if i % 2 == 0 else "failed",
                 "destinations": ["audiobookshelf"],
                 "results": {},
-                "created_at": datetime(2024, 1, i+1, tzinfo=timezone.utc).isoformat(),
-                "completed_at": datetime(2024, 1, i+1, tzinfo=timezone.utc).isoformat(),
+                "created_at": datetime(2024, 1, i + 1, tzinfo=timezone.utc).isoformat(),
+                "completed_at": datetime(2024, 1, i + 1, tzinfo=timezone.utc).isoformat(),
             }
         # Add job for project 2 (should not appear)
         _publish_jobs["job_other"] = {
@@ -961,8 +972,9 @@ class TestPublishValidation:
     @pytest.mark.asyncio
     async def test_invalid_destination_rejected(self):
         """Test that invalid destinations are rejected."""
-        from src.audiobook_studio.api.publish import PublishRequest
         from pydantic import ValidationError
+
+        from src.audiobook_studio.api.publish import PublishRequest
 
         # This should not raise during model creation but during endpoint validation
         request = PublishRequest(destinations=["invalid_dest"])
@@ -1006,15 +1018,18 @@ class TestPublishValidation:
 class TestMIMETypeHandling:
     """Test MIME type detection for audio files."""
 
-    @pytest.mark.parametrize("ext,mime", [
-        (".m4b", "audio/mp4"),
-        (".mp3", "audio/mpeg"),
-        (".wav", "audio/wav"),
-        (".flac", "audio/flac"),
-        (".ogg", "audio/ogg"),
-        (".aac", "audio/aac"),
-        (".unknown", "application/octet-stream"),
-    ])
+    @pytest.mark.parametrize(
+        "ext,mime",
+        [
+            (".m4b", "audio/mp4"),
+            (".mp3", "audio/mpeg"),
+            (".wav", "audio/wav"),
+            (".flac", "audio/flac"),
+            (".ogg", "audio/ogg"),
+            (".aac", "audio/aac"),
+            (".unknown", "application/octet-stream"),
+        ],
+    )
     def test_mime_type_detection(self, ext, mime):
         """Test MIME type detection for various extensions."""
         from src.audiobook_studio.api.publish import _publish_to_audiobookshelf

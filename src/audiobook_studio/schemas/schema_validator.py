@@ -109,9 +109,7 @@ class SchemaValidator:
     def __init__(self):
         self.reports: List[SchemaSyncReport] = []
 
-    def _get_orm_columns(
-        self, model: Type[DeclarativeBase]
-    ) -> Dict[str, Dict[str, Any]]:
+    def _get_orm_columns(self, model: Type[DeclarativeBase]) -> Dict[str, Dict[str, Any]]:
         """Extract column information from ORM model."""
         columns = {}
         mapper = sa_inspect(model)
@@ -122,11 +120,7 @@ class SchemaValidator:
                     col_type = type(col.type).__name__
                     columns[col.name] = {
                         "type": col_type,
-                        "python_type": (
-                            col.type.python_type.__name__
-                            if hasattr(col.type, "python_type")
-                            else "Any"
-                        ),
+                        "python_type": (col.type.python_type.__name__ if hasattr(col.type, "python_type") else "Any"),
                         "nullable": col.nullable,
                         "primary_key": col.primary_key,
                         "default": col.default,
@@ -146,9 +140,7 @@ class SchemaValidator:
             fields[field_name] = {
                 "type": self._type_to_string(field_type),
                 "nullable": self._is_optional(field_type),
-                "default": (
-                    field_info.default if field_info.default is not ... else None
-                ),
+                "default": (field_info.default if field_info.default is not ... else None),
             }
 
         return fields
@@ -177,9 +169,7 @@ class SchemaValidator:
                 return type(None) in args
         return False
 
-    def compare(
-        self, model: Type[DeclarativeBase], schema: Type[BaseModel]
-    ) -> SchemaSyncReport:
+    def compare(self, model: Type[DeclarativeBase], schema: Type[BaseModel]) -> SchemaSyncReport:
         """Compare ORM model with Pydantic schema and report drift."""
         model_name = model.__name__
         schema_name = schema.__name__
@@ -219,9 +209,7 @@ class SchemaValidator:
                     message=f"Field '{field_name}' exists in Schema {schema_name} but not in ORM {model_name}",
                 )
             )
-            migration_hints.append(
-                f"Add column '{field_name}' to {model_name} table (Alembic migration required)"
-            )
+            migration_hints.append(f"Add column '{field_name}' to {model_name} table (Alembic migration required)")
 
         # Check for type mismatches in common fields
         for field_name in orm_field_names & schema_field_names:
@@ -238,9 +226,7 @@ class SchemaValidator:
             # If ORM field is nullable, treat it as Optional for comparison
             # If Schema field is Optional and ORM is nullable, they match if base types match
             orm_type_normalized = f"Optional[{orm_type}]" if orm_nullable else orm_type
-            schema_type_normalized = (
-                schema_type  # Already includes Optional in type string
-            )
+            schema_type_normalized = schema_type  # Already includes Optional in type string
 
             # Direct type comparison
             types_match = orm_type == schema_type
@@ -285,9 +271,7 @@ class SchemaValidator:
                         message=f"Nullability mismatch for '{field_name}': ORM={orm_nullable}, Schema={schema_nullable}",
                     )
                 )
-                warnings.append(
-                    f"Check if '{field_name}' should be nullable in both ORM and Schema"
-                )
+                warnings.append(f"Check if '{field_name}' should be nullable in both ORM and Schema")
 
         is_synced = len(drifts) == 0
 
@@ -315,9 +299,7 @@ class SchemaValidator:
             self.reports.append(report)
 
             if not report.is_synced:
-                logger.warning(
-                    f"Schema drift detected: {model.__name__} <-> {schema.__name__}"
-                )
+                logger.warning(f"Schema drift detected: {model.__name__} <-> {schema.__name__}")
                 for drift in report.drifts:
                     logger.warning(f"  - {drift.message}")
 

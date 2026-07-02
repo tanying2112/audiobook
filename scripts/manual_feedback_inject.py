@@ -76,21 +76,11 @@ def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
     try:
         for i in range(count):
             pattern_idx = i % len(patterns)
-            pattern_name, wrong_output, correct_output, rationale = patterns[
-                pattern_idx
-            ]
+            pattern_name, wrong_output, correct_output, rationale = patterns[pattern_idx]
 
             # Prepare outputs
-            llm_output = (
-                {"emotion": wrong_output}
-                if isinstance(wrong_output, str)
-                else wrong_output
-            )
-            corrected_output = (
-                {"emotion": correct_output}
-                if isinstance(correct_output, str)
-                else correct_output
-            )
+            llm_output = {"emotion": wrong_output} if isinstance(wrong_output, str) else wrong_output
+            corrected_output = {"emotion": correct_output} if isinstance(correct_output, str) else correct_output
 
             record = capture_feedback(
                 db=db,
@@ -109,9 +99,7 @@ def inject_test_feedback(project_id: int, count: int = 10) -> list[str]:
                 pattern_tags=[pattern_name, "test_feedback"],
             )
             injected_ids.append(record.feedback_id)
-            print(
-                f"✅ Injected feedback: {record.feedback_id} (pattern: {pattern_name})"
-            )
+            print(f"✅ Injected feedback: {record.feedback_id} (pattern: {pattern_name})")
     finally:
         db.close()
 
@@ -146,9 +134,7 @@ def trigger_self_iteration(project_id: int) -> dict:
     result = loop.trigger_iteration_now()
 
     if result:
-        print(
-            f"\n🔄 Self-iteration triggered: {result.total_analyzed} records analyzed"
-        )
+        print(f"\n🔄 Self-iteration triggered: {result.total_analyzed} records analyzed")
         print(f"Pattern count: {len(result.top_patterns)}")
         for p in result.top_patterns[:3]:
             print(f"  - {p}")
@@ -160,16 +146,10 @@ def trigger_self_iteration(project_id: int) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Inject test feedback for self-iteration verification"
-    )
+    parser = argparse.ArgumentParser(description="Inject test feedback for self-iteration verification")
     parser.add_argument("--project-id", type=int, default=1, help="Project ID")
-    parser.add_argument(
-        "--count", type=int, default=10, help="Number of feedback records to inject"
-    )
-    parser.add_argument(
-        "--trigger", action="store_true", help="Trigger self-iteration after injection"
-    )
+    parser.add_argument("--count", type=int, default=10, help="Number of feedback records to inject")
+    parser.add_argument("--trigger", action="store_true", help="Trigger self-iteration after injection")
     args = parser.parse_args()
 
     print(f"Injecting {args.count} feedback records for project {args.project_id}")

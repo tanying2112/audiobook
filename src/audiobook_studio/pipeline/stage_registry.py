@@ -92,10 +92,7 @@ class StageRegistry:
     def get(cls, name: str) -> StageHandler:
         """Get a stage handler instance (cached singleton)."""
         if name not in cls._handlers:
-            raise ValueError(
-                f"Unknown pipeline stage: {name}. "
-                f"Registered stages: {list(cls._handlers.keys())}"
-            )
+            raise ValueError(f"Unknown pipeline stage: {name}. " f"Registered stages: {list(cls._handlers.keys())}")
         # Return cached instance instead of creating new one each time
         if name not in cls._instances:
             cls._instances[name] = cls._handlers[name]()
@@ -217,21 +214,25 @@ class AnnotateStage(StageHandler):
 
         if chapter and chapter.analyzed_json:
             import json
+
             raw = chapter.analyzed_json
             if isinstance(raw, str):
                 raw = json.loads(raw)
             from ..schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+
             book_meta = BookMeta(**raw.get("book_meta", {}))
-            character_voice_map = [
-                CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])
-            ]
+            character_voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
             if raw.get("emotion_snapshots"):
                 emotion_snapshot = EmotionSnapshot(**raw.get("emotion_snapshots", [{}])[0])
-            story_line_summary = raw.get("story_line_summary", "默认故事主线摘要，用于测试目的。本书讲述了一个引人入胜的故事，主角经历种种挑战，最终实现成长与超越。")
+            story_line_summary = raw.get(
+                "story_line_summary",
+                "默认故事主线摘要，用于测试目的。本书讲述了一个引人入胜的故事，主角经历种种挑战，最终实现成长与超越。",
+            )
             global_style_notes = raw.get("global_style_notes", "保持自然叙述风格。")
 
         if book_meta is None:
             from ..schemas.book import BookMeta
+
             book_meta = BookMeta(
                 title="Unknown Book",
                 author="Unknown Author",
@@ -243,6 +244,7 @@ class AnnotateStage(StageHandler):
             )
         if not character_voice_map:
             from ..schemas.book import CharacterVoiceBinding
+
             character_voice_map = [
                 CharacterVoiceBinding(
                     canonical_name="_narrator_",
@@ -255,6 +257,7 @@ class AnnotateStage(StageHandler):
             ]
         if emotion_snapshot is None:
             from ..schemas.book import EmotionSnapshot
+
             emotion_snapshot = EmotionSnapshot(
                 chapter=1,
                 dominant_emotion="neutral",
@@ -377,9 +380,7 @@ class AudioPostprocessStage(StageHandler):
         chapter = kwargs.get("chapter")
 
         if para is None:
-            raise ValueError(
-                "audio_postprocess requires paragraph_id or paragraph_index"
-            )
+            raise ValueError("audio_postprocess requires paragraph_id or paragraph_index")
 
         # Build annotation from para
         annotation = ParagraphAnnotation(
@@ -468,12 +469,11 @@ class SynthesizeStage(StageHandler):
         voice_map = []
         if chapter and chapter.analyzed_json:
             import json
+
             raw = chapter.analyzed_json
             if isinstance(raw, str):
                 raw = json.loads(raw)
-            voice_map = [
-                CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])
-            ]
+            voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
 
         if not voice_map:
             voice_map = [
@@ -524,9 +524,7 @@ class SynthesizeStage(StageHandler):
                     "duration_ms": seg.duration_ms,
                     "engine": seg.engine,
                     "voice_id": seg.voice_id,
-                    "format": (
-                        seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"
-                    ),
+                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
                 _write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
@@ -560,6 +558,7 @@ class QualityStage(StageHandler):
         annotation = None
         if para:
             from ..schemas.paragraph import ParagraphAnnotation
+
             annotation = ParagraphAnnotation(
                 paragraph_index=para.index,
                 speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
@@ -578,6 +577,7 @@ class QualityStage(StageHandler):
 
         # Build routing decision mock
         from ..schemas.tts_routing import TtsRoutingDecision
+
         routing = TtsRoutingDecision(
             segment_id=f"seg_{para.id if para else 'unknown'}",
             engine_choice="edge",
@@ -590,11 +590,10 @@ class QualityStage(StageHandler):
         audio_path = ""
         if para and para.audio_segment_id:
             from ..models.audio_segment import AudioSegment
+
             db = kwargs.get("db")
             if db:
-                seg = db.query(AudioSegment).filter(
-                    AudioSegment.id == para.audio_segment_id
-                ).first()
+                seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
                 if seg:
                     audio_path = seg.file_path
 
@@ -642,7 +641,7 @@ class TranslateStage(StageHandler):
         target_language = filtered.get("target_language", "en-US")
         book_title = filtered.get("book_title", "")
         author = filtered.get("author", "")
-        
+
         return self.pipeline.translate_and_dub(
             segments=segments,
             target_language=target_language,
@@ -671,9 +670,7 @@ class TranslateStage(StageHandler):
                     "duration_ms": seg.duration_ms,
                     "engine": seg.engine,
                     "voice_id": seg.voice_id,
-                    "format": (
-                        seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"
-                    ),
+                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
                 _write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 

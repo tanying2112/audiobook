@@ -56,9 +56,7 @@ class GoldenContributionRequest(BaseModel):
     template_id: int = Field(..., description="Template (feedback record) ID")
     stage: str = Field(..., description="Pipeline stage this sample belongs to")
     quality_score: float = Field(1.0, ge=0, le=1, description="Quality score 0-1")
-    notes: Optional[str] = Field(
-        None, description="Optional notes about this contribution"
-    )
+    notes: Optional[str] = Field(None, description="Optional notes about this contribution")
 
 
 class GoldenContributionResponse(BaseModel):
@@ -96,12 +94,8 @@ class GoldenTestReport(BaseModel):
 class GoldenRegressionRequest(BaseModel):
     """Request to run golden dataset regression."""
 
-    stages: Optional[List[str]] = Field(
-        None, description="Specific stages to test, or None for all"
-    )
-    prompt_versions: Optional[Dict[str, str]] = Field(
-        None, description="Specific prompt versions to test"
-    )
+    stages: Optional[List[str]] = Field(None, description="Specific stages to test, or None for all")
+    prompt_versions: Optional[Dict[str, str]] = Field(None, description="Specific prompt versions to test")
 
 
 class GoldenTrendPoint(BaseModel):
@@ -176,9 +170,7 @@ def _load_golden_samples(stage: str) -> List[Dict[str, Any]]:
                         "id": case_file.stem,
                         "stage": stage,
                         "input": case_data.get("input", {}),
-                        "expected_output": case_data.get(
-                            "expected_output", case_data.get("output", {})
-                        ),
+                        "expected_output": case_data.get("expected_output", case_data.get("output", {})),
                         "human_verified": True,
                         "source": "golden_case",
                     }
@@ -272,9 +264,7 @@ async def get_golden_sample(stage: str, sample_id: str):
         if sample.get("id") == sample_id:
             return sample
 
-    raise HTTPException(
-        status_code=404, detail=f"Sample {sample_id} not found in stage {stage}"
-    )
+    raise HTTPException(status_code=404, detail=f"Sample {sample_id} not found in stage {stage}")
 
 
 @router.post("/contribute", response_model=GoldenContributionResponse)
@@ -290,11 +280,7 @@ async def contribute_to_golden(
     """
     from ..models.feedback_record import FeedbackRecord
 
-    record = (
-        db.query(FeedbackRecord)
-        .filter(FeedbackRecord.id == request.template_id)
-        .first()
-    )
+    record = db.query(FeedbackRecord).filter(FeedbackRecord.id == request.template_id).first()
     if not record:
         raise HTTPException(
             status_code=404,
@@ -418,11 +404,7 @@ def _compute_output_similarity(
         else:
             # Numeric comparison with tolerance
             try:
-                if (
-                    abs(float(actual_val) - float(expected_val))
-                    / max(abs(float(expected_val)), 1e-6)
-                    < 0.1
-                ):
+                if abs(float(actual_val) - float(expected_val)) / max(abs(float(expected_val)), 1e-6) < 0.1:
                     match_count += 0.9
             except (TypeError, ValueError):
                 pass
@@ -462,9 +444,7 @@ async def run_golden_regression(
     db = SessionLocal()
 
     # Load all samples for requested stages
-    stages_to_test = (
-        request.stages if request and request.stages else list(STAGE_DIRS.keys())
-    )
+    stages_to_test = request.stages if request and request.stages else list(STAGE_DIRS.keys())
 
     all_results = []
     passed_count = 0
@@ -500,11 +480,7 @@ async def run_golden_regression(
                         project_id=0,
                         chapter_index=sample_input.get("chapter_index", 1),
                         paragraph_index=sample_input.get("paragraph_index", 1),
-                        **{
-                            k: v
-                            for k, v in sample_input.items()
-                            if k not in ("chapter_index", "paragraph_index")
-                        },
+                        **{k: v for k, v in sample_input.items() if k not in ("chapter_index", "paragraph_index")},
                     )
 
                     # Convert result to dict for comparison
@@ -518,9 +494,7 @@ async def run_golden_regression(
                         actual_dict = {"result": str(actual_result)}
 
                     # Compute similarity against expected output
-                    similarity = _compute_output_similarity(
-                        actual_dict, expected_output
-                    )
+                    similarity = _compute_output_similarity(actual_dict, expected_output)
                     passed = similarity >= 0.7
 
                     result = GoldenTestResult(

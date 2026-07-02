@@ -7,11 +7,7 @@ A/B 测试、Kill Switch 降级、质量增强等功能。
 
 from .ab_test import blind_evaluate, build_ab_samples, run_ab_test
 from .ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
-from .auto_processor import (
-    FeedbackAutoProcessor,
-    create_auto_processor,
-    run_feedback_analysis_cli,
-)
+from .auto_processor import FeedbackAutoProcessor, create_auto_processor, run_feedback_analysis_cli
 from .bootstrap_fewshot import (
     BUDGET_LIMIT,
     DEFAULT_EARLY_STOP_PATIENCE,

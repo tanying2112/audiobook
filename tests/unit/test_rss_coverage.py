@@ -153,9 +153,7 @@ class TestNoCoverImage:
         chapter = _make_chapter()
         segments = {1: [_make_segment()]}
 
-        rss = generator.generate_rss_feed(
-            book, [chapter], segments, cover_image_url=None
-        )
+        rss = generator.generate_rss_feed(book, [chapter], segments, cover_image_url=None)
         assert "<image>" not in rss
 
 
@@ -290,13 +288,7 @@ class TestParametrizedInputCombinations:
         """Test chapter with various numbers of audio segments."""
         book = _make_book()
         chapter = _make_chapter()
-        segments = {
-            1: (
-                [_make_segment() for _ in range(num_segments)]
-                if num_segments > 0
-                else []
-            )
-        }
+        segments = {1: ([_make_segment() for _ in range(num_segments)] if num_segments > 0 else [])}
 
         rss = generator.generate_rss_feed(book, [chapter], segments)
         assert rss.count("<item>") == expected_count

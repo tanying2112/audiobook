@@ -86,15 +86,10 @@ def normalize_nested_timestamps(data: Any, depth: int = 0, max_depth: int = 10) 
         return data
 
     if isinstance(data, dict):
-        return {
-            key: normalize_nested_timestamps(value, depth + 1, max_depth)
-            for key, value in data.items()
-        }
+        return {key: normalize_nested_timestamps(value, depth + 1, max_depth) for key, value in data.items()}
 
     if isinstance(data, list):
-        return [
-            normalize_nested_timestamps(item, depth + 1, max_depth) for item in data
-        ]
+        return [normalize_nested_timestamps(item, depth + 1, max_depth) for item in data]
 
     # Convert timestamp at leaf level
     return normalize_timestamp(data)
@@ -186,11 +181,5 @@ class ISOModel(BaseModel):
         return value
 
     model_config = ConfigDict(
-        json_encoders={
-            dt: lambda v: (
-                v.isoformat()
-                if v.tzinfo
-                else v.replace(tzinfo=timezone.utc).isoformat()
-            )
-        }
+        json_encoders={dt: lambda v: (v.isoformat() if v.tzinfo else v.replace(tzinfo=timezone.utc).isoformat())}
     )

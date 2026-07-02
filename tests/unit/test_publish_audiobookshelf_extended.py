@@ -135,10 +135,7 @@ class TestAudiobookshelfPublisher:
 
     def test_validate_audio_file_not_exists(self):
         """不存在的音频文件验证失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookFile,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookFile, AudiobookshelfPublisher
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             pub = AudiobookshelfPublisher(self._make_config())
@@ -156,10 +153,7 @@ class TestAudiobookshelfPublisher:
 
     def test_validate_audio_file_is_dir(self):
         """路径是目录时验证失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookFile,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookFile, AudiobookshelfPublisher
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
@@ -180,10 +174,7 @@ class TestAudiobookshelfPublisher:
 
     def test_validate_audio_file_size_mismatch(self):
         """文件大小不匹配验证失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookFile,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookFile, AudiobookshelfPublisher
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
@@ -204,10 +195,7 @@ class TestAudiobookshelfPublisher:
 
     def test_validate_audio_file_ext_mismatch(self):
         """扩展名不匹配验证失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookFile,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookFile, AudiobookshelfPublisher
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
@@ -319,10 +307,7 @@ class TestAudiobookshelfPublisher:
 
     def test_real_api_call_no_library_id(self):
         """无库 ID 时 _real_api_call 返回失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookshelfConfig,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="")
@@ -381,9 +366,7 @@ class TestAudiobookshelfPublisher:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-                cfg = AudiobookshelfConfig(
-                    api_url="http://x", api_key="k", library_id="lib1"
-                )
+                cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="lib1")
                 pub = AudiobookshelfPublisher(cfg)
                 # Mock client
                 mock_client = MagicMock()
@@ -397,15 +380,10 @@ class TestAudiobookshelfPublisher:
 
     def test_real_api_call_library_no_folders(self):
         """库无文件夹时返回失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookshelfConfig,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-            cfg = AudiobookshelfConfig(
-                api_url="http://x", api_key="k", library_id="lib1"
-            )
+            cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="lib1")
             pub = AudiobookshelfPublisher(cfg)
             mock_client = MagicMock()
             resp_ok = MagicMock()
@@ -419,15 +397,10 @@ class TestAudiobookshelfPublisher:
 
     def test_real_api_call_library_exception(self):
         """获取库信息异常时返回失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookshelfConfig,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-            cfg = AudiobookshelfConfig(
-                api_url="http://x", api_key="k", library_id="lib1"
-            )
+            cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="lib1")
             pub = AudiobookshelfPublisher(cfg)
             mock_client = MagicMock()
             mock_client.get.side_effect = ConnectionError("refused")
@@ -438,15 +411,10 @@ class TestAudiobookshelfPublisher:
 
     def test_real_api_call_library_500(self):
         """库返回 500 时返回失败。"""
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookshelfConfig,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-            cfg = AudiobookshelfConfig(
-                api_url="http://x", api_key="k", library_id="lib1"
-            )
+            cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="lib1")
             pub = AudiobookshelfPublisher(cfg)
             mock_client = MagicMock()
             resp_500 = MagicMock()

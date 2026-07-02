@@ -13,9 +13,7 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 class FeedbackCreate(BaseModel):
     """创建反馈请求."""
 
-    source: str = Field(
-        ..., description="反馈来源: human_edit, quality_judge, user_rating"
-    )
+    source: str = Field(..., description="反馈来源: human_edit, quality_judge, user_rating")
     stage: str = Field(..., description="发生反馈的环节")
     book_id: str = Field(..., description="书籍 ID")
     paragraph_index: Optional[int] = None
@@ -69,11 +67,7 @@ async def create_feedback(feedback: FeedbackCreate):
     rationale_lower = feedback.rationale.lower()
     if "emotion" in rationale_lower or "情感" in rationale_lower:
         pattern_tags.append("emotion_mismatch")
-    if (
-        "speaker" in rationale_lower
-        or "角色" in rationale_lower
-        or "说话人" in rationale_lower
-    ):
+    if "speaker" in rationale_lower or "角色" in rationale_lower or "说话人" in rationale_lower:
         pattern_tags.append("speaker_error")
     if "speed" in rationale_lower or "语速" in rationale_lower:
         pattern_tags.append("wrong_speed")
@@ -122,9 +116,7 @@ async def list_feedback(
     total = len(filtered)
     items = filtered[offset : offset + limit]
 
-    return FeedbackListResponse(
-        items=[FeedbackResponse(**f) for f in items], total=total
-    )
+    return FeedbackListResponse(items=[FeedbackResponse(**f) for f in items], total=total)
 
 
 @router.get("/{feedback_id}", response_model=FeedbackResponse)

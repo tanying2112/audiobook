@@ -25,23 +25,13 @@ class ProcessingRun(Base):
     __tablename__ = "processing_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
-    parent_run_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("processing_runs.id"), nullable=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    parent_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("processing_runs.id"), nullable=True)
 
     # 运行快照
-    config_json: Mapped[str] = mapped_column(
-        Text, nullable=False, default="{}"
-    )  # ProcessingConfig as JSON
-    prompt_versions: Mapped[dict] = mapped_column(
-        JSON, nullable=False, default=dict
-    )  # {stage: version} mapping
-    stages_completed: Mapped[List[str]] = mapped_column(
-        JSON, nullable=False, default=list
-    )
+    config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # ProcessingConfig as JSON
+    prompt_versions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # {stage: version} mapping
+    stages_completed: Mapped[List[str]] = mapped_column(JSON, nullable=False, default=list)
 
     # 运行结果
     golden_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

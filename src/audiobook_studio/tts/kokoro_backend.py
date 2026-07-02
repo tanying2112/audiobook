@@ -200,12 +200,8 @@ class KokoroBackend(TTSEngine):
 
             # Create ONNX session
             sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = self.session_options.get(
-                "intra_op_num_threads", 4
-            )
-            sess_options.inter_op_num_threads = self.session_options.get(
-                "inter_op_num_threads", 2
-            )
+            sess_options.intra_op_num_threads = self.session_options.get("intra_op_num_threads", 4)
+            sess_options.inter_op_num_threads = self.session_options.get("inter_op_num_threads", 2)
 
             self._session = ort.InferenceSession(
                 self.model_path,
@@ -228,9 +224,7 @@ class KokoroBackend(TTSEngine):
             self._voice_embeddings = np.load(self.voices_path, allow_pickle=True).item()
 
             self._initialized = True
-            logger.info(
-                f"Kokoro-ONNX initialized: model={self.model_path}, voices={len(self._voice_embeddings)}"
-            )
+            logger.info(f"Kokoro-ONNX initialized: model={self.model_path}, voices={len(self._voice_embeddings)}")
 
         except ImportError:
             logger.error("onnxruntime not installed. Run: pip install onnxruntime")
@@ -256,9 +250,7 @@ class KokoroBackend(TTSEngine):
         # Convert phonemes to Kokoro token IDs
         # This is simplified - real implementation uses Kokoro's tokenizer
         token_ids = [ord(p) % 256 for p in phonemes]  # Placeholder
-        return np.array([token_ids], dtype=np.int64), np.array(
-            [len(token_ids)], dtype=np.int64
-        )
+        return np.array([token_ids], dtype=np.int64), np.array([len(token_ids)], dtype=np.int64)
 
     async def synthesize(
         self,
@@ -296,25 +288,19 @@ class KokoroBackend(TTSEngine):
         if embedding is not None:
             # Use custom embedding from voice cloning
             voice_embedding = np.array(embedding, dtype=np.float32).reshape(1, -1)
-            logger.info(
-                f"Using custom voice embedding with shape {voice_embedding.shape}"
-            )
+            logger.info(f"Using custom voice embedding with shape {voice_embedding.shape}")
         elif voice_id not in self._voice_embeddings:
             logger.warning(f"Voice {voice_id} not found, using default 'zf_xiaoxiao'")
             voice_id = "zf_xiaoxiao"
 
             voice_embedding = self._voice_embeddings[voice_id]
             if isinstance(voice_embedding, dict):
-                voice_embedding = voice_embedding.get(
-                    "embedding", list(voice_embedding.values())[0]
-                )
+                voice_embedding = voice_embedding.get("embedding", list(voice_embedding.values())[0])
             voice_embedding = np.array(voice_embedding, dtype=np.float32).reshape(1, -1)
         else:
             voice_embedding = self._voice_embeddings[voice_id]
             if isinstance(voice_embedding, dict):
-                voice_embedding = voice_embedding.get(
-                    "embedding", list(voice_embedding.values())[0]
-                )
+                voice_embedding = voice_embedding.get("embedding", list(voice_embedding.values())[0])
             voice_embedding = np.array(voice_embedding, dtype=np.float32).reshape(1, -1)
 
         # Phonemize text
@@ -417,9 +403,7 @@ class KokoroBackend(TTSEngine):
             # English: ~150 words/min = ~750 chars/min = ~12.5 chars/sec
             est_sec = chinese_chars / 5.0 + english_chars / 12.5
 
-        speed = (
-            kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
-        )
+        speed = kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
         est_sec = est_sec / speed
 
         return max(500, int(est_sec * 1000))
@@ -439,8 +423,6 @@ async def create_kokoro_backend(
     **kwargs,
 ) -> KokoroBackend:
     """Factory function to create and initialize Kokoro backend."""
-    backend = KokoroBackend(
-        model_path=model_path, voices_path=voices_path, device=device, **kwargs
-    )
+    backend = KokoroBackend(model_path=model_path, voices_path=voices_path, device=device, **kwargs)
     await backend.initialize()
     return backend

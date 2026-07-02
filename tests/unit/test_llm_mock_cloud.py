@@ -19,12 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import (
-    LLMCallResult,
-    LLMClient,
-    LLMClientConfig,
-    create_client,
-)
+from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
 from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
     BookMeta,
@@ -64,9 +59,7 @@ class TestLLMClientSuccessBranch:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 120, "completion_tokens": 60}
-        }
+        mock_output._raw_response = {"usage": {"prompt_tokens": 120, "completion_tokens": 60}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -74,9 +67,7 @@ class TestLLMClientSuccessBranch:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Evaluate quality"}]
-        result = client.call(
-            response_model=QualityJudgment, messages=messages, stage="judge"
-        )
+        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         assert isinstance(result, LLMCallResult)
         assert isinstance(result.output, QualityJudgment)
@@ -114,17 +105,11 @@ class TestLLMClientSuccessBranch:
                     sample_quote="旁白台词。",
                 )
             ],
-            emotion_snapshots=[
-                EmotionSnapshot(
-                    chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试"
-                )
-            ],
+            emotion_snapshots=[EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")],
             story_line_summary="这是一个用于测试的故事主线摘要，必须超过一百个字符才能通过Pydantic验证器的最小长度约束。故事讲述了一位平凡的主角在现代都市中经历各种冒险和成长的过程，通过克服重重困难最终实现了自我超越的励志历程。",
             global_style_notes="测试文风备注：保持平实叙述。",
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 200, "completion_tokens": 100}
-        }
+        mock_output._raw_response = {"usage": {"prompt_tokens": 200, "completion_tokens": 100}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -132,9 +117,7 @@ class TestLLMClientSuccessBranch:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Analyze book"}]
-        result = client.call(
-            response_model=BookAnalysisOutput, messages=messages, stage="analyze"
-        )
+        result = client.call(response_model=BookAnalysisOutput, messages=messages, stage="analyze")
 
         assert isinstance(result.output, BookAnalysisOutput)
         assert result.output.book_meta.title == "Test Book"
@@ -161,9 +144,7 @@ class TestLLMClientSuccessBranch:
             needs_sfx=False,
             sfx_tags=[],
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 80, "completion_tokens": 40}
-        }
+        mock_output._raw_response = {"usage": {"prompt_tokens": 80, "completion_tokens": 40}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -199,9 +180,7 @@ class TestLLMClientSuccessBranch:
             needs_sfx=False,
             sfx_tags=[],
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 50, "completion_tokens": 25}
-        }
+        mock_output._raw_response = {"usage": {"prompt_tokens": 50, "completion_tokens": 25}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -222,9 +201,7 @@ class TestLLMClientSuccessBranch:
         mock_instructor.return_value = mock_client
 
         mock_output = ExtractionResult(raw_text="text", language="zh", page_count=1)
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5}
-        }
+        mock_output._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -327,9 +304,7 @@ class TestLLMClientFailureBranch:
         """Client.call() raises on timeout."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
-        mock_client.chat.completions.create.side_effect = TimeoutError(
-            "Request timed out after 60s"
-        )
+        mock_client.chat.completions.create.side_effect = TimeoutError("Request timed out after 60s")
 
         config = LLMClientConfig(model="gpt-4o")
         client = LLMClient(config)
@@ -895,8 +870,7 @@ class TestRouterCallCircuitBreaker:
             failure_calls = [
                 c
                 for c in calls
-                if c.kwargs.get("success") is False
-                or (len(c.args) > 0 and not c.kwargs.get("success", True))
+                if c.kwargs.get("success") is False or (len(c.args) > 0 and not c.kwargs.get("success", True))
             ]
             assert len(failure_calls) > 0
         reset_app_container()

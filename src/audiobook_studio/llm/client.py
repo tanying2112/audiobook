@@ -16,12 +16,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 import instructor
 from litellm import completion
 from pydantic import BaseModel
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..schemas import (
     BookAnalysisOutput,
@@ -128,7 +123,8 @@ class LLMClient:
     def _init_client(self):
         """Initialize LiteLLM + Instructor client."""
         if not self.config.mock_mode:
-            self._client = instructor.from_litellm(completion)
+            # Use JSON mode for better compatibility with local models like Ollama
+            self._client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
         else:
             self._client = None
 
@@ -260,40 +256,55 @@ class LLMClient:
             latency_ms = int((time.time() - start) * 1000)
 
             # Get raw response for validation
-            raw_response = (
-                getattr(result, "_raw_response", None)
-                or getattr(result, "model_dump", lambda: {})()
-            )
+            # When using instructor with JSON mode, result is already parsed
+            # and result directly is the Pydantic model
+            raw_response = getattr(result, "_raw_response", None)
+            _skip_validation = False  # Flag to skip validation for instructor-parsed responses
 
-            # Extract token usage from raw response
-            tokens_in = 0
-            tokens_out = 0
-            if isinstance(raw_response, dict) and "usage" in raw_response:
-                usage = raw_response["usage"]
-                tokens_in = usage.get("prompt_tokens", 0)
-                tokens_out = usage.get("completion_tokens", 0)
+            if raw_response is not None:
+                # Extract token usage from ModelResponse
+                usage_obj = getattr(raw_response, "usage", None)
+                if usage_obj is not None:
+                    usage_dict = getattr(usage_obj, "model_dump", lambda: {})()
+                    tokens_in = usage_dict.get("prompt_tokens", 0) if isinstance(usage_dict, dict) else 0
+                    tokens_out = usage_dict.get("completion_tokens", 0) if isinstance(usage_dict, dict) else 0
+                else:
+                    tokens_in = 0
+                    tokens_out = 0
 
-            # Defensive JSON parsing validation
-            try:
-                validate_and_parse_llm_response(raw_response, response_model, "unknown")
-            except LLMParseError as e:
-                logger.warning(f"LLM returned invalid JSON: {e}")
-                raise
+                # Extract content string from ModelResponse for validation
+                choices = getattr(raw_response, "choices", [])
+                if choices:
+                    message = getattr(choices[0], "message", None)
+                    raw_response = getattr(message, "content", "{}") if message else "{}"
+                else:
+                    raw_response = "{}"
+            else:
+                # Result is already a Pydantic model from instructor
+                # Skip validate_and_parse_llm_response since instructor already validated
+                _skip_validation = True
+                raw_response = {}
+                tokens_in = 0
+                tokens_out = 0
+
+            # Defensive JSON parsing validation (skip if already validated by instructor)
+            if not _skip_validation and raw_response:  # Only validate if we have raw_response to check
+                try:
+                    validate_and_parse_llm_response(raw_response, response_model, "unknown")
+                except LLMParseError as e:
+                    logger.warning(f"LLM returned invalid JSON: {e}")
+                    raise
 
             # Calculate cost
             cost_usd = 0.0
-            model_pricing = MODEL_PRICING.get(
-                self.config.model, {"input": 0, "output": 0}
-            )
+            model_pricing = MODEL_PRICING.get(self.config.model, {"input": 0, "output": 0})
             if tokens_in > 0:
                 cost_usd += (tokens_in / 1_000_000) * model_pricing.get("input", 0)
             if tokens_out > 0:
                 cost_usd += (tokens_out / 1_000_000) * model_pricing.get("output", 0)
 
             # Apply constitutional rules
-            ruled_output = apply_constitutional_rules(
-                result, context={"model": self.config.model}
-            )
+            ruled_output = apply_constitutional_rules(result, context={"model": self.config.model})
             return LLMCallResult(
                 output=ruled_output,
                 model=self.config.model,
@@ -336,12 +347,7 @@ class LLMClient:
         )
 
         if response_model == BookAnalysisOutput:
-            from ..schemas import (
-                BookAnalysisOutput,
-                BookMeta,
-                CharacterVoiceBinding,
-                EmotionSnapshot,
-            )
+            from ..schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
             mock_output = BookAnalysisOutput(
                 book_meta=BookMeta(
@@ -476,9 +482,7 @@ class LLMClient:
             cost_usd=0.0,
             latency_ms=1,
             schema_compliance=True,
-            raw_response=(
-                mock_output.model_dump() if hasattr(mock_output, "model_dump") else {}
-            ),
+            raw_response=(mock_output.model_dump() if hasattr(mock_output, "model_dump") else {}),
         )
 
 

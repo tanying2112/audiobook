@@ -10,10 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.synthesize import (
-    AudioSegment,
-    SynthesizePipeline,
-)
+from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
 
 
 def _make_pipeline(tmp_path: Path, mock_mode: bool = True) -> SynthesizePipeline:
@@ -208,17 +205,13 @@ class TestPipelineInitMockEngines:
 
     def test_init_creates_output_dir(self, tmp_path: Path):
         out_dir = tmp_path / "nested" / "out"
-        pipeline = SynthesizePipeline(
-            router=MagicMock(), output_dir=str(out_dir), mock_mode=True
-        )
+        pipeline = SynthesizePipeline(router=MagicMock(), output_dir=str(out_dir), mock_mode=True)
         assert out_dir.exists()
         assert pipeline.output_dir == out_dir
 
     def test_init_uses_explicit_router(self, tmp_path: Path):
         router = MagicMock()
-        pipeline = SynthesizePipeline(
-            router=router, output_dir=str(tmp_path), mock_mode=True
-        )
+        pipeline = SynthesizePipeline(router=router, output_dir=str(tmp_path), mock_mode=True)
         assert pipeline.router is router
 
     def test_init_default_crossfade_constant(self, tmp_path: Path):

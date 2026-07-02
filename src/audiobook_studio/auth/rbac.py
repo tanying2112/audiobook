@@ -112,9 +112,7 @@ class RBACManager:
         return False
 
     # Permission management
-    def create_permission(
-        self, name: PermissionName, description: Optional[str] = None
-    ) -> Permission:
+    def create_permission(self, name: PermissionName, description: Optional[str] = None) -> Permission:
         """Create a new permission."""
         perm = Permission(name=name.value, description=description)
         self.db.add(perm)
@@ -130,9 +128,7 @@ class RBACManager:
         """Get all permissions."""
         return self.db.query(Permission).all()
 
-    def assign_permission_to_role(
-        self, role_name: RoleName, perm_name: PermissionName
-    ) -> bool:
+    def assign_permission_to_role(self, role_name: RoleName, perm_name: PermissionName) -> bool:
         """Assign a permission to a role."""
         role = self.get_role(role_name)
         perm = self.get_permission(perm_name)
@@ -145,9 +141,7 @@ class RBACManager:
             self.db.commit()
         return True
 
-    def remove_permission_from_role(
-        self, role_name: RoleName, perm_name: PermissionName
-    ) -> bool:
+    def remove_permission_from_role(self, role_name: RoleName, perm_name: PermissionName) -> bool:
         """Remove a permission from a role."""
         role = self.get_role(role_name)
         perm = self.get_permission(perm_name)
@@ -208,15 +202,11 @@ class RBACManager:
 
         return False
 
-    def user_has_any_permission(
-        self, user: User, permissions: List[PermissionName]
-    ) -> bool:
+    def user_has_any_permission(self, user: User, permissions: List[PermissionName]) -> bool:
         """Check if user has any of the given permissions."""
         return any(self.user_has_permission(user, p) for p in permissions)
 
-    def user_has_all_permissions(
-        self, user: User, permissions: List[PermissionName]
-    ) -> bool:
+    def user_has_all_permissions(self, user: User, permissions: List[PermissionName]) -> bool:
         """Check if user has all of the given permissions."""
         return all(self.user_has_permission(user, p) for p in permissions)
 
@@ -287,9 +277,7 @@ class RBACManager:
             return True
         return False
 
-    def get_project_permission(
-        self, user_id: int, project_id: int
-    ) -> Optional[ProjectPermission]:
+    def get_project_permission(self, user_id: int, project_id: int) -> Optional[ProjectPermission]:
         """Get user's project permission."""
         return (
             self.db.query(ProjectPermission)
@@ -334,11 +322,7 @@ class RBACManager:
 
     def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all projects a user has access to with their roles."""
-        perms = (
-            self.db.query(ProjectPermission)
-            .filter(ProjectPermission.user_id == user_id)
-            .all()
-        )
+        perms = self.db.query(ProjectPermission).filter(ProjectPermission.user_id == user_id).all()
 
         return [{"project_id": p.project_id, "role": p.role} for p in perms]
 
@@ -388,41 +372,64 @@ def init_rbac(db: Session) -> None:
 
     # Project owner gets project + pipeline + export permissions
     owner_perms = [
-        PermissionName.PROJECT_CREATE, PermissionName.PROJECT_READ,
-        PermissionName.PROJECT_UPDATE, PermissionName.PROJECT_DELETE,
-        PermissionName.PROJECT_LIST, PermissionName.CHAPTER_CREATE,
-        PermissionName.CHAPTER_READ, PermissionName.CHAPTER_UPDATE,
-        PermissionName.CHAPTER_DELETE, PermissionName.PARAGRAPH_READ,
-        PermissionName.PARAGRAPH_UPDATE, PermissionName.PARAGRAPH_ANNOTATE,
-        PermissionName.PARAGRAPH_EDIT, PermissionName.CHARACTER_CREATE,
-        PermissionName.CHARACTER_READ, PermissionName.CHARACTER_UPDATE,
-        PermissionName.CHARACTER_DELETE, PermissionName.PIPELINE_RUN,
-        PermissionName.PIPELINE_VIEW, PermissionName.PIPELINE_CANCEL,
-        PermissionName.EXPORT_CREATE, PermissionName.EXPORT_READ,
-        PermissionName.EXPORT_DOWNLOAD, PermissionName.TTS_ROUTE,
-        PermissionName.TTS_SYNTHESIZE, PermissionName.TTS_QUALITY_CHECK,
-        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+        PermissionName.PROJECT_CREATE,
+        PermissionName.PROJECT_READ,
+        PermissionName.PROJECT_UPDATE,
+        PermissionName.PROJECT_DELETE,
+        PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_CREATE,
+        PermissionName.CHAPTER_READ,
+        PermissionName.CHAPTER_UPDATE,
+        PermissionName.CHAPTER_DELETE,
+        PermissionName.PARAGRAPH_READ,
+        PermissionName.PARAGRAPH_UPDATE,
+        PermissionName.PARAGRAPH_ANNOTATE,
+        PermissionName.PARAGRAPH_EDIT,
+        PermissionName.CHARACTER_CREATE,
+        PermissionName.CHARACTER_READ,
+        PermissionName.CHARACTER_UPDATE,
+        PermissionName.CHARACTER_DELETE,
+        PermissionName.PIPELINE_RUN,
+        PermissionName.PIPELINE_VIEW,
+        PermissionName.PIPELINE_CANCEL,
+        PermissionName.EXPORT_CREATE,
+        PermissionName.EXPORT_READ,
+        PermissionName.EXPORT_DOWNLOAD,
+        PermissionName.TTS_ROUTE,
+        PermissionName.TTS_SYNTHESIZE,
+        PermissionName.TTS_QUALITY_CHECK,
+        PermissionName.FEEDBACK_CREATE,
+        PermissionName.FEEDBACK_READ,
     ]
     for perm in owner_perms:
         rbac.assign_permission_to_role(RoleName.PROJECT_OWNER, perm)
 
     # Editor gets read + edit + annotate + pipeline view
     editor_perms = [
-        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
-        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
-        PermissionName.PARAGRAPH_UPDATE, PermissionName.PARAGRAPH_ANNOTATE,
-        PermissionName.PARAGRAPH_EDIT, PermissionName.CHARACTER_READ,
-        PermissionName.PIPELINE_VIEW, PermissionName.EXPORT_READ,
-        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+        PermissionName.PROJECT_READ,
+        PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ,
+        PermissionName.PARAGRAPH_READ,
+        PermissionName.PARAGRAPH_UPDATE,
+        PermissionName.PARAGRAPH_ANNOTATE,
+        PermissionName.PARAGRAPH_EDIT,
+        PermissionName.CHARACTER_READ,
+        PermissionName.PIPELINE_VIEW,
+        PermissionName.EXPORT_READ,
+        PermissionName.FEEDBACK_CREATE,
+        PermissionName.FEEDBACK_READ,
     ]
     for perm in editor_perms:
         rbac.assign_permission_to_role(RoleName.EDITOR, perm)
 
     # Viewer gets read-only permissions
     viewer_perms = [
-        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
-        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
-        PermissionName.CHARACTER_READ, PermissionName.PIPELINE_VIEW,
+        PermissionName.PROJECT_READ,
+        PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ,
+        PermissionName.PARAGRAPH_READ,
+        PermissionName.CHARACTER_READ,
+        PermissionName.PIPELINE_VIEW,
         PermissionName.EXPORT_READ,
     ]
     for perm in viewer_perms:
@@ -430,9 +437,12 @@ def init_rbac(db: Session) -> None:
 
     # Contributor gets read + feedback
     contributor_perms = [
-        PermissionName.PROJECT_READ, PermissionName.PROJECT_LIST,
-        PermissionName.CHAPTER_READ, PermissionName.PARAGRAPH_READ,
-        PermissionName.FEEDBACK_CREATE, PermissionName.FEEDBACK_READ,
+        PermissionName.PROJECT_READ,
+        PermissionName.PROJECT_LIST,
+        PermissionName.CHAPTER_READ,
+        PermissionName.PARAGRAPH_READ,
+        PermissionName.FEEDBACK_CREATE,
+        PermissionName.FEEDBACK_READ,
     ]
     for perm in contributor_perms:
         rbac.assign_permission_to_role(RoleName.CONTRIBUTOR, perm)

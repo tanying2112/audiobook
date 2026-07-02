@@ -26,9 +26,7 @@ class TestCaptureFeedback:
         mock_db.query = MagicMock()
 
         # Mock the FeedbackRecordModel creation
-        with patch(
-            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
-        ) as mock_model:
+        with patch("src.audiobook_studio.feedback.collector.FeedbackRecordModel") as mock_model:
             mock_model.return_value = mock_record
             mock_record.id = "test-id"
             mock_record.feedback_id = "test-feedback-id"
@@ -57,9 +55,7 @@ class TestCaptureFeedback:
         mock_db.commit = MagicMock()
         mock_db.refresh = MagicMock()
 
-        with patch(
-            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
-        ) as mock_model:
+        with patch("src.audiobook_studio.feedback.collector.FeedbackRecordModel") as mock_model:
             mock_model.return_value = mock_record
 
             result = capture_feedback(
@@ -85,9 +81,7 @@ class TestCaptureFeedback:
         mock_db.commit = MagicMock()
         mock_db.refresh = MagicMock()
 
-        with patch(
-            "src.audiobook_studio.feedback.collector.FeedbackRecordModel"
-        ) as mock_model:
+        with patch("src.audiobook_studio.feedback.collector.FeedbackRecordModel") as mock_model:
             mock_model.return_value = mock_record
 
             result = capture_feedback(
@@ -181,13 +175,9 @@ class TestCaptureEditFeedback:
             call_args = mock_capture.call_args
             assert call_args.kwargs["source"] == "human_edit"
             assert call_args.kwargs["stage"] == "edit_for_tts"
-            assert call_args.kwargs["input_snapshot"] == {
-                "original_text": "Original text"
-            }
+            assert call_args.kwargs["input_snapshot"] == {"original_text": "Original text"}
             assert call_args.kwargs["llm_output"] == {"edited_text": "LLM suggestion"}
-            assert call_args.kwargs["corrected_output"] == {
-                "edited_text": "Edited text"
-            }
+            assert call_args.kwargs["corrected_output"] == {"edited_text": "Edited text"}
             assert call_args.kwargs["rationale"] == "User's reason"
             assert result == mock_record
 

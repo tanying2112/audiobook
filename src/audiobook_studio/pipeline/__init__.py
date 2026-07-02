@@ -20,11 +20,7 @@ from .edit_for_tts import EditForTtsPipeline, edit_for_tts
 # Also export the pipeline classes for advanced usage
 # Import convenience functions from each pipeline stage
 from .extract import ExtractPipeline, extract_text
-from .feedback_collector import (
-    FeedbackCollector,
-    StageCapture,
-    create_feedback_collector,
-)
+from .feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from .orchestrator import run_pipeline, run_stage
 from .quality_check import QualityCheckPipeline, quality_check
 from .stage_registry import StageRegistry

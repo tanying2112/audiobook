@@ -112,10 +112,7 @@ class ORMSchemaExtractor:
         """Check if a class is a SQLAlchemy model."""
         for item in class_node.body:
             if isinstance(item, ast.AnnAssign):
-                if (
-                    isinstance(item.target, ast.Name)
-                    and item.target.id == "__tablename__"
-                ):
+                if isinstance(item.target, ast.Name) and item.target.id == "__tablename__":
                     return True
             # Also check for Base inheritance
             for base in class_node.bases:
@@ -127,10 +124,7 @@ class ORMSchemaExtractor:
         """Extract the __tablename__ value."""
         for item in class_node.body:
             if isinstance(item, ast.AnnAssign):
-                if (
-                    isinstance(item.target, ast.Name)
-                    and item.target.id == "__tablename__"
-                ):
+                if isinstance(item.target, ast.Name) and item.target.id == "__tablename__":
                     if isinstance(item.value, ast.Constant):
                         return item.value.value
         return None
@@ -502,13 +496,9 @@ class SchemaSyncTool:
 
 def main():
     parser = argparse.ArgumentParser(description="Sync ORM models to Pydantic schemas")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Preview without writing files"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     parser.add_argument("--models-dir", type=str, default="src/audiobook_studio/models")
-    parser.add_argument(
-        "--schemas-dir", type=str, default="src/audiobook_studio/schemas/auto"
-    )
+    parser.add_argument("--schemas-dir", type=str, default="src/audiobook_studio/schemas/auto")
     args = parser.parse_args()
 
     root = Path(__file__).parent.parent

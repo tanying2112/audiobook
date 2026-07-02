@@ -97,9 +97,7 @@ class TestPrepareAudiobook:
     async def test_invalid_title(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(title="  "), _audio_file(td)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(title="  "), _audio_file(td))
             assert not ok
             assert "标题" in msg
 
@@ -107,27 +105,21 @@ class TestPrepareAudiobook:
     async def test_invalid_author(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(author="  "), _audio_file(td)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(author="  "), _audio_file(td))
             assert not ok
 
     @pytest.mark.asyncio
     async def test_invalid_narrator(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(narrator="  "), _audio_file(td)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(narrator="  "), _audio_file(td))
             assert not ok
 
     @pytest.mark.asyncio
     async def test_invalid_year_low(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(publication_year=500), _audio_file(td)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(publication_year=500), _audio_file(td))
             assert not ok
             assert "年份" in msg
 
@@ -135,18 +127,14 @@ class TestPrepareAudiobook:
     async def test_invalid_year_high(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(publication_year=3000), _audio_file(td)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(publication_year=3000), _audio_file(td))
             assert not ok
 
     @pytest.mark.asyncio
     async def test_unsupported_format_auto_convert(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(), _audio_file(td, fmt="ogg")
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(), _audio_file(td, fmt="ogg"))
             assert not ok
             assert "不支持的格式" in msg
 
@@ -156,9 +144,7 @@ class TestPrepareAudiobook:
         with patch("httpx.AsyncClient"):
             integ = AudiobookshelfIntegrator(c)
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(), _audio_file(td, fmt="ogg")
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(), _audio_file(td, fmt="ogg"))
             assert not ok
             assert "不支持的格式" in msg
 
@@ -197,9 +183,7 @@ class TestPrepareAudiobook:
     async def test_size_mismatch(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, _ = await integ.prepare_audiobook(
-                _meta(), _audio_file(td, size=999999)
-            )
+            ok, msg, _ = await integ.prepare_audiobook(_meta(), _audio_file(td, size=999999))
             assert not ok
 
     @pytest.mark.asyncio
@@ -233,9 +217,7 @@ class TestPrepareAudiobook:
         with tempfile.TemporaryDirectory() as td:
             cover = Path(td) / "cover.jpg"
             cover.write_bytes(b"\xff\xd8\xff\xe0img")
-            ok, msg, data = await integ.prepare_audiobook(
-                _meta(cover_image_path=cover), _audio_file(td)
-            )
+            ok, msg, data = await integ.prepare_audiobook(_meta(cover_image_path=cover), _audio_file(td))
             assert ok
             assert data["coverImage"] is not None
 
@@ -253,9 +235,7 @@ class TestPrepareAudiobook:
     async def test_year_none(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            ok, msg, data = await integ.prepare_audiobook(
-                _meta(publication_year=None), _audio_file(td)
-            )
+            ok, msg, data = await integ.prepare_audiobook(_meta(publication_year=None), _audio_file(td))
             assert ok
 
 
@@ -308,9 +288,7 @@ class TestRealAPILibraryErrors:
     @pytest.mark.asyncio
     async def test_no_audio_file(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         af = AudiobookFile(
             file_path=Path("/nonexistent.m4b"),
             size_bytes=0,
@@ -328,9 +306,7 @@ class TestRealAPIUpload:
     @pytest.mark.asyncio
     async def test_upload_success_no_search(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         integ.client.post = AsyncMock(return_value=_resp(201))
         with tempfile.TemporaryDirectory() as td:
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -341,9 +317,7 @@ class TestRealAPIUpload:
     @pytest.mark.asyncio
     async def test_upload_http_error(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         integ.client.post = AsyncMock(return_value=_resp(500, text="err"))
         with tempfile.TemporaryDirectory() as td:
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -354,9 +328,7 @@ class TestRealAPIUpload:
     @pytest.mark.asyncio
     async def test_upload_exception(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         integ.client.post = AsyncMock(side_effect=ConnectionError("fail"))
         with tempfile.TemporaryDirectory() as td:
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -366,9 +338,7 @@ class TestRealAPIUpload:
     @pytest.mark.asyncio
     async def test_scan_exception_non_fatal(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         call_count = [0]
 
         async def mock_post(url, **kw):
@@ -386,9 +356,7 @@ class TestRealAPIUpload:
     @pytest.mark.asyncio
     async def test_scan_http_error_non_fatal(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         call_count = [0]
 
         async def mock_post(url, **kw):
@@ -571,9 +539,7 @@ class TestRealAPIUpload:
     async def test_local_base_path_copy(self):
         integ = _integrator()
         integ.config.base_path = tempfile.mkdtemp()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
             r = await integ._real_api_call(_ud(), af)
@@ -585,9 +551,7 @@ class TestRealAPIUpload:
     async def test_local_base_path_copy_error(self):
         integ = _integrator()
         integ.config.base_path = "/nonexistent/deeply/nested/path"
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"folders": [{"id": "f1"}]})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         with tempfile.TemporaryDirectory() as td:
             r = await integ._real_api_call(_ud(), _audio_file(td))
             assert r["success"] is False
@@ -693,18 +657,14 @@ class TestPublishToAudiobookshelf:
         integ.client.patch = AsyncMock(return_value=_resp(204))
         with tempfile.TemporaryDirectory() as td:
             with patch("asyncio.sleep", new_callable=AsyncMock):
-                success, msg, resp = await integ.publish_to_audiobookshelf(
-                    _meta(), _audio_file(td)
-                )
+                success, msg, resp = await integ.publish_to_audiobookshelf(_meta(), _audio_file(td))
                 assert success is True
 
     @pytest.mark.asyncio
     async def test_publish_prepare_failure(self):
         integ = _integrator()
         with tempfile.TemporaryDirectory() as td:
-            success, msg, resp = await integ.publish_to_audiobookshelf(
-                _meta(title="  "), _audio_file(td)
-            )
+            success, msg, resp = await integ.publish_to_audiobookshelf(_meta(title="  "), _audio_file(td))
             assert success is False
             assert resp is None
 
@@ -713,9 +673,7 @@ class TestPublishToAudiobookshelf:
         integ = _integrator()
         integ.client.get = AsyncMock(side_effect=ConnectionError("fail"))
         with tempfile.TemporaryDirectory() as td:
-            success, msg, resp = await integ.publish_to_audiobookshelf(
-                _meta(), _audio_file(td)
-            )
+            success, msg, resp = await integ.publish_to_audiobookshelf(_meta(), _audio_file(td))
             assert success is False
 
 
@@ -739,9 +697,7 @@ class TestGetLibraryStatus:
     @pytest.mark.asyncio
     async def test_online(self):
         integ = _integrator()
-        integ.client.get = AsyncMock(
-            return_value=_resp(200, {"mediaCount": 5, "duration": 7200})
-        )
+        integ.client.get = AsyncMock(return_value=_resp(200, {"mediaCount": 5, "duration": 7200}))
         s = await integ.get_library_status()
         assert s["total_books"] == 5
         assert s["status"] == "online"

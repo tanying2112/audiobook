@@ -7,11 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.feedback_collector import (
-    FeedbackCollector,
-    StageCapture,
-    create_feedback_collector,
-)
+from src.audiobook_studio.pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 
 
 class TestFeedbackCollector:
@@ -46,9 +42,7 @@ class TestFeedbackCollector:
 
     def test_capture_stage_enabled(self):
         """capture_stage returns active StageCapture when enabled."""
-        capture = self.collector.capture_stage(
-            "annotate", chapter_index=1, paragraph_index=5
-        )
+        capture = self.collector.capture_stage("annotate", chapter_index=1, paragraph_index=5)
         assert capture._disabled is False
         assert capture.stage == "annotate"
         assert capture.chapter_index == 1
@@ -79,9 +73,7 @@ class TestFeedbackCollector:
 
     def test_save_feedback_minimal(self):
         """save_feedback with minimal required fields."""
-        capture = self.collector.capture_stage(
-            "annotate", chapter_index=1, paragraph_index=1
-        )
+        capture = self.collector.capture_stage("annotate", chapter_index=1, paragraph_index=1)
         capture.set_llm_output({"r": "test"})
         capture.set_corrected_output({"r": "fixed"})
         capture.set_rationale("Valid rationale for a correction")

@@ -70,9 +70,7 @@ class TestCalculateSha256:
 
 class TestVerifyModelFiles:
     def test_verify_no_files_returns_invalid(self, tmp_path):
-        files_spec = {
-            "missing.bin": {"url": "http://example.com", "size_mb": 1}
-        }
+        files_spec = {"missing.bin": {"url": "http://example.com", "size_mb": 1}}
         valid, issues = verify_model_files(tmp_path, files_spec)
         assert valid is False
         assert any("Missing" in iss for iss in issues)
@@ -154,10 +152,13 @@ class TestDownloadFileMock:
     def test_download_file_max_retries(self, tmp_path):
         """Failed downloads retry MAX_RETRIES times and return False."""
         target = tmp_path / "x.bin"
-        with patch(
-            "src.audiobook_studio.tts.model_downloader.requests.get",
-            side_effect=Exception("network down"),
-        ), patch("src.audiobook_studio.tts.model_downloader.time.sleep"):
+        with (
+            patch(
+                "src.audiobook_studio.tts.model_downloader.requests.get",
+                side_effect=Exception("network down"),
+            ),
+            patch("src.audiobook_studio.tts.model_downloader.time.sleep"),
+        ):
             success, err = download_file(
                 url="http://example.com/x.bin",
                 filepath=target,

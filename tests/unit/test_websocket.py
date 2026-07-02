@@ -329,9 +329,7 @@ class TestPipelineWebsocket:
             mock_manager.connect = AsyncMock()
             mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
-            with patch(
-                "src.audiobook_studio.api.websocket.handle_client_message"
-            ) as mock_handler:
+            with patch("src.audiobook_studio.api.websocket.handle_client_message") as mock_handler:
                 # First message: a client message
                 # Second message: WebSocketDisconnect to end the loop
                 websocket.receive_text.side_effect = [
@@ -358,9 +356,7 @@ class TestPipelineWebsocket:
             mock_manager.connect = AsyncMock()
             mock_manager.send_to_connection = AsyncMock()
             mock_manager.disconnect = MagicMock()
-            with patch(
-                "src.audiobook_studio.api.websocket.asyncio.wait_for"
-            ) as mock_wait_for:
+            with patch("src.audiobook_studio.api.websocket.asyncio.wait_for") as mock_wait_for:
                 # First call: timeout (to trigger keepalive)
                 # Second call: WebSocketDisconnect to end
                 mock_wait_for.side_effect = [
@@ -373,13 +369,8 @@ class TestPipelineWebsocket:
                 # Should have sent keepalive message
                 mock_manager.send_to_connection.assert_awaited()
                 # Check for keepalive message
-                call_args_list = [
-                    call[0][1]
-                    for call in mock_manager.send_to_connection.call_args_list
-                ]
-                keepalive_found = any(
-                    arg["type"] == "keepalive" for arg in call_args_list
-                )
+                call_args_list = [call[0][1] for call in mock_manager.send_to_connection.call_args_list]
+                keepalive_found = any(arg["type"] == "keepalive" for arg in call_args_list)
                 assert keepalive_found
 
     @pytest.mark.asyncio

@@ -239,3 +239,9 @@ export function statusLabel(status: StageStatus, locale: 'zh' | 'en' = 'zh'): st
   if (locale === 'en') return status
   return _STATUS_LABEL_ZH[status]
 }
+
+// ── E. Re-export 常量（供测试与外部消费方统一从 normalize 入口引用）──────────
+export { PIPELINE_STAGE_ORDER, PARAGRAPH_STATUS_FLOW }
+export type { PipelineStage, StageStatus, ParagraphStatus, NormalizedStageState }
+export type { NormalizeChapterInput, NormalizeParagraphInput }
+

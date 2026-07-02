@@ -420,4 +420,125 @@ export async function cancelAutoRun(projectId: number): Promise<{ action: string
   return data
 }
 
+// ── Voice Cloning ──────────────────────────────────────────────────────
+
+export interface CloneVoiceRequest {
+  speaker_id: string
+  language?: string
+  text_content?: string
+}
+
+export interface CloneVoiceResponse {
+  success: boolean
+  speaker_id: string
+  voice_id: string
+  message: string
+  quality?: string
+  snr_db?: number
+  sample_count?: number
+}
+
+export interface ClonedVoice {
+  speaker_id: string
+  voice_id: string
+  quality: string
+  snr_db: number
+  sample_count: number
+  created_at: string
+}
+
+export interface ListClonedVoicesResponse {
+  cloned_voices: ClonedVoice[]
+  count: number
+}
+
+export async function cloneVoice(
+  file: File,
+  speakerId: string,
+  language: string = 'zh-CN',
+  textContent: string = '',
+  onProgress?: (percent: number) => void,
+): Promise<CloneVoiceResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('speaker_id', speakerId)
+  formData.append('language', language)
+  formData.append('text_content', textContent)
+
+  const { data } = await api.post('/api/tts/voices/clone', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
+  })
+  return data
+}
+
+export async function listClonedVoices(): Promise<ListClonedVoicesResponse> {
+  const { data } = await api.get('/api/tts/voices/cloned')
+  return data
+}
+
+export async function previewVoice(voiceId: string, text: string = '这是一个语音试听样本。'): Promise<{ preview_url: string }> {
+  const { data } = await api.get(`/api/tts/voices/preview/${voiceId}`, { params: { text } })
+  return data
+}
+
+export function getPreviewAudioUrl(voiceId: string): string {
+  return `${API_BASE}/api/tts/voices/preview/${voiceId}`
+}
+
+// ── Translation ─────────────────────────────────────────────────────────
+
+export interface TranslationLanguage {
+  code: string
+  name: string
+  native_name: string
+}
+
+export interface TranslationStartRequest {
+  target_language: string
+  chapter_indices?: number[]
+  book_title?: string
+  author?: string
+}
+
+export interface TranslationStatusResponse {
+  status: string
+  message: string
+  progress: number
+  total_segments: number
+  successful_translations: number
+  failed_translations: number
+  emotional_continuity_passed: boolean | null
+  semantic_coherence_score: number | null
+}
+
+export interface TranslationProgress {
+  project_id: number
+  total_original_segments: number
+  total_translated_segments: number
+  translation_ratio: number
+}
+
+export async function startTranslation(
+  projectId: number,
+  request: TranslationStartRequest,
+): Promise<TranslationStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/pipeline/translate`, request)
+  return data
+}
+
+export async function getTranslationStatus(projectId: number): Promise<TranslationProgress> {
+  const { data } = await api.get(`/api/projects/${projectId}/pipeline/translate/status`)
+  return data
+}
+
+export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
+  const { data } = await api.get('/api/projects/1/pipeline/translate/languages')
+  return data
+}
+
 export default api

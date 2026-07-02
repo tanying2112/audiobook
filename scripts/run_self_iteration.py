@@ -37,9 +37,7 @@ def get_db_session_factory():
 
 def main():
     parser = argparse.ArgumentParser(description="Run self-iteration feedback loop")
-    parser.add_argument(
-        "--project-id", type=int, required=True, help="Project ID to monitor"
-    )
+    parser.add_argument("--project-id", type=int, required=True, help="Project ID to monitor")
     parser.add_argument(
         "--min-feedback",
         type=int,
@@ -159,9 +157,7 @@ def main():
         logger.info("Triggering manual iteration...")
         result = loop.trigger_iteration_now()
         if result:
-            logger.info(
-                f"Analysis complete: {result.total_analyzed} records, {len(result.top_patterns)} patterns"
-            )
+            logger.info(f"Analysis complete: {result.total_analyzed} records, {len(result.top_patterns)} patterns")
         else:
             logger.info("No analysis triggered (insufficient feedback)")
 

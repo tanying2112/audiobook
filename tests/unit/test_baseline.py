@@ -168,9 +168,7 @@ class TestBaselineRecorder:
                     )
                 )
 
-            baseline = recorder.get_performance_baseline(
-                "synthesize", lookback_hours=24
-            )
+            baseline = recorder.get_performance_baseline("synthesize", lookback_hours=24)
             assert baseline["count"] == 5
             assert "latency_p50" in baseline
             assert "latency_p95" in baseline
@@ -306,9 +304,7 @@ class TestBaselineRecorder:
                     )
                 )
 
-            baseline = recorder.get_growth_baseline(
-                "books_processed", lookback_hours=720
-            )
+            baseline = recorder.get_growth_baseline("books_processed", lookback_hours=720)
             assert baseline["count"] == 5
             # Note: latest returns the last cached value (oldest timestamp in our test)
             # because items are appended in chronological order
@@ -365,9 +361,7 @@ class TestBaselineRecorder:
                 success=True,
             )
 
-            regression = recorder.check_performance_regression(
-                "synthesize", current, threshold_pct=20.0
-            )
+            regression = recorder.check_performance_regression("synthesize", current, threshold_pct=20.0)
             assert regression is not None
             assert len(regression["regressions"]) >= 1
             assert any(r["metric"] == "latency" for r in regression["regressions"])
@@ -403,9 +397,7 @@ class TestBaselineRecorder:
                 success=True,
             )
 
-            regression = recorder.check_performance_regression(
-                "synthesize", current, threshold_pct=20.0
-            )
+            regression = recorder.check_performance_regression("synthesize", current, threshold_pct=20.0)
             assert regression is not None
             assert any(r["metric"] == "cost" for r in regression["regressions"])
 
@@ -440,9 +432,7 @@ class TestBaselineRecorder:
                 success=False,
             )
 
-            regression = recorder.check_performance_regression(
-                "synthesize", current, threshold_pct=20.0
-            )
+            regression = recorder.check_performance_regression("synthesize", current, threshold_pct=20.0)
             # Success rate drops from 1.0 to 0.0, which is >20% drop
             assert regression is not None
             assert any(r["metric"] == "success_rate" for r in regression["regressions"])

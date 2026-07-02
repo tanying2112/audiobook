@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio Monitoring Dashboard"
-    )
+    parser = argparse.ArgumentParser(description="Audiobook Studio Monitoring Dashboard")
     parser.add_argument(
         "--hours",
         type=int,
@@ -110,28 +108,18 @@ def compute_summary(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         latencies = [r.get("latency_ms", 0) for r in stage_records]
         costs = [r.get("cost_usd", 0) for r in stage_records]
         success = [r.get("success", False) for r in stage_records]
-        quality = [
-            r.get("quality_score")
-            for r in stage_records
-            if r.get("quality_score") is not None
-        ]
+        quality = [r.get("quality_score") for r in stage_records if r.get("quality_score") is not None]
         schema_compliance_vals = [
-            r.get("schema_compliance")
-            for r in stage_records
-            if r.get("schema_compliance") is not None
+            r.get("schema_compliance") for r in stage_records if r.get("schema_compliance") is not None
         ]
 
         # Calculate schema compliance rate
         schema_compliant = [
-            r.get("schema_compliance") is True
-            for r in stage_records
-            if r.get("schema_compliance") is not None
+            r.get("schema_compliance") is True for r in stage_records if r.get("schema_compliance") is not None
         ]
         schema_compliant_count = sum(schema_compliant)
         denom = len(schema_compliant)
-        schema_compliance_rate = (
-            schema_compliant_count / denom if schema_compliant else None
-        )
+        schema_compliance_rate = schema_compliant_count / denom if schema_compliant else None
 
         latency_avg = sum(latencies) / len(latencies) if latencies else 0
         cost_avg = sum(costs) / len(costs) if costs else 0
@@ -164,11 +152,7 @@ def compute_summary(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         overall_cost = sum(all_costs)
         overall_success = sum(all_success) / len(all_success) if all_success else 0
         overall_quality = sum(all_quality) / len(all_quality) if all_quality else None
-        overall_compliance = (
-            sum(all_schema_compliant) / len(all_schema_total)
-            if all_schema_total
-            else None
-        )
+        overall_compliance = sum(all_schema_compliant) / len(all_schema_total) if all_schema_total else None
         summary["overall"] = {
             "latency_avg_ms": overall_latency,
             "cost_total_usd": overall_cost,
@@ -195,10 +179,7 @@ def detect_anomalies(summary: Dict[str, Any]) -> List[str]:
             anomalies.append(msg)
         schema_compliance_rate = s.get("schema_compliance_rate")
         if schema_compliance_rate is not None and schema_compliance_rate < 0.99:
-            msg = (
-                f"⚠️  {stage}: Low schema compliance rate "
-                f"({schema_compliance_rate:.2%})"
-            )
+            msg = f"⚠️  {stage}: Low schema compliance rate " f"({schema_compliance_rate:.2%})"
             anomalies.append(msg)
         if s["count"] == 0:
             anomalies.append(f"ℹ️  {stage}: No data recorded")
@@ -211,9 +192,7 @@ def format_dashboard(summary: Dict[str, Any], hours: int) -> str:
     lines = []
     lines.append("=" * 60)
     lines.append("  Audiobook Studio — 性能监控面板")
-    lines.append(
-        f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  |  " f"回溯 {hours}h"
-    )
+    lines.append(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  |  " f"回溯 {hours}h")
     lines.append("=" * 60)
     lines.append("")
 
@@ -233,10 +212,7 @@ def format_dashboard(summary: Dict[str, Any], hours: int) -> str:
 
     lines.append("📈  分阶段详情")
     lines.append("-" * 80)
-    header = (
-        f"{'阶段':<25} {'次数':>6} {'延迟(ms)':>12} "
-        f"{'成本($)':>10} {'成功率':>8} {'质量分':>8} {'合规率':>8}"
-    )
+    header = f"{'阶段':<25} {'次数':>6} {'延迟(ms)':>12} " f"{'成本($)':>10} {'成功率':>8} {'质量分':>8} {'合规率':>8}"
     lines.append(header)
     lines.append("-" * 80)
 
@@ -245,9 +221,7 @@ def format_dashboard(summary: Dict[str, Any], hours: int) -> str:
         quality_avg = s.get("quality_avg")
         quality_str = f"{quality_avg:.2f}" if quality_avg is not None else "N/A"
         schema_compliance = s.get("schema_compliance_rate")
-        schema_str = (
-            f"{schema_compliance:.2%}" if schema_compliance is not None else "N/A"
-        )
+        schema_str = f"{schema_compliance:.2%}" if schema_compliance is not None else "N/A"
         count = s["count"]
         lat_avg = s["latency_avg_ms"]
         cost_total = s["cost_total_usd"]

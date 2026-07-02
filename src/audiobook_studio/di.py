@@ -19,9 +19,7 @@ from .tts.engine import EngineRegistry
 T = TypeVar("T")
 
 # Request-scoped context variable for per-request DI overrides
-_request_container: ContextVar[Optional["DIContainer"]] = ContextVar(
-    "_request_container", default=None
-)
+_request_container: ContextVar[Optional["DIContainer"]] = ContextVar("_request_container", default=None)
 
 
 class DIContainer:
@@ -62,9 +60,7 @@ class DIContainer:
                 raise ValueError(f"Factory already registered for {interface}")
             self._factories[interface] = factory
 
-    def register_type(
-        self, interface: Type[T], impl: Type[T], *, singleton: bool = True
-    ) -> None:
+    def register_type(self, interface: Type[T], impl: Type[T], *, singleton: bool = True) -> None:
         """Register a type to be instantiated (singleton by default)."""
         if singleton:
 
@@ -184,16 +180,12 @@ class DIContainer:
             if hardware_profile:
                 self.register_singleton(HardwareProfile, hardware_profile)
             else:
-                self.register_factory(
-                    HardwareProfile, lambda: HardwareProfile.get_hardware_profile()
-                )
+                self.register_factory(HardwareProfile, lambda: HardwareProfile.get_hardware_profile())
 
             if llm_config:
                 self.register_singleton(LLMProvidersConfig, llm_config)
             else:
-                self.register_factory(
-                    LLMProvidersConfig, lambda: LLMProvidersConfig.load()
-                )
+                self.register_factory(LLMProvidersConfig, lambda: LLMProvidersConfig.load())
 
             self._initialized = True
             return self

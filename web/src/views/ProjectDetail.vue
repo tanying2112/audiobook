@@ -30,6 +30,14 @@ function manageCharacters() {
 function viewQuality() {
   router.push(`/projects/${projectId}/quality`)
 }
+
+function openVoiceClone() {
+  router.push(`/projects/${projectId}/voice-clone`)
+}
+
+function openTranslation() {
+  router.push(`/projects/${projectId}/translation`)
+}
 </script>
 
 <template>
@@ -48,6 +56,14 @@ function viewQuality() {
         <button class="btn btn-outline" @click="viewQuality">
           <Icon icon="mdi:chart-bar" width="18" height="18" />
           {{ t('project_detail.quality_report') }}
+        </button>
+        <button class="btn btn-primary" @click="openVoiceClone">
+          <Icon icon="mdi:microphone" width="18" height="18" />
+          {{ t('voice_clone.title') }}
+        </button>
+        <button class="btn btn-outline" @click="openTranslation">
+          <Icon icon="mdi:translate" width="18" height="18" />
+          {{ t('translation.title') }}
         </button>
       </div>
     </div>

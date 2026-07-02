@@ -72,9 +72,7 @@ class TestAnnotateParagraphPipeline:
     def test_run_mock_mode_different_index(self):
         """Test mock mode preserves different paragraph index."""
         pipeline = AnnotateParagraphPipeline()
-        input_data = _make_input(
-            paragraph_index=5, paragraph_text="不同索引的测试段落文本，满足长度要求。"
-        )
+        input_data = _make_input(paragraph_index=5, paragraph_text="不同索引的测试段落文本，满足长度要求。")
         result = pipeline.run(input_data)
         assert result.paragraph_index == 5
 

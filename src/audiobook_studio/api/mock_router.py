@@ -73,14 +73,10 @@ async def mock_list_chapters(project_id: int):
 
 
 @router.get("/projects/{project_id}/paragraphs")
-async def mock_list_paragraphs(
-    project_id: int, chapter_id: int = None, skip: int = 0, limit: int = 100
-):
+async def mock_list_paragraphs(project_id: int, chapter_id: int = None, skip: int = 0, limit: int = 100):
     """Mock: List paragraphs with pagination."""
     if chapter_id:
-        data = _load_mock_data(
-            f"project-{project_id}-chapter-{chapter_id}-paragraphs.json"
-        )
+        data = _load_mock_data(f"project-{project_id}-chapter-{chapter_id}-paragraphs.json")
     else:
         data = _load_mock_data(f"project-{project_id}-paragraphs.json")
 
@@ -177,12 +173,8 @@ class ChatEditRequest(BaseModel):
     paragraph_index: int = Field(..., ge=0, description="段落索引")
     target_stage: str = Field(default="edit", description="目标阶段: edit/annotate")
     intent: str = Field(..., min_length=1, description="用户编辑意图")
-    conversation_history: List[dict] = Field(
-        default_factory=list, description="历史对话"
-    )
-    annotation_context: Optional[dict] = Field(
-        default=None, description="段落标注上下文"
-    )
+    conversation_history: List[dict] = Field(default_factory=list, description="历史对话")
+    annotation_context: Optional[dict] = Field(default=None, description="段落标注上下文")
     shortcut: Optional[str] = Field(default=None, description="快捷指令")
 
 
@@ -283,9 +275,7 @@ def _tokenize_for_streaming(text: str) -> List[str]:
 
 def _sse(payload: Any) -> str:
     """格式化 SSE 事件行."""
-    data = (
-        payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
-    )
+    data = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
     return f"data: {data}\n\n"
 
 
@@ -317,9 +307,7 @@ async def _chat_edit_generator(req: ChatEditRequest) -> AsyncGenerator[str, None
 
     suggestion = {
         "kind": "text_edit",
-        "paragraph_id": _segment_id(
-            req.project_id, req.chapter_index, req.paragraph_index
-        ),
+        "paragraph_id": _segment_id(req.project_id, req.chapter_index, req.paragraph_index),
         "before": {"text": template["before"]},
         "after": {"text": template["after"]},
         "changes_made": template["changes_made"],
@@ -327,9 +315,7 @@ async def _chat_edit_generator(req: ChatEditRequest) -> AsyncGenerator[str, None
         "rationale": template["rationale"],
         "pattern_tag": template["pattern"],
     }
-    yield _sse(
-        {"type": "suggestion", "suggestion": suggestion, "message_id": message_id}
-    )
+    yield _sse({"type": "suggestion", "suggestion": suggestion, "message_id": message_id})
     await asyncio.sleep(0.1)
 
     yield _sse({"type": "done", "message_id": message_id})
@@ -376,9 +362,7 @@ async def mock_chat_annotate(req: ChatAnnotateRequest):
 
         suggestion = {
             "kind": "annotation_adjust",
-            "paragraph_id": _segment_id(
-                req.project_id, req.chapter_index, req.paragraph_index
-            ),
+            "paragraph_id": _segment_id(req.project_id, req.chapter_index, req.paragraph_index),
             "before": {
                 "speaker_canonical_name": "unknown",
                 "emotion": "neutral",
@@ -393,9 +377,7 @@ async def mock_chat_annotate(req: ChatAnnotateRequest):
             "confidence": 0.87,
             "rationale": rationale,
         }
-        yield _sse(
-            {"type": "suggestion", "suggestion": suggestion, "message_id": message_id}
-        )
+        yield _sse({"type": "suggestion", "suggestion": suggestion, "message_id": message_id})
         await asyncio.sleep(0.1)
         yield _sse({"type": "done", "message_id": message_id})
         yield _sse("[DONE]")
@@ -459,211 +441,3 @@ async def mock_catchall(request: Request, path: str):
 
 def ensure_mock_directory():
     """Create mock data directory and sample files if they don't exist."""
-    MOCK_DIR.mkdir(parents=True, exist_ok=True)
-
-    SAMPLE_FILES = {
-        "projects.json": {
-            "items": [
-                {
-                    "id": 1,
-                    "title": "示例项目：红楼梦",
-                    "author": "曹雪芹",
-                    "genre": "古典小说",
-                    "difficulty": "B",
-                    "status": "processing",
-                    "progress": 0.45,
-                    "total_cost_usd": 3.50,
-                    "created_at": "2026-06-20T10:00:00Z",
-                    "updated_at": "2026-06-26T08:30:00Z",
-                }
-            ],
-            "total": 1,
-        },
-        "project-1.json": {
-            "id": 1,
-            "title": "示例项目：红楼梦",
-            "author": "曹雪芹",
-            "genre": "古典小说",
-            "difficulty": "B",
-            "status": "processing",
-            "progress": 0.45,
-            "total_chapters": 120,
-            "completed_chapters": 54,
-            "total_cost_usd": 3.50,
-            "_embedded": {
-                "analysis": {
-                    "character_count": 731000,
-                    "character_list": ["贾宝玉", "林黛玉", "薛宝钗", "王熙凤"],
-                }
-            },
-        },
-        "project-1-chapters.json": {
-            "items": [
-                {
-                    "id": 1,
-                    "title": "第一回 甄士隐梦幻识通灵",
-                    "status": "completed",
-                    "progress": 1.0,
-                },
-                {
-                    "id": 2,
-                    "title": "第二回 贾夫人仙逝扬州城",
-                    "status": "completed",
-                    "progress": 1.0,
-                },
-                {
-                    "id": 3,
-                    "title": "第三回 托内兄如海荐西宾",
-                    "status": "processing",
-                    "progress": 0.6,
-                },
-            ],
-            "total": 120,
-        },
-        "paragraph-1-detail.json": {
-            "id": 1,
-            "chapter_id": 1,
-            "paragraph_index": 0,
-            "original_text": "话说大荒山无稽崖青埂峰下，有一块顽石，自经锻炼，灵性已通。",
-            "edited_text": "话说大荒山无稽崖青埂峰下，有一块顽石，自经锻炼，灵性已通。",
-            "status": "quality_checked",
-            "embedded_data": {
-                "annotation": {
-                    "speaker_canonical_name": "旁白",
-                    "is_dialogue": False,
-                    "emotion": "neutral",
-                    "emotion_intensity": 0.5,
-                    "speech_rate": 1.0,
-                    "difficulty": "B",
-                    "forbid_edit": False,
-                },
-                "tts_edit": {"changes_made": [], "edited_text": None},
-                "routing": {"engine_choice": "kokoro", "voice_id": "kokoro_narrator"},
-                "quality": {
-                    "overall_score": 0.85,
-                    "needs_regeneration": False,
-                    "issues": [],
-                },
-            },
-            "annotation": {"speaker_canonical_name": "旁白", "emotion": "neutral"},
-            "tts_edit": None,
-            "routing": {"engine_choice": "kokoro", "voice_id": "kokoro_narrator"},
-            "quality": {"overall_score": 0.85, "needs_regeneration": False},
-        },
-        "tts-voices.json": {
-            "engines": {
-                "kokoro": {
-                    "available": True,
-                    "voices": [
-                        {
-                            "id": "kokoro_narrator",
-                            "name": "旁白",
-                            "gender": "neutral",
-                            "language": "zh-CN",
-                        }
-                    ],
-                },
-                "edge_tts": {
-                    "available": True,
-                    "voices": [
-                        {
-                            "id": "zh-CN-XiaoxiaoNeural",
-                            "name": "晓晓",
-                            "gender": "female",
-                            "language": "zh-CN",
-                        },
-                        {
-                            "id": "zh-CN-YunxiNeural",
-                            "name": "云希",
-                            "gender": "male",
-                            "language": "zh-CN",
-                        },
-                        {
-                            "id": "zh-CN-YunjianNeural",
-                            "name": "云健",
-                            "gender": "male",
-                            "language": "zh-CN",
-                        },
-                    ],
-                },
-                "azure": {
-                    "available": True,
-                    "voices": [
-                        {
-                            "id": "zh-CN-XiaozhenNeural",
-                            "name": "晓珍",
-                            "gender": "female",
-                            "language": "zh-CN",
-                        }
-                    ],
-                },
-            }
-        },
-        "harness-status.json": {
-            "running": False,
-            "iteration_count": 0,
-            "unprocessed_feedback_count": 0,
-            "min_feedback_threshold": 10,
-        },
-        "harness-dashboard.json": {
-            "iteration_status": {"running": False, "iteration_count": 0},
-            "feedback_funnel": {"total_feedback": 0, "analyzed_count": 0},
-            "pattern_heatmap": {"patterns": [], "top_patterns": []},
-            "prompt_timeline": {"stages": {}},
-            "promotion_gate": {"format_compliance_rate": 0.99, "overall_pass": True},
-            "canary_dashboard": {"active_canaries": [], "total_active": 0},
-            "ab_tests": {"tests": [], "total_tests": 0},
-            "critics_latest": {"verdicts": [], "weighted_verdict": "accept"},
-        },
-        "golden-samples.json": {
-            "samples": [
-                {
-                    "id": "case_1",
-                    "stage": "annotate",
-                    "input": {"text": "黛玉道：'我没这么凶 hang。'"},
-                    "expected_output": {
-                        "speaker": "林黛玉",
-                        "emotion": "sad",
-                        "is_dialogue": True,
-                    },
-                    "human_verified": True,
-                    "quality_score": 0.95,
-                }
-            ],
-            "total_count": 1,
-            "by_stage": {"annotate": 1},
-        },
-        "export-jobs.json": {
-            "items": [
-                {
-                    "job_id": "export_001",
-                    "project_id": 1,
-                    "format": "m4b",
-                    "status": "completed",
-                    "progress": 1.0,
-                    "output_url": "/api/export/output_001.m4b",
-                    "created_at": "2026-06-25T10:00:00Z",
-                    "completed_at": "2026-06-25T10:30:00Z",
-                }
-            ],
-            "total": 1,
-        },
-        "project-1-autorun-status.json": {
-            "project_id": 1,
-            "run_id": "autorun_1_1719405600",
-            "status": "running",
-            "current_stage": "annotate",
-            "completed_stages": ["extract", "analyze"],
-            "progress": 0.28,
-            "cost_usd": 1.50,
-            "quality_score": None,
-            "started_at": "2026-06-26T09:00:00Z",
-        },
-    }
-
-    for filename, content in SAMPLE_FILES.items():
-        filepath = MOCK_DIR / filename
-        if not filepath.exists():
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(content, f, ensure_ascii=False, indent=2)
-            logger.info(f"Created mock data file: {filepath}")

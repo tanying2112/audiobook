@@ -177,9 +177,7 @@ class MultilingualDubbingManager:
             "ja-JP": CharacterVoice("反派", "ja-JP", "ja-JP-TakehitoNeural", "evil"),
         }
 
-    def add_character_voice(
-        self, character: str, language: str, voice_config: CharacterVoice
-    ):
+    def add_character_voice(self, character: str, language: str, voice_config: CharacterVoice):
         """添加角色声音配置"""
         if character not in self.character_voices:
             self.character_voices[character] = {}
@@ -189,16 +187,12 @@ class MultilingualDubbingManager:
         """添加或更新情感映射"""
         self.emotion_mappings[emotion] = mapping
 
-    def set_translation_quality(
-        self, source_lang: str, target_lang: str, quality: float
-    ):
+    def set_translation_quality(self, source_lang: str, target_lang: str, quality: float):
         """设置语言对之间的翻译质量评分 (0-1)"""
         self.translation_quality[(source_lang, target_lang)] = quality
         self.translation_quality[(target_lang, source_lang)] = quality  # 假设对称
 
-    def get_character_voice(
-        self, character: str, language: str
-    ) -> Optional[CharacterVoice]:
+    def get_character_voice(self, character: str, language: str) -> Optional[CharacterVoice]:
         """获取指定角色在指定语言中的声音配置"""
         if character in self.character_voices:
             return self.character_voices[character].get(language)
@@ -206,9 +200,7 @@ class MultilingualDubbingManager:
 
     def get_emotion_mapping(self, emotion: EmotionType) -> EmotionMapping:
         """获取情感映射"""
-        return self.emotion_mappings.get(
-            emotion, self.emotion_mappings[EmotionType.NEUTRAL]
-        )
+        return self.emotion_mappings.get(emotion, self.emotion_mappings[EmotionType.NEUTRAL])
 
     def translate_text_preserving_markup(
         self,
@@ -245,9 +237,7 @@ class MultilingualDubbingManager:
             placeholders[placeholder] = (char_name, content, "character")
             return placeholder
 
-        protected_text = re.sub(
-            char_pattern, char_replace, protected_text, flags=re.DOTALL
-        )
+        protected_text = re.sub(char_pattern, char_replace, protected_text, flags=re.DOTALL)
 
         # 保护情感标记
         emotion_pattern = r"\(emotion:([^)]+)\)(.*?)\(/emotion\)"
@@ -259,14 +249,10 @@ class MultilingualDubbingManager:
             placeholders[placeholder] = (emotion_name, content, "emotion")
             return placeholder
 
-        protected_text = re.sub(
-            emotion_pattern, emotion_replace, protected_text, flags=re.DOTALL
-        )
+        protected_text = re.sub(emotion_pattern, emotion_replace, protected_text, flags=re.DOTALL)
 
         # 调用 LLM 进行真实翻译
-        translated_text = self._translate_with_llm(
-            protected_text, source_lang, target_lang
-        )
+        translated_text = self._translate_with_llm(protected_text, source_lang, target_lang)
 
         # 恢复占位符
         for placeholder, (name, content, tag_type) in placeholders.items():
@@ -349,23 +335,17 @@ class MultilingualDubbingManager:
         issues = []
 
         if len(original_segments) != len(translated_segments):
-            issues.append(
-                f"片段数量不匹配: 原始 {len(original_segments)} vs 翻译 {len(translated_segments)}"
-            )
+            issues.append(f"片段数量不匹配: 原始 {len(original_segments)} vs 翻译 {len(translated_segments)}")
             return False, issues
 
         for i, (orig, trans) in enumerate(zip(original_segments, translated_segments)):
             # 检查角色是否一致
             if orig.character != trans.character:
-                issues.append(
-                    f"片段 {i+1}: 角色不匹配 - 原始 '{orig.character}' vs 翻译 '{trans.character}'"
-                )
+                issues.append(f"片段 {i+1}: 角色不匹配 - 原始 '{orig.character}' vs 翻译 '{trans.character}'")
 
             # 检查情感是否一致
             if orig.emotion != trans.emotion:
-                issues.append(
-                    f"片段 {i+1}: 情感不匹配 - 原始 '{orig.emotion.value}' vs 翻译 '{trans.emotion.value}'"
-                )
+                issues.append(f"片段 {i+1}: 情感不匹配 - 原始 '{orig.emotion.value}' vs 翻译 '{trans.emotion.value}'")
 
             # 检查文本长度合理性（翻译后不应异常变化）
             if orig.text and trans.text:
@@ -391,9 +371,7 @@ class MultilingualDubbingManager:
         Returns:
             (翻译后的片段列表, 处理报告)
         """
-        logger.info(
-            f"🌍 开始多语言翻译配音: {len(source_segments)} 片段 → {target_language}"
-        )
+        logger.info(f"🌍 开始多语言翻译配音: {len(source_segments)} 片段 → {target_language}")
 
         translated_segments = []
         report = {
@@ -410,9 +388,7 @@ class MultilingualDubbingManager:
         for segment in source_segments:
             try:
                 # 获取目标语言的角色声音
-                target_voice = self.get_character_voice(
-                    segment.character, target_language
-                )
+                target_voice = self.get_character_voice(segment.character, target_language)
                 if not target_voice:
                     # 如果没有特定角色的声音，使用默认声音
                     report["warnings"].append(
@@ -471,9 +447,7 @@ class MultilingualDubbingManager:
                 translated_segments.append(failed_segment)
 
         # 检查情感连续性
-        continuity_passed, continuity_issues = self.check_emotional_continuity(
-            source_segments, translated_segments
-        )
+        continuity_passed, continuity_issues = self.check_emotional_continuity(source_segments, translated_segments)
         report["emotional_continuity_passed"] = continuity_passed
         report["continuity_issues"] = continuity_issues
 
@@ -484,9 +458,7 @@ class MultilingualDubbingManager:
             for issue in continuity_issues[:3]:  # 只显示前3个问题
                 logger.info(f"   - {issue}")
 
-        logger.error(
-            f"📊 翻译完成: {report['successful_translations']} 成功, {report['failed_translations']} 失败"
-        )
+        logger.error(f"📊 翻译完成: {report['successful_translations']} 成功, {report['failed_translations']} 失败")
 
         return translated_segments, report
 
@@ -545,33 +517,25 @@ def main():
 
     logger.info("📋 原始片段:")
     for seg in sample_segments:
-        logger.info(
-            f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:30]}..."
-        )
+        logger.info(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:30]}...")
 
     logger.info("\n" + "=" * 60)
 
     # 翻译到英文
     logger.info("\n🔄 翻译到英语 (en-US)...")
-    en_segments, en_report = dubbing_manager.process_multilingual_dubbing(
-        sample_segments, "en-US"
-    )
+    en_segments, en_report = dubbing_manager.process_multilingual_dubbing(sample_segments, "en-US")
 
     logger.info("\n📋 英文翻译结果:")
     for seg in en_segments:
         if "_FAILED" not in seg.id:
-            logger.info(
-                f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}..."
-            )
+            logger.info(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}...")
             logger.info(
                 f"      声音: {seg.voice_id}, 音调: {seg.pitch_shift:+.1f}半音, "
                 f"速度: {seg.speed_rate:.2f}x, 音量: {seg.volume:.2f}"
             )
 
     logger.info("\n📊 英文翻译报告:")
-    logger.info(
-        f"   情感连续性: {'✅ 通过' if en_report['emotional_continuity_passed'] else '❌ 失败'}"
-    )
+    logger.info(f"   情感连续性: {'✅ 通过' if en_report['emotional_continuity_passed'] else '❌ 失败'}")
     if not en_report["emotional_continuity_passed"]:
         for issue in en_report["continuity_issues"][:2]:
             logger.info(f"   - {issue}")
@@ -580,21 +544,15 @@ def main():
 
     # 翻译到西班牙语
     logger.info("\n🔄 翻译到西班牙语 (es-ES)...")
-    es_segments, es_report = dubbing_manager.process_multilingual_dubbing(
-        sample_segments, "es-ES"
-    )
+    es_segments, es_report = dubbing_manager.process_multilingual_dubbing(sample_segments, "es-ES")
 
     logger.info("\n📋 西班牙语翻译结果:")
     for seg in es_segments:
         if "_FAILED" not in seg.id:
-            logger.info(
-                f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}..."
-            )
+            logger.info(f"   {seg.id}: [{seg.character}:{seg.emotion.value}] {seg.text[:40]}...")
 
     logger.info("\n📊 西班牙语翻译报告:")
-    logger.info(
-        f"   情感连续性: {'✅ 通过' if es_report['emotional_continuity_passed'] else '❌ 失败'}"
-    )
+    logger.info(f"   情感连续性: {'✅ 通过' if es_report['emotional_continuity_passed'] else '❌ 失败'}")
 
     logger.info("\n" + "=" * 60)
     logger.info("🎉 多语言翻译配音演示完成")

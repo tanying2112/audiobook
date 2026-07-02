@@ -27,11 +27,7 @@ class AnnotateParagraphPipeline:
         prompt_dir=None,
         mock_mode: Optional[bool] = None,
     ):
-        self.mock_mode = (
-            mock_mode
-            if mock_mode is not None
-            else os.environ.get("MOCK_LLM", "false").lower() == "true"
-        )
+        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
         # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
@@ -63,12 +59,8 @@ class AnnotateParagraphPipeline:
         formatted = []
         for i, ex in enumerate(examples[:3], 1):
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
     def _build_prompt(self, input_data):
@@ -82,9 +74,7 @@ class AnnotateParagraphPipeline:
             paragraph_index=input_data.paragraph_index,
             chapter_index=input_data.chapter_index,
             book_meta=input_data.book_meta.model_dump(),
-            character_voice_map=[
-                c.model_dump() for c in input_data.character_voice_map
-            ],
+            character_voice_map=[c.model_dump() for c in input_data.character_voice_map],
             emotion_snapshot=input_data.emotion_snapshot.model_dump(),
             story_line_summary=input_data.story_line_summary,
             global_style_notes=input_data.global_style_notes,
@@ -92,15 +82,14 @@ class AnnotateParagraphPipeline:
         )
 
     def run(self, input_data):
-        logger.info(
-            f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})"
-        )
+        logger.info(f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})")
 
         # MOCK: 待真实实现
         # Mock mode: return simulated annotation
         if self.mock_mode:
             return ParagraphAnnotation(
                 paragraph_index=input_data.paragraph_index,
+                text=input_data.paragraph_text,
                 speaker_canonical_name="旁白",
                 is_dialogue=False,
                 emotion="neutral",
@@ -130,6 +119,7 @@ class AnnotateParagraphPipeline:
                 stage="annotate",
                 response_model=ParagraphAnnotation,
                 messages=messages,
+                paragraph_index=input_data.paragraph_index,
             )
             logger.info(
                 f"Paragraph annotation completed: schema_compliance={result.schema_compliance}, "
@@ -151,9 +141,7 @@ class AnnotateParagraphPipeline:
                 tokens_out=result.tokens_out,
                 cost_usd=result.cost_usd,
                 success=True,
-                provider=(
-                    result.model.split("/")[0] if "/" in result.model else result.model
-                ),
+                provider=(result.model.split("/")[0] if "/" in result.model else result.model),
                 model=result.model,
                 difficulty=difficulty,
                 schema_compliance=result.schema_compliance,

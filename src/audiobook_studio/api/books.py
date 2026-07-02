@@ -41,11 +41,7 @@ def update_book(book_id: int, payload: BookSchema, db: Session = Depends(get_db)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     # Exclude id from update
-    update_data = {
-        k: v
-        for k, v in payload.model_dump().items()
-        if k not in ("id",) and v is not None
-    }
+    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
     for field, value in update_data.items():
         setattr(book, field, value)
     db.commit()

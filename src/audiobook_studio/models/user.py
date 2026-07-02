@@ -36,12 +36,8 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
-    )
-    username: Mapped[str] = mapped_column(
-        String(100), unique=True, index=True, nullable=False
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -53,9 +49,7 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
-    roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary=user_roles, back_populates="users"
-    )
+    roles: Mapped[List["Role"]] = relationship("Role", secondary=user_roles, back_populates="users")
     project_permissions: Mapped[List["ProjectPermission"]] = relationship(
         "ProjectPermission",
         foreign_keys="ProjectPermission.user_id",
@@ -94,16 +88,12 @@ class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(
-        String(50), unique=True, index=True, nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
-    users: Mapped[List["User"]] = relationship(
-        "User", secondary=user_roles, back_populates="roles"
-    )
+    users: Mapped[List["User"]] = relationship("User", secondary=user_roles, back_populates="roles")
     permissions: Mapped[List["Permission"]] = relationship(
         "Permission", secondary=role_permissions, back_populates="roles"
     )
@@ -115,16 +105,12 @@ class Permission(Base):
     __tablename__ = "permissions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(
-        String(100), unique=True, index=True, nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
-    roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary=role_permissions, back_populates="permissions"
-    )
+    roles: Mapped[List["Role"]] = relationship("Role", secondary=role_permissions, back_populates="permissions")
 
 
 class ProjectPermission(Base):
@@ -133,12 +119,8 @@ class ProjectPermission(Base):
     __tablename__ = "project_permissions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False, index=True
-    )
-    project_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("projects.id"), nullable=False, index=True
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
     role: Mapped[str] = mapped_column(
         SQLEnum(
             "admin",
@@ -151,13 +133,9 @@ class ProjectPermission(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
-    granted_by: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=True
-    )
+    granted_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Relationships
-    user: Mapped["User"] = relationship(
-        "User", foreign_keys=[user_id], back_populates="project_permissions"
-    )
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="project_permissions")
     project: Mapped["Project"] = relationship("Project", back_populates="permissions")
     grantor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[granted_by])

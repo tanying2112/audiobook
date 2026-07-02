@@ -279,9 +279,7 @@ def create_llm_judge_fn(stage: str, judge_model: str = None):
             return score_a, score_b, output.rationale
 
         except Exception as e:
-            logger.warning(
-                f"LLM Judge evaluation failed: {e}, falling back to heuristic scoring"
-            )
+            logger.warning(f"LLM Judge evaluation failed: {e}, falling back to heuristic scoring")
             # Fallback to heuristic scoring
             score_a = _score_output(output_a, stage)
             score_b = _score_output(output_b, stage)
@@ -514,9 +512,7 @@ def run_ab_test(
             sig = inspect.signature(judge_fn)
             if len(sig.parameters) >= 3:
                 # New signature: (input_data, output_a, output_b) -> (score_a, score_b, rationale)
-                score_a, score_b, rationale = judge_fn(
-                    sample.input_data, sample.output_a, sample.output_b
-                )
+                score_a, score_b, rationale = judge_fn(sample.input_data, sample.output_a, sample.output_b)
             else:
                 # Old signature: (output) -> float
                 score_a = judge_fn(sample.output_a)
@@ -564,21 +560,17 @@ def run_ab_test(
         )
     elif a_wins > b_wins:
         recommendation = (
-            f"❌ 不建议升级: v{samples[0].version_a} 仍优于 "
-            f"v{samples[0].version_b} ({a_wins}/{n} 样本)"
+            f"❌ 不建议升级: v{samples[0].version_a} 仍优于 " f"v{samples[0].version_b} ({a_wins}/{n} 样本)"
         )
     else:
         recommendation = (
-            f"🔶 结果不明确: v{samples[0].version_a} 和 v{samples[0].version_b} "
-            f"差异不大 (平局 {ties}/{n})"
+            f"🔶 结果不明确: v{samples[0].version_a} 和 v{samples[0].version_b} " f"差异不大 (平局 {ties}/{n})"
         )
 
     versions = (samples[0].version_a, samples[0].version_b)
 
     # Compute statistical significance
-    p_value, confidence_interval, is_significant = _compute_statistical_significance(
-        results, significance_level
-    )
+    p_value, confidence_interval, is_significant = _compute_statistical_significance(results, significance_level)
 
     report = ABTestReport(
         stage=stage,
@@ -669,10 +661,7 @@ def run_ab_test_with_pipeline_rerun(
     Returns:
         ABTestReport with statistical comparison
     """
-    from ..feedback.promotion_gate import (
-        _golden_to_pipeline_stage,
-        _run_stage_with_prompt_version,
-    )
+    from ..feedback.promotion_gate import _golden_to_pipeline_stage, _run_stage_with_prompt_version
 
     pipeline_stage = _golden_to_pipeline_stage(stage)
 
@@ -687,18 +676,14 @@ def run_ab_test_with_pipeline_rerun(
 
         try:
             # Run with old version
-            output_a = _run_stage_with_prompt_version(
-                pipeline_stage, old_version, input_data, mock_mode=mock_mode
-            )
+            output_a = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=mock_mode)
             if hasattr(output_a, "model_dump"):
                 output_a = output_a.model_dump()
             elif hasattr(output_a, "dict"):
                 output_a = output_a.dict()
 
             # Run with new version
-            output_b = _run_stage_with_prompt_version(
-                pipeline_stage, new_version, input_data, mock_mode=mock_mode
-            )
+            output_b = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=mock_mode)
             if hasattr(output_b, "model_dump"):
                 output_b = output_b.model_dump()
             elif hasattr(output_b, "dict"):
@@ -777,8 +762,7 @@ def blind_evaluate(
     ab_report.avg_score_a = sum(r.score_a for r in ab_report.results) / n
     ab_report.avg_score_b = sum(r.score_b for r in ab_report.results) / n
     ab_report.improvement_pct = (
-        (ab_report.avg_score_b - ab_report.avg_score_a)
-        / max(ab_report.avg_score_a, 0.001)
+        (ab_report.avg_score_b - ab_report.avg_score_a) / max(ab_report.avg_score_a, 0.001)
     ) * 100
 
     # Recompute statistical significance
@@ -798,13 +782,11 @@ def blind_evaluate(
         )
     elif ab_report.a_wins > ab_report.b_wins:
         ab_report.recommendation = (
-            f"❌ 不建议升级: v{ab_report.version_a} 仍优于 "
-            f"v{ab_report.version_b} ({ab_report.a_wins}/{n} 样本)"
+            f"❌ 不建议升级: v{ab_report.version_a} 仍优于 " f"v{ab_report.version_b} ({ab_report.a_wins}/{n} 样本)"
         )
     else:
         ab_report.recommendation = (
-            f"🔶 结果不明确: v{ab_report.version_a} 和 v{ab_report.version_b} "
-            f"差异不大 (平局 {ab_report.ties}/{n})"
+            f"🔶 结果不明确: v{ab_report.version_a} 和 v{ab_report.version_b} " f"差异不大 (平局 {ab_report.ties}/{n})"
         )
 
     logger.info(

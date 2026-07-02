@@ -6,17 +6,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.audiobook_studio.tts.clone import (
-    AudioQuality,
-    CloningConfig,
-    VoiceCloningEngine,
-    VoicePrint,
-    VoiceSample,
-)
+from src.audiobook_studio.tts.clone import AudioQuality, CloningConfig, VoiceCloningEngine, VoicePrint, VoiceSample
 
-pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — VoiceCloningEngine is a stub, not real usable code"
-)
+pytestmark = pytest.mark.skip(reason="Sprint G Placeholder — VoiceCloningEngine is a stub, not real usable code")
 
 
 class TestAudioQuality:
@@ -115,9 +107,7 @@ def config():
 @pytest.fixture
 def engine(config):
     """Create a VoiceCloningEngine instance with mocked persistence."""
-    with patch.object(VoiceCloningEngine, "_load_voice_prints"), patch.object(
-        VoiceCloningEngine, "_save_voice_prints"
-    ):
+    with patch.object(VoiceCloningEngine, "_load_voice_prints"), patch.object(VoiceCloningEngine, "_save_voice_prints"):
         engine = VoiceCloningEngine(config)
         yield engine
 

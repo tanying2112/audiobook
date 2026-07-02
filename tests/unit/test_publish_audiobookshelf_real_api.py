@@ -11,14 +11,9 @@ class TestAudiobookshelfRealAPI:
     """_real_api_call 真实 HTTP 路径覆盖。"""
 
     def _make_pub(self, mock=True):
-        from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookshelfConfig,
-            AudiobookshelfPublisher,
-        )
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
 
-        cfg = AudiobookshelfConfig(
-            api_url="http://localhost:8080", api_key="test-key", library_id="lib1"
-        )
+        cfg = AudiobookshelfConfig(api_url="http://localhost:8080", api_key="test-key", library_id="lib1")
         with patch.dict("os.environ", {"MOCK_LLM": "true" if mock else "false"}):
             pub = AudiobookshelfPublisher(cfg)
         return pub
@@ -269,9 +264,7 @@ class TestAudiobookshelfRealAPI:
             resp_lib.json.return_value = {"folders": [{"id": "f1"}]}
             resp_search = MagicMock()
             resp_search.status_code = 200
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "测试书"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "测试书"}}}]
             resp_patch = MagicMock()
             resp_patch.status_code = 204
             resp_cover = MagicMock()
@@ -324,9 +317,7 @@ class TestAudiobookshelfRealAPI:
             resp_scan.status_code = 200
             resp_search = MagicMock()
             resp_search.status_code = 200
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "测试书"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "测试书"}}}]
             resp_patch = MagicMock()
             resp_patch.status_code = 204
 
@@ -413,9 +404,7 @@ class TestAudiobookshelfRealAPI:
             resp_scan.status_code = 200
             resp_search = MagicMock()
             resp_search.status_code = 200
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "测试书"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "测试书"}}}]
 
             def mock_get_patch(url, **kwargs):
                 if "search" in url:
@@ -459,9 +448,7 @@ class TestAudiobookshelfRealAPI:
             resp_scan.status_code = 400
             resp_search = MagicMock()
             resp_search.status_code = 200
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "no"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "no"}}}]
 
             def mock_get_scan(url, **kwargs):
                 if "search" in url:
@@ -505,9 +492,7 @@ class TestAudiobookshelfRealAPI:
             resp_search = MagicMock()
             resp_search.status_code = 200
             # Title doesn't match
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "Other Book"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "Other Book"}}}]
 
             def mock_get_nomatch(url, **kwargs):
                 if "search" in url:
@@ -595,9 +580,7 @@ class TestAudiobookshelfRealAPI:
             resp_scan.status_code = 200
             resp_search = MagicMock()
             resp_search.status_code = 200
-            resp_search.json.return_value = [
-                {"id": "item1", "media": {"metadata": {"title": "测试书"}}}
-            ]
+            resp_search.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "测试书"}}}]
             resp_patch = MagicMock()
             resp_patch.status_code = 204
             resp_cover = MagicMock()

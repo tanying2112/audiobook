@@ -172,9 +172,7 @@ class TestAutoRunEndpoints:
         mock_project.chapters = []
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
         with pytest.raises(HTTPException):
-            _run_async(
-                get_intermediate_product(project_id=1, stage="unknown", db=mock_db)
-            )
+            _run_async(get_intermediate_product(project_id=1, stage="unknown", db=mock_db))
 
     def test_get_intermediate_valid_stage(self):
         from src.audiobook_studio.api.auto_run import get_intermediate_product
@@ -189,17 +187,12 @@ class TestAutoRunEndpoints:
         mock_chapter.extracted_text = "test extracted"
         mock_project.chapters = [mock_chapter]
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-        resp = _run_async(
-            get_intermediate_product(project_id=1, stage="extract", db=mock_db)
-        )
+        resp = _run_async(get_intermediate_product(project_id=1, stage="extract", db=mock_db))
         assert resp.stage == "extract"
         assert resp.project_id == 1
 
     def test_all_intermediate_stages(self):
-        from src.audiobook_studio.api.auto_run import (
-            _stage_order,
-            get_intermediate_product,
-        )
+        from src.audiobook_studio.api.auto_run import _stage_order, get_intermediate_product
 
         # Test that all stage names are recognized by checking _stage_order exists
         assert len(_stage_order) == 7
@@ -325,11 +318,7 @@ class TestRunAutoPipeline:
 
     def test_pipeline_initializes_active_run(self):
         """Pipeline sets up _active_runs entry with correct initial state."""
-        from src.audiobook_studio.api.auto_run import (
-            AutoRunConfig,
-            _active_runs,
-            _run_auto_pipeline,
-        )
+        from src.audiobook_studio.api.auto_run import AutoRunConfig, _active_runs, _run_auto_pipeline
 
         _active_runs.clear()
 
@@ -341,9 +330,7 @@ class TestRunAutoPipeline:
                 "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                 new_callable=AsyncMock,
             ):
-                with patch(
-                    "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-                ) as mock_cp:
+                with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                     mock_cp.return_value.has_checkpoint.return_value = False
                     with patch(
                         "src.audiobook_studio.api.auto_run._run_single_stage",
@@ -382,12 +369,7 @@ class TestRunAutoPipeline:
 
     def test_pipeline_skips_checkpointed_stages(self):
         """Pipeline skips stages that have existing checkpoints."""
-        from src.audiobook_studio.api.auto_run import (
-            AutoRunConfig,
-            _active_runs,
-            _run_auto_pipeline,
-            _stage_order,
-        )
+        from src.audiobook_studio.api.auto_run import AutoRunConfig, _active_runs, _run_auto_pipeline, _stage_order
 
         _active_runs.clear()
 
@@ -399,9 +381,7 @@ class TestRunAutoPipeline:
                 "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                 new_callable=AsyncMock,
             ):
-                with patch(
-                    "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-                ) as mock_cp:
+                with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                     # Mark extract and analyze as checkpointed
                     def has_ckpt(stage):
                         return stage in ("extract", "analyze")
@@ -427,11 +407,7 @@ class TestRunAutoPipeline:
 
     def test_pipeline_marks_status_on_exception(self):
         """Pipeline sets status to 'failed' when an exception occurs."""
-        from src.audiobook_studio.api.auto_run import (
-            AutoRunConfig,
-            _active_runs,
-            _run_auto_pipeline,
-        )
+        from src.audiobook_studio.api.auto_run import AutoRunConfig, _active_runs, _run_auto_pipeline
 
         _active_runs.clear()
 
@@ -443,9 +419,7 @@ class TestRunAutoPipeline:
                 "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                 new_callable=AsyncMock,
             ):
-                with patch(
-                    "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-                ) as mock_cp:
+                with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                     mock_cp.return_value.has_checkpoint.return_value = False
                     with patch(
                         "src.audiobook_studio.api.auto_run._run_single_stage",
@@ -463,12 +437,7 @@ class TestRunAutoPipeline:
 
     def test_pipeline_pause_points(self):
         """Pipeline pauses at configured pause points."""
-        from src.audiobook_studio.api.auto_run import (
-            AutoRunConfig,
-            StagePausePoint,
-            _active_runs,
-            _run_auto_pipeline,
-        )
+        from src.audiobook_studio.api.auto_run import AutoRunConfig, StagePausePoint, _active_runs, _run_auto_pipeline
 
         _active_runs.clear()
 
@@ -492,9 +461,7 @@ class TestRunAutoPipeline:
                 "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                 new_callable=AsyncMock,
             ):
-                with patch(
-                    "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-                ) as mock_cp:
+                with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                     mock_cp.return_value.has_checkpoint.return_value = False
 
                     async def track_stages(project_id, stage, config):
@@ -516,11 +483,7 @@ class TestRunAutoPipeline:
 
     def test_pipeline_status_progress_calculation(self):
         """Pipeline status shows correct progress for completed stages."""
-        from src.audiobook_studio.api.auto_run import (
-            _active_runs,
-            _stage_order,
-            get_auto_run_status,
-        )
+        from src.audiobook_studio.api.auto_run import _active_runs, _stage_order, get_auto_run_status
 
         _active_runs.clear()
 
@@ -553,9 +516,7 @@ class TestRunSingleStage:
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         async def run():
-            with patch(
-                "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-            ) as mock_cp:
+            with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
                 # Patch SessionLocal in the auto_run module directly
                 with patch(
@@ -566,9 +527,7 @@ class TestRunSingleStage:
                         "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                         new_callable=AsyncMock,
                     ):
-                        with patch(
-                            "src.audiobook_studio.api.auto_run.run_stage"
-                        ):
+                        with patch("src.audiobook_studio.api.auto_run.run_stage"):
                             await _run_single_stage(9999, "extract", config)
 
         # Should raise ValueError about project not found
@@ -587,9 +546,7 @@ class TestRunSingleStage:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
         async def run():
-            with patch(
-                "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-            ) as mock_cp:
+            with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
                 with patch(
                     "src.audiobook_studio.api.auto_run.SessionLocal",
@@ -602,9 +559,7 @@ class TestRunSingleStage:
                         await _run_single_stage(42, "extract", config)
                         # Should emit progress=1.0 to signal empty chapter list
                         calls = mock_emit.call_args_list
-                        assert any(
-                            c.kwargs.get("progress") == 1.0 for c in calls
-                        )
+                        assert any(c.kwargs.get("progress") == 1.0 for c in calls)
 
         _run_async(run())
 
@@ -620,9 +575,7 @@ class TestRunSingleStage:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
         async def run():
-            with patch(
-                "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-            ) as mock_cp:
+            with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
                 with patch(
                     "src.audiobook_studio.api.auto_run.SessionLocal",
@@ -634,9 +587,7 @@ class TestRunSingleStage:
                     ) as mock_emit:
                         await _run_single_stage(42, "annotate", config)
                         calls = mock_emit.call_args_list
-                        assert any(
-                            c.kwargs.get("progress") == 1.0 for c in calls
-                        )
+                        assert any(c.kwargs.get("progress") == 1.0 for c in calls)
 
         _run_async(run())
 
@@ -653,9 +604,7 @@ class TestRunSingleStage:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
         async def run():
-            with patch(
-                "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-            ) as mock_cp:
+            with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
                 with patch(
                     "src.audiobook_studio.api.auto_run.SessionLocal",
@@ -683,9 +632,7 @@ class TestRunSingleStage:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
         async def run():
-            with patch(
-                "src.audiobook_studio.api.auto_run._get_checkpoint_manager"
-            ) as mock_cp:
+            with patch("src.audiobook_studio.api.auto_run._get_checkpoint_manager") as mock_cp:
                 mock_cp.return_value.is_stage_done.return_value = False
                 with patch(
                     "src.audiobook_studio.api.auto_run.SessionLocal",
@@ -695,15 +642,10 @@ class TestRunSingleStage:
                         "src.audiobook_studio.api.auto_run.emit_pipeline_event",
                         new_callable=AsyncMock,
                     ):
-                        with patch(
-                            "src.audiobook_studio.api.auto_run.run_stage"
-                        ) as mock_run:
+                        with patch("src.audiobook_studio.api.auto_run.run_stage") as mock_run:
                             await _run_single_stage(42, "annotate", config)
                             mock_run.assert_called_once()
                             call_kwargs = mock_run.call_args
-                            assert (
-                                call_kwargs.kwargs.get("target_difficulty")
-                                == "C"
-                            )
+                            assert call_kwargs.kwargs.get("target_difficulty") == "C"
 
         _run_async(run())

@@ -290,9 +290,7 @@ class TestVoiceAnchorManager:
             mock_result.similarity = 0.7
             mock_result.threshold = 0.85
 
-            with patch.object(
-                self.manager._similarity_metric, "compute", return_value=mock_result
-            ):
+            with patch.object(self.manager._similarity_metric, "compute", return_value=mock_result):
                 result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
 
                 assert result is not None
@@ -351,9 +349,7 @@ class TestVoiceAnchorManager:
             mock_result.similarity = 0.9
             mock_result.threshold = 0.85
 
-            with patch.object(
-                self.manager._similarity_metric, "compute", return_value=mock_result
-            ):
+            with patch.object(self.manager._similarity_metric, "compute", return_value=mock_result):
                 result = self.manager.check_drift("narrator", gen_path, chapter_index=2)
 
                 assert result is not None
@@ -478,9 +474,7 @@ class TestVoiceAnchorManager:
             mock_result.similarity = 0.7
             mock_result.threshold = 0.85
 
-            with patch.object(
-                self.manager._similarity_metric, "compute", return_value=mock_result
-            ):
+            with patch.object(self.manager._similarity_metric, "compute", return_value=mock_result):
                 # Trigger drift checks up to the limit + 1
                 for i in range(4):  # 0, 1, 2, 3
                     self.manager.check_drift("narrator", gen_path, chapter_index=3)
