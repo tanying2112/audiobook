@@ -672,6 +672,9 @@ class TestAdminUserEndpointsExtended:
 
     def test_update_user_success(self, client, mock_rbac_manager):
         """Test updating user by admin."""
+        from src.audiobook_studio.auth.models import UserOut
+        from datetime import datetime
+
         mock_user = MagicMock()
         mock_user.id = 1
         mock_user.username = "testuser"
@@ -690,7 +693,7 @@ class TestAdminUserEndpointsExtended:
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"PUT"}:
@@ -698,26 +701,31 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        with patch("src.audiobook_studio.auth.router.UserOut.from_orm") as mock_from_orm:
-            mock_user_out = MagicMock()
-            mock_user_out.model_dump.return_value = {
-                "id": 1, "username": "testuser", "email": "test@example.com",
-                "full_name": "Updated Name", "is_active": True, "is_superuser": False,
-                "roles": [], "project_permissions": [], "created_at": "2024-01-01T00:00:00"
-            }
-            mock_from_orm.return_value = mock_user_out
-            
+
+        # Create a real UserOut instance instead of mocking from_orm
+        user_out = UserOut(
+            id=1,
+            username="testuser",
+            email="test@example.com",
+            full_name="Updated Name",
+            is_active=True,
+            is_superuser=False,
+            roles=[],
+            project_permissions=[],
+            created_at=datetime(2024, 1, 1, 0, 0, 0),
+        )
+        with patch("src.audiobook_studio.auth.router.UserOut.from_orm", return_value=user_out) as mock_from_orm:
+
             response = client.put(
                 "/api/auth/users/1",
                 json={"full_name": "Updated Name"}
             )
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
 
     def test_update_user_not_found(self, client, mock_rbac_manager):
@@ -854,7 +862,7 @@ class TestRoleEndpointsExtended:
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/roles/{role_name}/permissions" and route.methods == {"POST"}:
@@ -862,17 +870,18 @@ class TestRoleEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
+        # Use valid enum value but mock returns False (simulates not found)
         response = client.post(
-            "/api/auth/roles/nonexistent/permissions",
+            "/api/auth/roles/admin/permissions",
             params={"permission_name": "project:read"}
         )
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "Role or permission not found" in response.json()["detail"]
 
@@ -921,7 +930,7 @@ class TestUserRoleEndpoints:
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"POST"}:
@@ -929,16 +938,17 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
+        # Use valid enum value but mock returns False (simulates not found)
         response = client.post(
-            "/api/auth/users/999/roles/nonexistent",
+            "/api/auth/users/999/roles/admin",
         )
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "User or role not found" in response.json()["detail"]
 
@@ -981,7 +991,7 @@ class TestUserRoleEndpoints:
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"DELETE"}:
@@ -989,14 +999,15 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.delete("/api/auth/users/999/roles/nonexistent")
-        
+
+        # Use valid enum value but mock returns False (simulates not found)
+        response = client.delete("/api/auth/users/999/roles/admin")
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "User or role not found" in response.json()["detail"]
 
@@ -1106,44 +1117,55 @@ class TestProjectPermissionEndpoints:
 class TestListProjectPermissions:
     """Tests for listing project permissions."""
 
-    def test_list_project_permissions_success(self, client, mock_rbac_manager):
+    def test_list_project_permissions_success(self, client, test_db, mock_rbac_manager):
         """Test listing project permissions with access."""
-        mock_rbac_manager.check_project_access.return_value = True
-        
-        mock_perm1 = MagicMock()
-        mock_perm1.user_id = 1
-        mock_perm1.project_id = 1
-        mock_perm1.role = "editor"
-        
-        mock_perm2 = MagicMock()
-        mock_perm2.user_id = 2
-        mock_perm2.project_id = 1
-        mock_perm2.role = "viewer"
-        
-        from src.audiobook_studio.models.user import ProjectPermission
-        with patch("src.audiobook_studio.auth.router.db") as mock_db:
-            mock_db.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
-            mock_rbac_manager.get_user.side_effect = [
-                MagicMock(username="user1"),
-                MagicMock(username="user2"),
-            ]
+        from src.audiobook_studio.models.user import User as UserModel, ProjectPermission
+        from datetime import datetime, timezone
 
-            app = client.app
-            def mock_active_user():
-                user = MagicMock()
-                user.id = 1
-                user.is_active = True
-                return user
-            app.dependency_overrides[get_current_active_user] = mock_active_user
-            
-            response = client.get("/api/auth/projects/1/permissions")
-            
-            if get_current_active_user in app.dependency_overrides:
-                del app.dependency_overrides[get_current_active_user]
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 2
+        mock_rbac_manager.check_project_access.return_value = True
+
+        # Create test users in the database
+        user1 = UserModel(
+            id=1,
+            username="user1",
+            email="user1@example.com",
+            hashed_password="hash",
+            is_active=True,
+            is_superuser=False,
+        )
+        user2 = UserModel(
+            id=2,
+            username="user2",
+            email="user2@example.com",
+            hashed_password="hash",
+            is_active=True,
+            is_superuser=False,
+        )
+        test_db.add_all([user1, user2])
+        test_db.commit()
+
+        # Create project permissions in the database
+        perm1 = ProjectPermission(user_id=1, project_id=1, role="editor")
+        perm2 = ProjectPermission(user_id=2, project_id=1, role="viewer")
+        test_db.add_all([perm1, perm2])
+        test_db.commit()
+
+        app = client.app
+        def mock_active_user():
+            user = MagicMock()
+            user.id = 1
+            user.is_active = True
+            return user
+        app.dependency_overrides[get_current_active_user] = mock_active_user
+
+        response = client.get("/api/auth/projects/1/permissions")
+
+        if get_current_active_user in app.dependency_overrides:
+            del app.dependency_overrides[get_current_active_user]
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
 
     def test_list_project_permissions_access_denied(self, client, mock_rbac_manager):
         """Test listing project permissions without access."""
