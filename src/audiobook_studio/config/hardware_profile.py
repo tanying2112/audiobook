@@ -18,6 +18,8 @@ import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..utils.secure_subprocess import get_nvidia_smi, run_command
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +76,7 @@ class HardwareSpecs:
     @staticmethod
     def _check_nvidia_smi() -> bool:
         try:
-            subprocess.run(
+            run_command(
                 ["nvidia-smi", "--version"],
                 capture_output=True,
                 check=True,
@@ -93,7 +95,7 @@ class HardwareSpecs:
         info = {"name": "Unknown", "vram_gb": 0.0, "cuda_version": ""}
         try:
             # Get GPU name and VRAM
-            result = subprocess.run(
+            result = run_command(
                 [
                     "nvidia-smi",
                     "--query-gpu=name,memory.total",
@@ -113,7 +115,7 @@ class HardwareSpecs:
                 info["vram_gb"] = float(mem.strip()) / 1024.0
 
             # Get CUDA version
-            result = subprocess.run(
+            result = run_command(
                 ["nvidia-smi", "--version"],
                 capture_output=True,
                 text=True,

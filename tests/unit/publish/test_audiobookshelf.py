@@ -11,7 +11,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 # Set MOCK_LLM before importing the module (required for mock_mode behavior)
 os.environ["MOCK_LLM"] = "true"
 
-# Mock external dependencies that might cause import issues
+# Mock external dependencies that might cause import issues.
+# Snapshot originals so they can be restored in tearDownModule() to avoid
+# cross-module pollution (e.g. monitoring alert tests patching requests.post).
+_MODULE_MOCK_TARGETS = ["requests", "requests.exceptions", "urllib3", "urllib3.exceptions"]
+_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _MODULE_MOCK_TARGETS}
+
 sys.modules["requests"] = MagicMock()
 sys.modules["requests.exceptions"] = MagicMock()
 sys.modules["urllib3"] = MagicMock()
@@ -388,6 +393,16 @@ class TestAudiobookshelfPublisher(unittest.TestCase):
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+
+def tearDownModule():
+    """Restore third-party sys.modules entries mocked by this suite."""
+    for name in _MODULE_MOCK_TARGETS:
+        original = _ORIGINAL_MODULES.get(name)
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 if __name__ == "__main__":

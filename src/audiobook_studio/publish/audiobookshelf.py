@@ -282,24 +282,23 @@ class AudiobookshelfPublisher:
         book_string = f"{book_title}|{book_author}"
         book_id = hashlib.md5(book_string.encode()).hexdigest()[:12]
 
-        # 模拟偶尔的失败（例如网络问题或重复书籍）
-        import random
-
-        if random.random() < 0.1:  # 10% 的失败率用于演示
-            return {
-                "success": False,
-                "message": "网络连接超时，请稍后重试",
-                "book_id": None,
-            }
-
-        # 检查是否是重复书籍（简化逻辑）
-        if random.random() < 0.05:  # 5% 的概率报告为重复
-            return {
-                "success": False,
-                "message": f"书籍已存在: 《{upload_data.get('title')}》 by {upload_data.get('author')}",
-                "book_id": book_id,
-                "is_duplicate": True,
-            }
+        # 注意：生产代码中移除了随机失败逻辑
+        # 以前的测试/演示代码：
+        # if random.random() < 0.1:  # 10% 的失败率用于演示
+        #     return {
+        #         "success": False,
+        #         "message": "网络连接超时，请稍后重试",
+        #         "book_id": None,
+        #     }
+        #
+        # # 检查是否是重复书籍（简化逻辑）
+        # if random.random() < 0.05:  # 5% 的概率报告为重复
+        #     return {
+        #         "success": False,
+        #         "message": f"书籍已存在: 《{upload_data.get('title')}》 by {upload_data.get('author')}",
+        #         "book_id": book_id,
+        #         "is_duplicate": True,
+        #     }
 
         # 成功响应
         return {

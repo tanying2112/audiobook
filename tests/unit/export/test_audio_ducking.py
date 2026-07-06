@@ -171,7 +171,8 @@ class TestAddSfx:
             assert result == output
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
-            assert "ffmpeg" in cmd
+            # Check that ffmpeg is in the command (could be full path like /usr/local/bin/ffmpeg)
+            assert any("ffmpeg" in str(c) for c in cmd)
             assert "overlay" in str(cmd)
 
     @patch("src.audiobook_studio.export.audio_ducking.subprocess.run")

@@ -90,25 +90,21 @@ app.add_middleware(
 )
 
 # Add ISO Timestamp Middleware (P1-8)
-# Disabled: BaseHTTPMiddleware incompatible with Python 3.14 + Starlette 0.36
-# app.add_middleware(ISOTimestampMiddleware)
+app.add_middleware(ISOTimestampMiddleware)
 
 # Add A/B Test Middleware
-# Disabled: BaseHTTPMiddleware incompatible with Python 3.14 + Starlette 0.36
-# app.add_middleware(ABTestMiddleware)
+app.add_middleware(ABTestMiddleware)
 
 # Instrument with OpenTelemetry
-# Disabled: ObservabilityMiddleware uses BaseHTTPMiddleware incompatible with Python 3.14
-# instrument_app(
-#     app,
-#     service_name="audiobook-studio",
-#     service_version="0.1.0",
-#     otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-#     enable_console_exporter=os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower()
-#     == "true",
-#     prometheus_port=int(os.getenv("PROMETHEUS_PORT", "9090")),
-#     exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
-# )
+instrument_app(
+    app,
+    service_name="audiobook-studio",
+    service_version="0.1.0",
+    otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    enable_console_exporter=os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower() == "true",
+    prometheus_port=int(os.getenv("PROMETHEUS_PORT", "9090")),
+    exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
+)
 
 # Include routers
 app.include_router(auth_router, prefix="/api")  # Auth endpoints at /api/auth/*
@@ -193,4 +189,4 @@ def health_db():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec B104 - standard server binding

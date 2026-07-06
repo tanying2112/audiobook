@@ -12,10 +12,6 @@ import sys
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — translate/publish/self-iteration are stub " "implementations, not real usable code"
-)
-
 sys.path.insert(0, "src")
 
 
@@ -72,9 +68,10 @@ def test_translate_pipeline_instantiation():
     """Test that translate pipeline can be instantiated."""
     from audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 
-    pipeline = TranslateAndDubPipeline(mock_mode=True)
+    pipeline = TranslateAndDubPipeline()
     assert pipeline is not None
-    assert pipeline.mock_mode is True
+    assert pipeline.router is not None
+    assert pipeline.synthesizer is not None
 
 
 def test_semantic_coherence_instantiation():

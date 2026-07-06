@@ -56,6 +56,9 @@ class TestTranslateAndDubPipeline:
     @patch("src.audiobook_studio.pipeline.translate.create_router")
     @patch("src.audiobook_studio.pipeline.translate.SynthesizePipeline")
     def test_translate_text(self, mock_synth, mock_router_cls, mock_ap, mock_vcm):
+        import os
+
+        os.environ["MOCK_LLM"] = "false"  # Ensure non-mock mode for this test
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 
         mock_router = MagicMock()

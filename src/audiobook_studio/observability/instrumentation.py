@@ -5,11 +5,10 @@ import time
 from functools import wraps
 from typing import Callable, Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from .metrics import create_counter, create_histogram, get_meter
 from .tracing import get_tracer
@@ -55,11 +54,15 @@ def _get_http_metrics():
     return _http_duration, _http_requests, _http_errors
 
 
-class ObservabilityMiddleware(BaseHTTPMiddleware):
-    """Middleware for HTTP request tracing and metrics."""
+class ObservabilityMiddleware:
+    """Pure ASGI middleware for HTTP request tracing and metrics.
 
-    def __init__(self, app: FastAPI, exclude_paths: Optional[list] = None):
-        super().__init__(app)
+    Replaces the deprecated BaseHTTPMiddleware subclass that is incompatible
+    with Python 3.14 + Starlette 0.37+.
+    """
+
+    def __init__(self, app, exclude_paths: Optional[list] = None):
+        self.app = app
         self.exclude_paths = exclude_paths or [
             "/health",
             "/metrics",
@@ -69,95 +72,75 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         ]
         self.tracer = get_tracer("audiobook_studio.http")
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Parse request from scope without slow body consumption
+        from starlette.datastructures import Headers as _Headers
+        from starlette.requests import Request as _Request
+
+        # Build a lightweight request representation for path/method/header access
+        scope_headers = _Headers(scope=scope)
+        path = scope.get("path", "")
+        method = scope.get("method", "GET")
+        scheme = scope.get("scheme", "http")
+        server = scope.get("server")
+        hostname = (server[0] if server else "") if server else ""
+
         # Skip excluded paths
-        if request.url.path in self.exclude_paths:
-            return await call_next(request)
+        if path in self.exclude_paths:
+            await self.app(scope, receive, send)
+            return
 
         # Start trace span
-        span_name = f"{request.method} {request.url.path}"
+        span_name = f"{method} {path}"
         with self.tracer.start_as_current_span(span_name) as span:
-            # Add HTTP attributes
-            span.set_attribute("http.method", request.method)
-            span.set_attribute("http.url", str(request.url))
-            span.set_attribute("http.scheme", request.url.scheme)
-            span.set_attribute("http.host", request.url.hostname or "")
-            span.set_attribute("http.target", request.url.path)
-            span.set_attribute("http.user_agent", request.headers.get("user-agent", ""))
+            span.set_attribute("http.method", method)
+            span.set_attribute("http.url", f"{scheme}://{hostname}{path}")
+            span.set_attribute("http.scheme", scheme)
+            span.set_attribute("http.host", hostname)
+            span.set_attribute("http.target", path)
+            span.set_attribute("http.user_agent", scope_headers.get("user-agent", ""))
 
             start_time = time.perf_counter()
 
-            try:
-                response = await call_next(request)
+            # Wrap send to capture response status and body
+            status_code: list = []
+            body_chunks: list = []
 
-                # Record success metrics
+            async def send_wrapper(message: dict) -> None:
+                if message["type"] == "http.response.start":
+                    status_code.append(message["status"])
+                    span.set_attribute("http.status_code", message["status"])
+                elif message["type"] == "http.response.body":
+                    body_chunks.append(message.get("body", b""))
+                await send(message)
+
+            try:
+                await self.app(scope, receive, send_wrapper)
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 http_duration, http_requests, http_errors = _get_http_metrics()
+                sc = status_code[0] if status_code else 200
 
-                http_duration.record(
-                    duration_ms,
-                    attributes={
-                        "method": request.method,
-                        "path": request.url.path,
-                        "status_code": str(response.status_code),
-                    },
-                )
-                http_requests.add(
-                    1,
-                    attributes={
-                        "method": request.method,
-                        "path": request.url.path,
-                        "status_code": str(response.status_code),
-                    },
-                )
+                http_duration.record(duration_ms, attributes={"method": method, "path": path, "status_code": str(sc)})
+                http_requests.add(1, attributes={"method": method, "path": path, "status_code": str(sc)})
 
-                # Add response attributes to span
-                span.set_attribute("http.status_code", response.status_code)
-                if response.status_code >= 400:
-                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
-                    if response.status_code >= 500:
-                        http_errors.add(
-                            1,
-                            attributes={
-                                "method": request.method,
-                                "path": request.url.path,
-                            },
-                        )
+                if sc >= 400:
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {sc}"))
+                    if sc >= 500:
+                        http_errors.add(1, attributes={"method": method, "path": path})
                 else:
                     span.set_status(Status(StatusCode.OK))
 
-                return response
-
             except Exception as e:
-                # Record error metrics
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 http_duration, http_requests, http_errors = _get_http_metrics()
-
-                http_duration.record(
-                    duration_ms,
-                    attributes={
-                        "method": request.method,
-                        "path": request.url.path,
-                        "status_code": "500",
-                    },
-                )
-                http_requests.add(
-                    1,
-                    attributes={
-                        "method": request.method,
-                        "path": request.url.path,
-                        "status_code": "500",
-                    },
-                )
-                http_errors.add(
-                    1,
-                    attributes={
-                        "method": request.method,
-                        "path": request.url.path,
-                    },
-                )
-
-                # Record exception in span
+                sc = status_code[0] if status_code else 500
+                http_duration.record(duration_ms, attributes={"method": method, "path": path, "status_code": str(sc)})
+                http_requests.add(1, attributes={"method": method, "path": path, "status_code": str(sc)})
+                http_errors.add(1, attributes={"method": method, "path": path})
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise

@@ -156,7 +156,8 @@ class TestSynthesizePipelineMockMode:
         # Mock creates .wav file
         wav_path = output_path.with_suffix(".wav")
         assert wav_path.exists()
-        assert duration == 3000  # Mock returns 3000ms
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_kokoro_mock_synthesis(self, tmp_path):
         """Test Kokoro mock synthesis."""
@@ -166,7 +167,8 @@ class TestSynthesizePipelineMockMode:
         duration = pipeline._synthesize_kokoro("测试文本", "zh-CN-XiaoxiaoNeural", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 3000
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_edge_mock_synthesis(self, tmp_path):
         """Test Edge-TTS mock synthesis."""
@@ -176,7 +178,8 @@ class TestSynthesizePipelineMockMode:
         duration = pipeline._synthesize_edge("测试文本", "zh-CN-XiaoxiaoNeural", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_azure_mock_synthesis(self, tmp_path):
         """Test Azure TTS mock synthesis."""
@@ -186,7 +189,8 @@ class TestSynthesizePipelineMockMode:
         duration = pipeline._synthesize_azure("测试文本", "zh-CN-XiaoxiaoNeural", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_gcp_mock_synthesis(self, tmp_path):
         """Test GCP TTS mock synthesis."""
@@ -196,7 +200,8 @@ class TestSynthesizePipelineMockMode:
         duration = pipeline._synthesize_gcp("测试文本", "zh-CN-Standard-A", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
 
 class TestSynthesizePipelineRun:
@@ -241,7 +246,8 @@ class TestSynthesizePipelineRun:
         assert segments[0].segment_id == "book_1_ch1_p0"
         assert segments[0].engine == "kokoro"  # prefer_local=True -> kokoro
         assert segments[0].voice_id == "zh-CN-XiaoxiaoNeural"
-        assert segments[0].duration_ms == 3000
+        # Duration based on text length (~50 chars/sec, min 1000ms): "这是第 1 段测试文本。" = 12 chars -> 1000ms
+        assert segments[0].duration_ms == 1000
 
     def test_run_multiple_paragraphs_mock(self, tmp_path):
         """Test run with multiple paragraphs in mock mode."""
@@ -254,6 +260,9 @@ class TestSynthesizePipelineRun:
         assert segments[0].segment_id == "book_1_ch1_p0"
         assert segments[1].segment_id == "book_1_ch1_p1"
         assert segments[2].segment_id == "book_1_ch1_p2"
+        # Each paragraph has ~12 chars -> 1000ms minimum
+        for seg in segments:
+            assert seg.duration_ms == 1000
 
     def test_run_incremental_skip_unchanged(self, tmp_path):
         """Test incremental synthesis skips unchanged text."""
@@ -768,7 +777,8 @@ class TestSynthesizePipelineMockModeAdvanced:
 
         # Should create output file directly
         assert output_path.exists()
-        assert duration == 3000
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_mock_edge_direct_write(self, tmp_path):
         """Test mock Edge writes directly to output path."""
@@ -778,7 +788,8 @@ class TestSynthesizePipelineMockModeAdvanced:
         duration = pipeline._synthesize_edge("测试文本", "zh-CN-XiaoxiaoNeural", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_mock_azure_creation(self, tmp_path):
         """Test mock Azure TTS creates file."""
@@ -788,7 +799,8 @@ class TestSynthesizePipelineMockModeAdvanced:
         duration = pipeline._synthesize_azure("测试文本", "zh-CN-XiaoxiaoNeural", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
     def test_mock_gcp_creation(self, tmp_path):
         """Test mock GCP TTS creates file."""
@@ -798,7 +810,8 @@ class TestSynthesizePipelineMockModeAdvanced:
         duration = pipeline._synthesize_gcp("测试文本", "zh-CN-Standard-A", {}, output_path)
 
         assert output_path.exists()
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "测试文本" = 4 chars -> 1000ms
+        assert duration == 1000
 
 
 class TestSynthesizePipelineRealEngines:

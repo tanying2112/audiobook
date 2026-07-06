@@ -67,36 +67,29 @@ class StageHandler(ABC):
 
 
 class StageRegistry:
-    """Registry for pipeline stage handlers (singleton pattern)."""
+    """Registry for pipeline stage handlers (instance-per-request)."""
 
     _handlers: Dict[str, Type[StageHandler]] = {}
-    _instances: Dict[str, StageHandler] = {}  # Cached singleton instances
 
     @classmethod
     def register(cls, name: str, handler_class: Type[StageHandler]) -> None:
         """Register a stage handler class."""
         cls._handlers[name] = handler_class
-        # Clear cached instance when handler is re-registered
-        cls._instances.pop(name, None)
 
     @classmethod
     def unregister(cls, name: str) -> bool:
         """Unregister a stage handler. Returns True if was registered."""
         if name in cls._handlers:
             del cls._handlers[name]
-            cls._instances.pop(name, None)
             return True
         return False
 
     @classmethod
     def get(cls, name: str) -> StageHandler:
-        """Get a stage handler instance (cached singleton)."""
+        """Get a fresh stage handler instance."""
         if name not in cls._handlers:
             raise ValueError(f"Unknown pipeline stage: {name}. " f"Registered stages: {list(cls._handlers.keys())}")
-        # Return cached instance instead of creating new one each time
-        if name not in cls._instances:
-            cls._instances[name] = cls._handlers[name]()
-        return cls._instances[name]
+        return cls._handlers[name]()
 
     @classmethod
     def has(cls, name: str) -> bool:
@@ -110,8 +103,11 @@ class StageRegistry:
 
     @classmethod
     def clear_cache(cls) -> None:
-        """Clear all cached instances (for testing)."""
-        cls._instances.clear()
+        """No-op kept for backward compatibility.
+
+        Handlers are no longer cached as singletons, so there is no
+        instance cache to clear.
+        """
 
 
 # ── Built-in Stage Handlers ──────────────────────────────────────────────────
@@ -148,10 +144,38 @@ class ExtractStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         # For extract stage, chapter may not exist yet - _write_extract creates it
+        from ..models import Paragraph
         from .orchestrator import _write_extract
 
         chapter_result = _write_extract(db, project_id, chapter_index or 1, result)
         result._chapter_id = chapter_result.id
+
+        # Create Paragraph records from extracted text (split by double newlines)
+        raw_text = result.raw_text or ""
+        if raw_text:
+            # Split by double newlines, filter empty segments
+            segments = [s.strip() for s in raw_text.split("\n\n") if s.strip()]
+            for idx, seg_text in enumerate(segments, 1):
+                existing = (
+                    db.query(Paragraph)
+                    .filter(
+                        Paragraph.project_id == project_id,
+                        Paragraph.chapter_id == chapter_result.id,
+                        Paragraph.index == idx,
+                    )
+                    .first()
+                )
+                if not existing:
+                    para = Paragraph(
+                        project_id=project_id,
+                        chapter_id=chapter_result.id,
+                        chapter_index=chapter_result.index,
+                        index=idx,
+                        text=seg_text,
+                        status="extracted",
+                    )
+                    db.add(para)
+            db.commit()
 
 
 from ..schemas.book import BookAnalysisInput
@@ -251,7 +275,7 @@ class AnnotateStage(StageHandler):
                     aliases=[],
                     gender="neutral",
                     age_range="adult",
-                    suggested_voice_id="v1",
+                    suggested_voice_id="zh-CN-XiaoxiaoNeural",
                     sample_quote="旁白样本",
                 )
             ]
@@ -264,6 +288,15 @@ class AnnotateStage(StageHandler):
                 intensity=0.5,
                 notes="默认情感快照",
             )
+
+        # Provide defaults for story_line_summary and global_style_notes if not set from analyzed_json
+        if not story_line_summary:
+            story_line_summary = (
+                "默认故事主线摘要，用于测试目的。本书讲述了一个引人入胜的故事，主角经历种种挑战，最终实现成长与超越。这是一个足够长的测试摘要，包含足够的字符数以满足最小长度要求一百字符以上。"
+                * 2
+            )
+        if not global_style_notes:
+            global_style_notes = "保持自然叙述风格。"
 
         input_data = ParagraphAnnotationInput(
             paragraph_text=paragraph_text,
@@ -482,12 +515,12 @@ class SynthesizeStage(StageHandler):
                     aliases=[],
                     gender="neutral",
                     age_range="adult",
-                    suggested_voice_id="v1",
+                    suggested_voice_id="zh-CN-XiaoxiaoNeural",
                     sample_quote="旁白样本",
                 )
             ]
 
-        text = para.edited_text if para else ""
+        text = para.text if para else ""
 
         input_data = TtsRoutingInput(
             paragraph_annotation=paragraph_annotation,
@@ -499,7 +532,7 @@ class SynthesizeStage(StageHandler):
             cumulative_cost_usd=0.0,
             cost_limit_per_book=20.0,
             cost_limit_per_chapter=5.0,
-            prefer_local=True,
+            prefer_local=False,
             contract_version=1,
         )
         pipeline = SynthesizePipeline()

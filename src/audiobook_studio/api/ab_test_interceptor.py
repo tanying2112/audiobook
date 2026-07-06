@@ -8,10 +8,9 @@ import hashlib
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request
 
 
 @dataclass
@@ -188,23 +187,34 @@ class ABTestAllocator:
         pass
 
 
-class ABTestMiddleware(BaseHTTPMiddleware):
-    """A/B 测试中间件 - 自动注入 prompt 版本到请求状态."""
+class ABTestMiddleware:
+    """A/B 测试中间件 - 自动注入 prompt 版本到请求状态 (纯 ASGI)."""
 
     def __init__(self, app, allocator: ABTestAllocator = None):
-        super().__init__(app)
+        self.app = app
         self.allocator = allocator or ABTestAllocator()
 
-    async def dispatch(self, request: Request, call_next):
-        # 提取上下文信息
-        book_id = request.headers.get("X-Book-ID", "")
-        user_id = request.headers.get("X-User-ID", "")
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # 尝试从路径参数获取
-        if not book_id and hasattr(request, "path_params"):
-            book_id = request.path_params.get("book_id", "") or request.path_params.get("project_id", "")
+        # Extract context from headers
+        headers = scope.get("headers", [])
+        book_id = ""
+        user_id = ""
+        for key, val in headers:
+            if key == b"x-book-id":
+                book_id = val.decode("latin-1")
+            elif key == b"x-user-id":
+                user_id = val.decode("latin-1")
 
-        # 为每个 pipeline stage 分配变体
+        # Try path params
+        if not book_id:
+            path_params = scope.get("path_params", {})
+            book_id = path_params.get("book_id", "") or path_params.get("project_id", "")
+
+        # Allocate variants for each pipeline stage
         stage_versions = {}
         for stage in [
             "extract",
@@ -214,23 +224,27 @@ class ABTestMiddleware(BaseHTTPMiddleware):
             "tts_routing",
             "quality_judge",
         ]:
-            version = self.allocator.get_prompt_version(stage, book_id, user_id, request)
+            version = self.allocator.get_prompt_version(stage, book_id, user_id)
             stage_versions[stage] = version
 
-        # 注入到 request.state
-        request.state.ab_test_versions = stage_versions
-        request.state.book_id = book_id
-        request.state.user_id = user_id
+        # Inject into scope state (pure ASGI equivalent of request.state)
+        if "state" not in scope:
+            scope["state"] = {}
+        scope["state"]["ab_test_versions"] = stage_versions
+        scope["state"]["book_id"] = book_id
+        scope["state"]["user_id"] = user_id
 
-        # 继续处理
-        response = await call_next(request)
+        # Wrap send to inject response header
+        version_header = ",".join(f"{k}={v}" for k, v in stage_versions.items())
+        version_header_bytes = version_header.encode("latin-1")
 
-        # 在响应头中返回分配信息 (便于调试)
-        if stage_versions:
-            version_header = ",".join(f"{k}={v}" for k, v in stage_versions.items())
-            response.headers["X-AB-Test-Versions"] = version_header
+        async def send_wrapper(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", []))
+                message["headers"].append((b"x-ab-test-versions", version_header_bytes))
+            await send(message)
 
-        return response
+        await self.app(scope, receive, send_wrapper)
 
 
 # 依赖注入：获取当前请求的 prompt 版本

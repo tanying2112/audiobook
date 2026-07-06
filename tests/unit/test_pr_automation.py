@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ import pytest
 from src.audiobook_studio.feedback.pr_automation import (
     MergeResult,
     PRResult,
+    _auto_merge_pr,
     _commit_prompt_changes,
     _create_github_pr,
     _create_pr_branch,
@@ -41,7 +43,9 @@ class TestPRAutomationHelpers:
             result = _run_command(["echo", "hello"])
             assert result.returncode == 0
             assert result.stdout == "success"
-            mock_run.assert_called_once_with(["echo", "hello"], cwd=None, capture_output=True, text=True)
+            mock_run.assert_called_once_with(
+                ["/bin/echo", "hello"], cwd=None, timeout=60, capture_output=True, text=True, check=True
+            )
 
     def test_run_command_failure(self):
         with patch("subprocess.run") as mock_run:
@@ -282,17 +286,32 @@ class TestPRAutomationHelpers:
             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
             patch("time.sleep"),
         ):
-            # Simulate timeout by making datetime.now() always return a time before timeout
-            mock_now = MagicMock()
-            mock_now.timestamp.return_value = 1000.0
-            mock_dt.now.return_value = mock_now
-            mock_dt.now.return_value.timestamp.return_value = 1000.0  # never advances
+            # We'll control the time to simulate a timeout
+            fixed_time = datetime.datetime(2023, 1, 1, 12, 0, 0)
+            call_count = 0
 
+            def mock_now_side_effect():
+                nonlocal call_count
+                call_count += 1
+                # We want:
+                #   Call 1: start_time -> fixed_time
+                #   Call 2: condition of first iteration -> fixed_time (so elapsed=0)
+                #   Call 3: condition of second iteration -> fixed_time + 1 second (so elapsed=1, which is not < timeout_seconds=1)
+                if call_count <= 2:
+                    return fixed_time
+                else:
+                    return fixed_time + datetime.timedelta(seconds=1)
+
+            mock_dt.now.side_effect = mock_now_side_effect
+
+            # The _run_command always returns pending checks (so the CI is never complete)
             mock_result = MagicMock(spec=subprocess.CompletedProcess)
             mock_result.returncode = 0
-            mock_result.stdout = "[]"  # no checks
+            mock_result.stdout = '[{"name": "check1", "state": "PENDING", "conclusion": ""}]'
             mock_run.return_value = mock_result
 
+            # Call the function with a timeout of 1 second and poll_interval of 1 second
+            # We expect it to time out because the CI never completes.
             result = _wait_for_ci_checks(123, timeout_seconds=1, poll_interval=1)
             assert result is False  # timed out
 
@@ -302,22 +321,57 @@ class TestPRAutomationHelpers:
             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
             patch("time.sleep"),
         ):
-            # First call returns incomplete checks, second call returns completed and passed
-            mock_result1 = MagicMock(spec=subprocess.CompletedProcess)
-            mock_result1.returncode = 0
-            mock_result1.stdout = '[{"name": "check1", "state": "PENDING", "conclusion": ""}]'
+            # We'll control the time to simulate success on the second check
+            fixed_time = datetime.datetime(2023, 1, 1, 12, 0, 0)
+            call_count = 0
 
-            mock_result2 = MagicMock(spec=subprocess.CompletedProcess)
-            mock_result2.returncode = 0
-            mock_result2.stdout = '[{"name": "check1", "state": "COMPLETED", "conclusion": "SUCCESS"}]'
+            def mock_now_side_effect():
+                nonlocal call_count
+                call_count += 1
+                # We want:
+                #   Call 1: start_time -> fixed_time
+                #   Call 2: condition of first iteration -> fixed_time (so elapsed=0) -> run command and sleep
+                #   Call 3: condition of second iteration -> fixed_time + 1 second (so elapsed=1) -> but we want the check to pass at this point?
+                #   Actually, we want the check to pass on the second iteration (after one sleep).
+                #   However, note that the condition is checked at the beginning of the iteration.
+                #   We want to run the command twice:
+                #       First iteration: check returns incomplete -> then we sleep
+                #       Second iteration: check returns complete and passed -> then we return True
+                #   So we need:
+                #       Call 1: start_time -> fixed_time
+                #       Call 2: condition of iter1 -> fixed_time (elapsed=0) -> run command (returns incomplete) -> sleep
+                #       Call 3: condition of iter2 -> fixed_time + 1 second (elapsed=1) -> run command (returns complete and passed) -> return True
+                #   But note: the function returns True immediately after seeing the check passed, without sleeping again.
+                #   So we break out of the loop and return True.
+                #
+                #   However, we are also mocking time.sleep to do nothing, so we don't actually wait.
+                #
+                #   We'll set the _run_command to return incomplete on the first call and complete on the second.
+                if call_count == 1:
+                    return fixed_time
+                elif call_count == 2:
+                    return fixed_time
+                elif call_count == 3:
+                    return fixed_time + datetime.timedelta(seconds=1)
+                else:
+                    # This should not happen
+                    return fixed_time
 
-            mock_run.side_effect = [mock_result1, mock_result2]
+            mock_dt.now.side_effect = mock_now_side_effect
 
-            # Mock datetime to advancing time
-            mock_now = MagicMock()
-            mock_now.timestamp.side_effect = [1000.0, 1000.0, 1000.0]  # same time for simplicity
-            mock_dt.now.return_value = mock_now
+            # The _run_command returns:
+            #   First call: incomplete checks (so we continue)
+            #   Second call: completed and passed (so we return True)
+            mock_result_incomplete = MagicMock(spec=subprocess.CompletedProcess)
+            mock_result_incomplete.returncode = 0
+            mock_result_incomplete.stdout = '[{"name": "check1", "state": "PENDING", "conclusion": ""}]'
+            mock_result_complete = MagicMock(spec=subprocess.CompletedProcess)
+            mock_result_complete.returncode = 0
+            mock_result_complete.stdout = '[{"name": "check1", "state": "COMPLETED", "conclusion": "SUCCESS"}]'
+            mock_run.side_effect = [mock_result_incomplete, mock_result_complete]
 
+            # Call the function with a timeout of 10 seconds and poll_interval of 1 second
+            # We expect it to return True because the checks pass on the second iteration.
             result = _wait_for_ci_checks(123, timeout_seconds=10, poll_interval=1)
             assert result is True
 
@@ -327,21 +381,38 @@ class TestPRAutomationHelpers:
             patch("src.audiobook_studio.feedback.pr_automation.datetime") as mock_dt,
             patch("time.sleep"),
         ):
-            # First call returns incomplete then completed but failed
-            mock_result1 = MagicMock(spec=subprocess.CompletedProcess)
-            mock_result1.returncode = 0
-            mock_result1.stdout = '[{"name": "check1", "state": "PENDING", "conclusion": ""}]'
+            # We'll control the time to simulate failure on the second check
+            fixed_time = datetime.datetime(2023, 1, 1, 12, 0, 0)
+            call_count = 0
 
-            mock_result2 = MagicMock(spec=subprocess.CompletedProcess)
-            mock_result2.returncode = 0
-            mock_result2.stdout = '[{"name": "check1", "state": "COMPLETED", "conclusion": "FAILURE"}]'
+            def mock_now_side_effect():
+                nonlocal call_count
+                call_count += 1
+                # Similar to the success test, but the second check returns a failed conclusion
+                if call_count == 1:
+                    return fixed_time
+                elif call_count == 2:
+                    return fixed_time
+                elif call_count == 3:
+                    return fixed_time + datetime.timedelta(seconds=1)
+                else:
+                    return fixed_time
 
-            mock_run.side_effect = [mock_result1, mock_result2]
+            mock_dt.now.side_effect = mock_now_side_effect
 
-            mock_now = MagicMock()
-            mock_now.timestamp.side_effect = [1000.0, 1000.0, 1000.0]
-            mock_dt.now.return_value = mock_now
+            # The _run_command returns:
+            #   First call: incomplete checks (so we continue)
+            #   Second call: completed but failed (so we return False)
+            mock_result_incomplete = MagicMock(spec=subprocess.CompletedProcess)
+            mock_result_incomplete.returncode = 0
+            mock_result_incomplete.stdout = '[{"name": "check1", "state": "PENDING", "conclusion": ""}]'
+            mock_result_failed = MagicMock(spec=subprocess.CompletedProcess)
+            mock_result_failed.returncode = 0
+            mock_result_failed.stdout = '[{"name": "check1", "state": "COMPLETED", "conclusion": "FAILURE"}]'
+            mock_run.side_effect = [mock_result_incomplete, mock_result_failed]
 
+            # Call the function with a timeout of 10 seconds and poll_interval of 1 second
+            # We expect it to return False because the checks fail on the second iteration.
             result = _wait_for_ci_checks(123, timeout_seconds=10, poll_interval=1)
             assert result is False
 
@@ -440,10 +511,14 @@ class TestPRAutomationHelpers:
             mock_run.return_value = mock_result
 
             # Mock datetime.now to be 2023-01-11 (10 days later)
-            mock_now = MagicMock()
-            mock_dt.now.return_value = mock_now
-            # Make fromisoformat work - return a datetime that when subtracted gives 10 days
-            mock_dt.fromisoformat.return_value = mock_now.replace(day=1)  # simplified
+            fixed_now = datetime.datetime(2023, 1, 11)
+            mock_dt.now.return_value = fixed_now
+            # We need to mock fromisoformat to return a datetime object for the string "2023-01-01T00:00:00Z"
+            # Note: the string in the mock_list is "2023-01-01T00:00:00Z", but fromisoformat doesn't handle the 'Z'.
+            # We'll replace the 'Z' with '+00:00' or we can use a different approach.
+            # Since the test is using a fixed string, we can mock fromisoformat to return a datetime for 2023-01-01.
+            # We'll ignore the timezone for simplicity.
+            mock_dt.fromisoformat.return_value = datetime.datetime(2023, 1, 1)
 
             result = close_stale_prompt_prs(days=7)
             assert result == 1
@@ -458,14 +533,19 @@ class TestPRAutomationIntegration:
     @patch("src.audiobook_studio.feedback.pr_automation._push_branch")
     @patch("src.audiobook_studio.feedback.pr_automation._create_github_pr")
     def test_create_prompt_upgrade_pr_success(
-        self, mock_create_pr, mock_commit, mock_push, mock_create_pr_func, mock_get_root
+        self,
+        mock_create_github_pr,
+        mock_push_branch,
+        mock_commit_prompt_changes,
+        mock_create_pr_branch,
+        mock_get_git_repo_root,
     ):
         # Setup mocks
-        mock_get_root.return_value = Path("/tmp/repo")
-        mock_create_pr.return_value = "test-branch"
-        mock_commit.return_value = True
-        mock_push.return_value = True
-        mock_create_pr_func.return_value = PRResult(
+        mock_get_git_repo_root.return_value = Path("/tmp/repo")
+        mock_create_pr_branch.return_value = "test-branch"
+        mock_commit_prompt_changes.return_value = True
+        mock_push_branch.return_value = True
+        mock_create_github_pr.return_value = PRResult(
             success=True, pr_number=123, pr_url="https://github.com/user/repo/pull/123", branch_name="test-branch"
         )
 
@@ -473,11 +553,11 @@ class TestPRAutomationIntegration:
         assert result.success is True
         assert result.pr_number == 123
         # Verify all steps were called
-        mock_get_root.assert_called_once()
-        mock_create_pr.assert_called_once_with("main", "edit_for_tts", 2)
-        mock_commit.assert_called_once_with("edit_for_tts", 2, None)
-        mock_push.assert_called_once_with("test-branch")
-        mock_create_pr_func.assert_called_once()
+        mock_get_git_repo_root.assert_called_once()
+        mock_create_pr_branch.assert_called_once_with("main", "edit_for_tts", 2)
+        mock_commit_prompt_changes.assert_called_once_with("edit_for_tts", 2)
+        mock_push_branch.assert_called_once_with("test-branch")
+        mock_create_github_pr.assert_called_once()
 
     @patch("src.audiobook_studio.feedback.pr_automation._get_git_repo_root")
     def test_create_prompt_upgrade_pr_not_git_repo(self, mock_get_root):
@@ -523,7 +603,7 @@ class TestPRAutomationIntegration:
         assert result.success is False
         assert "Failed to push branch" in result.error
 
-    @patch("src.audiobook_studio.feedback.pr_automation.wait_for_ci_checks")
+    @patch("src.audiobook_studio.feedback.pr_automation._wait_for_ci_checks")
     @patch("src.audiobook_studio.feedback.pr_automation._auto_merge_pr")
     def test_monitor_and_merge_pr_success(self, mock_auto_merge, mock_wait_for_ci):
         mock_wait_for_ci.return_value = True
@@ -533,17 +613,17 @@ class TestPRAutomationIntegration:
         assert result.success is True
         assert result.merged is True
         assert result.merge_commit_sha == "abc123"
-        mock_wait_for_ci.assert_called_once_with(123, timeout_seconds=1800, merge_method="squash")
+        mock_wait_for_ci.assert_called_once_with(123, timeout_seconds=1800)
         mock_auto_merge.assert_called_once_with(123, merge_method="squash")
 
-    @patch("src.audiobook_studio.feedback.pr_automation.wait_for_ci_checks")
+    @patch("src.audiobook_studio.feedback.pr_automation._wait_for_ci_checks")
     def test_monitor_and_merge_pr_ci_failure(self, mock_wait_for_ci):
         mock_wait_for_ci.return_value = False  # CI checks failed
 
         result = monitor_and_merge_pr(123)
         assert result.success is False
         assert "CI checks failed or timed out" in result.error
-        mock_wait_for_ci.assert_called_once_with(123, timeout_seconds=1800, merge_method="squash")
+        mock_wait_for_ci.assert_called_once_with(123, timeout_seconds=1800)
 
 
 if __name__ == "__main__":

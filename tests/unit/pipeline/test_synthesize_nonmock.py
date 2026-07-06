@@ -8,6 +8,47 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 
+# Record the original sys.modules entries for third-party modules this suite
+# mocks at import time. These are restored in tearDownModule() so the mocks do
+# not leak into other test modules (notably instructor -> LLM client tests).
+_MODULE_MOCK_TARGETS = [
+    "edge_tts",
+    "azure",
+    "azure.cognitiveservices",
+    "azure.cognitiveservices.speech",
+    "google",
+    "google.cloud",
+    "google.cloud.texttospeech",
+    "google.cloud.texttospeech_v1",
+    "google.protobuf",
+    "instructor",
+    "opentelemetry",
+    "opentelemetry.metrics",
+    "opentelemetry.trace",
+    "opentelemetry.exporter",
+    "opentelemetry.exporter.prometheus",
+    "opentelemetry.exporter.otlp",
+    "opentelemetry.exporter.otlp.proto",
+    "opentelemetry.exporter.otlp.proto.grpc",
+    "opentelemetry.exporter.otlp.proto.grpc.trace_exporter",
+    "opentelemetry.sdk",
+    "opentelemetry.sdk.metrics",
+    "opentelemetry.sdk.metrics.export",
+    "opentelemetry.sdk.trace",
+    "opentelemetry.sdk.trace.export",
+    "opentelemetry.sdk.resources",
+    "langfuse",
+    "langfuse.decorators",
+    "langfuse.client",
+]
+_RECORD_TO_RESTORE = _MODULE_MOCK_TARGETS + [
+    "audiobook_studio.tts",
+    "audiobook_studio.tts.kokoro_backend",
+    "audiobook_studio.tts.engine",
+    "audiobook_studio.tts.clone",
+]
+_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _RECORD_TO_RESTORE}
+
 # Mocks to prevent ModuleNotFoundError
 sys.modules["edge_tts"] = MagicMock()
 sys.modules["audiobook_studio.tts"] = MagicMock()
@@ -341,6 +382,24 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
     # We'll output the test file as is and note that the user may need to fix any typos.
     # For the purpose of this task, we have demonstrated the path alignment and the use of AsyncMock.
     # We will now output the test file and consider the task complete.
+
+
+def tearDownModule():
+    """Restore third-party sys.modules entries mocked by this suite.
+
+    Prevents cross-module pollution (e.g. LLM client tests failing because
+    ``instructor`` was replaced with a MagicMock, or TTS clone tests failing
+    because ``audiobook_studio.tts.clone`` was a stale MagicMock).
+    """
+    for name in _RECORD_TO_RESTORE:
+        original = _ORIGINAL_MODULES.get(name)
+        # For audiobook_studio.* internal modules, popping the mock allows the
+        # real implementation to be re-imported by later tests instead of using
+        # a stale MagicMock that breaks unrelated TTS clone tests.
+        if name.startswith("audiobook_studio.") or original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 if __name__ == "__main__":

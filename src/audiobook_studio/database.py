@@ -70,6 +70,7 @@ def init_db() -> None:
         book,
         chapter,
         character,
+        collaboration,
         emotion_snapshot,
         feedback_record,
         paragraph,

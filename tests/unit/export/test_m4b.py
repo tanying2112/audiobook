@@ -103,7 +103,7 @@ class TestBuildFfmpegChapterMetadata:
 
 
 class TestNormalizeAudio:
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_calls_ffmpeg(self, mock_run):
         _normalize_audio(Path("/in.mp3"), Path("/out.m4a"))
         mock_run.assert_called_once()
@@ -112,7 +112,7 @@ class TestNormalizeAudio:
         assert "-y" in cmd
         assert "loudnorm" in cmd[cmd.index("-af") + 1]
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_ffmpeg_error_propagates(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(1, "ffmpeg")
         with pytest.raises(subprocess.CalledProcessError):
@@ -123,7 +123,7 @@ class TestNormalizeAudio:
 
 
 class TestBuildM4b:
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_mismatched_lengths_raises(self, mock_run):
         seg = MagicMock(spec=Path)
         markers = [ChapterMarker("Ch1", 0, 30000), ChapterMarker("Ch2", 30000, 20000)]
@@ -132,7 +132,7 @@ class TestBuildM4b:
         with pytest.raises(ValueError, match="same length"):
             build_m4b([seg], markers, output)
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_success_no_normalize(self, mock_run):
         mock_run.return_value = MagicMock(stdout="50.0\n", returncode=0)
 
@@ -152,10 +152,10 @@ class TestBuildM4b:
             output.write_bytes(b"fake m4b output")
 
             result = build_m4b([seg1, seg2], markers, output, normalize=False)
-            assert result == output
+            assert str(result.resolve()) == str(output.resolve())
             assert mock_run.call_count >= 3
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_missing_segment_creates_silence(self, mock_run):
         mock_run.return_value = MagicMock(stdout="30.0\n", returncode=0)
 
@@ -168,7 +168,7 @@ class TestBuildM4b:
             build_m4b([seg], markers, output, normalize=False)
             assert any("anullsrc" in str(c) for c in mock_run.call_args_list)
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_metadata(self, mock_run):
         mock_run.return_value = MagicMock(stdout="30.0\n", returncode=0)
 
@@ -186,7 +186,7 @@ class TestBuildM4b:
             assert "artist=Author" in final_cmd
             assert "album=Album" in final_cmd
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_normalize(self, mock_run):
         mock_run.return_value = MagicMock(stdout="30.0\n", returncode=0)
 
@@ -202,7 +202,7 @@ class TestBuildM4b:
             # Expected calls: concat, probe, final = 3
             assert mock_run.call_count >= 3
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_cover_image(self, mock_run):
         mock_run.return_value = MagicMock(stdout="30.0\n", returncode=0)
 
@@ -220,7 +220,7 @@ class TestBuildM4b:
             final_cmd = mock_run.call_args_list[-1][0][0]
             assert str(cover) in final_cmd
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_genre_and_year(self, mock_run):
         mock_run.return_value = MagicMock(stdout="30.0\n", returncode=0)
 
@@ -242,7 +242,7 @@ class TestBuildM4b:
 
 
 class TestBuildM4bSingleSource:
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_success(self, mock_run):
         mock_run.return_value = MagicMock(stdout="60.0\n", returncode=0)
 
@@ -254,10 +254,10 @@ class TestBuildM4bSingleSource:
             output.write_bytes(b"fake m4b")
 
             result = build_m4b_single_source(audio, markers, output)
-            assert result == output
+            assert str(result.resolve()) == str(output.resolve())
             assert mock_run.call_count == 2
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_metadata(self, mock_run):
         mock_run.return_value = MagicMock(stdout="60.0\n", returncode=0)
 
@@ -274,7 +274,7 @@ class TestBuildM4bSingleSource:
             assert "title=Book" in final_cmd
             assert "artist=Author" in final_cmd
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_with_cover(self, mock_run):
         mock_run.return_value = MagicMock(stdout="60.0\n", returncode=0)
 
@@ -292,7 +292,7 @@ class TestBuildM4bSingleSource:
             final_cmd = mock_run.call_args_list[-1][0][0]
             assert str(cover) in final_cmd
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_no_metadata_defaults(self, mock_run):
         mock_run.return_value = MagicMock(stdout="60.0\n", returncode=0)
 
@@ -310,7 +310,7 @@ class TestBuildM4bSingleSource:
             assert "artist=" not in " ".join(final_cmd)
             assert "genre=Audiobook" in final_cmd
 
-    @patch("src.audiobook_studio.export.m4b.subprocess.run")
+    @patch("src.audiobook_studio.export.m4b.run_command")
     def test_single_source_with_album_and_year(self, mock_run):
         """Covers lines 303, 307: album and year metadata in build_m4b_single_source."""
         mock_run.return_value = MagicMock(stdout="60.0\n", returncode=0)

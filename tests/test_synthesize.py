@@ -96,7 +96,8 @@ class TestSynthesizePipeline:
                 output_path=output_path,
             )
 
-            assert duration == 3000  # Mock duration
+            # Duration based on text length (~50 chars/sec, min 1000ms): "Test text" = 9 chars -> 1000ms
+            assert duration == 1000
             # Check .wav file was created (mock mode creates wav)
             wav_path = output_path.with_suffix(".wav")
             assert wav_path.exists() or output_path.exists()
@@ -125,7 +126,8 @@ class TestSynthesizePipeline:
                 output_path=output_path,
             )
 
-            assert duration == 2800  # Mock duration
+            # Duration based on text length (~50 chars/sec, min 1000ms): "Test text" = 9 chars -> 1000ms
+            assert duration == 1000
             assert output_path.exists()
             assert output_path.stat().st_size > 0
 
@@ -306,7 +308,7 @@ class TestSynthesizePipeline:
         assert segment.segment_id == "test_book_ch1_p1"
         assert segment.engine == "kokoro"
         assert segment.voice_id == "narrator_voice"
-        assert segment.duration_ms == 3000  # Mock duration
+        assert segment.duration_ms == 1000  # Mock duration: "Test paragraph" = 13 chars -> min 1000ms
         assert segment.text_hash == self.pipeline._text_hash("Test paragraph")
 
         # Run again - should skip regeneration
@@ -482,7 +484,8 @@ class TestSynthesizeNonMockPaths:
             prosody={},
             output_path=Path("./test_output_nonmock/test_kokoro.mp3"),
         )
-        assert duration == 3000  # Mock duration
+        # Duration based on text length (~50 chars/sec, min 1000ms): "Test text" = 9 chars -> 1000ms
+        assert duration == 1000
 
     def test_synthesize_edge_mock_mode(self):
         """Test Edge-TTS synthesis in mock mode."""
@@ -493,7 +496,8 @@ class TestSynthesizeNonMockPaths:
             prosody={},
             output_path=Path("./test_output_nonmock/test_edge.mp3"),
         )
-        assert duration == 2800
+        # Duration based on text length (~50 chars/sec, min 1000ms): "Test text" = 9 chars -> 1000ms
+        assert duration == 1000
         assert Path("./test_output_nonmock/test_edge.mp3").exists()
 
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
@@ -510,7 +514,9 @@ class TestSynthesizeNonMockPaths:
             prosody={},
             output_path=output_path,
         )
-        assert duration == 2800  # Mock duration in mock mode
+        # In mock mode, duration is calculated from text length (~50 chars/sec, min 1000ms)
+        assert duration == 1000
+        mock_get_duration.assert_not_called()  # mock mode doesn't use ffprobe
 
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
     def test_synthesize_edge_ffprobe_failure(self, mock_get_duration):
@@ -579,12 +585,12 @@ class TestSynthesizeNonMockPaths:
         total_duration = self.pipeline._crossfade_stitch([], Path("./test_output_nonmock/combined.mp3"))
         assert total_duration == 0
 
-    @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
+    @patch("src.audiobook_studio.pipeline.synthesize.run_command")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_ffmpeg_success(self, mock_get_duration, mock_subprocess_run, tmp_path):
+    def test_crossfade_stitch_ffmpeg_success(self, mock_get_duration, mock_run_command, tmp_path):
         """Test crossfade stitching with ffmpeg success."""
         self.pipeline.mock_mode = False
-        mock_subprocess_run.return_value = Mock(returncode=0, stdout="", stderr="")
+        mock_run_command.return_value = Mock(returncode=0, stdout="", stderr="")
         mock_get_duration.return_value = 3000
 
         # Create dummy files in temp directory
@@ -616,11 +622,11 @@ class TestSynthesizeNonMockPaths:
         total_duration = self.pipeline._crossfade_stitch(segments, output_path)
         assert total_duration == 3000
 
-    @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
-    def test_crossfade_stitch_ffmpeg_failure_fallback(self, mock_subprocess_run, tmp_path):
+    @patch("src.audiobook_studio.pipeline.synthesize.run_command")
+    def test_crossfade_stitch_ffmpeg_failure_fallback(self, mock_run_command, tmp_path):
         """Test crossfade stitching falls back to simple concat on ffmpeg failure."""
         self.pipeline.mock_mode = False
-        mock_subprocess_run.side_effect = FileNotFoundError("ffmpeg not found")
+        mock_run_command.side_effect = FileNotFoundError("ffmpeg not found")
 
         # Create dummy file in temp directory
         file1 = tmp_path / "path1.mp3"
@@ -641,12 +647,12 @@ class TestSynthesizeNonMockPaths:
         total_duration = self.pipeline._crossfade_stitch(segments, output_path)
         assert total_duration == 1000  # Sum of durations fallback
 
-    @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
+    @patch("src.audiobook_studio.pipeline.synthesize.run_command")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_file_not_found(self, mock_get_duration, mock_subprocess_run):
+    def test_crossfade_stitch_file_not_found(self, mock_get_duration, mock_run_command):
         """Test crossfade stitching when segment file missing - returns 0 for no valid files."""
         self.pipeline.mock_mode = False
-        mock_subprocess_run.return_value = Mock(returncode=0, stdout="", stderr="")
+        mock_run_command.return_value = Mock(returncode=0, stdout="", stderr="")
         mock_get_duration.return_value = 1000
 
         segments = [
@@ -663,12 +669,12 @@ class TestSynthesizeNonMockPaths:
         total_duration = self.pipeline._crossfade_stitch(segments, Path("./test_output_nonmock/combined.mp3"))
         assert total_duration == 0  # No valid files found
 
-    @patch("src.audiobook_studio.pipeline.synthesize.subprocess.run")
+    @patch("src.audiobook_studio.pipeline.synthesize.run_command")
     @patch("src.audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_crossfade_stitch_exception_fallback(self, mock_get_duration, mock_subprocess_run, tmp_path):
+    def test_crossfade_stitch_exception_fallback(self, mock_get_duration, mock_run_command, tmp_path):
         """Test crossfade stitching exception handling."""
         self.pipeline.mock_mode = False
-        mock_subprocess_run.side_effect = Exception("ffmpeg error")
+        mock_run_command.side_effect = Exception("ffmpeg error")
         mock_get_duration.return_value = 1000
 
         # Create dummy file in temp directory

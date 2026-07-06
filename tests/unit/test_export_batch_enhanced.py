@@ -1,5 +1,6 @@
 """Enhanced tests for Batch Exporter module to improve coverage."""
 
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -74,11 +75,11 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers")
     @patch("src.audiobook_studio.export.batch_exporter._build_project_metadata")
-    @patch("src.audiobook_studio.export.batch_exporter.build_m4b")
+    @patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source")
     @patch("src.audiobook_studio.export.batch_exporter.generate_srt")
-    @patch("pathlib.Path")
+    @patch("src.audiobook_studio.export.batch_exporter.run_command")
     def test_export_project_success_m4b_and_srt(
-        self, mock_path_class, mock_gen_srt, mock_build_m4b, mock_metadata, mock_markers, mock_audio_files, mock_collect
+        self, mock_run, mock_gen_srt, mock_build_single, mock_metadata, mock_markers, mock_audio_files, mock_collect
     ):
         """Test successful export with both M4B and SRT formats."""
         # Setup
@@ -97,10 +98,10 @@ class TestExportProject:
         # Mock data collection
         mock_paragraph = MagicMock()
         mock_paragraph.id = 1
-        mock_paragraph.order = 1
+        mock_paragraph.index = 1
         mock_paragraph.text = "Test paragraph"
         mock_paragraph.original_text = None
-        mock_paragraph.character_name = "Narrator"
+        mock_paragraph.speaker_canonical_name = "Narrator"
 
         mock_chapter_data = {
             "chapter": mock_chapter,
@@ -114,14 +115,8 @@ class TestExportProject:
         mock_audio_files.return_value = [Path("/fake/path.mp3")]
         mock_markers.return_value = []
         mock_metadata.return_value = MagicMock()
-
-        # Mock Path behavior - use real Path but mock methods
-        mock_path_instance = MagicMock()
-        mock_path_instance.__truediv__.return_value = mock_path_instance
-        mock_path_instance.exists.return_value = False
-        mock_path_instance.mkdir = MagicMock()
-        mock_path_instance.__str__.return_value = "/tmp/test/output.m4b"
-        mock_path_class.return_value = mock_path_instance
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+        # mock_build_single doesn't need return value
 
         job = ExportJob(project_id=1, formats={ExportFormat.M4B, ExportFormat.SRT}, output_dir="/tmp/test")
 
@@ -134,17 +129,17 @@ class TestExportProject:
         assert "srt" in result.output_paths
 
         # Verify function calls
-        assert mock_build_m4b.called
+        assert mock_build_single.called
         assert mock_gen_srt.called
 
     @patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data")
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers")
     @patch("src.audiobook_studio.export.batch_exporter._build_project_metadata")
-    @patch("src.audiobook_studio.export.batch_exporter.build_m4b")
-    @patch("pathlib.Path")
+    @patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source")
+    @patch("src.audiobook_studio.export.batch_exporter.run_command")
     def test_export_project_m4b_only(
-        self, mock_path_class, mock_build_m4b, mock_metadata, mock_markers, mock_audio_files, mock_collect
+        self, mock_run, mock_build_single, mock_metadata, mock_markers, mock_audio_files, mock_collect
     ):
         """Test successful export with M4B format only."""
         # Setup
@@ -163,10 +158,10 @@ class TestExportProject:
         # Mock data collection
         mock_paragraph = MagicMock()
         mock_paragraph.id = 1
-        mock_paragraph.order = 1
+        mock_paragraph.index = 1
         mock_paragraph.text = "Test paragraph"
         mock_paragraph.original_text = None
-        mock_paragraph.character_name = "Narrator"
+        mock_paragraph.speaker_canonical_name = "Narrator"
 
         mock_chapter_data = {
             "chapter": mock_chapter,
@@ -180,14 +175,7 @@ class TestExportProject:
         mock_audio_files.return_value = [Path("/fake/path.mp3")]
         mock_markers.return_value = []
         mock_metadata.return_value = MagicMock()
-
-        # Mock Path behavior - use real Path but mock methods
-        mock_path_instance = MagicMock()
-        mock_path_instance.__truediv__.return_value = mock_path_instance
-        mock_path_instance.exists.return_value = False
-        mock_path_instance.mkdir = MagicMock()
-        mock_path_instance.__str__.return_value = "/tmp/test/output.m4b"
-        mock_path_class.return_value = mock_path_instance
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
 
         job = ExportJob(project_id=1, formats={ExportFormat.M4B}, output_dir="/tmp/test")
 
@@ -199,7 +187,7 @@ class TestExportProject:
         assert "m4b" in result.output_paths
 
         # Verify M4B was built
-        assert mock_build_m4b.called
+        assert mock_build_single.called
 
 
 class TestExportChapter:

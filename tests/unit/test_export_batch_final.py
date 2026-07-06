@@ -76,49 +76,57 @@ def test_export_project_success_m4b_only():
     mock_project = MagicMock()
     mock_project.id = 1
     mock_project.slug = "test-book"
+    mock_project.title = "Test Book"
+    mock_project.author = "Test Author"
 
     mock_chapter = MagicMock()
     mock_chapter.id = 1
     mock_chapter.index = 1
+    mock_chapter.title = "Chapter 1"
 
     mock_project.chapters = [mock_chapter]
     mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
 
-    with (
-        patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
-        patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio_files,
-        patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers") as mock_markers,
-        patch("src.audiobook_studio.export.batch_exporter._build_project_metadata") as mock_metadata,
-        patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
-        patch("src.audiobook_studio.export.batch_exporter.Path") as mock_path_class,
-        patch("src.audiobook_studio.export.batch_exporter.logger"),
-    ):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a real temporary audio file for validation
+        temp_audio = Path(tmpdir) / "test_audio.mp3"
+        temp_audio.write_bytes(b"fake audio data")
 
-        mock_chapter_data = {
-            "chapter": mock_chapter,
-            "audio_segments": [MagicMock(file_path="/fake/path.mp3", id=1)],
-            "chapter_data": {},
-        }
-        mock_collect.return_value = mock_chapter_data
+        with (
+            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
+            patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio_files,
+            patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers") as mock_markers,
+            patch("src.audiobook_studio.export.batch_exporter._build_project_metadata") as mock_metadata,
+            patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source") as mock_build_m4b_single,
+            patch("src.audiobook_studio.export.batch_exporter.run_command") as mock_subprocess,
+            patch("src.audiobook_studio.export.batch_exporter.logger"),
+        ):
 
-        mock_audio_files.return_value = [Path("/fake/path.mp3")]
-        mock_markers.return_value = []
-        mock_metadata.return_value = MagicMock()
+            mock_chapter_data = {
+                "chapter": mock_chapter,
+                "audio_segments": [MagicMock(file_path=str(temp_audio), id=1)],
+                "chapter_data": {},
+            }
+            mock_collect.return_value = mock_chapter_data
 
-        mock_path_instance = MagicMock()
-        mock_path_instance.__truediv__.return_value = mock_path_instance
-        mock_path_instance.exists.return_value = False
-        mock_path_instance.mkdir = MagicMock()
-        mock_path_class.return_value = mock_path_instance
+            # Return the real temp file path that will pass validation
+            mock_audio_files.return_value = [temp_audio]
+            mock_markers.return_value = []
+            mock_metadata.return_value = MagicMock()
 
-        job = ExportJob(project_id=1, formats={ExportFormat.M4B}, output_dir="/tmp/test")
+            # Mock subprocess.run to succeed
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_subprocess.return_value = mock_result
 
-        result = export_project(1, mock_session, job)
+            job = ExportJob(project_id=1, formats={ExportFormat.M4B}, output_dir=tmpdir)
 
-        assert result.progress == ExportProgress.COMPLETE
-        assert result.error is None
-        assert "m4b" in result.output_paths
-        assert mock_build_m4b.called
+            result = export_project(1, mock_session, job)
+
+            assert result.progress == ExportProgress.COMPLETE
+            assert result.error is None
+            assert "m4b" in result.output_paths
+            assert mock_build_m4b_single.called
 
 
 def test_export_chapter_not_found():

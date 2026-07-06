@@ -17,6 +17,27 @@ from src.audiobook_studio.tts.voxcpm2_backend import (
 )
 
 
+def setUpModule():
+    """Re-import the real voxcpm2_backend if an earlier test mocked it.
+
+    Some suites (e.g. pipeline/test_synthesize_nonmock.py) temporarily mock
+    ``audiobook_studio.tts`` in sys.modules during import. If the mock is
+    present when this module is imported, the top-level symbols above may be
+    bound to MagicMock classes rather than the real ``VoxCPM2Backend``.
+    """
+    import importlib
+    import sys
+
+    sys.modules.pop("src.audiobook_studio.tts.voxcpm2_backend", None)
+    sys.modules.pop("src.audiobook_studio.tts", None)
+    real = importlib.import_module("src.audiobook_studio.tts.voxcpm2_backend")
+    global QUANTIZATION_MODES, VOXCPM2_VOICES, VoxCPM2Backend, create_voxcpmp2_backend
+    QUANTIZATION_MODES = real.QUANTIZATION_MODES
+    VOXCPM2_VOICES = real.VOXCPM2_VOICES
+    VoxCPM2Backend = real.VoxCPM2Backend
+    create_voxcpmp2_backend = real.create_voxcpmp2_backend
+
+
 class TestVoxCPM2BackendInit:
     def test_engine_name(self):
         b = VoxCPM2Backend()
@@ -141,7 +162,7 @@ class TestVoxCPM2Voices:
             assert v.supports_reference_audio is True
 
     def test_quantization_modes_have_required_keys(self):
-        for mode, info in QUANTIZATION_MODES.items():
+        for _mode, info in QUANTIZATION_MODES.items():
             assert "dtype" in info
             assert "vram_gb" in info
             assert "min_vram_gb" in info

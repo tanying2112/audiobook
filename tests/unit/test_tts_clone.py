@@ -28,6 +28,37 @@ from audiobook_studio.tts.clone import (
 )
 
 
+def setUpModule():
+    """Re-import the real tts.clone module if an earlier test replaced it.
+
+    Some suites (e.g. pipeline/test_synthesize_nonmock.py) temporarily mock
+    ``audiobook_studio.tts.clone`` in sys.modules during import. If the mock is
+    present when this test module is imported, the top-level names above would
+    be bound to MagicMock objects. Drop any mock so the real module is imported
+    and rebind the symbols used by these tests.
+    """
+    import importlib
+
+    sys.modules.pop("audiobook_studio.tts.clone", None)
+    sys.modules.pop("audiobook_studio.tts", None)
+    real = importlib.import_module("audiobook_studio.tts.clone")
+    global AudioQuality, CloningConfig, VoiceCloner, VoiceCloningEngine, VoicePrint
+    global VoiceSample, check_kokoro_model_availability, clone_voice, extract_voice_features
+    global get_kokoro_model_path, is_kokoro_available, load_voice_print
+    AudioQuality = real.AudioQuality
+    CloningConfig = real.CloningConfig
+    VoiceCloner = real.VoiceCloner
+    VoiceCloningEngine = real.VoiceCloningEngine
+    VoicePrint = real.VoicePrint
+    VoiceSample = real.VoiceSample
+    check_kokoro_model_availability = real.check_kokoro_model_availability
+    clone_voice = real.clone_voice
+    extract_voice_features = real.extract_voice_features
+    get_kokoro_model_path = real.get_kokoro_model_path
+    is_kokoro_available = real.is_kokoro_available
+    load_voice_print = real.load_voice_print
+
+
 def test_audio_quality_enum():
     """Test AudioQuality enum."""
     assert AudioQuality.EXCELLENT.value == "excellent"
