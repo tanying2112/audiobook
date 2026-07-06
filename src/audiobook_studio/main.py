@@ -22,6 +22,7 @@ from .api.audio_segments import router as audio_segments_router
 from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
 from .api.characters import router as characters_router
+from .api.collab import router as collab_router
 from .api.config import router as config_router
 from .api.export import router as export_router
 from .api.feedback import router as feedback_router
@@ -131,6 +132,7 @@ app.include_router(tts_voices_router, prefix="/api")
 app.include_router(publish_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(pipeline_router, prefix="/api")
+app.include_router(collab_router, prefix="/api")
 
 
 # Health check endpoint for CI verification

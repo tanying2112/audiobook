@@ -37,14 +37,14 @@ class TestCollabModels:
 
         comment = CommentResponse(
             id=1,
-            author_id="user1",
+            author_id=1,
             content="Response",
             comment_type="comment",
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
         assert comment.id == 1
-        assert comment.author_id == "user1"
+        assert comment.author_id == 1
         assert comment.resolved is False
 
     def test_task_base(self):
@@ -54,11 +54,11 @@ class TestCollabModels:
             title="Test Task",
             description="Task description",
             status="todo",
-            assignee_id="user1",
-            reporter_id="user2",
+            assignee_id=1,
+            reporter_id=2,
             tags=["tag1"],
             priority=3,
-            project_id="proj1",
+            project_id=1,
         )
         assert task.title == "Test Task"
         assert task.status == "todo"
@@ -92,13 +92,26 @@ class TestCollabModels:
         approval = ApprovalRequestBase(
             title="Approval",
             description="Need approval",
-            approver_ids=["user1", "user2"],
             task_id=1,
             artifact_path="/path/to/artifact",
             required_approvals=2,
         )
         assert approval.title == "Approval"
-        assert approval.approver_ids == ["user1", "user2"]
+        assert approval.required_approvals == 2
+        assert approval.task_id == 1
+
+    def test_approval_request_create_approver_ids(self):
+        from src.audiobook_studio.api.collab import ApprovalRequestCreate
+
+        approval = ApprovalRequestCreate(
+            title="Approval",
+            description="Need approval",
+            approver_ids=[1, 2],
+            task_id=1,
+            artifact_path="/path/to/artifact",
+            required_approvals=2,
+        )
+        assert approval.approver_ids == [1, 2]
         assert approval.required_approvals == 2
 
 
