@@ -202,12 +202,12 @@ class TestMain:
         db = tmp_path / "app.db"
         monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
         monkeypatch.delenv("REDIS_URL", raising=False)
-        rc = main()
+        rc = main([])
         assert rc == 0
 
     def test_main_failure_exit_one(self, monkeypatch, capsys):
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        rc = main()
+        rc = main([])
         assert rc == 1
         captured = capsys.readouterr()
         assert "FAIL" in captured.out
@@ -218,8 +218,26 @@ class TestMain:
             raise RuntimeError("boom")
 
         monkeypatch.setattr(env_checker, "run_all_checks", boom)
-        rc = main()
+        rc = main([])
         assert rc == 2
+
+    def test_main_fail_on_warning_elevates_warning_to_failure(self, tmp_path, monkeypatch):
+        # required present, recommended (REDIS_URL etc.) absent -> warnings only
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'app.db'}")
+        for var in ("REDIS_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        rc = main(["--fail-on-warning"])
+        assert rc == 1  # warnings elevated to failure by the flag
+
+    def test_main_fail_on_warning_passes_when_all_set(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'app.db'}")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        rc = main(["--fail-on-warning"])
+        assert rc == 0  # no warnings -> flag does not elevate
 
 
 if __name__ == "__main__":

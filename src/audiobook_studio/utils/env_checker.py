@@ -22,8 +22,15 @@ Exit codes:
 
 Usage:
     python -m audiobook_studio.utils.env_checker
+    python -m audiobook_studio.utils.env_checker --fail-on-warning
+
+CLI:
+    --fail-on-warning  Treat non-empty warnings (e.g. missing recommended env
+                        vars) as a hard failure (exit 1). Used as a CI / container
+                        health hard gate (see .github/workflows/ci.yml).
 """
 
+import argparse
 import os
 import sqlite3
 import sys
@@ -219,15 +226,34 @@ def print_report(result: EnvCheckResult) -> None:
     print("=" * width)
 
 
-def main() -> int:
+def main(argv: List[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Audiobook Studio production environment pre-check " "(exit 0=ok, 1=failure, 2=critical).",
+    )
+    parser.add_argument(
+        "--fail-on-warning",
+        action="store_true",
+        help="Treat any warning (e.g. missing recommended env vars) as a "
+        "failure (exit 1). Used as a hard gate in CI and container health checks.",
+    )
+    args = parser.parse_args(argv)
+
     result = EnvCheckResult()
     try:
         all_passed, _ = run_all_checks(result)
         print_report(result)
+        # Without --fail-on-warning: only hard errors (required vars / DB / disk)
+        # drive the exit code; warnings are advisory.
+        # With --fail-on-warning: any warning also flips the exit code to 1.
+        if result.errors or (args.fail_on_warning and result.warnings):
+            if result.errors:
+                print("\nSome checks failed. Please review errors above.")
+            else:
+                print("\nFail-on-warning enabled: warnings treated as failures.")
+            return 1
         if all_passed:
             print("\nAll checks passed. Environment is ready for production.")
             return 0
-        print("\nSome checks failed. Please review errors above.")
         return 1
     except Exception as e:
         print(f"\nCritical error during environment check: {e}", file=sys.stderr)

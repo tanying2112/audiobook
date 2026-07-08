@@ -99,3 +99,12 @@ opentelemetry-instrumentation-httpx>=0.41b0
 opentelemetry-instrumentation-requests>=0.41b0
 opentelemetry-exporter-otlp>=1.20.0
 opentelemetry-exporter-prometheus>=0.41b0
+
+# =============================================================================
+# 异步任务队列 (Celery worker 后端, 与 pyproject.toml dependencies 对齐)
+# 容器构建走 `pip install -r requirements.txt` 而非 `-e .`, 故 celery/redis 必须
+# 在此声明, 否则 compose 的 celery-worker 与 ci.yml "Test Celery worker entrypoint"
+# 会因 celery 命令缺失而跑不通。
+# =============================================================================
+celery>=5.3.0  # Celery 任务队列 (export_tasks / pipeline_tasks)
+redis>=5.0.0   # Celery broker + result backend (celery_app.py REDIS_URL)

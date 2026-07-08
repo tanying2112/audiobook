@@ -149,6 +149,10 @@ jobs:
           DATABASE_URL: sqlite:///test.db
           SECRET_KEY: test-secret-key-for-ci-only
           REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/0
+          OPENAI_API_KEY: test-key-not-real-ci-only
+          ANTHROPIC_API_KEY: test-key-not-real-ci-only
         run: |
           python -m src.audiobook_studio.utils.env_checker --fail-on-warning
           echo "✅ Environment pre-check passed"
@@ -266,6 +270,11 @@ jobs:
           docker run --rm \
             -e DATABASE_URL=sqlite:///test.db \
             -e SECRET_KEY=test-secret \
+            -e REDIS_URL=redis://redis:6379/0 \
+            -e CELERY_BROKER_URL=redis://redis:6379/0 \
+            -e CELERY_RESULT_BACKEND=redis://redis:6379/0 \
+            -e OPENAI_API_KEY=test-key-not-real-ci-only \
+            -e ANTHROPIC_API_KEY=test-key-not-real-ci-only \
             ${{ env.DOCKER_IMAGE }}:latest \
             python -m src.audiobook_studio.utils.env_checker --fail-on-warning
           echo "✅ Container env_check passed"
