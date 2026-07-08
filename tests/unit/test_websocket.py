@@ -241,7 +241,7 @@ class TestHandleClientMessage:
         response = json.loads(call_args)
         assert response["type"] == "ack"
         assert response["action"] == "pause"
-        assert response["status"] == "pending_implementation"
+        assert response["status"] == "paused"
 
     @pytest.mark.asyncio
     async def test_handle_resume_message(self):
@@ -257,7 +257,7 @@ class TestHandleClientMessage:
         response = json.loads(call_args)
         assert response["type"] == "ack"
         assert response["action"] == "resume"
-        assert response["status"] == "pending_implementation"
+        assert response["status"] == "resumed"
 
     @pytest.mark.asyncio
     async def test_handle_status_message(self):
@@ -273,7 +273,7 @@ class TestHandleClientMessage:
         response = json.loads(call_args)
         assert response["type"] == "status"
         assert response["project_id"] == 1
-        assert response["status"] == "unknown"
+        assert response["status"] == "running"
 
     @pytest.mark.asyncio
     async def test_handle_unknown_message(self):

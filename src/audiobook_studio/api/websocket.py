@@ -27,6 +27,10 @@ class ConnectionManager:
         self.active_connections: Dict[int, Set[WebSocket]] = {}
         # connection -> project_id mapping
         self.connection_to_project: Dict[WebSocket, int] = {}
+        # project_id -> asyncio.Event for pause/resume control
+        self.pause_events: Dict[int, asyncio.Event] = {}
+        # project_id -> pause state
+        self.pause_states: Dict[int, bool] = {}
 
     async def connect(self, websocket: WebSocket, project_id: int):
         """Accept WebSocket connection and register for project updates."""
@@ -164,33 +168,77 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
     msg_type = message.get("type")
 
     if msg_type == "pause":
-        # TODO: Implement pipeline pause
+        # Signal pipeline to pause at next checkpoint
+        pause_event = manager.pause_events.get(project_id)
+        if pause_event is None:
+            pause_event = asyncio.Event()
+            manager.pause_events[project_id] = pause_event
+        
+        pause_event.set()  # Signal pause
+        manager.pause_states[project_id] = True
+        
+        # Broadcast pause event to all connections
+        await manager.broadcast_to_project(
+            project_id,
+            {
+                "type": PipelineEventType.PAUSED,
+                "project_id": project_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        
         await manager.send_to_connection(
             websocket,
             {
                 "type": "ack",
                 "action": "pause",
-                "status": "pending_implementation",
+                "status": "paused",
             },
         )
     elif msg_type == "resume":
-        # TODO: Implement pipeline resume
-        await manager.send_to_connection(
-            websocket,
-            {
-                "type": "ack",
-                "action": "resume",
-                "status": "pending_implementation",
-            },
-        )
+        # Signal pipeline to resume
+        pause_event = manager.pause_events.get(project_id)
+        if pause_event:
+            pause_event.clear()  # Clear pause signal
+            manager.pause_states[project_id] = False
+            
+            # Broadcast resume event
+            await manager.broadcast_to_project(
+                project_id,
+                {
+                    "type": PipelineEventType.RESUMED,
+                    "project_id": project_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            
+            await manager.send_to_connection(
+                websocket,
+                {
+                    "type": "ack",
+                    "action": "resume",
+                    "status": "resumed",
+                },
+            )
+        else:
+            await manager.send_to_connection(
+                websocket,
+                {
+                    "type": "ack",
+                    "action": "resume",
+                    "status": "not_paused",
+                },
+            )
     elif msg_type == "status":
         # Return current status
+        paused = manager.pause_states.get(project_id, False)
         await manager.send_to_connection(
             websocket,
             {
                 "type": "status",
                 "project_id": project_id,
-                "status": "unknown",  # TODO: Query actual status
+                "status": "paused" if paused else "running",
+                "paused": paused,
             },
         )
 
@@ -265,3 +313,38 @@ async def get_pipeline_events(project_id: int):
         "progress": 0.0,
         "note": "WebSocket recommended for real-time updates",
     }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline Integration Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def pause_check(project_id: int) -> bool:
+    """
+    Check if pipeline should pause at current checkpoint.
+    
+    Called by pipeline orchestrator between atomic operations.
+    Returns True if paused (caller should wait), False if can continue.
+    
+    Usage:
+        if await pause_check(project_id):
+            await manager.pause_events[project_id].wait()  # Wait for resume
+    """
+    pause_event = manager.pause_events.get(project_id)
+    if pause_event and pause_event.is_set():
+        # Pipeline should pause - wait for resume signal
+        await pause_event.wait()
+        return True
+    return False
+
+
+def is_paused(project_id: int) -> bool:
+    """Check if a project is currently paused (non-blocking)."""
+    return manager.pause_states.get(project_id, False)
+
+
+def get_pause_event(project_id: int):
+    """Get or create the pause event for a project."""
+    if project_id not in manager.pause_events:
+        manager.pause_events[project_id] = asyncio.Event()
+    return manager.pause_events[project_id]
