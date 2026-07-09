@@ -7,7 +7,7 @@ Provides async export execution with progress tracking via Celery states.
 import logging
 import uuid
 from celery import Celery
-from celery.states import PENDING, STARTED, SUCCESS, FAILURE
+from celery.states import PENDING, STARTED, SUCCESS, FAILURE, RETRY
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -21,38 +21,22 @@ from ..models import Project, Chapter, AudioSegment, Paragraph
 logger = logging.getLogger(__name__)
 
 
-def _emit_progress_sync(task, progress: ExportProgress, message: str = "") -> None:
-    """Emit progress update to Celery task state."""
-    state_map = {
-        ExportProgress.PENDING: PENDING,
-        ExportProgress.CONCATENATING: STARTED,
-        ExportProgress.CHAPTERING: STARTED,
-        ExportProgress.SUBTITLES: STARTED,
-        ExportProgress.DUCKING: STARTED,
-        ExportProgress.COMPRESSING: STARTED,
-        ExportProgress.COMPLETE: SUCCESS,
-        ExportProgress.FAILED: FAILURE,
-    }
-    celery_state = state_map.get(progress, STARTED)
-    meta = {
-        "progress": progress.value,
-        "message": message,
-        "current_stage": progress.value,
-    }
-    task.update_state(state=celery_state, meta=meta)
+def _run_export_sync(project_id: int, job: ExportJob, db_session, task_self=None) -> ExportJob:
+    """Run export synchronously against the real 3-arg ``export_project``.
 
-
-def _run_export_sync(project_id: int, job: ExportJob, db_session, task_self) -> ExportJob:
-    """Run export synchronously with progress callbacks."""
-    
-    def progress_callback(progress: ExportProgress, message: str = ""):
-        _emit_progress_sync(task_self, progress, message)
-    
-    # We need to call the export with progress callback
+    ``export_project(project_id, session, job)`` writes progress onto the job
+    object itself (batch_exporter.py:254) and has **no** progress-callback
+    parameter. Sprint L's ``progress_callback`` plumbing called it with a
+    phantom 4th arg → ``TypeError`` on every task → retry×3 → FAILURE.
+    ``task_self`` is kept (defaulting to ``None``) as the Celery task-context
+    injection point — the caller ``export_project_async`` is ``bind=True`` and
+    passes ``self`` — so progress reporting can be re-added without touching the
+    call site.
+    """
     from ..database import SessionLocal
     db = db_session or SessionLocal()
     try:
-        return export_project(project_id, db, job, progress_callback)
+        return export_project(project_id, db, job)
     finally:
         if not db_session:
             db.close()
