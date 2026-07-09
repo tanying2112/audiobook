@@ -224,7 +224,12 @@ export_tasks_router = APIRouter(prefix="/export/tasks", tags=["export-tasks"])
 @export_tasks_router.get("/{task_id}/status", response_model=TaskStatusOut)
 def get_task_status(task_id: str):
     """查询任意导出任务的 Celery 状态."""
-    result = get_export_status.delay(task_id).get(timeout=10)
+    # get_export_status only reads celery_app.AsyncResult(task_id) locally;
+    # call it synchronously rather than dispatching a Celery task. It isn't in
+    # celery_app.task_routes → a .delay().get(timeout=10) routed to the
+    # unconsumed default queue → timed out → HTTP 500. Sync call runs the body
+    # (a local AsyncResult read) in-process — no broker, no timeout.
+    result = get_export_status(task_id)
     return TaskStatusOut(**result)
 
 
