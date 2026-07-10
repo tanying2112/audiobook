@@ -50,3 +50,4 @@ baselines/
 reports/
 htmlcov/
 dashboards/
+.mypy_cache/
