@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
+from ..api.websocket import pause_check, is_paused, get_pause_event
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
 from ..schemas import (
@@ -437,7 +438,7 @@ def _write_audio_postprocess(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
-def run_stage(
+async def run_stage(
     stage: str,
     db: Session,
     *,
@@ -532,6 +533,12 @@ def run_stage(
 
     # ── Hook: Stage Enter ────────────────────────────────────────────────
     _emit_stage_enter(stage, input_snapshot)
+
+    # ── Pause Check ─────────────────────────────────────────────────────
+    if project_id:
+        paused = await pause_check(project_id)
+        if paused:
+            logger.info(f"Pipeline {project_id} was paused, now resumed")
 
     # ── Stage dispatch via Registry ──────────────────────────────────────
     try:
@@ -630,7 +637,7 @@ def run_stage(
         raise wrapped
 
 
-def run_pipeline(
+async def run_pipeline(
     stages: List[str],
     db: Session,
     *,
@@ -688,6 +695,11 @@ def run_pipeline(
 
     try:
         for stage in stages:
+            # Pause check between stages
+            if project_id and await is_paused(project_id):
+                logger.info(f"Pipeline {project_id} paused between stages, waiting...")
+                await pause_check(project_id)
+                logger.info(f"Pipeline {project_id} resumed")
             # Checkpoint: skip already completed stages
             if checkpoint_manager and chapter_index is not None:
                 if checkpoint_manager.is_stage_done(stage, chapter_index):

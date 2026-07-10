@@ -23,7 +23,7 @@ from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
 from .api.characters import router as characters_router
 from .api.config import router as config_router
-from .api.export import router as export_router
+from .api.export import router as export_router, export_tasks_router
 from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
@@ -117,6 +117,7 @@ app.include_router(tts_edits_router, prefix="/api")
 app.include_router(routings_router, prefix="/api")
 app.include_router(qualities_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
+app.include_router(export_tasks_router, prefix="/api")
 app.include_router(feedback_router, prefix="/api")
 app.include_router(audio_segments_router, prefix="/api")
 app.include_router(llm_router, prefix="/api")

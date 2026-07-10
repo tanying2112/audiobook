@@ -8,17 +8,6 @@ A/B 测试、Kill Switch 降级、质量增强等功能。
 from .ab_test import blind_evaluate, build_ab_samples, run_ab_test
 from .ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
 from .auto_processor import FeedbackAutoProcessor, create_auto_processor, run_feedback_analysis_cli
-from .bootstrap_fewshot import (
-    BUDGET_LIMIT,
-    DEFAULT_EARLY_STOP_PATIENCE,
-    BootstrapFewShotOptimizer,
-    EarlyStoppingStopper,
-    MultiObjectiveLoss,
-    OptimizationMetrics,
-    OptimizationResult,
-    load_training_examples,
-    run_bootstrap_optimization,
-)
 from .collector import (
     capture_edit_feedback,
     capture_feedback,
@@ -162,3 +151,36 @@ __all__ = [
     "StructuralCritic",
     "ObjectiveCritic",
 ]
+
+
+# Lazy-load the DSPy-backed few-shot optimiser (PEP 562) on first access.
+# -----------------------------------------------------------------------
+# ``feedback/bootstrap_fewshot.py`` imports dspy at module top, and dspy is NOT a
+# declared dependency (absent from requirements.txt / pyproject.toml). Eagerly
+# importing it here — and therefore transitively on ``import audiobook_studio``
+# — previously crashed every clean-install entrypoint (web server, celery worker,
+# env_checker) with ``ModuleNotFoundError: No module named 'dspy'``. The local
+# dev venv hid it because dspy was hand-installed there. Keep the optimiser
+# opt-in: resolve these names on demand so a bare core import never pays for
+# dspy. See tests/unit/test_feedback_import_safety.py for the guard.
+_BOOTSTRAP_FEW_SHOT = frozenset(
+    {
+        "BUDGET_LIMIT",
+        "DEFAULT_EARLY_STOP_PATIENCE",
+        "BootstrapFewShotOptimizer",
+        "EarlyStoppingStopper",
+        "MultiObjectiveLoss",
+        "OptimizationMetrics",
+        "OptimizationResult",
+        "load_training_examples",
+        "run_bootstrap_optimization",
+    }
+)
+
+
+def __getattr__(name):  # noqa: D401 — PEP 562 lazy module attribute
+    if name in _BOOTSTRAP_FEW_SHOT:
+        from . import bootstrap_fewshot
+
+        return getattr(bootstrap_fewshot, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

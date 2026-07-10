@@ -139,7 +139,7 @@ class TestBuildM4b:
                 return MagicMock(stdout="10.5", returncode=0)
 
             with patch(
-                "src.audiobook_studio.export.m4b.run_command",
+                "src.audiobook_studio.export.m4b.subprocess.run",
                 side_effect=mock_run_side_effect,
             ) as mock_run:
                 build_m4b(
@@ -168,7 +168,7 @@ class TestBuildM4b:
                 return MagicMock(stdout="10.0", returncode=0)
 
             with patch(
-                "src.audiobook_studio.export.m4b.run_command",
+                "src.audiobook_studio.export.m4b.subprocess.run",
                 side_effect=mock_run_side_effect,
             ) as mock_run:
                 build_m4b(
@@ -220,7 +220,7 @@ class TestBuildM4b:
                 return MagicMock(stdout="10.0", returncode=0)
 
             with patch(
-                "src.audiobook_studio.export.m4b.run_command",
+                "src.audiobook_studio.export.m4b.subprocess.run",
                 side_effect=mock_run_side_effect,
             ) as mock_run:
                 build_m4b(
@@ -254,7 +254,7 @@ class TestBuildM4bSingleSource:
             ]
             output_path = tmpdir_path / "output.m4b"
 
-            with patch("src.audiobook_studio.export.m4b.run_command") as mock_run:
+            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(stdout="200.0", returncode=0)
                 build_m4b_single_source(
                     full_audio_path=full_audio,
@@ -274,7 +274,7 @@ class TestBuildM4bSingleSource:
             output_path = tmpdir_path / "output.m4b"
             metadata = M4bMetadata(title="Single Source Book", artist="Author")
 
-            with patch("src.audiobook_studio.export.m4b.run_command") as mock_run:
+            with patch("src.audiobook_studio.export.m4b.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(stdout="100.0", returncode=0)
                 build_m4b_single_source(
                     full_audio_path=full_audio,
@@ -312,7 +312,7 @@ class TestBuildM4bMissingFiles:
                 return MagicMock(stdout="20.0", returncode=0)
 
             with patch(
-                "src.audiobook_studio.export.m4b.run_command",
+                "src.audiobook_studio.export.m4b.subprocess.run",
                 side_effect=mock_run_side_effect,
             ) as mock_run:
                 build_m4b(

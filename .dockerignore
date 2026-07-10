@@ -19,3 +19,15 @@ web/dist/
 web/node_modules/
 *.bak
 *.tmp
+
+# Large model weights/assets — never bake into the image (Task 6.1 asset stripping).
+# Mounted at runtime via the /app/models_cache Volume (see Dockerfile + compose).
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+.cache/
+models/
+audiobook_studio/models/

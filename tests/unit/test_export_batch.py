@@ -403,33 +403,38 @@ class TestExportProjectSuccess:
         with (
             patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio_files,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source") as mock_build_single,
-            patch("src.audiobook_studio.export.batch_exporter.run_command") as mock_run,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
-            patch("src.audiobook_studio.export.batch_exporter.generate_srt"),
+            patch("src.audiobook_studio.export.srt.generate_srt"),
             patch("zipfile.ZipFile"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
         ):
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                fake_audio = Path(tmpdir) / "fake.mp3"
-                fake_audio.write_bytes(b"fake audio content")
+            with patch('subprocess.run', side_effect=mock_subprocess_run):
 
-                mock_collect.return_value = {
-                    "chapter": mock_chapter,
-                    "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
-                    "chapter_data": {},
-                }
-                mock_audio_files.return_value = [fake_audio]
-                mock_build_single.return_value = fake_audio
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fake_audio = Path(tmpdir) / "fake.mp3"
+                    fake_audio.write_bytes(b"fake audio content")
 
-                # Execute
-                result = export_project(1, mock_session, job)
+                    mock_collect.return_value = {
+                        "chapter": mock_chapter,
+                        "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
+                        "chapter_data": {},
+                    }
+                    mock_audio_files.return_value = [fake_audio]
 
-            # Verify
-            assert result.progress.name == "COMPLETE"
-            assert "m4b" in result.output_paths
-            mock_build_single.assert_called_once()
+                    # Execute
+                    result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "COMPLETE"
+                assert "m4b" in result.output_paths
+                mock_build_m4b.assert_called()
 
     def test_export_project_success_with_chapters(self):
         """Test successful project export with chapters containing audio."""
@@ -460,37 +465,42 @@ class TestExportProjectSuccess:
         with (
             patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source") as mock_build_single,
-            patch("src.audiobook_studio.export.batch_exporter.run_command") as mock_run,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
             patch("src.audiobook_studio.export.batch_exporter.generate_srt") as mock_gen_srt,
             patch("zipfile.ZipFile"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
         ):
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                fake_audio = Path(tmpdir) / "seg.mp3"
-                fake_audio.write_bytes(b"fake audio")
+            with patch('subprocess.run', side_effect=mock_subprocess_run):
 
-                mock_audio.return_value = [fake_audio]
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fake_audio = Path(tmpdir) / "seg.mp3"
+                    fake_audio.write_bytes(b"fake audio")
 
-                mock_collect.return_value = {
-                    "chapter": mock_chapter,
-                    "paragraphs": [mock_paragraph],
-                    "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
-                    "chapter_data": {},
-                }
-                mock_build_single.return_value = fake_audio
+                    mock_audio.return_value = [fake_audio]
 
-                # Execute
-                result = export_project(1, mock_session, job)
+                    mock_collect.return_value = {
+                        "chapter": mock_chapter,
+                        "paragraphs": [mock_paragraph],
+                        "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
+                        "chapter_data": {},
+                    }
 
-            # Verify
-            assert result.progress.name == "COMPLETE"
-            assert "m4b" in result.output_paths
-            assert "srt" in result.output_paths
-            assert mock_build_single.call_count >= 1
-            assert mock_gen_srt.called
+                    # Execute
+                    result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "COMPLETE"
+                assert "m4b" in result.output_paths
+                assert "srt" in result.output_paths
+                assert mock_build_m4b.called
+                assert mock_gen_srt.called
 
 
 class TestExportChapterSuccess:
@@ -627,24 +637,29 @@ class TestExportErrorHandling:
         with (
             patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_collect_audio,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source") as mock_build_single,
-            patch("src.audiobook_studio.export.batch_exporter.run_command") as mock_run,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
             patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
         ):
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
 
-            mock_collect.return_value = {
-                "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
-                "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
-                "chapter_data": {},
-            }
-            mock_collect_audio.return_value = [Path("/fake/path.mp3")]
-            mock_build_single.side_effect = Exception("FFmpeg failed")
+            with patch('subprocess.run', side_effect=mock_subprocess_run):
 
-            # Execute
-            result = export_project(1, mock_session, job)
+                mock_collect.return_value = {
+                    "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
+                    "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
+                    "chapter_data": {},
+                }
+                mock_collect_audio.return_value = [Path("/fake/path.mp3")]
+                mock_build_m4b.side_effect = Exception("FFmpeg failed")
 
-            # Verify
-            assert result.progress.name == "FAILED"
-            assert "FFmpeg failed" in result.error
+                # Execute
+                result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "FAILED"
+                assert "FFmpeg failed" in result.error

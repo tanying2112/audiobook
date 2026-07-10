@@ -2,6 +2,13 @@
 实现基于 kokoro-onnx 的本地声音克隆，支持 15s 样本门控 SNR≥20dB。
 """
 
+# Defer annotation evaluation: VoiceCloner (line 146) annotates its __init__ with
+# Optional[VoiceCloningEngine], which is defined further down (line 257). Under
+# Python <=3.13 annotations are evaluated eagerly at class-definition time, so
+# this forward reference raised NameError on 3.11 (e.g. the python:3.11-slim
+# Docker image) while Python 3.14's PEP 649 deferred evaluation masked it locally.
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
