@@ -31,3 +31,22 @@ web/node_modules/
 .cache/
 models/
 audiobook_studio/models/
+
+# ==========================================
+# 🚨 AUDIOBOOK STUDIO MEDIA & VENV PLUGINS (CRITICAL FIX)
+# ==========================================
+*.mp3
+*.wav
+*.m4b
+outputs/
+data/
+.venv/
+venv/
+env/
+
+# Runtime/CI artifacts (pytest/coverage/baseline dumps) — never bake in.
+output/
+baselines/
+reports/
+htmlcov/
+dashboards/
