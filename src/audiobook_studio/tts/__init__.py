@@ -30,6 +30,20 @@ from .model_downloader import (
     get_model_paths,
     verify_models,
 )
+from .remote_voxcpm2_client import (
+    RemoteVoxCPM2Client,
+    RemoteVoxCPM2Config,
+    create_remote_voxcpm2_client,
+)
+from .rate_limiter import (
+    TTSRateLimiter,
+    RateLimitConfig,
+    ProviderRateLimiter,
+    create_tts_rate_limiter,
+    get_tts_rate_limiter,
+    DEFAULT_TTS_RATE_LIMITS,
+)
+from .circuit_breaker import CircuitBreaker
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpmp2_backend
 
 __all__ = [
@@ -56,6 +70,19 @@ __all__ = [
     "create_kokoro_backend",
     "VoxCPM2Backend",
     "create_voxcpmp2_backend",
+    # Remote VoxCPM2 client
+    "RemoteVoxCPM2Client",
+    "RemoteVoxCPM2Config",
+    "create_remote_voxcpm2_client",
+    # Circuit Breaker
+    "CircuitBreaker",
+    # Rate Limiter
+    "TTSRateLimiter",
+    "RateLimitConfig",
+    "ProviderRateLimiter",
+    "create_tts_rate_limiter",
+    "get_tts_rate_limiter",
+    "DEFAULT_TTS_RATE_LIMITS",
     # Model Downloader
     "ensure_models_available",
     "get_model_paths",

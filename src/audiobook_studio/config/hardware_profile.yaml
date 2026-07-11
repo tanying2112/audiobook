@@ -135,6 +135,7 @@ profiles:
         inter_op_num_threads: 2
       voice_presets: "config/voice_mapping.yaml"
       fallback_chain:
+        - engine: "voxcpm2_remote"
         - engine: "edge"
         - engine: "azure"
         - engine: "gcp"
@@ -223,6 +224,7 @@ profiles:
       kv_cache_reuse: true
       # 回退链
       fallback_chain:
+        - engine: "voxcpm2_remote"
         - engine: "cosyvoice"
           model_path: "models/CosyVoice-300M"
         - engine: "kokoro_onnx"

@@ -4,11 +4,13 @@ Contains:
 - client: Unified LLM client with LiteLLM + Instructor
 - router: Multi-provider routing with fallback and cost tracking
 - judge: LLM-as-a-Judge for quality evaluation
+- circuit_breaker: Failure isolation for providers
 """
 
 from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
 from .judge import JudgeConfig, LLMJudge, create_judge
 from .router import CostTracker, LLMRouter, ModelConfig, StageRoutingConfig, create_router, get_cost_tracker
+from .circuit_breaker import CircuitBreaker
 from .utils import LLMParseError, validate_and_parse_llm_response
 
 __all__ = [
@@ -27,4 +29,5 @@ __all__ = [
     "LLMJudge",
     "JudgeConfig",
     "create_judge",
+    "CircuitBreaker",
 ]

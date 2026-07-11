@@ -22,6 +22,14 @@ from ..monitoring.langfuse_client import is_enabled, observe_quality_check, obse
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from ..tts import EngineRegistry, SynthesisResult, TTSEngine, VoiceInfo
 from ..tts.clone import CloningConfig, VoiceCloningManager
+
+# Optional remote VoxCPM2 client
+try:
+    from ..tts import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
+except ImportError:
+    RemoteVoxCPM2Client = None  # type: ignore[assignment]
+    RemoteVoxCPM2Config = None  # type: ignore[assignment]
+    create_remote_voxcpm2_client = None  # type: ignore[assignment]
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
@@ -87,6 +95,9 @@ class SynthesizePipeline:
                 output_dir=str(self.output_dir / "cloned"),
             )
         )
+
+        # Cache for remote VoxCPM2 client (lazy initialization)
+        self._remote_voxcpm2_client = None
 
         # Track existing segments for incremental synthesis
         self.existing_segments = {}
@@ -1015,6 +1026,39 @@ class SynthesizePipeline:
                 elif eng == "cosyvoice":
                     logger.warning("CosyVoice not yet implemented, falling back")
                     continue
+                elif eng == "voxcpm2_remote":
+                    # Remote VoxCPM2 via HTTP (Cloudflare tunnel to Kaggle GPU)
+                    # Mock mode: create dummy audio file
+                    if self.mock_mode:
+                        logger.info(f"Mock mode: using mock synthesis for {eng}")
+                        duration = self._synthesize_mock(text, voice_id, prosody, output_path)
+                        return duration, eng
+
+                    # Lazy initialization of cached client
+                    if self._remote_voxcpm2_client is None:
+                        try:
+                            from ..tts import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
+                        except ImportError as e:
+                            logger.warning(f"Remote VoxCPM2 client not available: {e}")
+                            continue
+                        import asyncio
+
+                        async def _init_client():
+                            return await create_remote_voxcpm2_client(RemoteVoxCPM2Config.from_env())
+
+                        self._remote_voxcpm2_client = asyncio.run(_init_client())
+
+                    client = self._remote_voxcpm2_client
+                    import asyncio
+
+                    async def _run_remote_voxcpm2():
+                        audio_data = await client.synthesize(text, voice_id, prosody)
+                        output_path.write_bytes(audio_data)
+                        duration = get_duration_sync(output_path)
+                        return duration
+
+                    duration = asyncio.run(_run_remote_voxcpm2())
+                    return duration, eng
             except Exception as e:
                 logger.warning(f"Engine {eng} failed: {e}, trying next...")
                 continue

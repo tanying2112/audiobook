@@ -18,6 +18,7 @@ celery_app = Celery(
     backend=REDIS_URL,
     include=[
         "src.audiobook_studio.tasks.export_tasks",
+        "src.audiobook_studio.tasks.tts_tasks",
     ],
 )
 
@@ -28,6 +29,8 @@ celery_app.conf.update(
         "src.audiobook_studio.tasks.export_tasks.export_project_async": {"queue": "export"},
         "src.audiobook_studio.tasks.export_tasks.export_chapter_async": {"queue": "export"},
         "src.audiobook_studio.tasks.pipeline_tasks.*": {"queue": "pipeline"},
+        "src.audiobook_studio.tasks.tts_tasks.synthesize_chapter_task": {"queue": "pipeline"},
+        "src.audiobook_studio.tasks.tts_tasks.resume_chapter_task": {"queue": "pipeline"},
     },
     # Task serialization
     task_serializer="json",
