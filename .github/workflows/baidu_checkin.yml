@@ -1,0 +1,23 @@
+name: 百度飞桨全自动薅羊毛
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天北京时间早上 9 点自动执行
+  workflow_dispatch:       # 也支持手动触发
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 模拟电击签到（强校验 JSON code=0，消除 200 OK 静默失败）
+        env:
+          BAIDU_COOKIE: ${{ secrets.BAIDU_COOKIE }}
+        run: |
+          RESPONSE=$(curl -s -X POST "https://aistudio.baidu.com/web/user/signin" \
+            -H "Cookie: ${BAIDU_COOKIE}" \
+            -H "Content-Type: application/json" \
+            --data-binary '{}')
+          echo "$RESPONSE"
+          # 如果响应里包含"未登录"或不包含成功特征码，直接 exit 1 熔断报警
+          echo "$RESPONSE" | grep -q '"code":0' || exit 1
