@@ -461,12 +461,11 @@ class DualT4VoxCPM2Engine:
     PyTorch VoxCPM2 inference engine optimized for Kaggle dual T4 (2x 16GB).
 
     Uses model parallel (device_map="auto") to split across both GPUs.
-    Loads model from local path only — NO network downloads at runtime.
-    Auto-detects model path from Kaggle dataset mount (/kaggle/input/).
+    Auto-downloads model from Hugging Face Hub if not present locally.
     """
 
     HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")  # 可通过 Secret 覆盖
-    CACHE_DIR = "/tmp/voxcpm2-model"  # 备用路径，优先级最低
+    CACHE_DIR = "/tmp/voxcpm2-model"  # 模型缓存路径
 
     @staticmethod
     def _find_kaggle_model_dir() -> str:
@@ -538,13 +537,57 @@ class DualT4VoxCPM2Engine:
     def _load_model(self) -> None:
         import os
 
-        # ===== 预检查：强制验证本地模型目录 =====
-        _log(f"🔍 预检查模型目录: {self.model_path}")
+        # ===== 1. 检查本地模型是否完整，不完整则从 HF Hub 下载 =====
+        def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
+            """确保模型文件存在，不存在则从 HF Hub 下载。"""
+            # 检查目录是否存在且包含必要文件
+            config_exists = os.path.exists(os.path.join(model_dir, "config.json"))
+            weight_files = [f for f in os.listdir(model_dir) if f.endswith(('.safetensors', '.bin', '.pt'))] if os.path.exists(model_dir) else []
+
+            if config_exists and weight_files:
+                _log(f"✅ 本地模型已就绪: {model_dir} (权重: {weight_files})")
+                return
+
+            _log(f"📡 本地模型不完整或不存在，开始从 Hugging Face Hub 下载...")
+            _log(f"   Repo: {repo_id}")
+            _log(f"   目标目录: {model_dir}")
+
+            # 确保目录存在
+            os.makedirs(model_dir, exist_ok=True)
+
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=model_dir,
+                local_dir_use_symlinks=False,
+                resume_download=True,
+            )
+            _log("✅ 模型下载完成！")
+
+        # 使用环境变量或类常量作为 repo_id
+        repo_id = os.getenv("VOXCPM2_HF_REPO", self.HF_REPO_ID)
+
+        # 如果 model_path 是 Kaggle Dataset 路径，优先尝试加载；否则使用 CACHE_DIR
+        if self.model_path.startswith("/kaggle/input/"):
+            _log(f"🔍 检测到 Kaggle Dataset 路径，优先验证: {self.model_path}")
+            if not os.path.exists(self.model_path):
+                _log(f"⚠️ Kaggle Dataset 路径不存在，回退到自动下载...")
+                _ensure_model_downloaded(self.CACHE_DIR, repo_id)
+                self.model_path = self.CACHE_DIR
+            else:
+                # 即使有路径，也检查是否完整
+                _ensure_model_downloaded(self.model_path, repo_id)
+        else:
+            # 直接使用 CACHE_DIR 或指定路径
+            _ensure_model_downloaded(self.model_path, repo_id)
+
+        # ===== 2. 预检查：验证最终确定的模型目录 =====
+        _log(f"🔍 最终预检查模型目录: {self.model_path}")
 
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(
                 f"模型目录不存在: {self.model_path}\n"
-                f"请将模型文件上传到 Kaggle Dataset 并挂载到 /kaggle/input/，或通过 VOXCPM2_MODEL_PATH 指定路径"
+                f"自动下载可能已失败，请检查网络连接或 HF_TOKEN"
             )
 
         # 检查关键文件是否存在
