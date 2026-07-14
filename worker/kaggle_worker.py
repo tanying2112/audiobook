@@ -37,7 +37,8 @@ _KAGGLE_API_FALLBACKS = {
     "R2_BUCKET": "audiobook-assets",
     "R2_PUBLIC_URL": "https://pub-xxx.r2.dev",
     "WORKER_ID": "kaggle-t4-dual-01",
-    "VOXCPM2_HF_REPO": "openbmb/VoxCPM2"
+    "VOXCPM2_HF_REPO": "openbmb/VoxCPM2",
+    "HF_TOKEN": ""  # 从 Kaggle Secrets 注入，默认空字符串
 }
 
 for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
@@ -99,7 +100,7 @@ def _inject_kaggle_secrets() -> None:
         secret_keys = [
             "REDIS_HOST", "REDIS_PORT", "REDIS_AUTH",
             "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET",
-            "R2_PUBLIC_URL", "WORKER_ID", "VOXCPM2_HF_REPO",
+            "R2_PUBLIC_URL", "WORKER_ID", "VOXCPM2_HF_REPO", "HF_TOKEN",
         ]
 
         for key in secret_keys:
@@ -561,6 +562,7 @@ class DualT4VoxCPM2Engine:
                 local_dir=model_dir,
                 local_dir_use_symlinks=False,
                 resume_download=True,
+                token=os.getenv("HF_TOKEN"),
             )
             _log("✅ 模型下载完成！")
 
