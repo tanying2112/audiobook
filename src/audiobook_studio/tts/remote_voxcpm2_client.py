@@ -11,12 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from tenacity import (
-    retry,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_exponential,
-)
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from ..llm.circuit_breaker import CircuitBreaker
 
@@ -125,7 +120,6 @@ class RemoteVoxCPM2Client:
         if isinstance(exc, httpx.HTTPStatusError):
             return 500 <= exc.response.status_code < 600
         return False
-
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=30),

@@ -18,12 +18,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from celery import Celery
-from celery.states import SUCCESS, FAILURE, RETRY, STARTED
+from celery.states import FAILURE, RETRY, STARTED, SUCCESS
 
 from ..celery_app import celery_app
 from ..database import SessionLocal
 from ..models import AudioSegment, Chapter, Paragraph, Project
-from ..pipeline.synthesize import SynthesizePipeline, AudioSegment as PipelineAudioSegment
+from ..pipeline.synthesize import AudioSegment as PipelineAudioSegment
+from ..pipeline.synthesize import SynthesizePipeline
 from ..tts import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 try:
     import redis
+
     _redis_client = redis.from_url(_REDIS_URL, decode_responses=True)
 except Exception as e:
     logger.warning(f"Redis client init failed, idempotency/semaphore disabled: {e}")
@@ -75,6 +77,7 @@ def _get_redis() -> Optional["redis.Redis"]:
     if _redis_client is None:
         try:
             import redis
+
             _redis_client = redis.from_url(_REDIS_URL, decode_responses=True)
             _acquire_sha = _redis_client.script_load(_ACQUIRE_LUA)
             _release_sha = _redis_client.script_load(_RELEASE_LUA)
@@ -112,6 +115,7 @@ class TTSChapterTask(celery_app.Task):
         if self._voxcpm2_client is not None:
             try:
                 import asyncio
+
                 asyncio.run(self._voxcpm2_client.close())
             except Exception as e:
                 logger.warning(f"Error closing RemoteVoxCPM2Client: {e}")
@@ -259,7 +263,9 @@ def synthesize_chapter_task(
         Dict with task_id, status, chapter_audio_path, segments, failed_indices, error
     """
     task_id = self.request.id
-    logger.info(f"[{task_id}] Starting TTS chapter synthesis: project={project_id}, chapter={chapter_id}, index={chapter_index}")
+    logger.info(
+        f"[{task_id}] Starting TTS chapter synthesis: project={project_id}, chapter={chapter_id}, index={chapter_index}"
+    )
 
     # Acquire semaphore for remote concurrency control
     if not self._acquire_semaphore():
@@ -281,7 +287,11 @@ def synthesize_chapter_task(
 
         chapter = db.query(Chapter).filter(Chapter.id == chapter_id, Chapter.project_id == project_id).first()
         if not chapter:
-            return {"task_id": task_id, "status": "failed", "error": f"Chapter {chapter_id} not found in project {project_id}"}
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "error": f"Chapter {chapter_id} not found in project {project_id}",
+            }
 
         # Get output directory from project or default
         output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
@@ -325,21 +335,27 @@ def synthesize_chapter_task(
                 if not self._check_and_set_idempotency(idem_key):
                     logger.info(f"[{task_id}] Paragraph {para_index} already synthesized (idempotent), skipping")
                     # Try to load existing segment from DB
-                    existing = db.query(AudioSegment).filter(
-                        AudioSegment.project_id == project_id,
-                        AudioSegment.chapter_id == chapter_id,
-                        AudioSegment.paragraph_id == para_id,
-                        AudioSegment.is_current == True,
-                    ).first()
+                    existing = (
+                        db.query(AudioSegment)
+                        .filter(
+                            AudioSegment.project_id == project_id,
+                            AudioSegment.chapter_id == chapter_id,
+                            AudioSegment.paragraph_id == para_id,
+                            AudioSegment.is_current == True,
+                        )
+                        .first()
+                    )
                     if existing and Path(existing.file_path).exists():
-                        segments.append(PipelineAudioSegment(
-                            segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
-                            file_path=existing.file_path,
-                            duration_ms=existing.duration_ms or 0,
-                            engine=existing.engine or "voxcpm2_remote",
-                            voice_id=existing.voice_id or voice_id,
-                            text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
-                        ))
+                        segments.append(
+                            PipelineAudioSegment(
+                                segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
+                                file_path=existing.file_path,
+                                duration_ms=existing.duration_ms or 0,
+                                engine=existing.engine or "voxcpm2_remote",
+                                voice_id=existing.voice_id or voice_id,
+                                text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
+                            )
+                        )
                         continue
 
             # Synthesize paragraph
@@ -349,6 +365,7 @@ def synthesize_chapter_task(
             try:
                 logger.info(f"[{task_id}] Synthesizing paragraph {para_index}/{total}: {segment_id}")
                 import asyncio
+
                 audio_data = asyncio.run(client.synthesize(text, voice_id, prosody))
 
                 # Save audio file
@@ -380,14 +397,16 @@ def synthesize_chapter_task(
                 db.commit()
 
                 # Add to segments for stitching
-                segments.append(PipelineAudioSegment(
-                    segment_id=segment_id,
-                    file_path=str(output_path),
-                    duration_ms=duration_ms,
-                    engine="voxcpm2_remote",
-                    voice_id=voice_id,
-                    text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
-                ))
+                segments.append(
+                    PipelineAudioSegment(
+                        segment_id=segment_id,
+                        file_path=str(output_path),
+                        duration_ms=duration_ms,
+                        engine="voxcpm2_remote",
+                        voice_id=voice_id,
+                        text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
+                    )
+                )
 
                 logger.info(f"[{task_id}] Paragraph {para_index} synthesized: {duration_ms}ms")
 
@@ -507,9 +526,7 @@ def resume_chapter_task(
         db.close()
 
 
-@celery_app.task(
-    name="src.audiobook_studio.tasks.tts_tasks.get_tts_status"
-)
+@celery_app.task(name="src.audiobook_studio.tasks.tts_tasks.get_tts_status")
 def get_tts_status(task_id: str) -> Dict[str, Any]:
     """
     Get the status of a TTS task by Celery task ID.
@@ -542,7 +559,9 @@ def get_tts_status(task_id: str) -> Dict[str, Any]:
         response["paragraph_index"] = result.info.get("paragraph_index")
 
     if result.state == "FAILURE":
-        response["error"] = str(result.info) if not isinstance(result.info, dict) else result.info.get("error", "Unknown error")
+        response["error"] = (
+            str(result.info) if not isinstance(result.info, dict) else result.info.get("error", "Unknown error")
+        )
 
     return response
 
@@ -551,10 +570,15 @@ def _get_audio_duration(file_path: Path) -> int:
     """Get audio duration in milliseconds using ffprobe."""
     try:
         import subprocess
+
         cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
             str(file_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)

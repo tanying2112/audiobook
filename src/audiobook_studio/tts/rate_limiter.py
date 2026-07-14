@@ -5,8 +5,8 @@ Used for remote TTS endpoints (VoxCPM2, cloud TTS) to respect API quotas.
 """
 
 import logging
-import time
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -22,7 +22,7 @@ class ProviderRateLimiter:
     """
 
     max_tpm: int = 6000  # tokens per minute
-    max_rpm: int = 30    # requests per minute
+    max_rpm: int = 30  # requests per minute
     _tokens_used: int = 0
     _requests_used: int = 0
     _window_start: float = field(default_factory=time.time)
@@ -35,10 +35,7 @@ class ProviderRateLimiter:
                 self._tokens_used = 0
                 self._requests_used = 0
                 self._window_start = now
-            return (
-                self._tokens_used + estimated_tokens <= self.max_tpm
-                and self._requests_used + 1 <= self.max_rpm
-            )
+            return self._tokens_used + estimated_tokens <= self.max_tpm and self._requests_used + 1 <= self.max_rpm
 
     def record_usage(self, tokens: int):
         with self._lock:

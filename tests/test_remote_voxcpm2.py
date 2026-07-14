@@ -3,20 +3,21 @@
 Uses pytest-httpx for mocking HTTP responses and testing retry/circuit breaker behavior.
 """
 
-import pytest
-import httpx
 import asyncio
 import json
-from unittest.mock import AsyncMock, patch, MagicMock, PropertyMock
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import httpx
+import pytest
+
+from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
+from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 from src.audiobook_studio.tts.remote_voxcpm2_client import (
     RemoteVoxCPM2Client,
     RemoteVoxCPM2Config,
     create_remote_voxcpm2_client,
 )
-from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
 
 class TestRemoteVoxCPM2Config:
@@ -134,6 +135,7 @@ class TestRemoteVoxCPM2Client:
         assert request.method == "POST"
         assert str(request.url) == "https://test.example.com/generate"
         import json
+
         payload = json.loads(request.content)
         assert payload["text"] == "测试文本"
         assert payload["voice_id"] == "zh_female_1"
@@ -159,6 +161,7 @@ class TestRemoteVoxCPM2Client:
         assert result == audio_data
         request = httpx_mock.get_requests()[0]
         import json
+
         payload = json.loads(request.content)
         assert payload["reference_audio"] == "/path/to/reference.wav"
 
@@ -480,13 +483,17 @@ class TestRemoteVoxCPM2ClientIntegration:
 
         # The retry decorator uses stop_after_attempt(3) = 3 total attempts
         # For "第一段": 1 success
-        httpx_mock.add_response(method="POST", url="https://test.example.com/generate", content=b"audio_0", status_code=200)
+        httpx_mock.add_response(
+            method="POST", url="https://test.example.com/generate", content=b"audio_0", status_code=200
+        )
         # For "第二段": 3 failures (initial + 2 retries) - all 500
         httpx_mock.add_response(method="POST", url="https://test.example.com/generate", status_code=500)
         httpx_mock.add_response(method="POST", url="https://test.example.com/generate", status_code=500)
         httpx_mock.add_response(method="POST", url="https://test.example.com/generate", status_code=500)
         # For "第三段": 1 success
-        httpx_mock.add_response(method="POST", url="https://test.example.com/generate", content=b"audio_2", status_code=200)
+        httpx_mock.add_response(
+            method="POST", url="https://test.example.com/generate", content=b"audio_2", status_code=200
+        )
 
         results = []
         texts = ["第一段", "第二段", "第三段"]
@@ -506,7 +513,9 @@ class TestRemoteVoxCPM2ClientIntegration:
         # Simulate resume: retry failed paragraph (another 3 attempts: 2 failures + 1 success)
         httpx_mock.add_response(method="POST", url="https://test.example.com/generate", status_code=500)
         httpx_mock.add_response(method="POST", url="https://test.example.com/generate", status_code=500)
-        httpx_mock.add_response(method="POST", url="https://test.example.com/generate", content=b"audio_1_retry", status_code=200)
+        httpx_mock.add_response(
+            method="POST", url="https://test.example.com/generate", content=b"audio_1_retry", status_code=200
+        )
 
         audio = await client.synthesize(texts[1], "zh_female_1")
         assert audio == b"audio_1_retry"
@@ -596,6 +605,7 @@ class TestTTSChapterTaskIdempotency:
     def test_check_and_set_idempotency_redis_unavailable(self, task, monkeypatch):
         """Test idempotency check returns True when Redis is unavailable (fail-open)."""
         import src.audiobook_studio.tasks.tts_tasks as tts_tasks
+
         monkeypatch.setattr(tts_tasks, "_redis_client", None)
 
         result = task._check_and_set_idempotency("tts:idem:test123")
@@ -658,6 +668,7 @@ class TestTTSChapterTaskSemaphore:
     def test_acquire_semaphore_redis_unavailable(self, task, monkeypatch):
         """Test semaphore acquire returns True when Redis unavailable (fail-open)."""
         import src.audiobook_studio.tasks.tts_tasks as tts_tasks
+
         monkeypatch.setattr(tts_tasks, "_redis_client", None)
 
         result = task._acquire_semaphore()
@@ -759,8 +770,9 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_parses_progress_meta(self):
         """Test get_tts_status correctly parses progress meta from Celery result."""
-        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
         from unittest.mock import MagicMock, patch
+
+        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
         # Mock Celery AsyncResult
         mock_result = MagicMock()
@@ -785,8 +797,9 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_completed(self):
         """Test get_tts_status for completed task."""
-        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
         from unittest.mock import MagicMock, patch
+
+        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
         mock_result = MagicMock()
         mock_result.state = "SUCCESS"
@@ -805,8 +818,9 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_failed(self):
         """Test get_tts_status for failed task."""
-        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
         from unittest.mock import MagicMock, patch
+
+        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
         mock_result = MagicMock()
         mock_result.state = "FAILURE"
@@ -822,8 +836,9 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_retry(self):
         """Test get_tts_status for retrying task."""
-        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
         from unittest.mock import MagicMock, patch
+
+        from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
         mock_result = MagicMock()
         mock_result.state = "RETRY"

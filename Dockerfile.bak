@@ -12,9 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Compile toolchain stays in Builder ONLY — never leaks into Runner (size win).
 # build-essential / libffi-dev cover C-extension wheel fallback (cryptography/bcrypt).
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
-    || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libffi-dev \
         git \
@@ -44,9 +42,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
 
 # Runtime libs only (no build-essential / git / libffi-dev) — keeps the image lean.
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
-    || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
         libsndfile1 \

@@ -5,6 +5,7 @@ Configures Redis broker/result backend and task routing.
 """
 
 import os
+
 from celery import Celery
 from celery.schedules import crontab
 
@@ -52,9 +53,12 @@ celery_app.conf.update(
 )
 
 # Auto-discover tasks
-celery_app.autodiscover_tasks([
-    "src.audiobook_studio.tasks",
-])
+celery_app.autodiscover_tasks(
+    [
+        "src.audiobook_studio.tasks",
+    ]
+)
+
 
 # Health check task
 @celery_app.task(bind=True)
