@@ -460,15 +460,47 @@ class DualT4VoxCPM2Engine:
 
     Uses model parallel (device_map="auto") to split across both GPUs.
     Loads model from local path only — NO network downloads at runtime.
+    Auto-detects model path from Kaggle dataset mount (/kaggle/input/).
     """
 
     HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")  # 可通过 Secret 覆盖
-    CACHE_DIR = "/tmp/voxcpm2-model"
+    CACHE_DIR = "/tmp/voxcpm2-model"  # 备用路径，优先级最低
+
+    @staticmethod
+    def _find_kaggle_model_dir() -> str:
+        """在 /kaggle/input/ 下查找包含模型文件的目录。"""
+        import os
+        base = "/kaggle/input"
+        if not os.path.exists(base):
+            return ""
+        # 遍历 /kaggle/input/ 下的所有子目录
+        for entry in os.listdir(base):
+            candidate = os.path.join(base, entry)
+            if not os.path.isdir(candidate):
+                continue
+            # 递归查找包含 config.json 的目录
+            for root, dirs, files in os.walk(candidate):
+                if "config.json" in files:
+                    # 再检查是否有模型权重文件
+                    has_weights = any(
+                        f.endswith(('.safetensors', '.bin', '.pt')) for f in files
+                    )
+                    if has_weights:
+                        _log(f"🎯 自动检测到 Kaggle 模型目录: {root}")
+                        return root
+        return ""
 
     def __init__(self, model_path: str = None):
-        self.model_path = model_path or self.CACHE_DIR
+        # 优先级: 传入参数 > Kaggle Dataset 自动检测 > 环境变量 > 备用缓存路径
+        if model_path:
+            self.model_path = model_path
+        else:
+            detected = self._find_kaggle_model_dir()
+            self.model_path = detected or os.getenv("VOXCPM2_MODEL_PATH") or self.CACHE_DIR
+
         self.device_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
         _log(f"Detected {self.device_count} GPU(s): {get_device_names()}")
+        _log(f"Model path resolved to: {self.model_path}")
         self.model = None
         self.tokenizer = None
         self._load_model()
@@ -477,33 +509,35 @@ class DualT4VoxCPM2Engine:
         import os
 
         # ===== 预检查：强制验证本地模型目录 =====
-        _log(f"🔍 预检查模型目录: {self.CACHE_DIR}")
+        _log(f"🔍 预检查模型目录: {self.model_path}")
 
-        if not os.path.exists(self.CACHE_DIR):
+        if not os.path.exists(self.model_path):
             raise FileNotFoundError(
-                f"模型目录不存在: {self.CACHE_DIR}\n"
-                f"请将模型文件放置到该路径，或挂载 Kaggle Dataset 到 /kaggle/input/voxcpm2-model 并修改 CACHE_DIR"
+                f"模型目录不存在: {self.model_path}\n"
+                f"请将模型文件上传到 Kaggle Dataset 并挂载到 /kaggle/input/，或通过 VOXCPM2_MODEL_PATH 指定路径"
             )
 
         # 检查关键文件是否存在
-        required_files = ["config.json", "pytorch_model.bin"]
-        missing_files = [f for f in required_files if not os.path.exists(os.path.join(self.CACHE_DIR, f))]
-        # 也可能是 safetensors 格式
-        if not missing_files:
-            pass
-        else:
-            # 尝试 safetensors
-            safetensors_files = [f for f in os.listdir(self.CACHE_DIR) if f.endswith('.safetensors')]
-            if not safetensors_files:
-                raise FileNotFoundError(
-                    f"模型目录缺少必要文件: {missing_files}\n"
-                    f"当前目录内容: {os.listdir(self.CACHE_DIR)}\n"
-                    f"请确保模型文件完整 (config.json + pytorch_model.bin 或 *.safetensors)"
-                )
+        required_files = ["config.json"]
+        missing_files = [f for f in required_files if not os.path.exists(os.path.join(self.model_path, f))]
+        if missing_files:
+            raise FileNotFoundError(
+                f"模型目录缺少必要文件: {missing_files}\n"
+                f"当前目录内容: {os.listdir(self.model_path)}\n"
+                f"请确保模型文件完整 (至少需要 config.json + 模型权重文件 *.safetensors/*.bin/*.pt)"
+            )
 
-        _log(f"✅ 预检查通过，模型文件完整: {self.CACHE_DIR}")
+        # 检查模型权重文件
+        weight_files = [f for f in os.listdir(self.model_path) if f.endswith(('.safetensors', '.bin', '.pt'))]
+        if not weight_files:
+            raise FileNotFoundError(
+                f"模型目录缺少权重文件 (*.safetensors, *.bin, *.pt)\n"
+                f"当前目录内容: {os.listdir(self.model_path)}"
+            )
 
-        self.model_path = self.CACHE_DIR
+        _log(f"✅ 预检查通过，模型文件完整: {self.model_path}")
+        _log(f"   发现权重文件: {weight_files}")
+
         _log(f"Loading VoxCPM2 from {self.model_path} on {self.device_count} GPU(s)...")
 
         # Use official VoxCPM loader for custom architecture (continuous latent encoder + diffusion + autoregressive)
