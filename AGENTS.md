@@ -229,3 +229,30 @@ grep -rn "#\s*TODO" src/ --include="*.py" || echo "无遗留 TODO"
 ```
 
 > **核心原则**：系统会自动检查和执行规范，Agent 只需遵循本文档要求开发即可。遇到本文档未覆盖的情况，优先选择最安全、最保守的方案。
+
+---
+
+## 十二、Agent 开发红线与全链路治理规范 (Agent Governance Red Lines)
+
+为防止 Agent 产生“声明完成但生产不可用”的交付幻觉、过度膨胀重构或破坏环境资产，任何 AI Assistant 在开展任何工作前，必须无条件对齐并遵守以下底线限制：
+
+### 1. 主路径真实性约束 (No Implicit Mocking)
+- 生产环境默认路径（Default Pipeline）禁止任何隐式 mock 短路。
+- 允许通过 `mock_mode=True` 或显式环境变量进行局部测试或离线开发，但该模式必须由调用方/测试夹具显式注入，且 mock 实现必须收敛在可识别的边界（如工厂替身、MockServer 容器），严禁将 mock 逻辑零散硬编码在主业务分支中。
+- 严禁将 Mock 充当“功能 100% 完备（Done）”的定义。
+
+### 2. 测试有副作用断言约束 (No Empty/Trivial Assertions)
+- 禁止为了单纯刷高覆盖率（Coverage Percentage）而编写无有效断言的空测试。
+- 任何涉及音频、文件 I/O、数据库或队列的任务，其测试必须对**最终产物存在性、体积/时长合法性、状态机迁移行为或预期的错误类型**进行深度断言（Assert）。
+- 禁止单纯 `import 模块` 或 `assert True` 的“刷分”行为。覆盖率仅作为副指标（总体基线目标 ≥60%），核心路径行为锁死优先。
+
+### 3. 全局唯一进度源约束 (Single Source of Truth)
+- 项目的开发状态、Sprint 进度勾选和技术债记录，**全局唯一真相源为 `PROJECT_STATUS.md`**（或项目指定的全局单一文件）。
+- 严禁 Agent 自行新建类似于 `*_audit_report.md`、`*_completion_record.md` 等临时汇总文档来刷交付感。状态变更必须严格遵循【降级判定矩阵】。
+
+### 4. 架构变更 ADR 门禁 (ADR Before Architecture Shift)
+- 新增或重大修改任何队列、存储、调度主路径（如新增/废弃 Celery 或 Redis 调度链）之前，必须先在 `docs/adr/` 下提交架构决策记录（ADR）并由人类架构师审批，否则禁止直接重构。
+
+### 5. 资产边界与敏感信息隔离
+- 严禁向仓库提交任何真实 API 密钥或凭证，仅允许在 `.env.example` 或 `config.json` 中使用大写占位符。
+- 严禁将大模型本地权重、大体量音频资产、0 字节无效 `.safetensors`/`.pth` 文件推入代码仓。必须通过自动化下载脚本 + `.gitignore` 白名单规则进行精细化动态忽略。
