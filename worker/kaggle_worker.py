@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import subprocess
+import abc
 import json
 import signal
 import uuid
@@ -21,6 +22,7 @@ from typing import Any, Dict, Optional
 # 🔐 SSL 验证全局关闭 - 必须在任何 import 之前执行
 # 解决 Kaggle 代理环境下的证书校验失败
 # ========================================================
+import os
 os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # ========================================================
@@ -32,52 +34,6 @@ import sys
 import time
 import uuid
 from typing import Any, Dict, Optional
-
-# 初始化 Redis 日志连接（复用已注入的凭据）
-# 🚨 核心修复：如果 Kaggle 容器里缺少 redis 库，自动静默安装
-try:
-    import redis as _redis
-except ModuleNotFoundError:
-    _print = print
-    _print("[BOOTSTRAP] 正在自动安装缺失的 redis 依赖...")
-    os.system(f"{sys.executable} -m pip install redis -q")
-    import redis as _redis
-
-# 初始化 Redis 日志连接（复用已注入的凭据）
-_log_redis = None
-try:
-    _log_redis = _redis.Redis(
-        host=os.environ.get("REDIS_HOST"),
-        port=int(os.environ.get("REDIS_PORT", 6379)),
-        password=os.environ.get("REDIS_AUTH"),
-        decode_responses=True,
-        socket_timeout=5,
-        socket_connect_timeout=5,
-        ssl=True,  # Upstash 强制 SSL
-    )
-    # 测试连接
-    _log_redis.ping()
-except Exception as e:
-    _log_redis = None
-    _print(f"[BOOTSTRAP] ⚠️ Redis 日志连接初始化失败: {e}", flush=True)
-
-def _safe_log_redis(message: str) -> None:
-    """三层防御：单行截断 + 滑动窗口 LTRIM + TTL 自动过期"""
-    if not _log_redis:
-        return
-    try:
-        truncated = message[:1000]
-        _log_redis.rpush("worker:logs", truncated)
-        _log_redis.ltrim("worker:logs", -300, -1)
-        _log_redis.expire("worker:logs", 1800)
-    except Exception as e:
-        _print(f"[BOOTSTRAP] ⚠️ Redis 日志写入失败: {e}", flush=True)
-
-# 重写全局 _log 函数
-_print = print
-def _log(msg: str) -> None:
-    _print(f"[BOOTSTRAP] {msg}", flush=True)
-    _safe_log_redis(f"[BOOTSTRAP] {message}")
 
 # ========================================================
 # 🛡️ Kaggle API 专用 - 密钥断网保护层
@@ -91,7 +47,7 @@ _KAGGLE_API_FALLBACKS = {
     "R2_ENDPOINT": "https://061b064ef0dafd787d33f4ee1693aa1b.r2.cloudflarestorage.com",
     "R2_ACCESS_KEY_ID": "2fc25bbebc34f9b88874a8affcda2e3a",
     "R2_SECRET_ACCESS_KEY": "b7d997bc558346d8146d33be06810b7db600baafe0cbe5d7356268ee948ef9d3",
-    "R2_BUCKET": "audiobook-assets",
+    "R2_BUOOKET": "audiobook-assets",
     "R2_PUBLIC_URL": "https://pub-xxx.r2.dev",
     "WORKER_ID": "kaggle-t4-dual-01",
     "VOXCPM2_HF_REPO": "openbmb/VoxCPM2",
@@ -113,6 +69,7 @@ for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
 _print = print
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
+
 
 def _install_missing_deps() -> None:
     """Install missing packages at runtime (Kaggle kernel has no pip cells)."""
@@ -193,6 +150,7 @@ try:
 except ImportError:
     boto3 = None
     redis = None
+
 
 # ==========================================
 # 3. INLINED BaseWorker (single-file contract)
@@ -336,7 +294,7 @@ class BaseWorker(abc.ABC):
             try:
                 return func(*args, **kwargs)
             except (redis.RedisError, boto3.exceptions.Boto3Error) as error:
-                _print(f"⚠️ [{self.worker_id}] I/O failure attempt {attempt}/{max_retries}: {error}", file=sys.stderr)
+                _print(f"⚠️ [{self.worker_id}] Dynamic I/O failure on attempt {attempt}/{max_retries}: {error}", file=sys.stderr)
                 if attempt == max_retries:
                     raise
                 time.sleep(delay)
@@ -384,7 +342,7 @@ class BaseWorker(abc.ABC):
                 "duration_ms": len(audio_bytes) * 1000 // 48000,  # rough estimate for 24kHz mono
             }
         except Exception as e:
-            _print(f"💥 [{self.worker_id}] Task {task_id} pipeline crash: {e}", file=sys.stderr)
+            _print(f"💥 [{self.worker_id}] Task {task_id} suffered pipeline crash: {e}", file=sys.stderr)
             return {
                 "id": task_id,
                 "status": "failed",
@@ -476,7 +434,7 @@ class BaseWorker(abc.ABC):
         prosody: Dict[str, Any],
         reference_audio: Optional[str],
     ) -> bytes:
-        """Must map local model tensor generation to contiguous native audio byte streams."""
+        """Must map abstract distributed tasks directly onto contiguous native audio byte streams."""
         pass
 
     @abc.abstractmethod
@@ -571,6 +529,7 @@ class DualT4VoxCPM2Engine:
                 ("https://huggingface.co", "官方源"),
             ]
 
+            api_failed = False
             for ep_url, ep_name in endpoints:
                 os.environ["HF_ENDPOINT"] = ep_url
                 try:
@@ -583,9 +542,8 @@ class DualT4VoxCPM2Engine:
                 _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
                 # 双鉴权策略：先 Token，再匿名
-                for tok in (os.getenv("HF_TOKEN"), None):
-                    clean_tok = tok if tok else None
-                    strategy = "带Token" if clean_tok else "匿名"
+                for tok in (token, None):
+                    strategy = "带Token" if tok else "匿名"
                     _log(f"🔑 策略: {strategy}")
 
                     for attempt in range(1, 4):
@@ -605,7 +563,56 @@ class DualT4VoxCPM2Engine:
                             _log(f"⚠️ 尝试 {attempt}/3 失败: {str(e)[:200]}")
                             time.sleep(2 ** attempt)
 
-            raise RuntimeError("所有镜像/鉴权组合均失败，模型下载彻底失败")
+            # ===== 所有 HF API 失败，启用 Git 克隆终极兜底 =====
+            _log("🛡️ 所有 HF API 失败，启动终极兜底：Git 克隆...")
+            try:
+                import subprocess
+                import shutil
+                import time
+                mirror_url = f"{endpoint}/{repo_id}"
+                _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
+
+                # 确保目标目录完全不存在（Git clone 要求目标不存在）
+                if os.path.exists(model_dir):
+                    _log(f"⚠️ 目录已存在，正在清理: {model_dir}")
+                    def remove_readonly(func, path, excinfo):
+                        os.chmod(path, 0o777)
+                        func(path)
+                    for _ in range(3):
+                        try:
+                            shutil.rmtree(model_dir, onerror=remove_readonly)
+                            break
+                        except Exception:
+                            time.sleep(0.5)
+                if os.path.exists(model_dir):
+                    raise RuntimeError(f"无法删除目标目录: {model_dir}")
+
+                # Git clone 会自动创建目录，不需要预先创建
+                _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
+
+                # 设置环境变量跳过 LFS 文件，只克隆元数据和配置
+                env = os.environ.copy()
+                env["GIT_LFS_SKIP_SMUDGE"] = "1"
+                env["HF_HUB_DISABLE_SSL_VERIFICATION"] = "1"
+                env["HF_ENDPOINT"] = endpoint
+
+                subprocess.run([
+                    "git", "clone",
+                    "--depth", "1",
+                    "--branch", "main",
+                    mirror_url,
+                    model_dir
+                ], check=True, capture_output=True, text=True, timeout=900, env=env)
+                _log(f"✅ Git 克隆成功！模型元数据已就绪: {model_dir}")
+                return
+            except subprocess.TimeoutExpired:
+                _log("❌ Git 克隆超时 (15 分钟)")
+            except subprocess.CalledProcessError as e:
+                _log(f"❌ Git 克隆失败: {e.stderr[:300] if e.stderr else str(e)}")
+            except Exception as e:
+                _log(f"❌ Git 克隆异常: {str(e)[:300]}")
+
+            raise RuntimeError("所有镜像/鉴权/Git 克隆均失败，模型下载彻底失败")
 
         # ===== 主流程 =====
         repo_id = os.getenv("VOXCPM2_HF_REPO", self.HF_REPO_ID)
@@ -630,7 +637,7 @@ class DualT4VoxCPM2Engine:
         required = ["config.json"]
         missing = [f for f in required if not os.path.exists(os.path.join(self.model_path, f))]
         if missing:
-            raise FileNotFoundError(f"缺少必要文件: {missing}")
+            raise FileNotFoundError(f"模型目录缺少必要文件: {missing}")
 
         weights = [f for f in os.listdir(self.model_path) if f.endswith(('.safetensors', '.bin', '.pt'))]
         if not weights:
@@ -728,8 +735,6 @@ class DualT4VoxCPM2Engine:
         # ========================================================
 
         # VoxCPM wrapper's generate method takes text and speaker directly
-        speaker_prompt = self._get_speaker_prompt(voice_id, reference_audio)
-
         speaker_map = {
             "zh_female_1": 0,
             "zh_male_1": 1,
@@ -798,7 +803,8 @@ class DualT4VoxCPM2Engine:
 # ==========================================
 class KaggleWorker(BaseWorker):
     """Kaggle-specific distributed TTS Worker implementation leveraging
-    the Dual T4 VoxCPM2 model parallel framework."""
+    the Dual T4 VoxCPM2 model parallel framework.
+    """
 
     def __init__(self):
         # 🔒 必须在 super().__init__() 之前校验 GPU 型号
@@ -810,7 +816,7 @@ class KaggleWorker(BaseWorker):
         device_count = torch.cuda.device_count()
         device_names = [torch.cuda.get_device_name(i) for i in range(device_count)]
         if device_count != 2 or not all("T4" in n for n in device_names):
-            _print(f"ERROR: GPU 型号/数量不符。预期 2x T4，实际 {device_names}。拒绝启动。", file=sys.stderr)
+            _print(f"ERROR: GPU 型号/数量不符。预期 Tesla T4 x2，实际 {device_names}。拒绝启动。", file=sys.stderr)
             sys.exit(1)
 
         _print(f"✅ GPU 校验通过: {device_names}")
