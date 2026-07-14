@@ -73,11 +73,14 @@ tokenizer.model
 tokenization_*.py
 
 # Large audio artifacts (products)
+# Negate specific directories FIRST, then general patterns
+!tests/fixtures/
+!tests/fixtures/**
+!storage/voice_anchors/
+!storage/voice_anchors/**
 *.mp3
 *.wav
 *.m4b
-!tests/fixtures/**/*.wav   # allow tiny test audio fixtures
-!storage/voice_anchors/**  # allow voice anchor configs for version control
 
 # Real LLM provider config (contains env var references, but keep template tracked)
 config/llm_providers.yaml
