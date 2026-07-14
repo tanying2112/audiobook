@@ -586,13 +586,24 @@ class DualT4VoxCPM2Engine:
             # 确保目录存在
             os.makedirs(model_dir, exist_ok=True)
 
+            # 🔐 清理 HF_TOKEN：移除可能的 "Bearer " 前缀、首尾空白、换行符
+            raw_token = os.getenv("HF_TOKEN", "")
+            clean_token = raw_token.strip()
+            if clean_token.lower().startswith("bearer "):
+                clean_token = clean_token[7:].strip()
+            if not clean_token:
+                clean_token = None
+                _log("⚠️ HF_TOKEN 为空或无效，尝试匿名下载...")
+            else:
+                _log(f"🔑 使用 HF_TOKEN 认证下载 (前缀: {clean_token[:8]}...)")
+
             from huggingface_hub import snapshot_download
             snapshot_download(
                 repo_id=repo_id,
                 local_dir=model_dir,
                 local_dir_use_symlinks=False,
                 resume_download=True,
-                token=os.getenv("HF_TOKEN"),
+                token=clean_token,
                 max_workers=1,              # 单线程下载，防止容器内死锁
                 tqdm_class=None,            # 禁用进度条，防止刷新缓冲区死锁
                 allow_patterns=None,        # 下载所有文件
