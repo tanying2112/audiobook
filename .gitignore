@@ -57,9 +57,24 @@ logs/*.log
 *.pem
 *.secret
 secrets.*
+inspect_secret.py
+config.json
+
+# Model weights and tokenizer files (large binary files, not tracked)
+*.pth
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.onnx
+tokenizer_config.json
+tokenizer.json
+tokenizer.model
+tokenization_*.py
 
 # Real LLM provider config (contains env var references, but keep template tracked)
 config/llm_providers.yaml
+src/audiobook_studio/config/llm_providers.yaml
 
 # Docker (不忽略 docker-compose.yml 和 Dockerfile)
 # docker-compose.yml
