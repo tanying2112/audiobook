@@ -805,49 +805,65 @@ class DualT4VoxCPM2Engine:
 # 5. KAGGLE WORKER IMPLEMENTATION
 # ==========================================
 class KaggleWorker(BaseWorker):
-    """Kaggle Kernel worker with dual T4 + R2 upload."""
+    """
+    Kaggle-specific distributed TTS Worker implementation leveraging
+    the Dual T4 VoxCPM2 model parallel framework.
+    """
 
     def __init__(self):
-        super().__init__(platform_prefix="kaggle")
-        self.last_keepalive = 0
+        super().__init__(platform_prefix="kaggle-t4-dual")
 
     def _init_engine(self) -> DualT4VoxCPM2Engine:
-        # No longer need VOXCPM2_MODEL_PATH env; engine downloads from HF Hub
-        return DualT4VoxCPM2Engine()
+        """Instantiate and compile the local multi-GPU VoxCPM2 execution instance."""
+        return DualT4VoxCPM2Engine(model_path=self.model_path)
 
     def _execute_smoke_test(self) -> None:
-        _print(f"🧪 [{self.worker_id}] Running smoke test...")
-        test_audio = self.engine.synthesize("测试语音合成。", "zh_female_1", {})
-        _print(f"✅ Smoke test passed: {len(test_audio)} bytes generated")
+        """Execute a quick text synthesis slice to confirm runtime sanity and VRAM bounds."""
+        _print(f"🧪 [{self.worker_id}] Launching local inference engine smoke test...")
+        try:
+            # Quick initialization slice to confirm layer maps match allocation layouts
+            test_bytes = self.engine.synthesize(
+                text="测试驱动",
+                voice_id="zh_female_1",
+                prosody={},
+                reference_audio=None
+            )
+            if test_bytes and len(test_bytes) > 0:
+                _print(f"✅ [{self.worker_id}] Smoke test passed. Formatted native wave sample size: {len(test_bytes)} bytes.")
+            else:
+                raise ValueError("Engine completed inference but produced an invalid empty byte segment.")
+        except Exception as e:
+            _print(f"❌ [{self.worker_id}] Critical failure detected during engine validation: {e}", file=sys.stderr)
+            raise RuntimeError(f"Engine validation pipeline crashed: {e}") from e
 
     def _synthesize(
         self,
         text: str,
         voice_id: str,
-        prosody: dict,
-        reference_audio: str = None,
+        prosody: Dict[str, Any],
+        reference_audio: Optional[str],
     ) -> bytes:
-        return self.engine.synthesize(text, voice_id, prosody, reference_audio)
+        """Map abstract distributed tasks directly onto contiguous native audio byte streams."""
+        return self.engine.synthesize(
+            text=text,
+            voice_id=voice_id,
+            prosody=prosody,
+            reference_audio=reference_audio
+        )
 
-    def _get_platform_gpu_metrics(self) -> dict:
+    def _get_platform_gpu_metrics(self) -> Dict[str, int]:
+        """Expose local device tracking telemetry metrics to the tracing bus."""
         return {
-            "gpu_count": self.engine.device_count,
-            "gpu_mem_used_mb": get_gpu_memory_used(),
-            "gpu_mem_total_mb": get_gpu_memory_total(),
-            "device_names": get_device_names(),
+            "allocated_mb": get_gpu_memory_used(),
+            "total_mb": get_gpu_memory_total(),
+            "device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
         }
 
-    def _send_heartbeat(self, status: str, queue_depth: int = 0) -> None:
-        """Override to add Kaggle keep-alive print every 10 min (prevents idle recycle)."""
-        super()._send_heartbeat(status, queue_depth)
 
-        now = time.time()
-        if now - self.last_keepalive > 600:  # 10 min
-            _print(f"💓 [{self.worker_id}] Keep-alive heartbeat (prevents idle recycle)")
-            self.last_keepalive = now
-
-
-def main():
+def main() -> None:
+    """
+    Fatal guard-liner: immediate GPU T4 x2 assertion prevents any drift to P100.
+    """
     # 🌟 MUST inject secrets BEFORE any validation runs
     _inject_kaggle_secrets()
 
@@ -909,19 +925,35 @@ def main():
 
     # ========================================================
 
+    # GPU 必须为 T4 x2（P100 绝对不通过）
     if not torch.cuda.is_available():
         _print("ERROR: CUDA not available. This worker requires GPU (dual T4 on Kaggle).", file=sys.stderr)
         sys.exit(1)
 
-    if torch.cuda.device_count() < 2:
-        _print(f"WARNING: Only {torch.cuda.device_count()} GPU(s) detected. Expected 2x T4 on Kaggle.", file=sys.stderr)
+    # 必须为 T4 x2，否则拒绝启动
+    device_count = torch.cuda.device_count()
+    if device_count != 2:
+        _print(f"ERROR: GPU count mismatch. Expected 2x T4, detected {device_count} GPU(s).", file=sys.stderr)
+        sys.exit(1)
 
-    worker = KaggleWorker()
-    worker.run()
+    device_names = get_device_names()
+    if not all("T4" in name for name in device_names):
+        _print(
+            f"ERROR: GPU model mismatch. Required: Tesla T4 x2, Detected: {device_names}. "
+            "This kernel must run on Kaggle T4 x2 accelerator.",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
+    _print(f"✅ GPU validation passed: {device_names}")
 
-if __name__ == "__main__":
-    main()
-
-    # Kaggle入口点：kernel-metadata.json 必须指定 code_file 为此文件
-    # 依赖：kernel-metadata.json 需放在同目录，内容见下方
+    # ========================================================
+    # 6. DISTRIBUTED RUNTIME SYSTEM ENTRYPOINT
+    # ========================================================
+    _print("🚀 Orchestrating Kaggle free-tier production pipeline engine...")
+    try:
+        worker = KaggleWorker()
+        worker.run()
+    except Exception as fatal_err:
+        _print(f"🚨 CRITICAL KERNEL ABORT: Lifecycle execution failed during boot hook: {fatal_err}", file=sys.stderr)
+        sys.exit(1)
