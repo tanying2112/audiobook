@@ -1,0 +1,723 @@
+{
+  "generated_at": "2026-06-28",
+  "overall_coverage": 37.06862015681337,
+  "total_lines": 17473,
+  "covered_lines": 6477,
+  "modules": {
+    "src/audiobook_studio/api/ab_test_interceptor.py": {
+      "coverage": 37.5,
+      "lines": 80,
+      "covered": 30
+    },
+    "src/audiobook_studio/api/audio_segments.py": {
+      "coverage": 59.32203389830509,
+      "lines": 59,
+      "covered": 35
+    },
+    "src/audiobook_studio/api/auto_run.py": {
+      "coverage": 28.30188679245283,
+      "lines": 265,
+      "covered": 75
+    },
+    "src/audiobook_studio/api/books.py": {
+      "coverage": 38.63636363636363,
+      "lines": 44,
+      "covered": 17
+    },
+    "src/audiobook_studio/api/characters.py": {
+      "coverage": 45.36082474226804,
+      "lines": 97,
+      "covered": 44
+    },
+    "src/audiobook_studio/api/collab.py": {
+      "coverage": 72.22222222222223,
+      "lines": 126,
+      "covered": 91
+    },
+    "src/audiobook_studio/api/config.py": {
+      "coverage": 61.36363636363637,
+      "lines": 44,
+      "covered": 27
+    },
+    "src/audiobook_studio/api/dependencies.py": {
+      "coverage": 50.0,
+      "lines": 8,
+      "covered": 4
+    },
+    "src/audiobook_studio/api/export.py": {
+      "coverage": 44.30379746835443,
+      "lines": 79,
+      "covered": 35
+    },
+    "src/audiobook_studio/api/feedback.py": {
+      "coverage": 36.61971830985915,
+      "lines": 71,
+      "covered": 26
+    },
+    "src/audiobook_studio/api/golden.py": {
+      "coverage": 26.296296296296298,
+      "lines": 270,
+      "covered": 71
+    },
+    "src/audiobook_studio/api/harness.py": {
+      "coverage": 34.6875,
+      "lines": 320,
+      "covered": 111
+    },
+    "src/audiobook_studio/api/llm.py": {
+      "coverage": 49.285714285714285,
+      "lines": 140,
+      "covered": 69
+    },
+    "src/audiobook_studio/api/mock_router.py": {
+      "coverage": 41.142857142857146,
+      "lines": 175,
+      "covered": 72
+    },
+    "src/audiobook_studio/api/paragraphs.py": {
+      "coverage": 55.932203389830505,
+      "lines": 118,
+      "covered": 66
+    },
+    "src/audiobook_studio/api/projects.py": {
+      "coverage": 58.333333333333336,
+      "lines": 96,
+      "covered": 56
+    },
+    "src/audiobook_studio/api/publish.py": {
+      "coverage": 18.181818181818183,
+      "lines": 297,
+      "covered": 54
+    },
+    "src/audiobook_studio/api/qualities.py": {
+      "coverage": 40.476190476190474,
+      "lines": 42,
+      "covered": 17
+    },
+    "src/audiobook_studio/api/routings.py": {
+      "coverage": 38.63636363636363,
+      "lines": 44,
+      "covered": 17
+    },
+    "src/audiobook_studio/api/templates.py": {
+      "coverage": 21.518987341772153,
+      "lines": 237,
+      "covered": 51
+    },
+    "src/audiobook_studio/api/tts_edits.py": {
+      "coverage": 38.63636363636363,
+      "lines": 44,
+      "covered": 17
+    },
+    "src/audiobook_studio/api/tts_voices.py": {
+      "coverage": 52.857142857142854,
+      "lines": 70,
+      "covered": 37
+    },
+    "src/audiobook_studio/api/upload.py": {
+      "coverage": 27.63157894736842,
+      "lines": 228,
+      "covered": 63
+    },
+    "src/audiobook_studio/api/websocket.py": {
+      "coverage": 34.69387755102041,
+      "lines": 98,
+      "covered": 34
+    },
+    "src/audiobook_studio/auth/dependencies.py": {
+      "coverage": 32.857142857142854,
+      "lines": 70,
+      "covered": 23
+    },
+    "src/audiobook_studio/auth/jwt_handler.py": {
+      "coverage": 40.0,
+      "lines": 90,
+      "covered": 36
+    },
+    "src/audiobook_studio/auth/models.py": {
+      "coverage": 100.0,
+      "lines": 98,
+      "covered": 98
+    },
+    "src/audiobook_studio/auth/rbac.py": {
+      "coverage": 21.1340206185567,
+      "lines": 194,
+      "covered": 41
+    },
+    "src/audiobook_studio/auth/router.py": {
+      "coverage": 33.9622641509434,
+      "lines": 159,
+      "covered": 54
+    },
+    "src/audiobook_studio/base.py": {
+      "coverage": 53.96825396825397,
+      "lines": 63,
+      "covered": 34
+    },
+    "src/audiobook_studio/benchmarks/bench_cost.py": {
+      "coverage": 12.162162162162161,
+      "lines": 148,
+      "covered": 18
+    },
+    "src/audiobook_studio/benchmarks/bench_latency.py": {
+      "coverage": 12.244897959183673,
+      "lines": 147,
+      "covered": 18
+    },
+    "src/audiobook_studio/benchmarks/bench_voxcpm2.py": {
+      "coverage": 38.622754491017965,
+      "lines": 334,
+      "covered": 129
+    },
+    "src/audiobook_studio/config/hardware_profile.py": {
+      "coverage": 74.68354430379746,
+      "lines": 237,
+      "covered": 177
+    },
+    "src/audiobook_studio/config/loader.py": {
+      "coverage": 67.43515850144092,
+      "lines": 347,
+      "covered": 234
+    },
+    "src/audiobook_studio/config/settings.py": {
+      "coverage": 100.0,
+      "lines": 44,
+      "covered": 44
+    },
+    "src/audiobook_studio/database.py": {
+      "coverage": 46.666666666666664,
+      "lines": 30,
+      "covered": 14
+    },
+    "src/audiobook_studio/di.py": {
+      "coverage": 60.563380281690144,
+      "lines": 142,
+      "covered": 86
+    },
+    "src/audiobook_studio/exceptions.py": {
+      "coverage": 53.608247422680414,
+      "lines": 97,
+      "covered": 52
+    },
+    "src/audiobook_studio/export/audio_ducking.py": {
+      "coverage": 33.76623376623377,
+      "lines": 77,
+      "covered": 26
+    },
+    "src/audiobook_studio/export/batch_exporter.py": {
+      "coverage": 24.63768115942029,
+      "lines": 207,
+      "covered": 51
+    },
+    "src/audiobook_studio/export/m4b.py": {
+      "coverage": 20.634920634920636,
+      "lines": 126,
+      "covered": 26
+    },
+    "src/audiobook_studio/export/srt.py": {
+      "coverage": 16.27906976744186,
+      "lines": 129,
+      "covered": 21
+    },
+    "src/audiobook_studio/feedback/ab_test.py": {
+      "coverage": 14.919354838709678,
+      "lines": 248,
+      "covered": 37
+    },
+    "src/audiobook_studio/feedback/ab_test_manager.py": {
+      "coverage": 20.869565217391305,
+      "lines": 115,
+      "covered": 24
+    },
+    "src/audiobook_studio/feedback/auto_processor.py": {
+      "coverage": 25.24271844660194,
+      "lines": 103,
+      "covered": 26
+    },
+    "src/audiobook_studio/feedback/bootstrap_fewshot.py": {
+      "coverage": 16.97612732095491,
+      "lines": 377,
+      "covered": 64
+    },
+    "src/audiobook_studio/feedback/collector.py": {
+      "coverage": 34.146341463414636,
+      "lines": 41,
+      "covered": 14
+    },
+    "src/audiobook_studio/feedback/critics/base.py": {
+      "coverage": 49.54128440366973,
+      "lines": 109,
+      "covered": 54
+    },
+    "src/audiobook_studio/feedback/critics/objective_critic.py": {
+      "coverage": 30.208333333333332,
+      "lines": 96,
+      "covered": 29
+    },
+    "src/audiobook_studio/feedback/critics/semantic_critic.py": {
+      "coverage": 36.36363636363637,
+      "lines": 55,
+      "covered": 20
+    },
+    "src/audiobook_studio/feedback/critics/structural_critic.py": {
+      "coverage": 36.507936507936506,
+      "lines": 63,
+      "covered": 23
+    },
+    "src/audiobook_studio/feedback/critics/synthetic_critic.py": {
+      "coverage": 36.18421052631579,
+      "lines": 152,
+      "covered": 55
+    },
+    "src/audiobook_studio/feedback/integration.py": {
+      "coverage": 16.666666666666668,
+      "lines": 240,
+      "covered": 40
+    },
+    "src/audiobook_studio/feedback/kill_switch.py": {
+      "coverage": 33.77483443708609,
+      "lines": 151,
+      "covered": 51
+    },
+    "src/audiobook_studio/feedback/llm_analyzer.py": {
+      "coverage": 33.9622641509434,
+      "lines": 53,
+      "covered": 18
+    },
+    "src/audiobook_studio/feedback/pr_automation.py": {
+      "coverage": 16.10169491525424,
+      "lines": 236,
+      "covered": 38
+    },
+    "src/audiobook_studio/feedback/processor.py": {
+      "coverage": 16.243654822335024,
+      "lines": 197,
+      "covered": 32
+    },
+    "src/audiobook_studio/feedback/promotion_gate.py": {
+      "coverage": 10.204081632653061,
+      "lines": 392,
+      "covered": 40
+    },
+    "src/audiobook_studio/feedback/prompt_upgrader.py": {
+      "coverage": 11.34020618556701,
+      "lines": 97,
+      "covered": 11
+    },
+    "src/audiobook_studio/feedback/quality_enhancement.py": {
+      "coverage": 19.23076923076923,
+      "lines": 208,
+      "covered": 40
+    },
+    "src/audiobook_studio/feedback/release.py": {
+      "coverage": 34.97267759562842,
+      "lines": 183,
+      "covered": 64
+    },
+    "src/audiobook_studio/llm/circuit_breaker.py": {
+      "coverage": 37.5,
+      "lines": 56,
+      "covered": 21
+    },
+    "src/audiobook_studio/llm/client.py": {
+      "coverage": 41.37931034482759,
+      "lines": 174,
+      "covered": 72
+    },
+    "src/audiobook_studio/llm/config_loader.py": {
+      "coverage": 86.91588785046729,
+      "lines": 107,
+      "covered": 93
+    },
+    "src/audiobook_studio/llm/constitutional_rules.py": {
+      "coverage": 60.0,
+      "lines": 10,
+      "covered": 6
+    },
+    "src/audiobook_studio/llm/health_probe.py": {
+      "coverage": 74.22680412371135,
+      "lines": 97,
+      "covered": 72
+    },
+    "src/audiobook_studio/llm/judge.py": {
+      "coverage": 64.28571428571429,
+      "lines": 42,
+      "covered": 27
+    },
+    "src/audiobook_studio/llm/key_pool.py": {
+      "coverage": 55.0,
+      "lines": 80,
+      "covered": 44
+    },
+    "src/audiobook_studio/llm/quota_registry.py": {
+      "coverage": 39.85507246376812,
+      "lines": 138,
+      "covered": 55
+    },
+    "src/audiobook_studio/llm/router.py": {
+      "coverage": 33.793103448275865,
+      "lines": 435,
+      "covered": 147
+    },
+    "src/audiobook_studio/llm/utils.py": {
+      "coverage": 23.076923076923077,
+      "lines": 26,
+      "covered": 6
+    },
+    "src/audiobook_studio/main.py": {
+      "coverage": 67.32673267326733,
+      "lines": 101,
+      "covered": 68
+    },
+    "src/audiobook_studio/middleware/timestamp.py": {
+      "coverage": 29.032258064516128,
+      "lines": 62,
+      "covered": 18
+    },
+    "src/audiobook_studio/models/agent.py": {
+      "coverage": 89.65517241379311,
+      "lines": 29,
+      "covered": 26
+    },
+    "src/audiobook_studio/models/audio_segment.py": {
+      "coverage": 100.0,
+      "lines": 33,
+      "covered": 33
+    },
+    "src/audiobook_studio/models/book.py": {
+      "coverage": 95.45454545454545,
+      "lines": 44,
+      "covered": 42
+    },
+    "src/audiobook_studio/models/chapter.py": {
+      "coverage": 100.0,
+      "lines": 33,
+      "covered": 33
+    },
+    "src/audiobook_studio/models/character.py": {
+      "coverage": 100.0,
+      "lines": 17,
+      "covered": 17
+    },
+    "src/audiobook_studio/models/emotion_snapshot.py": {
+      "coverage": 100.0,
+      "lines": 14,
+      "covered": 14
+    },
+    "src/audiobook_studio/models/feedback_record.py": {
+      "coverage": 100.0,
+      "lines": 27,
+      "covered": 27
+    },
+    "src/audiobook_studio/models/legacy.py": {
+      "coverage": 83.33333333333333,
+      "lines": 60,
+      "covered": 50
+    },
+    "src/audiobook_studio/models/paragraph.py": {
+      "coverage": 95.3125,
+      "lines": 64,
+      "covered": 61
+    },
+    "src/audiobook_studio/models/processing_run.py": {
+      "coverage": 100.0,
+      "lines": 24,
+      "covered": 24
+    },
+    "src/audiobook_studio/models/quality.py": {
+      "coverage": 94.28571428571429,
+      "lines": 35,
+      "covered": 33
+    },
+    "src/audiobook_studio/models/routing.py": {
+      "coverage": 96.875,
+      "lines": 32,
+      "covered": 31
+    },
+    "src/audiobook_studio/models/tts_edit.py": {
+      "coverage": 93.54838709677419,
+      "lines": 31,
+      "covered": 29
+    },
+    "src/audiobook_studio/models/user.py": {
+      "coverage": 75.75757575757575,
+      "lines": 66,
+      "covered": 50
+    },
+    "src/audiobook_studio/monitoring.py": {
+      "coverage": 53.57142857142857,
+      "lines": 56,
+      "covered": 30
+    },
+    "src/audiobook_studio/monitoring/alert.py": {
+      "coverage": 15.217391304347826,
+      "lines": 230,
+      "covered": 35
+    },
+    "src/audiobook_studio/monitoring/baseline.py": {
+      "coverage": 40.588235294117645,
+      "lines": 170,
+      "covered": 69
+    },
+    "src/audiobook_studio/monitoring/compliance.py": {
+      "coverage": 42.73504273504273,
+      "lines": 117,
+      "covered": 50
+    },
+    "src/audiobook_studio/monitoring/cost_dashboard.py": {
+      "coverage": 14.534883720930232,
+      "lines": 172,
+      "covered": 25
+    },
+    "src/audiobook_studio/monitoring/dashboard.py": {
+      "coverage": 10.869565217391305,
+      "lines": 184,
+      "covered": 20
+    },
+    "src/audiobook_studio/monitoring/langfuse_client.py": {
+      "coverage": 31.72043010752688,
+      "lines": 186,
+      "covered": 59
+    },
+    "src/audiobook_studio/monitoring/metrics_exporter.py": {
+      "coverage": 21.008403361344538,
+      "lines": 119,
+      "covered": 25
+    },
+    "src/audiobook_studio/monitoring/offline_monitoring.py": {
+      "coverage": 23.91304347826087,
+      "lines": 92,
+      "covered": 22
+    },
+    "src/audiobook_studio/observability/instrumentation.py": {
+      "coverage": 27.559055118110237,
+      "lines": 127,
+      "covered": 35
+    },
+    "src/audiobook_studio/observability/langfuse_client.py": {
+      "coverage": 0.0,
+      "lines": 110,
+      "covered": 0
+    },
+    "src/audiobook_studio/observability/metrics.py": {
+      "coverage": 85.36585365853658,
+      "lines": 41,
+      "covered": 35
+    },
+    "src/audiobook_studio/observability/tracing.py": {
+      "coverage": 66.66666666666667,
+      "lines": 60,
+      "covered": 40
+    },
+    "src/audiobook_studio/pipeline/agents.py": {
+      "coverage": 29.166666666666668,
+      "lines": 72,
+      "covered": 21
+    },
+    "src/audiobook_studio/pipeline/analyze_structure.py": {
+      "coverage": 45.16129032258065,
+      "lines": 62,
+      "covered": 28
+    },
+    "src/audiobook_studio/pipeline/annotate_paragraph.py": {
+      "coverage": 38.35616438356164,
+      "lines": 73,
+      "covered": 28
+    },
+    "src/audiobook_studio/pipeline/audio_finalize.py": {
+      "coverage": 12.5,
+      "lines": 168,
+      "covered": 21
+    },
+    "src/audiobook_studio/pipeline/audio_postprocess.py": {
+      "coverage": 30.76923076923077,
+      "lines": 39,
+      "covered": 12
+    },
+    "src/audiobook_studio/pipeline/checkpoint.py": {
+      "coverage": 34.25925925925926,
+      "lines": 108,
+      "covered": 37
+    },
+    "src/audiobook_studio/pipeline/edit_for_tts.py": {
+      "coverage": 40.57971014492754,
+      "lines": 69,
+      "covered": 28
+    },
+    "src/audiobook_studio/pipeline/extract.py": {
+      "coverage": 23.741007194244606,
+      "lines": 139,
+      "covered": 33
+    },
+    "src/audiobook_studio/pipeline/feedback_collector.py": {
+      "coverage": 29.661016949152543,
+      "lines": 118,
+      "covered": 35
+    },
+    "src/audiobook_studio/pipeline/orchestrator.py": {
+      "coverage": 17.51152073732719,
+      "lines": 217,
+      "covered": 38
+    },
+    "src/audiobook_studio/pipeline/quality_check.py": {
+      "coverage": 29.87012987012987,
+      "lines": 308,
+      "covered": 92
+    },
+    "src/audiobook_studio/pipeline/stage_registry.py": {
+      "coverage": 42.19653179190752,
+      "lines": 173,
+      "covered": 73
+    },
+    "src/audiobook_studio/pipeline/synthesize.py": {
+      "coverage": 43.12896405919662,
+      "lines": 473,
+      "covered": 204
+    },
+    "src/audiobook_studio/pipeline/translate.py": {
+      "coverage": 17.821782178217823,
+      "lines": 101,
+      "covered": 18
+    },
+    "src/audiobook_studio/pipeline/voice_anchor.py": {
+      "coverage": 34.58646616541353,
+      "lines": 133,
+      "covered": 46
+    },
+    "src/audiobook_studio/prompts/models.py": {
+      "coverage": 92.78350515463917,
+      "lines": 97,
+      "covered": 90
+    },
+    "src/audiobook_studio/prompts/registry.py": {
+      "coverage": 16.470588235294116,
+      "lines": 170,
+      "covered": 28
+    },
+    "src/audiobook_studio/quality/metrics.py": {
+      "coverage": 63.55475763016158,
+      "lines": 557,
+      "covered": 354
+    },
+    "src/audiobook_studio/quality/semantic_coherence.py": {
+      "coverage": 10.975609756097562,
+      "lines": 164,
+      "covered": 18
+    },
+    "src/audiobook_studio/schemas/audio_finalize.py": {
+      "coverage": 100.0,
+      "lines": 43,
+      "covered": 43
+    },
+    "src/audiobook_studio/schemas/audio_postprocess.py": {
+      "coverage": 100.0,
+      "lines": 13,
+      "covered": 13
+    },
+    "src/audiobook_studio/schemas/book.py": {
+      "coverage": 100.0,
+      "lines": 46,
+      "covered": 46
+    },
+    "src/audiobook_studio/schemas/chapter_source.py": {
+      "coverage": 94.0,
+      "lines": 50,
+      "covered": 47
+    },
+    "src/audiobook_studio/schemas/extraction.py": {
+      "coverage": 100.0,
+      "lines": 16,
+      "covered": 16
+    },
+    "src/audiobook_studio/schemas/feedback.py": {
+      "coverage": 100.0,
+      "lines": 20,
+      "covered": 20
+    },
+    "src/audiobook_studio/schemas/feedback_analysis.py": {
+      "coverage": 100.0,
+      "lines": 11,
+      "covered": 11
+    },
+    "src/audiobook_studio/schemas/legacy.py": {
+      "coverage": 100.0,
+      "lines": 34,
+      "covered": 34
+    },
+    "src/audiobook_studio/schemas/paragraph.py": {
+      "coverage": 100.0,
+      "lines": 47,
+      "covered": 47
+    },
+    "src/audiobook_studio/schemas/project.py": {
+      "coverage": 100.0,
+      "lines": 25,
+      "covered": 25
+    },
+    "src/audiobook_studio/schemas/quality.py": {
+      "coverage": 100.0,
+      "lines": 31,
+      "covered": 31
+    },
+    "src/audiobook_studio/schemas/routing.py": {
+      "coverage": 100.0,
+      "lines": 7,
+      "covered": 7
+    },
+    "src/audiobook_studio/schemas/schema_validator.py": {
+      "coverage": 25.625,
+      "lines": 160,
+      "covered": 41
+    },
+    "src/audiobook_studio/schemas/tts_edit.py": {
+      "coverage": 100.0,
+      "lines": 26,
+      "covered": 26
+    },
+    "src/audiobook_studio/schemas/tts_routing.py": {
+      "coverage": 100.0,
+      "lines": 30,
+      "covered": 30
+    },
+    "src/audiobook_studio/storage.py": {
+      "coverage": 50.0,
+      "lines": 80,
+      "covered": 40
+    },
+    "src/audiobook_studio/tts/clone.py": {
+      "coverage": 25.290697674418606,
+      "lines": 344,
+      "covered": 87
+    },
+    "src/audiobook_studio/tts/engine.py": {
+      "coverage": 62.16216216216216,
+      "lines": 111,
+      "covered": 69
+    },
+    "src/audiobook_studio/tts/kokoro_backend.py": {
+      "coverage": 21.678321678321677,
+      "lines": 143,
+      "covered": 31
+    },
+    "src/audiobook_studio/tts/model_downloader.py": {
+      "coverage": 19.708029197080293,
+      "lines": 137,
+      "covered": 27
+    },
+    "src/audiobook_studio/tts/voxcpm2_backend.py": {
+      "coverage": 22.5,
+      "lines": 160,
+      "covered": 36
+    },
+    "src/audiobook_studio/utils/ffmpeg_probe.py": {
+      "coverage": 18.103448275862068,
+      "lines": 116,
+      "covered": 21
+    },
+    "src/audiobook_studio/version_manager.py": {
+      "coverage": 0.0,
+      "lines": 174,
+      "covered": 0
+    }
+  }
+}

@@ -1,0 +1,39 @@
+[{"stream_name":"stdout","time":1.288331391,"data":"[BOOTSTRAP] 📦 Installing production dependencies...\n"}
+,{"stream_name":"stdout","time":8.842928762,"data":"[BOOTSTRAP] Installing missing dependency: protobuf\n"}
+,{"stream_name":"stdout","time":14.827204179,"data":"[BOOTSTRAP] Installing missing dependency: redis\n"}
+,{"stream_name":"stdout","time":19.002623281,"data":"[BOOTSTRAP] ✅ Bootstrap complete\n"}
+,{"stream_name":"stdout","time":19.002650832,"data":"[BOOTSTRAP] 🔍 Injecting Kaggle Secrets into environment...\n"}
+,{"stream_name":"stdout","time":19.062319072,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_HOST: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.098109245,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_PORT: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.126635857,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_AUTH: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.143044861,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_ENDPOINT: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.157473814,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_ACCESS_KEY_ID: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.173023068,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_SECRET_ACCESS_KEY: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.190032421,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_BUCKET: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.313503522,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_PUBLIC_URL: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.327087025,"data":"[BOOTSTRAP]   ❌ Failed to fetch WORKER_ID: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.342090406,"data":"[BOOTSTRAP]   ❌ Failed to fetch VOXCPM2_HF_REPO: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":19.342239125,"data":"[BOOTSTRAP] ✨ Secrets injection complete\n"}
+,{"stream_name":"stdout","time":43.108776505,"data":"[BOOTSTRAP] 🔍 Injecting Kaggle Secrets into environment...\n"}
+,{"stream_name":"stdout","time":43.124391316,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_HOST: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.158634959,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_PORT: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.175031877,"data":"[BOOTSTRAP]   ❌ Failed to fetch REDIS_AUTH: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.189486592,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_ENDPOINT: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.202199697,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_ACCESS_KEY_ID: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.217715851,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_SECRET_ACCESS_KEY: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.255051446,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_BUCKET: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.26850946,"data":"[BOOTSTRAP]   ❌ Failed to fetch R2_PUBLIC_URL: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.283277387,"data":"[BOOTSTRAP]   ❌ Failed to fetch WORKER_ID: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.298293771,"data":"[BOOTSTRAP]   ❌ Failed to fetch VOXCPM2_HF_REPO: Connection error trying to communicate with service.\n"}
+,{"stream_name":"stdout","time":43.298312108,"data":"[BOOTSTRAP] ✨ Secrets injection complete\n"}
+,{"stream_name":"stdout","time":43.29859608,"data":"[BOOTSTRAP] [BOOTSTRAP] ⚠️ Failed to apply VoxCPM adapter: No module named 'voxcpm'\n"}
+,{"stream_name":"stdout","time":44.273511317,"data":"⚙️ [kaggle-t4-dual-01] Initializing VoxCPM2 compute backend...\n"}
+,{"stream_name":"stdout","time":44.288773317,"data":"[BOOTSTRAP] Detected 2 GPU(s): ['Tesla T4', 'Tesla T4']\n"}
+,{"stream_name":"stdout","time":44.28881235,"data":"[BOOTSTRAP] 📡 模型未找到，正在从 Hugging Face 下载: openbmb/VoxCPM2 -\u003e /tmp/voxcpm2-model...\n"}
+,{"stream_name":"stderr","time":44.289146269,"data":"/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:189: UserWarning: The `resume_download` argument is deprecated and ignored in `snapshot_download`. Downloads always resume whenever possible.\n"}
+,{"stream_name":"stderr","time":44.289173131,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":44.289177874,"data":"/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `snapshot_download`. Downloading to a local directory does not use symlinks anymore.\n"}
+,{"stream_name":"stderr","time":44.289182751,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":44.525238618,"data":"\rFetching 9 files:   0%|          | 0/9 [00:00\u003c?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":1700.735233943,"data":"\rFetching 9 files:  11%|█         | 1/9 [00:00\u003c00:01,  4.82it/s]"}
+]
