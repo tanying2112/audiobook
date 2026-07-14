@@ -543,7 +543,8 @@ class DualT4VoxCPM2Engine:
 
                 # 双鉴权策略：先 Token，再匿名
                 for tok in (token, None):
-                    strategy = "带Token" if tok else "匿名"
+                    clean_tok = tok if tok else None
+                    strategy = "带Token" if clean_tok else "匿名"
                     _log(f"🔑 策略: {strategy}")
 
                     for attempt in range(1, 4):
