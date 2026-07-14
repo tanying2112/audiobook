@@ -957,3 +957,7 @@ def main() -> None:
     except Exception as fatal_err:
         _print(f"🚨 CRITICAL KERNEL ABORT: Lifecycle execution failed during boot hook: {fatal_err}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
