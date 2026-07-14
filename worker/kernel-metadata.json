@@ -1,0 +1,23 @@
+{
+  "id": "yingtan2112/voxcpm2-kaggle-worker",
+  "title": "VoxCPM2 Kaggle Worker",
+  "code_file": "kaggle_worker.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "accelerator": "T4 x2",
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "keywords": [
+    "tts",
+    "voxcpm2",
+    "audiobook",
+    "dual-t4",
+    "worker"
+  ],
+  "description": "Hermes-AgentMesh Core worker for Kaggle dual T4 (free 30h/week). Downloads VoxCPM2 from Hugging Face Hub at runtime, polls Upstash Redis queue, synthesizes on 2x T4 via model parallel, uploads WAV to Cloudflare R2. Requires Kaggle Secrets: REDIS_HOST, REDIS_PORT, REDIS_AUTH, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL, WORKER_ID, VOXCPM2_HF_REPO (optional)."
+}
