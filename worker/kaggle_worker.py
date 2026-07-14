@@ -47,6 +47,13 @@ for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
         os.environ[env_key] = str(env_val)
 # ========================================================
 
+# ========================================================
+# 🌐 HF 镜像源强制注入 - 必须在任何 HF 相关操作之前执行
+# 使用国内镜像源加速下载并提升稳定性
+# ========================================================
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# ========================================================
+
 # ==========================================
 # 1. RUNTIME DEPENDENCY INJECTION (Kaggle runs naked)
 # ==========================================
@@ -563,6 +570,9 @@ class DualT4VoxCPM2Engine:
                 local_dir_use_symlinks=False,
                 resume_download=True,
                 token=os.getenv("HF_TOKEN"),
+                max_workers=1,              # 单线程下载，防止容器内死锁
+                tqdm_class=None,            # 禁用进度条，防止刷新缓冲区死锁
+                allow_patterns=None,        # 下载所有文件
             )
             _log("✅ 模型下载完成！")
 
