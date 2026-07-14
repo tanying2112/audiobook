@@ -30,6 +30,47 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+# 初始化 Redis 日志连接（复用已注入的凭据）
+# 🚨 核心修复：如果 Kaggle 容器里缺少 redis 库，自动静默安装
+try:
+    import redis as _redis
+except ModuleNotFoundError:
+    print("[BOOTSTRAP] 正在自动安装缺失的 redis 依赖...")
+    os.system(f"{sys.executable} -m pip install redis -q")
+    import redis as _redis
+
+# 初始化 Redis 日志连接（复用已注入的凭据）
+_log_redis = None
+try:
+    _log_redis = _redis.Redis(
+        host=os.environ.get("REDIS_HOST"),
+        port=int(os.environ.get("REDIS_PORT", 6379)),
+        password=os.environ.get("REDIS_AUTH"),
+        decode_responses=True,
+        socket_timeout=2,
+        socket_connect_timeout=2,
+    )
+except Exception:
+    _log_redis = None
+
+def _safe_log_redis(message: str) -> None:
+    """三层防御：单行截断 + 滑动窗口 LTRIM + TTL 自动过期"""
+    if not _log_redis:
+        return
+    try:
+        truncated = message[:1000]
+        _log_redis.rpush("worker:logs", truncated)
+        _log_redis.ltrim("worker:logs", -300, -1)
+        _log_redis.expire("worker:logs", 1800)
+    except Exception:
+        pass
+
+# 重写全局 _log 函数
+_print = print
+def _log(msg: str) -> None:
+    _print(f"[BOOTSTRAP] {msg}", flush=True)
+    _safe_log_redis(f"[BOOTSTRAP] {msg}")
+
 # ========================================================
 # 🛡️ Kaggle API 专用 - 密钥断网保护层
 # 作用：当 Kaggle 内部 Secrets 服务由于 API 部署断开时，由此处直接提供环境变量兜底
@@ -65,7 +106,6 @@ _print = print
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
 
-
 def _install_missing_deps() -> None:
     """Install missing packages at runtime (Kaggle kernel has no pip cells)."""
     required = {
@@ -80,6 +120,7 @@ def _install_missing_deps() -> None:
         "huggingface_hub": "huggingface_hub",
         "transformers": "transformers",
         "voxcpm": "voxcpm",
+        "hf_transfer": "hf-transfer",  # Rust 下载加速引擎
     }
     import subprocess
     import importlib
@@ -128,11 +169,6 @@ def _inject_kaggle_secrets() -> None:
     except Exception as e:
         _log(f"❌ Kaggle secrets injection failed: {e}")
 
-# 确保兜底值在 secrets 注入失败时已生效（双重保险）
-for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
-    if not os.environ.get(env_key) and env_val:
-        os.environ[env_key] = str(env_val)
-
 # Inject NOW before any validation runs
 _inject_kaggle_secrets()
 
@@ -149,7 +185,6 @@ try:
 except ImportError:
     boto3 = None
     redis = None
-
 
 # ==========================================
 # 3. INLINED BaseWorker (single-file contract)
@@ -477,75 +512,16 @@ class DualT4VoxCPM2Engine:
     PyTorch VoxCPM2 inference engine optimized for Kaggle dual T4 (2x 16GB).
 
     Uses model parallel (device_map="auto") to split across both GPUs.
-    Auto-downloads model from Hugging Face Hub if not present locally.
+    Auto-downloads model from Hugging Face Hub if not cached locally.
     """
 
     HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")  # 可通过 Secret 覆盖
-    CACHE_DIR = "/tmp/voxcpm2-model"  # 模型缓存路径
-
-    @staticmethod
-    def _find_kaggle_model_dir() -> str:
-        """在 /kaggle/input/ 下查找包含模型文件的目录。"""
-        import os
-        base = "/kaggle/input"
-        if not os.path.exists(base):
-            _log(f"⚠️ Kaggle 输入目录不存在: {base}")
-            return ""
-
-        _log(f"🔍 扫描 Kaggle Dataset 挂载目录: {base}")
-        _log(f"   顶层内容: {os.listdir(base)}")
-
-        # 优先检查常见命名
-        priority_names = ["voxcpm2", "voxcpm2-model", "model", "VoxCPM2", "voxcpm"]
-        for name in priority_names:
-            candidate = os.path.join(base, name)
-            if os.path.isdir(candidate):
-                _log(f"   检查优先目录: {candidate}")
-                result = DualT4VoxCPM2Engine._scan_for_model(candidate)
-                if result:
-                    return result
-
-        # 遍历 /kaggle/input/ 下的所有子目录
-        for entry in os.listdir(base):
-            candidate = os.path.join(base, entry)
-            if not os.path.isdir(candidate):
-                continue
-            if entry in priority_names:
-                continue  # 已检查过
-            _log(f"   检查目录: {candidate}")
-            result = DualT4VoxCPM2Engine._scan_for_model(candidate)
-            if result:
-                return result
-
-        _log(f"⚠️ 未在 {base} 下发现有效模型目录")
-        return ""
-
-    @staticmethod
-    def _scan_for_model(root: str) -> str:
-        """递归扫描目录，查找包含 config.json + 权重文件的目录。"""
-        import os
-        for dirpath, dirnames, filenames in os.walk(root):
-            if "config.json" in filenames:
-                has_weights = any(
-                    f.endswith(('.safetensors', '.bin', '.pt')) for f in filenames
-                )
-                if has_weights:
-                    _log(f"🎯 自动检测到 Kaggle 模型目录: {dirpath}")
-                    _log(f"   包含文件: {filenames}")
-                    return dirpath
-        return ""
+    CACHE_DIR = "/tmp/voxcpm2-model"
 
     def __init__(self, model_path: str = None):
-        # 优先级: 传入参数 > Kaggle Dataset 自动检测 > 环境变量 > 备用缓存路径
-        if model_path:
-            self.model_path = model_path
-        else:
-            detected = self._find_kaggle_model_dir()
-            self.model_path = detected or os.getenv("VOXCPM2_MODEL_PATH") or self.CACHE_DIR
-
+        self.model_path = model_path or self.CACHE_DIR
         self.device_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
         _log(f"Detected {self.device_count} GPU(s): {get_device_names()}")
-        _log(f"Model path resolved to: {self.model_path}")
         self.model = None
         self.tokenizer = None
         self._load_model()
@@ -554,133 +530,101 @@ class DualT4VoxCPM2Engine:
         import os
         import time
 
-        # ===== 1. 检查本地模型是否完整，不完整则从 HF Hub 下载 =====
-        def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
-            """确保模型文件存在，不存在则从 HF Hub 下载（带重试和镜像回退）。"""
+        # ===== 全局激活：Rust hf_transfer 引擎 + SSL 宽容 =====
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+        os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 
-            # 🌐 尝试镜像源顺序：先国内镜像，失败回退官方
+        from huggingface_hub import snapshot_download
+
+        # ===== 内部函数：Rust 引擎 + 双端点 + 双鉴权 =====
+        def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
+            """Rust 引擎 + 双端点回退 + 双鉴权策略 (Token / 匿名)"""
+
+            # 本地已就绪直接返回
+            if os.path.exists(os.path.join(model_dir, "config.json")):
+                weights = [f for f in os.listdir(model_dir) if f.endswith(('.safetensors', '.bin', '.pt'))]
+                if weights:
+                    _log(f"✅ 本地模型已就绪: {model_dir} (权重: {weights})")
+                    return
+
+            _log(f"📡 本地模型不完整，开始下载... Repo: {repo_id}  目标: {model_dir}")
+            os.makedirs(model_dir, exist_ok=True)
+
+            # 清洗 Token
+            raw = os.getenv("HF_TOKEN", "").strip()
+            if raw.lower().startswith("bearer "):
+                raw = raw[7:].strip()
+            token = raw or None
+
             endpoints = [
                 ("https://hf-mirror.com", "国内镜像"),
                 ("https://huggingface.co", "官方源"),
             ]
 
-            # 检查目录是否存在且包含必要文件
-            config_exists = os.path.exists(os.path.join(model_dir, "config.json"))
-            weight_files = [f for f in os.listdir(model_dir) if f.endswith(('.safetensors', '.bin', '.pt'))] if os.path.exists(model_dir) else []
-
-            if config_exists and weight_files:
-                _log(f"✅ 本地模型已就绪: {model_dir} (权重: {weight_files})")
-                return
-
-            _log(f"📡 本地模型不完整或不存在，开始从 Hugging Face Hub 下载...")
-            _log(f"   Repo: {repo_id}")
-            _log(f"   目标目录: {model_dir}")
-
-            # 确保目录存在
-            os.makedirs(model_dir, exist_ok=True)
-
-            # 🔐 清理 HF_TOKEN：移除可能的 "Bearer " 前缀、首尾空白、换行符
-            raw_token = os.getenv("HF_TOKEN", "")
-            clean_token = raw_token.strip()
-            if clean_token.lower().startswith("bearer "):
-                clean_token = clean_token[7:].strip()
-            if not clean_token:
-                clean_token = None
-                _log("⚠️ HF_TOKEN 为空或无效，尝试匿名下载...")
-            else:
-                _log(f"🔑 使用 HF_TOKEN 认证下载 (前缀: {clean_token[:8]}...)")
-
-            from huggingface_hub import snapshot_download
-
-            # 依次尝试每个端点，带指数退避重试
-            last_error = None
-            for endpoint_url, endpoint_name in endpoints:
-                os.environ["HF_ENDPOINT"] = endpoint_url
+            for ep_url, ep_name in endpoints:
+                os.environ["HF_ENDPOINT"] = ep_url
                 try:
-                    import huggingface_hub.constants as _hf_const
-                    _hf_const.HF_ENDPOINT = endpoint_url
-                    _hf_const.HF_HUB_DISABLE_SSL_VERIFICATION = True
+                    import huggingface_hub.constants as _hfc
+                    _hfc.HF_ENDPOINT = ep_url
+                    _hfc.HF_HUB_DISABLE_SSL_VERIFICATION = True
                 except Exception:
                     pass
+                _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
-                _log(f"   🔄 尝试端点: {endpoint_name} ({endpoint_url})")
-                os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+                # 双鉴权策略：先 Token，再匿名
+                for tok in (token, None):
+                    strategy = "带Token" if tok else "匿名"
+                    _log(f"🔑 策略: {strategy}")
 
-                for attempt in range(1, 4):  # 每个端点最多重试 3 次
-                    try:
-                        _log(f"   📥 下载尝试 {attempt}/3...")
-                        snapshot_download(
-                            repo_id=repo_id,
-                            local_dir=model_dir,
-                            local_dir_use_symlinks=False,
-                            resume_download=True,
-                            token=clean_token,
-                            max_workers=1,              # 单线程下载，防止容器内死锁
-                            tqdm_class=None,            # 禁用进度条，防止刷新缓冲区死锁
-                            allow_patterns=None,        # 下载所有文件
-                            etag_timeout=30,            # 增加超时
-                        )
-                        _log(f"✅ 模型下载完成！(来源: {endpoint_name})")
-                        return
-                    except Exception as e:
-                        last_error = e
-                        wait_time = 2 ** attempt
-                        _log(f"   ⚠️ 尝试 {attempt}/3 失败: {e}")
-                        if attempt < 3:
-                            _log(f"   ⏳ 等待 {wait_time}s 后重试...")
-                            time.sleep(wait_time)
+                    for attempt in range(1, 4):
+                        try:
+                            _log(f"📥 {ep_name}/{strategy} 下载尝试 {attempt}/3...")
+                            snapshot_download(
+                                repo_id=repo_id,
+                                local_dir=model_dir,
+                                token=tok,
+                                ignore_patterns=["*.msgpack", "*.h5", "*.ot"],
+                                max_workers=2,
+                                tqdm_class=None,
+                            )
+                            _log(f"✅ 下载成功！来源: {ep_name} / 策略: {strategy}")
+                            return
+                        except Exception as e:
+                            _log(f"⚠️ 尝试 {attempt}/3 失败: {str(e)[:200]}")
+                            time.sleep(2 ** attempt)
 
-                _log(f"   ❌ 端点 {endpoint_name} 多次重试均失败，切换下一个端点...")
+            raise RuntimeError("所有镜像/鉴权组合均失败，模型下载彻底失败")
 
-            # 所有端点都失败
-            raise RuntimeError(f"模型下载彻底失败 (已尝试所有镜像源): {last_error}")
-
-        # 使用环境变量或类常量作为 repo_id
+        # ===== 主流程 =====
         repo_id = os.getenv("VOXCPM2_HF_REPO", self.HF_REPO_ID)
 
-        # 如果 model_path 是 Kaggle Dataset 路径，优先尝试加载；否则使用 CACHE_DIR
+        # 优先 Kaggle Dataset，否则缓存目录
         if self.model_path.startswith("/kaggle/input/"):
-            _log(f"🔍 检测到 Kaggle Dataset 路径，优先验证: {self.model_path}")
+            _log(f"🔍 检测到 Kaggle Dataset: {self.model_path}")
             if not os.path.exists(self.model_path):
-                _log(f"⚠️ Kaggle Dataset 路径不存在，回退到自动下载...")
+                _log("⚠️ Dataset 不存在，回退自动下载")
                 _ensure_model_downloaded(self.CACHE_DIR, repo_id)
                 self.model_path = self.CACHE_DIR
             else:
-                # 即使有路径，也检查是否完整
                 _ensure_model_downloaded(self.model_path, repo_id)
         else:
-            # 直接使用 CACHE_DIR 或指定路径
             _ensure_model_downloaded(self.model_path, repo_id)
 
-        # ===== 2. 预检查：验证最终确定的模型目录 =====
-        _log(f"🔍 最终预检查模型目录: {self.model_path}")
-
+        # ===== 2. 预检查 =====
+        _log(f"🔍 预检查: {self.model_path}")
         if not os.path.exists(self.model_path):
-            raise FileNotFoundError(
-                f"模型目录不存在: {self.model_path}\n"
-                f"自动下载可能已失败，请检查网络连接或 HF_TOKEN"
-            )
+            raise FileNotFoundError(f"模型目录不存在: {self.model_path}")
 
-        # 检查关键文件是否存在
-        required_files = ["config.json"]
-        missing_files = [f for f in required_files if not os.path.exists(os.path.join(self.model_path, f))]
-        if missing_files:
-            raise FileNotFoundError(
-                f"模型目录缺少必要文件: {missing_files}\n"
-                f"当前目录内容: {os.listdir(self.model_path)}\n"
-                f"请确保模型文件完整 (至少需要 config.json + 模型权重文件 *.safetensors/*.bin/*.pt)"
-            )
+        required = ["config.json"]
+        missing = [f for f in required if not os.path.exists(os.path.join(self.model_path, f))]
+        if missing:
+            raise FileNotFoundError(f"缺少必要文件: {missing}")
 
-        # 检查模型权重文件
-        weight_files = [f for f in os.listdir(self.model_path) if f.endswith(('.safetensors', '.bin', '.pt'))]
-        if not weight_files:
-            raise FileNotFoundError(
-                f"模型目录缺少权重文件 (*.safetensors, *.bin, *.pt)\n"
-                f"当前目录内容: {os.listdir(self.model_path)}"
-            )
+        weights = [f for f in os.listdir(self.model_path) if f.endswith(('.safetensors', '.bin', '.pt'))]
+        if not weights:
+            raise FileNotFoundError("无权重文件")
 
-        _log(f"✅ 预检查通过，模型文件完整: {self.model_path}")
-        _log(f"   发现权重文件: {weight_files}")
+        _log(f"✅ 预检查通过: {self.model_path}  权重: {weights}")
 
         _log(f"Loading VoxCPM2 from {self.model_path} on {self.device_count} GPU(s)...")
 
@@ -734,7 +678,7 @@ class DualT4VoxCPM2Engine:
 
                     # 2. 字符串 speaker：转换为 Voice Design 提示词
                     if isinstance(speaker, str):
-                        print(f"[RUNTIME] Mapping speaker '{speaker}' to VoxCPM2 voice design prompt...", flush=True)
+                        _print(f"[RUNTIME] Mapping speaker '{speaker}' to VoxCPM2 voice design prompt...", flush=True)
                         desc = "(A young woman, gentle and sweet clear voice)" if "female" in speaker else "(A young man, warm and professional clear voice)"
                         if args and isinstance(args[0], str) and not args[0].startswith("("):
                             args[0] = desc + args[0]
@@ -749,31 +693,29 @@ class DualT4VoxCPM2Engine:
                 # 动态绑定实例方法
                 import types
                 self.model.generate = types.MethodType(_patched_generate, self.model)
-                print("[RUNTIME] ✅ generate 方法已彻底重构并替换，使用闭包绑定 _orig，不再使用 orig_generate 属性。")
-                print("[RUNTIME] 🎉 VoxCPM2 robust full-wrapper patch injected successfully!")
+                _print("[RUNTIME] ✅ generate 方法已彻底重构并替换，使用闭包绑定 _orig，不再使用 orig_generate 属性。")
+                _print("[RUNTIME] 🎉 VoxCPM2 robust full-wrapper patch injected successfully!")
 
                 # 2. 动态兼容缺失的 decode_audio 方法 - 清除 lambda，使用 def 定义
                 if not hasattr(self.model, 'decode_audio'):
                     if hasattr(self.model, 'tts_model') and hasattr(self.model.tts_model, 'decode_audio'):
                         # 如果底层真正的 tts_model 实现了该方法，则进行代理重定向
                         self.model.decode_audio = self.model.tts_model.decode_audio.__get__(self.model.tts_model, type(self.model.tts_model))
-                        print("[RUNTIME] 🔗 Proxied 'decode_audio' to underlying tts_model.", flush=True)
+                        _print("[RUNTIME] 🔗 Proxied 'decode_audio' to underlying tts_model.", flush=True)
                     else:
                         # 如果底层也没有，说明新版 generate 已经是成品波形，此处直接做直通(Pass-through)返回
                         def _identity_decode_audio(tokens):
                             return tokens
                         self.model.decode_audio = _identity_decode_audio
-                        print("[RUNTIME] 🔄 Injected pass-through 'decode_audio' (Identity Fallback).", flush=True)
+                        _print("[RUNTIME] 🔄 Injected pass-through 'decode_audio' (Identity Fallback).", flush=True)
 
                 self.model._v2_patched = True
-                print("[RUNTIME] 🎉 VoxCPM2 targeted runtime patch injected successfully!")
+                _print("[RUNTIME] 🎉 VoxCPM2 targeted runtime patch injected successfully!")
             except Exception as patch_err:
-                print(f"[RUNTIME] ⚠️ Failed to apply targeted patch: {patch_err}", flush=True)
+                _print(f"[RUNTIME] ⚠️ Failed to apply targeted patch: {patch_err}", flush=True)
         # ========================================================
 
         # VoxCPM wrapper's generate method takes text and speaker directly
-        speaker_prompt = self._get_speaker_prompt(voice_id, reference_audio)
-
         speaker_map = {
             "zh_female_1": 0,
             "zh_male_1": 1,
@@ -795,66 +737,35 @@ class DualT4VoxCPM2Engine:
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
-    def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
-        speaker_idx = 0
-        speaker_map = {
-            "zh_female_1": 0,
-            "zh_male_1": 1,
-            "en_female_1": 2,
-            "en_male_1": 3,
-        }
-        speaker_idx = speaker_map.get(voice_id, 0)
-
-        # === [DIAGNOSTIC] Inspect VoxCPM wrapper structure ===
-        print(f"\n=== [DIAGNOSTIC] Inspecting VoxCPM wrapper ===", flush=True)
-        print(f"Wrapper type: {type(self.model)}", flush=True)
-        wrapper_methods = [m for m in dir(self.model) if not m.startswith('_')]
-        print(f"Available wrapper methods: {wrapper_methods}", flush=True)
-
-        if hasattr(self.model, 'model'):
-            print(f"Inner model type: {type(self.model.model)}", flush=True)
-            inner_methods = [m for m in dir(self.model.model) if not m.startswith('_')]
-            print(f"Inner model methods: {inner_methods}", flush=True)
-        print("=============================================\n", flush=True)
-
-        # === Dynamic discovery & fallback chain ===
-        # Path A: Check wrapper for common method names
-        for attr in ['get_speaker_embedding', 'get_speaker_embed', 'speaker_embedding', 'get_embedding']:
-            if hasattr(self.model, attr):
-                _log(f"[BOOTSTRAP] Using wrapper method: {attr}")
-                return getattr(self.model, attr)(speaker_idx)
-
-        # Path B: Check inner model if wrapped
-        if hasattr(self.model, 'model'):
-            inner = self.model.model
-            for attr in ['get_speaker_embedding', 'get_speaker_embed', 'speaker_embedding', 'get_embedding']:
-                if hasattr(inner, attr):
-                    _log(f"[BOOTSTRAP] Using inner model method: {attr}")
-                    return getattr(inner, attr)(speaker_idx)
-
-        # Path C: Ultimate safe fallback - return None, let synthesis proceed
-        _log("[BOOTSTRAP] ⚠️ Warning: No speaker embedding method found. Returning None as fallback.")
-        return None
-
 
 # ==========================================
 # 5. KAGGLE WORKER IMPLEMENTATION
 # ==========================================
 class KaggleWorker(BaseWorker):
-    """
-    Kaggle-specific distributed TTS Worker implementation leveraging
-    the Dual T4 VoxCPM2 model parallel framework.
-    """
+    """Kaggle Kernel worker with dual T4 + R2 upload."""
 
     def __init__(self):
+        # 🔒 必须在 super().__init__() 之前校验 GPU 型号
+        if not torch.cuda.is_available():
+            _print("ERROR: CUDA not available. This worker requires GPU (dual T4 on Kaggle).", file=sys.stderr)
+            sys.exit(1)
+
+        # 必须为 T4 x2，否则拒绝启动
+        device_count = torch.cuda.device_count()
+        device_names = [torch.cuda.get_device_name(i) for i in range(device_count)]
+        if device_count != 2 or not all("T4" in n for n in device_names):
+            _print(f"ERROR: GPU 型号/数量不符。预期 Tesla T4 x2，实际 {device_names}。拒绝启动。", file=sys.stderr)
+            sys.exit(1)
+
+        _print(f"✅ GPU 校验通过: {device_names}")
+
         super().__init__(platform_prefix="kaggle-t4-dual")
 
     def _init_engine(self) -> DualT4VoxCPM2Engine:
-        """Instantiate and compile the local multi-GPU VoxCPM2 execution instance."""
-        return DualT4VoxCPM2Engine(model_path=self.model_path)
+        # No longer need VOXCPM2_MODEL_PATH env; engine downloads from HF Hub
+        return DualT4VoxCPM2Engine()
 
     def _execute_smoke_test(self) -> None:
-        """Execute a quick text synthesis slice to confirm runtime sanity and VRAM bounds."""
         _print(f"🧪 [{self.worker_id}] Launching local inference engine smoke test...")
         try:
             # Quick initialization slice to confirm layer maps match allocation layouts
@@ -896,96 +807,10 @@ class KaggleWorker(BaseWorker):
         }
 
 
-def main() -> None:
-    """
-    Fatal guard-liner: immediate GPU T4 x2 assertion prevents any drift to P100.
-    """
-    # 🌟 MUST inject secrets BEFORE any validation runs
-    _inject_kaggle_secrets()
-
-    # 🛡️ ========================================================
-    # 🛡️ VoxCPM2 现代 API 动态适配器 (Monkey Patch)
-    # 🎛️ 拦截旧版 speaker 参数，自动转换为 VoxCPM2 的 Voice Design 语法
-    # ========================================================
-    try:
-        import voxcpm
-        import inspect
-
-        def patch_voxcpm_method(cls, method_name):
-            original_method = getattr(cls, method_name)
-            underlying_method = getattr(cls, "_" + method_name, None)
-
-            def robust_method(self, *args, **kwargs):
-                # 1. 提取文本与 speaker 参数
-                text = kwargs.get('text', args[0] if len(args) > 0 else "")
-                speaker = kwargs.pop('speaker', None)
-
-                # 2. 将旧版 Speaker ID 转换为 VoxCPM2 的自然语言 Voice Design 描述
-                if speaker and isinstance(speaker, str):
-                    _log(f"[BOOTSTRAP] Mapping speaker '{speaker}' to VoxCPM2 voice design prompt...")
-                    if "female" in speaker:
-                        desc = "(A young woman, gentle and sweet clear voice)"
-                    elif "male" in speaker:
-                        desc = "(A young man, warm and professional clear voice)"
-                    else:
-                        desc = f"(A natural and clear voice for speaker {speaker})"
-
-                    # 自动注入到文本头部
-                    if not text.startswith("("):
-                        if len(args) > 0:
-                            args = list(args)
-                            args[0] = desc + text
-                            args = tuple(args)
-                        else:
-                            kwargs['text'] = desc + text
-
-                # 3. 严格清洗 kwargs，防止不兼容参数导致底层报错
-                if underlying_method:
-                    sig = inspect.signature(underlying_method)
-                    has_kwargs_param = any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values())
-                    if not has_kwargs_param:
-                        # 仅保留底层函数真正支持的参数 (如 cfg_value, seed 等)
-                        kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
-
-                return original_method(self, *args, **kwargs)
-
-            setattr(cls, method_name, robust_method)
-
-        # 同时修复同步与流式生成接口
-        patch_voxcpm_method(voxcpm.core.VoxCPM, 'generate')
-        patch_voxcpm_method(voxcpm.core.VoxCPM, 'generate_streaming')
-        _log("[BOOTSTRAP] 🎉 Successfully adapted VoxCPM generate methods to v2 API!")
-
-    except Exception as e:
-        _log(f"[BOOTSTRAP] ⚠️ Failed to apply VoxCPM adapter: {e}")
-
-    # ========================================================
-
-    # GPU 必须为 T4 x2（P100 绝对不通过）
-    if not torch.cuda.is_available():
-        _print("ERROR: CUDA not available. This worker requires GPU (dual T4 on Kaggle).", file=sys.stderr)
-        sys.exit(1)
-
-    # 必须为 T4 x2，否则拒绝启动
-    device_count = torch.cuda.device_count()
-    if device_count != 2:
-        _print(f"ERROR: GPU count mismatch. Expected 2x T4, detected {device_count} GPU(s).", file=sys.stderr)
-        sys.exit(1)
-
-    device_names = get_device_names()
-    if not all("T4" in name for name in device_names):
-        _print(
-            f"ERROR: GPU model mismatch. Required: Tesla T4 x2, Detected: {device_names}. "
-            "This kernel must run on Kaggle T4 x2 accelerator.",
-            file=sys.stderr
-        )
-        sys.exit(1)
-
-    _print(f"✅ GPU validation passed: {device_names}")
-
-    # ========================================================
-    # 6. DISTRIBUTED RUNTIME SYSTEM ENTRYPOINT
-    # ========================================================
+# ==========================================
+# 6. DISTRIBUTED RUNTIME SYSTEM ENTRYPOINT
+# ==========================================
+if __name__ == "__main__":
     _print("🚀 Orchestrating Kaggle free-tier production pipeline engine...")
     try:
         worker = KaggleWorker()
@@ -993,7 +818,3 @@ def main() -> None:
     except Exception as fatal_err:
         _print(f"🚨 CRITICAL KERNEL ABORT: Lifecycle execution failed during boot hook: {fatal_err}", file=sys.stderr)
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
