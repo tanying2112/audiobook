@@ -605,12 +605,11 @@ class DualT4VoxCPM2Engine:
                             _log(f"⚠️ 尝试 {attempt}/3 失败: {str(e)[:200]}")
                             time.sleep(2 ** attempt)
 
-            # ===== 所有 HF API 尝试失败，尝试 Git 克隆终极兜底 =====
+            # ===== 所有 HF API 尝试失败，启动终极兜底 =====
             _log("🛡️ 所有 HF API 尝试失败，启动终极兜底：Git 克隆...")
             try:
                 import subprocess
                 import shutil
-                import time
                 mirror_url = f"{endpoint}/{repo_id}"
                 _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
 
