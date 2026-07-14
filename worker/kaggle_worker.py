@@ -552,22 +552,17 @@ class DualT4VoxCPM2Engine:
 
     def _load_model(self) -> None:
         import os
+        import time
 
         # ===== 1. 检查本地模型是否完整，不完整则从 HF Hub 下载 =====
         def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
-            """确保模型文件存在，不存在则从 HF Hub 下载。"""
+            """确保模型文件存在，不存在则从 HF Hub 下载（带重试和镜像回退）。"""
 
-            # 🌐 强制锁定国内镜像与安全参数
-            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-            os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
-
-            # 🔧 运行时常量覆盖：通过 huggingface_hub.constants 彻底禁用 SSL
-            try:
-                import huggingface_hub.constants as _hf_const
-                _hf_const.HF_HUB_DISABLE_SSL_VERIFICATION = True
-                _hf_const.HF_ENDPOINT = "https://hf-mirror.com"
-            except Exception:
-                pass
+            # 🌐 尝试镜像源顺序：先国内镜像，失败回退官方
+            endpoints = [
+                ("https://hf-mirror.com", "国内镜像"),
+                ("https://huggingface.co", "官方源"),
+            ]
 
             # 检查目录是否存在且包含必要文件
             config_exists = os.path.exists(os.path.join(model_dir, "config.json"))
@@ -580,8 +575,6 @@ class DualT4VoxCPM2Engine:
             _log(f"📡 本地模型不完整或不存在，开始从 Hugging Face Hub 下载...")
             _log(f"   Repo: {repo_id}")
             _log(f"   目标目录: {model_dir}")
-            _log(f"   镜像源: {os.environ['HF_ENDPOINT']}")
-            _log(f"   SSL验证: 已禁用 (HF_HUB_DISABLE_SSL_VERIFY=1)")
 
             # 确保目录存在
             os.makedirs(model_dir, exist_ok=True)
@@ -598,17 +591,49 @@ class DualT4VoxCPM2Engine:
                 _log(f"🔑 使用 HF_TOKEN 认证下载 (前缀: {clean_token[:8]}...)")
 
             from huggingface_hub import snapshot_download
-            snapshot_download(
-                repo_id=repo_id,
-                local_dir=model_dir,
-                local_dir_use_symlinks=False,
-                resume_download=True,
-                token=clean_token,
-                max_workers=1,              # 单线程下载，防止容器内死锁
-                tqdm_class=None,            # 禁用进度条，防止刷新缓冲区死锁
-                allow_patterns=None,        # 下载所有文件
-            )
-            _log("✅ 模型下载完成！")
+
+            # 依次尝试每个端点，带指数退避重试
+            last_error = None
+            for endpoint_url, endpoint_name in endpoints:
+                os.environ["HF_ENDPOINT"] = endpoint_url
+                try:
+                    import huggingface_hub.constants as _hf_const
+                    _hf_const.HF_ENDPOINT = endpoint_url
+                    _hf_const.HF_HUB_DISABLE_SSL_VERIFICATION = True
+                except Exception:
+                    pass
+
+                _log(f"   🔄 尝试端点: {endpoint_name} ({endpoint_url})")
+                os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+
+                for attempt in range(1, 4):  # 每个端点最多重试 3 次
+                    try:
+                        _log(f"   📥 下载尝试 {attempt}/3...")
+                        snapshot_download(
+                            repo_id=repo_id,
+                            local_dir=model_dir,
+                            local_dir_use_symlinks=False,
+                            resume_download=True,
+                            token=clean_token,
+                            max_workers=1,              # 单线程下载，防止容器内死锁
+                            tqdm_class=None,            # 禁用进度条，防止刷新缓冲区死锁
+                            allow_patterns=None,        # 下载所有文件
+                            etag_timeout=30,            # 增加超时
+                        )
+                        _log(f"✅ 模型下载完成！(来源: {endpoint_name})")
+                        return
+                    except Exception as e:
+                        last_error = e
+                        wait_time = 2 ** attempt
+                        _log(f"   ⚠️ 尝试 {attempt}/3 失败: {e}")
+                        if attempt < 3:
+                            _log(f"   ⏳ 等待 {wait_time}s 后重试...")
+                            time.sleep(wait_time)
+
+                _log(f"   ❌ 端点 {endpoint_name} 多次重试均失败，切换下一个端点...")
+
+            # 所有端点都失败
+            raise RuntimeError(f"模型下载彻底失败 (已尝试所有镜像源): {last_error}")
 
         # 使用环境变量或类常量作为 repo_id
         repo_id = os.getenv("VOXCPM2_HF_REPO", self.HF_REPO_ID)
