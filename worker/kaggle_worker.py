@@ -51,9 +51,9 @@ _KAGGLE_API_FALLBACKS = {
 
 for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
     # 只有当系统环境变量中确实缺失该项时（即内置 Secrets 注入失败时），才进行本地覆盖
-    # 注意：对于 HF_TOKEN 等可为空的值，使用 `not in os.environ` 判断而非 truthiness
+    # 注意：对于 HF_TOKEN 等可为空的值，只有当 fallback 值非空时才覆盖，避免用空字符串覆盖真实环境变量
     if env_key not in os.environ or not os.environ.get(env_key):
-        if env_val is not None:
+        if env_val:  # 只有非空字符串才覆盖
             os.environ[env_key] = str(env_val)
 # ========================================================
 
@@ -130,7 +130,7 @@ def _inject_kaggle_secrets() -> None:
 
 # 确保兜底值在 secrets 注入失败时已生效（双重保险）
 for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
-    if not os.environ.get(env_key) and env_val is not None:
+    if not os.environ.get(env_key) and env_val:
         os.environ[env_key] = str(env_val)
 
 # Inject NOW before any validation runs
