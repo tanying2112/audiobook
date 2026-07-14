@@ -39,6 +39,17 @@ from .rate_limiter import (
     create_tts_rate_limiter,
     get_tts_rate_limiter,
 )
+from .port import (
+    TTSStatus,
+    TTSVoiceAnchor,
+    TTSProsody,
+    TTSTaskPayload,
+    TTSTaskResult,
+    TTSTaskStatus,
+    RemoteTTSPort,
+    PortFactory,
+)
+from .port_factory import create_port, get_port, set_port, reset_port, make_port_factory
 from .remote_voxcpm2_client import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpmp2_backend
 
@@ -70,6 +81,21 @@ __all__ = [
     "RemoteVoxCPM2Client",
     "RemoteVoxCPM2Config",
     "create_remote_voxcpm2_client",
+    # Port Contract (Hermes-Celery boundary)
+    "TTSStatus",
+    "TTSVoiceAnchor",
+    "TTSProsody",
+    "TTSTaskPayload",
+    "TTSTaskResult",
+    "TTSTaskStatus",
+    "RemoteTTSPort",
+    "PortFactory",
+    # Port Factory
+    "create_port",
+    "get_port",
+    "set_port",
+    "reset_port",
+    "make_port_factory",
     # Circuit Breaker
     "CircuitBreaker",
     # Rate Limiter

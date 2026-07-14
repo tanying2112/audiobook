@@ -1,14 +1,19 @@
 """
-Celery tasks for TTS chapter synthesis with remote VoxCPM2.
+Celery tasks for TTS chapter synthesis via RemoteTTSPort.
 
 Provides async chapter-level TTS synthesis with:
+- RemoteTTSPort submission and polling (lightweight orchestration only)
 - Redis idempotency keys (text|voice_id|prosody hash)
 - Redis semaphore for remote concurrency control (max 4)
 - Progress reporting via Celery states
 - Chapter-level crossfade stitching
 - Failed paragraph tracking for resume
-- RemoteVoxCPM2Client lifecycle management
+
+Celery tasks are LIGHTWEIGHT CLIENTS: they only submit to Hermes via Port
+and poll for status. They NEVER run synthesis loops directly.
 """
+
+from __future__ import annotations
 
 import hashlib
 import json
@@ -25,7 +30,16 @@ from ..database import SessionLocal
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.synthesize import AudioSegment as PipelineAudioSegment
 from ..pipeline.synthesize import SynthesizePipeline
-from ..tts import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
+from ..tts import (
+    RemoteTTSPort,
+    TTSTaskPayload,
+    TTSTaskResult,
+    TTSTaskStatus,
+    TTSStatus,
+    TTSVoiceAnchor,
+    TTSProsody,
+    get_port,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +102,14 @@ def _get_redis() -> Optional["redis.Redis"]:
 
 
 class TTSChapterTask(celery_app.Task):
-    """Base task class for TTS chapter synthesis with retry/acks_late semantics."""
+    """Base task class for TTS chapter synthesis with retry/acks_late semantics.
+
+    This task is a LIGHTWEIGHT ORCHESTRATOR:
+    - Submits synthesis tasks to Hermes via RemoteTTSPort
+    - Polls for completion via Port
+    - Handles crossfade stitching locally
+    - Does NOT run synthesis loops directly
+    """
 
     autoretry_for = (Exception,)
     retry_backoff = True
@@ -100,27 +121,26 @@ class TTSChapterTask(celery_app.Task):
 
     def __init__(self):
         super().__init__()
-        self._voxcpm2_client: Optional[RemoteVoxCPM2Client] = None
+        self._port: Optional[RemoteTTSPort] = None
         self._semaphore_acquired = False
 
-    def _get_voxcpm2_client(self) -> RemoteVoxCPM2Client:
-        """Get or create RemoteVoxCPM2Client (lazy init)."""
-        if self._voxcpm2_client is None:
-            config = RemoteVoxCPM2Config.from_env()
-            self._voxcpm2_client = create_remote_voxcpm2_client(config)
-        return self._voxcpm2_client
+    def _get_port(self) -> RemoteTTSPort:
+        """Get or create RemoteTTSPort (lazy init)."""
+        if self._port is None:
+            self._port = get_port()
+        return self._port
 
-    def _cleanup_voxcpm2_client(self) -> None:
-        """Properly close RemoteVoxCPM2Client."""
-        if self._voxcpm2_client is not None:
+    def _cleanup_port(self) -> None:
+        """Properly close RemoteTTSPort."""
+        if self._port is not None:
             try:
                 import asyncio
 
-                asyncio.run(self._voxcpm2_client.close())
+                asyncio.run(self._port.close())
             except Exception as e:
-                logger.warning(f"Error closing RemoteVoxCPM2Client: {e}")
+                logger.warning(f"Error closing RemoteTTSPort: {e}")
             finally:
-                self._voxcpm2_client = None
+                self._port = None
 
     def _acquire_semaphore(self) -> bool:
         """Acquire semaphore slot for remote TTS concurrency control (max 4)."""
@@ -215,20 +235,170 @@ class TTSChapterTask(celery_app.Task):
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Cleanup on task failure."""
         self._release_semaphore()
-        self._cleanup_voxcpm2_client()
+        self._cleanup_port()
         super().on_failure(exc, task_id, args, kwargs, einfo)
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         """Cleanup on retry."""
         self._release_semaphore()
-        self._cleanup_voxcpm2_client()
+        self._cleanup_port()
         super().on_retry(exc, task_id, args, kwargs, einfo)
 
     def on_success(self, retval, task_id, args, kwargs):
         """Cleanup on success."""
         self._release_semaphore()
-        self._cleanup_voxcpm2_client()
+        self._cleanup_port()
         super().on_success(retval, task_id, args, kwargs)
+
+
+def _build_port_payload(text: str, voice_id: str, prosody: dict) -> TTSTaskPayload:
+    """Build a TTSTaskPayload from synthesis parameters."""
+    tts_prosody = TTSProsody(
+        rate=float(prosody.get("rate", 1.0)),
+        pitch=float(prosody.get("pitch", 0.0)),
+        volume=float(prosody.get("volume", 0.0)),
+        emotion=prosody.get("emotion"),
+    )
+
+    voice_anchor = TTSVoiceAnchor(
+        voice_id=voice_id,
+        speaker_name=None,
+        language="zh-CN",
+    )
+
+    return TTSTaskPayload(
+        text=text,
+        voice_anchor=voice_anchor,
+        prosody=tts_prosody,
+        metadata={
+            "source": "celery_task",
+            "prosody_raw": prosody,
+        },
+    )
+
+
+async def _synthesize_via_port(
+    port: RemoteTTSPort,
+    text: str,
+    voice_id: str,
+    prosody: dict,
+    output_path: Path,
+    segment_id: str,
+) -> tuple[int, str]:
+    """Synthesize text to audio via RemoteTTSPort.
+
+    Submits task to Hermes layer, polls for completion, returns result.
+
+    Args:
+        port: RemoteTTSPort instance.
+        text: Text to synthesize.
+        voice_id: Voice identifier.
+        prosody: Prosody parameters.
+        output_path: Local path to save audio.
+        segment_id: Unique segment identifier for task tracking.
+
+    Returns:
+        Tuple of (duration_ms, engine_name).
+
+    Raises:
+        RuntimeError: If synthesis fails or times out.
+    """
+    payload = _build_port_payload(text, voice_id, prosody)
+
+    task_id = f"{segment_id}-{int(__import__('time').time() * 1000)}"
+    logger.info(f"Submitting synthesis task {task_id} for segment {segment_id}")
+
+    accepted = await port.submit(task_id, payload)
+    if not accepted:
+        raise RuntimeError(f"Task {task_id} rejected by scheduling layer (duplicate or unavailable)")
+
+    # Poll for completion
+    poll_interval = 0.5  # seconds
+    max_wait = 300  # 5 minutes max
+    waited = 0.0
+
+    while waited < max_wait:
+        status = await port.get_status(task_id)
+        logger.debug(f"Task {task_id} status: {status.status.value}, progress: {status.progress}")
+
+        if status.status == TTSStatus.DONE:
+            result = await port.get_result(task_id)
+            break
+        elif status.status == TTSStatus.FAILED:
+            error_msg = status.error_message or "Unknown error"
+            raise RuntimeError(f"Synthesis failed: {error_msg}")
+        elif status.status in (TTSStatus.PENDING, TTSStatus.RUNNING):
+            await asyncio.sleep(poll_interval)
+            waited += poll_interval
+            continue
+        else:
+            raise RuntimeError(f"Unknown task status: {status.status}")
+
+    # Download audio from source to local output_path
+    if result.audio_path:
+        await _download_audio(result.audio_path, output_path)
+    else:
+        raise RuntimeError("Synthesis completed but no audio path returned")
+
+    duration_ms = result.duration_ms or _get_audio_duration(output_path)
+    engine = getattr(result, "metadata", {}).get("engine", "hermes") if hasattr(result, "metadata") else "hermes"
+
+    logger.info(f"Segment {segment_id} synthesized via {engine}: {duration_ms}ms")
+    return duration_ms, engine
+
+
+async def _download_audio(source_path: str, dest_path: Path) -> None:
+    """Download audio from source (R2/local) to destination."""
+    source = Path(source_path)
+    if source.exists():
+        import shutil
+
+        shutil.copy2(source, dest_path)
+    else:
+        # For fake port in testing, it generates local files with r2:// prefix
+        # Try to find the local file
+        if source_path.startswith("r2://"):
+            # Extract the filename and look locally
+            filename = source_path.replace("r2://", "").replace("/", "_")
+            local_path = Path("/tmp") / filename
+            if local_path.exists():
+                import shutil
+
+                shutil.copy2(local_path, dest_path)
+                return
+        logger.warning(f"Remote audio path not implemented: {source_path}")
+        raise NotImplementedError(f"Remote audio download from {source_path} not implemented")
+
+
+def _get_audio_duration(file_path: Path) -> int:
+    """Get audio duration in milliseconds using ffprobe."""
+    try:
+        import subprocess
+
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(file_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            duration_sec = float(result.stdout.strip())
+            return int(duration_sec * 1000)
+    except Exception as e:
+        logger.warning(f"ffprobe failed for {file_path}: {e}")
+
+    # Fallback: estimate from file size (rough approximation for 24kHz mono WAV)
+    try:
+        size = file_path.stat().st_size
+        estimated_sec = size / 48000
+        return int(estimated_sec * 1000)
+    except Exception:
+        return 0
 
 
 @celery_app.task(
@@ -246,7 +416,13 @@ def synthesize_chapter_task(
     paragraphs: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """
-    Synthesize a full chapter TTS using remote VoxCPM2 with crossfade stitching.
+    Synthesize a full chapter TTS via RemoteTTSPort with crossfade stitching.
+
+    This task is a LIGHTWEIGHT ORCHESTRATOR:
+    - Submits each paragraph to Hermes via Port
+    - Polls for completion
+    - Stitches segments locally with crossfade
+    - Does NOT run synthesis loops
 
     Args:
         project_id: Project ID
@@ -264,7 +440,7 @@ def synthesize_chapter_task(
     """
     task_id = self.request.id
     logger.info(
-        f"[{task_id}] Starting TTS chapter synthesis: project={project_id}, chapter={chapter_id}, index={chapter_index}"
+        f"[{task_id}] Starting TTS chapter synthesis via Port: project={project_id}, chapter={chapter_id}, index={chapter_index}"
     )
 
     # Acquire semaphore for remote concurrency control
@@ -297,15 +473,15 @@ def synthesize_chapter_task(
         output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize pipeline for crossfade stitching
-        pipeline = SynthesizePipeline(output_dir=str(output_dir), mock_mode=False)
+        # Initialize pipeline for crossfade stitching only
+        pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
 
         # Get failed paragraph indices for resume
         failed_indices = self._get_failed_paragraphs(project_id, chapter_id)
         if failed_indices:
             logger.info(f"[{task_id}] Resuming from failed paragraphs: {sorted(failed_indices)}")
 
-        client = self._get_voxcpm2_client()
+        port = self._get_port()
         segments: List[PipelineAudioSegment] = []
         total = len(paragraphs)
         failed_this_run = []
@@ -351,29 +527,25 @@ def synthesize_chapter_task(
                                 segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
                                 file_path=existing.file_path,
                                 duration_ms=existing.duration_ms or 0,
-                                engine=existing.engine or "voxcpm2_remote",
+                                engine=existing.engine or "hermes",
                                 voice_id=existing.voice_id or voice_id,
                                 text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
                             )
                         )
                         continue
 
-            # Synthesize paragraph
+            # Synthesize paragraph via Port
             segment_id = f"{project_id}_ch{chapter_index}_p{para_index}"
             output_path = output_dir / f"{segment_id}.wav"
 
             try:
-                logger.info(f"[{task_id}] Synthesizing paragraph {para_index}/{total}: {segment_id}")
+                logger.info(f"[{task_id}] Submitting paragraph {para_index}/{total} for synthesis: {segment_id}")
+
                 import asyncio
 
-                audio_data = asyncio.run(client.synthesize(text, voice_id, prosody))
-
-                # Save audio file
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(audio_data)
-
-                # Get duration using ffprobe
-                duration_ms = _get_audio_duration(output_path)
+                duration_ms, engine = asyncio.run(
+                    _synthesize_via_port(port, text, voice_id, prosody, output_path, segment_id)
+                )
 
                 # Create AudioSegment DB record
                 audio_segment = AudioSegment(
@@ -386,7 +558,7 @@ def synthesize_chapter_task(
                     file_size_bytes=output_path.stat().st_size,
                     sample_rate=24000,
                     channels=1,
-                    engine="voxcpm2_remote",
+                    engine=engine,
                     voice_id=voice_id,
                     prosody_overrides=prosody if prosody else None,
                     version=1,
@@ -402,7 +574,7 @@ def synthesize_chapter_task(
                         segment_id=segment_id,
                         file_path=str(output_path),
                         duration_ms=duration_ms,
-                        engine="voxcpm2_remote",
+                        engine=engine,
                         voice_id=voice_id,
                         text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
                     )
@@ -416,7 +588,7 @@ def synthesize_chapter_task(
                 self._record_failed_paragraph(project_id, chapter_id, para_index)
                 # Continue with other paragraphs
 
-        # Chapter-level crossfade stitching
+        # Chapter-level crossfade stitching (local, in Celery worker)
         chapter_audio_path = None
         if segments:
             chapter_output = output_dir / f"chapter_{chapter_index}.mp3"
@@ -467,6 +639,7 @@ def synthesize_chapter_task(
         }
     finally:
         db.close()
+        pipeline.close()
 
 
 @celery_app.task(
@@ -564,38 +737,6 @@ def get_tts_status(task_id: str) -> Dict[str, Any]:
         )
 
     return response
-
-
-def _get_audio_duration(file_path: Path) -> int:
-    """Get audio duration in milliseconds using ffprobe."""
-    try:
-        import subprocess
-
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(file_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if result.returncode == 0 and result.stdout.strip():
-            duration_sec = float(result.stdout.strip())
-            return int(duration_sec * 1000)
-    except Exception as e:
-        logger.warning(f"ffprobe failed for {file_path}: {e}")
-
-    # Fallback: estimate from file size (rough approximation for 24kHz mono WAV)
-    try:
-        size = file_path.stat().st_size
-        # 24000 samples/sec * 2 bytes/sample = 48000 bytes/sec
-        estimated_sec = size / 48000
-        return int(estimated_sec * 1000)
-    except Exception:
-        return 0
 
 
 # Ensure task is registered with celery_app
