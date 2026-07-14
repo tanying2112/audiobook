@@ -47,7 +47,7 @@ _KAGGLE_API_FALLBACKS = {
     "R2_ENDPOINT": "https://061b064ef0dafd787d33f4ee1693aa1b.r2.cloudflarestorage.com",
     "R2_ACCESS_KEY_ID": "2fc25bbebc34f9b88874a8affcda2e3a",
     "R2_SECRET_ACCESS_KEY": "b7d997bc558346d8146d33be06810b7db600baafe0cbe5d7356268ee948ef9d3",
-    "R2_BUOOKET": "audiobook-assets",
+    "R2_BUCKET": "audiobook-assets",
     "R2_PUBLIC_URL": "https://pub-xxx.r2.dev",
     "WORKER_ID": "kaggle-t4-dual-01",
     "VOXCPM2_HF_REPO": "openbmb/VoxCPM2",
