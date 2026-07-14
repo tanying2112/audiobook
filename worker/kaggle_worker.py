@@ -459,7 +459,7 @@ class DualT4VoxCPM2Engine:
     PyTorch VoxCPM2 inference engine optimized for Kaggle dual T4 (2x 16GB).
 
     Uses model parallel (device_map="auto") to split across both GPUs.
-    Downloads model from Hugging Face Hub at runtime if not cached locally.
+    Loads model from local path only — NO network downloads at runtime.
     """
 
     HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")  # 可通过 Secret 覆盖
@@ -475,20 +475,33 @@ class DualT4VoxCPM2Engine:
 
     def _load_model(self) -> None:
         import os
-        from huggingface_hub import snapshot_download
 
-        # 如果缓存目录不存在模型，从 HF 实时下载
-        if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
-            _log(f"📡 模型未找到，正在从 Hugging Face 下载: {self.HF_REPO_ID} -> {self.CACHE_DIR}...")
-            snapshot_download(
-                repo_id=self.HF_REPO_ID,
-                local_dir=self.CACHE_DIR,
-                local_dir_use_symlinks=False,
-                resume_download=True,
+        # ===== 预检查：强制验证本地模型目录 =====
+        _log(f"🔍 预检查模型目录: {self.CACHE_DIR}")
+
+        if not os.path.exists(self.CACHE_DIR):
+            raise FileNotFoundError(
+                f"模型目录不存在: {self.CACHE_DIR}\n"
+                f"请将模型文件放置到该路径，或挂载 Kaggle Dataset 到 /kaggle/input/voxcpm2-model 并修改 CACHE_DIR"
             )
-            _log("✅ 模型下载完成！")
+
+        # 检查关键文件是否存在
+        required_files = ["config.json", "pytorch_model.bin"]
+        missing_files = [f for f in required_files if not os.path.exists(os.path.join(self.CACHE_DIR, f))]
+        # 也可能是 safetensors 格式
+        if not missing_files:
+            pass
         else:
-            _log(f"📦 使用本地缓存模型: {self.CACHE_DIR}")
+            # 尝试 safetensors
+            safetensors_files = [f for f in os.listdir(self.CACHE_DIR) if f.endswith('.safetensors')]
+            if not safetensors_files:
+                raise FileNotFoundError(
+                    f"模型目录缺少必要文件: {missing_files}\n"
+                    f"当前目录内容: {os.listdir(self.CACHE_DIR)}\n"
+                    f"请确保模型文件完整 (config.json + pytorch_model.bin 或 *.safetensors)"
+                )
+
+        _log(f"✅ 预检查通过，模型文件完整: {self.CACHE_DIR}")
 
         self.model_path = self.CACHE_DIR
         _log(f"Loading VoxCPM2 from {self.model_path} on {self.device_count} GPU(s)...")
@@ -513,20 +526,8 @@ class DualT4VoxCPM2Engine:
 
             _log(f"✅ Model loaded via official VoxCPM. GPU memory: {get_gpu_memory_used()} MB / {get_gpu_memory_total()} MB")
         except ImportError:
-            _log("❌ voxcpm package not found, attempting fallback install...")
-            import subprocess
-            import importlib
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "voxcpm"])
-            importlib.invalidate_caches()  # Refresh import cache
-            from voxcpm import VoxCPM
-            self.model = VoxCPM.from_pretrained(self.model_path, load_denoiser=False)
-            from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_path,
-                trust_remote_code=True,
-                use_fast=False,
-            )
-            _log("✅ Model loaded after voxcpm install")
+            _log("❌ voxcpm package not found. Please pre-install voxcpm in the environment.")
+            raise RuntimeError("voxcpm package not available — cannot load model without it")
 
     @torch.inference_mode()
     def synthesize(
