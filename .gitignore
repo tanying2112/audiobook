@@ -72,9 +72,21 @@ tokenizer.json
 tokenizer.model
 tokenization_*.py
 
+# Large audio artifacts (products)
+*.mp3
+*.wav
+*.m4b
+!tests/fixtures/**/*.wav   # allow tiny test audio fixtures
+!storage/voice_anchors/**  # allow voice anchor configs for version control
+
 # Real LLM provider config (contains env var references, but keep template tracked)
 config/llm_providers.yaml
 src/audiobook_studio/config/llm_providers.yaml
+
+# Local personalized configs with real secrets
+**/config_real.py
+config.json
+inspect_secret.py
 
 # Docker (不忽略 docker-compose.yml 和 Dockerfile)
 # docker-compose.yml
