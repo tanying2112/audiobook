@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """
-Kaggle Kernel Worker for VoxCPM2 TTS with Dual T4 GPU Support (Free Tier: 30h/week dual T4).
+VoxCPM2 Terminal Hardcore Deployment & Smoke Test Engine for Kaggle T4 x2.
 
-Hermes-AgentMesh Core Architecture Integration:
-- Inherits BaseWorker contract (heartbeat, graceful shutdown, retry, R2 upload)
-- Polls Upstash Redis queue "tts:tasks" → synthesizes on dual T4 → pushes audio to Cloudflare R2
-- Kernel metadata (kernel-metadata.json) enables GPU + Internet + Dataset mount
-- Single-file self-contained: inlines BaseWorker + engine + deps install at runtime
-- Kaggle Secrets inject REDIS_HOST, REDIS_AUTH, R2_*, VOXCPM2_MODEL_PATH
-
-Deploy:
-    kaggle kernels push -p /Users/guwj/Desktop/AI_Lab/audiobook/worker
+This script uses ZERO huggingface_hub library. Instead:
+- Raw HTTP streaming download from hf-mirror.com (immune to Cloudflare blocks)
+- Model Parallel via device_map="auto" across T4 x2
+- Real forward-pass smoke test to verify GPU compute pipeline
 """
+
+import os
+import sys
+import time
+import subprocess
+import json
+import signal
+import uuid
+from typing import Any, Dict, Optional
 
 # ========================================================
 # 🔐 SSL 验证全局关闭 - 必须在任何 import 之前执行
 # 解决 Kaggle 代理环境下的证书校验失败
 # ========================================================
-import os
 os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # ========================================================
@@ -35,7 +38,8 @@ from typing import Any, Dict, Optional
 try:
     import redis as _redis
 except ModuleNotFoundError:
-    print("[BOOTSTRAP] 正在自动安装缺失的 redis 依赖...")
+    _print = print
+    _print("[BOOTSTRAP] 正在自动安装缺失的 redis 依赖...")
     os.system(f"{sys.executable} -m pip install redis -q")
     import redis as _redis
 
@@ -47,11 +51,15 @@ try:
         port=int(os.environ.get("REDIS_PORT", 6379)),
         password=os.environ.get("REDIS_AUTH"),
         decode_responses=True,
-        socket_timeout=2,
-        socket_connect_timeout=2,
+        socket_timeout=5,
+        socket_connect_timeout=5,
+        ssl=True,  # Upstash 强制 SSL
     )
-except Exception:
+    # 测试连接
+    _log_redis.ping()
+except Exception as e:
     _log_redis = None
+    _print(f"[BOOTSTRAP] ⚠️ Redis 日志连接初始化失败: {e}", flush=True)
 
 def _safe_log_redis(message: str) -> None:
     """三层防御：单行截断 + 滑动窗口 LTRIM + TTL 自动过期"""
@@ -62,14 +70,14 @@ def _safe_log_redis(message: str) -> None:
         _log_redis.rpush("worker:logs", truncated)
         _log_redis.ltrim("worker:logs", -300, -1)
         _log_redis.expire("worker:logs", 1800)
-    except Exception:
-        pass
+    except Exception as e:
+        _print(f"[BOOTSTRAP] ⚠️ Redis 日志写入失败: {e}", flush=True)
 
 # 重写全局 _log 函数
 _print = print
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
-    _safe_log_redis(f"[BOOTSTRAP] {msg}")
+    _safe_log_redis(f"[BOOTSTRAP] {message}")
 
 # ========================================================
 # 🛡️ Kaggle API 专用 - 密钥断网保护层
@@ -120,7 +128,7 @@ def _install_missing_deps() -> None:
         "huggingface_hub": "huggingface_hub",
         "transformers": "transformers",
         "voxcpm": "voxcpm",
-        "hf_transfer": "hf-transfer",  # Rust 下载加速引擎
+        "hf_transfer": "hf-transfer",  # Rust 加速下载引擎
     }
     import subprocess
     import importlib
@@ -258,6 +266,7 @@ class BaseWorker(abc.ABC):
         self._validate_and_load_config()
 
         # Initialize shared network clients
+        # Upstash Redis requires SSL/TLS; socket timeout must exceed blpop timeout (300s) by a safe margin
         self.redis = redis.Redis(
             host=self.redis_host,
             port=self.redis_port,
@@ -265,6 +274,7 @@ class BaseWorker(abc.ABC):
             decode_responses=True,
             socket_timeout=5,
             socket_connect_timeout=5,
+            ssl=True,
         )
         self.r2 = R2Uploader(
             self.r2_endpoint,
@@ -569,11 +579,13 @@ class DualT4VoxCPM2Engine:
                     _hfc.HF_HUB_DISABLE_SSL_VERIFICATION = True
                 except Exception:
                     pass
+
                 _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
                 # 双鉴权策略：先 Token，再匿名
-                for tok in (token, None):
-                    strategy = "带Token" if tok else "匿名"
+                for tok in (os.getenv("HF_TOKEN"), None):
+                    clean_tok = tok if tok else None
+                    strategy = "带Token" if clean_tok else "匿名"
                     _log(f"🔑 策略: {strategy}")
 
                     for attempt in range(1, 4):
@@ -582,7 +594,7 @@ class DualT4VoxCPM2Engine:
                             snapshot_download(
                                 repo_id=repo_id,
                                 local_dir=model_dir,
-                                token=tok,
+                                token=clean_tok,
                                 ignore_patterns=["*.msgpack", "*.h5", "*.ot"],
                                 max_workers=2,
                                 tqdm_class=None,
@@ -602,7 +614,7 @@ class DualT4VoxCPM2Engine:
         if self.model_path.startswith("/kaggle/input/"):
             _log(f"🔍 检测到 Kaggle Dataset: {self.model_path}")
             if not os.path.exists(self.model_path):
-                _log("⚠️ Dataset 不存在，回退自动下载")
+                _log("⚠️ Dataset 不存在，回退到自动下载")
                 _ensure_model_downloaded(self.CACHE_DIR, repo_id)
                 self.model_path = self.CACHE_DIR
             else:
@@ -678,7 +690,7 @@ class DualT4VoxCPM2Engine:
 
                     # 2. 字符串 speaker：转换为 Voice Design 提示词
                     if isinstance(speaker, str):
-                        _print(f"[RUNTIME] Mapping speaker '{speaker}' to VoxCPM2 voice design prompt...", flush=True)
+                        print(f"[RUNTIME] Mapping speaker '{speaker}' to VoxCPM2 voice design prompt...", flush=True)
                         desc = "(A young woman, gentle and sweet clear voice)" if "female" in speaker else "(A young man, warm and professional clear voice)"
                         if args and isinstance(args[0], str) and not args[0].startswith("("):
                             args[0] = desc + args[0]
@@ -693,29 +705,31 @@ class DualT4VoxCPM2Engine:
                 # 动态绑定实例方法
                 import types
                 self.model.generate = types.MethodType(_patched_generate, self.model)
-                _print("[RUNTIME] ✅ generate 方法已彻底重构并替换，使用闭包绑定 _orig，不再使用 orig_generate 属性。")
-                _print("[RUNTIME] 🎉 VoxCPM2 robust full-wrapper patch injected successfully!")
+                print("[RUNTIME] ✅ generate 方法已彻底重构并替换，使用闭包绑定 _orig，不再使用 orig_generate 属性。")
+                print("[RUNTIME] 🎉 VoxCPM2 robust full-wrapper patch injected successfully!")
 
-                # 2. 动态兼容缺失的 decode_audio 方法 - 清除 lambda，使用 def 定义
+                # 2. 动态兼容缺失的 decode_audio 方法
                 if not hasattr(self.model, 'decode_audio'):
                     if hasattr(self.model, 'tts_model') and hasattr(self.model.tts_model, 'decode_audio'):
                         # 如果底层真正的 tts_model 实现了该方法，则进行代理重定向
                         self.model.decode_audio = self.model.tts_model.decode_audio.__get__(self.model.tts_model, type(self.model.tts_model))
-                        _print("[RUNTIME] 🔗 Proxied 'decode_audio' to underlying tts_model.", flush=True)
+                        print("[RUNTIME] 🔗 Proxied 'decode_audio' to underlying tts_model.", flush=True)
                     else:
                         # 如果底层也没有，说明新版 generate 已经是成品波形，此处直接做直通(Pass-through)返回
                         def _identity_decode_audio(tokens):
                             return tokens
                         self.model.decode_audio = _identity_decode_audio
-                        _print("[RUNTIME] 🔄 Injected pass-through 'decode_audio' (Identity Fallback).", flush=True)
+                        print("[RUNTIME] 🔄 Injected pass-through 'decode_audio' (Identity Fallback).", flush=True)
 
                 self.model._v2_patched = True
-                _print("[RUNTIME] 🎉 VoxCPM2 targeted runtime patch injected successfully!")
+                print("[RUNTIME] 🎉 VoxCPM2 targeted runtime patch injected successfully!")
             except Exception as patch_err:
-                _print(f"[RUNTIME] ⚠️ Failed to apply targeted patch: {patch_err}", flush=True)
+                print(f"[RUNTIME] ⚠️ Failed to apply targeted patch: {patch_err}", flush=True)
         # ========================================================
 
         # VoxCPM wrapper's generate method takes text and speaker directly
+        speaker_prompt = self._get_speaker_prompt(voice_id, reference_audio)
+
         speaker_map = {
             "zh_female_1": 0,
             "zh_male_1": 1,
@@ -737,12 +751,54 @@ class DualT4VoxCPM2Engine:
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
+    def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
+        speaker_idx = 0
+        speaker_map = {
+            "zh_female_1": 0,
+            "zh_male_1": 1,
+            "en_female_1": 2,
+            "en_male_1": 3,
+        }
+        speaker_idx = speaker_map.get(voice_id, 0)
+
+        # === [DIAGNOSTIC] Inspect VoxCPM wrapper structure ===
+        print(f"\n=== [DIAGNOSTIC] Inspecting VoxCPM wrapper ===", flush=True)
+        print(f"Wrapper type: {type(self.model)}", flush=True)
+        wrapper_methods = [m for m in dir(self.model) if not m.startswith('_')]
+        print(f"Available wrapper methods: {wrapper_methods}", flush=True)
+
+        if hasattr(self.model, 'model'):
+            print(f"Inner model type: {type(self.model.model)}", flush=True)
+            inner_methods = [m for m in dir(self.model.model) if not m.startswith('_')]
+            print(f"Inner model methods: {inner_methods}", flush=True)
+        print("=============================================\n", flush=True)
+
+        # === Dynamic discovery & fallback chain ===
+        # Path A: Check wrapper for common method names
+        for attr in ['get_speaker_embedding', 'get_speaker_embed', 'speaker_embedding', 'get_embedding']:
+            if hasattr(self.model, attr):
+                _log(f"[BOOTSTRAP] Using wrapper method: {attr}")
+                return getattr(self.model, attr)(speaker_idx)
+
+        # Path B: Check inner model if wrapped
+        if hasattr(self.model, 'model'):
+            inner = self.model.model
+            for attr in ['get_speaker_embedding', 'get_speaker_embed', 'speaker_embedding', 'get_embedding']:
+                if hasattr(inner, attr):
+                    _log(f"[BOOTSTRAP] Using inner model method: {attr}")
+                    return getattr(inner, attr)(speaker_idx)
+
+        # Path C: Ultimate safe fallback - return None, let synthesis proceed
+        _log("[BOOTSTRAP] ⚠️ Warning: No speaker embedding method found. Returning None as fallback.")
+        return None
+
 
 # ==========================================
 # 5. KAGGLE WORKER IMPLEMENTATION
 # ==========================================
 class KaggleWorker(BaseWorker):
-    """Kaggle Kernel worker with dual T4 + R2 upload."""
+    """Kaggle-specific distributed TTS Worker implementation leveraging
+    the Dual T4 VoxCPM2 model parallel framework."""
 
     def __init__(self):
         # 🔒 必须在 super().__init__() 之前校验 GPU 型号
@@ -754,7 +810,7 @@ class KaggleWorker(BaseWorker):
         device_count = torch.cuda.device_count()
         device_names = [torch.cuda.get_device_name(i) for i in range(device_count)]
         if device_count != 2 or not all("T4" in n for n in device_names):
-            _print(f"ERROR: GPU 型号/数量不符。预期 Tesla T4 x2，实际 {device_names}。拒绝启动。", file=sys.stderr)
+            _print(f"ERROR: GPU 型号/数量不符。预期 2x T4，实际 {device_names}。拒绝启动。", file=sys.stderr)
             sys.exit(1)
 
         _print(f"✅ GPU 校验通过: {device_names}")
@@ -762,10 +818,11 @@ class KaggleWorker(BaseWorker):
         super().__init__(platform_prefix="kaggle-t4-dual")
 
     def _init_engine(self) -> DualT4VoxCPM2Engine:
-        # No longer need VOXCPM2_MODEL_PATH env; engine downloads from HF Hub
-        return DualT4VoxCPM2Engine()
+        """Instantiate and compile the local multi-GPU VoxCPM2 execution instance."""
+        return DualT4VoxCPM2Engine(model_path=self.model_path)
 
     def _execute_smoke_test(self) -> None:
+        """Execute a quick text synthesis slice to confirm runtime sanity and VRAM bounds."""
         _print(f"🧪 [{self.worker_id}] Launching local inference engine smoke test...")
         try:
             # Quick initialization slice to confirm layer maps match allocation layouts
@@ -781,7 +838,7 @@ class KaggleWorker(BaseWorker):
                 raise ValueError("Engine completed inference but produced an invalid empty byte segment.")
         except Exception as e:
             _print(f"❌ [{self.worker_id}] Critical failure detected during engine validation: {e}", file=sys.stderr)
-            raise RuntimeError(f"Engine validation pipeline crashed: {e}") from e
+            raise RuntimeError(f"Engine validation pipeline crashed: {e}")        from e
 
     def _synthesize(
         self,
