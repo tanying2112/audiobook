@@ -13,9 +13,17 @@ Deploy:
     kaggle kernels push -p /Users/guwj/Desktop/AI_Lab/audiobook/worker
 """
 
+# ========================================================
+# 🔐 SSL 验证全局关闭 - 必须在任何 import 之前执行
+# 解决 Kaggle 代理环境下的证书校验失败
+# ========================================================
+import os
+os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# ========================================================
+
 import abc
 import json
-import os
 import signal
 import sys
 import time
@@ -47,13 +55,6 @@ for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
     if env_key not in os.environ or not os.environ.get(env_key):
         if env_val is not None:
             os.environ[env_key] = str(env_val)
-# ========================================================
-
-# ========================================================
-# 🌐 HF 镜像源强制注入 - 必须在任何 HF 相关操作之前执行
-# 使用国内镜像源加速下载并提升稳定性
-# ========================================================
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # ========================================================
 
 # ==========================================
@@ -556,16 +557,17 @@ class DualT4VoxCPM2Engine:
         def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
             """确保模型文件存在，不存在则从 HF Hub 下载。"""
 
-            # 🛡️ 清理冲突代理：显式移除可能干扰连接的环境变量
-            os.environ.pop('HTTP_PROXY', None)
-            os.environ.pop('HTTPS_PROXY', None)
-            os.environ.pop('ALL_PROXY', None)
-            os.environ.pop('http_proxy', None)
-            os.environ.pop('https_proxy', None)
-            os.environ.pop('all_proxy', None)
-
             # 🌐 强制锁定国内镜像与安全参数
             os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+            os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+
+            # 🔧 运行时常量覆盖：通过 huggingface_hub.constants 彻底禁用 SSL
+            try:
+                import huggingface_hub.constants as _hf_const
+                _hf_const.HF_HUB_DISABLE_SSL_VERIFICATION = True
+                _hf_const.HF_ENDPOINT = "https://hf-mirror.com"
+            except Exception:
+                pass
 
             # 检查目录是否存在且包含必要文件
             config_exists = os.path.exists(os.path.join(model_dir, "config.json"))
@@ -579,6 +581,7 @@ class DualT4VoxCPM2Engine:
             _log(f"   Repo: {repo_id}")
             _log(f"   目标目录: {model_dir}")
             _log(f"   镜像源: {os.environ['HF_ENDPOINT']}")
+            _log(f"   SSL验证: 已禁用 (HF_HUB_DISABLE_SSL_VERIFY=1)")
 
             # 确保目录存在
             os.makedirs(model_dir, exist_ok=True)
