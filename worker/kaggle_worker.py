@@ -67,6 +67,8 @@ def _install_missing_deps() -> None:
         "boto3": "boto3",
         "tiktoken": "tiktoken",
         "huggingface_hub": "huggingface_hub",
+        "transformers": "transformers",
+        "voxcpm": "voxcpm",
     }
     import subprocess
     import importlib
@@ -472,22 +474,50 @@ class DualT4VoxCPM2Engine:
         import os
         base = "/kaggle/input"
         if not os.path.exists(base):
+            _log(f"⚠️ Kaggle 输入目录不存在: {base}")
             return ""
+
+        _log(f"🔍 扫描 Kaggle Dataset 挂载目录: {base}")
+        _log(f"   顶层内容: {os.listdir(base)}")
+
+        # 优先检查常见命名
+        priority_names = ["voxcpm2", "voxcpm2-model", "model", "VoxCPM2", "voxcpm"]
+        for name in priority_names:
+            candidate = os.path.join(base, name)
+            if os.path.isdir(candidate):
+                _log(f"   检查优先目录: {candidate}")
+                result = DualT4VoxCPM2Engine._scan_for_model(candidate)
+                if result:
+                    return result
+
         # 遍历 /kaggle/input/ 下的所有子目录
         for entry in os.listdir(base):
             candidate = os.path.join(base, entry)
             if not os.path.isdir(candidate):
                 continue
-            # 递归查找包含 config.json 的目录
-            for root, dirs, files in os.walk(candidate):
-                if "config.json" in files:
-                    # 再检查是否有模型权重文件
-                    has_weights = any(
-                        f.endswith(('.safetensors', '.bin', '.pt')) for f in files
-                    )
-                    if has_weights:
-                        _log(f"🎯 自动检测到 Kaggle 模型目录: {root}")
-                        return root
+            if entry in priority_names:
+                continue  # 已检查过
+            _log(f"   检查目录: {candidate}")
+            result = DualT4VoxCPM2Engine._scan_for_model(candidate)
+            if result:
+                return result
+
+        _log(f"⚠️ 未在 {base} 下发现有效模型目录")
+        return ""
+
+    @staticmethod
+    def _scan_for_model(root: str) -> str:
+        """递归扫描目录，查找包含 config.json + 权重文件的目录。"""
+        import os
+        for dirpath, dirnames, filenames in os.walk(root):
+            if "config.json" in filenames:
+                has_weights = any(
+                    f.endswith(('.safetensors', '.bin', '.pt')) for f in filenames
+                )
+                if has_weights:
+                    _log(f"🎯 自动检测到 Kaggle 模型目录: {dirpath}")
+                    _log(f"   包含文件: {filenames}")
+                    return dirpath
         return ""
 
     def __init__(self, model_path: str = None):
