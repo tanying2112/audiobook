@@ -548,6 +548,18 @@ class DualT4VoxCPM2Engine:
         # ===== 1. 检查本地模型是否完整，不完整则从 HF Hub 下载 =====
         def _ensure_model_downloaded(model_dir: str, repo_id: str) -> None:
             """确保模型文件存在，不存在则从 HF Hub 下载。"""
+
+            # 🛡️ 清理冲突代理：显式移除可能干扰连接的环境变量
+            os.environ.pop('HTTP_PROXY', None)
+            os.environ.pop('HTTPS_PROXY', None)
+            os.environ.pop('ALL_PROXY', None)
+            os.environ.pop('http_proxy', None)
+            os.environ.pop('https_proxy', None)
+            os.environ.pop('all_proxy', None)
+
+            # 🌐 强制锁定国内镜像与安全参数
+            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
             # 检查目录是否存在且包含必要文件
             config_exists = os.path.exists(os.path.join(model_dir, "config.json"))
             weight_files = [f for f in os.listdir(model_dir) if f.endswith(('.safetensors', '.bin', '.pt'))] if os.path.exists(model_dir) else []
@@ -559,6 +571,7 @@ class DualT4VoxCPM2Engine:
             _log(f"📡 本地模型不完整或不存在，开始从 Hugging Face Hub 下载...")
             _log(f"   Repo: {repo_id}")
             _log(f"   目标目录: {model_dir}")
+            _log(f"   镜像源: {os.environ['HF_ENDPOINT']}")
 
             # 确保目录存在
             os.makedirs(model_dir, exist_ok=True)
