@@ -610,7 +610,7 @@ class DualT4VoxCPM2Engine:
             try:
                 import subprocess
                 import shutil
-                mirror_url = f"{endpoint}/{repo_id}"
+                mirror_url = f"{git_endpoint}/{repo_id}"
                 _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
 
                 # 确保目标目录完全不存在（Git clone 要求目标不存在）
