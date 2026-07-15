@@ -641,12 +641,11 @@ class DualT4VoxCPM2Engine:
                 _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
 
                 # 设置环境变量跳过 LFS 文件，只克隆元数据和配置
-                # 使用第一个成功的 endpoint URL 作为 Git 克隆的基础
-                git_endpoint = endpoints[0][0]  # 使用第一个镜像源
+                # 使用第一个镜像源
                 env = os.environ.copy()
                 env["GIT_LFS_SKIP_SMUDGE"] = "1"
                 env["HF_HUB_DISABLE_SSL_VERIFICATION"] = "1"
-                env["HF_ENDPOINT"] = git_endpoint
+                env["HF_ENDPOINT"] = _endpoints[0][0]
 
                 subprocess.run([
                     "git", "clone",
