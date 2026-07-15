@@ -544,6 +544,23 @@ class DualT4VoxCPM2Engine:
         os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
         os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 
+        # ================================================================
+        # 🔧 CRITICAL FIX: Patch torch.load EARLY to force weights_only=False
+        # PyTorch 2.6+ defaults to weights_only=True which breaks models
+        # with custom classes (like VoxCPM's AudioVAE).
+        # This MUST be done BEFORE any imports that might trigger model loading.
+        # ================================================================
+        import torch
+        original_torch_load = torch.load
+
+        def patched_torch_load(*args, **kwargs):
+            # Force weights_only=False for VoxCPM model loading
+            kwargs.setdefault('weights_only', False)
+            return original_torch_load(*args, **kwargs)
+
+        torch.load = patched_torch_load
+        # ================================================================
+
         from huggingface_hub import snapshot_download
 
         # ===== 内部函数：Rust 引擎 + 双端点 + 双鉴权 =====
@@ -704,23 +721,34 @@ class DualT4VoxCPM2Engine:
             from voxcpm import VoxCPM
             _log("🚀 Using official VoxCPM loader for custom architecture...")
 
-            self.model = VoxCPM.from_pretrained(
-                self.model_path,
-                load_denoiser=False,  # Disable denoiser if not needed for inference
-            )
+            # Patch torch.load globally to use weights_only=False for this model loading
+            # PyTorch 2.6+ defaults to weights_only=True which breaks models with custom classes
+            import torch
+            original_torch_load = torch.load
 
-            # Load tokenizer directly from HF cache (VoxCPM wrapper doesn't expose tokenizer)
-            from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_path,
-                trust_remote_code=True,
-                use_fast=False,
-            )
+            def patched_torch_load(*args, **kwargs):
+                # Force weights_only=False for VoxCPM model loading
+                kwargs.setdefault('weights_only', False)
+                return original_torch_load(*args, **kwargs)
 
-            _log(f"✅ Model loaded via official VoxCPM. GPU memory: {get_gpu_memory_used()} MB / {get_gpu_memory_total()} MB")
-        except ImportError:
-            _log("❌ voxcpm package not found. Please pre-install voxcpm in the environment.")
-            raise RuntimeError("voxcpm package not available — cannot load model without it")
+            torch.load = patched_torch_load
+            try:
+                _log("🚀 Using official VoxCPM loader for custom architecture...")
+
+                self.model = VoxCPM.from_pretrained(
+                    self.model_path,
+                    load_denoiser=False,  # Disable denoiser if not needed for inference
+                )
+            except ImportError:
+                _log("❌ voxcpm package not found. Please pre-install voxcpm in the environment.")
+                raise RuntimeError("voxcpm package not available — cannot load model without it")
+        except Exception:
+            # Log and re-raise any other exception
+            _log("❌ Failed to load VoxCPM model")
+            raise
+        finally:
+            # Restore original torch.load
+            torch.load = original_torch_load
 
     @torch.inference_mode()
     def synthesize(
