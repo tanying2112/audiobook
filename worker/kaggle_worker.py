@@ -566,12 +566,15 @@ class DualT4VoxCPM2Engine:
                 raw = raw[7:].strip()
             token = raw or None
 
-            endpoints = [
+            _endpoints = [
                 ("https://hf-mirror.com", "国内镜像"),
                 ("https://huggingface.co", "官方源"),
             ]
 
-            for ep_url, ep_name in endpoints:
+            git_endpoint = _endpoints[0][0]  # 预先确定用于 Git 克隆的端点
+
+            api_failed = False
+            for ep_url, ep_name in _endpoints:
                 os.environ["HF_ENDPOINT"] = ep_url
                 try:
                     import huggingface_hub.constants as _hfc
@@ -579,6 +582,8 @@ class DualT4VoxCPM2Engine:
                     _hfc.HF_HUB_DISABLE_SSL_VERIFICATION = True
                 except Exception:
                     pass
+
+                _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
                 _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
@@ -594,7 +599,7 @@ class DualT4VoxCPM2Engine:
                             snapshot_download(
                                 repo_id=repo_id,
                                 local_dir=model_dir,
-                                token=clean_tok,
+                                token=tok if tok else None,
                                 ignore_patterns=["*.msgpack", "*.h5", "*.ot"],
                                 max_workers=2,
                                 tqdm_class=None,
@@ -608,6 +613,10 @@ class DualT4VoxCPM2Engine:
             # ===== 所有 HF API 尝试失败，启动终极兜底 =====
             _log("🛡️ 所有 HF API 尝试失败，启动终极兜底：Git 克隆...")
             try:
+                import subprocess
+                import shutil
+                mirror_url = f"{_endpoints[0][0]}/{repo_id}"
+                _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
                 import subprocess
                 import shutil
                 mirror_url = f"{git_endpoint}/{repo_id}"
