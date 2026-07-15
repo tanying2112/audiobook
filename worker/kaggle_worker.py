@@ -558,7 +558,7 @@ class DualT4VoxCPM2Engine:
                     return
 
             _log(f"📡 本地模型不完整，开始下载... Repo: {repo_id}  目标: {model_dir}")
-            os.makedirs(model_dir, exist_ok=True)
+            # 不要预先创建目录，让 HF API 或 Git clone 自行创建
 
             # 清洗 Token
             raw = os.getenv("HF_TOKEN", "").strip()
