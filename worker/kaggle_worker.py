@@ -25,14 +25,6 @@ os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # ========================================================
 
-import abc
-import json
-import signal
-import sys
-import time
-import uuid
-from typing import Any, Dict, Optional
-
 # 初始化 Redis 日志连接（复用已注入的凭据）
 # 🚨 核心修复：如果 Kaggle 容器里缺少 redis 库，自动静默安装
 try:
@@ -77,7 +69,7 @@ def _safe_log_redis(message: str) -> None:
 _print = print
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
-    _safe_log_redis(f"[BOOTSTRAP] {message}")
+    _safe_log_redis(f"[BOOTSTRAP] {msg}")
 
 # ========================================================
 # 🛡️ Kaggle API 专用 - 密钥断网保护层
@@ -110,9 +102,6 @@ for env_key, env_val in _KAGGLE_API_FALLBACKS.items():
 # 1. RUNTIME DEPENDENCY INJECTION (Kaggle runs naked)
 # ==========================================
 # Kaggle only has base image packages. Install production deps before any heavy imports.
-_print = print
-def _log(msg: str) -> None:
-    _print(f"[BOOTSTRAP] {msg}", flush=True)
 
 def _install_missing_deps() -> None:
     """Install missing packages at runtime (Kaggle kernel has no pip cells)."""
@@ -544,23 +533,6 @@ class DualT4VoxCPM2Engine:
         os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
         os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
 
-        # ================================================================
-        # 🔧 CRITICAL FIX: Patch torch.load EARLY to force weights_only=False
-        # PyTorch 2.6+ defaults to weights_only=True which breaks models
-        # with custom classes (like VoxCPM's AudioVAE).
-        # This MUST be done BEFORE any imports that might trigger model loading.
-        # ================================================================
-        import torch
-        original_torch_load = torch.load
-
-        def patched_torch_load(*args, **kwargs):
-            # Force weights_only=False for VoxCPM model loading
-            kwargs.setdefault('weights_only', False)
-            return original_torch_load(*args, **kwargs)
-
-        torch.load = patched_torch_load
-        # ================================================================
-
         from huggingface_hub import snapshot_download
 
         # ===== 内部函数：Rust 引擎 + 双端点 + 双鉴权 =====
@@ -602,8 +574,6 @@ class DualT4VoxCPM2Engine:
 
                 _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
 
-                _log(f"🔄 尝试镜像: {ep_name} ({ep_url})")
-
                 # 双鉴权策略：先 Token，再匿名
                 for tok in (os.getenv("HF_TOKEN"), None):
                     clean_tok = tok if tok else None
@@ -632,10 +602,6 @@ class DualT4VoxCPM2Engine:
             try:
                 import subprocess
                 import shutil
-                mirror_url = f"{_endpoints[0][0]}/{repo_id}"
-                _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
-                import subprocess
-                import shutil
                 mirror_url = f"{git_endpoint}/{repo_id}"
                 _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
 
@@ -651,11 +617,8 @@ class DualT4VoxCPM2Engine:
                             break
                         except Exception:
                             time.sleep(0.5)
-                if os.path.exists(model_dir):
-                    raise RuntimeError(f"无法删除目标目录: {model_dir}")
-
-                # Git clone 会自动创建目录，不需要预先创建
-                _log(f"🔧 终极兜底：Git 克隆 {mirror_url} -> {model_dir} (超时 15 分钟，跳过 LFS 文件)")
+                    if os.path.exists(model_dir):
+                        raise RuntimeError(f"无法删除目标目录: {model_dir}")
 
                 # 设置环境变量跳过 LFS 文件，只克隆元数据和配置
                 # 使用第一个镜像源
@@ -721,34 +684,23 @@ class DualT4VoxCPM2Engine:
             from voxcpm import VoxCPM
             _log("🚀 Using official VoxCPM loader for custom architecture...")
 
-            # Patch torch.load globally to use weights_only=False for this model loading
-            # PyTorch 2.6+ defaults to weights_only=True which breaks models with custom classes
-            import torch
-            original_torch_load = torch.load
+            self.model = VoxCPM.from_pretrained(
+                self.model_path,
+                load_denoiser=False,  # Disable denoiser if not needed for inference
+            )
 
-            def patched_torch_load(*args, **kwargs):
-                # Force weights_only=False for VoxCPM model loading
-                kwargs.setdefault('weights_only', False)
-                return original_torch_load(*args, **kwargs)
+            # Load tokenizer directly from HF cache (VoxCPM wrapper doesn't expose tokenizer)
+            from transformers import AutoTokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_path,
+                trust_remote_code=True,
+                use_fast=False,
+            )
 
-            torch.load = patched_torch_load
-            try:
-                _log("🚀 Using official VoxCPM loader for custom architecture...")
-
-                self.model = VoxCPM.from_pretrained(
-                    self.model_path,
-                    load_denoiser=False,  # Disable denoiser if not needed for inference
-                )
-            except ImportError:
-                _log("❌ voxcpm package not found. Please pre-install voxcpm in the environment.")
-                raise RuntimeError("voxcpm package not available — cannot load model without it")
-        except Exception:
-            # Log and re-raise any other exception
-            _log("❌ Failed to load VoxCPM model")
-            raise
-        finally:
-            # Restore original torch.load
-            torch.load = original_torch_load
+            _log(f"✅ Model loaded via official VoxCPM. GPU memory: {get_gpu_memory_used()} MB / {get_gpu_memory_total()} MB")
+        except ImportError:
+            _log("❌ voxcpm package not found. Please pre-install voxcpm in the environment.")
+            raise RuntimeError("voxcpm package not available — cannot load model without it")
 
     @torch.inference_mode()
     def synthesize(
