@@ -640,6 +640,14 @@ class DualT4VoxCPM2Engine:
                 env["HF_ENDPOINT"] = git_endpoint
 
                 subprocess.run([
+                    "git", "clone",
+                    "--depth", "1",
+                    "--branch", "main",
+                    mirror_url,
+                    model_dir
+                ], check=True, capture_output=True, text=True, timeout=900, env=env)
+                _log(f"✅ Git 克隆成功！模型元数据已就绪: {model_dir}")
+                return
             except subprocess.TimeoutExpired:
                 _log("❌ Git 克隆超时 (15 分钟)")
             except subprocess.CalledProcessError as e:
