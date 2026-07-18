@@ -60,6 +60,21 @@ secrets.*
 inspect_secret.py
 config.json
 
+# P0-1 凭据泄露治理 (2026-07-18 docs/AUDIT_REPORT_v3.md):
+# 这些脚本通常嵌入明文凭据用于 worker 初始化，绝不能进仓库。
+# 如需分发，以 .env 注入 + 加密存储分发；已在历史中的泄露见 docs/RUNBOOK_rotate_credentials.md。
+secrets_setup.sh
+secrets_*.sh
+mirror_sync.sh
+bos_sync.py
+*.env.swp
+*.env.swo
+secrets.baseline.local
+
+# git filter-repo --replace-text 输入文件含有真实凭据泄露模式，
+# 凭据轮换完成后应仅本地保留，绝不提交。
+scripts/security/leaked-credential-patterns.txt
+
 # Model weights and tokenizer files (large binary files, not tracked)
 *.pth
 *.safetensors

@@ -2,19 +2,38 @@
 """
 本地 Agent 日志消费端：即读即删，零驻留。
 文件名: read_logs.py
+
+⚠️ 凭据安全说明 (2026-07-18 docs/AUDIT_REPORT_v3.md P0-1):
+    历史版本曾将 Upstash Redis host/AUTH 硬编码为本文件默认值并随 commit
+    57e4759 提交到 origin/main。该默认值已撤销。现在必须通过环境变量提供
+    REDIS_HOST / REDIS_PORT / REDIS_AUTH，缺失时本脚本立即退出 2 以避免
+    静默连接到错误实例。详见 docs/RUNBOOK_rotate_credentials.md。
 """
 
 import os
-import redis
-import time
 import sys
+import time
 
-# 从环境变量读取，若无则使用你的 Upstash 默认实例
-REDIS_HOST = os.getenv("REDIS_HOST", "casual-sawfish-86152.upstash.io")
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        print(
+            f"❌ 环境变量 {name} 未设置。请通过 .env 注入凭据后重试。\n"
+            f"   参见 docs/RUNBOOK_rotate_credentials.md（P0-1 凭据治理）。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return value
+
+
+REDIS_HOST = _require_env("REDIS_HOST")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_AUTH = os.getenv("REDIS_AUTH", "gQAAAAAAAVCIAAIgcDI2Njk2ZDcyMmZkNTU0N2FmYTIxZDk4ZDY4MTBjOGM4ZA")
+REDIS_AUTH = _require_env("REDIS_AUTH")
 
 try:
+    import redis
+
     r = redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
@@ -23,8 +42,10 @@ try:
         socket_timeout=5,
         socket_connect_timeout=5,
     )
+    # 主动 ping 一下，尽早暴露配置错误
+    r.ping()
 except Exception as e:
-    print(f"❌ 无法初始化 Redis 客户端: {e}")
+    print(f"❌ 无法初始化 Redis 客户端: {e}", file=sys.stderr)
     sys.exit(1)
 
 print(f"🚀 Agent 已连接到 {REDIS_HOST}:{REDIS_PORT}，开始实时消费 worker:logs...\n", flush=True)
