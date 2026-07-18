@@ -99,6 +99,21 @@ class AutoRunActionResponse(BaseModel):
     run_id: str
 
 
+class AutopilotConfig(BaseModel):
+    """Auto-detected/suggested configuration for autopilot mode."""
+
+    target_difficulty: str
+    primary_voice_preference: str
+    speech_rate_preference: str
+    cost_limit_usd: Optional[float]
+    quality_threshold: float
+    max_regeneration_attempts: int
+    enable_background_music: bool
+    enable_sfx: bool
+    reasoning: str
+    confidence: float
+
+
 class IntermediateProduct(BaseModel):
     """Intermediate product from a pipeline stage."""
 
@@ -608,6 +623,194 @@ async def cancel_auto_run(project_id: int):
         status="cancelled",
         message="Pipeline cancelled",
         run_id=run_info["run_id"],
+    )
+
+
+@router.post("/autopilot", response_model=AutoRunStatusResponse)
+async def start_autopilot(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Start autopilot one-click mode.
+
+    Analyzes project content and auto-detects optimal settings:
+    - Difficulty based on text complexity
+    - Voice preference based on character gender distribution
+    - Speech rate based on content type
+    - Cost limit based on project size
+    - Quality threshold based on content requirements
+
+    Returns run_id for tracking.
+    """
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check if already running
+    if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
+        raise HTTPException(
+            status_code=400,
+            detail="Auto-run already in progress for this project",
+        )
+
+    # Analyze project and generate smart defaults
+    config = await _generate_autopilot_config(project_id, db)
+
+    # Generate run ID
+    run_id = _generate_run_id(project_id)
+
+    # Start background task
+    background_tasks.add_task(
+        _run_auto_pipeline,
+        project_id=project_id,
+        run_id=run_id,
+        config=config,
+        pause_points=None,  # No pause points in autopilot mode
+    )
+
+    return AutoRunStatusResponse(
+        project_id=project_id,
+        run_id=run_id,
+        status="running",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get("/autopilot/preview", response_model=AutopilotConfig)
+async def preview_autopilot_config(project_id: int, db: Session = Depends(get_db)):
+    """
+    Preview the auto-detected configuration without starting the pipeline.
+
+    Useful for showing the user what settings will be used.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return await _generate_autopilot_config(project_id, db)
+
+
+async def _generate_autopilot_config(project_id: int, db: Session) -> AutoRunConfig:
+    """
+    Analyze project content and generate optimal configuration.
+
+    Uses heuristics based on:
+    - Text length and complexity for difficulty
+    - Character gender distribution for voice preference
+    - Content type for speech rate
+    - Project size for cost estimation
+    """
+    # Get project with chapters
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    chapters = project.chapters
+    total_chars = sum(len(ch.raw_text or "") + len(ch.extracted_text or "") for ch in chapters)
+    total_chapters = len(chapters)
+
+    # 1. Determine difficulty based on text complexity
+    # Simple heuristic: longer text with more chapters = higher difficulty
+    avg_chars_per_chapter = total_chars / max(total_chapters, 1)
+    if total_chars < 50000:
+        target_difficulty = "D"  # Simple/short content
+    elif total_chars < 200000:
+        target_difficulty = "C"  # Medium content
+    elif total_chars < 500000:
+        target_difficulty = "B"  # Complex content
+    else:
+        target_difficulty = "A"  # Very complex/long content
+
+    # 2. Determine voice preference from character analysis
+    # Count characters by gender from analyzed_json
+    male_count = 0
+    female_count = 0
+    for chapter in chapters:
+        if chapter.analyzed_json:
+            try:
+                import json
+                analyzed = chapter.analyzed_json if isinstance(chapter.analyzed_json, dict) else json.loads(chapter.analyzed_json)
+                characters = analyzed.get("characters", [])
+                for char in characters:
+                    gender = char.get("gender", "").lower()
+                    if gender in ("male", "man", "boy", "male"):
+                        male_count += 1
+                    elif gender in ("female", "woman", "girl", "female"):
+                        female_count += 1
+            except Exception:
+                pass
+
+    if female_count > male_count:
+        primary_voice_preference = "female"
+    elif male_count > female_count:
+        primary_voice_preference = "male"
+    else:
+        primary_voice_preference = "neutral"
+
+    # 3. Determine speech rate based on content type
+    # Dialogue-heavy = standard, Narrative-heavy = slightly slower
+    dialogue_ratio = 0.5
+    if total_chars > 0:
+        dialogue_chars = 0
+        for chapter in chapters:
+            if chapter.analyzed_json:
+                try:
+                    import json
+                    analyzed = chapter.analyzed_json if isinstance(chapter.analyzed_json, dict) else json.loads(chapter.analyzed_json)
+                    for char in analyzed.get("characters", []):
+                        dialogue_chars += char.get("dialogue_count", 0) * 50  # rough estimate
+                except Exception:
+                    pass
+        dialogue_ratio = min(dialogue_chars / total_chars, 1.0)
+
+    if dialogue_ratio > 0.6:
+        speech_rate_preference = "standard"
+    elif dialogue_ratio > 0.3:
+        speech_rate_preference = "standard"
+    else:
+        speech_rate_preference = "slow"  # More narrative, slower pace
+
+    # 4. Estimate cost limit based on project size
+    # Rough estimate: ~$0.001 per 100 chars for Edge-TTS, ~$0.01 for cloud premium
+    estimated_chars = total_chars * 1.2  # Account for regeneration
+    cost_limit_usd = round(estimated_chars / 100000 * 0.5, 2)  # ~$0.5 per 100k chars
+    cost_limit_usd = max(cost_limit_usd, 1.0)  # Minimum $1
+    cost_limit_usd = min(cost_limit_usd, 50.0)  # Cap at $50
+
+    # 5. Quality threshold - higher for complex content
+    if target_difficulty in ("A", "B"):
+        quality_threshold = 0.8
+    else:
+        quality_threshold = 0.7
+
+    # 6. Max regeneration attempts
+    max_regeneration_attempts = 3 if target_difficulty in ("A", "B") else 2
+
+    # 7. Background music and SFX - enable for longer content
+    enable_background_music = total_chars > 100000
+    enable_sfx = True  # Always enable SFX tags
+
+    reasoning = (
+        f"Auto-detected: {total_chapters} chapters, {total_chars:,} chars "
+        f"(avg {avg_chars_per_chapter:,.0f}/ch). "
+        f"Characters: {male_count}M/{female_count}F. "
+        f"Dialogue ratio: {dialogue_ratio:.0%}. "
+        f"Difficulty={target_difficulty}, Voice={primary_voice_preference}, "
+        f"Rate={speech_rate_preference}, Cost limit=${cost_limit_usd:.2f}"
+    )
+
+    return AutoRunConfig(
+        target_difficulty=target_difficulty,
+        primary_voice_preference=primary_voice_preference,
+        speech_rate_preference=speech_rate_preference,
+        cost_limit_usd=cost_limit_usd,
+        quality_threshold=quality_threshold,
+        max_regeneration_attempts=max_regeneration_attempts,
+        enable_background_music=enable_background_music,
+        enable_sfx=enable_sfx,
     )
 
 

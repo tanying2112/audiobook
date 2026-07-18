@@ -1190,7 +1190,8 @@ class TestMetricsExporterModule:
         probe = router.health_probe
         result = export_health_probe_metrics(probe)
 
-        assert "gemini_flash" in result or "opencode_zen" in result
+        # Current config has these providers (from providers.yaml)
+        assert "gemini_2_0_flash" in result or "ollama_local" in result
 
     def test_export_health_probe_metrics_none(self):
         """Test exporting health probe metrics with None."""

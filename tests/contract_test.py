@@ -3,46 +3,52 @@ Contract Testing using Schemathesis - Quick validation test
 """
 
 import json
+import os
 
+import pytest
 import schemathesis
 
-with open("/tmp/openapi.json", "r") as f:
-    openapi_spec = json.load(f)
+# This test requires a generated OpenAPI spec at /tmp/openapi.json
+# Skip if not available (e.g., in CI without API generation step)
+OPENAPI_PATH = "/tmp/openapi.json"
 
-schema = schemathesis.openapi.from_dict(openapi_spec)
-ops = list(schema.get_all_operations())
+@pytest.mark.skipif(not os.path.exists(OPENAPI_PATH), reason="OpenAPI spec not generated")
+def test_contract_core_endpoints():
+    """Validate core API endpoints exist in OpenAPI schema."""
+    with open(OPENAPI_PATH, "r") as f:
+        openapi_spec = json.load(f)
 
-# Filter operations
-core_ops = []
-for op_result in ops:
-    op = op_result._value
-    if (
-        op.path.startswith("/projects")
-        or op.path.startswith("/golden")
-        or op.path == "/health"
-        or op.path == "/config/contracts/reload"
-    ):
-        core_ops.append(f"{op.method.upper()} {op.path}")
+    schema = schemathesis.openapi.from_dict(openapi_spec)
+    ops = list(schema.get_all_operations())
 
-print("Core operations found:")
-for op in core_ops:
-    print(f"  {op}")
+    # Filter operations
+    core_ops = []
+    for op_result in ops:
+        op = op_result._value
+        if (
+            op.path.startswith("/projects")
+            or op.path.startswith("/golden")
+            or op.path == "/health"
+            or op.path == "/config/contracts/reload"
+        ):
+            core_ops.append(f"{op.method.upper()} {op.path}")
 
-# Validate we have expected paths
-expected = {
-    "POST /projects/",
-    "GET /projects/",
-    "GET /projects/{project_id}",
-    "POST /golden/contribute",
-    "GET /golden/samples",
-    "GET /health",
-}
+    # Validate we have expected paths
+    expected = {
+        "POST /projects/",
+        "GET /projects/",
+        "GET /projects/{project_id}",
+        "POST /golden/contribute",
+        "GET /golden/samples",
+        "GET /health",
+    }
 
-found = set(core_ops)
-missing = expected - found
-if missing:
-    print(f"\nMISSING: {missing}")
-else:
-    print("\nAll expected core endpoints found in schema!")
+    found = set(core_ops)
+    missing = expected - found
+    if missing:
+        print(f"\nMISSING: {missing}")
+    else:
+        print("\nAll expected core endpoints found in schema!")
 
-print(f"\nTotal operations: {len(ops)}")
+    print(f"\nTotal operations: {len(ops)}")
+    assert not missing, f"Missing expected endpoints: {missing}"

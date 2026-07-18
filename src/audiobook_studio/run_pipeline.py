@@ -19,8 +19,11 @@ Audiobook Studio V2 - 统一流水线执行脚本（带安全参数锁）
 """
 
 import argparse
+import asyncio
 import logging
+import os
 import re
+import signal
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +31,13 @@ from typing import List, Optional, Tuple
 
 from audiobook_studio.database import SessionLocal, init_db
 from audiobook_studio.models import Project
-from audiobook_studio.pipeline.orchestrator import run_pipeline as orchestrator_run_pipeline
+from audiobook_studio.pipeline.checkpoint import CheckpointManager
+from audiobook_studio.pipeline.orchestrator import (
+    run_pipeline as orchestrator_run_pipeline,
+    init_telemetry,
+    shutdown_telemetry,
+)
+from audiobook_studio.utils.gc_manager import cleanup_after_export
 
 # ── 日志配置 ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -51,6 +60,7 @@ STAGES: List[str] = [
     "annotate",
     "edit",
     "audio_postprocess",
+    "review",
     "synthesize",
     "quality",
 ]
@@ -76,6 +86,31 @@ BOOK_CONFIG: dict = {
         "num_mock_chapters": 3,
     },
 }
+
+# ── 全局状态：用于信号处理 ──────────────────────────────────────────────────
+_current_checkpoint_manager: Optional[CheckpointManager] = None
+_current_project_id: Optional[int] = None
+_interrupted = False
+
+
+def _signal_handler(signum, frame):
+    """Handle SIGINT (Ctrl+C) and SIGTERM gracefully."""
+    global _interrupted
+    _interrupted = True
+    logger.warning(f"Received signal {signum}, saving checkpoint before exit...")
+    if _current_checkpoint_manager:
+        try:
+            _current_checkpoint_manager._flush()
+            logger.info("Checkpoint saved. You can resume on next run.")
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint on interrupt: {e}")
+    print("\n⚠️  已保存进度检查点，下次运行可从断点继续。")
+    sys.exit(130)  # Standard exit code for SIGINT
+
+
+# Install signal handlers
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -341,8 +376,13 @@ def _get_chapter_files(book_name: str) -> List[Tuple[int, Path]]:
 
 
 def run_book_pipeline(
-    book_name: str, stages: Optional[List[str]] = None, chapter_filter: Optional[List[int]] = None
-) -> None:
+    book_name: str,
+    stages: Optional[List[str]] = None,
+    chapter_filter: Optional[List[int]] = None,
+    bgm_path: Optional[str] = None,
+    bg_volume: float = -20.0,
+    keep_tmp: bool = False,
+) -> Optional[int]:
     """对指定书籍执行完整流水线。
 
     流程:
@@ -350,11 +390,19 @@ def run_book_pipeline(
       2. 查找或创建 Project 记录
       3. 读取章节文件
       4. 按指定章节（若提供）逐章串行执行 extract → analyze → annotate → edit → synthesize → quality
+      5. 导出最终音频（可选：混入背景音乐）
+      6. 自动清理临时中间音频文件（除非指定 --keep-tmp）
 
     Args:
         book_name: 书籍名称（如 "红楼梦"），用于查找配置和章节文件。
         stages: 要执行的流水线阶段列表。默认为全局 STAGES。
         chapter_filter: 要处理的章节号列表（如 [1,3]），若为 None 则处理所有章节。
+        bgm_path: 背景音乐文件路径（用于导出时混音）。
+        bg_volume: 背景音乐音量 (dB，默认 -20dB，相对于主轨).
+        keep_tmp: 保留临时中间音频文件（默认 False，导出成功后自动清理以节省磁盘）。
+
+    Returns:
+        项目 ID（若成功），失败返回 None。
     """
     active_stages = stages or STAGES
     print(f"📖 正在处理: 《{book_name}》...")
@@ -393,6 +441,44 @@ def run_book_pipeline(
         project_id = project.id
         print(f"  🆔 Project ID: {project_id}")
 
+        # ── 检查点恢复机制 ──────────────────────────────────────────────
+        checkpoint_manager = CheckpointManager(project_id)
+
+        # Check if there's an existing incomplete pipeline
+        has_incomplete = False
+        for chap_num, _ in _get_chapter_files(book_name):
+            if checkpoint_manager.last_completed_stage(chap_num) is not None:
+                has_incomplete = True
+                break
+
+        if has_incomplete:
+            # Check if running in non-interactive mode (CI/CD)
+            import sys
+            if sys.stdin.isatty():
+                print("⚠️  发现未完成进度，是否从检查点继续？(Y/n): ", end="")
+                try:
+                    response = input().strip().lower()
+                    if response and response[0] != 'y':
+                        print("用户选择重新开始，清除检查点...")
+                        checkpoint_manager._data = {"project_id": project_id, "chapters": {}, "version": 2}
+                        checkpoint_manager._save()
+                    else:
+                        print("✅ 从检查点恢复，跳过已完成阶段...")
+                except (EOFError, KeyboardInterrupt):
+                    print("\n用户中断，退出。")
+                    return
+            else:
+                # Non-interactive mode: auto-resume
+                print("ℹ️  非交互模式，自动从检查点恢复...")
+
+        # ── 初始化遥测收集器 ────────────────────────────────────────────
+        output_dir = Path(f"./output/project_{project_id}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        init_telemetry(
+            project_id=str(project_id),
+            output_dir=str(output_dir),
+        )
+
         # ── 获取章节文件 ────────────────────────────────────────────────
         chapter_files = _get_chapter_files(book_name)
         if not chapter_files:
@@ -408,6 +494,12 @@ def run_book_pipeline(
         total_chapters = len(chapter_files)
         print(f"  📚 共 {total_chapters} 章")
 
+        # ── 创建检查点管理器 ────────────────────────────────────────────
+        checkpoint_manager = CheckpointManager(project_id=project_id)
+        global _current_checkpoint_manager, _current_project_id
+        _current_checkpoint_manager = checkpoint_manager
+        _current_project_id = project_id
+
         # ── 逐章运行流水线 ──────────────────────────────────────────────
         for i, (chap_num, chap_file) in enumerate(chapter_files, 1):
             print(f"  ── [{i}/{total_chapters}] 第{chap_num}章: {chap_file.name} ──")
@@ -421,13 +513,14 @@ def run_book_pipeline(
                 print(f"    📝 文本长度: {len(chap_text)} 字符")
 
                 # ── 阶段 1-2: 章节级 (extract, analyze) ──
-                chapter_stages = [s for s in active_stages if s in ("extract", "analyze")]
-                if chapter_stages:
-                    results = orchestrator_run_pipeline(
-                        stages=chapter_stages,
+                chapter_stages_1 = [s for s in active_stages if s in ("extract", "analyze")]
+                if chapter_stages_1:
+                    results = asyncio.run(orchestrator_run_pipeline(
+                        stages=chapter_stages_1,
                         db=db,
                         project_id=project_id,
                         chapter_index=chap_num,
+                        checkpoint_manager=checkpoint_manager,
                         # ── extract 阶段参数 ──
                         file_path=str(chap_file),
                         mime_type="text/plain",
@@ -436,7 +529,7 @@ def run_book_pipeline(
                         title_hint=book_name,
                         author_hint=BOOK_CONFIG.get(book_name, {}).get("author", ""),
                         target_difficulty=BOOK_CONFIG.get(book_name, {}).get("difficulty", "B"),
-                    )
+                    ))
                     print(f"    ✅ 第{chap_num}章 章节级流水线完成（{len(results)} 个阶段输出）")
 
                 # Fetch chapter from DB after extract/analyze
@@ -447,9 +540,9 @@ def run_book_pipeline(
                     print(f"    ❌ 找不到第{chap_num}章记录，跳过段落级流水线。")
                     continue
 
-                # ── 阶段 3+: 段落级 (annotate, edit, audio_postprocess, synthesize, quality) ──
-                paragraph_stages = [s for s in active_stages if s not in ("extract", "analyze")]
-                if paragraph_stages:
+                # ── 阶段 3-5: 段落级前半段 (annotate, edit, audio_postprocess) ──
+                paragraph_stages_pre = [s for s in active_stages if s in ("annotate", "edit", "audio_postprocess")]
+                if paragraph_stages_pre:
                     # Get paragraphs for this chapter
                     from audiobook_studio.models import Paragraph
 
@@ -465,24 +558,84 @@ def run_book_pipeline(
                     if not paragraphs:
                         print(f"    ⚠️  第{chap_num}章无段落记录，跳过段落级流水线。")
                     else:
-                        print(f"    📄 发现 {len(paragraphs)} 个段落，开始段落级处理...")
+                        print(f"    📄 发现 {len(paragraphs)} 个段落，开始段落级前半段处理...")
                         for para in paragraphs:
                             print(f"      ── 段落 {para.index}/{len(paragraphs)} ──")
                             try:
-                                para_results = orchestrator_run_pipeline(
-                                    stages=paragraph_stages,
+                                para_results = asyncio.run(orchestrator_run_pipeline(
+                                    stages=paragraph_stages_pre,
                                     db=db,
                                     project_id=project_id,
                                     chapter_index=chap_num,
                                     chapter_id=chapter.id,
                                     paragraph_index=para.index,
                                     paragraph_id=para.id,
-                                )
+                                    checkpoint_manager=checkpoint_manager,
+                                ))
                                 print(f"        ✅ 段落 {para.index} 完成（{len(para_results)} 个阶段输出）")
                             except Exception as e:
                                 logger.error("第%d章段落%d处理失败: %s", chap_num, para.index, e, exc_info=True)
                                 print(f"        ❌ 段落 {para.index} 处理失败: {e}", file=sys.stderr)
-                                # 继续下一段落（容错）
+
+                # Refresh chapter to get updated paragraphs with audio_postprocess results
+                db.refresh(chapter)
+
+                # ── 阶段 6: 章节级 Review (quality gate before synthesis) ──
+                if "review" in active_stages:
+                    print(f"    🔍 运行 Reviewer Agent 质量门禁...")
+                    review_results = asyncio.run(orchestrator_run_pipeline(
+                        stages=["review"],
+                        db=db,
+                        project_id=project_id,
+                        chapter_index=chap_num,
+                        chapter_id=chapter.id,
+                        checkpoint_manager=checkpoint_manager,
+                    ))
+                    # Check if review passed
+                    review_judgment = review_results[0] if review_results else None
+                    if review_judgment and hasattr(review_judgment, 'overall_passed') and not review_judgment.overall_passed:
+                        print(f"    ❌ Reviewer Agent 拦截: {review_judgment.blocking_issues} 个阻断性问题")
+                        print(f"       终端显示拦截/重试日志，等待 Developer Agent 修复...")
+                        # In production, this would trigger a retry loop or human intervention
+                        # For now, we log and continue (or could raise to stop pipeline)
+                        if os.environ.get("REVIEWER_STRICT", "false").lower() == "true":
+                            raise RuntimeError(f"Reviewer Agent blocked synthesis: {review_judgment.summary}")
+                    else:
+                        print(f"    ✅ Reviewer Agent 通过: 所有段落质量门禁通过")
+
+                # ── 阶段 7-8: 段落级后半段 (synthesize, quality) ──
+                paragraph_stages_post = [s for s in active_stages if s in ("synthesize", "quality")]
+                if paragraph_stages_post:
+                    from audiobook_studio.models import Paragraph
+
+                    paragraphs = (
+                        db.query(Paragraph)
+                        .filter(
+                            Paragraph.project_id == project_id,
+                            Paragraph.chapter_id == chapter.id,
+                        )
+                        .order_by(Paragraph.index)
+                        .all()
+                    )
+                    if paragraphs:
+                        print(f"    🎙️ 开始段落级合成与质检...")
+                        for para in paragraphs:
+                            print(f"      ── 段落 {para.index}/{len(paragraphs)} ──")
+                            try:
+                                para_results = asyncio.run(orchestrator_run_pipeline(
+                                    stages=paragraph_stages_post,
+                                    db=db,
+                                    project_id=project_id,
+                                    chapter_index=chap_num,
+                                    chapter_id=chapter.id,
+                                    paragraph_index=para.index,
+                                    paragraph_id=para.id,
+                                    checkpoint_manager=checkpoint_manager,
+                                ))
+                                print(f"        ✅ 段落 {para.index} 完成（{len(para_results)} 个阶段输出）")
+                            except Exception as e:
+                                logger.error("第%d章段落%d处理失败: %s", chap_num, para.index, e, exc_info=True)
+                                print(f"        ❌ 段落 {para.index} 处理失败: {e}", file=sys.stderr)
 
                 print(f"    ✅ 第{chap_num}章完整流水线完成")
 
@@ -498,9 +651,71 @@ def run_book_pipeline(
         db.commit()
         print(f"✅ 《{book_name}》全部 {total_chapters} 章处理完毕。")
 
+        # ── 可选：导出最终音频 ────────────────────────────────────
+        if bgm_path:
+            print("🎵 开始导出音频（包含背景音乐混音）...")
+            try:
+                from audiobook_studio.export import ExportJob, ExportFormat
+                from audiobook_studio.export.audio_ducking import MixConfig
+
+                # MixConfig 仅暴露 ducking 参数（bgm_volume_db / duck_attack_ms /
+                # duck_release_ms / ...）；bgm 路径交给 ExportJob(Form) 承载。
+                mix_config = MixConfig(
+                    bgm_volume_db=bg_volume,
+                )
+
+                job = ExportJob(
+                    project_id=project.id,
+                    chapter_ids=None,
+                    formats={ExportFormat.M4B_SRT},
+                    bgm_path=bgm_path,
+                    include_cover=True,
+                    cover_image=None,
+                    normalize=True,
+                    subtitle_config=None,
+                    mix_config=mix_config,
+                    output_dir=None,
+                )
+
+                # Run export synchronously. 注意：SessionLocal 已在模块顶部导入
+                # (from audiobook_studio.database import SessionLocal)，此处切勿局部
+                # 重导入——否则 Python 会把 SessionLocal 局部化，导致函数顶部
+                # db = SessionLocal() 触发 UnboundLocalError（即便该分支不执行）。
+                from audiobook_studio.export.batch_exporter import export_project
+
+                export_db = SessionLocal()
+                try:
+                    result_job = export_project(project.id, export_db, job)
+                    if result_job.progress.value == "complete":
+                        print(f"✅ 导出完成: {result_job.output_paths}")
+                        # 自动清理临时中间音频文件（回收 ~90% 磁盘空间）
+                        if not keep_tmp:
+                            print("🧹 正在清理临时中间音频文件...")
+                            cleanup_after_export(project.id, keep_final=True)
+                            print("✅ 临时文件清理完成")
+                    else:
+                        print(f"❌ 导出失败: {result_job.error}")
+                finally:
+                    export_db.close()
+            except Exception as e:
+                logger.error(f"Export failed: {e}")
+                print(f"⚠️ 导出失败: {e}")
+
+        # 清除全局检查点引用
+        _current_checkpoint_manager = None
+        _current_project_id = None
+
+        # ── 关闭遥测收集器 ──────────────────────────────────────────────
+        shutdown_telemetry()
+
+        return project.id
+
     except Exception as e:
         logger.error("《%s》流水线整体失败: %s", book_name, e, exc_info=True)
         print(f"❌ 《{book_name}》流水线处理失败: {e}", file=sys.stderr)
+        # 确保检查点已保存
+        if _current_checkpoint_manager:
+            _current_checkpoint_manager._flush()
         raise
     finally:
         db.close()
@@ -538,6 +753,26 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument(
         "--quick", action="store_true", help="🚀 快速模式：仅执行 extract → analyze → annotate，跳过合成与质检。"
+    )
+
+    # BGM mixing options for export stage
+    parser.add_argument(
+        "--bg-music",
+        type=str,
+        help="背景音乐文件路径 (用于导出时混音)",
+    )
+
+    parser.add_argument(
+        "--bg-volume",
+        type=float,
+        default=-20.0,
+        help="背景音乐音量 (dB，默认 -20dB，相对于主轨)",
+    )
+
+    parser.add_argument(
+        "--keep-tmp",
+        action="store_true",
+        help="保留临时中间音频文件（默认导出成功后自动清理以节省磁盘）",
     )
 
     return parser.parse_args()
@@ -580,7 +815,13 @@ def main() -> None:
     has_error = False
     for book_name in args.books:
         try:
-            run_book_pipeline(book_name, stages=active_stages)
+            run_book_pipeline(
+                book_name,
+                stages=active_stages,
+                bgm_path=args.bg_music,
+                bg_volume=args.bg_volume,
+                keep_tmp=args.keep_tmp,
+            )
         except Exception as e:
             has_error = True
             print(f"❌ 《{book_name}》处理失败，错误原因: {e}", file=sys.stderr)

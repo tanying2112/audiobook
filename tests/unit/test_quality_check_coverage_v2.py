@@ -279,7 +279,7 @@ class TestNonMockHardCheckMerge:
                 patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
                 patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
                 patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
-                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
+                patch("src.audiobook_studio.monitoring.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
@@ -341,7 +341,7 @@ class TestNonMockHardCheckMerge:
                 patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
                 patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
                 patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
-                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
+                patch("src.audiobook_studio.monitoring.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
@@ -393,7 +393,7 @@ class TestNonMockHardCheckMerge:
                 patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
                 patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
                 patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
-                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance") as mock_perf,
+                patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_perf,
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]
@@ -462,7 +462,7 @@ class TestNonMockHardCheckMerge:
                 patch.object(pipeline, "_run_hard_quality_checks", return_value=mock_hard_result),
                 patch.object(pipeline, "_analyze_with_ffprobe", return_value=mock_analysis),
                 patch("src.audiobook_studio.pipeline.quality_check.observe_quality_check"),
-                patch("src.audiobook_studio.pipeline.quality_check.record_stage_performance"),
+                patch("src.audiobook_studio.monitoring.record_stage_performance"),
             ):
 
                 inputs = [(str(audio_path), annotation, routing, "测试文本")]

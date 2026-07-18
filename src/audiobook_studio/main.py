@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.ab_test_interceptor import ABTestMiddleware
+from .api.agent_chat import router as agent_chat_router
 from .api.audio_segments import router as audio_segments_router
 from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
@@ -40,6 +41,8 @@ from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
+from .api.sop_reflection import router as sop_reflection_router
+from .api.monitoring import router as monitoring_router
 from .auth.router import router as auth_router
 from .config import get_settings
 from .database import init_db
@@ -108,30 +111,33 @@ instrument_app(
 
 # Include routers
 app.include_router(auth_router, prefix="/api")  # Auth endpoints at /api/auth/*
-app.include_router(projects_router, prefix="/api")
-app.include_router(books_router, prefix="/api")
-app.include_router(characters_router, prefix="/api")
-app.include_router(config_router, prefix="/api")
-app.include_router(paragraphs_router, prefix="/api")
-app.include_router(tts_edits_router, prefix="/api")
-app.include_router(routings_router, prefix="/api")
-app.include_router(qualities_router, prefix="/api")
-app.include_router(export_router, prefix="/api")
-app.include_router(export_tasks_router, prefix="/api")
-app.include_router(feedback_router, prefix="/api")
-app.include_router(audio_segments_router, prefix="/api")
-app.include_router(llm_router, prefix="/api")
-app.include_router(websocket_router, prefix="/api")
-app.include_router(templates_router, prefix="/api")
-app.include_router(harness_router, prefix="/api")
-app.include_router(golden_router, prefix="/api")
-app.include_router(auto_run_router, prefix="/api")
+app.include_router(projects_router)
+app.include_router(books_router)
+app.include_router(characters_router)
+app.include_router(config_router)
+app.include_router(paragraphs_router)
+app.include_router(tts_edits_router)
+app.include_router(routings_router)
+app.include_router(qualities_router)
+app.include_router(export_router)
+app.include_router(export_tasks_router)
+app.include_router(feedback_router)
+app.include_router(audio_segments_router)
+app.include_router(llm_router)
+app.include_router(websocket_router)
+app.include_router(templates_router)
+app.include_router(harness_router)
+app.include_router(golden_router)
+app.include_router(auto_run_router)
 if settings.DEBUG or settings.ENVIRONMENT == "development":
-    app.include_router(mock_router, prefix="/api")
-app.include_router(tts_voices_router, prefix="/api")
-app.include_router(publish_router, prefix="/api")
-app.include_router(upload_router, prefix="/api")
-app.include_router(pipeline_router, prefix="/api")
+    app.include_router(mock_router)
+app.include_router(tts_voices_router)
+app.include_router(publish_router)
+app.include_router(upload_router)
+app.include_router(pipeline_router)
+app.include_router(monitoring_router, prefix="/api")
+app.include_router(agent_chat_router)
+app.include_router(sop_reflection_router)
 
 
 # Health check endpoint for CI verification

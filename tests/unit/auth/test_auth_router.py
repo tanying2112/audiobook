@@ -701,15 +701,25 @@ class TestAdminUserEndpointsExtended:
         
         app.dependency_overrides[admin_dep] = mock_admin_user
         
+        from datetime import datetime
+        from src.audiobook_studio.auth.models import UserOut
+
+        # Create a real UserOut instance for response validation
+        user_out = UserOut(
+            id=1,
+            username="testuser",
+            email="test@example.com",
+            full_name="Updated Name",
+            is_active=True,
+            is_superuser=False,
+            created_at=datetime(2024, 1, 1),
+            roles=[],
+            project_permissions=[]
+        )
+
         with patch("src.audiobook_studio.auth.router.UserOut.from_orm") as mock_from_orm:
-            mock_user_out = MagicMock()
-            mock_user_out.model_dump.return_value = {
-                "id": 1, "username": "testuser", "email": "test@example.com",
-                "full_name": "Updated Name", "is_active": True, "is_superuser": False,
-                "roles": [], "project_permissions": [], "created_at": "2024-01-01T00:00:00"
-            }
-            mock_from_orm.return_value = mock_user_out
-            
+            mock_from_orm.return_value = user_out
+
             response = client.put(
                 "/api/auth/users/1",
                 json={"full_name": "Updated Name"}
@@ -866,7 +876,7 @@ class TestRoleEndpointsExtended:
         app.dependency_overrides[admin_dep] = mock_admin_user
         
         response = client.post(
-            "/api/auth/roles/nonexistent/permissions",
+            "/api/auth/roles/admin/permissions",
             params={"permission_name": "project:read"}
         )
         
@@ -933,7 +943,7 @@ class TestUserRoleEndpoints:
         app.dependency_overrides[admin_dep] = mock_admin_user
         
         response = client.post(
-            "/api/auth/users/999/roles/nonexistent",
+            "/api/auth/users/999/roles/admin",
         )
         
         if admin_dep in app.dependency_overrides:
@@ -992,7 +1002,7 @@ class TestUserRoleEndpoints:
         
         app.dependency_overrides[admin_dep] = mock_admin_user
         
-        response = client.delete("/api/auth/users/999/roles/nonexistent")
+        response = client.delete("/api/auth/users/999/roles/admin")
         
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
@@ -1109,41 +1119,57 @@ class TestListProjectPermissions:
     def test_list_project_permissions_success(self, client, mock_rbac_manager):
         """Test listing project permissions with access."""
         mock_rbac_manager.check_project_access.return_value = True
-        
+
+        from src.audiobook_studio.models.user import ProjectPermission
+        from sqlalchemy.orm import Session
+        from unittest.mock import MagicMock
+
         mock_perm1 = MagicMock()
         mock_perm1.user_id = 1
         mock_perm1.project_id = 1
         mock_perm1.role = "editor"
-        
+
         mock_perm2 = MagicMock()
         mock_perm2.user_id = 2
         mock_perm2.project_id = 1
         mock_perm2.role = "viewer"
-        
-        from src.audiobook_studio.models.user import ProjectPermission
-        with patch("src.audiobook_studio.auth.router.db") as mock_db:
-            mock_db.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
-            mock_rbac_manager.get_user.side_effect = [
-                MagicMock(username="user1"),
-                MagicMock(username="user2"),
-            ]
 
-            app = client.app
-            def mock_active_user():
-                user = MagicMock()
-                user.id = 1
-                user.is_active = True
-                return user
-            app.dependency_overrides[get_current_active_user] = mock_active_user
-            
-            response = client.get("/api/auth/projects/1/permissions")
-            
-            if get_current_active_user in app.dependency_overrides:
-                del app.dependency_overrides[get_current_active_user]
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 2
+        # Create a mock session
+        mock_session = MagicMock(spec=Session)
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
+        mock_rbac_manager.get_user.side_effect = [
+            MagicMock(username="user1"),
+            MagicMock(username="user2"),
+        ]
+
+        app = client.app
+        def mock_active_user():
+            user = MagicMock()
+            user.id = 1
+            user.is_active = True
+            return user
+
+        # Override the get_db dependency
+        def mock_get_db():
+            try:
+                yield mock_session
+            finally:
+                pass
+
+        from src.audiobook_studio.database import get_db
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_active_user] = mock_active_user
+
+        response = client.get("/api/auth/projects/1/permissions")
+
+        if get_db in app.dependency_overrides:
+            del app.dependency_overrides[get_db]
+        if get_current_active_user in app.dependency_overrides:
+            del app.dependency_overrides[get_current_active_user]
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
 
     def test_list_project_permissions_access_denied(self, client, mock_rbac_manager):
         """Test listing project permissions without access."""

@@ -19,7 +19,6 @@ import numpy as np
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
-from ..monitoring import record_stage_performance
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
 from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
@@ -621,6 +620,8 @@ class QualityCheckPipeline:
 
             # LLM-as-a-Judge evaluation
             try:
+                from ..monitoring import record_stage_performance
+
                 judgment = self.judge.judge_quality(
                     segment_id=Path(audio_path).stem,
                     paragraph_annotation=annotation,
@@ -697,6 +698,8 @@ class QualityCheckPipeline:
 
                 judgments.append(judgment)
             except Exception as e:
+                from ..monitoring import record_stage_performance
+
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
                 record_stage_performance(
                     stage="quality_check",

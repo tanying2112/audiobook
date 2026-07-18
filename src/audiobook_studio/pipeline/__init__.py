@@ -23,6 +23,23 @@ from .extract import ExtractPipeline, extract_text
 from .feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from .orchestrator import run_pipeline, run_stage
 from .quality_check import QualityCheckPipeline, quality_check
+from .sop_reflection import (
+    SOPConfig,
+    CorrectionCollector,
+    ReflectionEngine,
+    GenreDetector,
+    RuleApplier,
+    SOPBackgroundThread,
+    get_sop_config,
+    get_correction_collector,
+    get_reflection_engine,
+    get_genre_detector,
+    get_rule_applier,
+    start_sop_background_thread,
+    stop_sop_background_thread,
+    handle_user_correction_websocket,
+    apply_learned_rules_on_import,
+)
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline, synthesize_paragraphs
 
@@ -53,4 +70,20 @@ __all__ = [
     "FeedbackCollector",
     "StageCapture",
     "create_feedback_collector",
+    # SOP Reflection (Module 4.2)
+    "SOPConfig",
+    "CorrectionCollector",
+    "ReflectionEngine",
+    "GenreDetector",
+    "RuleApplier",
+    "SOPBackgroundThread",
+    "get_sop_config",
+    "get_correction_collector",
+    "get_reflection_engine",
+    "get_genre_detector",
+    "get_rule_applier",
+    "start_sop_background_thread",
+    "stop_sop_background_thread",
+    "handle_user_correction_websocket",
+    "apply_learned_rules_on_import",
 ]

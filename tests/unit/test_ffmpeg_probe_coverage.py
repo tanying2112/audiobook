@@ -222,19 +222,19 @@ class TestReadPcmEdgeCases:
 
     @pytest.mark.asyncio
     @patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg")
-    async def test_read_pcm_string_stdout_valid_length(self, mock_run):
-        """Test read_pcm_samples when stdout is a string of correct length (12 chars = 12 bytes = 3 floats)."""
-        # "hello world " is 12 chars -> 12 bytes -> 3 float32
-        mock_run.return_value = MagicMock(returncode=0, stdout="hello world ")
+    async def test_read_pcm_bytes_stdout_valid_length(self, mock_run):
+        """Test read_pcm_samples when stdout is bytes of correct length (12 bytes = 3 floats)."""
+        # 12 bytes = 3 float32
+        mock_run.return_value = MagicMock(returncode=0, stdout=b"hello world ")
         samples = await read_pcm_samples(Path("test.mp3"))
         assert len(samples) == 3
         assert samples.dtype == np.float32
 
     @pytest.mark.asyncio
     @patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg")
-    async def test_read_pcm_string_stdout_invalid_length(self, mock_run):
-        """Test read_pcm_samples with string of invalid length raises ValueError."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="abc")
+    async def test_read_pcm_bytes_stdout_invalid_length(self, mock_run):
+        """Test read_pcm_samples with bytes of invalid length raises ValueError."""
+        mock_run.return_value = MagicMock(returncode=0, stdout=b"abc")
         with pytest.raises(ValueError, match="buffer size must be a multiple of element size"):
             await read_pcm_samples(Path("test.mp3"))
 

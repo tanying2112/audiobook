@@ -43,3 +43,27 @@
 {"timestamp": "2026-06-28T01:30:47.300401+00:00", "event_type": "promotion_evaluation", "iteration": 0, "stage": "edit_for_tts", "prompt_path": "prompts/edit_for_tts/v4.j2", "promoted": false, "reason": "Prompt v5 not found for stage 'edit_for_tts'", "validation_metrics": {"semantic_coherence": {"is_coherent": true, "mean_score": 0.75}, "emotion_validation": {"validation_summary": "OK"}, "quality_improvement": {"delta": 0.05}, "regression_check": {"passed": true}, "system_health": {"healthy": true, "score": 89.7, "warnings": []}}, "old_version": 4, "new_version": 5}
 {"timestamp": "2026-06-28T01:30:47.480372+00:00", "event_type": "iteration_complete", "iteration": 0, "feedback_analyzed": 10, "patterns_found": 2, "stages_upgraded": ["edit_for_tts"], "promoted": false, "feedback_count": 10, "system_health_score": 89.7}
 {"timestamp": "2026-06-28T01:31:33.282814+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 10, "patterns_found": 2, "promoted": false, "feedback_count": 10}
+{"timestamp": "2026-07-17T18:17:47.544552+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.1}
+{"timestamp": "2026-07-17T18:17:49.572967+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:17:49.574048+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:43:14.472460+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:43:16.501372+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:43:16.502994+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:44:40.398341+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:44:42.437427+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:44:42.438806+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:48:26.042950+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:48:28.105386+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:48:28.107555+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:50:15.985756+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:50:18.011776+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:50:18.013423+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:56:51.496244+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:56:53.539267+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:56:53.550892+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T18:58:37.656346+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T18:58:39.671320+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T18:58:39.672782+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}
+{"timestamp": "2026-07-17T19:00:28.198557+00:00", "event_type": "loop_started", "project_id": 1, "min_feedback_count": 3, "check_interval_seconds": 60, "canary_percentage": 0.5}
+{"timestamp": "2026-07-17T19:00:30.233657+00:00", "event_type": "iteration_no_upgrade", "iteration": 0, "feedback_analyzed": 0, "patterns_found": 0, "promoted": false, "feedback_count": 0}
+{"timestamp": "2026-07-17T19:00:30.234957+00:00", "event_type": "loop_stopped", "project_id": 1, "iteration_count": 1}

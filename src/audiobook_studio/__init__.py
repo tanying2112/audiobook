@@ -8,6 +8,7 @@ only exposes sub‑modules for convenient access.
 # Import submodules to make them available when importing the package
 from . import (
     api,
+    audio_quality,
     config,
     database,
     exceptions,

@@ -17,6 +17,7 @@ from ..export.batch_exporter import _build_subtitle_entries, _collect_audio_file
 from ..export.m4b import build_m4b, ChapterMarker, M4bMetadata
 from ..export.srt import generate_srt, SubtitleConfig, SubtitleEntry
 from ..models import Project, Chapter, AudioSegment, Paragraph
+from ..utils.gc_manager import cleanup_after_export
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +111,19 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
             "error": result_job.error,
             "project_id": project_id,
         }
-        
+
         logger.info(f"[{task_id}] Export completed: {result_job.progress.value}")
+
+        # GC: Clean up temporary segment files after successful export
+        if result_job.progress == ExportProgress.COMPLETE:
+            try:
+                gc_result = cleanup_after_export(project_id, keep_final=True)
+                logger.info(f"[{task_id}] GC cleanup: freed {gc_result['freed_bytes']/1024/1024:.2f} MB, deleted {len(gc_result['deleted_files'])} files")
+                response["gc_cleanup"] = gc_result
+            except Exception as gc_err:
+                logger.warning(f"[{task_id}] GC cleanup failed (non-fatal): {gc_err}")
+                response["gc_cleanup_error"] = str(gc_err)
+
         return response
         
     except Exception as e:

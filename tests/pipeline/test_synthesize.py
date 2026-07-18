@@ -393,7 +393,7 @@ class TestSynthesizePipelineRouting:
         decision = pipeline._make_routing_decision(inp)
 
         assert decision.engine_choice == "edge"
-        assert decision.fallback_engine == "edge"  # Implementation always uses "edge" as fallback
+        assert decision.fallback_engine == "kokoro"  # Cloud preferred, local as fallback
 
     def test_routing_decision_prosody_overrides(self, tmp_path):
         """Test routing includes prosody overrides."""
@@ -427,8 +427,8 @@ class TestSynthesizePipelineRouting:
 
         decision = pipeline._make_routing_decision(inp)
 
-        assert decision.prosody_overrides["rate"] == "1.2"
-        assert decision.prosody_overrides["pitch"] == "2st"
+        assert decision.prosody_overrides["rate"] == 1.2
+        assert decision.prosody_overrides["pitch"] == 2.0
 
     def test_routing_decision_segment_id_format(self, tmp_path):
         """Test segment ID format in routing decision."""

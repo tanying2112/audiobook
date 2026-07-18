@@ -70,8 +70,11 @@ services:
   # Celery broker / result backend (celery_app.py reads $REDIS_URL).
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -106,6 +109,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    restart: unless-stopped
     profiles:
       - worker
 
@@ -113,3 +117,5 @@ volumes:
   postgres_data:
   # Task 6.1 资产剥离: shared named volume for large model assets — never baked into the image.
   models_cache:
+  # Redis persistence volume for checkpoint recovery
+  redis_data:

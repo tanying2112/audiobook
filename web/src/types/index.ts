@@ -93,3 +93,21 @@ export interface PaginatedResponse<T> {
   page: number
   page_size: number
 }
+
+// Book Genre Type
+export type BookGenre =
+  | '古典小说'
+  | '现代小说'
+  | '武侠小说'
+  | '科幻小说'
+  | '奇幻小说'
+  | '历史小说'
+  | '悬疑小说'
+  | '言情小说'
+  | '传记文学'
+  | '散文随笔'
+  | '诗歌'
+  | '戏剧'
+  | '儿童文学'
+  | '青春文学'
+  | '其他'

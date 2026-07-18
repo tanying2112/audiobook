@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisInput, BookAnalysisOutput
+from ..analyzer import ensure_scene_tags_in_output
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,11 @@ class AnalyzeStructurePipeline:
                 messages=messages,
             )
 
+            # Ensure scene_tags is valid in the output
+            output_dict = result.output.model_dump()
+            output_dict = ensure_scene_tags_in_output(output_dict)
+            validated_output = BookAnalysisOutput.model_validate(output_dict)
+
             # Track compliance
             compliance = result.schema_compliance
             logger.info(
@@ -120,7 +126,7 @@ class AnalyzeStructurePipeline:
                 f"latency={result.latency_ms}ms"
             )
 
-            return result.output
+            return validated_output
 
         except Exception as e:
             logger.error(f"Structure analysis failed: {e}")

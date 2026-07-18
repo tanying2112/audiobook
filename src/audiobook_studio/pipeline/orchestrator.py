@@ -41,6 +41,13 @@ from .quality_check import QualityCheckPipeline
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline
 
+# Telemetry integration
+try:
+    from ..monitoring.telemetry import TelemetryCollector, get_telemetry_collector
+    _TELEMETRY_AVAILABLE = True
+except ImportError:
+    _TELEMETRY_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,6 +156,70 @@ def _default_stage_hook(
 
 # Auto-register default logger hook (can be disabled by clearing _stage_hooks)
 _stage_hooks.append(_default_stage_hook)
+
+# ── Telemetry Integration ──────────────────────────────────────────────────
+# Functions to initialize and register the telemetry collector as pipeline hooks
+
+_telemetry_collector: Optional[TelemetryCollector] = None
+
+
+def init_telemetry(
+    project_id: str,
+    pipeline_id: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    llm_router: Optional[Any] = None,
+    synthesize_pipeline: Optional[Any] = None,
+) -> Optional[TelemetryCollector]:
+    """Initialize the telemetry collector and register it as pipeline hooks.
+
+    Returns the TelemetryCollector instance if telemetry is available, None otherwise.
+    """
+    global _telemetry_collector
+    if not _TELEMETRY_AVAILABLE:
+        logger.debug("Telemetry module not available, skipping initialization")
+        return None
+
+    _telemetry_collector = TelemetryCollector(
+        project_id=project_id,
+        pipeline_id=pipeline_id,
+        output_dir=output_dir,
+        llm_router=llm_router,
+        synthesize_pipeline=synthesize_pipeline,
+    )
+
+    # Register as pipeline hooks
+    register_pipeline_hook(_telemetry_collector.on_pipeline_start)
+    register_pipeline_hook(_telemetry_collector.on_pipeline_end)
+    register_stage_hook(_telemetry_collector.on_stage_enter)
+    register_stage_hook(_telemetry_collector.on_stage_exit)
+
+    logger.info(f"Telemetry collector initialized for project={project_id}")
+    return _telemetry_collector
+
+
+def get_telemetry() -> Optional[TelemetryCollector]:
+    """Get the current telemetry collector instance."""
+    return _telemetry_collector
+
+
+def shutdown_telemetry() -> Optional[dict]:
+    """Shutdown telemetry and return final summary."""
+    global _telemetry_collector
+    if _telemetry_collector:
+        summary = _telemetry_collector.get_summary()
+        # Unregister hooks
+        if _telemetry_collector.on_pipeline_start in _pipeline_hooks:
+            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_start)
+        if _telemetry_collector.on_pipeline_end in _pipeline_hooks:
+            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_end)
+        if _telemetry_collector.on_stage_enter in _stage_hooks:
+            _stage_hooks.remove(_telemetry_collector.on_stage_enter)
+        if _telemetry_collector.on_stage_exit in _stage_hooks:
+            _stage_hooks.remove(_telemetry_collector.on_stage_exit)
+        _telemetry_collector = None
+        return summary
+    return None
+
 
 # ── Stage → DB mapping ────────────────────────────────────────────────────────
 
@@ -418,20 +489,43 @@ def _write_quality(
 def _write_audio_postprocess(
     db: Session,
     para: Paragraph,
-    params: AudioPostProcessParams,
+    params: Dict[str, Any],
 ) -> None:
-    """Update Paragraph DB record with audio post-process params."""
-    para.speech_rate = params.speech_rate
-    para.pitch_shift_semitones = params.pitch_shift_semitones
-    para.needs_sfx = params.needs_sfx
-    para.sfx_tags = params.sfx_tags
+    """Update Paragraph DB record with audio post-process params.
+
+    Accepts both legacy AudioPostProcessParams and new PhysicalAudioSegment dict format.
+    """
+    # Handle both dict and object with attributes
+    if hasattr(params, "speech_rate"):
+        # Legacy AudioPostProcessParams object
+        speech_rate = params.speech_rate
+        pitch_shift_semitones = params.pitch_shift_semitones
+        needs_sfx = params.needs_sfx
+        sfx_tags = params.sfx_tags
+        pause_after_ms = getattr(params, "pause_after_ms", 0)
+    else:
+        # New PhysicalAudioSegment dict
+        speech_rate = params.get("speed", 1.0)
+        # Convert pitch_hz to semitones (approximate: 1 semitone ≈ 5.95% frequency change)
+        pitch_hz = params.get("pitch_hz", 0.0)
+        pitch_shift_semitones = round(pitch_hz / 6.0)  # rough conversion
+        needs_sfx = params.get("needs_sfx", False)
+        sfx_tags = params.get("sfx_tags", [])
+        pause_after_ms = params.get("pause_after_ms", 300)
+
+    para.speech_rate = speech_rate
+    para.pitch_shift_semitones = pitch_shift_semitones
+    para.needs_sfx = needs_sfx
+    para.sfx_tags = sfx_tags
+    para.pause_after_ms = pause_after_ms
     para.status = "audio_processed"
     db.commit()
     logger.info(
-        "DB write [audio_postprocess]: Paragraph %d speech_rate=%.1f pitch=%d",
+        "DB write [audio_postprocess]: Paragraph %d speed=%.1f pitch_semitones=%d pause_ms=%d",
         para.index,
-        params.speech_rate,
-        params.pitch_shift_semitones,
+        speech_rate,
+        pitch_shift_semitones,
+        pause_after_ms,
     )
 
 
@@ -695,8 +789,10 @@ async def run_pipeline(
 
     try:
         for stage in stages:
-            # Pause check between stages
-            if project_id and await is_paused(project_id):
+            # Pause check between stages.
+            # is_paused() is non-blocking (returns a plain bool); only pause_check()
+            # below is async (it blocks on an asyncio.Event until resumed).
+            if project_id and is_paused(project_id):
                 logger.info(f"Pipeline {project_id} paused between stages, waiting...")
                 await pause_check(project_id)
                 logger.info(f"Pipeline {project_id} resumed")
@@ -715,7 +811,9 @@ async def run_pipeline(
             if checkpoint_manager and chapter_index is not None:
                 checkpoint_manager.mark_stage_started(stage, chapter_index)
 
-            result = run_stage(
+            # run_stage is a coroutine; must be awaited or the result is a
+            # never-awaited coroutine object rather than the stage output.
+            result = await run_stage(
                 stage,
                 db,
                 project_id=project_id,

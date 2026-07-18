@@ -25,9 +25,10 @@ from typing import List, Optional
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..di import get_app_container
 from ..llm import LLMRouter, create_router
-from ..monitoring import record_stage_performance
+from ..monitoring.telemetry import record_tts_segment, record_tts_retry, record_tts_fallback, record_tts_quality_check
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
+from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..tts import (
     EngineRegistry,
     SynthesisResult,
@@ -44,6 +45,12 @@ from ..tts import (
 )
 from ..tts.clone import CloningConfig, VoiceCloningManager
 from ..utils.ffmpeg_probe import get_duration_sync
+from ..audio_quality import (
+    check_all_segments,
+    QualityReport,
+    SegmentQualityResult,
+    save_quality_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -316,10 +323,11 @@ class SynthesizePipeline:
 
     @trace_function(name="pipeline.synthesize.run", stage="synthesize")
     def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
-        """Synthesize multiple paragraphs incrementally.
+        """Synthesize multiple paragraphs incrementally with quality gate.
 
         For each input, checks if regeneration is needed (text changed),
-        submits synthesis via Port, and returns audio segments.
+        submits synthesis via Port, runs quality checks with auto-retry (max 2),
+        and returns audio segments. Produces quality_report.json.
 
         Args:
             inputs: List of TtsRoutingInput with text, voice, and prosody.
@@ -327,9 +335,12 @@ class SynthesizePipeline:
         Returns:
             List of AudioSegment with file paths and metadata.
         """
+        from ..monitoring import record_stage_performance
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments = []
+        segment_files = []
+        segment_ids = []
 
         for inp in inputs:
             decision = self._make_routing_decision(inp)
@@ -432,6 +443,15 @@ class SynthesizePipeline:
                     schema_compliance=None,
                 )
 
+                # Record TTS telemetry
+                record_tts_segment(
+                    duration_ms=duration if success else 0,
+                    latency_ms=synthesis_latency_ms,
+                    provider=engine,
+                    cost_usd=cost_usd,
+                    success=success,
+                )
+
             segment = AudioSegment(
                 segment_id=segment_id,
                 file_path=str(output_path),
@@ -444,6 +464,84 @@ class SynthesizePipeline:
             self.existing_segments[segment_id] = segment
             self._persist_segment_metadata(segment)
             segments.append(segment)
+            segment_files.append(output_path)
+            segment_ids.append(segment_id)
+
+        # Quality Gate: Check all segments with auto-retry (max 2 retries)
+        if segment_files:
+            logger.info(f"Running quality checks on {len(segment_files)} segments...")
+
+            # Get project info for report
+            project_id = inputs[0].book_id if inputs else "unknown"
+            chapter_index = inputs[0].chapter_index if inputs else 0
+
+            # Define retry callback for quality failures
+            def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
+                """Re-synthesize a failed segment."""
+                # Find the original input for this segment
+                seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
+                if seg_input is None:
+                    logger.warning(f"No input found for segment {seg_id}")
+                    return None
+
+                decision = self._make_routing_decision(seg_input)
+                retry_output = self.output_dir / f"{seg_id}_retry{attempt}.wav"
+
+                try:
+                    logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
+                    retry_duration, retry_engine = asyncio.run(
+                        self._synthesize_via_port(
+                            seg_input.text,
+                            decision.voice_id,
+                            decision.prosody_overrides or {},
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                        )
+                    )
+                    # Record retry telemetry
+                    record_tts_retry(fallback_from=decision.engine_choice)
+
+                    # Update segment with new file
+                    for seg in segments:
+                        if seg.segment_id == seg_id:
+                            seg.file_path = str(retry_output)
+                            seg.duration_ms = retry_duration
+                            seg.engine = retry_engine
+                            self._persist_segment_metadata(seg)
+                            break
+                    return retry_output
+                except Exception as e:
+                    logger.error(f"Retry synthesis failed for {seg_id}: {e}")
+                    return None
+
+            # Run quality checks with auto-retry
+            quality_report: QualityReport = check_all_segments(
+                segment_files=segment_files,
+                segment_ids=segment_ids,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                max_retries=2,
+                retry_callback=retry_callback,
+            )
+
+            # Save quality report
+            report_path = self.output_dir / "quality_report.json"
+            save_quality_report(quality_report, report_path)
+
+            # Record quality check telemetry
+            for result in quality_report.segment_results:
+                record_tts_quality_check(result.passed)
+
+            # Log quality results
+            logger.info(
+                f"Quality check complete: {quality_report.passed_segments}/{quality_report.total_segments} passed, "
+                f"overall={'PASSED' if quality_report.overall_passed else 'FAILED'}"
+            )
+            for result in quality_report.segment_results:
+                if not result.passed:
+                    logger.warning(f"  Segment {result.segment_id} FAILED: {', '.join(result.issues)}")
+                else:
+                    logger.debug(f"  Segment {result.segment_id} passed")
 
         # Stitch chapter-level audio (optional)
         if len(segments) > 1:
@@ -592,6 +690,7 @@ class SynthesizePipeline:
         In the future, this would use the LLM router for intelligent routing.
         """
         from ..schemas import TtsRoutingDecision
+        import os
 
         char = next(
             (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
@@ -599,19 +698,42 @@ class SynthesizePipeline:
         )
         voice_id = char.suggested_voice_id if char else "default"
 
-        mock_info = "Mock mode" if self.mock_mode else "real mode"
-        reasoning = f"Auto routing: local preferred for Chinese, Edge for English ({mock_info})"
+        # Respect ENABLE_LOCAL_TTS environment variable for engine selection
+        enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+
+        if enable_local_tts:
+            # Prefer local engine (Kokoro) when enabled
+            engine_choice = "kokoro"
+            fallback_engine = "edge"
+            mock_info = "Local TTS enabled"
+        else:
+            # Prefer cloud engine (Edge-TTS) when local disabled
+            engine_choice = "edge"
+            fallback_engine = "kokoro"
+            mock_info = "Local TTS disabled - using cloud"
+
+        # Override with prefer_local if explicitly set
+        if inp.prefer_local is not None:
+            if inp.prefer_local:
+                engine_choice = "kokoro"
+                fallback_engine = "edge"
+            else:
+                engine_choice = "edge"
+                fallback_engine = "kokoro"
+            mock_info += f" (prefer_local={inp.prefer_local})"
+
+        reasoning = f"Auto routing: {engine_choice} preferred, {fallback_engine} fallback ({mock_info})"
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
-            engine_choice="kokoro",  # Default to local engine; routing logic can be enhanced later
+            engine_choice=engine_choice,
             voice_id=voice_id,
             prosody_overrides={
                 "rate": float(inp.paragraph_annotation.speech_rate) if inp.paragraph_annotation.speech_rate else 1.0,
                 "pitch": float(inp.paragraph_annotation.pitch_shift_semitones) if inp.paragraph_annotation.pitch_shift_semitones is not None else 0.0,
             },
-            fallback_engine="kokoro",
+            fallback_engine=fallback_engine,
             reasoning=reasoning,
-            estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
+            estimated_cost_usd=0.0 if engine_choice == "kokoro" else 0.001,
             estimated_duration_ms=3000,
         )
 

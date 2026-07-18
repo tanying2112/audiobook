@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.extract import ExtractPipeline, extract_text
+from src.audiobook_studio.pipeline.extract import ExtractPipeline, extract_text, OCR_AVAILABLE
 from src.audiobook_studio.schemas import ExtractionInput, ExtractionResult
 
 
@@ -554,3 +554,113 @@ class TestExtractPipelineNonMock:  # noqa: E302
             assert recorded.get("quality_score") == 1.0
             assert recorded.get("cost_usd") == 0.0
             assert recorded.get("provider") == "mock"
+
+
+class TestExtractImage:
+    """Test image extraction with OCR."""
+
+    def setup_method(self):
+        """Setup test fixtures with real (non-mock) pipeline."""
+        self.mock_router = Mock()
+        self.pipeline = ExtractPipeline(router=self.mock_router, mock_mode=False)
+
+    @pytest.mark.skipif(
+        not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env"
+    )
+    def test_extract_image_success(self):
+        """Test successful image extraction with OCR."""
+        import tempfile
+        from PIL import Image, ImageDraw, ImageFont
+
+        # Create a test image with text
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            temp_path = f.name
+
+        try:
+            # Create a simple image with text
+            img = Image.new("RGB", (400, 200), color="white")
+            draw = ImageDraw.Draw(img)
+            draw.text((50, 50), "Test OCR Image", fill="black")
+            img.save(temp_path)
+
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_image(temp_path)
+
+            assert page_count == 1
+            assert has_ocr is True
+            assert ocr_ratio == 1.0
+            # OCR may or may not detect the text depending on tesseract availability/quality
+
+        finally:
+            os.unlink(temp_path)
+
+    @pytest.mark.skipif(
+        not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env"
+    )
+    def test_extract_image_failure(self):
+        """Test image extraction failure handling."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            # Write invalid image data
+            f.write(b"not an image")
+            temp_path = f.name
+
+        try:
+            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_image(temp_path)
+
+            assert text == ""
+            assert page_count == 1
+            assert has_ocr is False
+            assert ocr_ratio == 0.0
+        finally:
+            os.unlink(temp_path)
+
+    def test_extract_image_mock_mode(self):
+        """Test that image extraction works in mock mode."""
+        # In mock mode, all formats return the same mock result
+        pipeline = ExtractPipeline()
+        input_data = ExtractionInput(file_path="/fake/path.png", mime_type="image/png", detect_language=True)
+
+        result = pipeline.run(input_data)
+
+        assert isinstance(result, ExtractionResult)
+        assert result.language == "zh"
+        assert result.page_count == 5
+        assert not result.has_ocr
+        assert "模拟提取文本" in result.raw_text
+
+    def test_run_image_mime_type_routing(self):
+        """Test run method correctly routes image MIME types to _extract_image."""
+        with patch.object(self.pipeline, "_extract_image", return_value=("Image OCR text", 1, True, 1.0)):
+            input_data = ExtractionInput(file_path="test.png", mime_type="image/png", detect_language=True)
+            result = self.pipeline.run(input_data)
+
+            assert result.raw_text == "Image OCR text"
+            assert result.page_count == 1
+            assert result.has_ocr is True
+            assert result.ocr_page_ratio == 1.0
+
+    def test_run_all_image_mime_types(self):
+        """Test run method handles all supported image MIME types."""
+        image_mime_types = [
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/tiff",
+            "image/bmp",
+            "image/webp",
+        ]
+
+        for mime_type in image_mime_types:
+            with patch.object(self.pipeline, "_extract_image", return_value=("OCR text", 1, True, 1.0)):
+                input_data = ExtractionInput(file_path="test.png", mime_type=mime_type, detect_language=True)
+                result = self.pipeline.run(input_data)
+
+                assert result.raw_text == "OCR text"
+                assert result.has_ocr is True
+
+    def test_extract_image_no_ocr_dependency(self):
+        """Test _extract_image raises ValueError when OCR dependencies not available."""
+        with patch("src.audiobook_studio.pipeline.extract.OCR_AVAILABLE", False):
+            with pytest.raises(ValueError, match="Image OCR not available"):
+                self.pipeline._extract_image("test.png")

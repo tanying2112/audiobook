@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
-from .audio_ducking import MixConfig, mix_with_ducking
+from .audio_ducking import MixConfig, mix_with_ducking, mix_full_pipeline
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 
@@ -314,7 +314,22 @@ def export_project(
 
             m4b_path = output_dir / f"project_{project.id}.m4b"
 
-            # BGM mixing
+            # Prepare paragraph data for SFX mixing (from all chapters)
+            all_paragraphs = []
+            for data in chapter_data_list:
+                for para in data["paragraphs"]:
+                    # Get audio segment duration for this paragraph
+                    seg = next((s for s in data["audio_segments"] if s.paragraph_id == para.id), None)
+                    para_data = {
+                        "id": para.id,
+                        "index": para.index,
+                        "text": para.text,
+                        "sfx_tags": para.sfx_tags or [],
+                        "duration_ms": seg.duration_ms if seg else 3000,
+                    }
+                    all_paragraphs.append(para_data)
+
+            # BGM mixing + SFX mixing
             if job.bgm_path:
                 job.progress = ExportProgress.DUCKING
                 temp_audio = output_dir / "temp_speech_combined.wav"
@@ -341,12 +356,13 @@ def export_project(
                     capture_output=True,
                 )
 
-                # Mix with BGM
+                # Mix with BGM and SFX using full pipeline
                 mixed_path = output_dir / "temp_mixed.m4a"
-                mix_with_ducking(
+                mix_full_pipeline(
                     speech_path=temp_audio,
                     output_path=mixed_path,
                     bgm_path=job.bgm_path,
+                    paragraphs=all_paragraphs,
                     config=job.mix_config,
                 )
 

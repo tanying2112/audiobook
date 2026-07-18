@@ -409,7 +409,7 @@ async def _apply_template_background(
         # ── Re-run downstream pipeline stages after corrections ──
         # After applying template, re-run affected downstream stages so
         # the pipeline output stays consistent with the corrected data.
-        _rerun_downstream_stages(db, project_id, template.stage, paragraphs)
+        await _rerun_downstream_stages(db, project_id, template.stage, paragraphs)
 
         # Mark as completed
         _apply_template_background.progress[task_id]["status"] = "completed"
@@ -569,7 +569,7 @@ def _apply_quality_template(db: Session, pa: Paragraph, corrected_output: dict):
     db.commit()
 
 
-def _rerun_downstream_stages(
+async def _rerun_downstream_stages(
     db: Session,
     project_id: int,
     applied_stage: str,
@@ -607,7 +607,7 @@ def _rerun_downstream_stages(
     for para in paragraphs:
         for stage_name in stages_to_rerun:
             try:
-                run_stage(
+                await run_stage(
                     stage_name,
                     db,
                     project_id=project_id,
