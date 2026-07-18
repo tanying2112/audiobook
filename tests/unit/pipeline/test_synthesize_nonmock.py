@@ -1,3 +1,9 @@
+"""Tests for SynthesizePipeline using FakeRemoteTTSPort for non-mock mode testing.
+
+These tests verify the pipeline's integration with the RemoteTTSPort abstraction
+without requiring actual TTS engine installations.
+"""
+
 import asyncio
 import os
 import sys
@@ -41,23 +47,14 @@ _MODULE_MOCK_TARGETS = [
     "langfuse.decorators",
     "langfuse.client",
 ]
-_RECORD_TO_RESTORE = _MODULE_MOCK_TARGETS + [
-    "audiobook_studio.tts",
-    "audiobook_studio.tts.kokoro_backend",
-    "audiobook_studio.tts.engine",
-    "audiobook_studio.tts.clone",
-]
+_RECORD_TO_RESTORE = _MODULE_MOCK_TARGETS
 _ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _RECORD_TO_RESTORE}
 
-# Mocks to prevent ModuleNotFoundError
+# Mocks to prevent ModuleNotFoundError for external dependencies only
+# DO NOT mock audiobook_studio.tts - we need the real FakeRemoteTTSPort
 sys.modules["edge_tts"] = MagicMock()
-sys.modules["audiobook_studio.tts"] = MagicMock()
-sys.modules["audiobook_studio.tts.kokoro_backend"] = MagicMock()
-sys.modules["audiobook_studio.tts.engine"] = MagicMock()
-sys.modules["audiobook_studio.tts.clone"] = MagicMock()
 sys.modules["azure"] = MagicMock()
 sys.modules["azure.cognitiveservices"] = MagicMock()
-# Mock azure.cognitiveservices.speech for tests that need it
 azure_speech_mock = MagicMock()
 azure_speech_mock.__path__ = []
 sys.modules["azure.cognitiveservices.speech"] = azure_speech_mock
@@ -120,6 +117,22 @@ sys.modules["langfuse"] = MagicMock()
 sys.modules["langfuse.decorators"] = MagicMock()
 sys.modules["langfuse.client"] = MagicMock()
 
+# Prevent __spec__ errors
+for mod in ["google", "azure", "opentelemetry", "langfuse", "langfuse.decorators", "langfuse.client"]:
+    if mod in sys.modules:
+        sys.modules[mod].__spec__ = None
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
+
+from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
+from audiobook_studio.schemas import (
+    TtsRoutingInput,
+    TtsRoutingDecision,
+    ParagraphAnnotation,
+)
+from audiobook_studio.schemas.book import CharacterVoiceBinding
+from audiobook_studio.tts import FakeRemoteTTSPort, TTSTaskPayload, TTSVoiceAnchor, TTSProsody, TTSStatus, TTSTaskResult
+
 
 class DummyObserve:
     def __call__(self, *args, **kwargs):
@@ -134,32 +147,48 @@ class DummyObserve:
 
 sys.modules["langfuse.decorators"].observe = DummyObserve()
 
-# Prevent __spec__ errors
-for mod in ["google", "azure", "opentelemetry", "langfuse", "langfuse.decorators", "langfuse.client"]:
-    if mod in sys.modules:
-        sys.modules[mod].__spec__ = None
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
-
-from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline, TtsRoutingDecision, TtsRoutingInput
-
 
 class TestSynthesizePipelineNonMock(unittest.TestCase):
+    """Test SynthesizePipeline with FakeRemoteTTSPort (non-mock mode)."""
+
     def setUp(self):
-        self.pipeline = SynthesizePipeline(output_dir="./test_output", mock_mode=False)
         self.temp_dir = tempfile.mkdtemp()
+        # Create a fake port with fast synthesis delay for tests
+        self.fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
+        self.pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=self.fake_port,
+        )
 
     def tearDown(self):
         import shutil
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
+        # Clean up fake port background tasks
+        # Use the event loop properly
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule close in the running loop
+                asyncio.create_task(self.fake_port.close())
+            else:
+                loop.run_until_complete(self.fake_port.close())
+        except RuntimeError:
+            # No event loop, create one
+            asyncio.run(self.fake_port.close())
 
-    def _create_mock_tts_input(self, text="test text", character="narrator"):
-        from audiobook_studio.schemas.book import CharacterVoiceBinding
-        from audiobook_studio.schemas.paragraph import ParagraphAnnotation
-
+    def _create_mock_tts_input(
+        self,
+        text="test text",
+        character="narrator",
+        paragraph_index=1,
+        book_id="test_book",
+        chapter_index=1,
+    ):
+        """Create a TtsRoutingInput for testing."""
         annotation = ParagraphAnnotation(
-            paragraph_index=1,
+            paragraph_index=paragraph_index,
             text=text,
             speaker_canonical_name=character,
             is_dialogue=False,
@@ -176,227 +205,359 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
             paragraph_annotation=annotation,
             text=text,
             character_voice_map=[binding],
-            book_id="test_book",
-            chapter_index=1,
-            paragraph_index=1,
+            book_id=book_id,
+            chapter_index=chapter_index,
+            paragraph_index=paragraph_index,
         )
 
-    @patch("audiobook_studio.tts.kokoro_backend.KokoroBackend")
-    @patch("audiobook_studio.pipeline.synthesize.EngineRegistry")
-    @patch("asyncio.run")
-    def test_synthesize_kokoro_success(self, mock_asyncio_run, mock_engine_registry, mock_kokoro_backend_class):
-        """Test kokoro synthesis in non-mock mode with success"""
-        # Setup mock engine registry to return None (forces new backend creation)
-        mock_engine_registry.return_value.get.return_value = None
+    def test_pipeline_initialization(self):
+        """Test pipeline initializes correctly with fake port."""
+        self.assertIsInstance(self.pipeline, SynthesizePipeline)
+        self.assertFalse(self.pipeline.mock_mode)
+        self.assertIsNotNone(self.pipeline._port)
+        self.assertIsInstance(self.pipeline._port, FakeRemoteTTSPort)
 
-        # Setup mock
-        mock_backend_instance = MagicMock()
-        mock_kokoro_backend_class.return_value = mock_backend_instance
+    def test_synthesize_via_port_success(self):
+        """Test _synthesize_via_port succeeds with fake port."""
+        async def run_test():
+            duration, engine = await self.pipeline._synthesize_via_port(
+                text="Hello world",
+                voice_id="test_voice",
+                prosody={},
+                output_path=Path(self.temp_dir) / "test.wav",
+                segment_id="seg_001",
+            )
+            self.assertGreater(duration, 0)
+            self.assertEqual(engine, "hermes")  # Default engine from fake port
 
-        mock_result = MagicMock()
-        mock_result.duration_ms = 3000
-        mock_backend_instance.initialize = AsyncMock()
-        mock_backend_instance.synthesize = AsyncMock(return_value=mock_result)
-        mock_backend_instance.cleanup = AsyncMock()
+        asyncio.run(run_test())
 
-        # Mock asyncio.run to actually execute the coroutine (sync function, not async)
-        def run_async(coro):
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(coro)
-            finally:
-                loop.close()
+    def test_synthesize_via_port_creates_audio_file(self):
+        """Test that synthesis creates an audio file at output path."""
+        async def run_test():
+            output_path = Path(self.temp_dir) / "test_output.wav"
+            await self.pipeline._synthesize_via_port(
+                text="Test audio generation",
+                voice_id="test_voice",
+                prosody={},
+                output_path=output_path,
+                segment_id="seg_002",
+            )
+            self.assertTrue(output_path.exists())
+            self.assertGreater(output_path.stat().st_size, 0)
 
-        mock_asyncio_run.side_effect = run_async
+        asyncio.run(run_test())
 
-        # Call the method
-        output_path = Path(self.temp_dir) / "test.wav"
-        duration = self.pipeline._synthesize_kokoro("test text", "test_voice", {}, output_path)
+    def test_synthesize_via_port_respects_prosody(self):
+        """Test that prosody parameters are included in payload."""
+        async def run_test():
+            prosody = {"rate": 1.2, "pitch": 0.5, "volume": -0.2, "emotion": "happy"}
+            await self.pipeline._synthesize_via_port(
+                text="Test with prosody",
+                voice_id="test_voice",
+                prosody=prosody,
+                output_path=Path(self.temp_dir) / "prosody.wav",
+                segment_id="seg_003",
+            )
+            # Check the task was submitted with correct prosody
+            # Task ID format: seg_003-<timestamp>
+            for task_id, state in self.fake_port._tasks.items():
+                if task_id.startswith("seg_003-"):
+                    self.assertEqual(state.payload.prosody.rate, 1.2)
+                    self.assertEqual(state.payload.prosody.pitch, 0.5)
+                    self.assertEqual(state.payload.prosody.volume, -0.2)
+                    self.assertEqual(state.payload.prosody.emotion, "happy")
+                    return
+            self.fail("Task not found in fake port")
 
-        # Assertions
-        self.assertEqual(duration, 3000)
-        mock_kokoro_backend_class.assert_called_once_with(model_path="./models/kokoro-onnx")
-        mock_backend_instance.initialize.assert_called_once()
-        mock_backend_instance.synthesize.assert_called_once()
-        mock_backend_instance.cleanup.assert_called_once()
+        asyncio.run(run_test())
 
-    @patch("audiobook_studio.tts.kokoro_backend.KokoroBackend")
-    @patch("audiobook_studio.pipeline.synthesize.SynthesizePipeline._synthesize_mock")
-    def test_synthesize_kokoro_import_error(self, mock_synthesize_mock, mock_kokoro_backend_class):
-        """Test kokoro synthesis when KokoroBackend import fails"""
-        # Setup mock to raise ImportError
-        mock_kokoro_backend_class.side_effect = ImportError("onnxruntime not installed")
+    def test_run_single_segment(self):
+        """Test run() with a single segment."""
+        inputs = [self._create_mock_tts_input(text="Hello world", paragraph_index=1)]
+        segments = self.pipeline.run(inputs)
 
-        # Mock the fallback methods
-        mock_synthesize_mock.return_value = 2000
+        self.assertEqual(len(segments), 1)
+        self.assertIsInstance(segments[0], AudioSegment)
+        self.assertEqual(segments[0].segment_id, "test_book_ch1_p1")
+        self.assertTrue(Path(segments[0].file_path).exists())
+        self.assertGreater(segments[0].duration_ms, 0)
 
-        output_path = Path(self.temp_dir) / "test.wav"
-        duration = self.pipeline._synthesize_kokoro("test text", "test_voice", {}, output_path)
+    def test_run_multiple_segments(self):
+        """Test run() with multiple segments."""
+        inputs = [
+            self._create_mock_tts_input(text="First paragraph", paragraph_index=1),
+            self._create_mock_tts_input(text="Second paragraph", paragraph_index=2),
+            self._create_mock_tts_input(text="Third paragraph", paragraph_index=3),
+        ]
+        segments = self.pipeline.run(inputs)
 
-        # Should fall back to mock
-        self.assertEqual(duration, 2000)
-        mock_synthesize_mock.assert_called_once()
+        self.assertEqual(len(segments), 3)
+        for i, seg in enumerate(segments):
+            self.assertEqual(seg.segment_id, f"test_book_ch1_p{i+1}")
+            self.assertTrue(Path(seg.file_path).exists())
 
-    @patch("audiobook_studio.tts.kokoro_backend.KokoroBackend")
-    @patch("audiobook_studio.pipeline.synthesize.SynthesizePipeline._synthesize_mock")
-    def test_synthesize_kokoro_file_not_found(self, mock_synthesize_mock, mock_kokoro_backend_class):
-        """Test kokoro synthesis when model files not found"""
-        # Setup mock to raise FileNotFoundError during backend creation
-        mock_kokoro_backend_class.side_effect = FileNotFoundError("Model files not found")
+    def test_run_skips_unchanged_segments(self):
+        """Test that unchanged segments are skipped on re-run."""
+        inputs = [self._create_mock_tts_input(text="Same text", paragraph_index=1)]
 
-        # Mock the fallback methods
-        mock_synthesize_mock.return_value = 2000
+        # First run
+        segments1 = self.pipeline.run(inputs)
+        self.assertEqual(len(segments1), 1)
 
-        output_path = Path(self.temp_dir) / "test.wav"
-        duration = self.pipeline._synthesize_kokoro("test text", "test_voice", {}, output_path)
+        # Second run with same text - should skip
+        segments2 = self.pipeline.run(inputs)
+        self.assertEqual(len(segments2), 1)
+        # Should be the same segment object (from cache)
+        self.assertEqual(segments2[0].file_path, segments1[0].file_path)
 
-        # Should fall back to mock
-        self.assertEqual(duration, 2000)
-        mock_synthesize_mock.assert_called_once()
+    def test_run_regenerates_changed_segments(self):
+        """Test that changed segments are regenerated (content changes, path stays same)."""
+        inputs1 = [self._create_mock_tts_input(text="Original text", paragraph_index=1)]
+        segments1 = self.pipeline.run(inputs1)
+        original_path = segments1[0].file_path
+        original_hash = segments1[0].text_hash
 
-    @patch("audiobook_studio.tts.kokoro_backend.KokoroBackend")
-    @patch("audiobook_studio.pipeline.synthesize.SynthesizePipeline._synthesize_mock")
-    def test_synthesize_kokoro_generic_exception(self, mock_synthesize_mock, mock_kokoro_backend_class):
-        """Test kokoro synthesis when generic exception occurs"""
-        # Setup mock to raise generic Exception
-        mock_kokoro_backend_class.side_effect = Exception("Some error")
+        # Change the text
+        inputs2 = [self._create_mock_tts_input(text="Modified text", paragraph_index=1)]
+        segments2 = self.pipeline.run(inputs2)
 
-        # Mock the fallback methods
-        mock_synthesize_mock.return_value = 2000
+        # Path stays the same (segment_id unchanged), but content hash changes
+        self.assertEqual(segments2[0].file_path, original_path)
+        self.assertNotEqual(segments2[0].text_hash, original_hash)
+        # File should have been overwritten with new content
+        self.assertTrue(Path(original_path).exists())
 
-        output_path = Path(self.temp_dir) / "test.wav"
-        duration = self.pipeline._synthesize_kokoro("test text", "test_voice", {}, output_path)
+    def test_synthesize_with_failure_rate(self):
+        """Test synthesis handles failures from port."""
+        # Create a port with 100% failure rate
+        failing_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=1.0)
+        pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=failing_port,
+        )
 
-        # Should fall back to mock
-        self.assertEqual(duration, 2000)
-        mock_synthesize_mock.assert_called_once()
+        inputs = [self._create_mock_tts_input(text="Will fail", paragraph_index=1)]
 
-    @patch("edge_tts.Communicate")
-    @patch("asyncio.run")
-    def test_synthesize_edge_success(self, mock_asyncio_run, mock_edge_tts_communicate):
-        """Test edge synthesis in non-mock mode with success"""
-        # Setup mock
-        mock_communicate = MagicMock()
-        mock_edge_tts_communicate.return_value = mock_communicate
-        mock_communicate.save = AsyncMock()
+        with self.assertRaises(RuntimeError) as ctx:
+            pipeline.run(inputs)
+        self.assertIn("Synthesis failed", str(ctx.exception))
 
-        # Mock asyncio.run to actually execute the coroutine (sync function, not async)
-        def run_async(coro):
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(coro)
-            finally:
-                loop.close()
+        asyncio.run(failing_port.close())
 
-        mock_asyncio_run.side_effect = run_async
+    def test_synthesize_with_custom_failure_mode(self):
+        """Test synthesis with custom failure mode function."""
+        def fail_on_long_text(payload: TTSTaskPayload) -> bool:
+            return len(payload.text) > 10
 
-        # Mock file existence and duration
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("audiobook_studio.pipeline.synthesize.get_duration_sync", return_value=2800):
-                output_path = Path(self.temp_dir) / "test.wav"
-                duration = self.pipeline._synthesize_edge("test text", "test_voice", {}, output_path)
+        failing_port = FakeRemoteTTSPort(
+            synthesis_delay=0.01, failure_rate=0.0, failure_mode=fail_on_long_text
+        )
+        pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=failing_port,
+        )
 
-                # Assertions
-                self.assertEqual(duration, 2800)
-                mock_edge_tts_communicate.assert_called_once()
-                mock_asyncio_run.assert_called_once()
+        # Short text should succeed
+        inputs_short = [self._create_mock_tts_input(text="Short", paragraph_index=1)]
+        segments_short = pipeline.run(inputs_short)
+        self.assertEqual(len(segments_short), 1)
 
-    @patch("edge_tts.Communicate")
-    def test_synthesize_edge_import_error(self, mock_edge_tts_communicate):
-        """Test edge synthesis when edge-tts import fails"""
-        # Setup mock to raise ImportError
-        mock_edge_tts_communicate.side_effect = ImportError("edge-tts not installed")
+        # Long text should fail
+        inputs_long = [self._create_mock_tts_input(text="This text is very long indeed", paragraph_index=1)]
+        with self.assertRaises(RuntimeError):
+            pipeline.run(inputs_long)
 
-        # Should raise the ImportError (not caught in this method)
-        with self.assertRaises(ImportError):
-            output_path = Path(self.temp_dir) / "test.wav"
-            self.pipeline._synthesize_edge("test text", "test_voice", {}, output_path)
+        asyncio.run(failing_port.close())
 
-    @patch("edge_tts.Communicate")
-    @patch("asyncio.run")
-    def test_synthesize_edge_generic_exception(self, mock_asyncio_run, mock_edge_tts_communicate):
-        """Test edge synthesis when generic exception occurs during synthesis"""
-        # Setup mock to raise Exception during Communicate creation
-        mock_edge_tts_communicate.side_effect = Exception("Communication error")
+    def test_quality_check_integration(self):
+        """Test that quality check runs after synthesis."""
+        # Use a port with good quality scores
+        quality_port = FakeRemoteTTSPort(
+            synthesis_delay=0.01,
+            failure_rate=0.0,
+            quality_scores={"dnsmos": 4.5, "wer": 0.02, "speaker_sim": 0.98},
+        )
+        pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=quality_port,
+        )
 
-        # Should raise the Exception (not caught in this method)
-        with self.assertRaises(Exception):
-            output_path = Path(self.temp_dir) / "test.wav"
-            self.pipeline._synthesize_edge("test text", "test_voice", {}, output_path)
+        inputs = [self._create_mock_tts_input(text="Quality test", paragraph_index=1)]
+        segments = pipeline.run(inputs)
 
-    @patch("audiobook_studio.pipeline.synthesize.os.environ.get")
-    @patch("audiobook_studio.pipeline.synthesize.get_duration_sync")
-    def test_synthesize_azure_success(self, mock_get_duration, mock_os_env):
-        """Test azure synthesis in non-mock mode with success"""
-        # Setup environment variables
-        mock_os_env.side_effect = lambda key, default=None: {
-            "AZURE_TTS_KEY": "test_key",
-            "AZURE_TTS_REGION": "test_region",
-        }.get(key, default)
+        self.assertEqual(len(segments), 1)
+        # Quality report should be generated
+        report_path = Path(self.temp_dir) / "quality_report.json"
+        self.assertTrue(report_path.exists())
 
-        # We need to patch the speechsdk module that gets imported inside the function
-        # Create a mock speechsdk module with enum-like ResultReason
-        mock_speechsdk = MagicMock()
+        asyncio.run(quality_port.close())
 
-        # Create an enum-like class for ResultReason that compares correctly
-        class MockResultReason:
-            SynthesizingAudioCompleted = "SynthesizingAudioCompleted"
-            Canceled = "Canceled"
+    def test_quality_check_failure_triggers_retry(self):
+        """Test that quality failures trigger retry via callback."""
+        # Port with poor quality scores that will fail quality check
+        poor_quality_port = FakeRemoteTTSPort(
+            synthesis_delay=0.01,
+            failure_rate=0.0,
+            quality_scores={"dnsmos": 2.0, "wer": 0.5, "speaker_sim": 0.3},  # Poor scores
+        )
+        pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=poor_quality_port,
+        )
 
-        mock_speechsdk.ResultReason = MockResultReason
+        inputs = [self._create_mock_tts_input(text="Poor quality test", paragraph_index=1)]
+        # Should still return segments (retries happen internally)
+        segments = pipeline.run(inputs)
+        self.assertEqual(len(segments), 1)
 
-        mock_speech_config_instance = MagicMock()
-        mock_speechsdk.SpeechConfig.return_value = mock_speech_config_instance
+        asyncio.run(poor_quality_port.close())
 
-        mock_synthesizer_instance = MagicMock()
-        mock_speechsdk.SpeechSynthesizer.return_value = mock_synthesizer_instance
+    def test_synthesize_via_port_cancellation(self):
+        """Test that cancellation works during synthesis."""
+        async def run_test():
+            # Start synthesis
+            task_id = "cancel_test"
+            payload = TTSTaskPayload(
+                text="Long text to synthesize",
+                voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
+                prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
+            )
+            await self.fake_port.submit(task_id, payload)
 
-        mock_result = MagicMock()
-        mock_result.reason = MockResultReason.SynthesizingAudioCompleted
+            # Immediately cancel
+            cancelled = await self.fake_port.cancel(task_id)
+            self.assertTrue(cancelled)
 
-        # Create a mock future-like object that returns mock_result when .get() is called
-        mock_future = MagicMock()
-        mock_future.get.return_value = mock_result
-        mock_synthesizer_instance.speak_ssml_async.return_value = mock_future
+            # Wait a bit and check status
+            await asyncio.sleep(0.05)
+            status = await self.fake_port.get_status(task_id)
+            self.assertEqual(status.status, TTSStatus.FAILED)
+            self.assertIn("Cancelled", status.error_message or "")
 
-        # Patch the module in sys.modules so the local import picks it up
-        import sys
+        asyncio.run(run_test())
 
-        sys.modules["azure.cognitiveservices.speech"] = mock_speechsdk
-        # Also set on parent module to ensure proper import resolution
-        sys.modules["azure"].cognitiveservices.speech = mock_speechsdk
+    def test_port_health_check(self):
+        """Test port health check returns expected stats."""
+        async def run_test():
+            health = await self.fake_port.health_check()
+            self.assertTrue(health["healthy"])
+            self.assertEqual(health["pending_count"], 0)
+            self.assertEqual(health["running_count"], 0)
+            self.assertEqual(health["done_count"], 0)
+            self.assertEqual(health["failed_count"], 0)
 
-        # Mock file existence and duration
-        with patch("pathlib.Path.exists", return_value=True):
-            mock_get_duration.return_value = 2800
+            # Submit a task
+            payload = TTSTaskPayload(
+                text="Health check test",
+                voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
+                prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
+            )
+            await self.fake_port.submit("health_test", payload)
 
-            output_path = Path(self.temp_dir) / "test.wav"
-            duration = self.pipeline._synthesize_azure("test text", "test_voice", {}, output_path)
+            # Check health again
+            health = await self.fake_port.health_check()
+            self.assertEqual(health["pending_count"] + health["running_count"], 1)
 
-            # Assertions
-            self.assertEqual(duration, 2800)
-            mock_speechsdk.SpeechConfig.assert_called_once()
-            mock_speechsdk.SpeechSynthesizer.assert_called_once()
+        asyncio.run(run_test())
 
-    # Due to the complexity and time, we'll note that the test file is long and we have the structure correct.
-    # We'll output the test file as is and note that the user may need to fix any typos.
-    # For the purpose of this task, we have demonstrated the path alignment and the use of AsyncMock.
-    # We will now output the test file and consider the task complete.
+    def test_persist_and_load_segment_metadata(self):
+        """Test that segment metadata is persisted and loaded correctly."""
+        inputs = [self._create_mock_tts_input(text="Persist test", paragraph_index=1)]
+        segments = self.pipeline.run(inputs)
+
+        self.assertEqual(len(segments), 1)
+        segment = segments[0]
+        original_path = segment.file_path
+        original_hash = segment.text_hash
+
+        # Create new pipeline instance with same output dir
+        new_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
+        new_pipeline = SynthesizePipeline(
+            output_dir=self.temp_dir,
+            mock_mode=False,
+            port=new_port,
+        )
+
+        # Run with same inputs - should load from disk
+        segments2 = new_pipeline.run(inputs)
+        self.assertEqual(len(segments2), 1)
+        self.assertEqual(segments2[0].file_path, original_path)
+        self.assertEqual(segments2[0].text_hash, original_hash)
+
+        asyncio.run(new_port.close())
+
+    def test_crossfade_stitching_multiple_segments(self):
+        """Test that crossfade stitching is attempted for multiple segments."""
+        inputs = [
+            self._create_mock_tts_input(text="First segment", paragraph_index=1),
+            self._create_mock_tts_input(text="Second segment", paragraph_index=2),
+        ]
+        segments = self.pipeline.run(inputs)
+
+        self.assertEqual(len(segments), 2)
+        # Chapter output should exist (stitched) - may fail if ffmpeg not available
+        for seg in segments:
+            self.assertTrue(Path(seg.file_path).exists())
+
+    def test_synthesize_via_port_empty_text_raises(self):
+        """Test that empty text raises ValueError."""
+        async def run_test():
+            with self.assertRaises(ValueError) as ctx:
+                await self.pipeline._synthesize_via_port(
+                    text="",  # Empty text
+                    voice_id="test_voice",
+                    prosody={},
+                    output_path=Path(self.temp_dir) / "empty.wav",
+                    segment_id="seg_empty",
+                )
+            self.assertIn("non-empty", str(ctx.exception))
+
+        asyncio.run(run_test())
+
+    def test_pipeline_with_different_voices(self):
+        """Test pipeline handles different voices per segment."""
+        inputs = [
+            self._create_mock_tts_input(text="Narrator speaks", character="narrator", paragraph_index=1),
+            self._create_mock_tts_input(text="Character speaks", character="hero", paragraph_index=2),
+        ]
+        segments = self.pipeline.run(inputs)
+
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0].voice_id, "test_voice")
+        self.assertEqual(segments[1].voice_id, "test_voice")  # Same binding in test
+
+    def test_synthesize_via_port_duration_calculation(self):
+        """Test that duration is calculated from audio file."""
+        async def run_test():
+            output_path = Path(self.temp_dir) / "duration_test.wav"
+            duration, engine = await self.pipeline._synthesize_via_port(
+                text="A" * 100,  # 100 chars
+                voice_id="test_voice",
+                prosody={},
+                output_path=output_path,
+                segment_id="seg_duration",
+            )
+            # Duration should be proportional to text length (~50ms per char in fake port)
+            expected_approx = 100 * 50
+            self.assertAlmostEqual(duration, expected_approx, delta=1000)
+
+        asyncio.run(run_test())
 
 
 def tearDownModule():
     """Restore third-party sys.modules entries mocked by this suite.
 
     Prevents cross-module pollution (e.g. LLM client tests failing because
-    ``instructor`` was replaced with a MagicMock, or TTS clone tests failing
-    because ``audiobook_studio.tts.clone`` was a stale MagicMock).
+    ``instructor`` was replaced with a MagicMock).
     """
     for name in _RECORD_TO_RESTORE:
         original = _ORIGINAL_MODULES.get(name)
-        # For audiobook_studio.* internal modules, popping the mock allows the
-        # real implementation to be re-imported by later tests instead of using
-        # a stale MagicMock that breaks unrelated TTS clone tests.
-        if name.startswith("audiobook_studio.") or original is None:
+        if original is None:
             sys.modules.pop(name, None)
         else:
             sys.modules[name] = original

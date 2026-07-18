@@ -483,50 +483,57 @@ class TestApplyTemplateBackground:
 class TestRerunDownstreamStages:
     """Tests for _rerun_downstream_stages function."""
 
-    def test_rerun_after_annotation(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_rerun_after_annotation(self, mock_db_session, sample_paragraph):
         """Should re-run edit, routing, synthesize, quality after annotate."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
-        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(mock_db_session, 1, "annotate", paragraphs)
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
+            await _rerun_downstream_stages(mock_db_session, 1, "annotate", paragraphs)
 
             # Should trigger downstream stages
             assert mock_run.call_count >= 3  # edit, routing, quality at minimum
+            assert mock_run.await_count >= 3
 
-    def test_rerun_after_edit(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_rerun_after_edit(self, mock_db_session, sample_paragraph):
         """Should re-run routing, synthesize, quality after edit."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
-        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(mock_db_session, 1, "edit_for_tts", paragraphs)
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
+            await _rerun_downstream_stages(mock_db_session, 1, "edit_for_tts", paragraphs)
 
             # Should trigger routing and quality
             assert mock_run.call_count >= 2
+            assert mock_run.await_count >= 2
 
-    def test_rerun_after_routing(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_rerun_after_routing(self, mock_db_session, sample_paragraph):
         """Should re-run quality after routing."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
-        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(mock_db_session, 1, "routing", paragraphs)
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
+            await _rerun_downstream_stages(mock_db_session, 1, "routing", paragraphs)
 
             # Should trigger quality
             assert mock_run.call_count >= 1
+            assert mock_run.await_count >= 1
 
-    def test_rerun_after_quality(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_rerun_after_quality(self, mock_db_session, sample_paragraph):
         """Should not re-run any stage after quality (final stage)."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
-        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(mock_db_session, 1, "quality", paragraphs)
+        with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
+            await _rerun_downstream_stages(mock_db_session, 1, "quality", paragraphs)
 
             # No downstream stages after quality
             mock_run.assert_not_called()

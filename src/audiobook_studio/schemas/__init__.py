@@ -25,8 +25,10 @@ from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourc
 from .extraction import ExtractionInput, ExtractionResult
 from .feedback import FeedbackRecord
 from .feedback_analysis import FeedbackAnalysis
+from .judge import PairwiseDimensionScore, PairwiseJudgment
 from .paragraph import Paragraph, ParagraphAnnotation, ParagraphAnnotationInput
 from .project import Project
+from .review import FixCommand, JsonTruncationCheck, ReviewerInput, ReviewerJudgment, TagConsistencyCheck, VoiceBindingCheck
 from .quality import FixSuggestion, Quality, QualityJudgment
 from .routing import Routing
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
@@ -58,9 +60,19 @@ __all__ = [
     # 环节⑥
     "QualityJudgment",
     "Quality",
+    # 环节⑦ (Reviewer Agent - Module 4.1)
+    "ReviewerInput",
+    "ReviewerJudgment",
+    "VoiceBindingCheck",
+    "JsonTruncationCheck",
+    "TagConsistencyCheck",
+    "FixCommand",
     # 反馈回路
     "FeedbackRecord",
     "FeedbackAnalysis",
+    # Judge (A/B 测试)
+    "PairwiseJudgment",
+    "PairwiseDimensionScore",
     # 章节源数据契约 (黄金数据集)
     "ChapterSource",
     "ChapterSourceCollection",

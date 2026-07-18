@@ -1,6 +1,7 @@
 """TTS Voice enumeration API endpoint."""
 
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -52,6 +53,24 @@ class TTSVoicesResponse(BaseModel):
     total_voices: int = 0
     default_engine: str = "kokoro"
     default_voice: str = "kokoro_narrator"
+
+
+class TTSStatusResponse(BaseModel):
+    """TTS engine status response for dynamic frontend adaptation."""
+
+    local_engines_available: bool = Field(..., description="Whether any local TTS engine is available")
+    kokoro_available: bool = Field(False, description="Kokoro ONNX local engine availability")
+    kokoro_model_loaded: bool = Field(False, description="Whether Kokoro model is loaded in memory")
+    voxcpm2_available: bool = Field(False, description="VoxCPM2 local engine availability")
+    voxcpm2_model_loaded: bool = Field(False, description="Whether VoxCPM2 model is loaded")
+    sherpa_onnx_available: bool = Field(False, description="Sherpa-ONNX local engine availability")
+    cloud_engines_available: bool = Field(..., description="Whether any cloud TTS engine is available")
+    edge_tts_available: bool = Field(True, description="Edge-TTS (free cloud) availability")
+    azure_available: bool = Field(False, description="Azure Cognitive Services TTS availability")
+    gcp_available: bool = Field(False, description="Google Cloud TTS availability")
+    recommended_engine: str = Field(..., description="Recommended engine based on availability")
+    recommended_voice: str = Field(..., description="Recommended voice for the recommended engine")
+    enable_local_tts_env: bool = Field(..., description="Value of ENABLE_LOCAL_TTS environment variable")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,13 +215,18 @@ async def list_tts_voices(
     - Voice list with metadata
     - Default engine/voice recommendations
     """
+    import os
+
+    # Check ENABLE_LOCAL_TTS environment variable
+    enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+
     engines = {}
 
-    # Kokoro (local, always available)
+    # Kokoro (local, available when ENABLE_LOCAL_TTS=true)
     engines["kokoro"] = TTSEngine(
         id="kokoro",
         name="Kokoro ONNX",
-        available=True,
+        available=enable_local_tts,
         voices=KOKORO_VOICES,
         priority=1,
         supports_prosody=True,
@@ -245,7 +269,7 @@ async def list_tts_voices(
     )
 
     # VoxCPM2 (local)
-    voxcpm_available = False  # TODO: Check actual availability
+    voxcpm_available = enable_local_tts  # Only available when local TTS enabled
     engines["voxcpm2"] = TTSEngine(
         id="voxcpm2",
         name="VoxCPM2",
@@ -268,11 +292,72 @@ async def list_tts_voices(
     # Calculate total voices
     total_voices = sum(len(e.voices) for e in engines.values())
 
+    # Determine default engine based on ENABLE_LOCAL_TTS
+    default_engine = "kokoro" if enable_local_tts else "edge_tts"
+    default_voice = "kokoro_narrator" if enable_local_tts else "zh-CN-XiaoxiaoNeural"
+
     return TTSVoicesResponse(
         engines=engines,
         total_voices=total_voices,
-        default_engine="kokoro",
-        default_voice="kokoro_narrator",
+        default_engine=default_engine,
+        default_voice=default_voice,
+    )
+
+
+@router.get("/status", response_model=TTSStatusResponse)
+async def get_tts_status():
+    """
+    Get TTS engine status for dynamic frontend adaptation.
+
+    This endpoint allows the frontend to dynamically show/hide
+    local offline engine options based on actual availability.
+
+    Returns:
+        TTSStatusResponse with engine availability and recommendations
+    """
+    import os
+
+    # Check ENABLE_LOCAL_TTS environment variable
+    enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+
+    # Check local engine availability
+    # In production, these would check actual model loading status
+    kokoro_available = enable_local_tts  # Kokoro available if local TTS enabled
+    kokoro_model_loaded = enable_local_tts  # Simplified: assume loaded if enabled
+    voxcpm2_available = False  # VoxCPM2 not yet implemented locally
+    voxcpm2_model_loaded = False
+    sherpa_onnx_available = False  # Sherpa-ONNX not yet implemented
+
+    local_engines_available = kokoro_available or voxcpm2_available or sherpa_onnx_available
+
+    # Cloud engines (Edge-TTS is always available - free, no auth)
+    edge_tts_available = True
+    azure_available = False  # TODO: Check actual Azure credentials
+    gcp_available = False  # TODO: Check actual GCP credentials
+    cloud_engines_available = edge_tts_available or azure_available or gcp_available
+
+    # Determine recommended engine based on ENABLE_LOCAL_TTS and availability
+    if enable_local_tts and local_engines_available:
+        recommended_engine = "kokoro"
+        recommended_voice = "kokoro_narrator"
+    else:
+        recommended_engine = "edge_tts"
+        recommended_voice = "zh-CN-XiaoxiaoNeural"
+
+    return TTSStatusResponse(
+        local_engines_available=local_engines_available,
+        kokoro_available=kokoro_available,
+        kokoro_model_loaded=kokoro_model_loaded,
+        voxcpm2_available=voxcpm2_available,
+        voxcpm2_model_loaded=voxcpm2_model_loaded,
+        sherpa_onnx_available=sherpa_onnx_available,
+        cloud_engines_available=cloud_engines_available,
+        edge_tts_available=edge_tts_available,
+        azure_available=azure_available,
+        gcp_available=gcp_available,
+        recommended_engine=recommended_engine,
+        recommended_voice=recommended_voice,
+        enable_local_tts_env=enable_local_tts,
     )
 
 

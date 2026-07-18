@@ -3,7 +3,7 @@
 > **本文件是项目的唯一权威状态文档（Single Source of Truth）。**
 > 所有 Sprint 进度、模块完成状态、覆盖率指标、架构决策均以此文件为准。
 
-> **最后更新**: 2026-07-14
+> **最后更新**: 2026-07-16
 
 ### 2026-07-01 端到端烟检完成
 
@@ -84,6 +84,14 @@
 | 2026-07-01 | `batch_exporter.py`, `m4b.py` | 导出模块 path/格式/编码问题 | 修复路径、格式、ffmpeg 命令 |
 | 2026-07-11 | 远程 TTS 架构 | 四云架构落地 (Modal/Kaggle/Lightning/Baidu) | `src/voxcpm/`, `worker/` 完整落地；Modal Worker / Kaggle Worker / Lightning Worker / 百度 Paddle Worker 四云并行 |
 | 2026-07-12 | 远程 VoxCPM2 生产级弹性系统 | Circuit Breaker / Rate Limiter / 重试指数退避 / 熔断恢复 | `src/audiobook_studio/tts/circuit_breaker.py`, `rate_limiter.py`, `remote_voxcpm2_client.py` 生产级实现 |
+| 2026-07-15 | `run_pipeline.py` (Module 4.2 BGM CLI) | Bug A: 章节级(:503)/段落级(:552)直接调 async 编排器无 `await` 返回协程；Bug B: `MixConfig` 传入 schema 不支持字段(`speech_volume_db`/`fade_*_ms`)；Bug C: BGM 块局部 `from …database import SessionLocal` 致其整函数局部化，函数顶部 `db=SessionLocal()` 在到达 BGM 块前即 `UnboundLocalError` | Bug A: 两处 `asyncio.run(orchestrator_run_pipeline(…))` 包裹(沿用 synthesize.py 等约定)；Bug B: `MixConfig` 仅传 `bgm_volume_db`、bgm 路径交 `ExportJob.bgm_path`；Bug C: 删局部重导入、改用模块顶部已导入的 `SessionLocal` |
+| 2026-07-15 | `tests/unit/test_run_pipeline_bgm.py` (Module 4.2, 新增) | BGM CLI 接线缺行为测试 | 6 tests：CLI 解析 / `main()` 透传 / 导出块集成；真实非 mock `MixConfig`+`ExportJob` 锁 Bug B、`AsyncMock`+`asyncio.run` 锁 Bug A |
+| 2026-07-15 | `tests/unit/test_orchestrator.py` (Task 16) | 测试以同步调用触发 async 编排器、未用 async/await | 改 `async` 测试 + `await`；60 tests passed、无绿→红回归 |
+| 2026-07-16 | `tests/unit/test_run_pipeline.py::test_runs_extract_analyze_only` | 夹具把章节文件放 `tmp_path` 根目录，与 `_get_chapter_files` 的 `MOCK_DATA_DIR/<书名>/` 契约不符致编排器永不触发；普通 `MagicMock` 不可 await，`asyncio.run` 抛 `TypeError` 被章节级 `except` 吞掉(乐天派绿) | 文件改放 `tmp_path/红楼梦/` 子目录(与 `test_empty_chapter_file_skipped` 同型)；mock 改 `AsyncMock` 令 `asyncio.run` 真正驱动协程；全集 104→103 failed、3650 passed、errors 30→30(零附带回归) |
+| 2026-07-16 | `golden.py:477` | `run_golden_regression` (async) 内调用 `run_stage` 缺 `await`，协程被创建后从未驱动 | 加 `await run_stage(...)`，宿主本就为 async def，单行修复 |
+| 2026-07-16 | `templates.py:572,610` | `_rerun_downstream_stages` 为 sync 却调用 async `run_stage` 无 await；生产路径在 `BackgroundTasks` 事件循环中运行，不能用 `asyncio.run` 桥接 | 整链 async 化：`def`→`async def`、调用点加 `await`；生产调用方 `_apply_template_background` 本为 async 已在 loop 中；级联 11 个测试改 `@pytest.mark.asyncio` + `AsyncMock` + `await_count` 回归锁 |
+| 2026-07-16 | `tests/test_templates.py`, `tests/unit/test_templates_business.py` | 对应上述 async 化的测试同步跟进 | 4 + 10 = 14 个测试全绿，`await_count` 断言确保若有人删 `await` 即红 |
+| 2026-07-16 | `run_pipeline.py` (GC Integration) | 导出成功后自动清理临时中间音频文件以回收 ~90% 磁盘空间 | 新增 `--keep-tmp` CLI 参数；引入 `cleanup_after_export` 从 `gc_manager`；导出完成后若未指定 `--keep-tmp` 自动调用清理，保留最终导出产物(.m4b/.srt等)，删除段落级 WAV/MP3 中间文件；13 个 GC 测试全绿 |
 
 ---
 

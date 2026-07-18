@@ -420,6 +420,31 @@ export async function cancelAutoRun(projectId: number): Promise<{ action: string
   return data
 }
 
+// ── Auto-Run Autopilot ────────────────────────────────────────────────────
+
+export interface AutopilotConfig {
+  target_difficulty: string
+  primary_voice_preference: string
+  speech_rate_preference: string
+  cost_limit_usd: number | null
+  quality_threshold: number
+  max_regeneration_attempts: number
+  enable_background_music: boolean
+  enable_sfx: boolean
+  reasoning: string
+  confidence: number
+}
+
+export async function startAutopilot(projectId: number): Promise<AutoRunStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/auto-run/autopilot`)
+  return data
+}
+
+export async function previewAutopilotConfig(projectId: number): Promise<AutopilotConfig> {
+  const { data } = await api.get(`/api/projects/${projectId}/auto-run/autopilot/preview`)
+  return data
+}
+
 // ── Voice Cloning ──────────────────────────────────────────────────────
 
 export interface CloneVoiceRequest {
@@ -490,6 +515,79 @@ export function getPreviewAudioUrl(voiceId: string): string {
   return `${API_BASE}/api/tts/voices/preview/${voiceId}`
 }
 
+// ── TTS Voices & Status ──────────────────────────────────────────────────
+
+export interface TTSVoice {
+  id: string
+  name: string
+  gender: string
+  language: string
+  description?: string
+  sample_url?: string
+}
+
+export interface TTSEngine {
+  id: string
+  name: string
+  available: boolean
+  voices: TTSVoice[]
+  priority: number
+  supports_prosody: boolean
+  supports_ssml: boolean
+}
+
+export interface TTSVoicesResponse {
+  engines: Record<string, TTSEngine>
+  total_voices: number
+  default_engine: string
+  default_voice: string
+}
+
+export interface TTSStatusResponse {
+  local_engines_available: boolean
+  kokoro_available: boolean
+  kokoro_model_loaded: boolean
+  voxcpm2_available: boolean
+  voxcpm2_model_loaded: boolean
+  sherpa_onnx_available: boolean
+  cloud_engines_available: boolean
+  edge_tts_available: boolean
+  azure_available: boolean
+  gcp_available: boolean
+  recommended_engine: string
+  recommended_voice: string
+  enable_local_tts_env: boolean
+}
+
+export async function fetchTTSVoices(
+  includeUnavailable = false,
+  language?: string,
+  gender?: string,
+): Promise<TTSVoicesResponse> {
+  const params: Record<string, string | boolean> = {}
+  if (includeUnavailable) params.include_unavailable = 'true'
+  if (language) params.language = language
+  if (gender) params.gender = gender
+  const { data } = await api.get('/api/tts/voices', { params })
+  return data
+}
+
+export async function fetchTTSStatus(): Promise<TTSStatusResponse> {
+  const { data } = await api.get('/api/tts/status')
+  return data
+}
+
+export async function getRecommendedVoices(
+  context?: string,
+  language = 'zh-CN',
+): Promise<{ context: string; recommended: TTSVoice[]; count: number }> {
+  const params: Record<string, string> = {}
+  if (context) params.context = context
+  if (language) params.language = language
+  const { data } = await api.get('/api/tts/voices/recommended', { params })
+  return data
+}
+
 // ── Translation ─────────────────────────────────────────────────────────
 
 export interface TranslationLanguage {
@@ -538,6 +636,96 @@ export async function getTranslationStatus(projectId: number): Promise<Translati
 
 export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
   const { data } = await api.get('/api/projects/1/pipeline/translate/languages')
+  return data
+}
+
+// ── Monitoring / Telemetry ────────────────────────────────────────────────
+
+export interface ProjectMetrics {
+  metadata: {
+    project_id: number
+    pipeline_id: string
+    started_at: string
+    ended_at: string | null
+    duration_ms: number
+    success: boolean
+  }
+  cost_accounting: {
+    total_cost_usd: number
+    providers: Record<string, {
+      provider: string
+      model: string
+      prompt_tokens: number
+      completion_tokens: number
+      cost_usd: number
+      call_count: number
+      avg_latency_ms: number
+      success_rate: number
+    }>
+  }
+  latency_profiles: {
+    synthesis_rate_ratio: number
+    real_time_factor: number
+    total_audio_duration_ms: number
+    stage_wall_times_ms: Record<string, { duration_ms: number; success: boolean }>
+  }
+  resilience_metrics: {
+    llm: { total_calls: number; total_retries: number; total_fallbacks: number }
+    tts: { total_segments: number; successful_segments: number; failed_segments: number }
+  }
+}
+
+export interface MetricsHistoryItem {
+  file: string
+  timestamp: string
+  duration_ms: number
+  success: boolean
+  total_cost_usd: number
+  synthesis_rate_ratio: number
+}
+
+export interface MetricsHistoryResponse {
+  history: MetricsHistoryItem[]
+}
+
+export interface ProjectWithMetrics {
+  project_id: number
+  title: string
+  latest_metrics: string
+  last_updated: string
+}
+
+export interface ProjectsWithMetricsResponse {
+  projects: ProjectWithMetrics[]
+}
+
+export async function fetchProjectMetrics(
+  projectId: number,
+  chapterIndex?: number
+): Promise<ProjectMetrics> {
+  const params: Record<string, number> = {}
+  if (chapterIndex !== undefined) params.chapter_index = chapterIndex
+  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics`, { params })
+  return data
+}
+
+export async function fetchLatestProjectMetrics(projectId: number): Promise<ProjectMetrics> {
+  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics/latest`)
+  return data
+}
+
+export async function fetchMetricsHistory(
+  projectId: number,
+  limit = 30
+): Promise<MetricsHistoryResponse> {
+  const { data } = await api.get<MetricsHistoryResponse>(`/monitoring/projects/${projectId}/metrics/history`, {
+    params: { limit }
+  })
+  return data
+}
+
+export async function fetchProjectsWithMetrics(): Promise<ProjectsWithMetricsResponse> {
+  const { data } = await api.get<ProjectsWithMetricsResponse>('/monitoring/projects')
   return data
 }
 

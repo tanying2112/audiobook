@@ -1,6 +1,6 @@
 """File Upload API for Audiobook Studio.
 
-Provides endpoints for uploading source files (PDF, EPUB, DOCX, TXT)
+Provides endpoints for uploading source files (PDF, EPUB, DOCX, TXT, PNG, JPG, TIFF, BMP, WebP)
 with async text extraction and WebSocket progress updates.
 """
 
@@ -39,9 +39,15 @@ ALLOWED_MIME_TYPES = {
     "application/epub+zip",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/bmp",
+    "image/webp",
 }
 
-ALLOWED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
 
 # ── Request/Response Models ────────────────────────────────────────────────

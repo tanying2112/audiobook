@@ -47,6 +47,21 @@ from .metrics_exporter import (
     get_metrics_for_ci,
 )
 from .offline_monitoring import OfflineMonitor, create_offline_monitor
+from .telemetry import (
+    TelemetryCollector,
+    PipelineTelemetry,
+    ProviderMetrics,
+    TTSMetrics,
+    StageTiming,
+    init_telemetry_collector,
+    get_telemetry_collector,
+    record_llm_call,
+    record_tts_segment,
+    record_tts_retry,
+    record_tts_fallback,
+    record_tts_quality_check,
+    shutdown_telemetry,
+)
 
 __all__ = [
     "BaselineRecorder",
@@ -102,4 +117,18 @@ __all__ = [
     "collect_logs",
     "compute_summary",
     "format_dashboard",
+    # Telemetry
+    "TelemetryCollector",
+    "PipelineTelemetry",
+    "ProviderMetrics",
+    "TTSMetrics",
+    "StageTiming",
+    "init_telemetry_collector",
+    "get_telemetry_collector",
+    "record_llm_call",
+    "record_tts_segment",
+    "record_tts_retry",
+    "record_tts_fallback",
+    "record_tts_quality_check",
+    "shutdown_telemetry",
 ]

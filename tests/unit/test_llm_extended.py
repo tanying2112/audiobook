@@ -256,7 +256,12 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test", api_base="http://custom.api")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 10, "completion_tokens": 5}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -273,7 +278,12 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="gemini-2.0-flash")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1000, "completion_tokens": 500}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 1000, "completion_tokens": 500}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -289,7 +299,12 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 1, "completion_tokens": 1}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             msgs = [

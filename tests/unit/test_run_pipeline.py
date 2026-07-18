@@ -9,7 +9,7 @@ module loads under pytest's ``src`` layout.
 import argparse
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -362,16 +362,29 @@ class TestRunBookPipeline:
                 rp.orchestrator_run_pipeline.assert_not_called()
 
     def test_runs_extract_analyze_only(self, rp, tmp_path):
-        (tmp_path / "chapter_01.txt").write_text("hello world", encoding="utf-8")
+        # _get_chapter_files resolves chapter files under
+        # ``MOCK_DATA_DIR/<book_name>/chapter_*.txt`` (run_pipeline.py:348), so the
+        # fixture must mirror that per-book subdirectory layout — placing the file
+        # at the tmp_path root left _get_chapter_files returning [], so the chapter
+        # loop (and thus the orchestrator call) never ran.
+        book_dir = tmp_path / "红楼梦"
+        book_dir.mkdir()
+        (book_dir / "chapter_01.txt").write_text("hello world", encoding="utf-8")
         with patch.object(rp, "MOCK_DATA_DIR", tmp_path):
             mock_db = MagicMock()
             mock_proj = MagicMock(id=42)
             mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
             # Chapter query returns None → function skips paragraph-level pipeline
             mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+            # run_book_pipeline drives the async orchestrator through asyncio.run,
+            # so the stand-in must be awaitable: a plain MagicMock return_value would
+            # make asyncio.run raise TypeError (not a coroutine), which the
+            # chapter-level ``except Exception`` would silently swallow — letting the
+            # assertion pass while the async path never actually ran.
+            mock_orch = AsyncMock(return_value=[{"stage": "extract"}])
             with (
                 patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline", return_value=[{"stage": "extract"}]) as mock_orch,
+                patch.object(rp, "orchestrator_run_pipeline", new=mock_orch),
             ):
                 rp.run_book_pipeline("红楼梦", stages=["extract", "analyze"])
                 # orchestrator called once for chapter-level

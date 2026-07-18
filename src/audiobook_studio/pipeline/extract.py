@@ -1,6 +1,6 @@
 """Pipeline Stage 1: Extract - Text extraction with OCR/language detection.
 
-Supports PDF, EPUB, DOCX, TXT with multi-modal LLM fallback.
+Supports PDF, EPUB, DOCX, TXT, and image formats (PNG, JPG, TIFF, BMP, WebP) with OCR.
 Outputs ExtractionResult with raw_text, language, page stats, OCR info.
 """
 
@@ -16,10 +16,19 @@ from docx import Document
 from ebooklib import epub
 
 from ..llm import LLMRouter, create_router
-from ..monitoring import record_stage_performance
 from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
+
+# Optional OCR dependencies
+try:
+    import pytesseract
+    from PIL import Image
+
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    logger.warning("OCR dependencies (pytesseract, Pillow) not available. Image OCR disabled.")
 
 
 class ExtractPipeline:
@@ -130,6 +139,27 @@ class ExtractPipeline:
                 text = f.read()
             return text.strip(), 1, False, 0.0
 
+    def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
+        """Extract text from image using OCR (requires pytesseract + Pillow)."""
+        if not OCR_AVAILABLE:
+            raise ValueError(
+                "Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow"
+            )
+
+        try:
+            image = Image.open(file_path)
+            # Convert to RGB if needed (for RGBA images)
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+
+            # Use pytesseract for OCR
+            text = pytesseract.image_to_string(image, lang="chi_sim+eng")
+
+            return text.strip(), 1, True, 1.0
+        except Exception as e:
+            logger.error(f"Image OCR failed: {e}")
+            return "", 1, False, 0.0
+
     def _detect_language(self, text: str) -> str:
         """Simple language detection."""
         # In production: use langdetect or fasttext
@@ -141,6 +171,7 @@ class ExtractPipeline:
 
     def run(self, input_data: ExtractionInput) -> ExtractionResult:
         """Execute extraction pipeline."""
+        from ..monitoring import record_stage_performance
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
 
@@ -185,6 +216,15 @@ class ExtractPipeline:
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_docx(file_path)
         elif mime_type == "text/plain":
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_txt(file_path)
+        elif mime_type in (
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/tiff",
+            "image/bmp",
+            "image/webp",
+        ):
+            raw_text, page_count, has_ocr, ocr_ratio = self._extract_image(file_path)
         else:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 

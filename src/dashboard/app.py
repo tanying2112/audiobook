@@ -11,6 +11,7 @@ Streamlit-based dashboard displaying:
 
 import json
 import os
+import requests
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -34,6 +35,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_AUTH = os.getenv("REDIS_AUTH", "")
 REFRESH_INTERVAL = int(os.getenv("DASHBOARD_REFRESH", "5"))  # seconds
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")  # For quality report API calls
 
 # Platform routing priority (for display ordering)
 PLATFORM_ORDER = ["modal", "baidu", "lightning", "kaggle"]
@@ -58,6 +60,7 @@ class DashboardConfig:
     redis_port: int = REDIS_PORT
     redis_auth: str = REDIS_AUTH
     refresh_interval: int = REFRESH_INTERVAL
+    api_base_url: str = API_BASE_URL
 
 
 @st.cache_resource
@@ -498,17 +501,8 @@ tts:idempotency:{key} (string)
 
 # --- Main App ---
 
-def main():
-    config = DashboardConfig()
-    redis_client = get_redis_client(config)
-    now = time.time()
-
-    # Sidebar
-    render_sidebar(config)
-
-    # Header
-    render_header()
-
+def render_fleet_monitor(config: DashboardConfig, redis_client: redis.Redis, now: float):
+    """Render the Fleet Monitor tab content."""
     # Fetch data
     with st.spinner("Fetching fleet telemetry..."):
         workers = scan_worker_heartbeats(redis_client)
@@ -540,6 +534,38 @@ def main():
         render_worker_table(workers, now)
         render_task_queue_preview(redis_client)
 
+
+def main():
+    config = DashboardConfig()
+    redis_client = get_redis_client(config)
+    now = time.time()
+
+    # Sidebar
+    render_sidebar(config)
+
+    # Header with tabs
+    st.title("🎙️ Hermes Dashboard — VoxCPM2 Fleet Monitor")
+
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col2:
+        auto_refresh = st.checkbox("Auto-refresh", value=True)
+    with col3:
+        if st.button("🔄 Refresh Now"):
+            st.rerun()
+
+    if auto_refresh:
+        time.sleep(REFRESH_INTERVAL)
+        st.rerun()
+
+    # Tab layout
+    tab1, tab2 = st.tabs(["📊 Fleet Monitor", "🔍 Quality Console"])
+
+    with tab1:
+        render_fleet_monitor(config, redis_client, now)
+
+    with tab2:
+        render_quality_console(config)
+
     # Footer
     st.divider()
     st.caption(f"Last updated: {time.strftime('%H:%M:%S')} | "
@@ -549,3 +575,159 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# --- Quality Console Tab ---
+
+
+def render_quality_console(config: DashboardConfig):
+    """Render the Quality Console tab for audio quality reports."""
+    st.subheader("🔍 Quality Console — Audio Quality Reports")
+
+    # Project selector
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        project_id = st.number_input(
+            "Project ID",
+            min_value=1,
+            value=1,
+            step=1,
+            help="Enter the project ID to view quality report",
+        )
+
+    with col2:
+        chapter_index = st.number_input(
+            "Chapter Index",
+            min_value=0,
+            value=0,
+            step=1,
+            help="Chapter index (0 for latest/default)",
+        )
+
+    if st.button("🔄 Fetch Quality Report", type="primary"):
+        st.session_state["fetch_quality"] = True
+        st.session_state["quality_project_id"] = project_id
+        st.session_state["quality_chapter"] = chapter_index
+
+    # Fetch and display quality report
+    if st.session_state.get("fetch_quality", False):
+        pid = st.session_state.get("quality_project_id", project_id)
+        ch = st.session_state.get("quality_chapter", chapter_index)
+
+        with st.spinner(f"Fetching quality report for project {pid}, chapter {ch}..."):
+            try:
+                response = requests.get(
+                    f"{config.api_base_url}/api/projects/{pid}/quality-report",
+                    params={"chapter_index": ch},
+                    timeout=10,
+                )
+
+                if response.status_code == 404:
+                    st.warning(
+                        f"No quality report found for project {pid}, chapter {ch}. "
+                        "Run the synthesis pipeline first to generate quality reports."
+                    )
+                    st.session_state["fetch_quality"] = False
+                    return
+
+                response.raise_for_status()
+                report = response.json()
+
+                st.session_state["quality_report"] = report
+                st.session_state["fetch_quality"] = False
+
+            except requests.exceptions.ConnectionError:
+                st.error(
+                    f"Cannot connect to API at {config.api_base_url}. "
+                    "Make sure the FastAPI server is running."
+                )
+                st.session_state["fetch_quality"] = False
+                return
+            except requests.exceptions.RequestException as e:
+                st.error(f"Failed to fetch quality report: {e}")
+                st.session_state["fetch_quality"] = False
+                return
+
+    # Display quality report if available
+    if "quality_report" in st.session_state:
+        report = st.session_state["quality_report"]
+
+        # Overall status banner
+        if report["overall_passed"]:
+            st.success(f"✅ **All Checks Passed** — {report['passed_segments']}/{report['total_segments']} segments healthy")
+        else:
+            st.error(f"❌ **Quality Issues Detected** — {report['failed_segments']}/{report['total_segments']} segments failed")
+
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Segments", report["total_segments"])
+        with col2:
+            st.metric("Passed", report["passed_segments"], delta=None)
+        with col3:
+            st.metric("Failed", report["failed_segments"], delta_color="inverse")
+        with col4:
+            pass_rate = report["passed_segments"] / max(report["total_segments"], 1)
+            st.metric("Pass Rate", f"{pass_rate:.1%}")
+
+        st.divider()
+
+        # Segment details table
+        st.subheader("📋 Segment Quality Details")
+
+        # Create dataframe for display
+        import pandas as pd
+
+        rows = []
+        for seg in report["segment_results"]:
+            status_icon = "✅" if seg["passed"] else "❌"
+            issues_str = "; ".join(seg["issues"]) if seg["issues"] else "—"
+
+            rows.append({
+                "Status": status_icon,
+                "Segment ID": seg["segment_id"],
+                "File": seg["file_path"].split("/")[-1] if seg["file_path"] else "N/A",
+                "Duration (ms)": seg["duration_ms"],
+                "Silence Ratio": f"{seg['silence_ratio']:.1%}",
+                "Silence Detected": "⚠️" if seg["silence_detected"] else "✅",
+                "Clipping": "⚠️" if seg["clipping_detected"] else "✅",
+                "Peak (dB)": f"{seg['peak_db']:.1f}",
+                "RMS (dB)": f"{seg['rms_db']:.1f}",
+                "Corruption": "⚠️" if seg["corruption_detected"] else "✅",
+                "Issues": issues_str,
+            })
+
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Re-synthesize button for failed segments
+        failed_segments = [s for s in report["segment_results"] if not s["passed"]]
+        if failed_segments:
+            st.divider()
+            st.subheader("🔧 Manual Re-synthesis")
+
+            selected_segment = st.selectbox(
+                "Select failed segment to re-synthesize:",
+                options=[s["segment_id"] for s in failed_segments],
+                format_func=lambda x: f"{x} — {next(s['issues'][0] for s in failed_segments if s['segment_id'] == x)}",
+            )
+
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if st.button("🔁 Re-synthesize Selected", type="secondary"):
+                    st.info(f"Re-synthesis requested for {selected_segment}. This would trigger the pipeline to re-generate this segment.")
+                    # TODO: Implement actual re-synthesis via API call
+                    st.warning("Re-synthesis API integration pending. Use the pipeline CLI for now: `python -m audiobook_studio.run_pipeline ...`")
+            with col2:
+                st.caption("Click to trigger re-synthesis of the selected failed segment via the pipeline.")
+
+        # Raw JSON download
+        st.divider()
+        st.download_button(
+            label="📥 Download Full Report (JSON)",
+            data=json.dumps(report, ensure_ascii=False, indent=2),
+            file_name=f"quality_report_p{report['project_id']}_ch{report['chapter_index']}.json",
+            mime="application/json",
+        )

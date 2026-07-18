@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .port import PortFactory, RemoteTTSPort
+from .remote_voxcpm2_port import RemoteVoxCPM2Port, create_remote_voxcpm2_port
 
 
 # Global port instance (lazy initialization)
@@ -29,7 +30,7 @@ def make_port_factory(
     """Create a PortFactory for the given implementation.
 
     Args:
-        implementation: One of "auto", "fake", "mock", "hermes".
+        implementation: One of "auto", "fake", "mock", "voxcpm2", "hermes".
         **kwargs: Additional arguments passed to the port constructor.
 
     Returns:
@@ -50,6 +51,9 @@ def _create_port(implementation: str, **kwargs) -> RemoteTTSPort:
         return FakeRemoteTTSPort(**kwargs)
     elif impl == "mock":
         return MockRemoteTTSPort(**kwargs)
+    elif impl == "voxcpm2":
+        # Real Remote VoxCPM2 implementation
+        return create_remote_voxcpm2_port(**kwargs)
     elif impl == "hermes":
         # Real Hermes implementation (Redis + R2)
         # TODO: Import and return HermesPort when available
@@ -60,9 +64,20 @@ def _create_port(implementation: str, **kwargs) -> RemoteTTSPort:
             return FakeRemoteTTSPort(**kwargs)
         elif os.environ.get("TEST_MODE", "false").lower() == "true":
             return FakeRemoteTTSPort(**kwargs)
+        elif os.environ.get("VOXCPM2_ENDPOINT"):
+            # Use real Remote VoxCPM2 when endpoint is configured
+            return create_remote_voxcpm2_port(**kwargs)
         else:
-            # Default to fake for now; replace with Hermes when available
-            return FakeRemoteTTSPort(**kwargs)
+            # Check ENABLE_LOCAL_TTS for local vs cloud engine selection
+            enable_local = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+            if enable_local:
+                # Use local Kokoro engine via fake port (simulates local synthesis)
+                # In production, this would use a real local engine port
+                return FakeRemoteTTSPort(synthesis_delay=0.5, **kwargs)
+            else:
+                # Use cloud Edge-TTS via fake port (simulates cloud synthesis)
+                # In production, this would use a real cloud engine port
+                return FakeRemoteTTSPort(synthesis_delay=1.0, **kwargs)
     else:
         raise ValueError(f"Unknown port implementation: {implementation}")
 
@@ -74,7 +89,7 @@ def create_port(
     """Create a new RemoteTTSPort instance.
 
     Args:
-        implementation: One of "auto", "fake", "mock", "hermes".
+        implementation: One of "auto", "fake", "mock", "voxcpm2", "hermes".
         **kwargs: Arguments passed to the port constructor.
 
     Returns:

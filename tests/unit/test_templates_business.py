@@ -470,17 +470,21 @@ class TestApplyQualityTemplateBusiness:
 # _rerun_downstream_stages
 # ===========================================================================
 
+import pytest
+from unittest.mock import AsyncMock
+
 
 class TestRerunDownstreamStages:
     """Test _rerun_downstream_stages maps stages correctly."""
 
-    def test_annotate_triggers_edit_and_beyond(self):
+    @pytest.mark.asyncio
+    async def test_annotate_triggers_edit_and_beyond(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "annotate", [para])
+            await _rerun_downstream_stages(db, 10, "annotate", [para])
             # Should call: edit, audio_postprocess, synthesize, quality
             assert mock_run.call_count == 4
             called_stages = [call.args[0] for call in mock_run.call_args_list]
@@ -489,56 +493,62 @@ class TestRerunDownstreamStages:
             assert "synthesize" in called_stages
             assert "quality" in called_stages
 
-    def test_edit_for_tts_triggers_synthesize_and_quality(self):
+    @pytest.mark.asyncio
+    async def test_edit_for_tts_triggers_synthesize_and_quality(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "edit_for_tts", [para])
+            await _rerun_downstream_stages(db, 10, "edit_for_tts", [para])
             assert mock_run.call_count == 2
             called_stages = [call.args[0] for call in mock_run.call_args_list]
             assert "synthesize" in called_stages
             assert "quality" in called_stages
 
-    def test_routing_triggers_synthesize_and_quality(self):
+    @pytest.mark.asyncio
+    async def test_routing_triggers_synthesize_and_quality(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "routing", [para])
+            await _rerun_downstream_stages(db, 10, "routing", [para])
             assert mock_run.call_count == 2
 
-    def test_quality_triggers_nothing(self):
+    @pytest.mark.asyncio
+    async def test_quality_triggers_nothing(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "quality", [para])
+            await _rerun_downstream_stages(db, 10, "quality", [para])
             mock_run.assert_not_called()
 
-    def test_unknown_stage_triggers_nothing(self):
+    @pytest.mark.asyncio
+    async def test_unknown_stage_triggers_nothing(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "unknown_stage", [para])
+            await _rerun_downstream_stages(db, 10, "unknown_stage", [para])
             mock_run.assert_not_called()
 
-    def test_multiple_paragraphs_each_gets_all_stages(self):
+    @pytest.mark.asyncio
+    async def test_multiple_paragraphs_each_gets_all_stages(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
         paras = [MagicMock(id=i, chapter_id=1) for i in range(3)]
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
-            _rerun_downstream_stages(db, 10, "annotate", paras)
+            await _rerun_downstream_stages(db, 10, "annotate", paras)
             # 3 paragraphs × 4 stages = 12 calls
             assert mock_run.call_count == 12
 
-    def test_failure_in_one_paragraph_does_not_abort_others(self):
+    @pytest.mark.asyncio
+    async def test_failure_in_one_paragraph_does_not_abort_others(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         db = MagicMock()
@@ -548,7 +558,7 @@ class TestRerunDownstreamStages:
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             call_count = [0]
 
-            def side_effect(stage, db, **kwargs):
+            async def side_effect(stage, db, **kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:  # First call (para1, edit) fails
                     raise RuntimeError("DB timeout")
@@ -556,7 +566,7 @@ class TestRerunDownstreamStages:
             mock_run.side_effect = side_effect
 
             # Should not raise — errors are caught and logged
-            _rerun_downstream_stages(db, 10, "annotate", [para1, para2])
+            await _rerun_downstream_stages(db, 10, "annotate", [para1, para2])
 
             # para1 edit failed, but synthesize/quality for para1 + all 4 stages for para2 should still run
             # The function catches exceptions per stage per paragraph
@@ -571,7 +581,8 @@ class TestRerunDownstreamStages:
 class TestApplyTemplateBackground:
     """Test _apply_template_background end-to-end flow."""
 
-    def test_progress_tracking_lifecycle(self):
+    @pytest.mark.asyncio
+    async def test_progress_tracking_lifecycle(self):
         """Background task tracks progress from running to completed."""
         from src.audiobook_studio.api.templates import _apply_annotation_template, _apply_template_background
         from src.audiobook_studio.models import FeedbackRecord as FR
@@ -607,22 +618,19 @@ class TestApplyTemplateBackground:
 
         mock_db.query.return_value.filter.return_value = mock_filter_result
 
-        async def run():
-            with patch("sqlalchemy.create_engine"):
-                with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                    with patch("os.getenv", return_value="sqlite:///./test.db"):
-                        with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
-                            with patch("src.audiobook_studio.api.templates._rerun_downstream_stages"):
-                                await _apply_template_background(
-                                    project_id=10,
-                                    template_id=42,
-                                    scope="all",
-                                    chapter_ids=None,
-                                    pattern_filter=None,
-                                    task_id=task_id,
-                                )
-
-        _run_async(run())
+        with patch("sqlalchemy.create_engine"):
+            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
+                with patch("os.getenv", return_value="sqlite:///./test.db"):
+                    with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
+                        with patch("src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock):
+                            await _apply_template_background(
+                                project_id=10,
+                                template_id=42,
+                                scope="all",
+                                chapter_ids=None,
+                                pattern_filter=None,
+                                task_id=task_id,
+                            )
 
         # Verify progress was tracked
         progress = _apply_template_background.progress.get(task_id)
@@ -634,7 +642,8 @@ class TestApplyTemplateBackground:
         # Cleanup
         del _apply_template_background.progress[task_id]
 
-    def test_background_task_handles_template_not_found(self):
+    @pytest.mark.asyncio
+    async def test_background_task_handles_template_not_found(self):
         """Background task sets status=failed when template not found."""
         from src.audiobook_studio.api.templates import _apply_template_background
 
@@ -642,20 +651,17 @@ class TestApplyTemplateBackground:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None  # No template
 
-        async def run():
-            with patch("sqlalchemy.create_engine"):
-                with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                    with patch("os.getenv", return_value="sqlite:///./test.db"):
-                        await _apply_template_background(
-                            project_id=10,
-                            template_id=999,
-                            scope="all",
-                            chapter_ids=None,
-                            pattern_filter=None,
-                            task_id=task_id,
-                        )
-
-        _run_async(run())
+        with patch("sqlalchemy.create_engine"):
+            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
+                with patch("os.getenv", return_value="sqlite:///./test.db"):
+                    await _apply_template_background(
+                        project_id=10,
+                        template_id=999,
+                        scope="all",
+                        chapter_ids=None,
+                        pattern_filter=None,
+                        task_id=task_id,
+                    )
 
         progress = _apply_template_background.progress.get(task_id)
         assert progress is not None
@@ -665,7 +671,8 @@ class TestApplyTemplateBackground:
         # Cleanup
         del _apply_template_background.progress[task_id]
 
-    def test_background_task_handles_unconfirmed_template(self):
+    @pytest.mark.asyncio
+    async def test_background_task_handles_unconfirmed_template(self):
         """Background task sets status=failed when template is not confirmed."""
         from src.audiobook_studio.api.templates import _apply_template_background
 
@@ -676,20 +683,17 @@ class TestApplyTemplateBackground:
         mock_template.promoted = False
         mock_db.query.return_value.filter.return_value.first.return_value = mock_template
 
-        async def run():
-            with patch("sqlalchemy.create_engine"):
-                with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                    with patch("os.getenv", return_value="sqlite:///./test.db"):
-                        await _apply_template_background(
-                            project_id=10,
-                            template_id=42,
-                            scope="all",
-                            chapter_ids=None,
-                            pattern_filter=None,
-                            task_id=task_id,
-                        )
-
-        _run_async(run())
+        with patch("sqlalchemy.create_engine"):
+            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
+                with patch("os.getenv", return_value="sqlite:///./test.db"):
+                    await _apply_template_background(
+                        project_id=10,
+                        template_id=42,
+                        scope="all",
+                        chapter_ids=None,
+                        pattern_filter=None,
+                        task_id=task_id,
+                    )
 
         progress = _apply_template_background.progress.get(task_id)
         assert progress is not None

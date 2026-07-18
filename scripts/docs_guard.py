@@ -41,6 +41,10 @@ CODE_to_DOC_MAP: Dict[str, List[str]] = {
     "src/audiobook_studio/api/": ["docs/api.md", "docs/api_reference.md"],
     # 配置相关
     "config/": ["docs/installation.md", "docs/quick_start.md"],
+    # 测试相关
+    "tests/": ["docs/testing.md"],
+    # 脚本/工具
+    "scripts/": ["docs/development.md"],
 }
 
 # 如果这些核心文件变更，必须更新 DEVELOPMENT_PLAN.md
@@ -120,6 +124,12 @@ def main() -> int:
 
     print("\n请确认这些文档已随代码变更同步更新。")
     print("如确认已更新，请继续 push；否则请先更新相关文档。")
+
+    # Check for changelog fragment
+    changelog_fragments = list(Path("docs/changelog/auto").glob("*.md")) if Path("docs/changelog/auto").exists() else []
+    if changelog_fragments:
+        print(f"\n[Docs Guard] Found {len(changelog_fragments)} auto-generated changelog fragment(s)")
+        print("  Run 'python scripts/generate_changelog.py' to compile full CHANGELOG.md")
 
     # 仅作为警告，不阻止 push
     return 0

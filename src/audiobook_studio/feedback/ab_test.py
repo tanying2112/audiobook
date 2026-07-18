@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..schemas import ParagraphAnnotation, QualityJudgment
+from ..schemas.judge import PairwiseJudgment
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +285,82 @@ def create_llm_judge_fn(stage: str, judge_model: str = None):
             score_a = _score_output(output_a, stage)
             score_b = _score_output(output_b, stage)
             return score_a, score_b, f"LLM Judge failed, used heuristic: {str(e)[:100]}"
+
+    return judge_fn
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Pairwise LLM Judge (New - uses LLMJudge.judge_pairwise)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def create_pairwise_judge_fn(
+    stage: str,
+    judge_model: Optional[str] = None,
+    router=None,
+):
+    """
+    Create an LLM-as-a-Judge function for pairwise A/B comparison.
+
+    Uses the LLMJudge.judge_pairwise method for structured pairwise judgment
+    with per-dimension scores and statistical significance.
+
+    Args:
+        stage: Pipeline stage name
+        judge_model: LLM model to use as judge
+        router: Optional LLMRouter instance
+
+    Returns:
+        Function that takes (sample_id, input_data, output_a, output_b, annotation, audio_description)
+        and returns PairwiseJudgment
+    """
+    from ..llm.judge import LLMJudge, JudgeConfig
+
+    if judge_model is None:
+        judge_model = "openrouter/auto"
+
+    config = JudgeConfig(model=judge_model)
+    judge = LLMJudge(config=config, router=router)
+
+    def judge_fn(
+        segment_id: str,
+        input_data: Dict[str, Any],
+        output_a: Dict[str, Any],
+        output_b: Dict[str, Any],
+        annotation: Optional[Dict[str, Any]] = None,
+        audio_description: Optional[str] = None,
+    ) -> PairwiseJudgment:
+        """Evaluate two outputs pairwise using LLM judge."""
+        reference_text = input_data.get("paragraph_text", input_data.get("text", ""))
+
+        try:
+            result = judge.judge_pairwise(
+                segment_id=segment_id,
+                stage=stage,
+                output_a=output_a,
+                output_b=output_b,
+                reference_text=reference_text,
+                annotation=annotation,
+                audio_description=audio_description,
+            )
+            return result
+        except Exception as e:
+            logger.warning(f"Pairwise judge failed: {e}, falling back to heuristic")
+            # Fallback to simple heuristic winner
+            score_a = _score_output(output_a, stage)
+            score_b = _score_output(output_b, stage)
+
+            from ..schemas.judge import PairwiseJudgment
+
+            return PairwiseJudgment(
+                segment_id=segment_id,
+                winner="A" if score_a > score_b else "B" if score_b > score_a else "tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning=f"Fallback heuristic: {str(e)[:100]}",
+                judge_model=judge_model,
+            )
 
     return judge_fn
 
@@ -603,6 +680,260 @@ def run_ab_test(
     )
 
     return report
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Pairwise A/B Testing (New)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class PairwiseABTestResult:
+    """单个 pairwise 判定结果."""
+
+    segment_id: str
+    judgment: PairwiseJudgment
+
+
+@dataclass
+class PairwiseABTestReport:
+    """Pairwise A/B 测试报告."""
+
+    stage: str
+    version_a: int
+    version_b: int
+    num_samples: int
+    results: List[PairwiseABTestResult]
+    a_wins: int = 0
+    b_wins: int = 0
+    ties: int = 0
+    avg_score_a: float = 0.0
+    avg_score_b: float = 0.0
+    improvement_pct: float = 0.0
+    recommendation: str = ""
+    generated_at: str = ""
+    # Statistical significance (from paired t-test on dimension scores)
+    p_value: float = 1.0
+    confidence_interval: Tuple[float, float] = (0.0, 0.0)
+    is_significant: bool = False
+    significance_level: float = 0.05
+
+
+def run_ab_test_pairwise(
+    stage: str,
+    samples: List[ABTestSample],
+    judge_fn=None,
+    significance_level: float = 0.05,
+    use_llm_judge: bool = False,
+    judge_model: str = None,
+    router=None,
+) -> PairwiseABTestReport:
+    """执行 Pairwise A/B 测试（使用 LLMJudge.judge_pairwise）。
+
+    Args:
+        stage: Pipeline stage name
+        samples: A/B 测试样本列表
+        judge_fn: 可选的自定义 pairwise 评判函数
+                  (segment_id, input_data, output_a, output_b, annotation, audio_description) -> PairwiseJudgment
+        significance_level: 显著性水平
+        use_llm_judge: 是否使用 LLM-as-a-Judge
+        judge_model: LLM Judge 模型
+        router: 可选的 LLMRouter 实例
+
+    Returns:
+        PairwiseABTestReport 报告
+    """
+    if not samples:
+        return PairwiseABTestReport(
+            stage=stage,
+            version_a=0,
+            version_b=0,
+            num_samples=0,
+            results=[],
+            recommendation="无样本数据",
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # Create pairwise LLM Judge if requested
+    if use_llm_judge and judge_fn is None:
+        judge_fn = create_pairwise_judge_fn(stage, judge_model, router)
+
+    results: List[PairwiseABTestResult] = []
+    a_wins = b_wins = ties = 0
+    total_a = total_b = 0.0
+
+    for sample in samples:
+        # Get annotation and audio_description if available
+        annotation = sample.input_data.get("paragraph_annotation")
+        audio_description = sample.input_data.get("audio_description")
+        segment_id = sample.sample_id
+
+        if judge_fn is not None:
+            judgment = judge_fn(
+                segment_id=segment_id,
+                input_data=sample.input_data,
+                output_a=sample.output_a,
+                output_b=sample.output_b,
+                annotation=annotation,
+                audio_description=audio_description,
+            )
+        else:
+            # Fallback to heuristic
+            score_a = _score_output(sample.output_a, stage)
+            score_b = _score_output(sample.output_b, stage)
+
+            from ..schemas.judge import PairwiseJudgment
+
+            judgment = PairwiseJudgment(
+                segment_id=segment_id,
+                winner="A" if score_a > score_b else "B" if score_b > score_a else "tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning="Heuristic fallback",
+            )
+
+        results.append(PairwiseABTestResult(segment_id=segment_id, judgment=judgment))
+
+        # Accumulate average scores from dimension_scores
+        dim_scores = judgment.dimension_scores
+        if dim_scores:
+            total_a += sum(s[0] for s in dim_scores.values())
+            total_b += sum(s[1] for s in dim_scores.values())
+        else:
+            total_a += 0.5
+            total_b += 0.5
+
+        if judgment.winner == "A":
+            a_wins += 1
+        elif judgment.winner == "B":
+            b_wins += 1
+        else:
+            ties += 1
+
+    n = len(samples)
+    avg_a = total_a / max(n, 1)
+    avg_b = total_b / max(n, 1)
+    improvement = ((avg_b - avg_a) / max(avg_a, 0.001)) * 100
+
+    # Generate recommendation
+    if b_wins > a_wins and improvement > 2:
+        recommendation = (
+            f"✅ 推荐升级: v{samples[0].version_b} 在 {b_wins}/{n} 样本中优于 "
+            f"v{samples[0].version_a} (提升 {improvement:.1f}%)"
+        )
+    elif a_wins > b_wins:
+        recommendation = (
+            f"❌ 不建议升级: v{samples[0].version_a} 仍优于 "
+            f"v{samples[0].version_b} ({a_wins}/{n} 样本)"
+        )
+    else:
+        recommendation = (
+            f"🔶 结果不明确: v{samples[0].version_a} 和 v{samples[0].version_b} "
+            f"差异不大 (平局 {ties}/{n})"
+        )
+
+    versions = (samples[0].version_a, samples[0].version_b)
+
+    # Compute statistical significance using paired t-test on overall scores
+    # For pairwise, we use the difference in winner scores per sample
+    differences = []
+    for r in results:
+        dim_scores = r.judgment.dimension_scores
+        if dim_scores:
+            diff = sum(s[1] - s[0] for s in dim_scores.values()) / len(dim_scores)
+        else:
+            diff = 0.0 if r.judgment.winner == "tie" else (1.0 if r.judgment.winner == "B" else -1.0)
+        differences.append(diff)
+
+    p_value, confidence_interval, is_significant = _compute_paired_ttest(
+        differences, significance_level
+    )
+
+    report = PairwiseABTestReport(
+        stage=stage,
+        version_a=versions[0],
+        version_b=versions[1],
+        num_samples=n,
+        results=results,
+        a_wins=a_wins,
+        b_wins=b_wins,
+        ties=ties,
+        avg_score_a=avg_a,
+        avg_score_b=avg_b,
+        improvement_pct=improvement,
+        recommendation=recommendation,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        p_value=p_value,
+        confidence_interval=confidence_interval,
+        is_significant=is_significant,
+        significance_level=significance_level,
+    )
+
+    logger.info(
+        f"Pairwise A/B Test [{stage}] v{versions[0]} vs v{versions[1]}: "
+        f"A_wins={a_wins} B_wins={b_wins} ties={ties} "
+        f"avg_A={avg_a:.3f} avg_B={avg_b:.3f} "
+        f"improvement={improvement:+.1f}% "
+        f"p={p_value:.4f} "
+        f"CI=[{confidence_interval[0]:.4f}, {confidence_interval[1]:.4f}] "
+        f"significant={'yes' if is_significant else 'no'} "
+        f"recommendation={recommendation[:60]}"
+    )
+
+    return report
+
+
+def _compute_paired_ttest(
+    differences: List[float],
+    significance_level: float = 0.05,
+) -> Tuple[float, Tuple[float, float], bool]:
+    """
+    Compute paired t-test on differences.
+
+    Returns:
+        (p_value, confidence_interval, is_significant)
+    """
+    if not differences:
+        return 1.0, (0.0, 0.0), False
+
+    n = len(differences)
+    mean_diff = sum(differences) / n
+
+    if n > 1:
+        variance = sum((d - mean_diff) ** 2 for d in differences) / (n - 1)
+        std_diff = math.sqrt(variance)
+    else:
+        std_diff = 0.0
+
+    if n > 1 and std_diff > 0:
+        se = std_diff / math.sqrt(n)
+        t_stat = mean_diff / se
+
+        df = n - 1
+        if df >= 30:
+            p_value = 2 * (1 - 0.5 * (1 + math.erf(abs(t_stat) / math.sqrt(2))))
+        else:
+            p_value = 2 * (1 - 0.5 * (1 + math.erf(abs(t_stat) / math.sqrt(2))))
+
+        # Confidence interval
+        if df >= 30:
+            t_critical = 1.96
+        elif df >= 10:
+            t_critical = 2.228
+        else:
+            t_critical = 2.776
+
+        ci_lower = mean_diff - t_critical * se
+        ci_upper = mean_diff + t_critical * se
+        confidence_interval = (ci_lower, ci_upper)
+        is_significant = p_value < significance_level
+    else:
+        p_value = 1.0
+        confidence_interval = (0.0, 0.0)
+        is_significant = False
+
+    return p_value, confidence_interval, is_significant
 
 
 def build_ab_samples(

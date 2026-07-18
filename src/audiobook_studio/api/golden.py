@@ -474,7 +474,7 @@ async def run_golden_regression(
                 try:
                     # Run the stage through the actual pipeline
                     # We use a dummy project_id=0 for regression testing (no DB writes)
-                    actual_result = run_stage(
+                    actual_result = await run_stage(
                         stage,
                         db,
                         project_id=0,

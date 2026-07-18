@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     # TTS
     EDGE_TTS_VOICE: str = Field(default="zh-CN-XiaoxiaoNeural", alias="EDGE_TTS_VOICE")
     KOKORO_MODEL_PATH: Optional[str] = Field(default=None, alias="KOKORO_MODEL_PATH")
+    ENABLE_LOCAL_TTS: bool = Field(default=True, alias="ENABLE_LOCAL_TTS")
 
     # Storage
     STORAGE_PATH: str = Field(default="./storage", alias="STORAGE_PATH")

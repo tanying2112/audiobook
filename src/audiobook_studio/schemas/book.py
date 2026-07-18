@@ -80,6 +80,7 @@ class BookAnalysisOutput(BaseModel):
     emotion_snapshots: list[EmotionSnapshot] = Field(..., min_length=1, description="每章情感快照")
     story_line_summary: str = Field(..., min_length=100, max_length=500, description="故事主线摘要 100-500 字")
     global_style_notes: str = Field(..., description="全局文风与特殊处理建议")
+    scene_tags: list[str] = Field(default_factory=list, description="环境音效标签列表 (如: [雷雨夜], [繁华街道], [酒馆喧闹])")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
     model_config = {"from_attributes": True, "extra": "forbid"}

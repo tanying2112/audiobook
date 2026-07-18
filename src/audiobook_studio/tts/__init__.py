@@ -50,6 +50,16 @@ from .port import (
     PortFactory,
 )
 from .port_factory import create_port, get_port, set_port, reset_port, make_port_factory
+from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
+from .remote_voxcpm2_port import (
+    RemoteVoxCPM2Port,
+    RemoteVoxCPM2PortConfig,
+    create_remote_voxcpm2_port,
+    PortError,
+    PortTimeoutError,
+    PortConnectionError,
+    PortRemoteError,
+)
 from .remote_voxcpm2_client import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpmp2_backend
 
@@ -77,7 +87,7 @@ __all__ = [
     "create_kokoro_backend",
     "VoxCPM2Backend",
     "create_voxcpmp2_backend",
-    # Remote VoxCPM2 client
+    # Remote VoxCPM2 client (legacy)
     "RemoteVoxCPM2Client",
     "RemoteVoxCPM2Config",
     "create_remote_voxcpm2_client",
@@ -90,12 +100,23 @@ __all__ = [
     "TTSTaskStatus",
     "RemoteTTSPort",
     "PortFactory",
+    # Port Implementations
+    "FakeRemoteTTSPort",
+    "MockRemoteTTSPort",
+    "RemoteVoxCPM2Port",
+    "RemoteVoxCPM2PortConfig",
+    "create_remote_voxcpm2_port",
     # Port Factory
     "create_port",
     "get_port",
     "set_port",
     "reset_port",
     "make_port_factory",
+    # Port Exceptions
+    "PortError",
+    "PortTimeoutError",
+    "PortConnectionError",
+    "PortRemoteError",
     # Circuit Breaker
     "CircuitBreaker",
     # Rate Limiter

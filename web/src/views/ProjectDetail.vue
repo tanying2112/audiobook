@@ -38,6 +38,10 @@ function openVoiceClone() {
 function openTranslation() {
   router.push(`/projects/${projectId}/translation`)
 }
+
+function openAgentChat() {
+  router.push(`/projects/${projectId}/agent-chat`)
+}
 </script>
 
 <template>
@@ -56,6 +60,10 @@ function openTranslation() {
         <button class="btn btn-outline" @click="viewQuality">
           <Icon icon="mdi:chart-bar" width="18" height="18" />
           {{ t('project_detail.quality_report') }}
+        </button>
+        <button class="btn btn-outline" @click="openAgentChat">
+          <Icon icon="mdi:robot-outline" width="18" height="18" />
+          {{ t('project_detail.agent_chat') }}
         </button>
         <button class="btn btn-primary" @click="openVoiceClone">
           <Icon icon="mdi:microphone" width="18" height="18" />

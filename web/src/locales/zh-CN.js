@@ -1106,4 +1106,67 @@ export default {
     valid: '有效',
     invalid: '无效',
   },
+  dashboard: {
+  title: '商业遥测看板',
+  loading: '加载中...',
+  refreshing: '刷新中...',
+  refresh: '刷新数据',
+  select_chapter: '选择章节',
+  latest_all_chapters: '最新（所有章节）',
+  chapter: '第 {num} 章',
+
+  // KPIs
+  total_cost_usd: '总成本 (USD)',
+  total_tokens: '总 Token 数',
+  total_audio: '总音频时长',
+  rtf: '实时因子 (RTF)',
+  synthesis_rate: '合成率',
+  tts_success_rate: 'TTS 成功率',
+
+  // Charts
+  cost_distribution: '成本分布',
+  latency_leaderboard: '延迟排行榜',
+  provider_cost_breakdown: 'Provider 成本明细',
+  cost_history: '成本历史趋势',
+
+  // Provider Cost Detail
+  provider_cost_detail: 'Provider 成本详情',
+  provider: 'Provider',
+  model: '模型',
+  prompt_tokens: 'Prompt Tokens',
+  completion_tokens: 'Completion Tokens',
+  cost_usd: '成本 ($)',
+  cost_rmb: '成本 (¥)',
+  calls: '调用次数',
+  avg_latency: '平均延迟',
+  success_rate: '成功率',
+
+  // Latency
+  stage_latency_detail: '阶段延迟详情',
+  rank: '排名',
+  stage: '阶段',
+  duration_ms: '耗时 (ms)',
+  status: '状态',
+
+  // Resilience
+  resilience_metrics: '复原力指标',
+  llm_total_calls: 'LLM 总调用',
+  llm_retries: 'LLM 重试次数',
+  llm_fallbacks: 'LLM 回退次数',
+  tts_segments: 'TTS 段落数',
+  tts_success: 'TTS 成功',
+  tts_failed: 'TTS 失败',
+
+  // RTF
+  rtf: '实时因子 (RTF)',
+
+  // Misc
+  provider: 'Provider',
+  calls: '调用数',
+  avg_latency: '平均延迟',
+  rank: '排名',
+  duration: '耗时',
+},
+
 }
+
