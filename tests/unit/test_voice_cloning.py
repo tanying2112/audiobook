@@ -439,6 +439,7 @@ class TestVoiceCloningManagerMore:
     def test_synthesize_speech_success(self):
         """Test synthesize_speech success case."""
         from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
+        from unittest.mock import AsyncMock, patch
 
         manager = VoiceCloningManager()
         # Pre-populate with a voice print
@@ -455,18 +456,31 @@ class TestVoiceCloningManagerMore:
         manager.voice_prints["test_speaker"] = voice_print
         manager.voice_samples["test_speaker"] = []
 
-        with patch("pathlib.Path.touch") as mock_touch:
-            success, message, audio_path = manager.synthesize_speech(
-                text="Hello world",
-                speaker_id="test_speaker",
-                language="zh-CN",
-                emotion="happy",
-            )
-            assert success is True
-            # Mock mode returns "MOCK模式合成" - just verify success and path
-            assert "MOCK" in message or "mock" in message.lower()
-            assert audio_path is not None
-            mock_touch.assert_called_once()
+        # Mock the KokoroBackend to simulate successful synthesis
+        with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend") as mock_backend_class:
+            mock_backend = AsyncMock()
+            mock_backend.initialize = AsyncMock()
+            # Mock synthesize to create the output file
+            async def mock_synthesize(text, voice_id, output_path, prosody, reference_audio):
+                output_path.write_bytes(b"fake audio data")
+                return type('obj', (object,), {'duration_ms': 1000})()
+            mock_backend.synthesize = mock_synthesize
+            mock_backend.cleanup = AsyncMock()
+            mock_backend_class.return_value = mock_backend
+
+            # Create a temp dir for output
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager.config.output_dir = tmpdir
+                success, message, audio_path = manager.synthesize_speech(
+                    text="Hello world",
+                    speaker_id="test_speaker",
+                    language="zh-CN",
+                    emotion="happy",
+                )
+                assert success is True
+                assert "成功" in message or "success" in message.lower()
+                assert audio_path is not None
 
     def test_synthesize_speech_poor_quality(self):
         """Test synthesize_speech with poor quality voice."""

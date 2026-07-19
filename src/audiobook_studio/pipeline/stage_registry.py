@@ -61,7 +61,7 @@ class StageHandler(ABC):
         elif hasattr(result, "__dict__"):
             return vars(result)
         elif isinstance(result, (list, dict)):
-            return result  # type: ignore
+            return dict(result) if isinstance(result, dict) else {"items": list(result)}
         else:
             return {"result": str(result)}
 

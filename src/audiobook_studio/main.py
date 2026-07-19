@@ -14,7 +14,7 @@ if "MOCK_LLM" not in os.environ:
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.ab_test_interceptor import ABTestMiddleware
@@ -44,17 +44,31 @@ from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
+from .auth.dependencies import get_current_active_user
 from .auth.router import router as auth_router
 from .config import get_settings
-from .database import init_db
 from .middleware.timestamp import ISOTimestampMiddleware
 from .observability import instrument_app
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables (MVP convenience; production uses Alembic)
-    init_db()
+    # Startup: validate critical security settings FIRST
+    from .config import get_settings
+
+    settings = get_settings()
+    # P0-2: Explicit JWT secret validation (defense-in-depth; also runs in get_settings())
+    settings.validate_jwt_secret()
+    # P0-3: Explicit CORS security validation
+    settings.validate_cors_security()
+
+    # P1-4: Use Alembic for DB migrations instead of create_all()
+    # This ensures migrations are applied and Alembic version table is tracked
+    from subprocess import run
+    result = run(["alembic", "upgrade", "head"], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Alembic migration failed: {result.stderr}")
+
     # Initialize RBAC with default roles and permissions
     from .auth.rbac import init_rbac
     from .database import SessionLocal
@@ -110,35 +124,40 @@ instrument_app(
     exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
 )
 
-# Include routers
-app.include_router(auth_router, prefix="/api")  # Auth endpoints at /api/auth/*
-app.include_router(projects_router)
-app.include_router(books_router)
-app.include_router(characters_router)
-app.include_router(config_router)
-app.include_router(paragraphs_router)
-app.include_router(tts_edits_router)
-app.include_router(routings_router)
-app.include_router(qualities_router)
-app.include_router(export_router)
-app.include_router(export_tasks_router)
-app.include_router(feedback_router)
-app.include_router(audio_segments_router)
-app.include_router(llm_router)
-app.include_router(websocket_router)
-app.include_router(templates_router)
-app.include_router(harness_router)
-app.include_router(golden_router)
-app.include_router(auto_run_router)
+# Include routers with global auth default-deny (P1-1)
+# Public: auth_router (login/register), health endpoints
+# Protected by default: all other routers
+# upload_router has its own per-endpoint project-level auth
+auth_dep = [Depends(get_current_active_user)]
+
+app.include_router(auth_router, prefix="/api")  # Public: login/register
+app.include_router(projects_router, dependencies=auth_dep)
+app.include_router(books_router, dependencies=auth_dep)
+app.include_router(characters_router, dependencies=auth_dep)
+app.include_router(config_router, dependencies=auth_dep)
+app.include_router(paragraphs_router, dependencies=auth_dep)
+app.include_router(tts_edits_router, dependencies=auth_dep)
+app.include_router(routings_router, dependencies=auth_dep)
+app.include_router(qualities_router, dependencies=auth_dep)
+app.include_router(export_router, dependencies=auth_dep)
+app.include_router(export_tasks_router, dependencies=auth_dep)
+app.include_router(feedback_router, dependencies=auth_dep)
+app.include_router(audio_segments_router, dependencies=auth_dep)
+app.include_router(llm_router, dependencies=auth_dep)
+app.include_router(websocket_router, dependencies=auth_dep)
+app.include_router(templates_router, dependencies=auth_dep)
+app.include_router(harness_router, dependencies=auth_dep)
+app.include_router(golden_router, dependencies=auth_dep)
+app.include_router(auto_run_router, dependencies=auth_dep)
 if settings.DEBUG or settings.ENVIRONMENT == "development":
-    app.include_router(mock_router)
-app.include_router(tts_voices_router)
-app.include_router(publish_router)
-app.include_router(upload_router)
-app.include_router(pipeline_router)
-app.include_router(monitoring_router, prefix="/api")
-app.include_router(agent_chat_router)
-app.include_router(sop_reflection_router)
+    app.include_router(mock_router, dependencies=auth_dep)
+app.include_router(tts_voices_router, dependencies=auth_dep)
+app.include_router(publish_router, dependencies=auth_dep)
+app.include_router(upload_router)  # Has own per-endpoint project auth
+app.include_router(pipeline_router, dependencies=auth_dep)
+app.include_router(monitoring_router, prefix="/api", dependencies=auth_dep)
+app.include_router(agent_chat_router, dependencies=auth_dep)
+app.include_router(sop_reflection_router, dependencies=auth_dep)
 
 
 # Health check endpoint for CI verification

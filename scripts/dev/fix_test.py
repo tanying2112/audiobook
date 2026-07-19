@@ -1,4 +1,4 @@
-with open('tests/unit/auth/test_auth_router.py', 'r') as f:
+with open("tests/unit/auth/test_auth_router.py", "r") as f:
     content = f.read()
 
 # Find and replace the test function
@@ -108,8 +108,8 @@ new_func = '''    def test_list_project_permissions_success(self, client, mock_r
 
 if old_func in content:
     content = content.replace(old_func, new_func)
-    with open('tests/unit/auth/test_auth_router.py', 'w') as f:
+    with open("tests/unit/auth/test_auth_router.py", "w") as f:
         f.write(content)
-    print('Fixed!')
+    print("Fixed!")
 else:
-    print('Pattern not found')
+    print("Pattern not found")

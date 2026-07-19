@@ -5,9 +5,10 @@
 """
 
 import os
-import redis
-import time
 import sys
+import time
+
+import redis
 
 # 从环境变量读取，若无则使用你的 Upstash 默认实例
 REDIS_HOST = os.getenv("REDIS_HOST", "casual-sawfish-86152.upstash.io")

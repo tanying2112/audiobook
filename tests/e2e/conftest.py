@@ -22,29 +22,6 @@ from typing import Optional
 import pytest
 
 
-# Skip E2E tests by default - require explicit --e2e flag
-def pytest_configure(config):
-    config.addinivalue_line("markers", "e2e: mark test as end-to-end test (requires API keys)")
-
-
-def pytest_collection_modifyitems(config, items):
-    # Skip e2e tests unless --e2e flag is provided
-    if not config.getoption("--e2e"):
-        skip_e2e = pytest.mark.skip(reason="need --e2e option to run E2E tests")
-        for item in items:
-            if "e2e" in item.keywords or "e2e" in str(item.fspath):
-                item.add_marker(skip_e2e)
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--e2e",
-        action="store_true",
-        default=False,
-        help="Run end-to-end tests (requires API keys)",
-    )
-
-
 # Test configuration
 SAMPLE_TEXT = """
 第一章：开始

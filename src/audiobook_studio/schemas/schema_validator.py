@@ -11,11 +11,15 @@ import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Type
 
 from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import DeclarativeBase
+
+if TYPE_CHECKING:
+    from ..models import Chapter, Paragraph, Project
+    from ..schemas import Project as ProjectSchema
 
 logger = logging.getLogger(__name__)
 
@@ -346,9 +350,9 @@ def sync_schema_validator():
 
     validator = SchemaValidator()
 
-    # Import models and schemas for validation
-    from ..models import Chapter, Paragraph, Project  # type: ignore[attr-defined]
-    from ..schemas import Project as ProjectSchema  # type: ignore[attr-defined]
+    # Import models and schemas for validation (runtime imports)
+    from ..models import Chapter, Paragraph, Project
+    from ..schemas import Project as ProjectSchema
 
     pairs = [
         (Project, ProjectSchema),

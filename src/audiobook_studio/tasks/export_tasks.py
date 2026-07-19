@@ -6,10 +6,15 @@ Provides async export execution with progress tracking via Celery states.
 
 import logging
 import uuid
-from celery import Celery
-from celery.states import PENDING, STARTED, SUCCESS, FAILURE, RETRY
+from celery import states as celery_states
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+PENDING = celery_states.PENDING
+STARTED = celery_states.STARTED
+SUCCESS = celery_states.SUCCESS
+FAILURE = celery_states.FAILURE
+RETRY = celery_states.RETRY
 
 from ..celery_app import celery_app
 from ..export import ExportFormat, ExportJob, ExportProgress, export_project
