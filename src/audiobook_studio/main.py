@@ -24,25 +24,26 @@ from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
 from .api.characters import router as characters_router
 from .api.config import router as config_router
-from .api.export import router as export_router, export_tasks_router
+from .api.export import export_tasks_router
+from .api.export import router as export_router
 from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
 from .api.llm import router as llm_router
 from .api.mock_router import router as mock_router
+from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
 from .api.publish import router as publish_router
 from .api.qualities import router as qualities_router
 from .api.routings import router as routings_router
+from .api.sop_reflection import router as sop_reflection_router
 from .api.templates import router as templates_router
 from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
-from .api.sop_reflection import router as sop_reflection_router
-from .api.monitoring import router as monitoring_router
 from .auth.router import router as auth_router
 from .config import get_settings
 from .database import init_db
@@ -82,14 +83,14 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# CORS middleware
+# CORS middleware - P0-3: Use explicit allow_methods from settings instead of "*"
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
 # Add ISO Timestamp Middleware (P1-8)
