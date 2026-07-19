@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
 """
-VoxCPM2 Baidu Worker - PyTorch Only（无 PaddlePaddle，避免 CUDA 库冲突）
-用法：python3 pytorch_worker_only.py
+VoxCPM2 Worker - PyTorch Only（无 PaddlePaddle，避免 CUDA 库冲突）
+
+使用项目自带的 VoxCPM2Model.from_local() 加载模型。
+generate() 直接返回波形张量，无需 decode_audio()。
+
+用法：
+  export PYTHONPATH=/home/aistudio/audiobook/src:$PYTHONPATH
+  python3 pytorch_worker_only.py
 """
+
 import io
 import json
 import os
 import signal
 import sys
 import time
-import types
 import uuid
 from pathlib import Path
 
+# ========== 添加项目源码路径 ==========
+_SRC = str(Path(__file__).resolve().parent.parent / "src")
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+import types
+
 import torch
 
-# ========== 补丁 ==========
+# ========== 补丁：weights_only & BlockMask ==========
 _REAL = torch.load
 
 
@@ -61,12 +74,12 @@ if env_path.exists():
             os.environ[k.strip()] = v.strip()
 
 import boto3
-
-# ========== 导入 ==========
 import redis
 import torchaudio
 from botocore.config import Config
-from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# ========== 导入 VoxCPM2 模型（项目源码） ==========
+from voxcpm.model.voxcpm2 import VoxCPM2Model
 
 # ========== 配置 ==========
 MP = os.getenv("MODEL_PATH", "/tmp/voxcpm2-model")
@@ -95,7 +108,7 @@ if missing:
     print("❌ 缺少环境变量:", missing)
     sys.exit(1)
 
-# ========== 连接 ==========
+# ========== 连接 Redis & R2 ==========
 r = redis.Redis(host=RH, port=RP, password=RA, decode_responses=True, socket_timeout=10)
 s3 = boto3.client(
     "s3",
@@ -109,23 +122,21 @@ s3 = boto3.client(
 # ========== 加载模型 ==========
 print("⚙️ 加载模型:", MP)
 print("📊 GPU:", torch.cuda.get_device_name(0))
-tok = AutoTokenizer.from_pretrained(MP, trust_remote_code=True, use_fast=False)
-m = AutoModelForCausalLM.from_pretrained(
-    MP, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True, low_cpu_mem_usage=True
-)
-m.eval()
+
+# from_local() 自动加载 tokenizer + AudioVAE + safetensors
+# optimize=False 禁用 torch.compile（V100 不支持）
+model = VoxCPM2Model.from_local(MP, optimize=False)
+model.eval()
+
 mem = torch.cuda.memory_allocated() // 1024 // 1024
 tot = torch.cuda.get_device_properties(0).total_memory // 1024 // 1024
 print("✅ 显存:", mem, "/", tot, "MB")
 
 # ========== 烟雾测试 ==========
 print("🧪 烟雾测试...")
-inp = tok("测试。", return_tensors="pt")
-inp = {k: v.to("cuda") for k, v in inp.items()}
-with torch.inference_mode():
-    at = m.generate(**inp, max_new_tokens=128, do_sample=True, temperature=0.7, top_p=0.9)
-    wf = m.decode_audio(at)
-print("✅ 通过！输出:", wf.shape)
+# generate() 直接返回波形张量（48kHz），无需 decode_audio()
+wf = model.generate(target_text="测试语音合成。", max_len=256)
+print("✅ 通过！输出波形:", wf.shape, "采样率: 48000Hz")
 
 # ========== 主循环 ==========
 running = True
@@ -163,20 +174,17 @@ while running:
     print(f"🚀 [{tid}] 合成 ({len(txt)} 字)")
 
     try:
-        inp = tok(txt, return_tensors="pt")
-        inp = {k: v.to("cuda") for k, v in inp.items()}
-        with torch.inference_mode():
-            at = m.generate(
-                **inp,
-                max_new_tokens=1024,
-                do_sample=True,
-                temperature=pros.get("temperature", 0.7),
-                top_p=pros.get("top_p", 0.9),
-            )
-            wf = m.decode_audio(at)
+        # generate() 直接返回波形 —— 正确 API！
+        wf = model.generate(
+            target_text=txt,
+            max_len=pros.get("max_len", 1024),
+            cfg_value=pros.get("cfg", 2.0),
+            inference_timesteps=pros.get("steps", 10),
+        )
 
+        # 模型输出采样率为 48kHz（audio_vae out_sample_rate）
         buf = io.BytesIO()
-        torchaudio.save(buf, wf.cpu(), sample_rate=24000, format="wav")
+        torchaudio.save(buf, wf.cpu(), sample_rate=48000, format="wav")
         key = f"tts/{tid}.wav"
         s3.put_object(Bucket=R2B, Key=key, Body=buf.getvalue(), ContentType="audio/wav")
         url = f"https://{R2B}.r2.cloudflarestorage.com/{key}"
