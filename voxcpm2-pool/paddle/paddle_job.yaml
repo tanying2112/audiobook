@@ -23,13 +23,13 @@ spec:
         - name: REDIS_PORT
           value: "6379"
         - name: REDIS_AUTH
-          value: "gQAAAAAAAVCIAAIgcDI2Njk2ZDcyMmZkNTU0N2FmYTIxZDk4ZDY4MTBjOGM4ZA"
+          value: "***REDACTED-UPSTASH-REDIS-AUTH***"
         - name: R2_ENDPOINT
           value: "https://061b064ef0dafd787d33f4ee1693aa1b.r2.cloudflarestorage.com"
         - name: R2_ACCESS_KEY_ID
-          value: "2fc25bbebc34f9b88874a8affcda2e3a"
+          value: "***REDACTED-CLOUDFLARE-R2-ACCESS-KEY***"
         - name: R2_SECRET_ACCESS_KEY
-          value: "b7d997bc558346d8146d33be06810b7db600baafe0cbe5d7356268ee948ef9d3"
+          value: "***REDACTED-CLOUDFLARE-R2-SECRET-KEY***"
         - name: R2_BUCKET
           value: "audiobook-assets"
         - name: WORKER_ID

@@ -13,7 +13,7 @@ import redis
 # 从环境变量读取，若无则使用你的 Upstash 默认实例
 REDIS_HOST = os.getenv("REDIS_HOST", "casual-sawfish-86152.upstash.io")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_AUTH = os.getenv("REDIS_AUTH", "gQAAAAAAAVCIAAIgcDI2Njk2ZDcyMmZkNTU0N2FmYTIxZDk4ZDY4MTBjOGM4ZA")
+REDIS_AUTH = os.getenv("REDIS_AUTH", "***REDACTED-UPSTASH-REDIS-AUTH***")
 
 try:
     r = redis.Redis(
