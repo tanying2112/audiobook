@@ -7,10 +7,12 @@ migrations instead of ``init_db``.
 
 import os
 
-# Disable mock mode for all pipelines before any pipeline modules are imported
-# unless overridden by environment variable
-if "MOCK_LLM" not in os.environ:
-    os.environ["MOCK_LLM"] = "false"
+# Note: MOCK_LLM is NOT set here. Every pipeline consumer reads it lazily at
+# __init__ time via os.environ.get("MOCK_LLM", "false"), defaulting to the real
+# path when unset. The previous "set false before pipeline modules are imported"
+# guard was a no-op (no module reads MOCK_LLM at import time) and created a
+# second source of truth that conflicted with the test conftest forcing "true".
+# To run mock-first locally, export MOCK_LLM=true in your shell.
 
 from contextlib import asynccontextmanager
 

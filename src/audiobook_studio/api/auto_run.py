@@ -6,13 +6,9 @@ Provides one-click full automation from text to audiobook.
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
-
-if "MOCK_LLM" not in os.environ:
-    os.environ["MOCK_LLM"] = "false"
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
