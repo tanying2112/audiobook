@@ -9,13 +9,15 @@ Checks:
 Auto-rejects bad annotations and emits fix commands for Developer Agent.
 """
 
-from typing import Literal, Optional, List, Dict, Any
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
-from datetime import datetime
 
 
 class VoiceBindingCheck(BaseModel):
     """Check result for character voice binding."""
+
     speaker_canonical_name: str
     found_in_voice_map: bool
     suggested_voice_id: Optional[str] = None
@@ -25,6 +27,7 @@ class VoiceBindingCheck(BaseModel):
 
 class JsonTruncationCheck(BaseModel):
     """Check result for JSON truncation in annotations."""
+
     paragraph_index: int
     field_name: str
     is_truncated: bool
@@ -36,6 +39,7 @@ class JsonTruncationCheck(BaseModel):
 
 class TagConsistencyCheck(BaseModel):
     """Check result for tag logic consistency."""
+
     paragraph_index: int
     check_type: Literal["emotion_text_match", "speed_range", "sfx_context", "pause_logic"]
     passed: bool
@@ -47,6 +51,7 @@ class TagConsistencyCheck(BaseModel):
 
 class FixCommand(BaseModel):
     """Auto-fix command for Developer Agent to execute."""
+
     command_type: Literal[
         "add_voice_binding",
         "fix_truncated_field",
@@ -54,7 +59,7 @@ class FixCommand(BaseModel):
         "adjust_speed",
         "add_sfx_tag",
         "fix_pause_timing",
-        "re_annotate_paragraph"
+        "re_annotate_paragraph",
     ]
     target_paragraph_index: int
     parameters: Dict[str, Any]
@@ -67,7 +72,7 @@ class ReviewerJudgment(BaseModel):
 
     project_id: int
     chapter_index: int
-    reviewed_at: datetime = Field(default_factory=datetime.utcnow)
+    reviewed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Check results
     voice_binding_checks: List[VoiceBindingCheck] = Field(default_factory=list)

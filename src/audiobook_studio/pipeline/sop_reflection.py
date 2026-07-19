@@ -17,12 +17,12 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from pathlib import Path
-from queue import Queue, Empty
-from typing import Any, Dict, List, Optional, Callable
 from copy import deepcopy
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, List, Optional
 
 from src.audiobook_studio.schemas import BookMeta
 
@@ -130,11 +130,13 @@ class SOPConfig:
         with self._lock:
             try:
                 # Update timestamp
-                self._config["last_updated"] = datetime.utcnow().isoformat() + "Z"
+                self._config["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
                 # Backup if enabled
                 if backup and self.config_path.exists():
-                    backup_path = self.config_path.with_suffix(f".bak.{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json")
+                    backup_path = self.config_path.with_suffix(
+                        f".bak.{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+                    )
                     self.config_path.rename(backup_path)
                     logger.debug(f"[SOP] Backed up config to {backup_path}")
 
@@ -185,21 +187,29 @@ class SOPConfig:
                     "name": genre,
                     "aliases": [],
                     "rules": {},
-                    "learning_stats": {"corrections_received": 0, "rules_updated": 0, "last_correction": None, "confidence": 0.5},
+                    "learning_stats": {
+                        "corrections_received": 0,
+                        "rules_updated": 0,
+                        "last_correction": None,
+                        "confidence": 0.5,
+                    },
                 }
 
             genre_config = self._config["genres"][genre_key]
             rules = genre_config.setdefault("rules", {})
-            stats = genre_config.setdefault("learning_stats", {"corrections_received": 0, "rules_updated": 0, "last_correction": None, "confidence": 0.5})
+            stats = genre_config.setdefault(
+                "learning_stats",
+                {"corrections_received": 0, "rules_updated": 0, "last_correction": None, "confidence": 0.5},
+            )
 
             # Deep merge rules
             self._deep_merge(rules, new_rules)
 
             # Update stats
             stats["rules_updated"] = stats.get("rules_updated", 0) + 1
-            stats["last_correction"] = datetime.utcnow().isoformat() + "Z"
+            stats["last_correction"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             stats["confidence"] = max(stats.get("confidence", 0.5), confidence)
-            genre_config["last_learned_from"] = datetime.utcnow().isoformat() + "Z"
+            genre_config["last_learned_from"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
             return self.save()
 
@@ -280,7 +290,7 @@ class CorrectionCollector:
     def add_correction_dict(self, data: Dict[str, Any]) -> bool:
         """Add correction from dict (e.g., from WebSocket message)."""
         correction = UserCorrection(
-            timestamp=data.get("timestamp", datetime.utcnow().isoformat() + "Z"),
+            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
             project_id=data["project_id"],
             chapter_index=data["chapter_index"],
             paragraph_index=data["paragraph_index"],
@@ -342,13 +352,127 @@ class GenreDetector:
     """Detect book genre from BookMeta or text analysis."""
 
     GENRE_KEYWORDS = {
-        "玄幻": ["修仙", "灵气", "丹田", "筑基", "金丹", "元婴", "渡劫", "飞升", "宗门", "功法", "法宝", "御剑", "洞府", "灵石", "秘境", "大乘", "合体", "化神", "炼虚", "返虚"],
-        "仙侠": ["修真", "长生", "道友", "师兄", "师姐", "掌门", "长老", "峰主", "灵根", "天灵根", "废柴", "逆天", "机缘", "造化"],
-        "都市": ["公司", "总裁", "职场", "办公室", "项目", "会议", "客户", "合同", "谈判", "股份", "上市", "创业", "投资", "白领", "写字楼"],
-        "历史": ["皇帝", "朝廷", "大臣", "皇上", "臣", "奏折", "朝堂", "藩王", "边关", "兵部", "户部", "礼部", "刑部", "工部", "吏部"],
-        "科幻": ["星际", "飞船", "AI", "人工智能", "虚拟", "赛博", "机甲", "基因", "克隆", "穿越", "平行宇宙", "量子", "纳米", "脑机接口"],
-        "悬疑": ["凶手", "线索", "推理", "侦探", "尸体", "现场", "作案", "动机", "不在场证明", "指纹", "DNA", "监控", "证人", "供词"],
-        "言情": ["心动", "喜欢", "爱上", "吻", "拥抱", "表白", "告白", "男友", "女友", "结婚", "求婚", "订婚", "恋人", "暗恋", "单恋"],
+        "玄幻": [
+            "修仙",
+            "灵气",
+            "丹田",
+            "筑基",
+            "金丹",
+            "元婴",
+            "渡劫",
+            "飞升",
+            "宗门",
+            "功法",
+            "法宝",
+            "御剑",
+            "洞府",
+            "灵石",
+            "秘境",
+            "大乘",
+            "合体",
+            "化神",
+            "炼虚",
+            "返虚",
+        ],
+        "仙侠": [
+            "修真",
+            "长生",
+            "道友",
+            "师兄",
+            "师姐",
+            "掌门",
+            "长老",
+            "峰主",
+            "灵根",
+            "天灵根",
+            "废柴",
+            "逆天",
+            "机缘",
+            "造化",
+        ],
+        "都市": [
+            "公司",
+            "总裁",
+            "职场",
+            "办公室",
+            "项目",
+            "会议",
+            "客户",
+            "合同",
+            "谈判",
+            "股份",
+            "上市",
+            "创业",
+            "投资",
+            "白领",
+            "写字楼",
+        ],
+        "历史": [
+            "皇帝",
+            "朝廷",
+            "大臣",
+            "皇上",
+            "臣",
+            "奏折",
+            "朝堂",
+            "藩王",
+            "边关",
+            "兵部",
+            "户部",
+            "礼部",
+            "刑部",
+            "工部",
+            "吏部",
+        ],
+        "科幻": [
+            "星际",
+            "飞船",
+            "AI",
+            "人工智能",
+            "虚拟",
+            "赛博",
+            "机甲",
+            "基因",
+            "克隆",
+            "穿越",
+            "平行宇宙",
+            "量子",
+            "纳米",
+            "脑机接口",
+        ],
+        "悬疑": [
+            "凶手",
+            "线索",
+            "推理",
+            "侦探",
+            "尸体",
+            "现场",
+            "作案",
+            "动机",
+            "不在场证明",
+            "指纹",
+            "DNA",
+            "监控",
+            "证人",
+            "供词",
+        ],
+        "言情": [
+            "心动",
+            "喜欢",
+            "爱上",
+            "吻",
+            "拥抱",
+            "表白",
+            "告白",
+            "男友",
+            "女友",
+            "结婚",
+            "求婚",
+            "订婚",
+            "恋人",
+            "暗恋",
+            "单恋",
+        ],
     }
 
     def __init__(self, sop_config: Optional[SOPConfig] = None):
@@ -459,7 +583,7 @@ class ReflectionEngine:
                 confidence=0.0,
                 reasoning="No corrections to analyze",
                 corrections_analyzed=0,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             )
 
         # Group corrections by field
@@ -479,12 +603,14 @@ class ReflectionEngine:
                 key = f"{c.original_value} -> {c.corrected_value}"
                 patterns[key] = patterns.get(key, 0) + 1
             top_patterns = sorted(patterns.items(), key=lambda x: -x[1])[:3]
-            correction_summary.append({
-                "field": field,
-                "count": len(corrs),
-                "top_patterns": [{"pattern": p, "count": c} for p, c in top_patterns],
-                "contexts": [c.context for c in corrs[:5]],  # Sample contexts
-            })
+            correction_summary.append(
+                {
+                    "field": field,
+                    "count": len(corrs),
+                    "top_patterns": [{"pattern": p, "count": c} for p, c in top_patterns],
+                    "contexts": [c.context for c in corrs[:5]],  # Sample contexts
+                }
+            )
 
         # If no LLM client, use heuristic rules
         if self.llm_client is None:
@@ -504,7 +630,7 @@ class ReflectionEngine:
                 confidence=result.get("confidence", 0.0),
                 reasoning=result.get("reasoning", ""),
                 corrections_analyzed=len(corrections),
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             )
         except Exception as e:
             logger.error(f"[SOP] Reflection LLM call failed: {e}")
@@ -535,13 +661,21 @@ class ReflectionEngine:
 
                 # Map field to rule category
                 if field == "emotion":
-                    proposed.setdefault("emotion_defaults", {})[f"learned_{len(proposed.get('emotion_defaults', {}))}"] = corrected
+                    proposed.setdefault("emotion_defaults", {})[
+                        f"learned_{len(proposed.get('emotion_defaults', {}))}"
+                    ] = corrected
                 elif field == "speech_rate":
-                    proposed.setdefault("speech_rate", {})[f"learned_{len(proposed.get('speech_rate', {}))}"] = float(corrected)
+                    proposed.setdefault("speech_rate", {})[f"learned_{len(proposed.get('speech_rate', {}))}"] = float(
+                        corrected
+                    )
                 elif field == "pitch_shift_semitones":
-                    proposed.setdefault("pitch_shifts", {})[f"learned_{len(proposed.get('pitch_shifts', {}))}"] = int(corrected)
+                    proposed.setdefault("pitch_shifts", {})[f"learned_{len(proposed.get('pitch_shifts', {}))}"] = int(
+                        corrected
+                    )
                 elif field in ("pause_before_ms", "pause_after_ms"):
-                    proposed.setdefault("pause_patterns", {})[f"learned_{len(proposed.get('pause_patterns', {}))}"] = int(corrected)
+                    proposed.setdefault("pause_patterns", {})[f"learned_{len(proposed.get('pause_patterns', {}))}"] = (
+                        int(corrected)
+                    )
                 elif field == "sfx_tags":
                     sfx_list = corrected if isinstance(corrected, list) else [corrected]
                     proposed.setdefault("sfx_rules", {}).setdefault("default_sfx", []).extend(sfx_list)
@@ -555,7 +689,7 @@ class ReflectionEngine:
             confidence=confidence,
             reasoning=f"Heuristic analysis: {significant_patterns} significant patterns from {total_corrections} corrections",
             corrections_analyzed=total_corrections,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         )
 
 
@@ -578,6 +712,7 @@ class RuleApplier:
 
         # Create a copy to modify
         from src.audiobook_studio.schemas.paragraph import ParagraphAnnotationInput
+
         enhanced = input_data.model_copy(deep=True)
 
         # Apply emotion defaults for context
@@ -603,9 +738,7 @@ class RuleApplier:
 
         return enhanced
 
-    def apply_to_audio_postprocess(
-        self, segment: Dict[str, Any], genre: str, speaker_role: str
-    ) -> Dict[str, Any]:
+    def apply_to_audio_postprocess(self, segment: Dict[str, Any], genre: str, speaker_role: str) -> Dict[str, Any]:
         """Apply learned rules to audio post-process parameters."""
         rules = self.sop_config.get_genre_rules(genre)
         if not rules:
@@ -880,7 +1013,9 @@ async def handle_user_correction_websocket(data: Dict[str, Any]) -> Dict[str, An
     }
 
 
-def apply_learned_rules_on_import(project_id: int, book_meta: BookMeta, analyzed_json: Dict[str, Any]) -> Dict[str, Any]:
+def apply_learned_rules_on_import(
+    project_id: int, book_meta: BookMeta, analyzed_json: Dict[str, Any]
+) -> Dict[str, Any]:
     """Apply learned SOP rules when importing a new novel of same genre."""
     detector = get_genre_detector()
     # First get broad genre from meta

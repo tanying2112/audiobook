@@ -144,15 +144,13 @@ def check_silence(file_path: Path) -> Dict[str, Any]:
         silence_ratio = total_silence_ms / duration_ms
 
         result["silence_regions"] = [
-            {"start_ms": start, "end_ms": end, "duration_ms": end - start}
-            for start, end in silence_regions
+            {"start_ms": start, "end_ms": end, "duration_ms": end - start} for start, end in silence_regions
         ]
         result["silence_ratio"] = silence_ratio
         result["silence_detected"] = silence_ratio > MAX_SILENCE_RATIO
 
         logger.debug(
-            f"Silence check {file_path.name}: ratio={silence_ratio:.2%}, "
-            f"detected={result['silence_detected']}"
+            f"Silence check {file_path.name}: ratio={silence_ratio:.2%}, " f"detected={result['silence_detected']}"
         )
 
     except Exception as e:
@@ -345,7 +343,7 @@ def check_all_segments(
     Returns:
         QualityReport with results for all segments
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     segment_results = []
     passed = 0
@@ -406,7 +404,7 @@ def check_all_segments(
         failed_segments=failed,
         segment_results=segment_results,
         overall_passed=(failed == 0),
-        generated_at=datetime.utcnow().isoformat() + "Z",
+        generated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     )
 
     return report
@@ -443,9 +441,7 @@ def load_quality_report(report_path: Path) -> Optional[QualityReport]:
     try:
         data = json.loads(report_path.read_text(encoding="utf-8"))
 
-        segment_results = [
-            SegmentQualityResult(**sr) for sr in data.get("segment_results", [])
-        ]
+        segment_results = [SegmentQualityResult(**sr) for sr in data.get("segment_results", [])]
 
         return QualityReport(
             project_id=data["project_id"],
