@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "genres": {
+    "default": {
+      "name": "默认通用",
+      "rules": {
+        "emotion_defaults": {
+          "默认": "neutral"
+        },
+        "speech_rate": {
+          "default": 1.0
+        },
+        "pitch_shifts": {
+          "narrator": 0
+        },
+        "pause_patterns": {
+          "default_pause": 300
+        },
+        "sfx_rules": {
+          "enabled": false
+        },
+        "voice_bindings": {
+          "narrator": "zh-CN-XiaoxiaoNeural"
+        }
+      },
+      "learning_stats": {
+        "corrections_received": 0,
+        "confidence": 0.5
+      }
+    }
+  },
+  "global_settings": {
+    "learning_enabled": true,
+    "min_corrections_for_update": 3,
+    "confidence_threshold": 0.65
+  },
+  "last_updated": "2026-07-19T05:38:17.501657Z"
+}
