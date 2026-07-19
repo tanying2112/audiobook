@@ -18,9 +18,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from ..models import Chapter, Paragraph, Project
+from ..models import Chapter, Paragraph, Project, ProjectPermission
 from ..storage import reports_dir
+from ..auth.models import RoleName
 from .dependencies import get_db
+from ..auth.dependencies import get_current_active_user
+from ..models import User
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +101,26 @@ class ParagraphOut(BaseModel):
 
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(
+    payload: ProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     """Create a new project."""
     project = Project(**payload.model_dump())
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # Grant project owner EDITOR permission
+    permission = ProjectPermission(
+        user_id=current_user.id,
+        project_id=project.id,
+        role=RoleName.EDITOR,
+    )
+    db.add(permission)
+    db.commit()
+
     return project
 
 

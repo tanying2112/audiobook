@@ -1,0 +1,62 @@
+# paddle/paddle_job.yaml
+# 百度飞桨 PaddleCloud 作业定义
+# 使用方式: paddlectl job create -f paddle_job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: voxcpm2-worker
+  labels:
+    app: voxcpm2-tts
+    pool: paddle
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: voxcpm2-worker
+        # PaddlePaddle GPU 镜像，含 CUDA 11.7 + cuDNN 8
+        image: registry.baidubce.com/paddlepaddle/paddle:2.6.0-gpu-cuda11.7-cudnn8
+        command: ["python", "/workspace/paddle_worker.py"]
+        env:
+        - name: REDIS_HOST
+          value: "casual-sawfish-86152.upstash.io"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_AUTH
+          value: "gQAAAAAAAVCIAAIgcDI2Njk2ZDcyMmZkNTU0N2FmYTIxZDk4ZDY4MTBjOGM4ZA"
+        - name: R2_ENDPOINT
+          value: "https://061b064ef0dafd787d33f4ee1693aa1b.r2.cloudflarestorage.com"
+        - name: R2_ACCESS_KEY_ID
+          value: "2fc25bbebc34f9b88874a8affcda2e3a"
+        - name: R2_SECRET_ACCESS_KEY
+          value: "b7d997bc558346d8146d33be06810b7db600baafe0cbe5d7356268ee948ef9d3"
+        - name: R2_BUCKET
+          value: "audiobook-assets"
+        - name: WORKER_ID
+          value: "baidu-v100-01"
+        - name: VOXCPM2_HF_REPO
+          value: "openbmb/VoxCPM2"
+        - name: PREFER_PADDLE
+          value: "true"
+        - name: HF_HUB_DISABLE_SSL_VERIFY
+          value: "1"
+        - name: HF_ENDPOINT
+          value: "https://hf-mirror.com"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "32Gi"
+          requests:
+            memory: "16Gi"
+        volumeMounts:
+        - name: model-cache
+          mountPath: /tmp/voxcpm2-model
+        - name: workspace
+          mountPath: /workspace
+      volumes:
+      - name: model-cache
+        emptyDir: {}
+      - name: workspace
+        # 从 BOS 拉取代码，或使用 git 仓库
+        emptyDir: {}
+  backoffLimit: 3
