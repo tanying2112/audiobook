@@ -19,9 +19,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from src.audiobook_studio.storage import reports_dir
+
 if TYPE_CHECKING:
-    from ..pipeline.orchestrator import PipelineHooks, PipelineStage
     from ..llm import LLMRouter
+    from ..pipeline.orchestrator import PipelineHooks, PipelineStage
 else:
     # Runtime: use string references to avoid circular imports
     PipelineHooks = object
@@ -279,7 +281,9 @@ class TelemetryCollector(PipelineHooks):
 
     # ========== PipelineHooks Implementation ==========
 
-    def on_pipeline_start(self, event: str, context: dict[str, Any], result: Any = None, error: Exception | None = None) -> None:
+    def on_pipeline_start(
+        self, event: str, context: dict[str, Any], result: Any = None, error: Exception | None = None
+    ) -> None:
         """Called when pipeline starts. Matches orchestrator hook signature."""
         if event != "pipeline_start":
             return
@@ -289,11 +293,14 @@ class TelemetryCollector(PipelineHooks):
             if context.get("project_id"):
                 self.telemetry.project_id = context["project_id"]
                 self.project_id = context["project_id"]
-            if context.get("output_dir"):
-                self.output_dir = Path(context["output_dir"])
+            # Always use canonical reports directory (aligned with monitoring API)
+            # Ignore context["output_dir"] to prevent path mismatch
+            self.output_dir = reports_dir(int(self.project_id), ensure=True)
             logger.debug(f"Pipeline started: {self.pipeline_id}")
 
-    def on_pipeline_end(self, event: str, context: dict[str, Any], result: Any = None, error: Exception | None = None) -> None:
+    def on_pipeline_end(
+        self, event: str, context: dict[str, Any], result: Any = None, error: Exception | None = None
+    ) -> None:
         """Called when pipeline completes (success or failure). Matches orchestrator hook signature."""
         if event != "pipeline_end":
             return
@@ -319,7 +326,9 @@ class TelemetryCollector(PipelineHooks):
                 f"cost=${self.telemetry.total_cost_usd:.4f}"
             )
 
-    def on_stage_enter(self, event: str, stage: str, context: dict[str, Any], result: Any = None, error: Exception | None = None) -> None:
+    def on_stage_enter(
+        self, event: str, stage: str, context: dict[str, Any], result: Any = None, error: Exception | None = None
+    ) -> None:
         """Called when a pipeline stage starts. Matches orchestrator hook signature."""
         if event != "stage_enter":
             return
@@ -334,7 +343,9 @@ class TelemetryCollector(PipelineHooks):
             )
             logger.debug(f"Stage entered: {stage}")
 
-    def on_stage_exit(self, event: str, stage: str, context: dict[str, Any], result: Any = None, error: Exception | None = None) -> None:
+    def on_stage_exit(
+        self, event: str, stage: str, context: dict[str, Any], result: Any = None, error: Exception | None = None
+    ) -> None:
         """Called when a pipeline stage completes. Matches orchestrator hook signature."""
         if event != "stage_exit":
             return
@@ -375,9 +386,7 @@ class TelemetryCollector(PipelineHooks):
                     # But we can at least record the total
                     provider = self._provider_from_model(model)
                     if provider not in self.telemetry.llm_providers:
-                        self.telemetry.llm_providers[provider] = ProviderMetrics(
-                            provider=provider, model=model
-                        )
+                        self.telemetry.llm_providers[provider] = ProviderMetrics(provider=provider, model=model)
                     self.telemetry.llm_providers[provider].cost_usd += cost
                 return
 
@@ -483,8 +492,8 @@ class TelemetryCollector(PipelineHooks):
         """Write metrics_summary.json to output directory."""
         try:
             if not self.output_dir:
-                # Try to infer from project_id
-                self.output_dir = Path(f"./output/{self.project_id}")
+                # Use canonical reports directory (aligned with monitoring API)
+                self.output_dir = reports_dir(int(self.project_id), ensure=True)
 
             self.output_dir.mkdir(parents=True, exist_ok=True)
             output_path = self.output_dir / "metrics_summary.json"
@@ -495,7 +504,9 @@ class TelemetryCollector(PipelineHooks):
                     "project_id": self.telemetry.project_id,
                     "pipeline_id": self.telemetry.pipeline_id,
                     "started_at": datetime.fromtimestamp(self.telemetry.started_at).isoformat(),
-                    "ended_at": datetime.fromtimestamp(self.telemetry.ended_at).isoformat() if self.telemetry.ended_at else None,
+                    "ended_at": (
+                        datetime.fromtimestamp(self.telemetry.ended_at).isoformat() if self.telemetry.ended_at else None
+                    ),
                     "duration_ms": self.telemetry.duration_ms,
                     "success": self.telemetry.success,
                     "error": self.telemetry.error,
@@ -562,13 +573,15 @@ class TelemetryCollector(PipelineHooks):
             for provider, metrics in self.telemetry.tts_metrics.provider_breakdown.items():
                 if provider not in summary["cost_accounting"]["providers"]:
                     summary["cost_accounting"]["providers"][provider] = {}
-                summary["cost_accounting"]["providers"][provider].update({
-                    "tts_segments": metrics.get("segments", 0),
-                    "tts_audio_duration_ms": metrics.get("audio_duration_ms", 0),
-                    "tts_synthesis_latency_ms": metrics.get("synthesis_latency_ms", 0),
-                    "tts_retries": metrics.get("retries", 0),
-                    "tts_fallbacks": metrics.get("fallbacks", 0),
-                })
+                summary["cost_accounting"]["providers"][provider].update(
+                    {
+                        "tts_segments": metrics.get("segments", 0),
+                        "tts_audio_duration_ms": metrics.get("audio_duration_ms", 0),
+                        "tts_synthesis_latency_ms": metrics.get("synthesis_latency_ms", 0),
+                        "tts_retries": metrics.get("retries", 0),
+                        "tts_fallbacks": metrics.get("fallbacks", 0),
+                    }
+                )
 
             # Stage timings
             for stage in self.telemetry.stage_order:
@@ -685,7 +698,11 @@ class TelemetryCollector(PipelineHooks):
             return {
                 "project_id": self.telemetry.project_id,
                 "pipeline_id": self.telemetry.pipeline_id,
-                "duration_ms": (time.time() - self.telemetry.started_at) * 1000 if self.telemetry.ended_at == 0 else self.telemetry.duration_ms,
+                "duration_ms": (
+                    (time.time() - self.telemetry.started_at) * 1000
+                    if self.telemetry.ended_at == 0
+                    else self.telemetry.duration_ms
+                ),
                 "total_cost_usd": self.telemetry.total_cost_usd,
                 "stage_timings": {
                     stage: {

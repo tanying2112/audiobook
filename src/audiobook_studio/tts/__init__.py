@@ -11,6 +11,8 @@ from .clone import (
     clone_voice,
     load_voice_print,
 )
+from .edge_tts_engine import EdgeTTSEngine, create_edge_tts_engine
+from .edge_tts_port import EdgeTTSPort, create_edge_tts_port
 from .engine import (
     EngineRegistry,
     SynthesisResult,
@@ -22,7 +24,9 @@ from .engine import (
     initialize_all_engines,
     register_engine,
 )
+from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
+from .kokoro_port import KokoroPort, create_kokoro_port
 from .model_downloader import (
     FALLBACK_FILES,
     REQUIRED_FILES,
@@ -31,6 +35,17 @@ from .model_downloader import (
     get_model_paths,
     verify_models,
 )
+from .port import (
+    PortFactory,
+    RemoteTTSPort,
+    TTSProsody,
+    TTSStatus,
+    TTSTaskPayload,
+    TTSTaskResult,
+    TTSTaskStatus,
+    TTSVoiceAnchor,
+)
+from .port_factory import create_port, get_port, make_port_factory, reset_port, set_port
 from .rate_limiter import (
     DEFAULT_TTS_RATE_LIMITS,
     ProviderRateLimiter,
@@ -39,28 +54,16 @@ from .rate_limiter import (
     create_tts_rate_limiter,
     get_tts_rate_limiter,
 )
-from .port import (
-    TTSStatus,
-    TTSVoiceAnchor,
-    TTSProsody,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    RemoteTTSPort,
-    PortFactory,
-)
-from .port_factory import create_port, get_port, set_port, reset_port, make_port_factory
-from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
+from .remote_voxcpm2_client import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
 from .remote_voxcpm2_port import (
+    PortConnectionError,
+    PortError,
+    PortRemoteError,
+    PortTimeoutError,
     RemoteVoxCPM2Port,
     RemoteVoxCPM2PortConfig,
     create_remote_voxcpm2_port,
-    PortError,
-    PortTimeoutError,
-    PortConnectionError,
-    PortRemoteError,
 )
-from .remote_voxcpm2_client import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpmp2_backend
 
 __all__ = [
@@ -106,6 +109,10 @@ __all__ = [
     "RemoteVoxCPM2Port",
     "RemoteVoxCPM2PortConfig",
     "create_remote_voxcpm2_port",
+    "EdgeTTSPort",
+    "create_edge_tts_port",
+    "KokoroPort",
+    "create_kokoro_port",
     # Port Factory
     "create_port",
     "get_port",

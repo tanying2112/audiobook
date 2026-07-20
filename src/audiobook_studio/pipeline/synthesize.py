@@ -22,35 +22,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..di import get_app_container
 from ..llm import LLMRouter, create_router
-from ..monitoring.telemetry import record_tts_segment, record_tts_retry, record_tts_fallback, record_tts_quality_check
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
+from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
-from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..tts import (
     EngineRegistry,
+    RemoteTTSPort,
     SynthesisResult,
     TTSEngine,
-    VoiceInfo,
-    RemoteTTSPort,
+    TTSProsody,
+    TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
-    TTSStatus,
     TTSVoiceAnchor,
-    TTSProsody,
+    VoiceInfo,
     get_port,
 )
 from ..tts.clone import CloningConfig, VoiceCloningManager
 from ..utils.ffmpeg_probe import get_duration_sync
-from ..audio_quality import (
-    check_all_segments,
-    QualityReport,
-    SegmentQualityResult,
-    save_quality_report,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +83,17 @@ class SynthesizePipeline:
     # Default crossfade duration in milliseconds between segments
     DEFAULT_CROSSFADE_MS = 50
 
+    # Configurable crossfade duration (can be overridden via CROSSFADE_MS env var)
+    @classmethod
+    def get_crossfade_ms(cls) -> int:
+        """Get crossfade duration from environment or default."""
+        import os
+
+        try:
+            return int(os.environ.get("CROSSFADE_MS", cls.DEFAULT_CROSSFADE_MS))
+        except ValueError:
+            return cls.DEFAULT_CROSSFADE_MS
+
     def __init__(
         self,
         router: Optional[LLMRouter] = None,
@@ -96,6 +101,7 @@ class SynthesizePipeline:
         mock_mode: Optional[bool] = None,
         hardware_profile: Optional[HardwareProfile] = None,
         port: Optional[RemoteTTSPort] = None,
+        crossfade_ms: Optional[int] = None,
     ):
         """Initialize the synthesis pipeline.
 
@@ -105,6 +111,8 @@ class SynthesizePipeline:
             mock_mode: If True, uses mock synthesis. Defaults to MOCK_LLM env var.
             hardware_profile: Hardware profile for engine selection.
             port: RemoteTTSPort instance. If None, uses global default via get_port().
+            crossfade_ms: Crossfade duration in ms for segment stitching.
+                          Defaults to CROSSFADE_MS env var or DEFAULT_CROSSFADE_MS.
         """
         if mock_mode is not None:
             self.mock_mode = mock_mode
@@ -134,11 +142,19 @@ class SynthesizePipeline:
         # Remote TTS Port - the single abstraction for all synthesis
         self._port = port or get_port()
 
+        # Crossfade duration for segment stitching
+        if crossfade_ms is not None:
+            self.crossfade_ms = crossfade_ms
+        else:
+            self.crossfade_ms = self.get_crossfade_ms()
+
         # Track existing segments for incremental synthesis
         self.existing_segments = {}
         self._mock_segment_counter = 0
 
-        logger.info(f"SynthesizePipeline initialized with port: {type(self._port).__name__}")
+        logger.info(
+            f"SynthesizePipeline initialized with port: {type(self._port).__name__}, crossfade_ms={self.crossfade_ms}"
+        )
 
     def _text_hash(self, text: str) -> str:
         return hashlib.md5(text.encode()).hexdigest()[:12]
@@ -311,6 +327,7 @@ class SynthesizePipeline:
         if source.exists():
             # Local file - copy
             import shutil
+
             shutil.copy2(source, dest_path)
         else:
             # Remote path (R2 key) - would need R2 client
@@ -336,6 +353,7 @@ class SynthesizePipeline:
             List of AudioSegment with file paths and metadata.
         """
         from ..monitoring import record_stage_performance
+
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments = []
@@ -572,7 +590,7 @@ class SynthesizePipeline:
 
         try:
             # Build ffmpeg filter_complex for crossfade stitching
-            crossfade_ms = self.DEFAULT_CROSSFADE_MS
+            crossfade_ms = self.crossfade_ms
 
             # Build input arguments
             input_args = []
@@ -684,13 +702,250 @@ class SynthesizePipeline:
             logger.error(f"Simple concat failed: {e}")
             return sum(s.duration_ms for s in segments)
 
+    def crossfade_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple],
+    ) -> int:
+        """
+        Replace a single segment in chapter audio with crossfade at boundaries.
+
+        Args:
+            chapter_audio_path: Path to full chapter audio file
+            segment_index: Index of segment to replace (0-based)
+            new_segment_path: Path to new segment audio
+            output_path: Output path for modified chapter audio
+            segment_boundaries_ms: List of (start_ms, end_ms) for each segment in chapter
+
+        Returns:
+            Total duration of output in ms
+        """
+        import os
+
+        crossfade_ms = self.crossfade_ms
+
+        if not chapter_audio_path.exists():
+            logger.warning(f"Chapter audio not found: {chapter_audio_path}")
+            # Just copy new segment
+            import shutil
+
+            shutil.copy2(new_segment_path, output_path)
+            return get_duration_sync(new_segment_path)
+
+        if segment_index >= len(segment_boundaries_ms):
+            logger.warning(f"Segment index {segment_index} out of bounds")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
+
+        start_ms, end_ms = segment_boundaries_ms[segment_index]
+
+        # Build ffmpeg filter complex for replacement with crossfade
+        # We need to:
+        # 1. Extract pre-replacement part (0 to start_ms - crossfade_ms/2)
+        # 2. Crossfade with new segment
+        # 3. Extract post-replacement part (end_ms + crossfade_ms/2 to end)
+
+        half_crossfade = crossfade_ms // 2
+        pre_end = max(0, start_ms - half_crossfade)
+        post_start = end_ms + half_crossfade
+
+        # Get total duration
+        total_duration = get_duration_sync(chapter_audio_path)
+        if total_duration <= post_start:
+            post_start = total_duration
+
+        try:
+            input_args = [
+                "-i",
+                str(chapter_audio_path),
+                "-i",
+                str(new_segment_path),
+            ]
+
+            filter_parts = []
+
+            # Extract pre part
+            if pre_end > 0:
+                filter_parts.append(f"[0:a]atrim=0:{pre_end/1000.0},asetpts=PTS-STARTPTS[pre]")
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[pre]")
+
+            # Extract post part
+            if post_start < total_duration:
+                filter_parts.append(
+                    f"[0:a]atrim={post_start/1000.0}:{total_duration/1000.0},asetpts=PTS-STARTPTS[post]"
+                )
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[post]")
+
+            # Crossfade pre with new segment
+            crossfade_sec = half_crossfade / 1000.0
+            filter_parts.append(f"[pre][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[pre_new]")
+
+            # Crossfade new segment with post
+            if post_start < total_duration:
+                filter_parts.append(f"[1:a][post]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[new_post]")
+                filter_parts.append("[pre_new][new_post]concat=n=2:v=0:a=1[out]")
+            else:
+                filter_parts.append("[pre_new]anull[out]")
+
+            filter_complex = ";".join(filter_parts)
+
+            cmd = (
+                [
+                    "ffmpeg",
+                    "-y",
+                ]
+                + input_args
+                + [
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "[out]",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "128k",
+                    str(output_path),
+                ]
+            )
+
+            logger.info(
+                f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
+            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+            if result.returncode != 0:
+                logger.error(f"ffmpeg crossfade replace failed: {result.stderr}")
+                # Fallback: simple replace without crossfade
+                return self._simple_replace_segment(
+                    chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
+                )
+
+            duration = get_duration_sync(output_path)
+            logger.info(f"Crossfade replace complete: {output_path.name}, total {duration}ms")
+            return duration
+
+        except Exception as e:
+            logger.error(f"Crossfade replace failed: {e}")
+            return self._simple_replace_segment(
+                chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
+            )
+
+    def _simple_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple],
+    ) -> int:
+        """Simple segment replacement without crossfade as fallback."""
+        try:
+            start_ms, end_ms = segment_boundaries_ms[segment_index]
+            total_duration = get_duration_sync(chapter_audio_path)
+
+            # Build filter: pre + new + post
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pre_path = Path(tmpdir) / "pre.mp3"
+                post_path = Path(tmpdir) / "post.mp3"
+
+                # Extract pre
+                if start_ms > 0:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(chapter_audio_path),
+                            "-ss",
+                            "0",
+                            "-to",
+                            f"{start_ms/1000.0}",
+                            "-c",
+                            "copy",
+                            str(pre_path),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                else:
+                    pre_path = None
+
+                # Extract post
+                if end_ms < total_duration:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(chapter_audio_path),
+                            "-ss",
+                            f"{end_ms/1000.0}",
+                            "-c",
+                            "copy",
+                            str(post_path),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                else:
+                    post_path = None
+
+                # Concat
+                concat_list = Path(tmpdir) / "concat.txt"
+                with open(concat_list, "w") as f:
+                    if pre_path and pre_path.exists():
+                        f.write(f"file '{pre_path.absolute()}'\n")
+                    f.write(f"file '{new_segment_path.absolute()}'\n")
+                    if post_path and post_path.exists():
+                        f.write(f"file '{post_path.absolute()}'\n")
+
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(output_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+
+            duration = get_duration_sync(output_path)
+            return duration
+        except Exception as e:
+            logger.error(f"Simple replace failed: {e}")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
+
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
         """Make TTS routing decision (simplified for now).
 
         In the future, this would use the LLM router for intelligent routing.
         """
-        from ..schemas import TtsRoutingDecision
         import os
+
+        from ..schemas import TtsRoutingDecision
 
         char = next(
             (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
@@ -729,7 +984,11 @@ class SynthesizePipeline:
             voice_id=voice_id,
             prosody_overrides={
                 "rate": float(inp.paragraph_annotation.speech_rate) if inp.paragraph_annotation.speech_rate else 1.0,
-                "pitch": float(inp.paragraph_annotation.pitch_shift_semitones) if inp.paragraph_annotation.pitch_shift_semitones is not None else 0.0,
+                "pitch": (
+                    float(inp.paragraph_annotation.pitch_shift_semitones)
+                    if inp.paragraph_annotation.pitch_shift_semitones is not None
+                    else 0.0
+                ),
             },
             fallback_engine=fallback_engine,
             reasoning=reasoning,

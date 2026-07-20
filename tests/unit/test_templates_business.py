@@ -470,8 +470,9 @@ class TestApplyQualityTemplateBusiness:
 # _rerun_downstream_stages
 # ===========================================================================
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 
 class TestRerunDownstreamStages:
@@ -622,7 +623,9 @@ class TestApplyTemplateBackground:
             with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
                 with patch("os.getenv", return_value="sqlite:///./test.db"):
                     with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
-                        with patch("src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock):
+                        with patch(
+                            "src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock
+                        ):
                             await _apply_template_background(
                                 project_id=10,
                                 template_id=42,

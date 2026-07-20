@@ -18,10 +18,9 @@ Requires:
 import os
 import warnings
 from pathlib import Path
-from sqlalchemy.exc import SAWarning
 
 import pytest
-
+from sqlalchemy.exc import SAWarning
 
 # ════════════════════════════════════════════════════════════════════════════
 # Environment setup - REAL services only, NO mocks
@@ -103,10 +102,7 @@ def redis_url():
 @pytest.fixture(scope="session")
 def database_url():
     """Get database URL for integration tests."""
-    return os.environ.get(
-        "TEST_DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5432/audiobook_test"
-    )
+    return os.environ.get("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/audiobook_test")
 
 
 # ════════════════════════════════════════════════════════════════════════════

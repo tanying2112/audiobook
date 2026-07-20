@@ -4,15 +4,14 @@ This file imports shared minimal fixtures from conftest_minimal.py and adds
 test-specific fixtures and mocks that are needed by unit/integration tests.
 """
 
-# Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
-from tests.conftest_minimal import *  # noqa: F403,F401
-
 import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+# Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
+from tests.conftest_minimal import *  # noqa: F403,F401
 
 # ════════════════════════════════════════════════════════════════════════════
 # Test-specific fixtures (not needed by all tests)

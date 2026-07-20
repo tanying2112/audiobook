@@ -10,23 +10,23 @@ Provides REST and WebSocket endpoints for:
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from src.audiobook_studio.schemas import BookMeta
 from src.audiobook_studio.pipeline.sop_reflection import (
-    get_sop_config,
+    SOPBackgroundThread,
+    UserCorrection,
+    apply_learned_rules_on_import,
     get_correction_collector,
-    get_reflection_engine,
     get_genre_detector,
+    get_reflection_engine,
     get_rule_applier,
+    get_sop_config,
+    handle_user_correction_websocket,
     start_sop_background_thread,
     stop_sop_background_thread,
-    handle_user_correction_websocket,
-    apply_learned_rules_on_import,
-    UserCorrection,
-    SOPBackgroundThread,
 )
+from src.audiobook_studio.schemas import BookMeta
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,16 @@ class CorrectionRequest(BaseModel):
     project_id: int = Field(..., description="Project ID")
     chapter_index: int = Field(..., description="Chapter index (1-based)")
     paragraph_index: int = Field(..., description="Paragraph index (1-based)")
-    field: str = Field(..., description="Field corrected: emotion, speech_rate, pitch_shift_semitones, pause_before_ms, pause_after_ms, sfx_tags")
+    field: str = Field(
+        ...,
+        description="Field corrected: emotion, speech_rate, pitch_shift_semitones, pause_before_ms, pause_after_ms, sfx_tags",
+    )
     original_value: Any = Field(..., description="Original value before correction")
     corrected_value: Any = Field(..., description="User-corrected value")
     genre: str = Field(..., description="Genre of the book")
-    context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional context: speaker, is_dialogue, text_preview")
+    context: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional context: speaker, is_dialogue, text_preview"
+    )
 
 
 class CorrectionResponse(BaseModel):
@@ -274,7 +279,9 @@ async def sop_corrections_websocket(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "pong"}, ensure_ascii=False))
             else:
                 await websocket.send_text(
-                    json.dumps({"type": "error", "message": f"Unknown message type: {message.get('type')}"}, ensure_ascii=False)
+                    json.dumps(
+                        {"type": "error", "message": f"Unknown message type: {message.get('type')}"}, ensure_ascii=False
+                    )
                 )
 
     except WebSocketDisconnect:
@@ -282,8 +289,6 @@ async def sop_corrections_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"SOP corrections WebSocket error: {e}")
         try:
-            await websocket.send_text(
-                json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
-            )
+            await websocket.send_text(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False))
         except Exception:
             pass

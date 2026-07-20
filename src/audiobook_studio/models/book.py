@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .feedback_record import FeedbackRecord
     from .paragraph import Paragraph
     from .processing_run import ProcessingRun
+    from .project_segment import ProjectSegment
     from .user import ProjectPermission
 
 
@@ -107,3 +108,6 @@ class Project(Base):
         "ProcessingRun", back_populates="project", cascade="all, delete-orphan"
     )
     permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project")
+    segments: Mapped[List["ProjectSegment"]] = relationship(
+        "ProjectSegment", back_populates="project", cascade="all, delete-orphan"
+    )

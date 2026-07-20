@@ -99,14 +99,16 @@ async def get_metrics_history(
         try:
             data = _load_metrics(f)
             # Extract key fields for history view
-            history.append({
-                "file": f.name,
-                "timestamp": data.get("metadata", {}).get("started_at"),
-                "duration_ms": data.get("metadata", {}).get("duration_ms"),
-                "success": data.get("metadata", {}).get("success"),
-                "total_cost_usd": data.get("cost_accounting", {}).get("total_cost_usd"),
-                "synthesis_rate_ratio": data.get("latency_profiles", {}).get("synthesis_rate_ratio"),
-            })
+            history.append(
+                {
+                    "file": f.name,
+                    "timestamp": data.get("metadata", {}).get("started_at"),
+                    "duration_ms": data.get("metadata", {}).get("duration_ms"),
+                    "success": data.get("metadata", {}).get("success"),
+                    "total_cost_usd": data.get("cost_accounting", {}).get("total_cost_usd"),
+                    "synthesis_rate_ratio": data.get("latency_profiles", {}).get("synthesis_rate_ratio"),
+                }
+            )
         except Exception as e:
             logger.warning(f"Failed to load metrics from {f}: {e}")
 
@@ -130,12 +132,14 @@ async def list_projects_with_metrics(db: Session = Depends(get_db)):
             metrics_files = list(reports_path.glob("metrics_summary*.json"))
             if metrics_files:
                 latest = max(metrics_files, key=lambda f: f.stat().st_mtime)
-                result.append({
-                    "project_id": p.id,
-                    "title": p.title,
-                    "latest_metrics": latest.name,
-                    "last_updated": datetime.fromtimestamp(latest.stat().st_mtime).isoformat(),
-                })
+                result.append(
+                    {
+                        "project_id": p.id,
+                        "title": p.title,
+                        "latest_metrics": latest.name,
+                        "last_updated": datetime.fromtimestamp(latest.stat().st_mtime).isoformat(),
+                    }
+                )
 
     return {"projects": sorted(result, key=lambda x: x["last_updated"], reverse=True)}
 

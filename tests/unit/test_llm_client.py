@@ -106,7 +106,10 @@ class TestLLMClientRealMode:
         mock_model_response = MagicMock()
         mock_model_response._raw_response = MagicMock()
         mock_model_response._raw_response.usage = MagicMock()
-        mock_model_response._raw_response.usage.model_dump.return_value = {"prompt_tokens": 100, "completion_tokens": 50}
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
         mock_model_response._raw_response.choices = [
             MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
         ]
@@ -172,7 +175,10 @@ class TestLLMClientRealMode:
         mock_model_response = MagicMock()
         mock_model_response._raw_response = MagicMock()
         mock_model_response._raw_response.usage = MagicMock()
-        mock_model_response._raw_response.usage.model_dump.return_value = {"prompt_tokens": 100, "completion_tokens": 50}
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
         mock_model_response._raw_response.choices = [
             MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
         ]

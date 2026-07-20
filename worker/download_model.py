@@ -13,18 +13,15 @@ MODEL_REPO = "openbmb/VoxCPM2"
 model_vol = modal.Volume.from_name("voxcpm2-model-vol", create_if_missing=True)
 
 # Image with necessary dependencies
-download_image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .pip_install(
-        "huggingface_hub",
-        "transformers",
-        "sentencepiece",
-        "protobuf",
-        "tiktoken",
-        "torch",
-        "torchaudio",
-        "accelerate",
-    )
+download_image = modal.Image.debian_slim(python_version="3.12").pip_install(
+    "huggingface_hub",
+    "transformers",
+    "sentencepiece",
+    "protobuf",
+    "tiktoken",
+    "torch",
+    "torchaudio",
+    "accelerate",
 )
 
 app = modal.App("voxcpm2-model-downloader")
@@ -39,8 +36,9 @@ app = modal.App("voxcpm2-model-downloader")
 def download_model():
     """Download VoxCPM2 model to the persistent volume."""
     import os
+
     from huggingface_hub import snapshot_download
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     model_path = "/models"
     repo_id = os.getenv("VOXCPM2_MODEL_REPO", "openbmb/VoxCPM2")
@@ -59,6 +57,7 @@ def download_model():
 
     # Fix config.json - add model_type for transformers auto-detection
     import json
+
     config_path = os.path.join(model_path, "config.json")
     with open(config_path, "r") as f:
         config = json.load(f)
@@ -75,6 +74,7 @@ def download_model():
     # Verify model loads
     print("🔍 Verifying model...")
     import torch
+
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=torch.float16,

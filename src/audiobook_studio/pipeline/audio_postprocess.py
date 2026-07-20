@@ -15,22 +15,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.acoustic_mapping import (
-    get_emotion_map,
-    get_transition_map,
-    get_punctuation_map,
-    EmotionAcousticProfile,
-    SPEED_MIN,
-    SPEED_MAX,
-    VOLUME_DB_MIN,
-    VOLUME_DB_MAX,
-    PITCH_HZ_MIN,
-    PITCH_HZ_MAX,
-    LENGTH_BUFFER_MS_PER_CHAR,
-    LENGTH_BUFFER_MAX_MS,
     DIALOGUE_SPEED_BOOST,
+    LENGTH_BUFFER_MAX_MS,
+    LENGTH_BUFFER_MS_PER_CHAR,
+    PITCH_HZ_MAX,
+    PITCH_HZ_MIN,
+    SPEED_MAX,
+    SPEED_MIN,
+    VOLUME_DB_MAX,
+    VOLUME_DB_MIN,
+    EmotionAcousticProfile,
+    get_emotion_map,
+    get_punctuation_map,
+    get_transition_map,
 )
 
 
@@ -40,15 +40,16 @@ class PhysicalAudioSegment:
 
     此对象直接传递给 TTS 引擎 (Edge-TTS / VoxCPM2 / Kokoro 等)
     """
-    text: str                              # 待合成文本
-    speaker: str                           # 说话人标识
-    speed: float                           # 语速倍率 (0.7-1.3)
-    volume_db: float                       # 音量增益 dB (-6 到 +6)
-    pitch_hz: float                        # 音高偏移 Hz (-50 到 +50)
-    pause_after_ms: int                    # 句后停顿毫秒数
-    emotion: str                           # 情感标签 (用于引擎内部风格选择)
-    paragraph_type: str                    # "narration" | "dialogue"
-    audio_format: str = "wav"              # 输出格式
+
+    text: str  # 待合成文本
+    speaker: str  # 说话人标识
+    speed: float  # 语速倍率 (0.7-1.3)
+    volume_db: float  # 音量增益 dB (-6 到 +6)
+    pitch_hz: float  # 音高偏移 Hz (-50 到 +50)
+    pause_after_ms: int  # 句后停顿毫秒数
+    emotion: str  # 情感标签 (用于引擎内部风格选择)
+    paragraph_type: str  # "narration" | "dialogue"
+    audio_format: str = "wav"  # 输出格式
 
     def to_tts_prosody(self) -> Dict[str, Any]:
         """转换为通用 TTS prosody 参数字典."""
@@ -237,6 +238,7 @@ class AudioPostProcessor:
 
         # 1. 基础情绪声学概貌
         from ..config.acoustic_mapping import EmotionAcousticProfile
+
         default_neutral = EmotionAcousticProfile(speed=1.0, volume_db=0.0, pitch_hz=0.0)
         profile = self.emotion_map.get(emotion, self.emotion_map.get("neutral", default_neutral))
         speed = profile.speed

@@ -29,16 +29,10 @@ class PairwiseJudgment(BaseModel):
     segment_id: str = Field(..., description="片段 ID")
     winner: Literal["A", "B", "tie"] = Field(..., description="整体胜者")
     confidence: Score = Field(..., description="判定置信度 0-1")
-    dimension_scores: Dict[str, PairwiseDimensionScore] = Field(
-        default_factory=dict, description="各维度成对评分"
-    )
-    reasoning: Dict[str, str] = Field(
-        default_factory=dict, description="各维度推理说明"
-    )
+    dimension_scores: Dict[str, PairwiseDimensionScore] = Field(default_factory=dict, description="各维度成对评分")
+    reasoning: Dict[str, str] = Field(default_factory=dict, description="各维度推理说明")
     overall_reasoning: str = Field(..., description="整体推理总结")
-    statistical_significance: Optional[bool] = Field(
-        default=None, description="是否达到统计显著性（需配合 t-test）"
-    )
+    statistical_significance: Optional[bool] = Field(default=None, description="是否达到统计显著性（需配合 t-test）")
     p_value: Optional[float] = Field(default=None, description="配对 t-test p-value")
     effect_size: Optional[float] = Field(default=None, description="Cohen's d 效应量")
     judge_model: Optional[str] = Field(default=None, description="评判模型名称")

@@ -122,16 +122,30 @@ for mod in ["google", "azure", "opentelemetry", "langfuse", "langfuse.decorators
     if mod in sys.modules:
         sys.modules[mod].__spec__ = None
 
+# Mock LLMProvidersConfig BEFORE importing pipeline (which imports router -> config_loader)
+# Use a proper module object (not MagicMock) so `from module import Name` works correctly
+import tests.conftest_minimal as cm
+
+if "src.audiobook_studio.llm.config_loader" not in sys.modules:
+    import types
+
+    sys.modules["src.audiobook_studio.llm.config_loader"] = types.ModuleType("src.audiobook_studio.llm.config_loader")
+
+config_loader_mock = sys.modules["src.audiobook_studio.llm.config_loader"]
+config_loader_mock.LLMProvidersConfig = cm.MockLLMProvidersConfig
+config_loader_mock.ProviderType = MagicMock()
+config_loader_mock.StageName = MagicMock()
+config_loader_mock.ProviderConfig = cm.MockProviderConfig
+config_loader_mock.PromptCompressionConfig = MagicMock()
+config_loader_mock.FallbackConfig = MagicMock()
+config_loader_mock.CostControlConfig = MagicMock()
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
 from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
-from audiobook_studio.schemas import (
-    TtsRoutingInput,
-    TtsRoutingDecision,
-    ParagraphAnnotation,
-)
+from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from audiobook_studio.schemas.book import CharacterVoiceBinding
-from audiobook_studio.tts import FakeRemoteTTSPort, TTSTaskPayload, TTSVoiceAnchor, TTSProsody, TTSStatus, TTSTaskResult
+from audiobook_studio.tts import FakeRemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
 
 
 class DummyObserve:
@@ -219,6 +233,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_success(self):
         """Test _synthesize_via_port succeeds with fake port."""
+
         async def run_test():
             duration, engine = await self.pipeline._synthesize_via_port(
                 text="Hello world",
@@ -234,6 +249,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_creates_audio_file(self):
         """Test that synthesis creates an audio file at output path."""
+
         async def run_test():
             output_path = Path(self.temp_dir) / "test_output.wav"
             await self.pipeline._synthesize_via_port(
@@ -250,6 +266,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_respects_prosody(self):
         """Test that prosody parameters are included in payload."""
+
         async def run_test():
             prosody = {"rate": 1.2, "pitch": 0.5, "volume": -0.2, "emotion": "happy"}
             await self.pipeline._synthesize_via_port(
@@ -348,12 +365,11 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_with_custom_failure_mode(self):
         """Test synthesis with custom failure mode function."""
+
         def fail_on_long_text(payload: TTSTaskPayload) -> bool:
             return len(payload.text) > 10
 
-        failing_port = FakeRemoteTTSPort(
-            synthesis_delay=0.01, failure_rate=0.0, failure_mode=fail_on_long_text
-        )
+        failing_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0, failure_mode=fail_on_long_text)
         pipeline = SynthesizePipeline(
             output_dir=self.temp_dir,
             mock_mode=False,
@@ -419,6 +435,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_cancellation(self):
         """Test that cancellation works during synthesis."""
+
         async def run_test():
             # Start synthesis
             task_id = "cancel_test"
@@ -443,6 +460,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_port_health_check(self):
         """Test port health check returns expected stats."""
+
         async def run_test():
             health = await self.fake_port.health_check()
             self.assertTrue(health["healthy"])
@@ -506,6 +524,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_empty_text_raises(self):
         """Test that empty text raises ValueError."""
+
         async def run_test():
             with self.assertRaises(ValueError) as ctx:
                 await self.pipeline._synthesize_via_port(
@@ -533,6 +552,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
     def test_synthesize_via_port_duration_calculation(self):
         """Test that duration is calculated from audio file."""
+
         async def run_test():
             output_path = Path(self.temp_dir) / "duration_test.wav"
             duration, engine = await self.pipeline._synthesize_via_port(

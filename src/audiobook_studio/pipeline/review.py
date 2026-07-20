@@ -19,12 +19,12 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..schemas.review import (
+    FixCommand,
+    JsonTruncationCheck,
     ReviewerInput,
     ReviewerJudgment,
-    VoiceBindingCheck,
-    JsonTruncationCheck,
     TagConsistencyCheck,
-    FixCommand,
+    VoiceBindingCheck,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,20 @@ class ReviewerAgent:
 
         # Valid emotion labels from schema
         self.valid_emotions = {
-            "neutral", "happy", "sad", "angry", "fearful", "surprised", "disgusted",
-            "tense", "tender", "contemplative", "whisper", "cold_laugh", "sigh", "sarcastic"
+            "neutral",
+            "happy",
+            "sad",
+            "angry",
+            "fearful",
+            "surprised",
+            "disgusted",
+            "tense",
+            "tender",
+            "contemplative",
+            "whisper",
+            "cold_laugh",
+            "sigh",
+            "sarcastic",
         }
 
         # Valid speed range
@@ -96,26 +108,32 @@ class ReviewerAgent:
 
             if speaker in voice_map:
                 char_info = voice_map[speaker]
-                checks.append(VoiceBindingCheck(
-                    speaker_canonical_name=speaker,
-                    found_in_voice_map=True,
-                    suggested_voice_id=char_info.get("suggested_voice_id"),
-                ))
+                checks.append(
+                    VoiceBindingCheck(
+                        speaker_canonical_name=speaker,
+                        found_in_voice_map=True,
+                        suggested_voice_id=char_info.get("suggested_voice_id"),
+                    )
+                )
             else:
                 # Check if it's the default narrator
                 if speaker == "_narrator_":
-                    checks.append(VoiceBindingCheck(
-                        speaker_canonical_name=speaker,
-                        found_in_voice_map=True,
-                        suggested_voice_id="zh-CN-XiaoxiaoNeural",
-                    ))
+                    checks.append(
+                        VoiceBindingCheck(
+                            speaker_canonical_name=speaker,
+                            found_in_voice_map=True,
+                            suggested_voice_id="zh-CN-XiaoxiaoNeural",
+                        )
+                    )
                 else:
-                    checks.append(VoiceBindingCheck(
-                        speaker_canonical_name=speaker,
-                        found_in_voice_map=False,
-                        issue=f"Speaker '{speaker}' not found in character_voice_map",
-                        severity="error",
-                    ))
+                    checks.append(
+                        VoiceBindingCheck(
+                            speaker_canonical_name=speaker,
+                            found_in_voice_map=False,
+                            issue=f"Speaker '{speaker}' not found in character_voice_map",
+                            severity="error",
+                        )
+                    )
 
         return checks
 
@@ -177,15 +195,17 @@ class ReviewerAgent:
                         is_truncated = True
                         issue = f"Field '{field_name}' contains non-serializable data: {e}"
 
-                checks.append(JsonTruncationCheck(
-                    paragraph_index=para_idx,
-                    field_name=field_name,
-                    is_truncated=is_truncated,
-                    expected_type=expected_type.__name__,
-                    actual_value=str(value)[:100] if value is not None else None,
-                    issue=issue,
-                    severity="error" if is_truncated else "warning",
-                ))
+                checks.append(
+                    JsonTruncationCheck(
+                        paragraph_index=para_idx,
+                        field_name=field_name,
+                        is_truncated=is_truncated,
+                        expected_type=expected_type.__name__,
+                        actual_value=str(value)[:100] if value is not None else None,
+                        issue=issue,
+                        severity="error" if is_truncated else "warning",
+                    )
+                )
 
         return checks
 
@@ -219,112 +239,134 @@ class ReviewerAgent:
             # 1. Emotion-text consistency
             emotion_passed = emotion in self.valid_emotions
             if not emotion_passed:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="emotion_text_match",
-                    passed=False,
-                    expected=f"one of {sorted(self.valid_emotions)}",
-                    actual=emotion,
-                    issue=f"Invalid emotion label: '{emotion}'",
-                    severity="error",
-                ))
-            else:
-                # Check if emotion fits dialogue/narration context
-                if is_dialogue and emotion in ["neutral", "contemplative"] and "？" in text:
-                    checks.append(TagConsistencyCheck(
+                checks.append(
+                    TagConsistencyCheck(
                         paragraph_index=para_idx,
                         check_type="emotion_text_match",
                         passed=False,
-                        expected="questioning emotion (surprised, tense)",
+                        expected=f"one of {sorted(self.valid_emotions)}",
                         actual=emotion,
-                        issue=f"Dialogue with question mark but emotion is '{emotion}'",
-                        severity="warning",
-                    ))
+                        issue=f"Invalid emotion label: '{emotion}'",
+                        severity="error",
+                    )
+                )
+            else:
+                # Check if emotion fits dialogue/narration context
+                if is_dialogue and emotion in ["neutral", "contemplative"] and "？" in text:
+                    checks.append(
+                        TagConsistencyCheck(
+                            paragraph_index=para_idx,
+                            check_type="emotion_text_match",
+                            passed=False,
+                            expected="questioning emotion (surprised, tense)",
+                            actual=emotion,
+                            issue=f"Dialogue with question mark but emotion is '{emotion}'",
+                            severity="warning",
+                        )
+                    )
 
             # 2. Speed range check
             if not (self.speed_min <= speech_rate <= self.speed_max):
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="speed_range",
-                    passed=False,
-                    expected=f"[{self.speed_min}, {self.speed_max}]",
-                    actual=f"{speech_rate}",
-                    issue=f"Speech rate {speech_rate} outside valid range",
-                    severity="error",
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="speed_range",
+                        passed=False,
+                        expected=f"[{self.speed_min}, {self.speed_max}]",
+                        actual=f"{speech_rate}",
+                        issue=f"Speech rate {speech_rate} outside valid range",
+                        severity="error",
+                    )
+                )
             else:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="speed_range",
-                    passed=True,
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="speed_range",
+                        passed=True,
+                    )
+                )
 
             # 3. SFX tag validation
             if needs_sfx:
                 for tag in sfx_tags:
                     if tag not in scene_tags:
-                        checks.append(TagConsistencyCheck(
-                            paragraph_index=para_idx,
-                            check_type="sfx_context",
-                            passed=False,
-                            expected=f"one of {scene_tags}",
-                            actual=tag,
-                            issue=f"SFX tag '{tag}' not in allowed scene_tags",
-                            severity="warning",
-                        ))
+                        checks.append(
+                            TagConsistencyCheck(
+                                paragraph_index=para_idx,
+                                check_type="sfx_context",
+                                passed=False,
+                                expected=f"one of {scene_tags}",
+                                actual=tag,
+                                issue=f"SFX tag '{tag}' not in allowed scene_tags",
+                                severity="warning",
+                            )
+                        )
                     else:
-                        checks.append(TagConsistencyCheck(
-                            paragraph_index=para_idx,
-                            check_type="sfx_context",
-                            passed=True,
-                        ))
+                        checks.append(
+                            TagConsistencyCheck(
+                                paragraph_index=para_idx,
+                                check_type="sfx_context",
+                                passed=True,
+                            )
+                        )
 
             # 4. Pause logic
             if pause_before < 0 or pause_before > 5000:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="pause_logic",
-                    passed=False,
-                    expected="0-5000ms",
-                    actual=f"{pause_before}ms",
-                    issue=f"Pause before {pause_before}ms is unrealistic",
-                    severity="warning",
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="pause_logic",
+                        passed=False,
+                        expected="0-5000ms",
+                        actual=f"{pause_before}ms",
+                        issue=f"Pause before {pause_before}ms is unrealistic",
+                        severity="warning",
+                    )
+                )
             else:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="pause_logic",
-                    passed=True,
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="pause_logic",
+                        passed=True,
+                    )
+                )
 
             if pause_after < 0 or pause_after > 5000:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="pause_logic",
-                    passed=False,
-                    expected="0-5000ms",
-                    actual=f"{pause_after}ms",
-                    issue=f"Pause after {pause_after}ms is unrealistic",
-                    severity="warning",
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="pause_logic",
+                        passed=False,
+                        expected="0-5000ms",
+                        actual=f"{pause_after}ms",
+                        issue=f"Pause after {pause_after}ms is unrealistic",
+                        severity="warning",
+                    )
+                )
             else:
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="pause_logic",
-                    passed=True,
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="pause_logic",
+                        passed=True,
+                    )
+                )
 
             # 5. Pitch shift range (-12 to +12 semitones typical)
             if not (-24 <= pitch_shift <= 24):
-                checks.append(TagConsistencyCheck(
-                    paragraph_index=para_idx,
-                    check_type="speed_range",  # reuse category
-                    passed=False,
-                    expected="[-24, +24] semitones",
-                    actual=f"{pitch_shift}",
-                    issue=f"Pitch shift {pitch_shift} semitones is extreme",
-                    severity="warning",
-                ))
+                checks.append(
+                    TagConsistencyCheck(
+                        paragraph_index=para_idx,
+                        check_type="speed_range",  # reuse category
+                        passed=False,
+                        expected="[-24, +24] semitones",
+                        actual=f"{pitch_shift}",
+                        issue=f"Pitch shift {pitch_shift} semitones is extreme",
+                        severity="warning",
+                    )
+                )
 
         return checks
 
@@ -341,31 +383,35 @@ class ReviewerAgent:
         # Fix missing voice bindings
         for check in voice_checks:
             if not check.found_in_voice_map and check.severity == "error":
-                commands.append(FixCommand(
-                    command_type="add_voice_binding",
-                    target_paragraph_index=-1,  # Chapter-level fix
-                    parameters={
-                        "canonical_name": check.speaker_canonical_name,
-                        "action": "add_to_voice_map",
-                        "suggested_voice_id": self._suggest_voice_id(check.speaker_canonical_name),
-                    },
-                    priority=10,
-                    rationale=f"Speaker '{check.speaker_canonical_name}' missing from character_voice_map",
-                ))
+                commands.append(
+                    FixCommand(
+                        command_type="add_voice_binding",
+                        target_paragraph_index=-1,  # Chapter-level fix
+                        parameters={
+                            "canonical_name": check.speaker_canonical_name,
+                            "action": "add_to_voice_map",
+                            "suggested_voice_id": self._suggest_voice_id(check.speaker_canonical_name),
+                        },
+                        priority=10,
+                        rationale=f"Speaker '{check.speaker_canonical_name}' missing from character_voice_map",
+                    )
+                )
 
         # Fix truncated fields
         for check in truncation_checks:
             if check.is_truncated and check.severity == "error":
-                commands.append(FixCommand(
-                    command_type="fix_truncated_field",
-                    target_paragraph_index=check.paragraph_index,
-                    parameters={
-                        "field_name": check.field_name,
-                        "action": "re_extract_or_default",
-                    },
-                    priority=9,
-                    rationale=f"Field '{check.field_name}' in paragraph {check.paragraph_index} is truncated: {check.issue}",
-                ))
+                commands.append(
+                    FixCommand(
+                        command_type="fix_truncated_field",
+                        target_paragraph_index=check.paragraph_index,
+                        parameters={
+                            "field_name": check.field_name,
+                            "action": "re_extract_or_default",
+                        },
+                        priority=9,
+                        rationale=f"Field '{check.field_name}' in paragraph {check.paragraph_index} is truncated: {check.issue}",
+                    )
+                )
 
         # Fix tag inconsistencies
         for check in tag_checks:
@@ -373,55 +419,65 @@ class ReviewerAgent:
                 if check.check_type == "emotion_text_match":
                     # paragraph_index is 1-based in checks, but paragraphs list is 0-based
                     para_idx = check.paragraph_index - 1 if check.paragraph_index > 0 else 0
-                    commands.append(FixCommand(
-                        command_type="correct_emotion_tag",
-                        target_paragraph_index=check.paragraph_index,
-                        parameters={
-                            "current_emotion": check.actual,
-                            "suggested_emotion": self._suggest_emotion_from_text(
-                                paragraphs[para_idx].get("text", "") if para_idx < len(paragraphs) else ""
-                            ),
-                        },
-                        priority=7,
-                        rationale=f"Emotion tag mismatch: {check.issue}",
-                    ))
+                    commands.append(
+                        FixCommand(
+                            command_type="correct_emotion_tag",
+                            target_paragraph_index=check.paragraph_index,
+                            parameters={
+                                "current_emotion": check.actual,
+                                "suggested_emotion": self._suggest_emotion_from_text(
+                                    paragraphs[para_idx].get("text", "") if para_idx < len(paragraphs) else ""
+                                ),
+                            },
+                            priority=7,
+                            rationale=f"Emotion tag mismatch: {check.issue}",
+                        )
+                    )
                 elif check.check_type == "speed_range":
-                    commands.append(FixCommand(
-                        command_type="adjust_speed",
-                        target_paragraph_index=check.paragraph_index,
-                        parameters={
-                            "current_speed": check.actual,
-                            "clamped_speed": max(self.speed_min, min(self.speed_max, float(check.actual) if check.actual else 1.0)),
-                        },
-                        priority=6,
-                        rationale=f"Speech rate out of range: {check.issue}",
-                    ))
+                    commands.append(
+                        FixCommand(
+                            command_type="adjust_speed",
+                            target_paragraph_index=check.paragraph_index,
+                            parameters={
+                                "current_speed": check.actual,
+                                "clamped_speed": max(
+                                    self.speed_min, min(self.speed_max, float(check.actual) if check.actual else 1.0)
+                                ),
+                            },
+                            priority=6,
+                            rationale=f"Speech rate out of range: {check.issue}",
+                        )
+                    )
                 elif check.check_type == "sfx_context":
-                    commands.append(FixCommand(
-                        command_type="add_sfx_tag",
-                        target_paragraph_index=check.paragraph_index,
-                        parameters={
-                            "invalid_tag": check.actual,
-                            "action": "remove_or_replace",
-                            "allowed_tags": check.expected,
-                        },
-                        priority=5,
-                        rationale=f"Invalid SFX tag: {check.issue}",
-                    ))
+                    commands.append(
+                        FixCommand(
+                            command_type="add_sfx_tag",
+                            target_paragraph_index=check.paragraph_index,
+                            parameters={
+                                "invalid_tag": check.actual,
+                                "action": "remove_or_replace",
+                                "allowed_tags": check.expected,
+                            },
+                            priority=5,
+                            rationale=f"Invalid SFX tag: {check.issue}",
+                        )
+                    )
                 elif check.check_type == "pause_logic":
                     # pause_logic checks have severity="warning" but we still generate fix commands
                     val = check.actual.replace("ms", "") if "ms" in str(check.actual) else check.actual
-                    commands.append(FixCommand(
-                        command_type="fix_pause_timing",
-                        target_paragraph_index=check.paragraph_index,
-                        parameters={
-                            "field": "pause_before_ms" if "before" in (check.issue or "") else "pause_after_ms",
-                            "current_value": check.actual,
-                            "clamped_value": max(0, min(5000, int(val) if val else 300)),
-                        },
-                        priority=4,
-                        rationale=f"Unrealistic pause timing: {check.issue}",
-                    ))
+                    commands.append(
+                        FixCommand(
+                            command_type="fix_pause_timing",
+                            target_paragraph_index=check.paragraph_index,
+                            parameters={
+                                "field": "pause_before_ms" if "before" in (check.issue or "") else "pause_after_ms",
+                                "current_value": check.actual,
+                                "clamped_value": max(0, min(5000, int(val) if val else 300)),
+                            },
+                            priority=4,
+                            rationale=f"Unrealistic pause timing: {check.issue}",
+                        )
+                    )
 
         return commands
 
@@ -511,14 +567,18 @@ class ReviewerAgent:
         for check in truncation_checks:
             if check.is_truncated:
                 if check.severity == "error":
-                    judgment.add_blocking_issue(check.issue or f"Truncated field {check.field_name} in para {check.paragraph_index}")
+                    judgment.add_blocking_issue(
+                        check.issue or f"Truncated field {check.field_name} in para {check.paragraph_index}"
+                    )
                 else:
                     judgment.add_warning(check.issue or f"Truncation warning in {check.field_name}")
 
         for check in tag_checks:
             if not check.passed:
                 if check.severity == "error" or (check.severity == "warning" and self.strict_mode):
-                    judgment.add_blocking_issue(check.issue or f"Tag check failed: {check.check_type} para {check.paragraph_index}")
+                    judgment.add_blocking_issue(
+                        check.issue or f"Tag check failed: {check.check_type} para {check.paragraph_index}"
+                    )
                 else:
                     judgment.add_warning(check.issue or f"Tag warning: {check.check_type} para {check.paragraph_index}")
 

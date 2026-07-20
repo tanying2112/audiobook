@@ -14,7 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisOutput, ParagraphAnnotation, ParagraphAnnotationInput
-from .sop_reflection import get_rule_applier, get_genre_detector
+from .sop_reflection import get_genre_detector, get_rule_applier
 
 logger = logging.getLogger(__name__)
 

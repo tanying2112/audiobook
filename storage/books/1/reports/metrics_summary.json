@@ -1,72 +1,70 @@
 {
   "metadata": {
-    "project_id": 1,
-    "pipeline_id": "test-pipeline-123",
-    "started_at": "2026-07-16T10:00:00Z",
-    "ended_at": "2026-07-16T10:05:30Z",
-    "duration_ms": 330000,
-    "success": true
+    "project_id": "1",
+    "pipeline_id": "test",
+    "started_at": "2026-07-20T06:43:37.409209",
+    "ended_at": "2026-07-20T06:43:37.409243",
+    "duration_ms": 0.033855438232421875,
+    "success": true,
+    "error": null
   },
   "cost_accounting": {
-    "total_cost_usd": 0.0425,
+    "total_cost_usd": 0.0,
+    "llm_cost_usd": 0.0,
+    "tts_cost_usd": 0.0,
     "providers": {
-      "gemini_2_0_flash": {
-        "provider": "gemini",
-        "model": "gemini-2.0-flash",
-        "prompt_tokens": 15000,
-        "completion_tokens": 8000,
-        "cost_usd": 0.015,
-        "call_count": 25,
-        "avg_latency_ms": 1200,
-        "success_rate": 1.0
-      },
-      "ollama_local": {
+      "ollama": {
         "provider": "ollama",
-        "model": "llama3.1:8b",
-        "prompt_tokens": 20000,
-        "completion_tokens": 12000,
-        "cost_usd": 0.0,
-        "call_count": 18,
-        "avg_latency_ms": 3500,
-        "success_rate": 0.95
-      },
-      "edge_tts": {
-        "provider": "edge_tts",
-        "model": "zh-CN-XiaoxiaoNeural",
+        "model": "ollama_gemma4_e2b",
         "prompt_tokens": 0,
-        "completion_tokens": 50000,
-        "cost_usd": 0.0275,
-        "call_count": 50,
-        "avg_latency_ms": 800,
-        "success_rate": 1.0
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+        "call_count": 0,
+        "avg_latency_ms": 0.0,
+        "retry_count": 0,
+        "fallback_count": 0,
+        "fallback_from": [],
+        "success_rate": 0.0
+      },
+      "unknown": {
+        "provider": "unknown",
+        "model": "gemini_2_0_flash",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+        "call_count": 0,
+        "avg_latency_ms": 0.0,
+        "retry_count": 0,
+        "fallback_count": 0,
+        "fallback_from": [],
+        "success_rate": 0.0
       }
     }
   },
   "latency_profiles": {
-    "synthesis_rate_ratio": 1.25,
-    "real_time_factor": 0.8,
-    "total_audio_duration_ms": 1800000,
-    "stage_wall_times_ms": {
-      "extract": {"duration_ms": 5000, "success": true},
-      "analyze": {"duration_ms": 12000, "success": true},
-      "annotate": {"duration_ms": 8000, "success": true},
-      "edit": {"duration_ms": 15000, "success": true},
-      "tts_routing": {"duration_ms": 2000, "success": true},
-      "synthesize": {"duration_ms": 180000, "success": true},
-      "quality": {"duration_ms": 10000, "success": true},
-      "audio_postprocess": {"duration_ms": 50000, "success": true}
-    }
+    "stage_wall_times_ms": {},
+    "synthesis_rate_ratio": 0.0,
+    "real_time_factor": 0.0,
+    "total_audio_duration_ms": 0.0,
+    "total_synthesis_latency_ms": 0.0
   },
   "resilience_metrics": {
     "llm": {
-      "total_calls": 43,
-      "total_retries": 3,
-      "total_fallbacks": 1
+      "total_calls": 0,
+      "total_retries": 0,
+      "total_fallbacks": 0,
+      "fallback_details": []
     },
     "tts": {
-      "total_segments": 50,
-      "successful_segments": 48,
-      "failed_segments": 2
+      "total_segments": 0,
+      "successful_segments": 0,
+      "failed_segments": 0,
+      "retries": 0,
+      "fallbacks": 0,
+      "fallback_from": []
     }
-  }
+  },
+  "stage_timings": {}
 }

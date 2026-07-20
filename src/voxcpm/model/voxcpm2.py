@@ -20,13 +20,13 @@ limitations under the License.
 
 import os
 import sys
-from typing import Tuple, Union, Generator, List, Optional
-
-import torch
-import torch.nn as nn
 import warnings
+from typing import Generator, List, Optional, Tuple, Union
+
 import librosa
 import numpy as np
+import torch
+import torch.nn as nn
 from einops import rearrange
 from pydantic import BaseModel
 
@@ -39,7 +39,7 @@ except ImportError:
 from tqdm import tqdm
 from transformers import LlamaTokenizerFast
 
-from ..modules.audiovae import AudioVAEV2, AudioVAEConfigV2
+from ..modules.audiovae import AudioVAEConfigV2, AudioVAEV2
 from ..modules.layers import ScalarQuantizationLayer
 from ..modules.layers.lora import apply_lora_to_named_linear_modules
 from ..modules.locdit import CfmConfig, UnifiedCFM, VoxCPMLocDiTV2
@@ -48,8 +48,8 @@ from ..modules.minicpm4 import MiniCPM4Config, MiniCPMModel
 from .utils import (
     apply_generation_seed,
     get_dtype,
-    materialize_generation_seed,
     mask_multichar_chinese_tokens,
+    materialize_generation_seed,
     next_and_close,
     pick_runtime_dtype,
     resolve_runtime_device,

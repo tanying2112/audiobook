@@ -341,9 +341,7 @@ class TestContextManagers:
 
     def test_track_tts_synthesis_success(self):
         """Test tracking successful TTS synthesis."""
-        with track_tts_synthesis(
-            ProviderType.EDGE_TTS, "edge", 5000, project_id=1, voice="zh-CN-XiaoxiaoNeural"
-        ):
+        with track_tts_synthesis(ProviderType.EDGE_TTS, "edge", 5000, project_id=1, voice="zh-CN-XiaoxiaoNeural"):
             time.sleep(0.01)
 
         records = get_telemetry().get_records()
@@ -421,9 +419,7 @@ class TestCostCalculation:
     def test_gpt4o_mini_cost(self):
         """Test GPT-4o-mini cost calculation."""
         collector = TelemetryCollector()
-        record = collector.record_llm_usage(
-            ProviderType.OPENAI, "gpt-4o-mini", 1_000_000, 1_000_000, 1000.0
-        )
+        record = collector.record_llm_usage(ProviderType.OPENAI, "gpt-4o-mini", 1_000_000, 1_000_000, 1000.0)
         # $0.15/M input + $0.6/M output = $0.75 per 1M tokens each
         expected = 0.15 + 0.6  # $0.75
         assert abs(record.cost_usd - expected) < 0.01
@@ -431,17 +427,13 @@ class TestCostCalculation:
     def test_groq_free(self):
         """Test Groq is free."""
         collector = TelemetryCollector()
-        record = collector.record_llm_usage(
-            ProviderType.GROQ, "llama-3.1-70b", 1_000_000, 1_000_000, 1000.0
-        )
+        record = collector.record_llm_usage(ProviderType.GROQ, "llama-3.1-70b", 1_000_000, 1_000_000, 1000.0)
         assert record.cost_usd == 0.0
 
     def test_claude_sonnet_cost(self):
         """Test Claude 3.5 Sonnet cost."""
         collector = TelemetryCollector()
-        record = collector.record_llm_usage(
-            ProviderType.ANTHROPIC, "claude-3-5-sonnet", 1_000_000, 1_000_000, 1000.0
-        )
+        record = collector.record_llm_usage(ProviderType.ANTHROPIC, "claude-3-5-sonnet", 1_000_000, 1_000_000, 1000.0)
         # $3/M input + $15/M output = $18
         expected = 3.0 + 15.0
         assert abs(record.cost_usd - expected) < 0.01
@@ -449,17 +441,13 @@ class TestCostCalculation:
     def test_edge_tts_free(self):
         """Test Edge TTS is free."""
         collector = TelemetryCollector()
-        record = collector.record_tts_synthesis(
-            ProviderType.EDGE_TTS, "edge", 1_000_000, 1000.0
-        )
+        record = collector.record_tts_synthesis(ProviderType.EDGE_TTS, "edge", 1_000_000, 1000.0)
         assert record.cost_usd == 0.0
 
     def test_unknown_model_zero_cost(self):
         """Test unknown model defaults to zero cost."""
         collector = TelemetryCollector()
-        record = collector.record_llm_usage(
-            ProviderType.OPENAI, "unknown-model-xyz", 1000, 2000, 100.0
-        )
+        record = collector.record_llm_usage(ProviderType.OPENAI, "unknown-model-xyz", 1000, 2000, 100.0)
         assert record.cost_usd == 0.0
 
 
@@ -483,8 +471,8 @@ class TestPrometheusExport:
         assert "audiobook_llm_tokens_total" in output
         assert "audiobook_llm_cost_usd_total" in output
         assert "audiobook_operation_duration_ms" in output
-        assert "provider=\"openai\"" in output
-        assert "model=\"gpt-4o-mini\"" in output
+        assert 'provider="openai"' in output
+        assert 'model="gpt-4o-mini"' in output
 
     def test_prometheus_metrics_initialized(self):
         """Test Prometheus metrics are initialized."""

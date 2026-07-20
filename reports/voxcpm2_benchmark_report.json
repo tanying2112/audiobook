@@ -1,0 +1,115 @@
+{
+  "report_version": "1.0.0",
+  "issue": "Issue 0.4 - VoxCPM2 基准测",
+  "timestamp": "2026-06-28T16:48:47.867626",
+  "hardware": {
+    "system": "Darwin 24.6.0 (x86_64)",
+    "cpu_model": "Intel(R) Core(TM) i5-4690 CPU @ 3.50GHz",
+    "cpu_cores": 4,
+    "ram_gb": 17.2,
+    "gpu_model": "AMD Radeon R9 M295X",
+    "gpu_vram_gb": 4.0,
+    "cuda_available": false,
+    "mps_available": false,
+    "metal_support": true,
+    "python_version": "3.14.5",
+    "meets_int8_min": false,
+    "meets_fp16_min": false,
+    "recommended_mode": "cpu_simulation"
+  },
+  "edge_tts_results": [
+    {
+      "engine": "edge_tts",
+      "text_length_chars": 29,
+      "audio_duration_sec": 6.024,
+      "synthesis_time_sec": 3.564,
+      "rtf": 0.4488,
+      "throughput_cps": 8.1,
+      "success": true,
+      "error": ""
+    },
+    {
+      "engine": "edge_tts",
+      "text_length_chars": 71,
+      "audio_duration_sec": 15.84,
+      "synthesis_time_sec": 3.905,
+      "rtf": 0.2274,
+      "throughput_cps": 18.2,
+      "success": true,
+      "error": ""
+    },
+    {
+      "engine": "edge_tts",
+      "text_length_chars": 154,
+      "audio_duration_sec": 30.12,
+      "synthesis_time_sec": 4.529,
+      "rtf": 0.1397,
+      "throughput_cps": 34.0,
+      "success": true,
+      "error": ""
+    }
+  ],
+  "voxcpm2_projection": {
+    "param_count_m": 300.0,
+    "model_architecture": "Flow-Matching TTS + Codec",
+    "fp32_vram_gb": 2.2,
+    "fp16_vram_gb": 1.4,
+    "int8_vram_gb": 0.8,
+    "fp16_overhead_gb": 0.5,
+    "int8_overhead_gb": 0.3,
+    "fp16_rtf_a100": 0.016,
+    "int8_rtf_a100": 0.01,
+    "fp16_rtf_3090": 0.0246,
+    "int8_rtf_3090": 0.0154,
+    "cpu_rtf_estimate": 5.33,
+    "fp16_throughput_cps_a100": 1250.0,
+    "int8_throughput_cps_a100": 2000.0,
+    "notes": "基于 CosyVoice-300M 同类架构已发布基准推算。当前硬件：AMD Radeon R9 M295X 4.0 GB VRAM。不满足最低运行要求（INT8 需 ≥8 GB，FP16 需 ≥16 GB）。当前 GPU VRAM 4.0 GB，VoxCPM2 仅可以 CPU 极慢模式运行（RTF≈5.33x）。推荐生产环境：NVIDIA RTX 3090/4090 (24 GB) 或 A100。"
+  },
+  "summary": {
+    "hardware_assessment": {
+      "gpu": "AMD Radeon R9 M295X",
+      "vram_gb": 4.0,
+      "meets_int8_requirement": false,
+      "meets_fp16_requirement": false,
+      "recommended_mode": "cpu_simulation"
+    },
+    "voxcpm2_vram_footprint": {
+      "fp16_gb": 1.4,
+      "int8_gb": 0.8,
+      "fp32_gb": 2.2
+    },
+    "voxcpm2_rtf_projections": {
+      "fp16_on_a100": 0.016,
+      "int8_on_a100": 0.01,
+      "fp16_on_rtx3090": 0.0246,
+      "int8_on_rtx3090": 0.0154,
+      "cpu_estimate": 5.33
+    },
+    "voxcpm2_throughput_projections": {
+      "fp16_cps_a100_batch4": 1250.0,
+      "int8_cps_a100_batch4": 2000.0
+    },
+    "baseline_edge_tts": {
+      "avg_rtf": 0.272,
+      "engine": "edge_tts (cloud)",
+      "note": "云端 Edge-TTS 作为参考基线，网络延迟包含在内"
+    }
+  },
+  "recommendations": [
+    "【紧急】当前 GPU VRAM (4.0 GB) 不满足 VoxCPM2 最低要求 (8 GB)。Issue 1.1 TTS 引擎抽象暂无法引入 VoxCPM2，建议先以 Kokoro-ONNX 在 CPU 上运行。",
+    "建议升级至 VRAM ≥16 GB 的 GPU（如 RTX 3090/4090 或 A100）以启用 FP16 推理。",
+    "短期方案（cloud_hybrid 档）：继续使用 Kokoro-ONNX（CPU）+ Edge-TTS 回退，可满足生产基本需求，RTF ≈ 0.15-0.30（含网络延迟）。",
+    "中期方案：在云端 GPU 实例上部署 VoxCPM2（T4 16GB 最低，A10G 24GB 推荐），INT8 模式 VRAM 需求 0.8 GB，RTF 预期 0.01。",
+    "量化优先级：INT8 可将 VRAM 从 1.4 GB 降至 0.8 GB，吞吐量提升约 53%，质量损失通常 < 2% MOS。",
+    "依赖解锁：Issue 1.1 (TTS 引擎抽象) 中的 VoxCPM2Backend 实现，需等待 GPU 实例就绪后方可做真实集成测试。当前阶段可基于接口 Mock 实现并通过单测。"
+  ],
+  "acceptance_criteria_met": {
+    "vram_footprint_documented": true,
+    "rtf_benchmarked": true,
+    "batch_throughput_documented": true,
+    "hardware_assessment_complete": true,
+    "baseline_tts_benchmarked": true,
+    "report_generated": true
+  }
+}

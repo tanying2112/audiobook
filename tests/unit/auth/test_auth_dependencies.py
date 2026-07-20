@@ -1,26 +1,27 @@
 """Tests for auth dependencies - FastAPI dependency injection tests."""
 
-import pytest
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import SecurityScopes
 from fastapi.testclient import TestClient
+from jose import JWTError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from jose import JWTError
 
 from src.audiobook_studio.auth.dependencies import (
-    get_current_user,
+    authenticate_user,
     get_current_active_user,
     get_current_superuser,
-    require_permission,
-    require_role,
-    require_project_permission,
+    get_current_user,
     get_rbac_manager,
-    authenticate_user,
     oauth2_scheme,
+    require_permission,
+    require_project_permission,
+    require_role,
 )
 from src.audiobook_studio.auth.jwt_handler import jwt_handler
 from src.audiobook_studio.auth.models import PermissionName, RoleName, TokenData
@@ -97,24 +98,17 @@ class TestGetCurrentUser:
         """Test successful user retrieval from valid token."""
         # Create a valid token
         token = jwt_handler.create_token_pair(
-            user_id=1,
-            username="testuser",
-            roles=["admin"],
-            permissions=["project:read", "project:write"]
+            user_id=1, username="testuser", roles=["admin"], permissions=["project:read", "project:write"]
         )["access_token"]
-        
+
         # Mock the database query to return our user
-        with patch.object(test_db, 'query') as mock_query:
+        with patch.object(test_db, "query") as mock_query:
             mock_query.return_value.filter.return_value.first.return_value = mock_user
-            
+
             # Call the dependency
             security_scopes = SecurityScopes(scopes=[])
-            result = await get_current_user(
-                security_scopes=security_scopes,
-                token=token,
-                db=test_db
-            )
-            
+            result = await get_current_user(security_scopes=security_scopes, token=token, db=test_db)
+
             assert result == mock_user
             mock_query.assert_called_once()
 
@@ -122,14 +116,10 @@ class TestGetCurrentUser:
     async def test_get_current_user_invalid_token(self, test_db):
         """Test rejection of invalid token."""
         security_scopes = SecurityScopes(scopes=[])
-        
+
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(
-                security_scopes=security_scopes,
-                token="invalid.token.here",
-                db=test_db
-            )
-        
+            await get_current_user(security_scopes=security_scopes, token="invalid.token.here", db=test_db)
+
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
 
@@ -137,64 +127,46 @@ class TestGetCurrentUser:
     async def test_get_current_user_expired_token(self, test_db):
         """Test rejection of expired token."""
         # Create an expired token (we can't easily create one, so mock decode)
-        with patch.object(jwt_handler, 'decode_token', side_effect=JWTError("Expired")):
+        with patch.object(jwt_handler, "decode_token", side_effect=JWTError("Expired")):
             security_scopes = SecurityScopes(scopes=[])
-            
+
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(
-                    security_scopes=security_scopes,
-                    token="expired.token.here",
-                    db=test_db
-                )
-            
+                await get_current_user(security_scopes=security_scopes, token="expired.token.here", db=test_db)
+
             assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_get_current_user_missing_user(self, test_db, mock_rbac_manager):
         """Test rejection when user not found in database."""
-        token = jwt_handler.create_token_pair(
-            user_id=999,
-            username="nonexistent",
-            roles=[],
-            permissions=[]
-        )["access_token"]
-        
-        with patch.object(test_db, 'query') as mock_query:
+        token = jwt_handler.create_token_pair(user_id=999, username="nonexistent", roles=[], permissions=[])[
+            "access_token"
+        ]
+
+        with patch.object(test_db, "query") as mock_query:
             mock_query.return_value.filter.return_value.first.return_value = None
-            
+
             security_scopes = SecurityScopes(scopes=[])
-            
+
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(
-                    security_scopes=security_scopes,
-                    token=token,
-                    db=test_db
-                )
-            
+                await get_current_user(security_scopes=security_scopes, token=token, db=test_db)
+
             assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_get_current_user_scope_check_fail(self, test_db, mock_user):
         """Test scope check failure."""
         token = jwt_handler.create_token_pair(
-            user_id=1,
-            username="testuser",
-            roles=[],
-            permissions=["project:read"]  # Missing admin scope
+            user_id=1, username="testuser", roles=[], permissions=["project:read"]  # Missing admin scope
         )["access_token"]
-        
-        with patch.object(test_db, 'query') as mock_query:
+
+        with patch.object(test_db, "query") as mock_query:
             mock_query.return_value.filter.return_value.first.return_value = mock_user
-            
+
             security_scopes = SecurityScopes(scopes=["admin"])
-            
+
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(
-                    security_scopes=security_scopes,
-                    token=token,
-                    db=test_db
-                )
-            
+                await get_current_user(security_scopes=security_scopes, token=token, db=test_db)
+
             assert exc_info.value.status_code == 403
             assert "Not enough permissions" in exc_info.value.detail
 
@@ -202,23 +174,16 @@ class TestGetCurrentUser:
     async def test_get_current_user_scope_check_pass_with_role(self, test_db, mock_user):
         """Test scope check passes with admin role."""
         token = jwt_handler.create_token_pair(
-            user_id=1,
-            username="testuser",
-            roles=["admin"],
-            permissions=["project:read"]
+            user_id=1, username="testuser", roles=["admin"], permissions=["project:read"]
         )["access_token"]
-        
-        with patch.object(test_db, 'query') as mock_query:
+
+        with patch.object(test_db, "query") as mock_query:
             mock_query.return_value.filter.return_value.first.return_value = mock_user
-            
+
             security_scopes = SecurityScopes(scopes=["admin"])
-            
-            result = await get_current_user(
-                security_scopes=security_scopes,
-                token=token,
-                db=test_db
-            )
-            
+
+            result = await get_current_user(security_scopes=security_scopes, token=token, db=test_db)
+
             assert result == mock_user
 
 
@@ -235,10 +200,10 @@ class TestGetCurrentActiveUser:
     async def test_get_current_active_user_inactive(self, mock_user):
         """Test inactive user raises 400."""
         mock_user.is_active = False
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await get_current_active_user(current_user=mock_user)
-        
+
         assert exc_info.value.status_code == 400
         assert "Inactive user" in exc_info.value.detail
 
@@ -257,7 +222,7 @@ class TestGetCurrentSuperuser:
         """Test non-superuser raises 403."""
         with pytest.raises(HTTPException) as exc_info:
             await get_current_superuser(current_user=mock_user)
-        
+
         assert exc_info.value.status_code == 403
         assert "Superuser access required" in exc_info.value.detail
 
@@ -269,10 +234,10 @@ class TestRequirePermission:
     async def test_require_permission_granted(self, test_db, mock_user, mock_rbac_manager):
         """Test permission granted when user has permission."""
         mock_rbac_manager.user_has_permission.return_value = True
-        
+
         permission_dep = require_permission(PermissionName.PROJECT_READ)
         result = await permission_dep(current_user=mock_user, db=test_db)
-        
+
         assert result == mock_user
         mock_rbac_manager.user_has_permission.assert_called_once_with(mock_user, PermissionName.PROJECT_READ)
 
@@ -280,12 +245,12 @@ class TestRequirePermission:
     async def test_require_permission_denied(self, test_db, mock_user, mock_rbac_manager):
         """Test permission denied raises 403."""
         mock_rbac_manager.user_has_permission.return_value = False
-        
+
         permission_dep = require_permission(PermissionName.ADMIN_USERS)
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await permission_dep(current_user=mock_user, db=test_db)
-        
+
         assert exc_info.value.status_code == 403
         assert "Permission denied" in exc_info.value.detail
 
@@ -297,10 +262,10 @@ class TestRequireRole:
     async def test_require_role_granted(self, mock_user):
         """Test role granted when user has role."""
         mock_user.has_role.return_value = True
-        
+
         role_dep = require_role(RoleName.ADMIN)
         result = await role_dep(current_user=mock_user)
-        
+
         assert result == mock_user
         mock_user.has_role.assert_called_once_with(RoleName.ADMIN)
 
@@ -308,12 +273,12 @@ class TestRequireRole:
     async def test_require_role_denied(self, mock_user):
         """Test role denied raises 403."""
         mock_user.has_role.return_value = False
-        
+
         role_dep = require_role(RoleName.ADMIN)
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await role_dep(current_user=mock_user)
-        
+
         assert exc_info.value.status_code == 403
         assert "Role required" in exc_info.value.detail
 
@@ -325,10 +290,10 @@ class TestRequireProjectPermission:
     async def test_require_project_permission_granted(self, test_db, mock_user, mock_rbac_manager):
         """Test project permission granted."""
         mock_rbac_manager.check_project_access.return_value = True
-        
+
         project_perm_dep = require_project_permission(RoleName.EDITOR)
         result = await project_perm_dep(project_id=1, current_user=mock_user, db=test_db)
-        
+
         assert result == mock_user
         mock_rbac_manager.check_project_access.assert_called_once_with(mock_user, 1, RoleName.EDITOR)
 
@@ -336,12 +301,12 @@ class TestRequireProjectPermission:
     async def test_require_project_permission_denied(self, test_db, mock_user, mock_rbac_manager):
         """Test project permission denied raises 403."""
         mock_rbac_manager.check_project_access.return_value = False
-        
+
         project_perm_dep = require_project_permission(RoleName.ADMIN)
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await project_perm_dep(project_id=1, current_user=mock_user, db=test_db)
-        
+
         assert exc_info.value.status_code == 403
         assert "Project access denied" in exc_info.value.detail
 
@@ -363,13 +328,13 @@ class TestAuthenticateUser:
     async def test_authenticate_user_success(self, test_db, mock_user, mock_rbac_manager):
         """Test successful authentication."""
         mock_rbac_manager.authenticate_user.return_value = mock_user
-        
+
         form_data = MagicMock()
         form_data.username = "testuser"
         form_data.password = "correct_password"
-        
+
         result = await authenticate_user(form_data=form_data, db=test_db)
-        
+
         assert result == mock_user
         mock_rbac_manager.authenticate_user.assert_called_once_with("testuser", "correct_password")
 
@@ -377,14 +342,14 @@ class TestAuthenticateUser:
     async def test_authenticate_user_failure(self, test_db, mock_rbac_manager):
         """Test failed authentication raises 401."""
         mock_rbac_manager.authenticate_user.return_value = None
-        
+
         form_data = MagicMock()
         form_data.username = "testuser"
         form_data.password = "wrong_password"
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await authenticate_user(form_data=form_data, db=test_db)
-        
+
         assert exc_info.value.status_code == 401
         assert "Incorrect username or password" in exc_info.value.detail
 
@@ -409,16 +374,16 @@ class TestDependencyIntegration:
     def app(self, test_db):
         """Create test app with auth router."""
         from src.audiobook_studio.auth.router import router
-        
+
         app = FastAPI()
         app.include_router(router, prefix="/api")
-        
+
         def override_get_db():
             try:
                 yield test_db
             finally:
                 pass
-        
+
         app.dependency_overrides[get_db] = override_get_db
         return app
 
@@ -426,7 +391,7 @@ class TestDependencyIntegration:
     async def test_protected_endpoint_requires_auth(self, app, test_db):
         """Test that protected endpoints require authentication."""
         client = TestClient(app)
-        
+
         # Try to access /api/auth/me without auth
         response = client.get("/api/auth/me")
         assert response.status_code == 401
@@ -435,15 +400,15 @@ class TestDependencyIntegration:
     async def test_admin_endpoint_requires_admin(self, app, test_db, mock_user):
         """Test admin endpoint requires admin permission."""
         client = TestClient(app)
-        
+
         # Mock get_current_active_user to return regular user
         from src.audiobook_studio.auth.dependencies import get_current_active_user
-        
+
         def mock_active_user():
             return mock_user
-        
+
         app.dependency_overrides[get_current_active_user] = mock_active_user
-        
+
         try:
             response = client.get("/api/auth/users")
             # Should fail with 403 because user is not admin

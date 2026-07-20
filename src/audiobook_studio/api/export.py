@@ -16,9 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..celery_app import celery_app
-from ..tasks.export_tasks import export_project_async, export_chapter_async, get_export_status
 from ..export import ExportFormat, ExportJob, ExportProgress
 from ..models import Project
+from ..tasks.export_tasks import export_chapter_async, export_project_async, get_export_status
 from .dependencies import get_db
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────
+
 
 class ExportRequest(BaseModel):
     """导出请求."""
@@ -139,6 +140,7 @@ def start_export(
     subtitle_config = None
     if payload.max_chars_per_line:
         from ..export.srt import SubtitleConfig
+
         subtitle_config = SubtitleConfig(
             max_chars_per_line=payload.max_chars_per_line,
         )
@@ -147,6 +149,7 @@ def start_export(
     mix_config = None
     if payload.mix_config:
         from ..export.audio_ducking import MixConfig
+
         mix_config = MixConfig(**payload.mix_config)
 
     # Create job config for Celery task

@@ -19,8 +19,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..analyzer import DEFAULT_EFFECTS_LIBRARY_PATH, SceneTagMapper
 from ..schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
-from ..analyzer import SceneTagMapper, DEFAULT_EFFECTS_LIBRARY_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +215,7 @@ class AudioFinalizer:
                     num_inputs = 1 + len(sfx_inputs) + num_scene_inputs
                     filter_complex = filter_complex.replace(
                         f"amix=inputs={1 + len(sfx_inputs)}:duration=first:dropout_transition=2",
-                        f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
+                        f"amix=inputs={num_inputs}:duration=first:dropout_transition=2",
                     )
                 else:
                     # Only scene tags, no SFX

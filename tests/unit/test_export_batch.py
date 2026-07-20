@@ -407,15 +407,15 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.srt.generate_srt"),
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
-                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
-                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
-                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
 
-            with patch('subprocess.run', side_effect=mock_subprocess_run):
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
 
                 with tempfile.TemporaryDirectory() as tmpdir:
                     fake_audio = Path(tmpdir) / "fake.mp3"
@@ -469,15 +469,15 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.batch_exporter.generate_srt") as mock_gen_srt,
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
-                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
-                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
-                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
 
-            with patch('subprocess.run', side_effect=mock_subprocess_run):
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
 
                 with tempfile.TemporaryDirectory() as tmpdir:
                     fake_audio = Path(tmpdir) / "seg.mp3"
@@ -639,15 +639,15 @@ class TestExportErrorHandling:
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_collect_audio,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type('obj', (object,), {'st_size': 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
-                if args and len(args) > 0 and 'ffprobe' in str(args[0]):
-                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='5.0', stderr='')
-                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout='', stderr='')
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
 
-            with patch('subprocess.run', side_effect=mock_subprocess_run):
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
 
                 mock_collect.return_value = {
                     "chapter": MagicMock(id=1, index=1, title="Chapter 1"),

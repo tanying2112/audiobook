@@ -12,6 +12,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
+from ..tts.edge_tts_engine import create_edge_tts_engine
+from ..tts.kokoro_backend import create_kokoro_backend
 
 logger = logging.getLogger(__name__)
 
@@ -310,36 +312,92 @@ async def get_tts_status():
     Get TTS engine status for dynamic frontend adaptation.
 
     This endpoint allows the frontend to dynamically show/hide
-    local offline engine options based on actual availability.
+    local offline engine options based on actual model availability.
 
     Returns:
         TTSStatusResponse with engine availability and recommendations
     """
+    import asyncio
     import os
+
+    def _check_kokoro_model_available() -> tuple[bool, bool]:
+        """Check if Kokoro ONNX model files exist AND can be loaded.
+
+        Returns:
+            (files_exist, can_load): files_exist checks disk, can_load checks if onnxruntime can initialize
+        """
+        model_dir = Path("models/kokoro")
+        model_file = model_dir / "kokoro-v1.0.onnx"
+        voices_file = model_dir / "voices-v1.0.bin"
+        # Also check alternative locations
+        alt_model = Path("models/kokoro-v1.0.onnx")
+        alt_voices = Path("models/voices-v1.0.bin")
+
+        files_exist = (model_file.exists() and voices_file.exists()) or (alt_model.exists() and alt_voices.exists())
+
+        if not files_exist:
+            return (False, False)
+
+        # Try to actually load the model to verify it works
+        can_load = True
+        try:
+            import onnxruntime as ort
+
+            # Use the first existing path pair
+            mpath = str(model_file.absolute()) if model_file.exists() else str(alt_model.absolute())
+            vpath = str(voices_file.absolute()) if voices_file.exists() else str(alt_voices.absolute())
+
+            sess_options = ort.SessionOptions()
+            sess_options.intra_op_num_threads = 1
+            sess = ort.InferenceSession(mpath, sess_options=sess_options, providers=["CPUExecutionProvider"])
+
+            # Try loading voice embeddings
+            import numpy as np
+
+            np.load(vpath, allow_pickle=True)
+
+        except Exception as e:
+            logger.warning(f"Kokoro model files exist but cannot load: {e}")
+            can_load = False
+
+        return (files_exist, can_load)
+
+    async def _check_edge_tts_connectivity() -> bool:
+        """Quick async connectivity check to Edge-TTS."""
+        try:
+            import edge_tts
+
+            # Lightweight check - just list a few voices
+            voices = await edge_tts.list_voices()
+            return len(voices) > 0
+        except Exception as e:
+            logger.warning(f"Edge-TTS connectivity check failed: {e}")
+            return False
 
     # Check ENABLE_LOCAL_TTS environment variable
     enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
 
-    # Check local engine availability
-    # In production, these would check actual model loading status
-    kokoro_available = enable_local_tts  # Kokoro available if local TTS enabled
-    kokoro_model_loaded = enable_local_tts  # Simplified: assume loaded if enabled
+    # Check local engine availability with REAL model file checks
+    kokoro_files_exist, kokoro_can_load = _check_kokoro_model_available()
+    kokoro_available = enable_local_tts and kokoro_files_exist and kokoro_can_load
+    kokoro_model_loaded = kokoro_available  # For now, "loaded" means "can load"
+
     voxcpm2_available = False  # VoxCPM2 not yet implemented locally
     voxcpm2_model_loaded = False
     sherpa_onnx_available = False  # Sherpa-ONNX not yet implemented
 
     local_engines_available = kokoro_available or voxcpm2_available or sherpa_onnx_available
 
-    # Cloud engines (Edge-TTS is always available - free, no auth)
-    edge_tts_available = True
+    # Cloud engines - Edge-TTS with real connectivity check
+    edge_tts_available = await _check_edge_tts_connectivity()
     azure_available = False  # TODO: Check actual Azure credentials
     gcp_available = False  # TODO: Check actual GCP credentials
     cloud_engines_available = edge_tts_available or azure_available or gcp_available
 
-    # Determine recommended engine based on ENABLE_LOCAL_TTS and availability
+    # Determine recommended engine based on ENABLE_LOCAL_TTS and REAL availability
     if enable_local_tts and local_engines_available:
         recommended_engine = "kokoro"
-        recommended_voice = "kokoro_narrator"
+        recommended_voice = "zf_xiaoxiao"  # Chinese female voice
     else:
         recommended_engine = "edge_tts"
         recommended_voice = "zh-CN-XiaoxiaoNeural"

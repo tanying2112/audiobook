@@ -104,10 +104,12 @@ def generate_fragment(commit_info: dict, commit_hash: str) -> str:
     lines = []
 
     # Header with commit hash
-    scope_str = f"({commit_info['scope']})" if commit_info['scope'] else ""
+    scope_str = f"({commit_info['scope']})" if commit_info["scope"] else ""
     lines.append(f"#### {commit_info['type'].capitalize()}{scope_str}")
     lines.append("")
-    lines.append(f"- {commit_info['description']} ([{commit_hash[:7]}](https://github.com/tanying2112/AI_Lab/commit/{commit_hash}))")
+    lines.append(
+        f"- {commit_info['description']} ([{commit_hash[:7]}](https://github.com/tanying2112/AI_Lab/commit/{commit_hash}))"
+    )
 
     # Breaking change
     if commit_info["breaking"]:

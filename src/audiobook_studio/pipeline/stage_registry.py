@@ -416,7 +416,7 @@ class AudioPostprocessStage(StageHandler):
         # Determine next paragraph type for transition pause calculation
         next_para_type = "end"
         # Try to get next paragraph from chapter
-        if chapter and hasattr(chapter, 'paragraphs') and chapter.paragraphs:
+        if chapter and hasattr(chapter, "paragraphs") and chapter.paragraphs:
             # Find current paragraph index and get next
             for i, p in enumerate(chapter.paragraphs):
                 if p.id == para.id and i + 1 < len(chapter.paragraphs):
@@ -472,11 +472,12 @@ class ReviewStage(StageHandler):
 
     def __init__(self):
         import os
+
         self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
 
     def run(self, **kwargs) -> Any:
-        import os
         import json
+        import os
 
         chapter = kwargs.get("chapter")
         project_id = kwargs.get("project_id")
@@ -486,23 +487,25 @@ class ReviewStage(StageHandler):
 
         # Collect all paragraphs for this chapter
         paragraphs_data = []
-        if hasattr(chapter, 'paragraphs') and chapter.paragraphs:
+        if hasattr(chapter, "paragraphs") and chapter.paragraphs:
             for p in chapter.paragraphs:
-                paragraphs_data.append({
-                    "paragraph_index": p.index,
-                    "text": p.text or "",
-                    "speaker_canonical_name": p.speaker_canonical_name or "_narrator_",
-                    "is_dialogue": p.is_dialogue or False,
-                    "emotion": p.emotion or "neutral",
-                    "emotion_intensity": p.emotion_intensity or 0.5,
-                    "speech_rate": p.speech_rate or 1.0,
-                    "pitch_shift_semitones": p.pitch_shift_semitones or 0,
-                    "needs_sfx": p.needs_sfx or False,
-                    "sfx_tags": p.sfx_tags or [],
-                    "pause_before_ms": p.pause_before_ms or 300,
-                    "pause_after_ms": p.pause_after_ms or 500,
-                    "confidence": p.confidence or 0.9,
-                })
+                paragraphs_data.append(
+                    {
+                        "paragraph_index": p.index,
+                        "text": p.text or "",
+                        "speaker_canonical_name": p.speaker_canonical_name or "_narrator_",
+                        "is_dialogue": p.is_dialogue or False,
+                        "emotion": p.emotion or "neutral",
+                        "emotion_intensity": p.emotion_intensity or 0.5,
+                        "speech_rate": p.speech_rate or 1.0,
+                        "pitch_shift_semitones": p.pitch_shift_semitones or 0,
+                        "needs_sfx": p.needs_sfx or False,
+                        "sfx_tags": p.sfx_tags or [],
+                        "pause_before_ms": p.pause_before_ms or 300,
+                        "pause_after_ms": p.pause_after_ms or 500,
+                        "confidence": p.confidence or 0.9,
+                    }
+                )
         else:
             # Fallback: no paragraphs found
             logger.warning(f"ReviewStage: No paragraphs found for chapter {chapter.index}")
@@ -520,6 +523,7 @@ class ReviewStage(StageHandler):
             if isinstance(raw, str):
                 raw = json.loads(raw)
             from ..schemas.book import CharacterVoiceBinding
+
             voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
 
         if not voice_map:
@@ -563,7 +567,7 @@ class ReviewStage(StageHandler):
         judgment = reviewer.run(input_data)
 
         # Store judgment on chapter for downstream access
-        if not hasattr(chapter, 'reviewer_judgment'):
+        if not hasattr(chapter, "reviewer_judgment"):
             chapter.reviewer_judgment = {}
         chapter.reviewer_judgment = judgment.model_dump()
 

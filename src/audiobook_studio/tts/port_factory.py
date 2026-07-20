@@ -12,10 +12,11 @@ import threading
 from contextlib import contextmanager
 from typing import Callable, Optional
 
+from .edge_tts_port import EdgeTTSPort, create_edge_tts_port
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
+from .kokoro_port import KokoroPort, create_kokoro_port
 from .port import PortFactory, RemoteTTSPort
 from .remote_voxcpm2_port import RemoteVoxCPM2Port, create_remote_voxcpm2_port
-
 
 # Global port instance (lazy initialization)
 _port_instance: Optional[RemoteTTSPort] = None
@@ -47,6 +48,11 @@ def _create_port(implementation: str, **kwargs) -> RemoteTTSPort:
     """Create a port instance based on implementation name."""
     impl = implementation.lower()
 
+    # Check for mock mode from environment
+    mock_mode = os.environ.get("MOCK_TTS", "false").lower() == "true"
+    if mock_mode:
+        kwargs.setdefault("mock_mode", True)
+
     if impl == "fake":
         return FakeRemoteTTSPort(**kwargs)
     elif impl == "mock":
@@ -71,13 +77,11 @@ def _create_port(implementation: str, **kwargs) -> RemoteTTSPort:
             # Check ENABLE_LOCAL_TTS for local vs cloud engine selection
             enable_local = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
             if enable_local:
-                # Use local Kokoro engine via fake port (simulates local synthesis)
-                # In production, this would use a real local engine port
-                return FakeRemoteTTSPort(synthesis_delay=0.5, **kwargs)
+                # REAL: Kokoro via local engine port
+                return create_kokoro_port(**kwargs)
             else:
-                # Use cloud Edge-TTS via fake port (simulates cloud synthesis)
-                # In production, this would use a real cloud engine port
-                return FakeRemoteTTSPort(synthesis_delay=1.0, **kwargs)
+                # REAL: Edge-TTS via cloud engine port
+                return create_edge_tts_port(**kwargs)
     else:
         raise ValueError(f"Unknown port implementation: {implementation}")
 

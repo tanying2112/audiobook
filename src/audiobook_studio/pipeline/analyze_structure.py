@@ -13,9 +13,9 @@ from typing import Any, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ..analyzer import ensure_scene_tags_in_output
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisInput, BookAnalysisOutput
-from ..analyzer import ensure_scene_tags_in_output
 
 logger = logging.getLogger(__name__)
 

@@ -18,12 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from ..models import Chapter, Paragraph, Project, ProjectPermission
-from ..storage import reports_dir
-from ..auth.models import RoleName
-from .dependencies import get_db
 from ..auth.dependencies import get_current_active_user
-from ..models import User
+from ..auth.models import RoleName
+from ..models import Chapter, Paragraph, Project, ProjectPermission, User
+from ..storage import reports_dir
+from .dependencies import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -374,9 +373,7 @@ def get_quality_report(
             data = json.load(f)
 
         # Convert segment_results to QualityReportSegment models
-        segment_results = [
-            QualityReportSegment(**sr) for sr in data.get("segment_results", [])
-        ]
+        segment_results = [QualityReportSegment(**sr) for sr in data.get("segment_results", [])]
 
         return QualityReportOut(
             project_id=str(data["project_id"]),
@@ -392,6 +389,7 @@ def get_quality_report(
         raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}")
     except KeyError as e:
         raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}")
+
 
 @router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")
 async def regenerate_paragraph(
@@ -450,12 +448,16 @@ async def regenerate_paragraph_legacy(
     db: Session = Depends(get_db),
 ):
     """Legacy endpoint - redirects to new chapter-aware endpoint."""
-    from ..models import Paragraph, Chapter
+    from ..models import Chapter, Paragraph
 
-    para = db.query(Paragraph).filter(
-        Paragraph.project_id == project_id,
-        Paragraph.id == paragraph_id,
-    ).first()
+    para = (
+        db.query(Paragraph)
+        .filter(
+            Paragraph.project_id == project_id,
+            Paragraph.id == paragraph_id,
+        )
+        .first()
+    )
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
 

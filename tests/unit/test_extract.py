@@ -185,7 +185,8 @@ class TestExtractPipelineRealLogic:
 
     @patch("src.audiobook_studio.pipeline.extract.pdfplumber")
     @patch("src.audiobook_studio.pipeline.extract.fitz")
-    def test_extract_pdf_fallback_to_ocr(self, mock_fitz, mock_pdfplumber):
+    @patch("src.audiobook_studio.pipeline.extract.pytesseract")
+    def test_extract_pdf_fallback_to_ocr(self, mock_pytesseract, mock_fitz, mock_pdfplumber):
         """Test _extract_pdf falls back to OCR when text too short."""
         mock_page = Mock()
         mock_page.extract_text.return_value = "短"
@@ -196,11 +197,17 @@ class TestExtractPipelineRealLogic:
 
         mock_doc = Mock()
         mock_page_pymupdf = Mock()
-        mock_block = {"text": "OCR identified content"}
-        mock_page_pymupdf.get_text.return_value = {"blocks": [mock_block]}
+        mock_pix = Mock()
+        mock_pix.width = 100
+        mock_pix.height = 100
+        mock_pix.samples = b"\x00" * 30000  # RGB image data
+        mock_page_pymupdf.get_pixmap.return_value = mock_pix
         mock_doc.__len__ = Mock(return_value=1)
         mock_doc.__getitem__ = Mock(return_value=mock_page_pymupdf)
         mock_fitz.open.return_value = mock_doc
+
+        # Mock pytesseract
+        mock_pytesseract.image_to_string.return_value = "OCR identified content"
 
         test_file = Path(self.temp_dir) / "test.pdf"
         test_file.write_bytes(b"%PDF-1.4 dummy")

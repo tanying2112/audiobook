@@ -33,12 +33,12 @@ from ..pipeline.synthesize import AudioSegment as PipelineAudioSegment
 from ..pipeline.synthesize import SynthesizePipeline
 from ..tts import (
     RemoteTTSPort,
+    TTSProsody,
+    TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
-    TTSStatus,
     TTSVoiceAnchor,
-    TTSProsody,
     get_port,
 )
 
@@ -124,6 +124,18 @@ class TTSChapterTask(celery_app.Task):
         super().__init__()
         self._port: Optional[RemoteTTSPort] = None
         self._semaphore_acquired = False
+        self._crossfade_ms: Optional[int] = None
+
+    def _get_crossfade_ms(self) -> int:
+        """Get crossfade duration from environment or default."""
+        if self._crossfade_ms is not None:
+            return self._crossfade_ms
+        import os
+
+        try:
+            return int(os.environ.get("CROSSFADE_MS", "50"))
+        except ValueError:
+            return 50
 
     def _get_port(self) -> RemoteTTSPort:
         """Get or create RemoteTTSPort (lazy init)."""
@@ -264,7 +276,7 @@ class TTSChapterTask(celery_app.Task):
             "failed_paragraphs": failed_paragraphs,
             "chapter_audio_path": chapter_audio_path,
             "segments": segments or [],
-            "updated_at": __import__('time').time(),
+            "updated_at": __import__("time").time(),
         }
 
         try:
@@ -854,6 +866,7 @@ def get_tts_status(task_id: str) -> Dict[str, Any]:
 # Stress Test Entry Point
 # =============================================================================
 
+
 @celery_app.task(
     bind=True,
     base=TTSChapterTask,
@@ -888,18 +901,21 @@ def stress_test_concurrent_synthesis(
 
     # Ensure we're using FakeRemoteTTSPort for testing
     import os
+
     os.environ["TEST_MODE"] = "true"
 
     # Create test paragraphs
     paragraphs = []
     for p_idx in range(paragraphs_per_chapter):
-        paragraphs.append({
-            "paragraph_id": p_idx + 1,
-            "paragraph_index": p_idx,
-            "text": f"Test paragraph {p_idx + 1} for stress testing concurrent synthesis. " * 5,
-            "voice_id": "zh_female_1",
-            "prosody": {"rate": 1.0, "pitch": 0.0, "volume": 0.0},
-        })
+        paragraphs.append(
+            {
+                "paragraph_id": p_idx + 1,
+                "paragraph_index": p_idx,
+                "text": f"Test paragraph {p_idx + 1} for stress testing concurrent synthesis. " * 5,
+                "voice_id": "zh_female_1",
+                "prosody": {"rate": 1.0, "pitch": 0.0, "volume": 0.0},
+            }
+        )
 
     # Submit concurrent chapter tasks
     submitted_tasks = []
@@ -911,11 +927,13 @@ def stress_test_concurrent_synthesis(
             chapter_index=ch_idx + 1,
             paragraphs=paragraphs,
         )
-        submitted_tasks.append({
-            "task_id": task.id,
-            "chapter_id": chapter_id,
-            "chapter_index": ch_idx + 1,
-        })
+        submitted_tasks.append(
+            {
+                "task_id": task.id,
+                "chapter_id": chapter_id,
+                "chapter_index": ch_idx + 1,
+            }
+        )
         logger.info(f"[{task_id}] Submitted chapter {ch_idx + 1}/{chapter_count}: {task.id}")
 
     # Wait for all tasks to complete and collect results
@@ -924,22 +942,26 @@ def stress_test_concurrent_synthesis(
         task_result = celery_app.AsyncResult(task_info["task_id"])
         try:
             result = task_result.get(timeout=300)  # 5 min timeout per chapter
-            results.append({
-                "chapter_id": task_info["chapter_id"],
-                "chapter_index": task_info["chapter_index"],
-                "status": result.get("status"),
-                "succeeded": result.get("succeeded", 0),
-                "failed": result.get("failed", 0),
-                "duration_ms": sum(s.get("duration_ms", 0) for s in result.get("segments", [])),
-            })
+            results.append(
+                {
+                    "chapter_id": task_info["chapter_id"],
+                    "chapter_index": task_info["chapter_index"],
+                    "status": result.get("status"),
+                    "succeeded": result.get("succeeded", 0),
+                    "failed": result.get("failed", 0),
+                    "duration_ms": sum(s.get("duration_ms", 0) for s in result.get("segments", [])),
+                }
+            )
         except Exception as e:
             logger.error(f"[{task_id}] Chapter {task_info['chapter_index']} failed: {e}")
-            results.append({
-                "chapter_id": task_info["chapter_id"],
-                "chapter_index": task_info["chapter_index"],
-                "status": "error",
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "chapter_id": task_info["chapter_id"],
+                    "chapter_index": task_info["chapter_index"],
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
 
     # Verify no duplicate synthesis (idempotency check)
     idempotency_keys = set()
@@ -996,6 +1018,7 @@ def verify_checkpoint_recovery(
         data = client.get(checkpoint_key)
         if data:
             import json
+
             checkpoint = json.loads(data)
 
     if not checkpoint:
@@ -1122,12 +1145,16 @@ def synthesize_paragraph_task(
         )
 
         if existing_segment and not force_regenerate:
-            logger.info(f"[{task_id}] Paragraph {paragraph_id} already has audio segment, skipping (use force_regenerate=True to override)")
+            logger.info(
+                f"[{task_id}] Paragraph {paragraph_id} already has audio segment, skipping (use force_regenerate=True to override)"
+            )
             return {
                 "task_id": task_id,
                 "status": "skipped",
                 "message": "Audio segment already exists. Use force_regenerate=True to force re-synthesis.",
-                "segment_id": existing_segment.segment_id if hasattr(existing_segment, 'segment_id') else str(existing_segment.id),
+                "segment_id": (
+                    existing_segment.segment_id if hasattr(existing_segment, "segment_id") else str(existing_segment.id)
+                ),
                 "file_path": existing_segment.file_path,
                 "duration_ms": existing_segment.duration_ms,
                 "engine": existing_segment.engine,

@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.extract import ExtractPipeline, extract_text, OCR_AVAILABLE
+from src.audiobook_studio.pipeline.extract import OCR_AVAILABLE, ExtractPipeline, extract_text
 from src.audiobook_studio.schemas import ExtractionInput, ExtractionResult
 
 
@@ -564,12 +564,11 @@ class TestExtractImage:
         self.mock_router = Mock()
         self.pipeline = ExtractPipeline(router=self.mock_router, mock_mode=False)
 
-    @pytest.mark.skipif(
-        not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env"
-    )
+    @pytest.mark.skipif(not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env")
     def test_extract_image_success(self):
         """Test successful image extraction with OCR."""
         import tempfile
+
         from PIL import Image, ImageDraw, ImageFont
 
         # Create a test image with text
@@ -593,9 +592,7 @@ class TestExtractImage:
         finally:
             os.unlink(temp_path)
 
-    @pytest.mark.skipif(
-        not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env"
-    )
+    @pytest.mark.skipif(not OCR_AVAILABLE, reason="OCR dependencies (pytesseract) not installed in test env")
     def test_extract_image_failure(self):
         """Test image extraction failure handling."""
         import tempfile

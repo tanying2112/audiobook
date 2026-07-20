@@ -24,21 +24,21 @@ from .feedback_collector import FeedbackCollector, StageCapture, create_feedback
 from .orchestrator import run_pipeline, run_stage
 from .quality_check import QualityCheckPipeline, quality_check
 from .sop_reflection import (
-    SOPConfig,
     CorrectionCollector,
-    ReflectionEngine,
     GenreDetector,
+    ReflectionEngine,
     RuleApplier,
     SOPBackgroundThread,
-    get_sop_config,
+    SOPConfig,
+    apply_learned_rules_on_import,
     get_correction_collector,
-    get_reflection_engine,
     get_genre_detector,
+    get_reflection_engine,
     get_rule_applier,
+    get_sop_config,
+    handle_user_correction_websocket,
     start_sop_background_thread,
     stop_sop_background_thread,
-    handle_user_correction_websocket,
-    apply_learned_rules_on_import,
 )
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline, synthesize_paragraphs

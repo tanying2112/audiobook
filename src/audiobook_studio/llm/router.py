@@ -652,9 +652,7 @@ class LLMRouter:
         for provider in providers:
             if last_provider is not None:
                 # Log self-healing fallback warning
-                logger.warning(
-                    f"[WARN] {last_provider.name} 触发限流/错误，正在自愈切换至 {provider.name} 节点..."
-                )
+                logger.warning(f"[WARN] {last_provider.name} 触发限流/错误，正在自愈切换至 {provider.name} 节点...")
 
             if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
                 logger.warning(f"Rate limit near for {provider.name}, skipping")

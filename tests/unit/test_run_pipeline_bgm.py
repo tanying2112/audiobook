@@ -33,7 +33,6 @@ import audiobook_studio.run_pipeline as rp  # noqa: E402
 from audiobook_studio.export import ExportFormat  # noqa: E402
 from audiobook_studio.export.audio_ducking import MixConfig  # noqa: E402
 
-
 # ── CLI 解析 ──────────────────────────────────────────────────────────────────
 
 
@@ -42,8 +41,7 @@ class TestBgmCliParsing:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["run_pipeline", "--books", "红楼梦",
-             "--bg-music", "/music/bgm.wav", "--bg-volume", "-18.5"],
+            ["run_pipeline", "--books", "红楼梦", "--bg-music", "/music/bgm.wav", "--bg-volume", "-18.5"],
         )
         args = rp.parse_arguments()
         assert args.bg_music == "/music/bgm.wav"
@@ -65,8 +63,7 @@ class TestMainBgmWiring:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["run_pipeline", "--bg-music", "/bgm.wav", "--bg-volume", "-12",
-             "--books", "红楼梦"],
+            ["run_pipeline", "--bg-music", "/bgm.wav", "--bg-volume", "-12", "--books", "红楼梦"],
         )
         with patch.object(rp, "run_book_pipeline") as mock_run:
             rp.main()
@@ -113,15 +110,19 @@ class TestRunBookPipelineBgmExport:
 
         orchestrator_mock = AsyncMock(return_value=[])
 
-        with patch.object(rp, "orchestrator_run_pipeline", new=orchestrator_mock), \
-             patch.object(rp, "_get_chapter_files", return_value=[(1, chap_file)]), \
-             patch.object(rp, "_find_project", return_value=project), \
-             patch.object(rp, "SessionLocal", return_value=db_mock), \
-             patch.object(rp, "CheckpointManager", return_value=cp_mgr), \
-             patch("audiobook_studio.export.batch_exporter.export_project",
-                   side_effect=fake_export):
+        with (
+            patch.object(rp, "orchestrator_run_pipeline", new=orchestrator_mock),
+            patch.object(rp, "_get_chapter_files", return_value=[(1, chap_file)]),
+            patch.object(rp, "_find_project", return_value=project),
+            patch.object(rp, "SessionLocal", return_value=db_mock),
+            patch.object(rp, "CheckpointManager", return_value=cp_mgr),
+            patch("audiobook_studio.export.batch_exporter.export_project", side_effect=fake_export),
+        ):
             pid = rp.run_book_pipeline(
-                "红楼梦", stages=["extract"], bgm_path=str(bgm), bg_volume=bg_volume,
+                "红楼梦",
+                stages=["extract"],
+                bgm_path=str(bgm),
+                bg_volume=bg_volume,
             )
 
         # 编排器被 asyncio.run 真正驱动过（Bug A 回归保护：删 asyncio.run 则永不调用）
@@ -150,8 +151,7 @@ class TestMixConfigSchema:
         必须被拒绝，避免主路径悄悄回退到这一坏构造。
         """
         with pytest.raises(TypeError):
-            MixConfig(bgm_volume_db=-18.0, speech_volume_db=0.0,
-                      fade_in_ms=2000, fade_out_ms=3000)
+            MixConfig(bgm_volume_db=-18.0, speech_volume_db=0.0, fade_in_ms=2000, fade_out_ms=3000)
 
     def test_bgm_volume_only_constructs(self):
         """run_book_pipeline 导出块使用的唯一有效构造，必须成立。"""

@@ -40,8 +40,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/audiobook-studio/dev-too
 # 6. 运行本地开发环境（Docker）
 docker compose up -d
 
-# 7. 可选：启动 Celery Worker（后台任务处理，使用 profile）
-docker compose --profile worker up -d celery-worker
+# 7. 可选：查看 Celery Worker 日志（Celery Worker 现在默认已随 docker compose up -d 启动）
+docker compose logs -f celery-worker
 
 # 8. 打开文档站点（MkDocs）
 mkdocs serve

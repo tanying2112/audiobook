@@ -6,21 +6,32 @@ and Prometheus export for all LLM/TTS/pipeline operations.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, Generator, Optional
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 from ..config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Default retention period for telemetry records (30 days)
+DEFAULT_RETENTION_DAYS = int(os.getenv("TELEMETRY_RETENTION_DAYS", "30"))
+# Default path for aggregated metrics summary
+DEFAULT_SUMMARY_PATH = Path(os.getenv("TELEMETRY_SUMMARY_PATH", "storage/metrics_summary.json"))
+# Default cron schedule for daily aggregation (02:00 UTC)
+DEFAULT_AGGREGATION_CRON = os.getenv("TELEMETRY_AGGREGATION_CRON", "0 2 * * *")
 
 
 class OperationType(str, Enum):
@@ -145,7 +156,7 @@ def _init_prometheus_metrics() -> None:
             "llm_tokens_total": Counter(
                 "audiobook_llm_tokens_total",
                 "Total LLM tokens consumed",
-                ["provider", "model", "type"],  # type: prompt|completion
+                ["provider", "model", "type"],
             ),
             "llm_cost_usd_total": Counter(
                 "audiobook_llm_cost_usd_total",
@@ -461,9 +472,9 @@ class TelemetryCollector:
         _prom_metrics["llm_tokens_total"].labels(**labels, type="prompt").inc(record.prompt_tokens)
         _prom_metrics["llm_tokens_total"].labels(**labels, type="completion").inc(record.completion_tokens)
         _prom_metrics["llm_cost_usd_total"].labels(**labels).inc(record.cost_usd)
-        _prom_metrics["operation_duration_ms"].labels(
-            operation=record.operation.value, **labels
-        ).observe(record.latency_ms)
+        _prom_metrics["operation_duration_ms"].labels(operation=record.operation.value, **labels).observe(
+            record.latency_ms
+        )
 
         if not record.success:
             _prom_metrics["operation_errors_total"].labels(
@@ -477,7 +488,9 @@ class TelemetryCollector:
         tts_labels = {"provider": record.provider.value, "model": record.model, "voice": voice or "unknown"}
         op_labels = {"operation": record.operation.value, "provider": record.provider.value, "model": record.model}
         _prom_metrics["tts_characters_total"].labels(**tts_labels).inc(characters)
-        _prom_metrics["tts_cost_usd_total"].labels(provider=record.provider.value, model=record.model).inc(record.cost_usd)
+        _prom_metrics["tts_cost_usd_total"].labels(provider=record.provider.value, model=record.model).inc(
+            record.cost_usd
+        )
         _prom_metrics["operation_duration_ms"].labels(**op_labels).observe(record.latency_ms)
 
         if not record.success:
@@ -563,6 +576,240 @@ class TelemetryCollector:
         with self._lock:
             self._records.clear()
             self._session_start = datetime.now()
+
+    # -------------------------------------------------------------------------
+    # TTL / Retention Management
+    # -------------------------------------------------------------------------
+
+    def cleanup_old_records(self, retention_days: Optional[int] = None) -> int:
+        """Remove records older than retention period.
+
+        Args:
+            retention_days: Days to retain. Defaults to TELEMETRY_RETENTION_DAYS env var or 30 days.
+
+        Returns:
+            Number of records removed.
+        """
+        retention_days = retention_days or DEFAULT_RETENTION_DAYS
+        cutoff = datetime.now() - timedelta(days=retention_days)
+
+        with self._lock:
+            original_count = len(self._records)
+            self._records = [r for r in self._records if r.timestamp >= cutoff]
+            removed = original_count - len(self._records)
+
+        if removed > 0:
+            logger.info(f"Telemetry cleanup: removed {removed} records older than {retention_days} days")
+        return removed
+
+    def aggregate_to_summary(
+        self,
+        output_path: Optional[Path] = None,
+        retention_days: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Aggregate records older than retention period into a summary JSON file.
+
+        This performs the TTL aggregation: detailed records older than retention_days
+        are summarized into metrics_summary.json and then removed from memory.
+
+        Args:
+            output_path: Path for metrics_summary.json. Defaults to TELEMETRY_SUMMARY_PATH env var.
+            retention_days: Days to retain detailed records. Defaults to TELEMETRY_RETENTION_DAYS env var.
+
+        Returns:
+            Aggregated summary dict (also written to output_path).
+        """
+        retention_days = retention_days or DEFAULT_RETENTION_DAYS
+        output_path = output_path or DEFAULT_SUMMARY_PATH
+        cutoff = datetime.now() - timedelta(days=retention_days)
+
+        with self._lock:
+            # Split records: old (to aggregate) vs recent (to keep)
+            old_records = [r for r in self._records if r.timestamp < cutoff]
+            recent_records = [r for r in self._records if r.timestamp >= cutoff]
+            self._records = recent_records
+
+        if not old_records:
+            logger.info("No old telemetry records to aggregate")
+            return {"aggregated": False, "records_aggregated": 0}
+
+        # Aggregate old records
+        summary = CostSummary()
+        for r in old_records:
+            summary.total_cost_usd += r.cost_usd
+            summary.total_tokens += r.total_tokens
+            summary.total_operations += 1
+            if not r.success:
+                summary.errors += 1
+            summary.retries += r.metadata.get("retries", 0)
+
+            # By provider
+            prov_key = r.provider.value
+            if prov_key not in summary.by_provider:
+                summary.by_provider[prov_key] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            summary.by_provider[prov_key]["cost"] += r.cost_usd
+            summary.by_provider[prov_key]["tokens"] += r.total_tokens
+            summary.by_provider[prov_key]["ops"] += 1
+
+            # By operation
+            op_key = r.operation.value
+            if op_key not in summary.by_operation:
+                summary.by_operation[op_key] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            summary.by_operation[op_key]["cost"] += r.cost_usd
+            summary.by_operation[op_key]["tokens"] += r.total_tokens
+            summary.by_operation[op_key]["ops"] += 1
+
+            # By model
+            model_key = r.model
+            if model_key not in summary.by_model:
+                summary.by_model[model_key] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            summary.by_model[model_key]["cost"] += r.cost_usd
+            summary.by_model[model_key]["tokens"] += r.total_tokens
+            summary.by_model[model_key]["ops"] += 1
+
+        # Load existing summary if exists, merge with new
+        existing_summary = {}
+        if output_path.exists():
+            try:
+                existing_summary = json.loads(output_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning(f"Could not read existing summary at {output_path}: {e}")
+
+        merged_summary = self._merge_summaries(existing_summary, summary)
+
+        # Add aggregation metadata
+        merged_summary["last_aggregated"] = datetime.now().isoformat()
+        merged_summary["records_aggregated_this_run"] = len(old_records)
+        merged_summary["retention_days"] = retention_days
+
+        # Ensure output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write merged summary
+        output_path.write_text(json.dumps(merged_summary, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        logger.info(f"Telemetry aggregation: {len(old_records)} records aggregated to {output_path}")
+        return merged_summary
+
+    def _merge_summaries(self, existing: Dict[str, Any], new: CostSummary) -> Dict[str, Any]:
+        """Merge two summary dicts (existing + new aggregation)."""
+        if not existing:
+            return {
+                "total_cost_usd": new.total_cost_usd,
+                "total_tokens": new.total_tokens,
+                "total_operations": new.total_operations,
+                "by_provider": new.by_provider,
+                "by_operation": new.by_operation,
+                "by_model": new.by_model,
+                "errors": new.errors,
+                "retries": new.retries,
+            }
+
+        # Deep merge
+        merged = existing.copy()
+        merged["total_cost_usd"] = merged.get("total_cost_usd", 0) + new.total_cost_usd
+        merged["total_tokens"] = merged.get("total_tokens", 0) + new.total_tokens
+        merged["total_operations"] = merged.get("total_operations", 0) + new.total_operations
+        merged["errors"] = merged.get("errors", 0) + new.errors
+        merged["retries"] = merged.get("retries", 0) + new.retries
+
+        # Merge by_provider
+        for prov, data in new.by_provider.items():
+            if prov not in merged["by_provider"]:
+                merged["by_provider"][prov] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            merged["by_provider"][prov]["cost"] += data["cost"]
+            merged["by_provider"][prov]["tokens"] += data["tokens"]
+            merged["by_provider"][prov]["ops"] += data["ops"]
+
+        # Merge by_operation
+        for op, data in new.by_operation.items():
+            if op not in merged["by_operation"]:
+                merged["by_operation"][op] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            merged["by_operation"][op]["cost"] += data["cost"]
+            merged["by_operation"][op]["tokens"] += data["tokens"]
+            merged["by_operation"][op]["ops"] += data["ops"]
+
+        # Merge by_model
+        for model, data in new.by_model.items():
+            if model not in merged["by_model"]:
+                merged["by_model"][model] = {"cost": 0.0, "tokens": 0, "ops": 0}
+            merged["by_model"][model]["cost"] += data["cost"]
+            merged["by_model"][model]["tokens"] += data["tokens"]
+            merged["by_model"][model]["ops"] += data["ops"]
+
+        return merged
+
+    def run_daily_aggregation(self) -> Dict[str, Any]:
+        """Run the daily aggregation job (cleanup + aggregate to summary).
+
+        This is the main entry point for the daily cron/scheduler job.
+        """
+        logger.info("Starting daily telemetry aggregation job")
+        # First aggregate old records to summary
+        summary = self.aggregate_to_summary()
+        # Then clean up any remaining old records (belt-and-suspenders)
+        removed = self.cleanup_old_records()
+        return {
+            "aggregation": summary,
+            "cleanup_removed": removed,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    # -------------------------------------------------------------------------
+    # Scheduler Integration (APScheduler)
+    # -------------------------------------------------------------------------
+
+    def __init__(self, settings=None):
+        self.settings = settings or get_settings()
+        self._records: list[CostRecord] = []
+        self._lock = threading.Lock()
+        self._session_start = datetime.now()
+        self._scheduler: Optional[BackgroundScheduler] = None
+        _init_prometheus_metrics()
+
+    def start_scheduler(
+        self,
+        cron_expression: Optional[str] = None,
+        retention_days: Optional[int] = None,
+        summary_path: Optional[Path] = None,
+    ) -> None:
+        """Start the background scheduler for daily telemetry aggregation.
+
+        Args:
+            cron_expression: Cron expression for daily run. Defaults to TELEMETRY_AGGREGATION_CRON env var or "0 2 * * *" (02:00 UTC).
+            retention_days: Retention period. Defaults to TELEMETRY_RETENTION_DAYS env var or 30 days.
+            summary_path: Output path for metrics_summary.json. Defaults to TELEMETRY_SUMMARY_PATH env var.
+        """
+        if self._scheduler and self._scheduler.running:
+            logger.warning("Telemetry scheduler already running")
+            return
+
+        cron_expression = cron_expression or DEFAULT_AGGREGATION_CRON
+        retention_days = retention_days or DEFAULT_RETENTION_DAYS
+        summary_path = summary_path or DEFAULT_SUMMARY_PATH
+
+        self._scheduler = BackgroundScheduler(daemon=True)
+        self._scheduler.add_job(
+            func=lambda: self.aggregate_to_summary(summary_path, retention_days),
+            trigger=CronTrigger.from_crontab(cron_expression),
+            id="telemetry_daily_aggregation",
+            name="Daily Telemetry Aggregation",
+            replace_existing=True,
+        )
+        self._scheduler.start()
+        logger.info(
+            f"Telemetry scheduler started: cron='{cron_expression}', retention={retention_days}d, summary={summary_path}"
+        )
+
+    def stop_scheduler(self) -> None:
+        """Stop the background scheduler."""
+        if self._scheduler and self._scheduler.running:
+            self._scheduler.shutdown(wait=True)
+            logger.info("Telemetry scheduler stopped")
+
+    def is_scheduler_running(self) -> bool:
+        """Check if scheduler is running."""
+        return self._scheduler is not None and self._scheduler.running
 
 
 # Global collector instance

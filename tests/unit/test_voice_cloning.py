@@ -438,8 +438,9 @@ class TestVoiceCloningManagerMore:
 
     def test_synthesize_speech_success(self):
         """Test synthesize_speech success case."""
-        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
         from unittest.mock import AsyncMock, patch
+
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
 
         manager = VoiceCloningManager()
         # Pre-populate with a voice print
@@ -460,16 +461,19 @@ class TestVoiceCloningManagerMore:
         with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend") as mock_backend_class:
             mock_backend = AsyncMock()
             mock_backend.initialize = AsyncMock()
+
             # Mock synthesize to create the output file
             async def mock_synthesize(text, voice_id, output_path, prosody, reference_audio):
                 output_path.write_bytes(b"fake audio data")
-                return type('obj', (object,), {'duration_ms': 1000})()
+                return type("obj", (object,), {"duration_ms": 1000})()
+
             mock_backend.synthesize = mock_synthesize
             mock_backend.cleanup = AsyncMock()
             mock_backend_class.return_value = mock_backend
 
             # Create a temp dir for output
             import tempfile
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 manager.config.output_dir = tmpdir
                 success, message, audio_path = manager.synthesize_speech(

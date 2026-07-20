@@ -314,7 +314,7 @@ def create_pairwise_judge_fn(
         Function that takes (sample_id, input_data, output_a, output_b, annotation, audio_description)
         and returns PairwiseJudgment
     """
-    from ..llm.judge import LLMJudge, JudgeConfig
+    from ..llm.judge import JudgeConfig, LLMJudge
 
     if judge_model is None:
         judge_model = "openrouter/auto"
@@ -824,13 +824,11 @@ def run_ab_test_pairwise(
         )
     elif a_wins > b_wins:
         recommendation = (
-            f"❌ 不建议升级: v{samples[0].version_a} 仍优于 "
-            f"v{samples[0].version_b} ({a_wins}/{n} 样本)"
+            f"❌ 不建议升级: v{samples[0].version_a} 仍优于 " f"v{samples[0].version_b} ({a_wins}/{n} 样本)"
         )
     else:
         recommendation = (
-            f"🔶 结果不明确: v{samples[0].version_a} 和 v{samples[0].version_b} "
-            f"差异不大 (平局 {ties}/{n})"
+            f"🔶 结果不明确: v{samples[0].version_a} 和 v{samples[0].version_b} " f"差异不大 (平局 {ties}/{n})"
         )
 
     versions = (samples[0].version_a, samples[0].version_b)
@@ -846,9 +844,7 @@ def run_ab_test_pairwise(
             diff = 0.0 if r.judgment.winner == "tie" else (1.0 if r.judgment.winner == "B" else -1.0)
         differences.append(diff)
 
-    p_value, confidence_interval, is_significant = _compute_paired_ttest(
-        differences, significance_level
-    )
+    p_value, confidence_interval, is_significant = _compute_paired_ttest(differences, significance_level)
 
     report = PairwiseABTestReport(
         stage=stage,

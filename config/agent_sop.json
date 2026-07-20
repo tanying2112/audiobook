@@ -27,6 +27,49 @@
         "corrections_received": 0,
         "confidence": 0.5
       }
+    },
+    "玄幻": {
+      "name": "玄幻",
+      "aliases": ["仙侠", "东方玄幻"],
+      "rules": {
+        "speech_rate": {
+          "default": 1.0,
+          "narrator": 1.0,
+          "protagonist": 1.05,
+          "combat": 1.15,
+          "meditation": 0.9
+        },
+        "pitch_shifts": {
+          "default": 0,
+          "narrator": 0,
+          "protagonist": 2,
+          "demon": -5,
+          "deity": 3
+        },
+        "emotion_defaults": {
+          "combat": "angry",
+          "meditation": "neutral",
+          "默认": "neutral"
+        },
+        "pause_patterns": {
+          "default_pause": 300,
+          "combat": 150
+        },
+        "sfx_rules": {
+          "enabled": true,
+          "combat": "sword_clash",
+          "suspense": "thunder"
+        },
+        "voice_bindings": {
+          "narrator": "zh-CN-XiaoxiaoNeural",
+          "protagonist": "zh-CN-YunxiNeural",
+          "demon": "zh-CN-YunyangNeural"
+        }
+      },
+      "learning_stats": {
+        "corrections_received": 0,
+        "confidence": 0.5
+      }
     }
   },
   "global_settings": {

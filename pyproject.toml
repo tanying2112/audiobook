@@ -89,6 +89,7 @@ markers = [
     "e2e: marks tests as end-to-end tests",
     "benchmark: marks tests as benchmark tests",
     "contract: marks tests as contract tests",
+    "smoke: marks tests as smoke tests (fast, MOCK_LLM=true)",
 ]
 
 [tool.coverage.run]

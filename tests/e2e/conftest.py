@@ -21,7 +21,6 @@ from typing import Optional
 
 import pytest
 
-
 # Test configuration
 SAMPLE_TEXT = """
 第一章：开始

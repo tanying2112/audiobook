@@ -23,6 +23,8 @@ from typing import Any, Dict, Optional
 # 1. RUNTIME DEPENDENCY INJECTION
 # ==========================================
 _print = print
+
+
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
 
@@ -42,17 +44,19 @@ def _install_missing_deps() -> None:
         "huggingface_hub": "huggingface_hub",
         "soundfile": "soundfile",
     }
-    import subprocess
     import importlib
+    import subprocess
 
     for mod, pkg in required.items():
         try:
             importlib.import_module(mod)
         except ImportError:
             _log(f"Installing missing dependency: {pkg}")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q", pkg
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-q", pkg],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     # PaddlePaddle is platform-specific - install only if preferred
     if os.getenv("PREFER_PADDLE", "true").lower() == "true":
@@ -60,10 +64,12 @@ def _install_missing_deps() -> None:
             importlib.import_module("paddle")
         except ImportError:
             _log("Installing PaddlePaddle (preferred on Baidu)...")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q",
-                "paddlepaddle-gpu", "paddlenlp", "paddlaudio"
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-q", "paddlepaddle-gpu", "paddlenlp", "paddlaudio"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
 
 _log("📦 Installing production dependencies...")
 _install_missing_deps()
@@ -88,6 +94,7 @@ try:
     import paddle
     from paddlenlp.transformers import AutoModelForCausalLM as PaddleAutoModelForCausalLM
     from paddlenlp.transformers import AutoTokenizer as PaddleAutoTokenizer
+
     PADDLE_AVAILABLE = True
     _log("✓ PaddlePaddle available - using Paddle backend")
 except ImportError:
@@ -386,7 +393,9 @@ class BaseWorker(abc.ABC):
                 if empty_polls >= self.max_empty_polls:
                     try:
                         if self.redis.llen("tts:tasks") == 0:
-                            _print(f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine.")
+                            _print(
+                                f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine."
+                            )
                             self._send_heartbeat("exiting", 0)
                             break
                     except Exception:
@@ -431,6 +440,7 @@ class T4VoxCPM2Engine:
 
     def __init__(self, model_path: str = None):
         import torch
+
         self.model_path = model_path or self.CACHE_DIR
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         _log(f"[PyTorch] Detected GPU: {get_device_name()}")
@@ -440,6 +450,7 @@ class T4VoxCPM2Engine:
 
     def _load_model(self) -> None:
         import os
+
         from huggingface_hub import snapshot_download
 
         if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
@@ -499,12 +510,14 @@ class T4VoxCPM2Engine:
         waveform = self.model.decode_audio(audio_tokens)
 
         import io
+
         buffer = io.BytesIO()
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
     def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
         import os
+
         if reference_audio and os.path.exists(reference_audio):
             waveform, sr = torchaudio.load(reference_audio)
             if sr != 24000:
@@ -540,6 +553,7 @@ class PaddleVoxCPM2Engine:
 
     def _load_model(self) -> None:
         import os
+
         from huggingface_hub import snapshot_download
 
         if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
@@ -575,8 +589,9 @@ class PaddleVoxCPM2Engine:
         prosody: dict,
         reference_audio: str = None,
     ) -> bytes:
-        import soundfile as sf
         import io
+
+        import soundfile as sf
 
         speaker_prompt = self._get_speaker_prompt(voice_id, reference_audio)
 
@@ -598,15 +613,17 @@ class PaddleVoxCPM2Engine:
         return buffer.getvalue()
 
     def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
+        from pathlib import Path
+
         import paddle
         import soundfile as sf
-        from pathlib import Path
 
         if reference_audio and Path(reference_audio).exists():
             waveform, sr = sf.read(reference_audio)
             waveform_tensor = paddle.to_tensor(waveform.T, dtype="float32").unsqueeze(0).to("gpu")
             if sr != 24000:
                 import paddlaudio.functional as F
+
                 waveform_tensor = F.resample(waveform_tensor, sr, 24000)
             return self.model.encode_speaker(waveform_tensor)
 

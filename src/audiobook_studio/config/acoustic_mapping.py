@@ -11,36 +11,37 @@
 - 所有参数含义明确，便于音频工程师调优
 """
 
-from typing import Dict, Tuple, Optional
-from dataclasses import dataclass, field
 import os
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class EmotionAcousticProfile:
     """单一情感的声学概貌."""
-    speed: float = 1.0          # 语速倍率 (0.7-1.3)
-    volume_db: float = 0.0      # 音量增益 dB (-6 到 +6)
-    pitch_hz: float = 0.0       # 音高偏移 Hz (-50 到 +50)
+
+    speed: float = 1.0  # 语速倍率 (0.7-1.3)
+    volume_db: float = 0.0  # 音量增益 dB (-6 到 +6)
+    pitch_hz: float = 0.0  # 音高偏移 Hz (-50 到 +50)
 
 
 # 情感 → 声学参数映射表 (核心配置)
 # 可通过 ACOUSTIC_EMOTION_MAP_JSON 环境变量覆盖 (JSON 格式)
 EMOTION_ACOUSTIC_MAP: Dict[str, EmotionAcousticProfile] = {
-    "angry":      EmotionAcousticProfile(speed=1.15, volume_db=1.5,  pitch_hz=20.0),
-    "sad":        EmotionAcousticProfile(speed=0.85, volume_db=-2.0, pitch_hz=-10.0),
-    "fearful":    EmotionAcousticProfile(speed=1.20, volume_db=-1.0, pitch_hz=40.0),
-    "tense":      EmotionAcousticProfile(speed=1.08, volume_db=0.0,  pitch_hz=10.0),
-    "happy":      EmotionAcousticProfile(speed=1.10, volume_db=1.0,  pitch_hz=15.0),
-    "surprised":  EmotionAcousticProfile(speed=1.15, volume_db=1.0,  pitch_hz=25.0),
-    "disgusted":  EmotionAcousticProfile(speed=0.90, volume_db=-2.0, pitch_hz=-20.0),
-    "tender":     EmotionAcousticProfile(speed=0.80, volume_db=-1.0, pitch_hz=-10.0),
+    "angry": EmotionAcousticProfile(speed=1.15, volume_db=1.5, pitch_hz=20.0),
+    "sad": EmotionAcousticProfile(speed=0.85, volume_db=-2.0, pitch_hz=-10.0),
+    "fearful": EmotionAcousticProfile(speed=1.20, volume_db=-1.0, pitch_hz=40.0),
+    "tense": EmotionAcousticProfile(speed=1.08, volume_db=0.0, pitch_hz=10.0),
+    "happy": EmotionAcousticProfile(speed=1.10, volume_db=1.0, pitch_hz=15.0),
+    "surprised": EmotionAcousticProfile(speed=1.15, volume_db=1.0, pitch_hz=25.0),
+    "disgusted": EmotionAcousticProfile(speed=0.90, volume_db=-2.0, pitch_hz=-20.0),
+    "tender": EmotionAcousticProfile(speed=0.80, volume_db=-1.0, pitch_hz=-10.0),
     "contemplative": EmotionAcousticProfile(speed=0.80, volume_db=-1.0, pitch_hz=-10.0),
-    "whisper":    EmotionAcousticProfile(speed=0.70, volume_db=-6.0, pitch_hz=-20.0),
-    "cold_laugh": EmotionAcousticProfile(speed=0.90, volume_db=0.0,  pitch_hz=0.0),
-    "sigh":       EmotionAcousticProfile(speed=0.70, volume_db=-3.0, pitch_hz=-10.0),
-    "sarcastic":  EmotionAcousticProfile(speed=0.90, volume_db=0.0,  pitch_hz=10.0),
-    "neutral":    EmotionAcousticProfile(speed=1.00, volume_db=0.0,  pitch_hz=0.0),
+    "whisper": EmotionAcousticProfile(speed=0.70, volume_db=-6.0, pitch_hz=-20.0),
+    "cold_laugh": EmotionAcousticProfile(speed=0.90, volume_db=0.0, pitch_hz=0.0),
+    "sigh": EmotionAcousticProfile(speed=0.70, volume_db=-3.0, pitch_hz=-10.0),
+    "sarcastic": EmotionAcousticProfile(speed=0.90, volume_db=0.0, pitch_hz=10.0),
+    "neutral": EmotionAcousticProfile(speed=1.00, volume_db=0.0, pitch_hz=0.0),
 }
 
 # 段落过渡类型 → 基础停顿映射
@@ -48,9 +49,9 @@ EMOTION_ACOUSTIC_MAP: Dict[str, EmotionAcousticProfile] = {
 # 类型: "narration" (旁白) 或 "dialogue" (对话)
 TRANSITION_PAUSE_MAP: Dict[Tuple[str, str], int] = {
     ("narration", "narration"): 300,
-    ("narration", "dialogue"):  550,
-    ("dialogue", "dialogue"):   400,
-    ("dialogue", "narration"):  600,
+    ("narration", "dialogue"): 550,
+    ("dialogue", "dialogue"): 400,
+    ("dialogue", "narration"): 600,
 }
 
 # 标点符号 → 微停顿增量 (ms)
@@ -92,6 +93,7 @@ def load_emotion_map_from_env() -> Dict[str, EmotionAcousticProfile]:
     ACOUSTIC_EMOTION_MAP_JSON='{"angry": {"speed": 1.2, "volume_db": 2.0, "pitch_hz": 30}}'
     """
     import json
+
     env_json = os.environ.get("ACOUSTIC_EMOTION_MAP_JSON")
     if not env_json:
         return {}
@@ -113,6 +115,7 @@ def load_emotion_map_from_env() -> Dict[str, EmotionAcousticProfile]:
 def load_transition_map_from_env() -> Dict[Tuple[str, str], int]:
     """从环境变量加载过渡停顿映射覆盖."""
     import json
+
     env_json = os.environ.get("ACOUSTIC_TRANSITION_MAP_JSON")
     if not env_json:
         return {}

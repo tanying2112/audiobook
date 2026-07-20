@@ -58,6 +58,7 @@ from .emotion_snapshot import EmotionSnapshot
 from .feedback_record import FeedbackRecord
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
+from .project_segment import ProjectSegment
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
@@ -81,4 +82,5 @@ __all__ = [
     "Role",
     "Permission",
     "ProjectPermission",
+    "ProjectSegment",
 ]

@@ -13,13 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..schemas import (
-    AudioPostProcessParams,
-    FixSuggestion,
-    PairwiseJudgment,
-    ParagraphAnnotation,
-    QualityJudgment,
-)
+from ..schemas import AudioPostProcessParams, FixSuggestion, PairwiseJudgment, ParagraphAnnotation, QualityJudgment
 from ..schemas.judge import PairwiseJudgment
 from .router import LLMRouter, create_router
 
@@ -279,9 +273,7 @@ Be strict but fair. Output ONLY valid JSON matching the schema."""
         )
 
     def _log_pairwise_judgment(self, segment_id: str, judgment: PairwiseJudgment):
-        dim_str = ", ".join(
-            f"{k}: A={v.score_a:.2f} B={v.score_b:.2f}" for k, v in judgment.dimension_scores.items()
-        )
+        dim_str = ", ".join(f"{k}: A={v.score_a:.2f} B={v.score_b:.2f}" for k, v in judgment.dimension_scores.items())
         logger.info(
             f"Pairwise judgment [{segment_id}]: "
             f"winner={judgment.winner} "

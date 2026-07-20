@@ -1,24 +1,25 @@
 """Tests for Module 4.2: SOP Reflection Self-Evolution System."""
 
-import pytest
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.pipeline.sop_reflection import (
-    SOPConfig,
     CorrectionCollector,
     GenreDetector,
     ReflectionEngine,
+    ReflectionResult,
     RuleApplier,
     SOPBackgroundThread,
+    SOPConfig,
     UserCorrection,
-    ReflectionResult,
-    get_sop_config,
     get_correction_collector,
     get_genre_detector,
     get_rule_applier,
+    get_sop_config,
     start_sop_background_thread,
     stop_sop_background_thread,
 )
@@ -42,6 +43,7 @@ class TestSOPConfig:
             config_path = Path(tmpdir) / "agent_sop.json"
             # Create a config file
             import json
+
             test_config = {
                 "version": "1.0",
                 "genres": {
@@ -352,9 +354,9 @@ class TestRuleApplier:
         """Test applying rules to annotation input."""
         from src.audiobook_studio.schemas import (
             BookMeta,
-            ParagraphAnnotationInput,
             CharacterVoiceBinding,
             EmotionSnapshot,
+            ParagraphAnnotationInput,
         )
 
         config = SOPConfig()
@@ -368,9 +370,7 @@ class TestRuleApplier:
             language="zh",
             total_chapters_estimated=10,
         )
-        emotion_snapshot = EmotionSnapshot(
-            chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试"
-        )
+        emotion_snapshot = EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")
         voice_map = [
             CharacterVoiceBinding(
                 canonical_name="主角",

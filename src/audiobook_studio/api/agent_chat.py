@@ -2,6 +2,11 @@
 
 Provides WebSocket endpoint /ws/agent/chat/{project_id} and HTTP fallback
 for conversational agent interface with pipeline context.
+
+Also provides FSM-based pipeline execution endpoints:
+- POST /agent/pipeline/start - Start pipeline (Autopilot/Interactive)
+- POST /agent/pipeline/confirm - Confirm human review (Interactive mode)
+- GET /agent/pipeline/status - Get pipeline FSM status
 """
 
 import asyncio
@@ -9,12 +14,14 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..agent.fsm import PipelineFSM, PipelineMode, PipelineState, _fsm_instances, get_fsm, remove_fsm
+from ..agent.tools import TOOL_DEFINITIONS, TOOL_HANDLERS, execute_tool
 from ..api.websocket import manager as ws_manager
 from ..database import get_db
 from ..models import Project
@@ -67,6 +74,62 @@ class AgentStatusResponse(BaseModel):
     knowledge_entries: int
     recent_tasks: int
     status: str = "ready"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline FSM Request/Response Schemas
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PipelineStartRequest(BaseModel):
+    """Request to start pipeline execution."""
+
+    project_id: int = Field(..., description="Project ID")
+    mode: str = Field("autopilot", description="Pipeline mode: 'autopilot' or 'interactive'")
+    chapter_index: int = Field(1, description="Starting chapter (1-based)")
+    chapter_id: Optional[int] = Field(None, description="Optional chapter DB ID")
+
+
+class PipelineStartResponse(BaseModel):
+    """Response from pipeline start."""
+
+    project_id: int
+    mode: str
+    current_state: str
+    status: str  # "running", "paused", "completed", "failed"
+    chapter_index: int
+    paused_at: Optional[str] = None
+    message: str
+
+
+class PipelineConfirmRequest(BaseModel):
+    """Request to confirm human review (Interactive mode)."""
+
+    project_id: int = Field(..., description="Project ID")
+    confirmed: bool = Field(True, description="Whether user confirms the annotations")
+
+
+class PipelineConfirmResponse(BaseModel):
+    """Response from human confirmation."""
+
+    project_id: int
+    current_state: str
+    status: str  # "running", "paused", "completed", "failed"
+    message: str
+
+
+class PipelineStatusResponse(BaseModel):
+    """Pipeline FSM status."""
+
+    project_id: int
+    mode: str
+    current_state: str
+    chapter_index: int
+    chapter_id: Optional[int] = None
+    paused_at: Optional[str] = None
+    user_confirmed: bool = False
+    error: Optional[str] = None
+    completed_stages: list[str] = Field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,10 +187,9 @@ async def _process_agent_message(
     user_message: str,
     context: Dict[str, Any],
 ) -> AgentChatResponse:
-    """Process user message and generate agent response.
+    """Process user message and generate agent response with tool calling.
 
-    This is a simplified implementation. In production, this would integrate
-    with the actual agent orchestration system.
+    Uses LLM to determine which tool to call (if any) based on the user's intent.
     """
     # Add user message to history
     _add_message(session_id, "user", user_message)
@@ -151,55 +213,119 @@ async def _process_agent_message(
     finally:
         db.close()
 
-    # Simple response logic based on message content
-    message_lower = user_message.lower()
+    # Prepare system prompt with tool definitions
+    system_prompt = f"""你是 Audiobook Studio 的智能助手，负责帮助用户完成有声书制作全流程。
 
-    # Check for specific intents
-    if any(kw in message_lower for kw in ["进度", "status", "进度如何", "怎么"]):
-        response_text = f"项目《{project_title}》当前状态良好。知识库中有 {knowledge_count} 条记录，最近有 {len(recent_tasks)} 个任务记录。"
-        agent_type = "monitor"
+项目《{project_title}》(ID: {project_id}) 当前状态：
+- 知识库条目: {knowledge_count}
+- 最近任务: {len(recent_tasks)}
 
-    elif any(kw in message_lower for kw in ["章节", "chapter", "内容", "text"]):
-        response_text = "我可以帮你查看章节内容、提取文本或分析结构。请告诉我具体想做什么？"
-        agent_type = "extractor"
+可用工具：
+{json.dumps(TOOL_DEFINITIONS, ensure_ascii=False, indent=2)}
 
-    elif any(kw in message_lower for kw in ["语音", "tts", "合成", "配音", "voice"]):
-        response_text = "关于语音合成，我可以帮你选择引擎、调整语速音调、或预览声音。目前支持 Kokoro(本地)、Edge-TTS(云端)等引擎。"
-        agent_type = "tts"
+当用户请求需要执行工具时，请返回 JSON 格式的工具调用：
+{{
+  "tool_calls": [
+    {{
+      "name": "tool_name",
+      "arguments": {{...}}
+    }}
+  ]
+}}
 
-    elif any(kw in message_lower for kw in ["质量", "quality", "检查", "评分"]):
-        response_text = "质量检查方面，我可以运行质量评估、查看评分报告、或触发重新生成。请指定要检查的章节或段落。"
-        agent_type = "quality"
+如果不需要工具，直接用自然语言回复。"""
 
-    elif any(kw in message_lower for kw in ["导出", "export", "生成", "打包"]):
-        response_text = "导出功能支持多种格式：M4B(有声书)、MP3、WAV、带章节标记的文件。需要我帮你配置导出参数吗？"
-        agent_type = "exporter"
+    # Get recent conversation history for context
+    history = agent_sessions.get(session_id, {}).get("messages", [])[-10:]
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend([{"role": m["role"], "content": m["content"]} for m in history])
+    messages.append({"role": "user", "content": user_message})
 
-    elif any(kw in message_lower for kw in ["帮助", "help", "能做什么", "功能"]):
-        response_text = """我是 Audiobook Studio 的智能助手，可以帮你：
+    # Call LLM with tools
+    try:
+        from ..llm.router import LLMRouter, LLMStage
 
-📚 **文本处理**：上传 PDF/EPUB/DOCX/TXT/图片，自动提取文本并分章
-🎭 **角色分析**：识别说话人、情感、语速等标注信息
-🎙️ **语音合成**：多引擎支持(Kokoro/Edge-TTS/Azure/GCP)，声音克隆
-✅ **质量控制**：自动评分、问题检测、一键重生成
-📦 **导出打包**：M4B/MP3/WAV 多格式，章节标记、封面嵌入
-🤖 **全自动流程**：一键从文本到成品有声书
+        router = LLMRouter()
+        # Use the analyze stage for tool calling (has function calling capability)
+        result = await router.call_stage(
+            stage=LLMStage.ANALYZE,
+            messages=messages,
+            functions=TOOL_DEFINITIONS,
+            function_call="auto",
+            temperature=0.1,
+            max_tokens=2048,
+        )
 
-请告诉我你想做什么，或直接描述你的需求！"""
-        agent_type = "general"
+        # Check if LLM returned tool calls
+        tool_calls = result.get("tool_calls", [])
+        if tool_calls:
+            # Execute tools
+            actions = []
+            tool_results = []
 
-    else:
-        response_text = f"收到你的消息：\"{user_message}\"。作为《{project_title}》的项目助手，我可以帮你处理文本提取、角色分析、语音合成、质量检查、导出等任务。请告诉我具体需求，或输入「帮助」查看功能列表。"
-        agent_type = "general"
+            for tool_call in tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["arguments"]
+
+                try:
+                    tool_result = await execute_tool(tool_name, tool_args)
+                    tool_results.append(tool_result)
+                    actions.append(
+                        {
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "result": tool_result,
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Tool {tool_name} failed: {e}")
+                    tool_results.append({"error": str(e)})
+                    actions.append(
+                        {
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "error": str(e),
+                        }
+                    )
+
+            # Generate response based on tool results
+            response_messages = messages + [
+                {"role": "assistant", "content": None, "tool_calls": tool_calls},
+                *[
+                    {"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(tr, ensure_ascii=False)}
+                    for tc, tr in zip(tool_calls, tool_results)
+                ],
+            ]
+
+            final_result = await router.call_stage(
+                stage=LLMStage.ANALYZE,
+                messages=response_messages,
+                temperature=0.3,
+                max_tokens=1024,
+            )
+            response_text = final_result.get("content", "工具执行完成。")
+            agent_type = "tool_executor"
+
+        else:
+            # No tool calls, use direct response
+            response_text = result.get("content", "我明白了。请告诉我具体想做什么？")
+            agent_type = "general"
+            actions = []
+
+    except Exception as e:
+        logger.error(f"Agent processing error: {e}")
+        response_text = f"处理消息时出错: {str(e)}"
+        agent_type = "error"
+        actions = []
 
     # Add assistant response to history
-    _add_message(session_id, "assistant", response_text, {"agent_type": agent_type})
+    _add_message(session_id, "assistant", response_text, {"agent_type": agent_type, "actions": actions})
 
     return AgentChatResponse(
         session_id=session_id,
         message=response_text,
         agent_type=agent_type,
-        actions=[],
+        actions=actions,
         knowledge_updated=False,
     )
 
@@ -585,3 +711,134 @@ async def list_knowledge(project_id: int, topic: Optional[str] = None, db: Sessi
             for e in entries
         ],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline FSM Endpoints (Task 2.2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/pipeline/start", response_model=PipelineStartResponse)
+async def start_pipeline(request: PipelineStartRequest, db: Session = Depends(get_db)):
+    """Start pipeline execution (Autopilot or Interactive mode).
+
+    - Autopilot: runs all stages sequentially to completion
+    - Interactive: runs through annotate, then pauses at PENDING_HUMAN_CONFIRM
+      waiting for user confirmation via POST /agent/pipeline/confirm
+    """
+    project = db.query(Project).filter(Project.id == request.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    mode = PipelineMode(request.mode.lower())
+    if mode not in [PipelineMode.AUTOPILOT, PipelineMode.INTERACTIVE]:
+        raise HTTPException(status_code=400, detail="Invalid mode. Use 'autopilot' or 'interactive'")
+
+    # Create FSM instance
+    fsm = get_fsm(
+        project_id=request.project_id,
+        mode=mode,
+        chapter_index=request.chapter_index,
+        chapter_id=request.chapter_id,
+    )
+
+    # Run pipeline until pause or completion
+    result = await fsm.run_until_pause_or_complete()
+
+    return PipelineStartResponse(
+        project_id=request.project_id,
+        mode=mode.value,
+        current_state=result["current_state"],
+        status=result["status"],
+        chapter_index=result["chapter_index"],
+        paused_at=result.get("paused_at"),
+        message=f"Pipeline {result['status']} at {result['current_state']}",
+    )
+
+
+@router.post("/pipeline/confirm", response_model=PipelineConfirmResponse)
+async def confirm_pipeline(request: PipelineConfirmRequest, db: Session = Depends(get_db)):
+    """Confirm human review and continue pipeline (Interactive mode only)."""
+    project = db.query(Project).filter(Project.id == request.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    fsm = get_fsm(request.project_id)
+
+    if fsm.mode != PipelineMode.INTERACTIVE:
+        raise HTTPException(status_code=400, detail="Confirm only available in interactive mode")
+
+    if not request.confirmed:
+        # User rejected - stop pipeline
+        fsm.context.current_state = PipelineState.FAILED
+        fsm.context.error = "User rejected annotations"
+        remove_fsm(request.project_id)
+        return PipelineConfirmResponse(
+            project_id=request.project_id,
+            current_state=PipelineState.FAILED.value,
+            status="failed",
+            message="Pipeline stopped: user rejected annotations",
+        )
+
+    # Continue after confirmation
+    result = await fsm.continue_after_confirmation()
+
+    if result["status"] == "completed":
+        remove_fsm(request.project_id)
+
+    return PipelineConfirmResponse(
+        project_id=request.project_id,
+        current_state=result["current_state"],
+        status=result["status"],
+        message=f"Pipeline {result['status']} at {result['current_state']}",
+    )
+
+
+@router.get("/pipeline/status/{project_id}", response_model=PipelineStatusResponse)
+async def get_pipeline_status(project_id: int, db: Session = Depends(get_db)):
+    """Get current pipeline FSM status."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if project_id not in _fsm_instances:
+        return PipelineStatusResponse(
+            project_id=project_id,
+            mode="idle",
+            current_state="idle",
+            chapter_index=0,
+        )
+
+    fsm = _fsm_instances[project_id]
+    status = fsm.get_status()
+
+    return PipelineStatusResponse(
+        project_id=status["project_id"],
+        mode=status["mode"],
+        current_state=status["current_state"],
+        chapter_index=status["chapter_index"],
+        chapter_id=status["chapter_id"],
+        paused_at=status["paused_at"],
+        user_confirmed=status["user_confirmed"],
+        error=status["error"],
+        completed_stages=status["completed_stages"],
+    )
+
+
+@router.post("/pipeline/stop/{project_id}")
+async def stop_pipeline(project_id: int, db: Session = Depends(get_db)):
+    """Stop and cleanup pipeline FSM."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if project_id in _fsm_instances:
+        _fsm_instances[project_id].stop()
+        remove_fsm(project_id)
+        return {"message": "Pipeline stopped", "project_id": project_id}
+
+    return {"message": "No active pipeline for project", "project_id": project_id}
+
+
+# Need to expose _fsm_instances for the endpoints
+from ..agent.fsm import _fsm_instances as _agent_fsm_instances

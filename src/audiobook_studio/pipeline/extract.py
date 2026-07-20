@@ -16,6 +16,7 @@ from docx import Document
 from ebooklib import epub
 
 from ..llm import LLMRouter, create_router
+from ..monitoring import record_stage_performance
 from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class ExtractPipeline:
             self.router = router
 
     def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from PDF using pdfplumber, fallback to PyMuPDF OCR."""
+        """Extract text from PDF using pdfplumber, fallback to PyMuPDF + pytesseract OCR."""
         text_parts = []
         page_count = 0
         has_ocr = False
@@ -67,9 +68,9 @@ class ExtractPipeline:
 
         extracted_text = "\n\n".join(text_parts).strip()
 
-        # If text too short, try PyMuPDF OCR
+        # If text too short, try PyMuPDF OCR with pytesseract
         if len(extracted_text) < 100:
-            logger.info("Text layer insufficient, attempting OCR with PyMuPDF")
+            logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
             has_ocr = True
             try:
                 doc = fitz.open(file_path)
@@ -77,12 +78,19 @@ class ExtractPipeline:
                 ocr_text_parts = []
                 for page_num in range(len(doc)):
                     page = doc[page_num]
-                    # Render page to image then OCR (simplified - would use pytesseract in production)
-                    _ = page.get_pixmap(dpi=200)  # noqa: F841
-                    # In production: use pytesseract.image_to_string(pix.tobytes())
-                    # For now, try to get text blocks
-                    blocks = page.get_text("dict")["blocks"]
-                    page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+                    # Render page to image and OCR it
+                    if OCR_AVAILABLE:
+                        pix = page.get_pixmap(dpi=200)
+                        from PIL import Image
+
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        # Use pytesseract for OCR
+                        page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+                    else:
+                        # Fallback: try to get text blocks without OCR
+                        blocks = page.get_text("dict")["blocks"]
+                        page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+
                     if page_text.strip():
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
@@ -142,9 +150,7 @@ class ExtractPipeline:
     def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
         """Extract text from image using OCR (requires pytesseract + Pillow)."""
         if not OCR_AVAILABLE:
-            raise ValueError(
-                "Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow"
-            )
+            raise ValueError("Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow")
 
         try:
             image = Image.open(file_path)
@@ -171,7 +177,6 @@ class ExtractPipeline:
 
     def run(self, input_data: ExtractionInput) -> ExtractionResult:
         """Execute extraction pipeline."""
-        from ..monitoring import record_stage_performance
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
 

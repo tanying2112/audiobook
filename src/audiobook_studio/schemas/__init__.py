@@ -28,8 +28,15 @@ from .feedback_analysis import FeedbackAnalysis
 from .judge import PairwiseDimensionScore, PairwiseJudgment
 from .paragraph import Paragraph, ParagraphAnnotation, ParagraphAnnotationInput
 from .project import Project
-from .review import FixCommand, JsonTruncationCheck, ReviewerInput, ReviewerJudgment, TagConsistencyCheck, VoiceBindingCheck
 from .quality import FixSuggestion, Quality, QualityJudgment
+from .review import (
+    FixCommand,
+    JsonTruncationCheck,
+    ReviewerInput,
+    ReviewerJudgment,
+    TagConsistencyCheck,
+    VoiceBindingCheck,
+)
 from .routing import Routing
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
 from .tts_routing import TtsRoutingDecision, TtsRoutingInput

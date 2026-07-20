@@ -80,6 +80,7 @@ class JWTHandler:
             # sha256_crypt format ($5$rounds=...)
             try:
                 import passlib.hash
+
                 return passlib.hash.sha256_crypt.verify(plain_password, hashed_password)
             except Exception:
                 return False

@@ -24,15 +24,15 @@ import pytest
 import redis
 
 from src.audiobook_studio.tasks.tts_tasks import (
-    TTSChapterTask,
-    synthesize_chapter_task,
-    _get_redis,
     _ACQUIRE_LUA,
     _RELEASE_LUA,
+    TTSChapterTask,
+    _get_redis,
+    synthesize_chapter_task,
 )
 from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
-from src.audiobook_studio.tts.port_factory import set_port, reset_port as reset_port_factory
-
+from src.audiobook_studio.tts.port_factory import reset_port as reset_port_factory
+from src.audiobook_studio.tts.port_factory import set_port
 
 # Test configuration
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/1")
@@ -83,7 +83,7 @@ class TestRedisSemaphore:
 
     def test_semaphore_acquire_release(self, redis_client):
         """Test basic semaphore acquire/release."""
-        from src.audiobook_studio.tasks.tts_tasks import _get_redis, _acquire_sha, _release_sha
+        from src.audiobook_studio.tasks.tts_tasks import _acquire_sha, _get_redis, _release_sha
 
         client = _get_redis()
         # Clear any existing semaphore state
@@ -172,13 +172,12 @@ class TestCheckpointSaveLoad:
             "completed_paragraphs": [1, 2, 3],
             "failed_paragraphs": [5],
             "chapter_audio_path": "/output/chapter_1.mp3",
-            "segments": [
-                {"segment_id": "seg1", "file_path": "/output/seg1.wav", "duration_ms": 1000}
-            ],
+            "segments": [{"segment_id": "seg1", "file_path": "/output/seg1.wav", "duration_ms": 1000}],
             "updated_at": time.time(),
         }
 
         import json
+
         client.set(checkpoint_key, json.dumps(checkpoint_data), ex=86400)
 
         # Load and verify
@@ -200,14 +199,21 @@ class TestCheckpointSaveLoad:
         client = _get_redis()
         checkpoint_key = f"tts:checkpoint:{project_id}:{chapter_id}"
         import json
-        client.set(checkpoint_key, json.dumps({
-            "project_id": project_id,
-            "chapter_id": chapter_id,
-            "completed_paragraphs": [1, 2, 3],
-            "failed_paragraphs": [],
-            "segments": [],
-            "updated_at": time.time(),
-        }), ex=86400)
+
+        client.set(
+            checkpoint_key,
+            json.dumps(
+                {
+                    "project_id": project_id,
+                    "chapter_id": chapter_id,
+                    "completed_paragraphs": [1, 2, 3],
+                    "failed_paragraphs": [],
+                    "segments": [],
+                    "updated_at": time.time(),
+                }
+            ),
+            ex=86400,
+        )
 
         # Load checkpoint
         checkpoint = task._load_checkpoint(project_id, chapter_id)
@@ -236,10 +242,7 @@ class TestConcurrentSynthesis:
             return {"index": idx, "duration": duration, "path": str(output_path)}
 
         # Run 5 concurrent syntheses
-        tasks = [
-            synthesize_segment(i, p["text"])
-            for i, p in enumerate(sample_paragraphs[:5])
-        ]
+        tasks = [synthesize_segment(i, p["text"]) for i, p in enumerate(sample_paragraphs[:5])]
         results = await asyncio.gather(*tasks)
 
         assert len(results) == 5
@@ -282,17 +285,24 @@ class TestWorkerRestartRecovery:
 
         checkpoint_key = f"tts:checkpoint:{project_id}:{chapter_id}"
         import json
-        client.set(checkpoint_key, json.dumps({
-            "project_id": project_id,
-            "chapter_id": chapter_id,
-            "completed_paragraphs": [1, 2, 3, 4],
-            "failed_paragraphs": [5],
-            "segments": [
-                {"segment_id": f"seg{i}", "file_path": f"/output/seg{i}.wav", "duration_ms": 1000 * i}
-                for i in range(1, 5)
-            ],
-            "updated_at": time.time(),
-        }), ex=86400)
+
+        client.set(
+            checkpoint_key,
+            json.dumps(
+                {
+                    "project_id": project_id,
+                    "chapter_id": chapter_id,
+                    "completed_paragraphs": [1, 2, 3, 4],
+                    "failed_paragraphs": [5],
+                    "segments": [
+                        {"segment_id": f"seg{i}", "file_path": f"/output/seg{i}.wav", "duration_ms": 1000 * i}
+                        for i in range(1, 5)
+                    ],
+                    "updated_at": time.time(),
+                }
+            ),
+            ex=86400,
+        )
 
         # Simulate new worker process (new client connection)
         new_client = redis.from_url(TEST_REDIS_URL, decode_responses=True)
@@ -300,6 +310,7 @@ class TestWorkerRestartRecovery:
 
         assert loaded is not None
         import json
+
         data = json.loads(loaded)
         assert data["completed_paragraphs"] == [1, 2, 3, 4]
         assert data["failed_paragraphs"] == [5]
@@ -364,9 +375,7 @@ class TestStressScenarios:
         async def synth(idx: int):
             segment_id = f"high_concurrent_{idx}"
             output_path = output_dir / f"{segment_id}.wav"
-            return await _synthesize_via_port(
-                port, f"测试文本 {idx} " * 10, "zh_female_1", {}, output_path, segment_id
-            )
+            return await _synthesize_via_port(port, f"测试文本 {idx} " * 10, "zh_female_1", {}, output_path, segment_id)
 
         # Run 10 concurrent syntheses (more than semaphore limit)
         tasks = [synth(i) for i in range(10)]

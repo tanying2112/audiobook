@@ -16,9 +16,7 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 # Cache directory following XDG Base Directory Specification
-CACHE_DIR = Path(
-    os.environ.get("AUDIOBOOK_STUDIO_MODEL_CACHE", "~/.cache/audiobook_studio/models")
-).expanduser()
+CACHE_DIR = Path(os.environ.get("AUDIOBOOK_STUDIO_MODEL_CACHE", "~/.cache/audiobook_studio/models")).expanduser()
 
 # Hardcoded asset configuration for Kokoro-ONNX v0.19
 # Official release from hexgrad/Kokoro-82M on Hugging Face
@@ -125,6 +123,7 @@ def download_file(
             logger.warning(f"Attempt {attempt + 1}/{MAX_RETRIES} failed for {filepath.name}: {e}")
             if attempt < MAX_RETRIES - 1:
                 import time
+
                 time.sleep(RETRY_DELAY * (attempt + 1))
             continue
         except Exception as e:
@@ -152,7 +151,9 @@ def verify_asset_files(cache_dir: Path, assets_spec: Dict) -> Tuple[bool, list]:
         if expected_sha256:
             actual_sha256 = calculate_sha256(filepath)
             if actual_sha256 != expected_sha256:
-                issues.append(f"Checksum mismatch: {filename} (expected {expected_sha256[:16]}..., got {actual_sha256[:16]}...)")
+                issues.append(
+                    f"Checksum mismatch: {filename} (expected {expected_sha256[:16]}..., got {actual_sha256[:16]}...)"
+                )
                 continue
 
         # Basic size check
@@ -256,8 +257,7 @@ def ensure_kokoro_assets(
 
     if not success:
         raise RuntimeError(
-            f"Failed to download/verify Kokoro assets in {target_dir}. "
-            "Check network connectivity and try again."
+            f"Failed to download/verify Kokoro assets in {target_dir}. " "Check network connectivity and try again."
         )
 
     # Final verification

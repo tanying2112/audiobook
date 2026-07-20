@@ -11,10 +11,10 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync
 from ..analyzer import SceneTagMapper, normalize_scene_tag
+from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -395,9 +395,7 @@ def mix_sfx_segments(
         # Overlay SFX at the right time
         next_label = f"mix{i}"
         enable_expr = f"between(t,{seg.start_ms/1000},{seg.end_ms/1000})"
-        filter_parts.append(
-            f"[{last_label}][{sfx_label}]overlay=enable='{enable_expr}':format=auto[{next_label}]"
-        )
+        filter_parts.append(f"[{last_label}][{sfx_label}]overlay=enable='{enable_expr}':format=auto[{next_label}]")
         last_label = next_label
 
     filter_complex = ";".join(filter_parts) + f";[{last_label}]loudnorm=I=-16:LRA=11:TP=-1.5[out]"
@@ -661,9 +659,25 @@ def mix_with_sfx(
                 filter_chain += f"{current}[sfx{i}]overlay=enable='between(t,{start_s},{sfx_segments[i].end_ms/1000.0})':format=auto{next_current};"
                 current = next_current
 
-            filter_chain += f"{current}afade=t=in:ss=0:d=0.5,afade=t=out:st={get_duration_sync(base)/1000.0-0.5}:d=0.5[out]"
+            filter_chain += (
+                f"{current}afade=t=in:ss=0:d=0.5,afade=t=out:st={get_duration_sync(base)/1000.0-0.5}:d=0.5[out]"
+            )
 
-            cmd = input_parts + ["-filter_complex", filter_chain, "-map", "[out]", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2", str(output_path)]
+            cmd = input_parts + [
+                "-filter_complex",
+                filter_chain,
+                "-map",
+                "[out]",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                str(output_path),
+            ]
         else:
             # No SFX, just copy base with normalization
             cmd = [

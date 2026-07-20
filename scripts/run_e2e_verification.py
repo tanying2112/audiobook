@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.audiobook_studio.database import DATABASE_URL
 from src.audiobook_studio.feedback.integration import (
@@ -81,6 +81,7 @@ def run_full_pipeline_test(project_id: int, book_path: Path, session_factory) ->
     with session_factory() as db:
         # 简单验证 DB 连接
         from sqlalchemy import text
+
         db.execute(text("SELECT 1"))
 
     # 流水线测试通过 session factory 验证，实际管线跑通需要异步环境和 LLM
@@ -89,7 +90,7 @@ def run_full_pipeline_test(project_id: int, book_path: Path, session_factory) ->
         "success": True,
         "project_id": project_id,
         "stages_completed": 0,
-        "note": "Pipeline test validates session factory pattern; full async pipeline requires LLM keys"
+        "note": "Pipeline test validates session factory pattern; full async pipeline requires LLM keys",
     }
 
 
@@ -233,6 +234,7 @@ def test_ab_test() -> Dict[str, Any]:
     logger.info("Testing A/B test framework with deterministic extreme samples...")
 
     import uuid
+
     from src.audiobook_studio.feedback.ab_test import ABTestSample, run_ab_test
 
     # 创建 50 个极端确定性样本：A 组全满分，B 组全最低分
@@ -242,7 +244,10 @@ def test_ab_test() -> Dict[str, Any]:
             sample_id=str(uuid.uuid4()),
             stage="edit_for_tts",
             input_data={"text": f"test paragraph {i}"},
-            output_a={"edited_text": "excellent quality output with proper formatting natural speech correct punctuation no errors perfectly formatted", "rating": 5.0},
+            output_a={
+                "edited_text": "excellent quality output with proper formatting natural speech correct punctuation no errors perfectly formatted",
+                "rating": 5.0,
+            },
             output_b={"edited_text": "poor quality broken", "rating": 1.0},
             version_a=1,
             version_b=2,
@@ -267,15 +272,16 @@ def test_canary_release() -> Dict[str, Any]:
     """测试 Canary Release 与自动回滚 - 使用唯一 canary_id 避免状态泄漏."""
     logger.info("Testing canary release with deterministic 50% routing...")
 
-    from datetime import datetime, timezone
     import uuid
+    from datetime import datetime, timezone
+
     from src.audiobook_studio.feedback.release import CanaryConfig, CanaryMetrics, CanaryRelease
 
     # 配置：50% 流量，确保交替路由完美分流
     config = CanaryConfig(
         traffic_percentage=0.5,  # 50% 流量走新版本
-        min_samples=20,          # 低样本阈值
-        rollback_threshold=0.95, # 质量比 < 0.95 回滚
+        min_samples=20,  # 低样本阈值
+        rollback_threshold=0.95,  # 质量比 < 0.95 回滚
     )
     canary = CanaryRelease(config)
 
@@ -334,10 +340,7 @@ def test_canary_release() -> Dict[str, Any]:
     status_after_complete = canary.get_canary_status(stage, version).copy()
 
     return {
-        "success": (
-            status_after_good["status"] == "running"
-            and status_after_bad["status"] == "rolled_back"
-        ),
+        "success": (status_after_good["status"] == "running" and status_after_bad["status"] == "rolled_back"),
         "good_metrics_status": status_after_good["status"],
         "bad_metrics_status": status_after_bad["status"],
         "final_status": status_after_complete["status"],
@@ -460,6 +463,7 @@ def run_all_tests(project_id: int = 1) -> Dict[str, Any]:
     finally:
         # 清理测试目录
         import shutil
+
         shutil.rmtree(test_dir, ignore_errors=True)
 
     results["overall"] = "PASSED" if all_passed else "FAILED"

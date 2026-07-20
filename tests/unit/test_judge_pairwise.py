@@ -12,12 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.judge import LLMJudge, JudgeConfig
-from src.audiobook_studio.schemas import (
-    PairwiseJudgment,
-    PairwiseDimensionScore,
-    ParagraphAnnotation,
-)
+from src.audiobook_studio.llm.judge import JudgeConfig, LLMJudge
+from src.audiobook_studio.schemas import PairwiseDimensionScore, PairwiseJudgment, ParagraphAnnotation
 
 
 @pytest.fixture
@@ -150,12 +146,8 @@ class TestPairwiseJudgmentSchema:
             winner="A",
             confidence=0.9,
             dimension_scores={
-                "speaker_clarity": PairwiseDimensionScore(
-                    score_a=0.6, score_b=0.9, winner="B"
-                ),
-                "emotion_match": PairwiseDimensionScore(
-                    score_a=0.5, score_b=0.8, winner="B"
-                ),
+                "speaker_clarity": PairwiseDimensionScore(score_a=0.6, score_b=0.9, winner="B"),
+                "emotion_match": PairwiseDimensionScore(score_a=0.5, score_b=0.8, winner="B"),
             },
             overall_reasoning="B 版本更好",
         )
@@ -170,9 +162,7 @@ class TestPairwiseJudgmentSchema:
             winner="B",
             confidence=0.85,
             dimension_scores={
-                "speaker_clarity": PairwiseDimensionScore(
-                    score_a=0.6, score_b=0.9, winner="B"
-                ),
+                "speaker_clarity": PairwiseDimensionScore(score_a=0.6, score_b=0.9, winner="B"),
             },
             reasoning={"speaker_clarity": "B 版本说话人更准确"},
             overall_reasoning="B 版本整体更优",
@@ -226,9 +216,7 @@ class TestJudgePairwise:
             winner="B",
             confidence=0.9,
             dimension_scores={
-                "speaker_clarity": PairwiseDimensionScore(
-                    score_a=0.5, score_b=0.9, winner="B"
-                ),
+                "speaker_clarity": PairwiseDimensionScore(score_a=0.5, score_b=0.9, winner="B"),
             },
             reasoning={"speaker_clarity": "B 正确识别了说话人"},
             overall_reasoning="B 版本整体更好",
@@ -262,18 +250,10 @@ class TestJudgePairwise:
             winner="B",
             confidence=0.85,
             dimension_scores={
-                "speaker_clarity": PairwiseDimensionScore(
-                    score_a=0.4, score_b=0.9, winner="B"
-                ),
-                "emotion_match": PairwiseDimensionScore(
-                    score_a=0.5, score_b=0.8, winner="B"
-                ),
-                "prosody_naturalness": PairwiseDimensionScore(
-                    score_a=0.6, score_b=0.7, winner="B"
-                ),
-                "text_audio_alignment": PairwiseDimensionScore(
-                    score_a=0.7, score_b=0.7, winner="tie"
-                ),
+                "speaker_clarity": PairwiseDimensionScore(score_a=0.4, score_b=0.9, winner="B"),
+                "emotion_match": PairwiseDimensionScore(score_a=0.5, score_b=0.8, winner="B"),
+                "prosody_naturalness": PairwiseDimensionScore(score_a=0.6, score_b=0.7, winner="B"),
+                "text_audio_alignment": PairwiseDimensionScore(score_a=0.7, score_b=0.7, winner="tie"),
             },
             reasoning={
                 "speaker_clarity": "B 正确识别说话人",

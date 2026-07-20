@@ -24,7 +24,6 @@ from typing import List, Optional
 from locust import HttpUser, between, events, task
 from locust.exception import RescheduleTask
 
-
 # Global storage for task IDs / WebSocket message counts (per-run, for inspection)
 task_ids: List[str] = []
 websocket_messages_received: List[int] = []
@@ -61,18 +60,14 @@ class ExportAPIUser(HttpUser):
         ``POST /api/projects/{project_id}/export/`` — without a real project_id
         the endpoint returns 404 (the Sprint L locustfile omitted it).
         """
-        with self.client.get(
-            PROJECTS_LIST_PATH, catch_response=True, name="GET /api/projects/"
-        ) as r:
+        with self.client.get(PROJECTS_LIST_PATH, catch_response=True, name="GET /api/projects/") as r:
             if r.status_code == 200:
                 projects = r.json() or []
                 if projects:
                     return projects[0]["id"]
         # No project — create a minimal one (ProjectCreate: title required).
         payload = {"title": f"locust-stress-{random.randint(1000, 9999)}", "language": "zh"}
-        with self.client.post(
-            PROJECTS_CREATE_PATH, json=payload, catch_response=True, name="POST /api/projects/"
-        ) as r:
+        with self.client.post(PROJECTS_CREATE_PATH, json=payload, catch_response=True, name="POST /api/projects/") as r:
             if r.status_code == 201:
                 return r.json()["id"]
             r.failure(f"could not ensure project: {r.status_code} {r.text[:200]}")
@@ -182,7 +177,7 @@ class ExportAPIUser(HttpUser):
         log and skip the assertion rather than assert against phantom fields.
         """
         # Processing time: client wall-clock from POST → SUCCESS.
-        processing_time = (time.time() - (self.post_time or time.time()))
+        processing_time = time.time() - (self.post_time or time.time())
         print(f"processing_time={processing_time:.2f}s")
 
         # RTF only assertable if the backend ever returns audio_duration
@@ -255,9 +250,7 @@ class WebSocketUser(HttpUser):
     def _ensure_project_id(self) -> int:
         """Reuse the project-scoped contract: GET /api/projects/ → first id."""
         try:
-            with self.client.get(
-                PROJECTS_LIST_PATH, catch_response=True, name="GET /api/projects/ (ws)"
-            ) as r:
+            with self.client.get(PROJECTS_LIST_PATH, catch_response=True, name="GET /api/projects/ (ws)") as r:
                 if r.status_code == 200:
                     projects = r.json() or []
                     if projects:
@@ -357,10 +350,10 @@ class StagesShape:
     """Load test stages: ramp up, sustain, spike, cool down."""
 
     stages = [
-        {"duration": 30, "users": 10, "spawn_rate": 2},   # Warm up
-        {"duration": 60, "users": 30, "spawn_rate": 5},   # Normal load
+        {"duration": 30, "users": 10, "spawn_rate": 2},  # Warm up
+        {"duration": 60, "users": 30, "spawn_rate": 5},  # Normal load
         {"duration": 30, "users": 50, "spawn_rate": 10},  # Peak load
-        {"duration": 60, "users": 50, "spawn_rate": 0},   # Sustain peak
+        {"duration": 60, "users": 50, "spawn_rate": 0},  # Sustain peak
         {"duration": 30, "users": 10, "spawn_rate": -5},  # Cool down
     ]
 

@@ -12,6 +12,9 @@ Responsibilities:
 import json
 import os
 import re
+
+# Import state store components
+import sys
 import threading
 import time
 import uuid
@@ -19,33 +22,27 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-import redis
 import boto3
+import redis
 from botocore.config import Config
 
-
-# Import state store components
-import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-from state_store import (
-    HermesStateStore,
-    TTSTask,
-    TaskState,
-    IDEMPOTENCY_TTL,
-)
+from state_store import IDEMPOTENCY_TTL, HermesStateStore, TaskState, TTSTask
 
 
 class ChunkStrategy(str, Enum):
     """Text chunking strategy."""
-    SEMANTIC = "semantic"      # Split at 。！？\n, max 200 chars
-    FIXED = "fixed"            # Fixed character chunks
-    SENTENCE = "sentence"      # Split at sentence boundaries only
+
+    SEMANTIC = "semantic"  # Split at 。！？\n, max 200 chars
+    FIXED = "fixed"  # Fixed character chunks
+    SENTENCE = "sentence"  # Split at sentence boundaries only
 
 
 @dataclass
 class AudiobookTask:
     """Audiobook generation task submitted by user."""
+
     book_id: str
     title: str
     author: str
@@ -62,6 +59,7 @@ class AudiobookTask:
 @dataclass
 class ChunkTask:
     """Individual TTS chunk task."""
+
     chunk_id: str
     book_id: str
     chapter_index: int
@@ -76,6 +74,7 @@ class ChunkTask:
 @dataclass
 class AudiobookProgress:
     """Real-time progress tracker."""
+
     book_id: str
     total_chunks: int
     completed_chunks: int = 0
@@ -130,15 +129,15 @@ class SemanticChunker:
                     current = ""
                 elif len(current) > self.max_chars:
                     # Hard split - find last punctuation within limit
-                    flush = current[:self.max_chars]
+                    flush = current[: self.max_chars]
                     last_punct = max(flush.rfind("。"), flush.rfind("！"), flush.rfind("？"), flush.rfind("\n"))
                     if last_punct > 0:
-                        chunks.append(flush[:last_punct + 1].strip())
-                        current = flush[last_punct + 1:] + current[self.max_chars:]
+                        chunks.append(flush[: last_punct + 1].strip())
+                        current = flush[last_punct + 1 :] + current[self.max_chars :]
                     else:
                         # No punctuation - hard split
                         chunks.append(flush.strip())
-                        current = current[self.max_chars:]
+                        current = current[self.max_chars :]
 
         # Flush remainder
         if current.strip():
@@ -178,7 +177,7 @@ class R2Uploader:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             # Allow older TLS versions and more ciphers for compatibility
-            ssl_context.set_ciphers('DEFAULT:@SECLEVEL=1')
+            ssl_context.set_ciphers("DEFAULT:@SECLEVEL=1")
             ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
             ssl_context.maximum_version = ssl.TLSVersion.TLSv1_3
             verify = ssl_context
@@ -327,23 +326,27 @@ class AudiobookOrchestrator:
                 chunks = self.chunk_chapter(chapter_text, max_chunk_chars)
             else:
                 # Fallback: fixed-size chunks
-                chunks = [chapter_text[i:i+max_chunk_chars] for i in range(0, len(chapter_text), max_chunk_chars)]
+                chunks = [chapter_text[i : i + max_chunk_chars] for i in range(0, len(chapter_text), max_chunk_chars)]
 
             for chunk_idx, chunk_text in enumerate(chunks):
                 chunk_id = f"{book_id}-ch{ch_idx}-ck{chunk_idx}"
-                idempotency_key = f"tts:{chunk_id}" if not task.idempotency_key else f"{task.idempotency_key}:{chunk_id}"
+                idempotency_key = (
+                    f"tts:{chunk_id}" if not task.idempotency_key else f"{task.idempotency_key}:{chunk_id}"
+                )
 
-                all_chunks.append(ChunkTask(
-                    chunk_id=chunk_id,
-                    book_id=book_id,
-                    chapter_index=ch_idx,
-                    chunk_index=chunk_idx,
-                    text=chunk_text,
-                    voice_id=voice_id,
-                    prosody=prosody,
-                    reference_audio=reference_audio,
-                    idempotency_key=idempotency_key,
-                ))
+                all_chunks.append(
+                    ChunkTask(
+                        chunk_id=chunk_id,
+                        book_id=book_id,
+                        chapter_index=ch_idx,
+                        chunk_index=chunk_idx,
+                        text=chunk_text,
+                        voice_id=voice_id,
+                        prosody=prosody,
+                        reference_audio=reference_audio,
+                        idempotency_key=idempotency_key,
+                    )
+                )
 
         # Initialize progress
         with self._progress_lock:
@@ -390,14 +393,18 @@ class AudiobookOrchestrator:
                 # Publish progress event
                 self.redis.publish(
                     f"audiobook:progress:{book_id}",
-                    json.dumps({
-                        "book_id": book_id,
-                        "total_chunks": prog.total_chunks,
-                        "completed_chunks": prog.completed_chunks,
-                        "failed_chunks": prog.failed_chunks,
-                        "status": prog.status,
-                        "percent": round(prog.completed_chunks / prog.total_chunks * 100, 1) if prog.total_chunks else 0,
-                    })
+                    json.dumps(
+                        {
+                            "book_id": book_id,
+                            "total_chunks": prog.total_chunks,
+                            "completed_chunks": prog.completed_chunks,
+                            "failed_chunks": prog.failed_chunks,
+                            "status": prog.status,
+                            "percent": (
+                                round(prog.completed_chunks / prog.total_chunks * 100, 1) if prog.total_chunks else 0
+                            ),
+                        }
+                    ),
                 )
 
     # --- Result Listener ---
@@ -496,8 +503,9 @@ class AudiobookOrchestrator:
         try:
             # Download and concatenate
             import io
-            import soundfile as sf
+
             import numpy as np
+            import soundfile as sf
 
             combined_audio = []
             sample_rate = None
@@ -515,6 +523,7 @@ class AudiobookOrchestrator:
                 elif sr != sample_rate:
                     # Resample if needed
                     import librosa
+
                     data = librosa.resample(data, orig_sr=sr, target_sr=sample_rate)
 
                 combined_audio.append(data)
@@ -525,6 +534,7 @@ class AudiobookOrchestrator:
             # Upload final audiobook
             final_key = f"audiobooks/{book_id}/final.wav"
             import io
+
             buffer = io.BytesIO()
             sf.write(buffer, final_audio, sample_rate, format="WAV")
             buffer.seek(0)
@@ -563,7 +573,8 @@ class AudiobookOrchestrator:
         now = time.time()
         with self._progress_lock:
             to_remove = [
-                bid for bid, prog in self._progress.items()
+                bid
+                for bid, prog in self._progress.items()
                 if prog.status in ("COMPLETED", "FAILED") and (now - prog.updated_at) > max_age
             ]
             for bid in to_remove:

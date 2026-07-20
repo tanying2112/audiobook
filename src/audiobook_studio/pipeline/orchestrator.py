@@ -17,8 +17,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from ..api.websocket import get_pause_event, is_paused, pause_check
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
-from ..api.websocket import pause_check, is_paused, get_pause_event
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
 from ..schemas import (
@@ -44,6 +44,7 @@ from .synthesize import SynthesizePipeline
 # Telemetry integration
 try:
     from ..monitoring.telemetry import TelemetryCollector, get_telemetry_collector
+
     _TELEMETRY_AVAILABLE = True
 except ImportError:
     _TELEMETRY_AVAILABLE = False

@@ -1,0 +1,3 @@
+{"timestamp": "2026-06-12T20:21:43.255692", "version": 2, "stage": "5%", "golden_pass_rate": 0.9774497683381794, "quality_score": 1.0438832293276272, "schema_compliance": 0.9945694290105116, "failure_rate": 0.004174171426404938, "sample_size": 50}
+{"timestamp": "2026-06-12T20:21:43.256655", "version": 2, "stage": "50%", "golden_pass_rate": 0.9568079714293414, "quality_score": 1.0321128023814967, "schema_compliance": 0.9980100110026467, "failure_rate": 0.0040503104971808795, "sample_size": 50}
+{"timestamp": "2026-06-12T20:21:43.362289", "version": 2, "stage": "100%", "golden_pass_rate": 0.9340204741858369, "quality_score": 1.0046948578591621, "schema_compliance": 0.981234567748645, "failure_rate": 0.043556291430468366, "sample_size": 60}

@@ -25,23 +25,10 @@ from typing import Any, Optional
 from urllib.parse import urljoin
 
 import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-    before_sleep_log,
-    after_log,
-)
+from tenacity import after_log, before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from .port import (
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    TTSStatus,
-    RemoteTTSPort,
-)
 from ..llm.circuit_breaker import CircuitBreaker
+from .port import RemoteTTSPort, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSTaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +37,22 @@ logger = logging.getLogger(__name__)
 # Port Exceptions
 # =============================================================================
 
+
 class PortError(Exception):
     """Base exception for RemoteTTSPort errors."""
+
     pass
 
 
 class PortTimeoutError(PortError):
     """Raised when a request times out."""
+
     pass
 
 
 class PortConnectionError(PortError):
     """Raised when connection to remote service fails."""
+
     pass
 
 
@@ -76,12 +67,14 @@ class PortRemoteError(PortError):
 
 class PortCircuitOpenError(PortError):
     """Raised when circuit breaker is open."""
+
     pass
 
 
 # =============================================================================
 # Configuration
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class RemoteVoxCPM2PortConfig:
@@ -157,9 +150,11 @@ class RemoteVoxCPM2PortConfig:
 # Response Models (Remote Service Contract)
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class SubmitResponse:
     """Response from POST /synthesize."""
+
     task_id: str
     status: str  # "PENDING" | "RUNNING" | "DONE" | "FAILED"
     message: str | None = None
@@ -168,6 +163,7 @@ class SubmitResponse:
 @dataclass(frozen=True)
 class StatusResponse:
     """Response from GET /status/{task_id}."""
+
     task_id: str
     status: str  # "PENDING" | "RUNNING" | "DONE" | "FAILED"
     progress: float | None = None  # 0.0-1.0
@@ -178,6 +174,7 @@ class StatusResponse:
 @dataclass(frozen=True)
 class ResultResponse:
     """Response from GET /result/{task_id}."""
+
     task_id: str
     status: str  # "DONE" | "FAILED"
     audio_url: str | None = None  # Presigned URL or R2 object key
@@ -194,6 +191,7 @@ class ResultResponse:
 @dataclass(frozen=True)
 class CancelResponse:
     """Response from POST /cancel/{task_id}."""
+
     task_id: str
     cancelled: bool
     message: str | None = None
@@ -202,6 +200,7 @@ class CancelResponse:
 @dataclass(frozen=True)
 class HealthResponse:
     """Response from GET /health."""
+
     healthy: bool
     latency_ms: float | None = None
     pending_count: int = 0
@@ -212,6 +211,7 @@ class HealthResponse:
 # =============================================================================
 # Remote VoxCPM2 Port Implementation
 # =============================================================================
+
 
 class RemoteVoxCPM2Port(RemoteTTSPort):
     """Real implementation of RemoteTTSPort for remote VoxCPM2 TTS service.
@@ -337,22 +337,21 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
 
         # Verify file exists and has content
         if not local_path.exists() or local_path.stat().st_size == 0:
-            raise PortRemoteError(
-                f"Downloaded audio file is empty: {local_path}",
-                response_body=f"URL: {audio_url}"
-            )
+            raise PortRemoteError(f"Downloaded audio file is empty: {local_path}", response_body=f"URL: {audio_url}")
 
         logger.debug(f"Downloaded audio for task {task_id}: {local_path} ({local_path.stat().st_size} bytes)")
         return local_path
 
     @retry(
-        retry=retry_if_exception_type((
-            httpx.TimeoutException,
-            httpx.ConnectError,
-            httpx.NetworkError,
-            PortTimeoutError,
-            PortConnectionError,
-        )),
+        retry=retry_if_exception_type(
+            (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                httpx.NetworkError,
+                PortTimeoutError,
+                PortConnectionError,
+            )
+        ),
         wait=wait_exponential(multiplier=1, min=2.0, max=30.0),
         stop=stop_after_attempt(3),
         before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -403,27 +402,21 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
             except Exception:
                 pass
 
-            logger.warning(
-                f"{method} {url} -> {response.status_code} ({elapsed_ms:.0f}ms): {error_body[:200]}"
-            )
+            logger.warning(f"{method} {url} -> {response.status_code} ({elapsed_ms:.0f}ms): {error_body[:200]}")
 
             if response.status_code == 404:
-                raise PortRemoteError(
-                    f"Resource not found: {url}",
-                    status_code=404,
-                    response_body=error_body
-                )
+                raise PortRemoteError(f"Resource not found: {url}", status_code=404, response_body=error_body)
             elif response.status_code >= 500:
                 raise PortRemoteError(
                     f"Remote service error: {response.status_code}",
                     status_code=response.status_code,
-                    response_body=error_body
+                    response_body=error_body,
                 )
             else:
                 raise PortRemoteError(
                     f"Request failed: {response.status_code}",
                     status_code=response.status_code,
-                    response_body=error_body
+                    response_body=error_body,
                 )
 
         except httpx.TimeoutException as e:
@@ -724,6 +717,7 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
 # =============================================================================
 # Factory Function
 # =============================================================================
+
 
 def create_remote_voxcpm2_port(config: RemoteVoxCPM2PortConfig | None = None) -> RemoteVoxCPM2Port:
     """Create a RemoteVoxCPM2Port instance.

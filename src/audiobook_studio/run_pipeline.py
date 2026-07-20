@@ -32,11 +32,9 @@ from typing import List, Optional, Tuple
 from audiobook_studio.database import SessionLocal, init_db
 from audiobook_studio.models import Project
 from audiobook_studio.pipeline.checkpoint import CheckpointManager
-from audiobook_studio.pipeline.orchestrator import (
-    run_pipeline as orchestrator_run_pipeline,
-    init_telemetry,
-    shutdown_telemetry,
-)
+from audiobook_studio.pipeline.orchestrator import init_telemetry
+from audiobook_studio.pipeline.orchestrator import run_pipeline as orchestrator_run_pipeline
+from audiobook_studio.pipeline.orchestrator import shutdown_telemetry
 from audiobook_studio.utils.gc_manager import cleanup_after_export
 
 # ── 日志配置 ──────────────────────────────────────────────────────────────────
@@ -86,6 +84,25 @@ BOOK_CONFIG: dict = {
         "num_mock_chapters": 3,
     },
 }
+
+# ── Helper Functions ────────────────────────────────────────────────────────
+
+
+def developer_apply_fixes(
+    paragraph_data: list[dict[str, Any]],
+    fix_commands: list,
+    voice_map: list,
+) -> list[dict[str, Any]]:
+    """Apply fix commands to paragraph data (simplified DeveloperAgent logic).
+
+    This is a synchronous helper used in the run_pipeline closed loop.
+    """
+    from audiobook_studio.agent.developer import DeveloperAgent
+
+    developer = DeveloperAgent(mock_mode=True)
+    fixed = developer.apply_fix_commands(paragraph_data, fix_commands)
+    return fixed
+
 
 # ── 全局状态：用于信号处理 ──────────────────────────────────────────────────
 _current_checkpoint_manager: Optional[CheckpointManager] = None
@@ -454,11 +471,12 @@ def run_book_pipeline(
         if has_incomplete:
             # Check if running in non-interactive mode (CI/CD)
             import sys
+
             if sys.stdin.isatty():
                 print("⚠️  发现未完成进度，是否从检查点继续？(Y/n): ", end="")
                 try:
                     response = input().strip().lower()
-                    if response and response[0] != 'y':
+                    if response and response[0] != "y":
                         print("用户选择重新开始，清除检查点...")
                         checkpoint_manager._data = {"project_id": project_id, "chapters": {}, "version": 2}
                         checkpoint_manager._save()
@@ -472,8 +490,9 @@ def run_book_pipeline(
                 print("ℹ️  非交互模式，自动从检查点恢复...")
 
         # ── 初始化遥测收集器 ────────────────────────────────────────────
-        output_dir = Path(f"./output/project_{project_id}")
-        output_dir.mkdir(parents=True, exist_ok=True)
+        from audiobook_studio.storage import reports_dir
+
+        output_dir = reports_dir(project_id, ensure=True)
         init_telemetry(
             project_id=str(project_id),
             output_dir=str(output_dir),
@@ -515,21 +534,23 @@ def run_book_pipeline(
                 # ── 阶段 1-2: 章节级 (extract, analyze) ──
                 chapter_stages_1 = [s for s in active_stages if s in ("extract", "analyze")]
                 if chapter_stages_1:
-                    results = asyncio.run(orchestrator_run_pipeline(
-                        stages=chapter_stages_1,
-                        db=db,
-                        project_id=project_id,
-                        chapter_index=chap_num,
-                        checkpoint_manager=checkpoint_manager,
-                        # ── extract 阶段参数 ──
-                        file_path=str(chap_file),
-                        mime_type="text/plain",
-                        detect_language=True,
-                        # ── analyze 阶段参数 ──
-                        title_hint=book_name,
-                        author_hint=BOOK_CONFIG.get(book_name, {}).get("author", ""),
-                        target_difficulty=BOOK_CONFIG.get(book_name, {}).get("difficulty", "B"),
-                    ))
+                    results = asyncio.run(
+                        orchestrator_run_pipeline(
+                            stages=chapter_stages_1,
+                            db=db,
+                            project_id=project_id,
+                            chapter_index=chap_num,
+                            checkpoint_manager=checkpoint_manager,
+                            # ── extract 阶段参数 ──
+                            file_path=str(chap_file),
+                            mime_type="text/plain",
+                            detect_language=True,
+                            # ── analyze 阶段参数 ──
+                            title_hint=book_name,
+                            author_hint=BOOK_CONFIG.get(book_name, {}).get("author", ""),
+                            target_difficulty=BOOK_CONFIG.get(book_name, {}).get("difficulty", "B"),
+                        )
+                    )
                     print(f"    ✅ 第{chap_num}章 章节级流水线完成（{len(results)} 个阶段输出）")
 
                 # Fetch chapter from DB after extract/analyze
@@ -562,16 +583,18 @@ def run_book_pipeline(
                         for para in paragraphs:
                             print(f"      ── 段落 {para.index}/{len(paragraphs)} ──")
                             try:
-                                para_results = asyncio.run(orchestrator_run_pipeline(
-                                    stages=paragraph_stages_pre,
-                                    db=db,
-                                    project_id=project_id,
-                                    chapter_index=chap_num,
-                                    chapter_id=chapter.id,
-                                    paragraph_index=para.index,
-                                    paragraph_id=para.id,
-                                    checkpoint_manager=checkpoint_manager,
-                                ))
+                                para_results = asyncio.run(
+                                    orchestrator_run_pipeline(
+                                        stages=paragraph_stages_pre,
+                                        db=db,
+                                        project_id=project_id,
+                                        chapter_index=chap_num,
+                                        chapter_id=chapter.id,
+                                        paragraph_index=para.index,
+                                        paragraph_id=para.id,
+                                        checkpoint_manager=checkpoint_manager,
+                                    )
+                                )
                                 print(f"        ✅ 段落 {para.index} 完成（{len(para_results)} 个阶段输出）")
                             except Exception as e:
                                 logger.error("第%d章段落%d处理失败: %s", chap_num, para.index, e, exc_info=True)
@@ -583,19 +606,162 @@ def run_book_pipeline(
                 # ── 阶段 6: 章节级 Review (quality gate before synthesis) ──
                 if "review" in active_stages:
                     print(f"    🔍 运行 Reviewer Agent 质量门禁...")
-                    review_results = asyncio.run(orchestrator_run_pipeline(
-                        stages=["review"],
-                        db=db,
-                        project_id=project_id,
-                        chapter_index=chap_num,
-                        chapter_id=chapter.id,
-                        checkpoint_manager=checkpoint_manager,
-                    ))
+                    review_results = asyncio.run(
+                        orchestrator_run_pipeline(
+                            stages=["review"],
+                            db=db,
+                            project_id=project_id,
+                            chapter_index=chap_num,
+                            chapter_id=chapter.id,
+                            checkpoint_manager=checkpoint_manager,
+                        )
+                    )
                     # Check if review passed
                     review_judgment = review_results[0] if review_results else None
-                    if review_judgment and hasattr(review_judgment, 'overall_passed') and not review_judgment.overall_passed:
+                    if (
+                        review_judgment
+                        and hasattr(review_judgment, "overall_passed")
+                        and not review_judgment.overall_passed
+                    ):
                         print(f"    ❌ Reviewer Agent 拦截: {review_judgment.blocking_issues} 个阻断性问题")
                         print(f"       终端显示拦截/重试日志，等待 Developer Agent 修复...")
+
+                        # Check if we should run the closed loop (auto-fix + re-review)
+                        auto_fix = os.environ.get("REVIEWER_AUTO_FIX", "true").lower() == "true"
+                        max_iterations = int(os.environ.get("REVIEWER_MAX_ITERATIONS", "3"))
+
+                        if auto_fix and review_judgment.fix_commands:
+                            print(f"    🔧 Developer Agent 自动修复模式开启 (最大 {max_iterations} 次迭代)...")
+
+                            # Fetch latest paragraphs from DB for fixing
+                            from audiobook_studio.models import Paragraph
+
+                            paragraphs = (
+                                db.query(Paragraph)
+                                .filter(
+                                    Paragraph.project_id == project_id,
+                                    Paragraph.chapter_id == chapter.id,
+                                )
+                                .order_by(Paragraph.index)
+                                .all()
+                            )
+
+                            # Convert to paragraph data for DeveloperAgent
+                            paragraph_data = []
+                            for p in paragraphs:
+                                paragraph_data.append(
+                                    {
+                                        "paragraph_index": p.index,
+                                        "text": p.text or "",
+                                        "speaker_canonical_name": p.speaker_canonical_name or "_narrator_",
+                                        "is_dialogue": p.is_dialogue or False,
+                                        "emotion": p.emotion or "neutral",
+                                        "emotion_intensity": p.emotion_intensity or 0.5,
+                                        "speech_rate": p.speech_rate or 1.0,
+                                        "pitch_shift_semitones": p.pitch_shift_semitones or 0,
+                                        "needs_sfx": p.needs_sfx or False,
+                                        "sfx_tags": p.sfx_tags or [],
+                                        "pause_before_ms": p.pause_before_ms or 300,
+                                        "pause_after_ms": p.pause_after_ms or 500,
+                                        "confidence": p.confidence or 0.9,
+                                    }
+                                )
+
+                            # Get voice_map and scene_tags from chapter
+                            import json
+
+                            voice_map = []
+                            scene_tags = []
+                            book_meta = {}
+                            if chapter.analyzed_json:
+                                raw = chapter.analyzed_json
+                                if isinstance(raw, str):
+                                    raw = json.loads(raw)
+                                from audiobook_studio.schemas.book import CharacterVoiceBinding
+
+                                voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+                                scene_tags = raw.get("scene_tags", [])
+                                book_meta = raw.get("book_meta", {})
+
+                            if not voice_map:
+                                voice_map = [
+                                    CharacterVoiceBinding(
+                                        canonical_name="_narrator_",
+                                        aliases=[],
+                                        gender="neutral",
+                                        age_range="adult",
+                                        suggested_voice_id="zh-CN-XiaoxiaoNeural",
+                                        sample_quote="旁白样本",
+                                    )
+                                ]
+
+                            # Run closed loop: DeveloperAgent applies fixes -> re-review
+                            for iteration in range(max_iterations):
+                                print(f"      🔄 迭代 {iteration + 1}/{max_iterations}: 应用修复并重新审查...")
+
+                                # Apply fixes using DeveloperAgent
+                                from audiobook_studio.agent.developer import apply_fixes_and_rerun
+                                from audiobook_studio.schemas.review import FixCommand
+
+                                fix_cmds = [FixCommand(**cmd.model_dump()) for cmd in review_judgment.fix_commands]
+
+                                # Apply fixes to paragraph data
+                                fixed_paragraphs = developer_apply_fixes(
+                                    paragraph_data=paragraph_data,
+                                    fix_commands=fix_cmds,
+                                    voice_map=voice_map,
+                                )
+
+                                # Update DB with fixed paragraphs
+                                for fixed_para in fixed_paragraphs:
+                                    para_idx = fixed_para["paragraph_index"]
+                                    db_para = next((p for p in paragraphs if p.index == para_idx), None)
+                                    if db_para:
+                                        db_para.speaker_canonical_name = fixed_para.get(
+                                            "speaker_canonical_name", db_para.speaker_canonical_name
+                                        )
+                                        db_para.emotion = fixed_para.get("emotion", db_para.emotion)
+                                        db_para.speech_rate = fixed_para.get("speech_rate", db_para.speech_rate)
+                                        db_para.emotion_intensity = fixed_para.get(
+                                            "emotion_intensity", db_para.emotion_intensity
+                                        )
+                                        db_para.pitch_shift_semitones = fixed_para.get(
+                                            "pitch_shift_semitones", db_para.pitch_shift_semitones
+                                        )
+                                        db_para.needs_sfx = fixed_para.get("needs_sfx", db_para.needs_sfx)
+                                        db_para.sfx_tags = fixed_para.get("sfx_tags", db_para.sfx_tags)
+                                        db_para.pause_before_ms = fixed_para.get(
+                                            "pause_before_ms", db_para.pause_before_ms
+                                        )
+                                        db_para.pause_after_ms = fixed_para.get(
+                                            "pause_after_ms", db_para.pause_after_ms
+                                        )
+                                db.commit()
+
+                                # Re-run review with updated paragraph data
+                                # Update chapter with fixed data
+                                chapter.reviewer_judgment = None  # Clear cached judgment
+
+                                review_results = asyncio.run(
+                                    orchestrator_run_pipeline(
+                                        stages=["review"],
+                                        db=db,
+                                        project_id=project_id,
+                                        chapter_index=chap_num,
+                                        chapter_id=chapter.id,
+                                        checkpoint_manager=checkpoint_manager,
+                                    )
+                                )
+                                review_judgment = review_results[0] if review_results else None
+
+                                if review_judgment and getattr(review_judgment, "overall_passed", True):
+                                    print(f"      ✅ 迭代 {iteration + 1}: Reviewer Agent 通过")
+                                    break
+                                elif iteration == max_iterations - 1:
+                                    print(
+                                        f"      ❌ 达到最大迭代次数 {max_iterations}，仍有 {review_judgment.blocking_issues if review_judgment else '?'} 个阻断问题"
+                                    )
+
                         # In production, this would trigger a retry loop or human intervention
                         # For now, we log and continue (or could raise to stop pipeline)
                         if os.environ.get("REVIEWER_STRICT", "false").lower() == "true":
@@ -622,16 +788,18 @@ def run_book_pipeline(
                         for para in paragraphs:
                             print(f"      ── 段落 {para.index}/{len(paragraphs)} ──")
                             try:
-                                para_results = asyncio.run(orchestrator_run_pipeline(
-                                    stages=paragraph_stages_post,
-                                    db=db,
-                                    project_id=project_id,
-                                    chapter_index=chap_num,
-                                    chapter_id=chapter.id,
-                                    paragraph_index=para.index,
-                                    paragraph_id=para.id,
-                                    checkpoint_manager=checkpoint_manager,
-                                ))
+                                para_results = asyncio.run(
+                                    orchestrator_run_pipeline(
+                                        stages=paragraph_stages_post,
+                                        db=db,
+                                        project_id=project_id,
+                                        chapter_index=chap_num,
+                                        chapter_id=chapter.id,
+                                        paragraph_index=para.index,
+                                        paragraph_id=para.id,
+                                        checkpoint_manager=checkpoint_manager,
+                                    )
+                                )
                                 print(f"        ✅ 段落 {para.index} 完成（{len(para_results)} 个阶段输出）")
                             except Exception as e:
                                 logger.error("第%d章段落%d处理失败: %s", chap_num, para.index, e, exc_info=True)
@@ -655,7 +823,7 @@ def run_book_pipeline(
         if bgm_path:
             print("🎵 开始导出音频（包含背景音乐混音）...")
             try:
-                from audiobook_studio.export import ExportJob, ExportFormat
+                from audiobook_studio.export import ExportFormat, ExportJob
                 from audiobook_studio.export.audio_ducking import MixConfig
 
                 # MixConfig 仅暴露 ducking 参数（bgm_volume_db / duck_attack_ms /

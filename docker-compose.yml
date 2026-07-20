@@ -81,9 +81,9 @@ services:
       timeout: 3s
       retries: 5
 
-  # Celery worker instance.
-  # Task 6.2 — reserved production entrypoint alongside the web instance.
-  # ci.yml raises it via `docker compose --profile worker up -d celery-worker`.
+  # Celery worker instance — enabled by default for production workloads.
+  # Run `docker compose up -d` to start web + worker together.
+  # Use `docker compose --profile worker up -d` only if explicitly requested.
   celery-worker:
     build: .
     command: ["celery", "-A", "src.audiobook_studio.celery_app", "worker", "-l", "info", "-Q", "export,pipeline", "--concurrency=1"]
@@ -110,8 +110,6 @@ services:
       redis:
         condition: service_started
     restart: unless-stopped
-    profiles:
-      - worker
 
 volumes:
   postgres_data:

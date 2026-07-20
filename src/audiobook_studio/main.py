@@ -6,14 +6,6 @@ migrations instead of ``init_db``.
 """
 
 import os
-
-# Note: MOCK_LLM is NOT set here. Every pipeline consumer reads it lazily at
-# __init__ time via os.environ.get("MOCK_LLM", "false"), defaulting to the real
-# path when unset. The previous "set false before pipeline modules are imported"
-# guard was a no-op (no module reads MOCK_LLM at import time) and created a
-# second source of truth that conflicted with the test conftest forcing "true".
-# To run mock-first locally, export MOCK_LLM=true in your shell.
-
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -52,6 +44,13 @@ from .config import get_settings
 from .middleware.timestamp import ISOTimestampMiddleware
 from .observability import instrument_app
 
+# Note: MOCK_LLM is NOT set here. Every pipeline consumer reads it lazily at
+# __init__ time via os.environ.get("MOCK_LLM", "false"), defaulting to the real
+# path when unset. The previous "set false before pipeline modules are imported"
+# guard was a no-op (no module reads MOCK_LLM at import time) and created a
+# second source of truth that conflicted with the test conftest forcing "true".
+# To run mock-first locally, export MOCK_LLM=true in your shell.
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,6 +66,7 @@ async def lifespan(app: FastAPI):
     # P1-4: Use Alembic for DB migrations instead of create_all()
     # This ensures migrations are applied and Alembic version table is tracked
     from subprocess import run
+
     result = run(["alembic", "upgrade", "head"], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Alembic migration failed: {result.stderr}")

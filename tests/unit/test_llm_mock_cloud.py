@@ -45,7 +45,10 @@ class TestLLMClientSuccessBranch:
         """Helper to create properly structured mock response."""
         mock_raw = MagicMock()
         mock_raw.usage = MagicMock()
-        mock_raw.usage.model_dump.return_value = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
+        mock_raw.usage.model_dump.return_value = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
         mock_raw.choices = [MagicMock(message=MagicMock(content=output_obj.model_dump_json()))]
         output_obj._raw_response = mock_raw
         return output_obj

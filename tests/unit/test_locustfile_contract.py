@@ -57,8 +57,8 @@ def test_completion_reads_state_not_status_completed() -> None:
     s = _src()
     # TaskStatusOut exposes `state` (Celery) + `progress` (str), not `status`
     assert 'data.get("state")' in s
-    assert '"complete"' in s   # progress terminal value (ExportProgress.COMPLETE)
-    assert '"SUCCESS"' in s    # Celery SUCCESS state
+    assert '"complete"' in s  # progress terminal value (ExportProgress.COMPLETE)
+    assert '"SUCCESS"' in s  # Celery SUCCESS state
     # The phantom `status == "completed"` comparison is gone from status-reading
     # code (TaskStatusOut exposes no `status` field). A regression that reads it
     # re-introduces `data.get("status")`, which is the tighter code-level guard.
@@ -85,7 +85,7 @@ def test_rtf_handled_honestly_when_audio_duration_absent() -> None:
     """TaskStatusOut has no audio_duration_seconds → RTF must skip, not fake."""
     s = _src()
     assert "audio_duration_seconds" in s  # referenced where it would be checked
-    assert "skipped" in s                  # explicit skip messaging
+    assert "skipped" in s  # explicit skip messaging
     # client-side processing_time is measured (wall-clock POST→SUCCESS)
     assert "processing_time" in s
 

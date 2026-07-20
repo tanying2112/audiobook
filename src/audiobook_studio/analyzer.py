@@ -271,9 +271,7 @@ class SceneTagMapper:
             resolved.append(file_path)
         return resolved
 
-    def resolve_with_validation(
-        self, scene_tags: List[str], require_exists: bool = False
-    ) -> List[Path]:
+    def resolve_with_validation(self, scene_tags: List[str], require_exists: bool = False) -> List[Path]:
         """解析场景标签并可选择性要求文件必须存在.
 
         Args:
@@ -400,9 +398,7 @@ def ensure_scene_tags_in_output(
         logger.warning("分析输出缺少 scene_tags 字段，自动补全")
         analysis_output["scene_tags"] = []
 
-    validated = validate_scene_tags(
-        analysis_output["scene_tags"], min_tags=min_tags, max_tags=max_tags
-    )
+    validated = validate_scene_tags(analysis_output["scene_tags"], min_tags=min_tags, max_tags=max_tags)
     analysis_output["scene_tags"] = validated
     return analysis_output
 
@@ -432,9 +428,7 @@ class SceneTagAnalysisResult(BaseModel):
     missing_tags: List[str] = Field(default_factory=list, description="缺失文件的标签列表")
 
     @classmethod
-    def from_tags(
-        cls, scene_tags: List[str], mapper: SceneTagMapper
-    ) -> "SceneTagAnalysisResult":
+    def from_tags(cls, scene_tags: List[str], mapper: SceneTagMapper) -> "SceneTagAnalysisResult":
         """从标签列表创建分析结果."""
         infos = []
         missing = []

@@ -173,10 +173,10 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
         if pause_event is None:
             pause_event = asyncio.Event()
             manager.pause_events[project_id] = pause_event
-        
+
         pause_event.set()  # Signal pause
         manager.pause_states[project_id] = True
-        
+
         # Broadcast pause event to all connections
         await manager.broadcast_to_project(
             project_id,
@@ -186,7 +186,7 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
-        
+
         await manager.send_to_connection(
             websocket,
             {
@@ -201,7 +201,7 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
         if pause_event:
             pause_event.clear()  # Clear pause signal
             manager.pause_states[project_id] = False
-            
+
             # Broadcast resume event
             await manager.broadcast_to_project(
                 project_id,
@@ -211,7 +211,7 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            
+
             await manager.send_to_connection(
                 websocket,
                 {
@@ -314,6 +314,7 @@ async def get_pipeline_events(project_id: int):
         "note": "WebSocket recommended for real-time updates",
     }
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline Integration Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -322,10 +323,10 @@ async def get_pipeline_events(project_id: int):
 async def pause_check(project_id: int) -> bool:
     """
     Check if pipeline should pause at current checkpoint.
-    
+
     Called by pipeline orchestrator between atomic operations.
     Returns True if paused (caller should wait), False if can continue.
-    
+
     Usage:
         if await pause_check(project_id):
             await manager.pause_events[project_id].wait()  # Wait for resume

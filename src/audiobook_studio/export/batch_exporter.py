@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
-from .audio_ducking import MixConfig, mix_with_ducking, mix_full_pipeline
+from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 

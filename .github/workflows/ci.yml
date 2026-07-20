@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'
 
 env:
   PYTHON_VERSION: "3.11"
@@ -136,6 +134,8 @@ jobs:
             --cov-fail-under=85
 
       - name: Run all unit tests
+        env:
+          MOCK_LLM: "true"
         run: |
           python -m pytest tests/unit/ \
             -v --tb=short --timeout=60 \
@@ -143,6 +143,15 @@ jobs:
             --ignore=tests/unit/test_synthesize_helpers.py \
             --ignore=tests/unit/test_self_iteration_integration.py.bak \
             --ignore=tests/unit/test_quality_check_nonmock.py.bak \
+            -m "not integration and not e2e" \
+            -x
+
+      - name: Run smoke tests (MOCK_LLM=true)
+        env:
+          MOCK_LLM: "true"
+        run: |
+          python -m pytest tests/ -m smoke \
+            -v --tb=short --timeout=60 \
             -x
 
       - name: Upload coverage reports

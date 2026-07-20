@@ -2,8 +2,8 @@ from typing import Tuple
 
 import torch
 import torch.nn.functional as F
-from torch.func import jvp
 from pydantic import BaseModel
+from torch.func import jvp
 
 from .local_dit import VoxCPMLocDiT
 

@@ -6,9 +6,10 @@ Provides async export execution with progress tracking via Celery states.
 
 import logging
 import uuid
-from celery import states as celery_states
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+from celery import states as celery_states
 
 PENDING = celery_states.PENDING
 STARTED = celery_states.STARTED
@@ -18,10 +19,16 @@ RETRY = celery_states.RETRY
 
 from ..celery_app import celery_app
 from ..export import ExportFormat, ExportJob, ExportProgress, export_project
-from ..export.batch_exporter import _build_subtitle_entries, _collect_audio_files, _collect_chapter_data, _build_chapter_markers, _build_project_metadata
-from ..export.m4b import build_m4b, ChapterMarker, M4bMetadata
-from ..export.srt import generate_srt, SubtitleConfig, SubtitleEntry
-from ..models import Project, Chapter, AudioSegment, Paragraph
+from ..export.batch_exporter import (
+    _build_chapter_markers,
+    _build_project_metadata,
+    _build_subtitle_entries,
+    _collect_audio_files,
+    _collect_chapter_data,
+)
+from ..export.m4b import ChapterMarker, M4bMetadata, build_m4b
+from ..export.srt import SubtitleConfig, SubtitleEntry, generate_srt
+from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..utils.gc_manager import cleanup_after_export
 
 logger = logging.getLogger(__name__)
@@ -40,6 +47,7 @@ def _run_export_sync(project_id: int, job: ExportJob, db_session, task_self=None
     call site.
     """
     from ..database import SessionLocal
+
     db = db_session or SessionLocal()
     try:
         return export_project(project_id, db, job)
@@ -48,22 +56,27 @@ def _run_export_sync(project_id: int, job: ExportJob, db_session, task_self=None
             db.close()
 
 
-@celery_app.task(bind=True, name="src.audiobook_studio.tasks.export_tasks.export_project_async", max_retries=3, default_retry_delay=60)
+@celery_app.task(
+    bind=True,
+    name="src.audiobook_studio.tasks.export_tasks.export_project_async",
+    max_retries=3,
+    default_retry_delay=60,
+)
 def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_session_factory=None) -> Dict[str, Any]:
     """
     Async task to export a full project.
-    
+
     Args:
         project_id: Project ID to export
         job_config: ExportJob configuration as dict
         db_session_factory: Optional DB session factory (for testing)
-    
+
     Returns:
         Dict with task_id, status, output_paths, error
     """
     task_id = self.request.id
     logger.info(f"[{task_id}] Starting export for project {project_id}")
-    
+
     try:
         # Parse job config
         formats = set()
@@ -72,21 +85,23 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
                 formats.add(ExportFormat(f.lower()))
             except ValueError:
                 logger.warning(f"Unknown format {f}, skipping")
-        
+
         # Build subtitle config
         subtitle_config = None
         if job_config.get("max_chars_per_line"):
             from ..export.srt import SubtitleConfig
+
             subtitle_config = SubtitleConfig(
                 max_chars_per_line=job_config["max_chars_per_line"],
             )
-        
+
         # Build mix config
         mix_config = None
         if job_config.get("mix_config"):
             from ..export.audio_ducking import MixConfig
+
             mix_config = MixConfig(**job_config["mix_config"])
-        
+
         job = ExportJob(
             project_id=project_id,
             chapter_ids=job_config.get("chapter_ids"),
@@ -99,15 +114,16 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
             mix_config=mix_config,
             output_dir=job_config.get("output_dir"),
         )
-        
+
         # Run export with progress tracking
         from ..database import SessionLocal
+
         db = SessionLocal()
         try:
             result_job = _run_export_sync(project_id, job, db, self)
         finally:
             db.close()
-        
+
         # Build response
         response = {
             "task_id": task_id,
@@ -123,14 +139,16 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
         if result_job.progress == ExportProgress.COMPLETE:
             try:
                 gc_result = cleanup_after_export(project_id, keep_final=True)
-                logger.info(f"[{task_id}] GC cleanup: freed {gc_result['freed_bytes']/1024/1024:.2f} MB, deleted {len(gc_result['deleted_files'])} files")
+                logger.info(
+                    f"[{task_id}] GC cleanup: freed {gc_result['freed_bytes']/1024/1024:.2f} MB, deleted {len(gc_result['deleted_files'])} files"
+                )
                 response["gc_cleanup"] = gc_result
             except Exception as gc_err:
                 logger.warning(f"[{task_id}] GC cleanup failed (non-fatal): {gc_err}")
                 response["gc_cleanup_error"] = str(gc_err)
 
         return response
-        
+
     except Exception as e:
         logger.exception(f"[{task_id}] Export failed: {e}")
         # Retry on transient errors
@@ -144,32 +162,37 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
         }
 
 
-@celery_app.task(bind=True, name="src.audiobook_studio.tasks.export_tasks.export_chapter_async", max_retries=3, default_retry_delay=30)
+@celery_app.task(
+    bind=True,
+    name="src.audiobook_studio.tasks.export_tasks.export_chapter_async",
+    max_retries=3,
+    default_retry_delay=30,
+)
 def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Async task to export a single chapter.
-    
+
     Args:
         project_id: Project ID
         chapter_id: Chapter ID to export
         output_dir: Optional output directory
-    
+
     Returns:
         Dict with task_id, status, output_path, error
     """
     task_id = self.request.id
     logger.info(f"[{task_id}] Starting chapter export for project {project_id}, chapter {chapter_id}")
-    
+
     try:
         from ..database import SessionLocal
         from ..export.batch_exporter import export_chapter
-        
+
         db = SessionLocal()
         try:
             result_path = export_chapter(project_id, chapter_id, db, output_dir)
         finally:
             db.close()
-        
+
         if result_path:
             response = {
                 "task_id": task_id,
@@ -184,10 +207,10 @@ def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Opt
                 "error": "Chapter not found or has no audio segments",
                 "output_path": None,
             }
-        
+
         logger.info(f"[{task_id}] Chapter export completed: {response['status']}")
         return response
-        
+
     except Exception as e:
         logger.exception(f"[{task_id}] Chapter export failed: {e}")
         if self.request.retries < self.max_retries:
@@ -204,21 +227,21 @@ def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Opt
 def get_export_status(task_id: str) -> Dict[str, Any]:
     """
     Get the status of an export task by Celery task ID.
-    
+
     Args:
         task_id: Celery task ID
-    
+
     Returns:
         Dict with task_id, state, info (progress meta)
     """
     result = celery_app.AsyncResult(task_id)
-    
+
     response = {
         "task_id": task_id,
         "state": result.state,
         "info": result.info or {},
     }
-    
+
     # Map Celery states to our export progress
     state_map = {
         PENDING: "pending",
@@ -227,9 +250,9 @@ def get_export_status(task_id: str) -> Dict[str, Any]:
         FAILURE: "failed",
         RETRY: "retrying",
     }
-    
+
     response["progress"] = state_map.get(result.state, result.state.lower())
-    
+
     if isinstance(result.info, dict):
         response["message"] = result.info.get("message", "")
         response["current_stage"] = result.info.get("current_stage", "")
@@ -237,8 +260,10 @@ def get_export_status(task_id: str) -> Dict[str, Any]:
             response["output_paths"] = result.info["output_paths"]
         if "error" in result.info:
             response["error"] = result.info["error"]
-    
+
     if result.state == FAILURE:
-        response["error"] = str(result.info) if not isinstance(result.info, dict) else result.info.get("error", "Unknown error")
-    
+        response["error"] = (
+            str(result.info) if not isinstance(result.info, dict) else result.info.get("error", "Unknown error")
+        )
+
     return response

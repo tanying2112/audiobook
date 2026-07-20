@@ -8,11 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.audiobook_studio.utils.gc_manager import (
-    GCRetentionPolicy,
-    GCManager,
-    cleanup_after_export,
-)
+from src.audiobook_studio.utils.gc_manager import GCManager, GCRetentionPolicy, cleanup_after_export
 
 
 class TestGCRetentionPolicy:
@@ -298,6 +294,7 @@ class TestGCManagerEdgeCases:
             # File should be deleted due to max_age
             assert not old_file.exists()
             assert result["freed_bytes"] > 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

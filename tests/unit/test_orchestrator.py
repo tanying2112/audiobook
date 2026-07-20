@@ -939,18 +939,20 @@ class TestRunStageQuality:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
 
-            mock_pipeline.run.return_value = [QualityJudgment(
-                segment_id="test_book_ch1_p0",
-                speaker_clarity=0.9,
-                emotion_match=0.85,
-                prosody_naturalness=0.9,
-                text_audio_alignment=0.95,
-                overall_score=0.9,
-                issues=[],
-                fix_suggestions=[],
-                needs_regeneration=False,
-                contract_version=1,
-            )]
+            mock_pipeline.run.return_value = [
+                QualityJudgment(
+                    segment_id="test_book_ch1_p0",
+                    speaker_clarity=0.9,
+                    emotion_match=0.85,
+                    prosody_naturalness=0.9,
+                    text_audio_alignment=0.95,
+                    overall_score=0.9,
+                    issues=[],
+                    fix_suggestions=[],
+                    needs_regeneration=False,
+                    contract_version=1,
+                )
+            ]
 
             result = await run_stage(
                 "quality",
@@ -1205,7 +1207,7 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    @ pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_run_stage_audio_postprocess_with_feedback(
         self, db_session, sample_project, sample_chapter, sample_paragraph
     ):
@@ -1329,18 +1331,20 @@ class TestRunStageWithFeedbackCollector:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
 
-            mock_pipeline.run.return_value = [QualityJudgment(
-                segment_id="test_book_ch1_p0",
-                speaker_clarity=0.9,
-                emotion_match=0.85,
-                prosody_naturalness=0.9,
-                text_audio_alignment=0.95,
-                overall_score=0.9,
-                issues=[],
-                fix_suggestions=[],
-                needs_regeneration=False,
-                contract_version=1,
-            )]
+            mock_pipeline.run.return_value = [
+                QualityJudgment(
+                    segment_id="test_book_ch1_p0",
+                    speaker_clarity=0.9,
+                    emotion_match=0.85,
+                    prosody_naturalness=0.9,
+                    text_audio_alignment=0.95,
+                    overall_score=0.9,
+                    issues=[],
+                    fix_suggestions=[],
+                    needs_regeneration=False,
+                    contract_version=1,
+                )
+            ]
 
             result = await run_stage(
                 "quality",

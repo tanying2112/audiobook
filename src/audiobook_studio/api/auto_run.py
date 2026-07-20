@@ -728,7 +728,12 @@ async def _generate_autopilot_config(project_id: int, db: Session) -> AutoRunCon
         if chapter.analyzed_json:
             try:
                 import json
-                analyzed = chapter.analyzed_json if isinstance(chapter.analyzed_json, dict) else json.loads(chapter.analyzed_json)
+
+                analyzed = (
+                    chapter.analyzed_json
+                    if isinstance(chapter.analyzed_json, dict)
+                    else json.loads(chapter.analyzed_json)
+                )
                 characters = analyzed.get("characters", [])
                 for char in characters:
                     gender = char.get("gender", "").lower()
@@ -755,7 +760,12 @@ async def _generate_autopilot_config(project_id: int, db: Session) -> AutoRunCon
             if chapter.analyzed_json:
                 try:
                     import json
-                    analyzed = chapter.analyzed_json if isinstance(chapter.analyzed_json, dict) else json.loads(chapter.analyzed_json)
+
+                    analyzed = (
+                        chapter.analyzed_json
+                        if isinstance(chapter.analyzed_json, dict)
+                        else json.loads(chapter.analyzed_json)
+                    )
                     for char in analyzed.get("characters", []):
                         dialogue_chars += char.get("dialogue_count", 0) * 50  # rough estimate
                 except Exception:

@@ -11,32 +11,63 @@ ReviewerAgent 单元测试 - Module 4.1 质量门禁测试
 运行方式: python -m pytest tests/unit/pipeline/test_reviewer_agent.py -v
 """
 
+from typing import Any, Dict, List
+from unittest.mock import MagicMock, patch
+
 import pytest
-import sys
+
+# Use standard pytest patching instead of sys.modules monkey-patching
+# This test file uses @patch decorators to isolate dependencies
+
+
+# Create mock for ReviewerAgent dependencies
+@pytest.fixture(autouse=True)
+def mock_heavy_deps(monkeypatch):
+    """Mock heavy dependencies that reviewer agent doesn't actually need."""
+    # Mock modules that import heavy deps
+    for mod_name in [
+        "src.audiobook_studio.llm.health_probe",
+        "src.audiobook_studio.llm.router",
+        "src.audiobook_studio.monitoring.langfuse_client",
+    ]:
+        monkeypatch.setitem(__import__("sys").modules, mod_name, MagicMock())
+
+    # Mock opentelemetry modules
+    for mod_name in [
+        "opentelemetry",
+        "opentelemetry.exporter",
+        "opentelemetry.exporter.prometheus",
+        "opentelemetry.sdk",
+        "opentelemetry.sdk.metrics",
+        "opentelemetry.sdk.metrics.export",
+        "opentelemetry.sdk.resources",
+        "opentelemetry.metrics",
+        "opentelemetry.trace",
+        "opentelemetry.sdk.trace",
+        "opentelemetry.instrument",
+        "prometheus_client",
+    ]:
+        monkeypatch.setitem(__import__("sys").modules, mod_name, MagicMock())
+
+    # Mock sqlalchemy separately
+    for mod_name in [
+        "sqlalchemy",
+        "sqlalchemy.exc",
+        "sqlalchemy.orm",
+        "sqlalchemy.dialects",
+        "sqlalchemy.dialects.sqlite",
+    ]:
+        monkeypatch.setitem(__import__("sys").modules, mod_name, MagicMock())
+
+    yield
+
+
+# Now import the schemas and reviewer agent after mocks are in place
+# Use importlib to load modules without triggering full import chain
 import importlib.util
-from typing import List, Dict, Any
-from unittest.mock import MagicMock
+import sys
 
-
-# 模拟缺失的第三方依赖以阻断完整导入链
-for mod_name in [
-    "fitz", "pymupdf", "pdfplumber", "ebooklib", "docx", "pytesseract",
-    "PIL", "numpy", "soundfile", "ffmpeg_python", "librosa", "pandas",
-    "scikit_learn", "scipy", "prometheus_client", "structlog",
-    "python_json_logger", "apscheduler", "redis", "celery", "flower",
-    "pytest", "hypothesis", "deepeval", "promptfoo", "black", "isort",
-    "flake8", "flake8_bugbear", "bandit", "detect_secrets", "mypy",
-    "pre_commit", "langfuse", "litellm", "instructor", "tenacity", "jinja2",
-    "edge_tts", "kokoro_onnx", "piper_tts", "openai", "anthropic", "google",
-    "google_generativeai", "bcrypt", "passlib", "jose", "cryptography",
-    "email_validator", "python_multipart", "pydantic_settings",
-    "python_dotenv", "uvicorn", "sqlalchemy", "alembic", "asyncpg",
-    "psycopg2", "httpx", "mako", "markdown_it", "mkdocs", "mkdocs_material",
-]:
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = MagicMock()
-
-# 先加载 schemas.review（无外部依赖）
+# Load schemas.review (no external deps)
 SCHEMA_SPEC = importlib.util.spec_from_file_location(
     "schemas_review", "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/schemas/review.py"
 )
@@ -44,19 +75,24 @@ schemas_review = importlib.util.module_from_spec(SCHEMA_SPEC)
 SCHEMA_SPEC.loader.exec_module(schemas_review)
 sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
 
-# 为 review 模块注入模拟的 schemas.review
+# Create a mock for the pipeline/review module dependencies
 review_spec = importlib.util.spec_from_file_location(
     "review", "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/pipeline/review.py"
 )
 review = importlib.util.module_from_spec(review_spec)
-
-# 将 schemas.review 注入到 review 模块的命名空间
 review.__package__ = "src.audiobook_studio.pipeline"
+
+# Inject schemas.review into the review module namespace
+import sys
+
 sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
 
-# 执行 review 模块
+# Now we need to also mock the pipeline/review imports
+# The review.py imports: from ..schemas.review import ...
+# which will use the schemas_review we injected above
 REVIEW_SPEC = importlib.util.spec_from_file_location(
-    "src.audiobook_studio.pipeline.review", "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/pipeline/review.py"
+    "src.audiobook_studio.pipeline.review",
+    "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/pipeline/review.py",
 )
 REVIEW_MODULE = importlib.util.module_from_spec(REVIEW_SPEC)
 sys.modules["src.audiobook_studio.pipeline.review"] = REVIEW_MODULE
@@ -131,9 +167,7 @@ class TestReviewerAgentVoiceBinding:
         assert narrator_checks[0].suggested_voice_id == "zh-CN-XiaoxiaoNeural"
 
         # 验证修复指令生成
-        fix_commands = agent.generate_fix_commands(
-            voice_checks, [], [], paragraphs
-        )
+        fix_commands = agent.generate_fix_commands(voice_checks, [], [], paragraphs)
         add_voice_cmds = [c for c in fix_commands if c.command_type == "add_voice_binding"]
         assert len(add_voice_cmds) == 1
         assert add_voice_cmds[0].priority == 10
@@ -409,7 +443,7 @@ class TestReviewerAgentTagConsistency:
                 "needs_sfx": False,
                 "sfx_tags": [],
                 "pause_before_ms": 10000,  # 10秒停顿不合理
-                "pause_after_ms": -100,    # 负值
+                "pause_after_ms": -100,  # 负值
                 "confidence": 0.95,
             },
         ]
@@ -518,7 +552,7 @@ class TestReviewerAgentFullFlow:
         paragraphs = [
             {
                 "paragraph_index": 1,
-                "text": "贾雨村微笑着说：\"你好。\"",
+                "text": '贾雨村微笑着说："你好。"',
                 "speaker_canonical_name": "贾雨村",
                 "is_dialogue": True,
                 "emotion": "happy",
