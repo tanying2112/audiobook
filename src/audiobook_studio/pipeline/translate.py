@@ -385,7 +385,7 @@ class TranslateAndDubPipeline:
         # Create custom output path for test compatibility
         import hashlib
 
-        text_hash = hashlib.md5(translated_text.encode()).hexdigest()[:8]
+        text_hash = hashlib.sha256(translated_text.encode(), usedforsecurity=False).hexdigest()[:8]
         output_dir = Path(self.synthesizer.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         custom_output_path = output_dir / f"dubbed_{target_language}_{text_hash}.wav"

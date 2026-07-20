@@ -155,7 +155,8 @@ class ABTestAllocator:
             key = f"{experiment.experiment_id}:{random.random()}"
 
         # 计算哈希值 (0-1)
-        hash_val = int(hashlib.md5(key.encode()).hexdigest(), 16) / (2**128)
+        # Use SHA256 with usedforsecurity=False since this is for A/B testing bucketing, not cryptographic security
+        hash_val = int(hashlib.sha256(key.encode(), usedforsecurity=False).hexdigest(), 16) / (2**256)
 
         # 根据权重分配
         cumulative = 0.0

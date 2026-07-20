@@ -280,7 +280,8 @@ class AudiobookshelfPublisher:
 
         # 生成一个假的书籍ID
         book_string = f"{book_title}|{book_author}"
-        book_id = hashlib.md5(book_string.encode()).hexdigest()[:12]
+        # Use SHA256 with usedforsecurity=False for mock book ID (non-cryptographic)
+        book_id = hashlib.sha256(book_string.encode(), usedforsecurity=False).hexdigest()[:12]
 
         # 注意：生产代码中移除了随机失败逻辑
         # 以前的测试/演示代码：
@@ -305,7 +306,7 @@ class AudiobookshelfPublisher:
             "success": True,
             "message": "书籍已成功导入",
             "book_id": book_id,
-            "import_id": hashlib.md5(f"{book_id}{datetime.now()}".encode()).hexdigest()[:16],
+            "import_id": hashlib.sha256(f"{book_id}{datetime.now()}".encode(), usedforsecurity=False).hexdigest()[:16],
             "book": {
                 "id": book_id,
                 "title": upload_data.get("title"),

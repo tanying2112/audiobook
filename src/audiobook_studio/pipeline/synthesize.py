@@ -157,7 +157,8 @@ class SynthesizePipeline:
         )
 
     def _text_hash(self, text: str) -> str:
-        return hashlib.md5(text.encode()).hexdigest()[:12]
+        # Use SHA256 with usedforsecurity=False for cache key generation (non-cryptographic)
+        return hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
     def _metadata_path(self, segment_id: str) -> Path:
         """Return the sidecar metadata path for a synthesized segment."""

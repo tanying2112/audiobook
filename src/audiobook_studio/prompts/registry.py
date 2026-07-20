@@ -290,7 +290,8 @@ class PromptRegistry:
             Selected ExperimentVariant
         """
         # Hash request_id to get a number 0-100
-        hash_value = int(hashlib.md5(request_id.encode()).hexdigest()[:8], 16) % 100
+        # Use SHA256 with usedforsecurity=False for experiment bucketing (non-cryptographic)
+        hash_value = int(hashlib.sha256(request_id.encode(), usedforsecurity=False).hexdigest()[:8], 16) % 100
 
         cumulative = 0
         for variant in experiment.variants:
