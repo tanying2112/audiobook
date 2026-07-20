@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
 
     # JWT Authentication
-    JWT_SECRET_KEY: str = Field(default="your-super-secret-key-change-in-production", alias="JWT_SECRET_KEY")
+    JWT_SECRET_KEY: str = Field(alias="JWT_SECRET_KEY")
     JWT_ALGORITHM: str = Field(default="HS256", alias="JWT_ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, alias="REFRESH_TOKEN_EXPIRE_DAYS")
@@ -95,39 +95,43 @@ class Settings(BaseSettings):
     # P0-2: JWT 密钥启动校验
     # =========================================================================
     def validate_jwt_secret(self) -> None:
-        """Validate JWT secret is not the default placeholder in production.
+        """Validate JWT secret is not the default placeholder.
 
         Raises:
-            RuntimeError: If JWT_SECRET_KEY is the default placeholder in production environment.
+            RuntimeError: If JWT_SECRET_KEY is the default placeholder.
         """
         default_placeholders = {
             "your-super-secret-key-change-in-production",
             "test-secret-key-for-ci-only",
             "your-secret-key-change-in-production",  # legacy .env.example value
         }
-        if self.ENVIRONMENT == "production" and self.JWT_SECRET_KEY in default_placeholders:
+        if self.JWT_SECRET_KEY in default_placeholders:
             raise RuntimeError(
                 f"Refusing to start: JWT_SECRET_KEY is a default placeholder "
                 f"({self.JWT_SECRET_KEY[:20]}...). "
-                f"Set a strong random secret via JWT_SECRET_KEY environment variable "
-                f"before running in production. See docs/AUDIT_REPORT_v3.md P0-2."
+                f"Set a strong random secret via JWT_SECRET_KEY environment variable. "
+                f"See docs/AUDIT_REPORT_v3.md P0-2."
             )
 
     def validate_cors_security(self) -> None:
         """Validate CORS configuration for production security.
 
-        Warns if allow_origins=["*"] with allow_credentials=True which is a dangerous combination.
+        Raises RuntimeError in production if:
+        - "*" is in CORS_ORIGINS (wildcard origin)
+        - CORS_ALLOW_METHODS == ["*"] (wildcard methods)
+        - allow_credentials=True with wildcard origins
         """
         if self.ENVIRONMENT == "production":
-            if "*" in self.CORS_ORIGINS and self.CORS_ALLOW_METHODS == ["*"]:
-                import warnings
-
-                warnings.warn(
-                    "CORS misconfiguration: allow_origins=['*'] with allow_methods=['*'] "
-                    "and allow_credentials=True is dangerous. "
-                    "Set CORS_ORIGINS to explicit origins and CORS_ALLOW_METHODS to explicit methods.",
-                    UserWarning,
-                    stacklevel=2,
+            issues = []
+            if "*" in self.CORS_ORIGINS:
+                issues.append("allow_origins contains wildcard '*'")
+            if self.CORS_ALLOW_METHODS == ["*"]:
+                issues.append("allow_methods is wildcard ['*']")
+            if issues:
+                raise RuntimeError(
+                    f"Refusing to start in production: CORS misconfiguration - {', '.join(issues)}. "
+                    f"Set CORS_ORIGINS to explicit origins and CORS_ALLOW_METHODS to explicit methods. "
+                    f"See docs/AUDIT_REPORT_v3.md P0-3."
                 )
 
 

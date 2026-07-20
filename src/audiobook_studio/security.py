@@ -133,7 +133,14 @@ def validate_file_path(path: Path, allowed_extensions: Optional[set] = None) -> 
 
 def safe_subprocess_args(cmd: list, base_dir: Optional[Path] = None) -> list:
     """
-    Validate subprocess command arguments.
+    Validate subprocess command arguments to prevent command injection.
+
+    Threat model: Prevents shell injection via metacharacters in arguments.
+    - Never use shell=True (always pass list form to subprocess.run)
+    - Reject shell metacharacters in ALL arguments: $ ` | & ; ( ) < > * ? [ ] { } \\ ' "
+    - Reject command substitution patterns: $(...), `...`
+    - For ffmpeg specifically, validate against known-safe argument patterns
+    - Validate path arguments stay within base_dir when provided
 
     Args:
         cmd: Command list (e.g., ['ffmpeg', '-i', 'input.wav'])
@@ -155,15 +162,180 @@ def safe_subprocess_args(cmd: list, base_dir: Optional[Path] = None) -> list:
     if cmd[0] not in allowed_commands:
         raise ValueError(f"Command not allowed: {cmd[0]}")
 
-    # Validate path arguments if base_dir provided
+    # Shell metacharacters that enable injection when shell=True is used
+    # We reject them in ALL arguments as defense-in-depth (even though we never use shell=True)
+    shell_metachars = set("$`|&;()<>?*[]{}'\"\\")
+
+    # Command substitution patterns
+    cmd_sub_patterns = [r"\$\(.*\)", r"`.*`"]
+
+    for i, arg in enumerate(cmd):
+        # Check for shell metacharacters in ALL arguments (defense in depth)
+        for ch in shell_metachars:
+            if ch in arg:
+                raise ValueError(f"Argument {i} contains shell metacharacter '{ch}': {arg}")
+
+        # Check for command substitution patterns
+        for pattern in cmd_sub_patterns:
+            if re.search(pattern, arg):
+                raise ValueError(f"Argument {i} contains command substitution pattern: {arg}")
+
+    # Validate path arguments stay within base_dir
     if base_dir:
         base_dir = Path(base_dir).resolve()
         for i, arg in enumerate(cmd):
-            if i > 0 and (arg.startswith("/") or arg.startswith("./") or arg.startswith("../") or ":" in arg):
+            if i > 0 and (arg.startswith("/") or arg.startswith("./") or arg.startswith("../")):
+                # Only validate actual path-like arguments (not flags like -c:a)
                 try:
                     p = Path(arg).resolve()
                     p.relative_to(base_dir)
                 except (ValueError, OSError):
-                    raise ValueError(f"Path argument escapes base directory: {arg}")
+                    raise ValueError(f"Path argument {i} escapes base directory: {arg}")
+
+    # ffmpeg-specific validation against known-safe argument patterns
+    if cmd[0] in {"ffmpeg", "ffprobe"}:
+        # Known safe ffmpeg/ffprobe flags (allowlist approach)
+        safe_flags = {
+            "-i",
+            "-y",
+            "-v",
+            "-vn",
+            "-an",
+            "-sn",
+            "-dn",
+            "-map",
+            "-c",
+            "-c:a",
+            "-c:v",
+            "-b:a",
+            "-b:v",
+            "-ar",
+            "-ac",
+            "-f",
+            "-ss",
+            "-t",
+            "-to",
+            "-af",
+            "-vf",
+            "-filter_complex",
+            "-filter:a",
+            "-filter:v",
+            "-map_metadata",
+            "-id3v2_version",
+            "-write_id3v2",
+            "-metadata",
+            "-movflags",
+            "-avoid_negative_ts",
+            "-fflags",
+            "-max_muxing_queue_size",
+            "-threads",
+            "-loglevel",
+            "-hide_banner",
+            "-stats",
+            "-nostats",
+            "-progress",
+            "-preset",
+            "-crf",
+            "-pix_fmt",
+            "-profile:v",
+            "-level",
+            "-g",
+            "-keyint_min",
+            "-sc_threshold",
+            "-qmin",
+            "-qmax",
+            "-qdiff",
+            "-bf",
+            "-refs",
+            "-trellis",
+            "-flags",
+            "-cmp",
+            "-subcmp",
+            "-mbd",
+            "-flags2",
+            "-directpred",
+            "-me_method",
+            "-me_range",
+            "-subq",
+            "-psy-rd",
+            "-psy",
+            "-qcomp",
+            "-aq-mode",
+            "-aq-strength",
+            "-weightp",
+            "-weightb",
+            "-rc-lookahead",
+            "-deblock",
+            "-b-adapt",
+            "-qpstep",
+            "-qpmin",
+            "-qpmax",
+            "-direct",
+            "-partitions",
+            "-me",
+            "-subme",
+            "-analyse",
+            "-no-fast-pskip",
+            "-no-dct-decimate",
+            "-8x8dct",
+            "-wpredp",
+            "-deadzone-intra",
+            "-deadzone-inter",
+            "-qblur",
+            "-cplxblur",
+            "-zones",
+            "-qscale",
+            "-qscale:v",
+            "-qscale:a",
+            "-flags:v",
+            "-flags:a",
+        }
+        # Flags that take a following argument (these values are user-provided paths/strings)
+        # We still validate them against metachars above
+        value_flags = {
+            "-i",
+            "-ss",
+            "-t",
+            "-to",
+            "-c",
+            "-c:a",
+            "-c:v",
+            "-b:a",
+            "-b:v",
+            "-ar",
+            "-ac",
+            "-f",
+            "-af",
+            "-vf",
+            "-filter_complex",
+            "-filter:a",
+            "-filter:v",
+            "-map",
+            "-metadata",
+            "-preset",
+            "-crf",
+            "-pix_fmt",
+            "-profile:v",
+            "-level",
+            "-g",
+            "-keyint_min",
+            "-threads",
+            "-loglevel",
+            "-progress",
+            "-max_muxing_queue_size",
+        }
+
+        # Validate that unknown flags aren't sneaking in (but allow user-provided values after known value-flags)
+        skip_next = False
+        for _i, arg in enumerate(cmd[1:], 1):  # Skip cmd[0] which is 'ffmpeg'
+            if skip_next:
+                skip_next = False
+                continue
+            if arg in value_flags:
+                skip_next = True  # Next arg is a value, skip flag validation
+                continue
+            if arg.startswith("-") and arg not in safe_flags:
+                # Unknown flag - reject for safety (defense in depth)
+                raise ValueError(f"Unknown ffmpeg flag not in allowlist: {arg}")
 
     return cmd
