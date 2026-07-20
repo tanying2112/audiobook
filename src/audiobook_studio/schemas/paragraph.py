@@ -26,6 +26,7 @@ from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
 EmotionIntensity = Annotated[float, Field(ge=0.0, le=1.0)]
 DifficultyLevel = Literal["A", "B", "C"]
+ContentRating = Literal["儿童", "大众", "青少年", "成人"]
 
 # v1 兼容字段（可选，用于迁移期）
 SpeechRate = Annotated[float, Field(ge=0.7, le=1.3)]
@@ -85,6 +86,7 @@ class ParagraphAnnotation(BaseModel):
     emotion_intensity: EmotionIntensity = Field(..., description="情感强度 0-1")
     confidence: Confidence = Field(..., description="置信度 0-1")
     difficulty: DifficultyLevel = Field(default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值")
+    content_rating: ContentRating = Field(default="大众", description="文本分级：儿童/大众/青少年/成人")
     notes: str | None = Field(default=None, description="备注/不确定性说明")
     contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
@@ -107,5 +109,6 @@ class Paragraph(BaseModel):
     index: int = Field(..., description="Paragraph index")
     text: str = Field(..., description="Paragraph text")
     speaker: str | None = Field(default=None, description="Speaker name")
+    content_rating: ContentRating = Field(default="大众", description="文本分级：儿童/大众/青少年/成人")
 
     model_config = {"from_attributes": True}

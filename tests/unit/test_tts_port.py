@@ -21,11 +21,11 @@ import pytest
 from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from src.audiobook_studio.tts.port import (
     RemoteTTSPort,
+    TTSProsody,
+    TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
-    TTSProsody,
-    TTSStatus,
     TTSVoiceAnchor,
 )
 
@@ -310,6 +310,7 @@ class TestFakeRemoteTTSPort:
     @pytest.mark.asyncio
     async def test_success_with_custom_failure_mode(self, payload_v2):
         """Short text should succeed even with failure mode."""
+
         def fail_on_long_text(p: TTSTaskPayload) -> bool:
             return len(p.text) > 10
 

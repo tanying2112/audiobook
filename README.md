@@ -40,7 +40,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/audiobook-studio/dev-too
 # 6. 运行本地开发环境（Docker）
 docker compose up -d
 
-# 7. 打开文档站点（MkDocs）
+# 7. 可选：查看 Celery Worker 日志（Celery Worker 现在默认已随 docker compose up -d 启动）
+docker compose logs -f celery-worker
+
+# 8. 打开文档站点（MkDocs）
 mkdocs serve
 ```
 
@@ -56,17 +59,25 @@ audiobook/
 ├─ docs/                   # MkDocs 文档站点
 │   ├─ index.md
 │   ├─ architecture.md
-│   └─ quick_start.md
+│   ├─ quick_start.md
+│   ├─ governance/         # 治理文档 (AGENTS.md, CLAUDE.md, CONTRIBUTING.md 等)
+│   └─ legacy/             # 归档文档 (CHANGELOG.md, 测试报告等)
 ├─ src/                    # Python 源码
 ├─ tests/                  # 单元/集成测试
 ├─ requirements.txt        # Python 依赖
 ├─ mkdocs.yml              # MkDocs 配置
-├─ CONTRIBUTING.md         # 贡献指南
-├─ CODE_OF_CONDUCT.md      # 行为准则
-├─ SECURITY.md             # 安全报告流程
 ├─ LICENSE                 # MIT 许可证
-└─ ONBOARDING_CHECKLIST.md # 新成员入职清单
+├─ ONBOARDING_CHECKLIST.md # 新成员入职清单
+├─ PROJECT_STATUS.md       # 项目全局进度与状态 (唯一真相源)
+├─ README.md               # 本文件
+└─ SECURITY.md             # 安全报告流程
 ```
+
+## 文档导航 (Documentation)
+- **治理文档** → [`docs/governance/`](docs/governance/) — AGENTS.md, CLAUDE.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, 开发计划与执行清单等
+- **归档文档** → [`docs/legacy/`](docs/legacy/) — CHANGELOG.md, ANALYSIS_SUMMARY.md, 测试报告等历史文档
+- **MkDocs 站点** → [`docs/`](docs/) — 在线文档站点源码 (`mkdocs serve` 预览)
+- **项目状态** → [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — 唯一进度真相源，Sprint 进度与技术债记录
 
 ## 开发流程概览
 1. **分支**：`feature/<name>`、`bugfix/<name>`、`hotfix/<name>`，基于 `develop` 分支创建。

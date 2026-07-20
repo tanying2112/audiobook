@@ -14,6 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisOutput, ParagraphAnnotation, ParagraphAnnotationInput
+from .sop_reflection import get_genre_detector, get_rule_applier
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,16 @@ class AnnotateParagraphPipeline:
 
     def run(self, input_data):
         logger.info(f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})")
+
+        # Module 4.2: Apply learned SOP rules for this genre
+        try:
+            genre_detector = get_genre_detector()
+            genre = genre_detector.detect_from_meta(input_data.book_meta)
+            rule_applier = get_rule_applier()
+            input_data = rule_applier.apply_to_annotation_input(input_data, genre)
+            logger.debug(f"[SOP] Applied learned rules for genre '{genre}' to paragraph {input_data.paragraph_index}")
+        except Exception as e:
+            logger.warning(f"[SOP] Failed to apply learned rules: {e}")
 
         # MOCK: 待真实实现
         # Mock mode: return simulated annotation

@@ -37,6 +37,15 @@ class Settings(BaseSettings):
         ],
         alias="CORS_ORIGINS",
     )
+    # P0-3: 生产环境 CORS 方法白名单（覆盖 allow_methods=["*"] 的默认不安全行为）
+    CORS_ALLOW_METHODS: List[str] = Field(
+        default=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+        alias="CORS_ALLOW_METHODS",
+    )
+    CORS_ALLOW_HEADERS: List[str] = Field(
+        default=["*"],
+        alias="CORS_ALLOW_HEADERS",
+    )
 
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
@@ -62,6 +71,7 @@ class Settings(BaseSettings):
     # TTS
     EDGE_TTS_VOICE: str = Field(default="zh-CN-XiaoxiaoNeural", alias="EDGE_TTS_VOICE")
     KOKORO_MODEL_PATH: Optional[str] = Field(default=None, alias="KOKORO_MODEL_PATH")
+    ENABLE_LOCAL_TTS: bool = Field(default=True, alias="ENABLE_LOCAL_TTS")
 
     # Storage
     STORAGE_PATH: str = Field(default="./storage", alias="STORAGE_PATH")
@@ -81,6 +91,45 @@ class Settings(BaseSettings):
     LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, alias="LANGFUSE_SECRET_KEY")
     LANGFUSE_HOST: Optional[str] = Field(default=None, alias="LANGFUSE_HOST")
 
+    # =========================================================================
+    # P0-2: JWT 密钥启动校验
+    # =========================================================================
+    def validate_jwt_secret(self) -> None:
+        """Validate JWT secret is not the default placeholder in production.
+
+        Raises:
+            RuntimeError: If JWT_SECRET_KEY is the default placeholder in production environment.
+        """
+        default_placeholders = {
+            "your-super-secret-key-change-in-production",
+            "test-secret-key-for-ci-only",
+            "your-secret-key-change-in-production",  # legacy .env.example value
+        }
+        if self.ENVIRONMENT == "production" and self.JWT_SECRET_KEY in default_placeholders:
+            raise RuntimeError(
+                f"Refusing to start: JWT_SECRET_KEY is a default placeholder "
+                f"({self.JWT_SECRET_KEY[:20]}...). "
+                f"Set a strong random secret via JWT_SECRET_KEY environment variable "
+                f"before running in production. See docs/AUDIT_REPORT_v3.md P0-2."
+            )
+
+    def validate_cors_security(self) -> None:
+        """Validate CORS configuration for production security.
+
+        Warns if allow_origins=["*"] with allow_credentials=True which is a dangerous combination.
+        """
+        if self.ENVIRONMENT == "production":
+            if "*" in self.CORS_ORIGINS and self.CORS_ALLOW_METHODS == ["*"]:
+                import warnings
+
+                warnings.warn(
+                    "CORS misconfiguration: allow_origins=['*'] with allow_methods=['*'] "
+                    "and allow_credentials=True is dangerous. "
+                    "Set CORS_ORIGINS to explicit origins and CORS_ALLOW_METHODS to explicit methods.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
 
 # Global settings instance
 _settings: Optional[Settings] = None
@@ -91,4 +140,7 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
+        # Validate security settings on first load
+        _settings.validate_jwt_secret()
+        _settings.validate_cors_security()
     return _settings

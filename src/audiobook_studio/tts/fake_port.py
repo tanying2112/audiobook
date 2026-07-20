@@ -15,13 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from src.audiobook_studio.tts.port import (
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    TTSStatus,
-    RemoteTTSPort,
-)
+from .port import RemoteTTSPort, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSTaskStatus
 
 
 @dataclass
@@ -184,18 +178,20 @@ class FakeRemoteTTSPort(RemoteTTSPort):
             state.status = TTSStatus.DONE
             # Create a local fake WAV file for testing
             import tempfile
+
             temp_dir = Path(tempfile.gettempdir()) / "fake_tts_output"
             temp_dir.mkdir(parents=True, exist_ok=True)
             local_path = temp_dir / f"{task_id}.wav"
             # Create a minimal valid WAV file (silence)
-            import wave
             import struct
-            with wave.open(str(local_path), 'wb') as wav_file:
+            import wave
+
+            with wave.open(str(local_path), "wb") as wav_file:
                 wav_file.setnchannels(1)
                 wav_file.setsampwidth(2)
                 wav_file.setframerate(16000)
                 # Write 100ms of silence (1600 samples at 16kHz)
-                silence = struct.pack('<h', 0) * 1600
+                silence = struct.pack("<h", 0) * 1600
                 wav_file.writeframes(silence)
             state.audio_path = str(local_path)
             state.duration_ms = len(state.payload.text) * 50  # ~50ms per char

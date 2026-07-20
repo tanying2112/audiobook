@@ -3,6 +3,35 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# P2-1 Root Cleanup - Database files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# P2-1 Root Cleanup - Log files
+*.log
+server.log
+
+# P2-1 Root Cleanup - Coverage/Artifacts
+cov_report.json
+coverage.json
+openapi.json
+check_output.txt
+
+# P2-1 Root Cleanup - MagicMock artifacts
+MagicMock/
+
+# P2-1 Root Cleanup - Aider artifacts
+.aider*
+
+# P2-1 Root Cleanup - Backup files
+*.bak
+*.bak.*
+
+# P2-1 Root Cleanup - Tilde directory
+~/
+
 # C extensions
 *.so
 
@@ -151,6 +180,19 @@ MagicMock/
 
 # Uploaded data
 data/uploads/
+ab_test_results/
+
+# P3-1: Shadow worker / model implementations — NOT imported by the app.
+# Authoritative TTS layer is src/audiobook_studio/tts/ (wired via EngineRegistry).
+# These dirs are parallel/experimental copies kept quarantined until an approved
+# unification migration (see docs/adr/worker-unification-pending.md). Do NOT
+# import from these into src/audiobook_studio and do NOT commit new files here.
+voxcpm2-pool/
+worker/
+src/master/
+src/voxcpm/
+src/dashboard/
 
 # Misc temp
 i
+storage/books/

@@ -1,0 +1,19 @@
+{
+  "project_id": 28,
+  "chapters": {
+    "1": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess",
+        "synthesize",
+        "quality"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    }
+  },
+  "version": 2
+}

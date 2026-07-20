@@ -66,9 +66,9 @@ class JWTHandler:
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
         password_bytes = plain_password.encode("utf-8")
-        if BCRYPT_AVAILABLE and not hashed_password.startswith("sha256$"):
+        if BCRYPT_AVAILABLE and not hashed_password.startswith("sha256$") and not hashed_password.startswith("$5$"):
             hashed_bytes = hashed_password.encode("utf-8")
-            return bcrypt.checkpw(password_bytes, hashed_bytes)
+            return bcrypt.checkpw(password_bytes, hashed_password)
         if hashed_password.startswith("sha256$"):
             parts = hashed_password.split("$")
             if len(parts) != 3:
@@ -76,6 +76,14 @@ class JWTHandler:
             salt = bytes.fromhex(parts[1])
             expected = hashlib.sha256(salt + password_bytes).digest()
             return expected.hex() == parts[2]
+        if hashed_password.startswith("$5$"):
+            # sha256_crypt format ($5$rounds=...)
+            try:
+                import passlib.hash
+
+                return passlib.hash.sha256_crypt.verify(plain_password, hashed_password)
+            except Exception:
+                return False
         return False
 
     def create_access_token(

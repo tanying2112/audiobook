@@ -6,16 +6,22 @@ Provides full CRUD for the HARNESS-aligned entity tree:
 - ``/api/projects/{id}/chapters/`` — Chapter management
 - ``/api/projects/{id}/chapters/{ch}/paragraphs/`` — Paragraph detail
 - ``/api/projects/{id}/pipeline/`` — Pipeline orchestration
+- ``/api/projects/{id}/quality-report`` — Audio quality report
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from ..models import Chapter, Paragraph, Project
+from ..auth.dependencies import get_current_active_user
+from ..auth.models import RoleName
+from ..models import Chapter, Paragraph, Project, ProjectPermission, User
+from ..storage import reports_dir
 from .dependencies import get_db
 
 logger = logging.getLogger(__name__)
@@ -94,12 +100,26 @@ class ParagraphOut(BaseModel):
 
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(
+    payload: ProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     """Create a new project."""
     project = Project(**payload.model_dump())
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # Grant project owner EDITOR permission
+    permission = ProjectPermission(
+        user_id=current_user.id,
+        project_id=project.id,
+        role=RoleName.EDITOR,
+    )
+    db.add(permission)
+    db.commit()
+
     return project
 
 
@@ -286,3 +306,164 @@ def update_paragraph(
     db.commit()
     db.refresh(para)
     return para
+
+
+# ── Quality Report endpoint ─────────────────────────────────────────────────────
+
+
+class QualityReportSegment(BaseModel):
+    """Quality report segment model for API response."""
+
+    segment_id: str
+    file_path: str
+    duration_ms: int
+    silence_detected: bool
+    silence_ratio: float
+    silence_regions: List[dict]
+    corruption_detected: bool
+    corruption_error: Optional[str]
+    decode_valid: bool
+    clipping_detected: bool
+    peak_db: float
+    rms_db: float
+    passed: bool
+    issues: List[str]
+
+
+class QualityReportOut(BaseModel):
+    """Quality report response model."""
+
+    project_id: str
+    chapter_index: int
+    total_segments: int
+    passed_segments: int
+    failed_segments: int
+    segment_results: List[QualityReportSegment]
+    overall_passed: bool
+    generated_at: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{project_id}/quality-report", response_model=QualityReportOut)
+def get_quality_report(
+    project_id: int,
+    chapter_index: int = Query(0, ge=0, description="Chapter index (default: 0 for latest)"),
+):
+    """Get audio quality report for a project chapter.
+
+    Returns the quality check results including silence detection,
+    corruption detection, and clipping detection for all segments.
+    """
+    # Look for quality report in storage/books/{project_id}/reports/quality_report_ch_{chapter_index}.json
+    report_path = reports_dir(project_id) / f"quality_report_ch_{chapter_index:03d}.json"
+
+    if not report_path.exists():
+        # Try the default quality_report.json (backward compatibility)
+        report_path = reports_dir(project_id) / "quality_report.json"
+
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quality report not found for project {project_id}, chapter {chapter_index}",
+        )
+
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Convert segment_results to QualityReportSegment models
+        segment_results = [QualityReportSegment(**sr) for sr in data.get("segment_results", [])]
+
+        return QualityReportOut(
+            project_id=str(data["project_id"]),
+            chapter_index=data["chapter_index"],
+            total_segments=data["total_segments"],
+            passed_segments=data["passed_segments"],
+            failed_segments=data["failed_segments"],
+            segment_results=segment_results,
+            overall_passed=data["overall_passed"],
+            generated_at=data["generated_at"],
+        )
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}")
+    except KeyError as e:
+        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}")
+
+
+@router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")
+async def regenerate_paragraph(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    db: Session = Depends(get_db),
+):
+    """Regenerate a single paragraph's audio (single-sentence re-synthesis).
+
+    This endpoint triggers re-synthesis of a single paragraph's audio without
+    re-running the entire pipeline. The new audio is seamlessly merged with
+    existing audio segments.
+    """
+    # Verify the paragraph exists and belongs to the project/chapter
+    para = (
+        db.query(Paragraph)
+        .filter(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+        .first()
+    )
+    if not para:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+
+    # Check if there's an existing audio segment
+    audio_segment = para.audio_segment
+    if not audio_segment:
+        raise HTTPException(status_code=400, detail="No audio segment found for this paragraph")
+
+    # Queue the re-synthesis task
+    from ..tasks.tts_tasks import synthesize_paragraph_task
+
+    # Queue the task with the paragraph info
+    task = synthesize_paragraph_task.delay(
+        project_id=project_id,
+        chapter_id=chapter_id,
+        paragraph_id=paragraph_id,
+        force_regenerate=True,
+    )
+
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "message": "Single-sentence re-synthesis queued. The new audio will be seamlessly merged.",
+    }
+
+
+# ── Existing endpoint for backward compatibility ─────────────────────────────────
+@router.post("/{project_id}/paragraphs/{paragraph_id}/regenerate")
+async def regenerate_paragraph_legacy(
+    project_id: int,
+    paragraph_id: int,
+    db: Session = Depends(get_db),
+):
+    """Legacy endpoint - redirects to new chapter-aware endpoint."""
+    from ..models import Chapter, Paragraph
+
+    para = (
+        db.query(Paragraph)
+        .filter(
+            Paragraph.project_id == project_id,
+            Paragraph.id == paragraph_id,
+        )
+        .first()
+    )
+    if not para:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+
+    return await regenerate_paragraph(
+        project_id=project_id,
+        chapter_id=para.chapter_id,
+        paragraph_id=paragraph_id,
+        db=db,
+    )

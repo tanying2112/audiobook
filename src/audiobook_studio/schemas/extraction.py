@@ -19,7 +19,12 @@ class ExtractionInput(BaseModel):
         "application/epub+zip",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
-        "image/*",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/tiff",
+        "image/bmp",
+        "image/webp",
     ] = Field(..., description="文件 MIME 类型")
     detect_language: bool = Field(default=True, description="是否自动检测语言")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")

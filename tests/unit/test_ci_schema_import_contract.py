@@ -82,8 +82,7 @@ def test_every_ci_imported_name_is_on_the_public_surface() -> None:
     real = _schemas_all()
     missing = names - real
     assert not missing, (
-        f"CI imports non-existent schema name(s) {missing}; "
-        f"must all be in schemas/__init__.py __all__"
+        f"CI imports non-existent schema name(s) {missing}; " f"must all be in schemas/__init__.py __all__"
     )
 
 

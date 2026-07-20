@@ -1,8 +1,19 @@
-from .config import MiniCPM4Config
+import warnings
+
 import torch
-import torch.nn as nn
-from typing import List, Tuple
+
+from .config import MiniCPM4Config
+
+# enable_gqa was added in PyTorch 2.2, skip entirely for older versions
+_TORCH_MAJOR = int(torch.__version__.split(".")[0])
+_TORCH_MINOR = int(torch.__version__.split(".")[1])
+_HAS_SDPA_ENABLE_GQA = (_TORCH_MAJOR, _TORCH_MINOR) >= (2, 2)
+
 import math
+from typing import List, Tuple
+
+import torch.nn as nn
+
 from .cache import StaticKVCache
 
 
@@ -154,13 +165,25 @@ class MiniCPMAttention(nn.Module):
         query_states = query_states.contiguous()
         key_states = key_states.contiguous()
         value_states = value_states.contiguous()
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
-            query_states,
-            key_states,
-            value_states,
-            is_causal=is_causal,
-            enable_gqa=True,
-        )
+        if _HAS_SDPA_ENABLE_GQA:
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                is_causal=is_causal,
+                enable_gqa=True,
+            )
+        else:
+            # torch < 2.2: manually expand key/value heads for GQA
+            if self.num_key_value_groups > 1:
+                key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
+                value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                is_causal=is_causal,
+            )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
@@ -205,13 +228,25 @@ class MiniCPMAttention(nn.Module):
         query_states = query_states.contiguous()
         key_cache = key_cache.contiguous()
         value_cache = value_cache.contiguous()
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
-            query_states,
-            key_cache,
-            value_cache,
-            attn_mask=attn_mask,
-            enable_gqa=True,
-        )
+        if _HAS_SDPA_ENABLE_GQA:
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_cache,
+                value_cache,
+                attn_mask=attn_mask,
+                enable_gqa=True,
+            )
+        else:
+            # torch < 2.2: manually expand key/value heads for GQA
+            if self.num_key_value_groups > 1:
+                key_cache = key_cache.repeat_interleave(self.num_key_value_groups, dim=1)
+                value_cache = value_cache.repeat_interleave(self.num_key_value_groups, dim=1)
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_cache,
+                value_cache,
+                attn_mask=attn_mask,
+            )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, self.num_heads * self.head_dim)

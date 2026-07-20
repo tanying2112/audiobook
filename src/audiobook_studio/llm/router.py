@@ -33,6 +33,8 @@ from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
     FeedbackAnalysis,
+    PairwiseDimensionScore,
+    PairwiseJudgment,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
@@ -583,20 +585,35 @@ class LLMRouter:
                 )
             elif stage == "judge":
                 # segment_id is now a REQUIRED parameter
-                result = QualityJudgment(
-                    segment_id=segment_id,
-                    speaker_clarity=0.5,
-                    emotion_match=0.5,
-                    prosody_naturalness=0.5,
-                    text_audio_alignment=0.5,
-                    overall_score=0.5,
-                    issues=["wrong_speaker"],
-                    fix_suggestions=[],
-                    needs_regeneration=True,
-                    contract_version=1,
-                    judge_model="heuristic_fallback",
-                    judge_prompt_version="heuristic_v1",
-                )
+                if response_model == PairwiseJudgment:
+                    result = PairwiseJudgment(
+                        segment_id=segment_id,
+                        winner="tie",
+                        confidence=0.5,
+                        dimension_scores={},
+                        reasoning={},
+                        overall_reasoning="Heuristic fallback: all LLM providers unavailable",
+                        statistical_significance=None,
+                        p_value=None,
+                        effect_size=None,
+                        judge_model="heuristic_fallback",
+                        judge_prompt_version="pairwise_v1",
+                    )
+                else:
+                    result = QualityJudgment(
+                        segment_id=segment_id,
+                        speaker_clarity=0.5,
+                        emotion_match=0.5,
+                        prosody_naturalness=0.5,
+                        text_audio_alignment=0.5,
+                        overall_score=0.5,
+                        issues=["wrong_speaker"],
+                        fix_suggestions=[],
+                        needs_regeneration=True,
+                        contract_version=1,
+                        judge_model="heuristic_fallback",
+                        judge_prompt_version="heuristic_v1",
+                    )
             else:
                 result = None
 
@@ -631,29 +648,39 @@ class LLMRouter:
         messages = self._build_messages(stage_enum, compressed_prompt, "", "")
 
         # Try each provider in priority order
+        last_provider = None
         for provider in providers:
+            if last_provider is not None:
+                # Log self-healing fallback warning
+                logger.warning(f"[WARN] {last_provider.name} 触发限流/错误，正在自愈切换至 {provider.name} 节点...")
+
             if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
                 logger.warning(f"Rate limit near for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
             if self.cost_tracker.is_limit_exceeded(provider.name):
                 logger.warning(f"Daily cost limit exceeded for {provider.name}")
+                last_provider = provider
                 continue
 
             # Circuit breaker check
             cb = self.circuit_breakers.get(provider.name)
             if cb and not cb.can_proceed():
                 logger.warning(f"Circuit breaker open for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
             # Health probe check
             if self.health_probe and not self.health_probe.is_healthy(provider.name):
                 logger.warning(f"Health probe reports {provider.name} unhealthy, skipping")
+                last_provider = provider
                 continue
 
             # Quota registry check before making request
             if not self.quota_registry.can_make_request(provider.name, estimated_tokens):
                 logger.warning(f"Quota exceeded for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
             client = self.get_client(provider)

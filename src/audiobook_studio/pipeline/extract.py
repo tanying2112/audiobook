@@ -1,6 +1,6 @@
 """Pipeline Stage 1: Extract - Text extraction with OCR/language detection.
 
-Supports PDF, EPUB, DOCX, TXT with multi-modal LLM fallback.
+Supports PDF, EPUB, DOCX, TXT, and image formats (PNG, JPG, TIFF, BMP, WebP) with OCR.
 Outputs ExtractionResult with raw_text, language, page stats, OCR info.
 """
 
@@ -21,6 +21,16 @@ from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
+# Optional OCR dependencies
+try:
+    import pytesseract
+    from PIL import Image
+
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    logger.warning("OCR dependencies (pytesseract, Pillow) not available. Image OCR disabled.")
+
 
 class ExtractPipeline:
     """Pipeline for text extraction from various formats."""
@@ -39,7 +49,7 @@ class ExtractPipeline:
             self.router = router
 
     def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from PDF using pdfplumber, fallback to PyMuPDF OCR."""
+        """Extract text from PDF using pdfplumber, fallback to PyMuPDF + pytesseract OCR."""
         text_parts = []
         page_count = 0
         has_ocr = False
@@ -58,9 +68,9 @@ class ExtractPipeline:
 
         extracted_text = "\n\n".join(text_parts).strip()
 
-        # If text too short, try PyMuPDF OCR
+        # If text too short, try PyMuPDF OCR with pytesseract
         if len(extracted_text) < 100:
-            logger.info("Text layer insufficient, attempting OCR with PyMuPDF")
+            logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
             has_ocr = True
             try:
                 doc = fitz.open(file_path)
@@ -68,12 +78,19 @@ class ExtractPipeline:
                 ocr_text_parts = []
                 for page_num in range(len(doc)):
                     page = doc[page_num]
-                    # Render page to image then OCR (simplified - would use pytesseract in production)
-                    _ = page.get_pixmap(dpi=200)  # noqa: F841
-                    # In production: use pytesseract.image_to_string(pix.tobytes())
-                    # For now, try to get text blocks
-                    blocks = page.get_text("dict")["blocks"]
-                    page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+                    # Render page to image and OCR it
+                    if OCR_AVAILABLE:
+                        pix = page.get_pixmap(dpi=200)
+                        from PIL import Image
+
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        # Use pytesseract for OCR
+                        page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+                    else:
+                        # Fallback: try to get text blocks without OCR
+                        blocks = page.get_text("dict")["blocks"]
+                        page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+
                     if page_text.strip():
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
@@ -130,6 +147,25 @@ class ExtractPipeline:
                 text = f.read()
             return text.strip(), 1, False, 0.0
 
+    def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
+        """Extract text from image using OCR (requires pytesseract + Pillow)."""
+        if not OCR_AVAILABLE:
+            raise ValueError("Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow")
+
+        try:
+            image = Image.open(file_path)
+            # Convert to RGB if needed (for RGBA images)
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+
+            # Use pytesseract for OCR
+            text = pytesseract.image_to_string(image, lang="chi_sim+eng")
+
+            return text.strip(), 1, True, 1.0
+        except Exception as e:
+            logger.error(f"Image OCR failed: {e}")
+            return "", 1, False, 0.0
+
     def _detect_language(self, text: str) -> str:
         """Simple language detection."""
         # In production: use langdetect or fasttext
@@ -185,6 +221,15 @@ class ExtractPipeline:
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_docx(file_path)
         elif mime_type == "text/plain":
             raw_text, page_count, has_ocr, ocr_ratio = self._extract_txt(file_path)
+        elif mime_type in (
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/tiff",
+            "image/bmp",
+            "image/webp",
+        ):
+            raw_text, page_count, has_ocr, ocr_ratio = self._extract_image(file_path)
         else:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 

@@ -83,7 +83,7 @@ def capture_feedback(
         id=feedback_id,
         timestamp=now,
         source=source,
-        stage=stage,  # type: ignore
+        stage=stage,
         book_id=str(project_id),
         paragraph_index=paragraph_index,
         chapter_index=chapter_index,

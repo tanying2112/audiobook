@@ -93,6 +93,7 @@ class Paragraph(Base):
 
     # 状态
     status: Mapped[str] = mapped_column(String, default="pending")
+    content_rating: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="paragraphs")

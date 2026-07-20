@@ -1,14 +1,16 @@
-import os
-import sys
-import re
 import json
+import os
+import re
+import sys
 import tempfile
-import numpy as np
 from typing import Generator, Optional
+
+import numpy as np
 from huggingface_hub import snapshot_download
-from .model.voxcpm import VoxCPMModel, LoRAConfig
-from .model.voxcpm2 import VoxCPM2Model
+
 from .model.utils import next_and_close
+from .model.voxcpm import LoRAConfig, VoxCPMModel
+from .model.voxcpm2 import VoxCPM2Model
 
 
 class VoxCPM:

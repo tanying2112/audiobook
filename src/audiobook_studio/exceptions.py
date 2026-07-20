@@ -38,7 +38,7 @@ class AudiobookError(Exception):
         if self.provider:
             data["provider"] = self.provider
         if self.context:
-            data["context"] = self.context  # type: ignore[assignment]
+            data["context"] = self.context
         if self.original_error:
             data["original_error"] = str(self.original_error)
         return data

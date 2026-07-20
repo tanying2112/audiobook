@@ -49,7 +49,7 @@ pymupdf>=1.23.0  # PDF 渲染/OCR 兜底 (fitz)
 ebooklib>=0.18  # EPUB 解析
 python-docx>=1.1.0  # DOCX 解析
 pillow>=10.0.0  # 图片处理
-# OCR 可选: pytesseract, paddleocr, easyocr
+pytesseract>=0.3.10  # OCR 图片文字识别
 
 # =============================================================================
 # TTS 音频合成 (核心: edge-tts 无平台限制)

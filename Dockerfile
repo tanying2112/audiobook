@@ -1,83 +1,118 @@
 # =============================================================================
-# Multi-stage build: Builder (heavy compile toolchain) → Runner (lean runtime)
-# Task 6.1 — limit image size + strip large model assets into a Volume.
+# Audiobook Studio — Hardened Multi-Stage Dockerfile
+# Task 6.3: Non-Root + Multi-Stage + Security Hardening
 # =============================================================================
 
-# ---------- Stage 1: Builder ----------
-FROM python:3.11-slim AS builder
+# ---- Build Arguments ---------------------------------------------------------
+ARG PYTHON_VERSION=3.11-slim
+ARG APP_UID=1000
+ARG APP_GID=1000
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
 
+# ---- Stage 1: Builder --------------------------------------------------------
+FROM python:${PYTHON_VERSION} AS builder
+
+# Prevent bytecode / buffering; disable pip cache to keep layer small.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Compile toolchain stays in Builder ONLY — never leaks into Runner (size win).
-# build-essential / libffi-dev cover C-extension wheel fallback (cryptography/bcrypt).
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
-    || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        libffi-dev \
-        git \
-        curl \
+# Install build deps only (no runtime libs here).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements first to leverage Docker layer cache.
+# Copy only requirements first for maximum layer caching.
 COPY requirements.txt .
+COPY pyproject.toml ./
 
-# Install into a throwaway venv that Runner copies wholesale
-# (no pip cache / build residue carried into the runtime image).
+# Create virtualenv and install deps — completely isolated from runtime.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# ---------- Stage 2: Runner ----------
-FROM python:3.11-slim AS runner
+# ---- Stage 2: Runtime --------------------------------------------------------
+FROM python:${PYTHON_VERSION} AS runner
 
+# ---- Metadata / Labels (OCI Image Spec) ----
+LABEL org.opencontainers.image.title="Audiobook Studio" \
+      org.opencontainers.image.description="Production-grade AI audiobook generation pipeline" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/tanying2112/AI_Lab" \
+      org.opencontainers.image.licenses="MIT"
+
+# ---- Runtime Environment -----------------------------------------------------
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app/src \
-    PATH="/opt/venv/bin:$PATH" \
-    # Task 6.1 asset-stripping: point asset_manager.CACHE_DIR at a Volume, not the image.
-    AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
+    PATH="/opt/venv/bin:${PATH}" \
+    # Model cache lives on a Volume at runtime — never baked into the image.
+    AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache \
+    # Security: prevent python from loading site-packages from user directory.
+    PYTHONNOUSERSITE=1
 
-# Runtime libs only (no build-essential / git / libffi-dev) — keeps the image lean.
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
-    || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
-        curl \
-        ffmpeg \
-        libsndfile1 \
-        postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+# Install ONLY runtime dependencies (no build toolchain).
+# tini: proper signal handling & zombie reaping for PID 1.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    postgresql-client \
+    tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 WORKDIR /app
 
-# Copy the pre-built venv from Builder.
+# Copy pre-built virtualenv from builder (no pip cache, no build residue).
 COPY --from=builder /opt/venv /opt/venv
 
-# Copy source (.dockerignore keeps tests / .git / node_modules / build artifacts / model cache out).
-COPY . .
+# Copy application source with correct ownership (no chown layer needed).
+COPY --chown=${APP_UID}:${APP_GID} . .
 
-# Runtime directories incl. the model cache mount point.
-RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage /app/models_cache
+# Create required runtime directories with correct ownership.
+RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage /app/models_cache \
+    && chown -R ${APP_UID}:${APP_GID} /app
 
-# Non-root user.
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# ---- Non-Root User -----------------------------------------------------------
+# Create user/group with fixed UID/GID (matches CI / K8s expectations).
+RUN groupadd -g ${APP_GID} appgroup \
+    && useradd -m -u ${APP_UID} -g ${APP_GID} -s /bin/bash appuser
+
+# Switch to non-root user.
 USER appuser
 
+# ---- Security Hardening ------------------------------------------------------
+# Drop all capabilities — container runs with minimal privileges.
+# (Override in compose/k8s only if a specific capability is truly required.)
+# Note: This is enforced at runtime via `docker run --cap-drop=ALL` or
+# Kubernetes `securityContext.capabilities.drop: ["ALL"]`.
+# The image itself does not require capabilities.
+
+# Read-only root filesystem where possible (opt-in via `docker run --read-only`).
+# App writes only to /app/output, /app/logs, /app/data, /app/storage, /app/models_cache, /app/checkpoints.
+
+# ---- Health Check ------------------------------------------------------------
+# Use tini-wrapped endpoint check with graceful timeout.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+# ---- Ports -------------------------------------------------------------------
 EXPOSE 8000
 
-# Task 6.1 资产剥离死铁律: large model cache lives in a Volume, never baked into the image.
-VOLUME ["/app/models_cache"]
+# ---- Entrypoint / Command ----------------------------------------------------
+# tini as PID 1 ensures signals propagate to the Python process (uvicorn/celery).
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# env_checker runs as a HARD GATE in CI (.github/workflows/ci.yml).
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# CMD (not ENTRYPOINT) so `docker run <image> celery -A ...` and compose
-# `command: uvicorn|celery ...` cleanly override the default web server.
-# Default boots the FastAPI app (python -m audiobook_studio.main → uvicorn → /health).
+# Default: run FastAPI app (uvicorn via main.py).
+# Override in docker-compose / k8s for workers: `celery -A audiobook_studio.celery_app worker -l info`
 CMD ["python", "-m", "audiobook_studio.main"]

@@ -14,16 +14,18 @@ def main():
     # Check if either .coveragerc or pyproject.toml exists with coverage config
     config_files = [".coveragerc", "pyproject.toml"]
     config_found = False
-    
+
     for config_file in config_files:
         if os.path.exists(config_file):
             with open(config_file, "r") as f:
                 content = f.read()
-                if "fail_under" in content and ("80" in content or "fail_under = 80" in content or '"fail_under": 80' in content):
+                if "fail_under" in content and (
+                    "80" in content or "fail_under = 80" in content or '"fail_under": 80' in content
+                ):
                     config_found = True
                     print(f"✅ Found coverage configuration in {config_file}")
                     break
-    
+
     if not config_found:
         print("⚠️  Warning: No coverage configuration with fail_under=80 found")
         print("   Please ensure .coveragerc or pyproject.toml has:")
@@ -31,10 +33,11 @@ def main():
         print("   fail_under = 80")
         # Don't fail - just warn, as CI will catch it
         return 0
-    
+
     # Also check if we have recent coverage data (optional)
     if os.path.exists("coverage.json"):
         import json
+
         try:
             with open("coverage.json", "r") as f:
                 data = json.load(f)
@@ -45,7 +48,7 @@ def main():
                 print(f"⚠️  Current coverage: {total_pct:.2f}% (<80%) - will be caught in CI")
         except Exception:
             pass  # Ignore errors reading coverage.json
-    
+
     print("✅ Coverage configuration check passed")
     return 0
 

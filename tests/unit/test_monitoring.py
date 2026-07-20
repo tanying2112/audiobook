@@ -1190,7 +1190,8 @@ class TestMetricsExporterModule:
         probe = router.health_probe
         result = export_health_probe_metrics(probe)
 
-        assert "gemini_flash" in result or "opencode_zen" in result
+        # In mock_mode, only "mock-gpt" provider is registered
+        assert "mock-gpt" in result
 
     def test_export_health_probe_metrics_none(self):
         """Test exporting health probe metrics with None."""

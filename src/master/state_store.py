@@ -27,6 +27,7 @@ import redis
 
 class TaskState(str, Enum):
     """TTS Task lifecycle states."""
+
     PENDING = "PENDING"
     CLAIMED = "CLAIMED"
     SYNTHESIZING = "SYNTHESIZING"
@@ -49,12 +50,12 @@ VALID_TRANSITIONS = {
 TERMINAL_STATES = {TaskState.COMPLETED, TaskState.FAILED}
 
 # TTL configuration (seconds)
-TASK_TTL_PENDING = 3600      # 1h for pending tasks
-TASK_TTL_ACTIVE = 7200       # 2h for in-flight tasks
-TASK_TTL_COMPLETED = 86400   # 24h for completed/failed
-IDEMPOTENCY_TTL = 86400      # 24h idempotency key TTL
-LOCK_TTL = 300               # 5min lock TTL (renewable)
-LOCK_RENEWAL_INTERVAL = 30   # Renew lock every 30s
+TASK_TTL_PENDING = 3600  # 1h for pending tasks
+TASK_TTL_ACTIVE = 7200  # 2h for in-flight tasks
+TASK_TTL_COMPLETED = 86400  # 24h for completed/failed
+IDEMPOTENCY_TTL = 86400  # 24h idempotency key TTL
+LOCK_TTL = 300  # 5min lock TTL (renewable)
+LOCK_RENEWAL_INTERVAL = 30  # Renew lock every 30s
 
 
 # Lua script for atomic lock acquisition (SET NX + TTL)
@@ -132,6 +133,7 @@ return {1, "OK"}
 @dataclass
 class TTSTask:
     """TTS Task state machine record."""
+
     task_id: str
     state: TaskState
     text: str
@@ -429,13 +431,7 @@ class HermesStateStore:
         finally:
             lock.release()
 
-    def transition_state(
-        self,
-        task_id: str,
-        new_state: TaskState,
-        worker_id: str,
-        **extra_fields
-    ) -> bool:
+    def transition_state(self, task_id: str, new_state: TaskState, worker_id: str, **extra_fields) -> bool:
         """
         Atomically transition task state with lock ownership validation.
 
@@ -461,7 +457,9 @@ class HermesStateStore:
     def complete_task(self, task_id: str, worker_id: str, result_url: str) -> bool:
         """Mark task COMPLETED with result URL."""
         return self.transition_state(
-            task_id, TaskState.COMPLETED, worker_id,
+            task_id,
+            TaskState.COMPLETED,
+            worker_id,
             result_url=result_url,
         )
 

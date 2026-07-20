@@ -92,6 +92,9 @@ class VoiceCloningManager:
                 with open(prints_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for sp_id, print_data in data.items():
+                        # Convert quality string back to enum
+                        if "quality" in print_data and isinstance(print_data["quality"], str):
+                            print_data["quality"] = AudioQuality(print_data["quality"])
                         self.voice_prints[sp_id] = VoicePrint(**print_data)
                 logger.info(f"📂 加载了 {len(self.voice_prints)} 个已有声音指纹")
             except Exception as e:
@@ -357,7 +360,7 @@ class VoiceCloningManager:
         else:
             return AudioQuality.POOR
 
-    def _synthesize_with_kokoro(
+    async def _async_synthesize_with_kokoro(
         self,
         text: str,
         speaker_id: str,
@@ -365,10 +368,8 @@ class VoiceCloningManager:
         emotion: str,
         output_path: Path,
     ) -> Tuple[bool, str, Optional[Path]]:
-        """使用 kokoro-onnx 进行真实语音合成"""
+        """使用 kokoro-onnx 进行真实语音合成 (异步版本)"""
         try:
-            import asyncio
-
             from ..tts.kokoro_backend import KokoroBackend
 
             # Map language to kokoro voice format
@@ -387,39 +388,35 @@ class VoiceCloningManager:
             }
             default_voice = kokoro_voice_map.get(language, "af_bella")
 
-            async def _synthesize():
-                kokoro = KokoroBackend(model_path=self.config.model_path)
-                await kokoro.initialize()
+            kokoro = KokoroBackend(model_path=self.config.model_path)
+            await kokoro.initialize()
 
-                # Try to use a reference audio file from the samples
-                reference_audio = None
-                samples = self.voice_samples.get(speaker_id, [])
-                if samples:
-                    # Use the first valid sample as reference
-                    for sample in samples:
-                        if sample.file_path.exists():
-                            reference_audio = str(sample.file_path)
-                            break
+            # Try to use a reference audio file from the samples
+            reference_audio = None
+            samples = self.voice_samples.get(speaker_id, [])
+            if samples:
+                # Use the first valid sample as reference
+                for sample in samples:
+                    if sample.file_path.exists():
+                        reference_audio = str(sample.file_path)
+                        break
 
-                result = await kokoro.synthesize(
-                    text=text,
-                    voice_id=default_voice,
-                    output_path=output_path,
-                    prosody={
-                        "rate": 1.0,
-                        "pitch": 0.0,
-                    },
-                    reference_audio=reference_audio,
-                )
-                await kokoro.cleanup()
-                return result.duration_ms
-
-            duration_ms = asyncio.run(_synthesize())
+            result = await kokoro.synthesize(
+                text=text,
+                voice_id=default_voice,
+                output_path=output_path,
+                prosody={
+                    "rate": 1.0,
+                    "pitch": 0.0,
+                },
+                reference_audio=reference_audio,
+            )
+            await kokoro.cleanup()
 
             if output_path.exists() and output_path.stat().st_size > 0:
                 return (
                     True,
-                    f"语音合成成功: {output_path.name} ({duration_ms}ms)",
+                    f"语音合成成功: {output_path.name} ({result.duration_ms}ms)",
                     output_path,
                 )
             else:
@@ -470,13 +467,50 @@ class VoiceCloningManager:
         output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
 
         # 尝试使用 kokoro-onnx 进行真实合成
-        success, message, audio_file = self._synthesize_with_kokoro(
-            text=text,
-            speaker_id=speaker_id,
-            language=language,
-            emotion=emotion,
-            output_path=output_file,
-        )
+        try:
+            import asyncio
+
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, can't use asyncio.run()
+                # Run the async synthesis in a new thread or use run_coroutine_threadsafe
+                import concurrent.futures
+
+                def run_async_synthesis():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(
+                            self._async_synthesize_with_kokoro(
+                                text=text,
+                                speaker_id=speaker_id,
+                                language=language,
+                                emotion=emotion,
+                                output_path=output_file,
+                            )
+                        )
+                    finally:
+                        new_loop.close()
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async_synthesis)
+                    success, message, audio_file = future.result(timeout=120)
+            except RuntimeError:
+                # No running loop, safe to use asyncio.run()
+                success, message, audio_file = asyncio.run(
+                    self._async_synthesize_with_kokoro(
+                        text=text,
+                        speaker_id=speaker_id,
+                        language=language,
+                        emotion=emotion,
+                        output_path=output_file,
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Kokoro 合成异常: {e}")
+            success, message, audio_file = False, f"合成异常: {e}", None
 
         if success:
             return True, message, audio_file

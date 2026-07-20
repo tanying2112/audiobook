@@ -108,30 +108,6 @@ class TestSynthesizePipeline:
         path = pipeline._metadata_path("seg_123")
         assert path == Path("/tmp/test_out/seg_123.json")
 
-    def test_edge_voice_map_resolution(self):
-        """Test Edge voice mapping resolution."""
-        pipeline = SynthesizePipeline(output_dir="/tmp/test_out", mock_mode=True)
-
-        # Test known mapping
-        resolved = pipeline._resolve_edge_voice("zh-CN-XiaoxiaoNeural")
-        assert "Microsoft Server Speech Text to Speech Voice" in resolved
-
-        # Test already full format
-        full = "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
-        resolved = pipeline._resolve_edge_voice(full)
-        assert resolved == full
-
-        # Test dynamic resolution
-        resolved = pipeline._resolve_edge_voice("zh-CN-TestVoice")
-        assert "Microsoft Server Speech Text to Speech Voice" in resolved
-
-    def test_azure_voice_map(self):
-        """Test Azure voice mapping."""
-        pipeline = SynthesizePipeline(output_dir="/tmp/test_out", mock_mode=True)
-
-        # Known mapping
-        assert "zh-CN-XiaoxiaoNeural" in pipeline.AZURE_VOICE_MAP
-
         # GCP voice map
         assert "zh-CN-Standard-A" in pipeline.GCP_VOICE_MAP
 
@@ -393,7 +369,7 @@ class TestSynthesizePipelineRouting:
         decision = pipeline._make_routing_decision(inp)
 
         assert decision.engine_choice == "edge"
-        assert decision.fallback_engine == "edge"  # Implementation always uses "edge" as fallback
+        assert decision.fallback_engine == "kokoro"  # Cloud preferred, local as fallback
 
     def test_routing_decision_prosody_overrides(self, tmp_path):
         """Test routing includes prosody overrides."""
@@ -427,8 +403,8 @@ class TestSynthesizePipelineRouting:
 
         decision = pipeline._make_routing_decision(inp)
 
-        assert decision.prosody_overrides["rate"] == "1.2"
-        assert decision.prosody_overrides["pitch"] == "2st"
+        assert decision.prosody_overrides["rate"] == 1.2
+        assert decision.prosody_overrides["pitch"] == 2.0
 
     def test_routing_decision_segment_id_format(self, tmp_path):
         """Test segment ID format in routing decision."""

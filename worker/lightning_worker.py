@@ -22,6 +22,8 @@ from typing import Any, Dict, Optional
 # 1. RUNTIME DEPENDENCY INJECTION (Lightning runs naked)
 # ==========================================
 _print = print
+
+
 def _log(msg: str) -> None:
     _print(f"[BOOTSTRAP] {msg}", flush=True)
 
@@ -40,17 +42,20 @@ def _install_missing_deps() -> None:
         "tiktoken": "tiktoken",
         "huggingface_hub": "huggingface_hub",
     }
-    import subprocess
     import importlib
+    import subprocess
 
     for mod, pkg in required.items():
         try:
             importlib.import_module(mod)
         except ImportError:
             _log(f"Installing missing dependency: {pkg}")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-q", pkg
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-q", pkg],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
 
 _log("📦 Installing production dependencies...")
 _install_missing_deps()
@@ -302,7 +307,9 @@ class BaseWorker(abc.ABC):
                 if empty_polls >= self.max_empty_polls:
                     try:
                         if self.redis.llen("tts:tasks") == 0:
-                            _print(f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine.")
+                            _print(
+                                f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine."
+                            )
                             self._send_heartbeat("exiting", 0)
                             break
                     except Exception:
@@ -382,6 +389,7 @@ class T4VoxCPM2Engine:
 
     def _load_model(self) -> None:
         import os
+
         from huggingface_hub import snapshot_download
 
         if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
@@ -441,6 +449,7 @@ class T4VoxCPM2Engine:
         waveform = self.model.decode_audio(audio_tokens)
 
         import io
+
         buffer = io.BytesIO()
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()

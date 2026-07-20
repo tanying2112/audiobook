@@ -40,8 +40,14 @@ async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.Complet
         raise
 
 
-async def _run_ffmpeg(args: List[str], timeout: int = 60) -> subprocess.CompletedProcess:
-    """Run ffmpeg asynchronously and return result."""
+async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = False) -> subprocess.CompletedProcess:
+    """Run ffmpeg asynchronously and return result.
+
+    Args:
+        args: ffmpeg arguments
+        timeout: timeout in seconds
+        binary_output: If True, return raw bytes in stdout instead of decoded text
+    """
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg",
         *args,
@@ -50,6 +56,13 @@ async def _run_ffmpeg(args: List[str], timeout: int = 60) -> subprocess.Complete
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        if binary_output:
+            return subprocess.CompletedProcess(
+                args=["ffmpeg"] + args,
+                returncode=proc.returncode,
+                stdout=stdout,
+                stderr=stderr.decode("utf-8", errors="ignore"),
+            )
         return subprocess.CompletedProcess(
             args=["ffmpeg"] + args,
             returncode=proc.returncode,
@@ -107,8 +120,6 @@ async def detect_silence(
     """
     result = await _run_ffmpeg(
         [
-            "-v",
-            "error",
             "-i",
             str(path),
             "-af",
@@ -193,12 +204,12 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
             except (ValueError, IndexError):
                 pass
 
-    # If astats didn't work, fallback to volumedetect
+    # If astats didn't work, fallback to volumedetect (need info level for output)
     if rms_db == -60.0 and peak_db == -60.0:
         result = await _run_ffmpeg(
             [
                 "-v",
-                "error",
+                "info",  # volumedetect outputs at info level
                 "-i",
                 str(path),
                 "-af",
@@ -279,13 +290,14 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
             "-ac",
             str(channels),
             "-",
-        ]
+        ],
+        binary_output=True,
     )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")
 
-    raw_bytes = result.stdout.encode("latin-1") if isinstance(result.stdout, str) else result.stdout
+    raw_bytes = result.stdout
     if not raw_bytes:
         return np.array([], dtype=np.float32)
 

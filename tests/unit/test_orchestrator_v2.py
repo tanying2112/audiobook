@@ -195,16 +195,18 @@ class TestRunStage:
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
         return db
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_unknown_stage_raises(self, mock_registry, tmp_path):
+    async def test_unknown_stage_raises(self, mock_registry, tmp_path):
         mock_registry.get.side_effect = ValueError("Unknown stage: foo")
         db = MagicMock()
         with pytest.raises(StageExecutionError) as exc_info:
-            run_stage("foo", db, project_id=1)
+            await run_stage("foo", db, project_id=1)
         assert "foo" in str(exc_info.value)
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_stage_execution_error(self, mock_registry, tmp_path):
+    async def test_stage_execution_error(self, mock_registry, tmp_path):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -221,10 +223,11 @@ class TestRunStage:
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         with pytest.raises(AudiobookError):
-            run_stage("test_stage", db, project_id=1)
+            await run_stage("test_stage", db, project_id=1)
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_generic_exception_wrapped(self, mock_registry):
+    async def test_generic_exception_wrapped(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -241,10 +244,11 @@ class TestRunStage:
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
         with pytest.raises(StageExecutionError):
-            run_stage("test", db, project_id=1)
+            await run_stage("test", db, project_id=1)
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_success(self, mock_registry):
+    async def test_success(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -260,11 +264,12 @@ class TestRunStage:
 
         mock_registry.get.return_value = FakeHandler()
         db = MagicMock()
-        result = run_stage("extract", db, project_id=1, chapter_index=1)
+        result = await run_stage("extract", db, project_id=1, chapter_index=1)
         assert result == {"result": "ok"}
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_with_chapter_and_paragraph(self, mock_registry):
+    async def test_with_chapter_and_paragraph(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -285,11 +290,12 @@ class TestRunStage:
         para = MagicMock()
         para.id = 20
         db.query.return_value.filter.return_value.first.side_effect = [chapter, para]
-        result = run_stage("annotate", db, project_id=1, chapter_index=1, paragraph_index=1)
+        result = await run_stage("annotate", db, project_id=1, chapter_index=1, paragraph_index=1)
         assert result == "done"
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_with_feedback_collector(self, mock_registry):
+    async def test_with_feedback_collector(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -308,13 +314,14 @@ class TestRunStage:
         fc = MagicMock()
         mock_capture = MagicMock()
         fc.capture_stage.return_value = mock_capture
-        result = run_stage("quality", db, project_id=1, feedback_collector=fc)
+        result = await run_stage("quality", db, project_id=1, feedback_collector=fc)
         assert result == "done"
         fc.capture_stage.assert_called_once()
         mock_capture.set_source.assert_called_once_with("quality_judge")
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_with_feedback_no_project_id(self, mock_registry):
+    async def test_with_feedback_no_project_id(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -332,11 +339,12 @@ class TestRunStage:
         db = MagicMock()
         fc = MagicMock()
         # No project_id → feedback_capture should be None
-        result = run_stage("extract", db, chapter_index=1, feedback_collector=fc)
+        result = await run_stage("extract", db, chapter_index=1, feedback_collector=fc)
         assert result == "ok"
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.StageRegistry")
-    def test_error_writes_to_feedback(self, mock_registry):
+    async def test_error_writes_to_feedback(self, mock_registry):
         class FakeHandler:
             @staticmethod
             def run(**kwargs):
@@ -356,7 +364,7 @@ class TestRunStage:
         mock_capture = MagicMock()
         fc.capture_stage.return_value = mock_capture
         with pytest.raises(StageExecutionError):
-            run_stage("test", db, project_id=1, feedback_collector=fc)
+            await run_stage("test", db, project_id=1, feedback_collector=fc)
         mock_capture.set_llm_output.assert_called()
 
 
@@ -364,29 +372,33 @@ class TestRunStage:
 
 
 class TestRunPipeline:
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_sequential(self, mock_run_stage):
+    async def test_sequential(self, mock_run_stage):
         mock_run_stage.side_effect = ["r1", "r2"]
         db = MagicMock()
-        results = run_pipeline(["extract", "analyze"], db, project_id=1)
+        results = await run_pipeline(["extract", "analyze"], db, project_id=1)
         assert results == ["r1", "r2"]
         assert mock_run_stage.call_count == 2
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_empty_stages(self, mock_run_stage):
+    async def test_empty_stages(self, mock_run_stage):
         db = MagicMock()
-        results = run_pipeline([], db, project_id=1)
+        results = await run_pipeline([], db, project_id=1)
         assert results == []
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_exception_propagates(self, mock_run_stage):
+    async def test_exception_propagates(self, mock_run_stage):
         mock_run_stage.side_effect = Exception("fail")
         db = MagicMock()
         with pytest.raises(Exception):
-            run_pipeline(["extract"], db, project_id=1)
+            await run_pipeline(["extract"], db, project_id=1)
 
+    @pytest.mark.asyncio
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_hooks_called(self, mock_run_stage):
+    async def test_hooks_called(self, mock_run_stage):
         mock_run_stage.return_value = "ok"
         db = MagicMock()
         pipeline_events = []
@@ -396,7 +408,7 @@ class TestRunPipeline:
 
         _pipeline_hooks.append(hook)
         try:
-            run_pipeline(["extract"], db, project_id=1)
+            await run_pipeline(["extract"], db, project_id=1)
             assert "pipeline_start" in pipeline_events
             assert "pipeline_end" in pipeline_events
         finally:

@@ -12,6 +12,8 @@ const navItems = [
   { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
   { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback' },
   { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness' },
+  { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
+  { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: '/projects/1/dashboard' },
 ]
 
 function isActive(path: string): boolean {

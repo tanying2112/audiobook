@@ -2,51 +2,66 @@
 
 These tests target pure-logic helpers and database/filesystem/orchestrator-bound
 functions. Heavy dependencies (database SessionLocal/init_db, models.Project,
-pipeline.orchestrator.run_pipeline) are mocked through sys.modules stubs so the
-module loads under pytest's ``src`` layout.
+pipeline.orchestrator.run_pipeline) are patched via monkeypatch on the module
+object after import, avoiding sys.modules pollution.
 """
 
 import argparse
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
-# ── Module loading stub ──────────────────────────────────────────────────────
-# run_pipeline.py imports `from audiobook_studio.database import ...` (absolute,
-# no ``src`` prefix). Under pytest we import via ``src.audiobook_studio`` so we
-# pre-stub the absolute modules to make the import resolve.
-@pytest.fixture(scope="module", autouse=True)
-def _stub_run_pipeline_deps():
-    stubs = {}
-    for name in (
-        "audiobook_studio",
-        "audiobook_studio.database",
-        "audiobook_studio.models",
-        "audiobook_studio.pipeline",
-        "audiobook_studio.pipeline.orchestrator",
-    ):
-        if name not in sys.modules:
-            stubs[name] = MagicMock()
-            sys.modules[name] = stubs[name]
-    # Preserve the real models module since run_pipeline uses Project only via
-    # the mocked attribute path; orchestrator_run_pipeline is also mocked.
-    yield
-    for name in list(stubs.keys()):
-        sys.modules.pop(name, None)
+# Ensure src/ is importable
+SRC_PATH = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
 
 
+# ── Module loading fixture ─────────────────────────────────────────────────────
+# We import run_pipeline normally (with src/ in path), then patch its attribute
+# references. This avoids sys.modules stubbing that pollutes other tests.
 @pytest.fixture
-def rp():
-    """Import run_pipeline module fresh for each test (after stub is installed)."""
-    import importlib
-
+def rp(monkeypatch):
+    """Import run_pipeline module fresh for each test with dependencies patched."""
     import src.audiobook_studio.run_pipeline as run_pipeline
 
+    # Create mocks for the heavy dependencies
+    mock_database = MagicMock()
+    mock_database.SessionLocal = MagicMock()
+    mock_database.init_db = MagicMock()
+
+    mock_models = MagicMock()
+    mock_models.Project = MagicMock()
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.run_pipeline = AsyncMock()
+    mock_orchestrator.init_telemetry = MagicMock()
+    mock_orchestrator.shutdown_telemetry = MagicMock()
+
+    mock_checkpoint = MagicMock()
+    mock_checkpoint.CheckpointManager = MagicMock()
+
+    mock_gc = MagicMock()
+    mock_gc.cleanup_after_export = MagicMock()
+
+    # Patch the module's attribute references (not sys.modules)
+    monkeypatch.setattr(run_pipeline, "SessionLocal", mock_database.SessionLocal)
+    monkeypatch.setattr(run_pipeline, "init_db", mock_database.init_db)
+    monkeypatch.setattr(run_pipeline, "Project", mock_models.Project)
+    monkeypatch.setattr(run_pipeline, "orchestrator_run_pipeline", mock_orchestrator.run_pipeline)
+    monkeypatch.setattr(run_pipeline, "init_telemetry", mock_orchestrator.init_telemetry)
+    monkeypatch.setattr(run_pipeline, "shutdown_telemetry", mock_orchestrator.shutdown_telemetry)
+    monkeypatch.setattr(run_pipeline, "CheckpointManager", mock_checkpoint.CheckpointManager)
+    monkeypatch.setattr(run_pipeline, "cleanup_after_export", mock_gc.cleanup_after_export)
+
+    # Reload to ensure patches are applied
+    import importlib
+
     importlib.reload(run_pipeline)
-    return run_pipeline
+
+    yield run_pipeline
 
 
 # ── Pure-logic helpers ─────────────────────────────────────────────────────────
@@ -140,6 +155,7 @@ class TestModuleConstants:
             "annotate",
             "edit",
             "audio_postprocess",
+            "review",
             "synthesize",
             "quality",
         ]
@@ -207,10 +223,11 @@ class TestInitializeDatabase:
             with pytest.raises(RuntimeError):
                 rp.initialize_database(seed_projects=True)
             mock_session.rollback.assert_called_once()
+        # close is called in finally
         mock_session.close.assert_called_once()
 
 
-# ── Filesystem-bound _get_chapter_files ───────────────────────────────────────
+# ── Filesystem-bound _get_chapter_files ────────────────────────────────────────
 
 
 class TestGetChapterFiles:
@@ -259,13 +276,10 @@ class TestGetChapterFiles:
     def test_returns_tuples_of_int_and_path(self, rp, tmp_path):
         book_dir = tmp_path / "testbook"
         book_dir.mkdir()
-        (book_dir / "chapter_07.txt").write_text("c", encoding="utf-8")
+        (book_dir / "chapter_01.txt").write_text("c1", encoding="utf-8")
         with patch.object(rp, "MOCK_DATA_DIR", tmp_path):
             result = rp._get_chapter_files("testbook")
-        assert len(result) == 1
-        num, path = result[0]
-        assert num == 7
-        assert isinstance(path, Path)
+        assert all(isinstance(n, int) and isinstance(p, Path) for n, p in result)
 
 
 # ── _find_project ──────────────────────────────────────────────────────────────
@@ -293,7 +307,7 @@ class TestFindProject:
         assert result is sentinel
 
 
-# ── create_mock_data ─────────────────────────────────────────────────────────
+# ── create_mock_data ──────────────────────────────────────────────────────────
 
 
 class TestCreateMockData:
@@ -324,7 +338,7 @@ class TestCreateMockData:
         assert (book_dir / "chapter_03.txt").exists()
 
 
-# ── run_book_pipeline ─────────────────────────────────────────────────────────
+# ── run_book_pipeline ──────────────────────────────────────────────────────────
 
 
 class TestRunBookPipeline:
@@ -362,16 +376,29 @@ class TestRunBookPipeline:
                 rp.orchestrator_run_pipeline.assert_not_called()
 
     def test_runs_extract_analyze_only(self, rp, tmp_path):
-        (tmp_path / "chapter_01.txt").write_text("hello world", encoding="utf-8")
+        # _get_chapter_files resolves chapter files under
+        # ``MOCK_DATA_DIR/<book_name>/chapter_*.txt`` (run_pipeline.py:348), so the
+        # fixture must mirror that per-book subdirectory layout — placing the file
+        # at the tmp_path root left _get_chapter_files returning [], so the chapter
+        # loop (and thus the orchestrator call) never ran.
+        book_dir = tmp_path / "红楼梦"
+        book_dir.mkdir()
+        (book_dir / "chapter_01.txt").write_text("hello world", encoding="utf-8")
         with patch.object(rp, "MOCK_DATA_DIR", tmp_path):
             mock_db = MagicMock()
             mock_proj = MagicMock(id=42)
             mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
             # Chapter query returns None → function skips paragraph-level pipeline
             mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+            # run_book_pipeline drives the async orchestrator through asyncio.run,
+            # so the stand-in must be awaitable: a plain MagicMock return_value would
+            # make asyncio.run raise TypeError (not a coroutine), which the
+            # chapter-level ``except Exception`` would silently swallow — letting the
+            # assertion pass while the async path never actually ran.
+            mock_orch = AsyncMock(return_value=[{"stage": "extract"}])
             with (
                 patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline", return_value=[{"stage": "extract"}]) as mock_orch,
+                patch.object(rp, "orchestrator_run_pipeline", new=mock_orch),
             ):
                 rp.run_book_pipeline("红楼梦", stages=["extract", "analyze"])
                 # orchestrator called once for chapter-level

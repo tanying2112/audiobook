@@ -20,12 +20,12 @@ limitations under the License.
 
 import os
 import sys
-from typing import Tuple, Union, Generator, List, Optional
+import warnings
+from typing import Generator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torchaudio
-import warnings
 from einops import rearrange
 from pydantic import BaseModel
 
@@ -47,8 +47,8 @@ from ..modules.minicpm4 import MiniCPM4Config, MiniCPMModel
 from .utils import (
     apply_generation_seed,
     get_dtype,
-    materialize_generation_seed,
     mask_multichar_chinese_tokens,
+    materialize_generation_seed,
     next_and_close,
     pick_runtime_dtype,
     resolve_runtime_device,

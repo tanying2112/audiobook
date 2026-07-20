@@ -102,7 +102,20 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_response._raw_response = {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}
+        # Create a mock ModelResponse-like object that instructor returns
+        mock_model_response = MagicMock()
+        mock_model_response._raw_response = MagicMock()
+        mock_model_response._raw_response.usage = MagicMock()
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+        mock_model_response._raw_response.choices = [
+            MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
+        ]
+        # When instructor parses the response, it returns the Pydantic model
+        # But we need the mock to have _raw_response attribute
+        mock_response._raw_response = mock_model_response._raw_response
 
         mock_client.chat.completions.create.return_value = mock_response
 
@@ -139,7 +152,6 @@ class TestLLMClientRealMode:
             client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch("instructor.from_litellm")
     def test_call_real_mode_with_api_base(self, mock_instructor):
         """Test call with custom api_base."""
@@ -159,7 +171,18 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_response._raw_response = {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}
+        # Create a mock ModelResponse-like object that instructor returns
+        mock_model_response = MagicMock()
+        mock_model_response._raw_response = MagicMock()
+        mock_model_response._raw_response.usage = MagicMock()
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+        mock_model_response._raw_response.choices = [
+            MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
+        ]
+        mock_response._raw_response = mock_model_response._raw_response
 
         mock_client.chat.completions.create.return_value = mock_response
 

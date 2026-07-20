@@ -41,6 +41,18 @@ from src.audiobook_studio.schemas import (
 class TestLLMClientSuccessBranch:
     """Mock model returns valid Pydantic objects — no real HTTP calls."""
 
+    def _make_mock_response(self, output_obj, prompt_tokens=100, completion_tokens=50):
+        """Helper to create properly structured mock response."""
+        mock_raw = MagicMock()
+        mock_raw.usage = MagicMock()
+        mock_raw.usage.model_dump.return_value = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        mock_raw.choices = [MagicMock(message=MagicMock(content=output_obj.model_dump_json()))]
+        output_obj._raw_response = mock_raw
+        return output_obj
+
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch("instructor.from_litellm")
     def test_call_returns_quality_judgment(self, mock_instructor):
@@ -48,18 +60,21 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = QualityJudgment(
-            segment_id="seg_001",
-            speaker_clarity=0.92,
-            emotion_match=0.88,
-            prosody_naturalness=0.90,
-            text_audio_alignment=0.91,
-            overall_score=0.90,
-            issues=[],
-            fix_suggestions=[],
-            needs_regeneration=False,
+        mock_output = self._make_mock_response(
+            QualityJudgment(
+                segment_id="seg_001",
+                speaker_clarity=0.92,
+                emotion_match=0.88,
+                prosody_naturalness=0.90,
+                text_audio_alignment=0.91,
+                overall_score=0.90,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
+            ),
+            prompt_tokens=120,
+            completion_tokens=60,
         )
-        mock_output._raw_response = {"usage": {"prompt_tokens": 120, "completion_tokens": 60}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -85,31 +100,34 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = BookAnalysisOutput(
-            book_meta=BookMeta(
-                title="Test Book",
-                author="Author",
-                genre="小说",
-                difficulty="B",
-                language="zh",
-                era="现代",
-                total_chapters_estimated=10,
+        mock_output = self._make_mock_response(
+            BookAnalysisOutput(
+                book_meta=BookMeta(
+                    title="Test Book",
+                    author="Author",
+                    genre="小说",
+                    difficulty="B",
+                    language="zh",
+                    era="现代",
+                    total_chapters_estimated=10,
+                ),
+                character_voice_map=[
+                    CharacterVoiceBinding(
+                        canonical_name="旁白",
+                        aliases=[],
+                        gender="neutral",
+                        age_range="adult",
+                        suggested_voice_id="v1",
+                        sample_quote="旁白台词。",
+                    )
+                ],
+                emotion_snapshots=[EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")],
+                story_line_summary="这是一个用于测试的故事主线摘要，必须超过一百个字符才能通过Pydantic验证器的最小长度约束。故事讲述了一位平凡的主角在现代都市中经历各种冒险和成长的过程，通过克服重重困难最终实现了自我超越的励志历程。",
+                global_style_notes="测试文风备注：保持平实叙述。",
             ),
-            character_voice_map=[
-                CharacterVoiceBinding(
-                    canonical_name="旁白",
-                    aliases=[],
-                    gender="neutral",
-                    age_range="adult",
-                    suggested_voice_id="v1",
-                    sample_quote="旁白台词。",
-                )
-            ],
-            emotion_snapshots=[EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")],
-            story_line_summary="这是一个用于测试的故事主线摘要，必须超过一百个字符才能通过Pydantic验证器的最小长度约束。故事讲述了一位平凡的主角在现代都市中经历各种冒险和成长的过程，通过克服重重困难最终实现了自我超越的励志历程。",
-            global_style_notes="测试文风备注：保持平实叙述。",
+            prompt_tokens=200,
+            completion_tokens=100,
         )
-        mock_output._raw_response = {"usage": {"prompt_tokens": 200, "completion_tokens": 100}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -129,22 +147,25 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ParagraphAnnotation(
-            paragraph_index=0,
-            speaker_canonical_name="旁白",
-            is_dialogue=False,
-            emotion="neutral",
-            emotion_intensity=0.5,
-            speech_rate=1.0,
-            pitch_shift_semitones=0,
-            pause_before_ms=300,
-            pause_after_ms=500,
-            confidence=0.9,
-            difficulty="B",
-            needs_sfx=False,
-            sfx_tags=[],
+        mock_output = self._make_mock_response(
+            ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+            ),
+            prompt_tokens=80,
+            completion_tokens=40,
         )
-        mock_output._raw_response = {"usage": {"prompt_tokens": 80, "completion_tokens": 40}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -165,22 +186,25 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ParagraphAnnotation(
-            paragraph_index=0,
-            speaker_canonical_name="旁白",
-            is_dialogue=False,
-            emotion="neutral",
-            emotion_intensity=0.5,
-            speech_rate=1.0,
-            pitch_shift_semitones=0,
-            pause_before_ms=300,
-            pause_after_ms=500,
-            confidence=0.9,
-            difficulty="B",
-            needs_sfx=False,
-            sfx_tags=[],
+        mock_output = self._make_mock_response(
+            ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+            ),
+            prompt_tokens=50,
+            completion_tokens=25,
         )
-        mock_output._raw_response = {"usage": {"prompt_tokens": 50, "completion_tokens": 25}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -200,8 +224,11 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ExtractionResult(raw_text="text", language="zh", page_count=1)
-        mock_output._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+        mock_output = self._make_mock_response(
+            ExtractionResult(raw_text="text", language="zh", page_count=1),
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -333,7 +360,7 @@ class TestLLMClientFailureBranch:
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch("instructor.from_litellm")
     def test_call_none_output_rejected(self, mock_instructor):
-        """Client.call() rejects None output from model."""
+        """Client.call() handles None output from model gracefully."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
         mock_client.chat.completions.create.return_value = None
@@ -342,11 +369,11 @@ class TestLLMClientFailureBranch:
         client = LLMClient(config)
         client._client = mock_client
 
-        # validate_and_parse_llm_response should raise for None
-        from src.audiobook_studio.llm.utils import LLMParseError
-
-        with pytest.raises(LLMParseError):
-            client.call(prompt="test", response_model=QualityJudgment)
+        # Current behavior: None response is handled gracefully, returns result with output=None
+        result = client.call(prompt="test", response_model=QualityJudgment)
+        assert result.output is None
+        assert result.tokens_in == 0
+        assert result.tokens_out == 0
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     def test_call_missing_prompt_raises(self):

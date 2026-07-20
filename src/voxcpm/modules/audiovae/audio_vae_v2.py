@@ -3,10 +3,10 @@ from typing import List, Optional
 
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm
 from pydantic import BaseModel
+from torch import nn
+from torch.nn.utils import weight_norm
 
 
 def WNConv1d(*args, **kwargs):

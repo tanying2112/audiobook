@@ -31,6 +31,8 @@ class FeedbackRecord(BaseModel):
         "edit_for_tts",
         "tts_routing",
         "quality_judge",
+        "synthesize",
+        "audio_postprocess",
     ] = Field(..., description="发生反馈的环节")
     book_id: str = Field(..., description="书籍 ID")
     paragraph_index: int | None = Field(default=None, description="段落索引 (如适用)")

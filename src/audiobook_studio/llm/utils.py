@@ -72,4 +72,7 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
                 stage=stage,
             )
 
-    return raw_response  # type: ignore[return-value]
+    # Validate against Pydantic model if it has model_validate method
+    if hasattr(response_model, "model_validate"):
+        return response_model.model_validate(raw_response)
+    return raw_response

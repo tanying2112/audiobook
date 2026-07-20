@@ -1,7 +1,9 @@
-import torch
-from ..minicpm4 import MiniCPMModel, MiniCPM4Config
-import torch.nn as nn
 import math
+
+import torch
+import torch.nn as nn
+
+from ..minicpm4 import MiniCPM4Config, MiniCPMModel
 
 
 class SinusoidalPosEmb(torch.nn.Module):

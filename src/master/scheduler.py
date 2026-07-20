@@ -21,19 +21,19 @@ from typing import Any, Dict, List, Optional
 
 import redis
 
-
 # Platform routing priority matrix (lower = higher priority)
 PLATFORM_ROUTING = {
-    "modal": 0,      # Urgent/Interactive - instant cold start, T4 serverless
-    "baidu": 1,      # Throughput - daily 12h V100 burst
+    "modal": 0,  # Urgent/Interactive - instant cold start, T4 serverless
+    "baidu": 1,  # Throughput - daily 12h V100 burst
     "lightning": 2,  # Core - 80h/month T4 persistent
-    "kaggle": 3,     # Primary - 30h/week P100/T4 batch
+    "kaggle": 3,  # Primary - 30h/week P100/T4 batch
 }
 
 
 @dataclass
 class WorkerTelemetry:
     """Parsed worker heartbeat payload."""
+
     worker_id: str
     platform: str
     status: str  # "idle", "processing", "exiting"
@@ -244,7 +244,7 @@ class HermesScheduler:
                 status = self.get_fleet_status()
 
                 # Log fleet summary
-                platform_str = ", ".join(f"{p}={d['count']}" for p, d in status['platforms'].items())
+                platform_str = ", ".join(f"{p}={d['count']}" for p, d in status["platforms"].items())
                 print(
                     f"📊 [{self.scheduler_id}] Fleet: {status['total_workers']} workers "
                     f"({status['active_workers']} active, {status['stale_workers']} stale) | "

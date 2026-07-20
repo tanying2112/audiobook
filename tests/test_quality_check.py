@@ -691,7 +691,7 @@ class TestQualityCheckNonMockPaths:
 
         # Patch where it's used in quality_check module (local binding from monitoring import)
         with patch(
-            "src.audiobook_studio.pipeline.quality_check.record_stage_performance",
+            "src.audiobook_studio.monitoring.record_stage_performance",
             side_effect=capture_record,
         ):
             audio_path = "/fake/path.mp3"

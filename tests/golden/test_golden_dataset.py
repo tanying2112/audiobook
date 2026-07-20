@@ -534,7 +534,7 @@ class TestGoldenDatasetSynthesize:
         assert results[0].segment_id == "test_book_ch1_p0"
         assert results[0].file_path
         assert results[0].duration_ms > 0
-        assert results[0].engine in ["kokoro", "edge", "human_clone"]
+        assert results[0].engine in ["kokoro", "edge", "human_clone", "hermes"]
         assert results[0].voice_id
 
 

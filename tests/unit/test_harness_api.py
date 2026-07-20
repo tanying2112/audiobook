@@ -12,11 +12,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# Import all models to register them with Base.metadata
+from src.audiobook_studio import models  # noqa: F401
 from src.audiobook_studio.database import Base, get_db
 
 
 def _make_client():
     """Build test client with in-memory SQLite DB."""
+    from src.audiobook_studio import models  # noqa: F401 - import to register models with Base
     from src.audiobook_studio.api.harness import router
 
     app = FastAPI()
@@ -24,7 +27,12 @@ def _make_client():
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
+    test_db_url = f"sqlite:///{tmp.name}"
+    engine = create_engine(test_db_url, connect_args={"check_same_thread": False})
+
+    # Set DATABASE_URL so that _get_db_session_factory uses our test database
+    os.environ["DATABASE_URL"] = test_db_url
+
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(bind=engine)
 

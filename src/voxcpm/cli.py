@@ -278,10 +278,7 @@ def cmd_clone(args, parser):
 
 
 def cmd_validate(args, parser):
-    from voxcpm.training.validate import (
-        print_validation_report,
-        validate_manifest,
-    )
+    from voxcpm.training.validate import print_validation_report, validate_manifest
 
     manifest = str(require_file_exists(args.manifest, parser, "manifest file"))
     result = validate_manifest(

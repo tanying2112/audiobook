@@ -22,24 +22,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..di import get_app_container
 from ..llm import LLMRouter, create_router
-from ..monitoring import record_stage_performance
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
+from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from ..tts import (
     EngineRegistry,
+    RemoteTTSPort,
     SynthesisResult,
     TTSEngine,
-    VoiceInfo,
-    RemoteTTSPort,
+    TTSProsody,
+    TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
-    TTSStatus,
     TTSVoiceAnchor,
-    TTSProsody,
+    VoiceInfo,
     get_port,
 )
 from ..tts.clone import CloningConfig, VoiceCloningManager
@@ -82,6 +83,17 @@ class SynthesizePipeline:
     # Default crossfade duration in milliseconds between segments
     DEFAULT_CROSSFADE_MS = 50
 
+    # Configurable crossfade duration (can be overridden via CROSSFADE_MS env var)
+    @classmethod
+    def get_crossfade_ms(cls) -> int:
+        """Get crossfade duration from environment or default."""
+        import os
+
+        try:
+            return int(os.environ.get("CROSSFADE_MS", cls.DEFAULT_CROSSFADE_MS))
+        except ValueError:
+            return cls.DEFAULT_CROSSFADE_MS
+
     def __init__(
         self,
         router: Optional[LLMRouter] = None,
@@ -89,6 +101,7 @@ class SynthesizePipeline:
         mock_mode: Optional[bool] = None,
         hardware_profile: Optional[HardwareProfile] = None,
         port: Optional[RemoteTTSPort] = None,
+        crossfade_ms: Optional[int] = None,
     ):
         """Initialize the synthesis pipeline.
 
@@ -98,6 +111,8 @@ class SynthesizePipeline:
             mock_mode: If True, uses mock synthesis. Defaults to MOCK_LLM env var.
             hardware_profile: Hardware profile for engine selection.
             port: RemoteTTSPort instance. If None, uses global default via get_port().
+            crossfade_ms: Crossfade duration in ms for segment stitching.
+                          Defaults to CROSSFADE_MS env var or DEFAULT_CROSSFADE_MS.
         """
         if mock_mode is not None:
             self.mock_mode = mock_mode
@@ -127,11 +142,19 @@ class SynthesizePipeline:
         # Remote TTS Port - the single abstraction for all synthesis
         self._port = port or get_port()
 
+        # Crossfade duration for segment stitching
+        if crossfade_ms is not None:
+            self.crossfade_ms = crossfade_ms
+        else:
+            self.crossfade_ms = self.get_crossfade_ms()
+
         # Track existing segments for incremental synthesis
         self.existing_segments = {}
         self._mock_segment_counter = 0
 
-        logger.info(f"SynthesizePipeline initialized with port: {type(self._port).__name__}")
+        logger.info(
+            f"SynthesizePipeline initialized with port: {type(self._port).__name__}, crossfade_ms={self.crossfade_ms}"
+        )
 
     def _text_hash(self, text: str) -> str:
         return hashlib.md5(text.encode()).hexdigest()[:12]
@@ -304,6 +327,7 @@ class SynthesizePipeline:
         if source.exists():
             # Local file - copy
             import shutil
+
             shutil.copy2(source, dest_path)
         else:
             # Remote path (R2 key) - would need R2 client
@@ -316,10 +340,11 @@ class SynthesizePipeline:
 
     @trace_function(name="pipeline.synthesize.run", stage="synthesize")
     def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
-        """Synthesize multiple paragraphs incrementally.
+        """Synthesize multiple paragraphs incrementally with quality gate.
 
         For each input, checks if regeneration is needed (text changed),
-        submits synthesis via Port, and returns audio segments.
+        submits synthesis via Port, runs quality checks with auto-retry (max 2),
+        and returns audio segments. Produces quality_report.json.
 
         Args:
             inputs: List of TtsRoutingInput with text, voice, and prosody.
@@ -327,9 +352,13 @@ class SynthesizePipeline:
         Returns:
             List of AudioSegment with file paths and metadata.
         """
+        from ..monitoring import record_stage_performance
+
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments = []
+        segment_files = []
+        segment_ids = []
 
         for inp in inputs:
             decision = self._make_routing_decision(inp)
@@ -432,6 +461,15 @@ class SynthesizePipeline:
                     schema_compliance=None,
                 )
 
+                # Record TTS telemetry
+                record_tts_segment(
+                    duration_ms=duration if success else 0,
+                    latency_ms=synthesis_latency_ms,
+                    provider=engine,
+                    cost_usd=cost_usd,
+                    success=success,
+                )
+
             segment = AudioSegment(
                 segment_id=segment_id,
                 file_path=str(output_path),
@@ -444,6 +482,84 @@ class SynthesizePipeline:
             self.existing_segments[segment_id] = segment
             self._persist_segment_metadata(segment)
             segments.append(segment)
+            segment_files.append(output_path)
+            segment_ids.append(segment_id)
+
+        # Quality Gate: Check all segments with auto-retry (max 2 retries)
+        if segment_files:
+            logger.info(f"Running quality checks on {len(segment_files)} segments...")
+
+            # Get project info for report
+            project_id = inputs[0].book_id if inputs else "unknown"
+            chapter_index = inputs[0].chapter_index if inputs else 0
+
+            # Define retry callback for quality failures
+            def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
+                """Re-synthesize a failed segment."""
+                # Find the original input for this segment
+                seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
+                if seg_input is None:
+                    logger.warning(f"No input found for segment {seg_id}")
+                    return None
+
+                decision = self._make_routing_decision(seg_input)
+                retry_output = self.output_dir / f"{seg_id}_retry{attempt}.wav"
+
+                try:
+                    logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
+                    retry_duration, retry_engine = asyncio.run(
+                        self._synthesize_via_port(
+                            seg_input.text,
+                            decision.voice_id,
+                            decision.prosody_overrides or {},
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                        )
+                    )
+                    # Record retry telemetry
+                    record_tts_retry(fallback_from=decision.engine_choice)
+
+                    # Update segment with new file
+                    for seg in segments:
+                        if seg.segment_id == seg_id:
+                            seg.file_path = str(retry_output)
+                            seg.duration_ms = retry_duration
+                            seg.engine = retry_engine
+                            self._persist_segment_metadata(seg)
+                            break
+                    return retry_output
+                except Exception as e:
+                    logger.error(f"Retry synthesis failed for {seg_id}: {e}")
+                    return None
+
+            # Run quality checks with auto-retry
+            quality_report: QualityReport = check_all_segments(
+                segment_files=segment_files,
+                segment_ids=segment_ids,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                max_retries=2,
+                retry_callback=retry_callback,
+            )
+
+            # Save quality report
+            report_path = self.output_dir / "quality_report.json"
+            save_quality_report(quality_report, report_path)
+
+            # Record quality check telemetry
+            for result in quality_report.segment_results:
+                record_tts_quality_check(result.passed)
+
+            # Log quality results
+            logger.info(
+                f"Quality check complete: {quality_report.passed_segments}/{quality_report.total_segments} passed, "
+                f"overall={'PASSED' if quality_report.overall_passed else 'FAILED'}"
+            )
+            for result in quality_report.segment_results:
+                if not result.passed:
+                    logger.warning(f"  Segment {result.segment_id} FAILED: {', '.join(result.issues)}")
+                else:
+                    logger.debug(f"  Segment {result.segment_id} passed")
 
         # Stitch chapter-level audio (optional)
         if len(segments) > 1:
@@ -474,7 +590,7 @@ class SynthesizePipeline:
 
         try:
             # Build ffmpeg filter_complex for crossfade stitching
-            crossfade_ms = self.DEFAULT_CROSSFADE_MS
+            crossfade_ms = self.crossfade_ms
 
             # Build input arguments
             input_args = []
@@ -586,11 +702,249 @@ class SynthesizePipeline:
             logger.error(f"Simple concat failed: {e}")
             return sum(s.duration_ms for s in segments)
 
+    def crossfade_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple],
+    ) -> int:
+        """
+        Replace a single segment in chapter audio with crossfade at boundaries.
+
+        Args:
+            chapter_audio_path: Path to full chapter audio file
+            segment_index: Index of segment to replace (0-based)
+            new_segment_path: Path to new segment audio
+            output_path: Output path for modified chapter audio
+            segment_boundaries_ms: List of (start_ms, end_ms) for each segment in chapter
+
+        Returns:
+            Total duration of output in ms
+        """
+        import os
+
+        crossfade_ms = self.crossfade_ms
+
+        if not chapter_audio_path.exists():
+            logger.warning(f"Chapter audio not found: {chapter_audio_path}")
+            # Just copy new segment
+            import shutil
+
+            shutil.copy2(new_segment_path, output_path)
+            return get_duration_sync(new_segment_path)
+
+        if segment_index >= len(segment_boundaries_ms):
+            logger.warning(f"Segment index {segment_index} out of bounds")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
+
+        start_ms, end_ms = segment_boundaries_ms[segment_index]
+
+        # Build ffmpeg filter complex for replacement with crossfade
+        # We need to:
+        # 1. Extract pre-replacement part (0 to start_ms - crossfade_ms/2)
+        # 2. Crossfade with new segment
+        # 3. Extract post-replacement part (end_ms + crossfade_ms/2 to end)
+
+        half_crossfade = crossfade_ms // 2
+        pre_end = max(0, start_ms - half_crossfade)
+        post_start = end_ms + half_crossfade
+
+        # Get total duration
+        total_duration = get_duration_sync(chapter_audio_path)
+        if total_duration <= post_start:
+            post_start = total_duration
+
+        try:
+            input_args = [
+                "-i",
+                str(chapter_audio_path),
+                "-i",
+                str(new_segment_path),
+            ]
+
+            filter_parts = []
+
+            # Extract pre part
+            if pre_end > 0:
+                filter_parts.append(f"[0:a]atrim=0:{pre_end/1000.0},asetpts=PTS-STARTPTS[pre]")
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[pre]")
+
+            # Extract post part
+            if post_start < total_duration:
+                filter_parts.append(
+                    f"[0:a]atrim={post_start/1000.0}:{total_duration/1000.0},asetpts=PTS-STARTPTS[post]"
+                )
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[post]")
+
+            # Crossfade pre with new segment
+            crossfade_sec = half_crossfade / 1000.0
+            filter_parts.append(f"[pre][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[pre_new]")
+
+            # Crossfade new segment with post
+            if post_start < total_duration:
+                filter_parts.append(f"[1:a][post]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[new_post]")
+                filter_parts.append("[pre_new][new_post]concat=n=2:v=0:a=1[out]")
+            else:
+                filter_parts.append("[pre_new]anull[out]")
+
+            filter_complex = ";".join(filter_parts)
+
+            cmd = (
+                [
+                    "ffmpeg",
+                    "-y",
+                ]
+                + input_args
+                + [
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "[out]",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "128k",
+                    str(output_path),
+                ]
+            )
+
+            logger.info(
+                f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
+            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+            if result.returncode != 0:
+                logger.error(f"ffmpeg crossfade replace failed: {result.stderr}")
+                # Fallback: simple replace without crossfade
+                return self._simple_replace_segment(
+                    chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
+                )
+
+            duration = get_duration_sync(output_path)
+            logger.info(f"Crossfade replace complete: {output_path.name}, total {duration}ms")
+            return duration
+
+        except Exception as e:
+            logger.error(f"Crossfade replace failed: {e}")
+            return self._simple_replace_segment(
+                chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
+            )
+
+    def _simple_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple],
+    ) -> int:
+        """Simple segment replacement without crossfade as fallback."""
+        try:
+            start_ms, end_ms = segment_boundaries_ms[segment_index]
+            total_duration = get_duration_sync(chapter_audio_path)
+
+            # Build filter: pre + new + post
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pre_path = Path(tmpdir) / "pre.mp3"
+                post_path = Path(tmpdir) / "post.mp3"
+
+                # Extract pre
+                if start_ms > 0:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(chapter_audio_path),
+                            "-ss",
+                            "0",
+                            "-to",
+                            f"{start_ms/1000.0}",
+                            "-c",
+                            "copy",
+                            str(pre_path),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                else:
+                    pre_path = None
+
+                # Extract post
+                if end_ms < total_duration:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(chapter_audio_path),
+                            "-ss",
+                            f"{end_ms/1000.0}",
+                            "-c",
+                            "copy",
+                            str(post_path),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                else:
+                    post_path = None
+
+                # Concat
+                concat_list = Path(tmpdir) / "concat.txt"
+                with open(concat_list, "w") as f:
+                    if pre_path and pre_path.exists():
+                        f.write(f"file '{pre_path.absolute()}'\n")
+                    f.write(f"file '{new_segment_path.absolute()}'\n")
+                    if post_path and post_path.exists():
+                        f.write(f"file '{post_path.absolute()}'\n")
+
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(output_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+
+            duration = get_duration_sync(output_path)
+            return duration
+        except Exception as e:
+            logger.error(f"Simple replace failed: {e}")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
+
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
         """Make TTS routing decision (simplified for now).
 
         In the future, this would use the LLM router for intelligent routing.
         """
+        import os
+
         from ..schemas import TtsRoutingDecision
 
         char = next(
@@ -599,19 +953,46 @@ class SynthesizePipeline:
         )
         voice_id = char.suggested_voice_id if char else "default"
 
-        mock_info = "Mock mode" if self.mock_mode else "real mode"
-        reasoning = f"Auto routing: local preferred for Chinese, Edge for English ({mock_info})"
+        # Respect ENABLE_LOCAL_TTS environment variable for engine selection
+        enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+
+        if enable_local_tts:
+            # Prefer local engine (Kokoro) when enabled
+            engine_choice = "kokoro"
+            fallback_engine = "edge"
+            mock_info = "Local TTS enabled"
+        else:
+            # Prefer cloud engine (Edge-TTS) when local disabled
+            engine_choice = "edge"
+            fallback_engine = "kokoro"
+            mock_info = "Local TTS disabled - using cloud"
+
+        # Override with prefer_local if explicitly set
+        if inp.prefer_local is not None:
+            if inp.prefer_local:
+                engine_choice = "kokoro"
+                fallback_engine = "edge"
+            else:
+                engine_choice = "edge"
+                fallback_engine = "kokoro"
+            mock_info += f" (prefer_local={inp.prefer_local})"
+
+        reasoning = f"Auto routing: {engine_choice} preferred, {fallback_engine} fallback ({mock_info})"
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
-            engine_choice="kokoro",  # Default to local engine; routing logic can be enhanced later
+            engine_choice=engine_choice,
             voice_id=voice_id,
             prosody_overrides={
                 "rate": float(inp.paragraph_annotation.speech_rate) if inp.paragraph_annotation.speech_rate else 1.0,
-                "pitch": float(inp.paragraph_annotation.pitch_shift_semitones) if inp.paragraph_annotation.pitch_shift_semitones is not None else 0.0,
+                "pitch": (
+                    float(inp.paragraph_annotation.pitch_shift_semitones)
+                    if inp.paragraph_annotation.pitch_shift_semitones is not None
+                    else 0.0
+                ),
             },
-            fallback_engine="kokoro",
+            fallback_engine=fallback_engine,
             reasoning=reasoning,
-            estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
+            estimated_cost_usd=0.0 if engine_choice == "kokoro" else 0.001,
             estimated_duration_ms=3000,
         )
 

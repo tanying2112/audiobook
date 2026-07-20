@@ -1,0 +1,274 @@
+name: Nightly Integration Tests
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: 'Run full integration tests'
+        required: false
+        default: 'true'
+        type: boolean
+      run_stress:
+        description: 'Run Locust stress tests'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  PYTHON_VERSION: "3.11"
+  PIP_CACHE_KEY: pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml', '**/poetry.lock') }}
+  DOCKER_IMAGE: audiobook-studio
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # NIGHTLY INTEGRATION TESTS (Full stack with real services)
+  # ---------------------------------------------------------------------------
+  nightly-integration:
+    name: Nightly Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 180  # 3 hours max for full integration
+    if: github.event_name == 'schedule' || github.event.inputs.run_integration == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            **/requirements*.txt
+            **/pyproject.toml
+            **/poetry.lock
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e . pytest pytest-asyncio pytest-cov pytest-timeout
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+
+      - name: Start infrastructure (PostgreSQL, Redis)
+        run: |
+          docker compose up -d db redis
+          sleep 15
+          docker compose ps
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if docker compose exec -T db pg_isready -U audiobook -d audiobook; then break; fi
+            sleep 2
+          done
+
+      - name: Run database migrations
+        run: |
+          docker compose run --rm -T \
+            -e DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook \
+            web alembic upgrade head
+
+      - name: Run integration tests (real services, MOCK_LLM=false)
+        env:
+          DATABASE_URL: postgresql://audiobook:audiobook@localhost:5432/audiobook
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-nightly-only
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MOCK_LLM: "false"
+        run: |
+          python -m pytest tests/integration/ tests/e2e/ \
+            -v --tb=short --timeout=300 \
+            -m "integration or e2e" \
+            --junit-xml=nightly-integration-results.xml \
+            --cov=src/audiobook_studio \
+            --cov-report=xml \
+            --cov-report=term-missing
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-integration-results
+          path: |
+            nightly-integration-results.xml
+            coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Shutdown infrastructure
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # NIGHTLY STRESS TEST (Locust)
+  # ---------------------------------------------------------------------------
+  nightly-stress:
+    name: Nightly Stress Test (Locust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event.inputs.run_stress == 'true'
+    needs: nightly-integration
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . locust
+
+      - name: Start application stack
+        run: |
+          docker compose up -d db redis web
+          sleep 20
+          docker compose ps
+
+      - name: Run Locust stress test
+        run: |
+          locust -f tests/stress/locustfile.py \
+            --host=http://localhost:8000 \
+            --users=100 \
+            --spawn-rate=10 \
+            --run-time=10m \
+            --headless \
+            --html=locust-report-nightly.html \
+            --csv=locust-results-nightly
+
+      - name: Upload Locust reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-locust-reports
+          path: |
+            locust-report-nightly.html
+            locust-results-nightly*.csv
+
+      - name: Check performance thresholds
+        run: |
+          if [ -f locust-results-nightly_stats.csv ]; then
+            python << 'EOF'
+            import csv
+            import sys
+            with open('locust-results-nightly_stats.csv') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['Name'] == 'Aggregated':
+                        p95 = float(row['95%'])
+                        rps = float(row['Requests/s'])
+                        failures = float(row['Failure Count'])
+                        total = float(row['Request Count'])
+                        failure_rate = failures / total * 100 if total > 0 else 0
+                        print(f"p95 latency: {p95}ms")
+                        print(f"RPS: {rps}")
+                        print(f"Failure rate: {failure_rate:.2f}%")
+                        if p95 > 1000:
+                            print("❌ FAIL: p95 latency > 1000ms")
+                            sys.exit(1)
+                        if failure_rate > 5:
+                            print("❌ FAIL: failure rate > 5%")
+                            sys.exit(1)
+                        print("✅ PASS: Performance thresholds met")
+                        sys.exit(0)
+            EOF
+          else
+            echo "No results file found"
+            exit 1
+          fi
+
+      - name: Shutdown
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # NIGHTLY DOCKER BUILD & PUSH (Multi-arch)
+  # ---------------------------------------------------------------------------
+  nightly-docker:
+    name: Nightly Docker Build (Multi-arch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: nightly-integration
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runner
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE }}:nightly
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE }}:nightly-${{ github.run_number }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Verify image
+        run: |
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE }}:nightly
+          docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE }}:nightly \
+            python -c "import audiobook_studio; print('✅ Nightly image loads successfully')"
+
+  # ---------------------------------------------------------------------------
+  # NIGHTLY DEPENDENCY UPDATE CHECK (Dependabot alternative)
+  # ---------------------------------------------------------------------------
+  nightly-deps:
+    name: Nightly Dependency Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Check for outdated dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pip-outdated
+          pip list --outdated --format=json | python -m json.tool > outdated.json || true
+          echo "=== Outdated packages ==="
+          cat outdated.json
+
+      - name: Upload outdated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-outdated-deps
+          path: outdated.json

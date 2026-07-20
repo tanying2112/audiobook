@@ -1,18 +1,19 @@
 """Tests for auth router endpoints - FastAPI integration tests."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_superuser, require_permission
+from src.audiobook_studio.auth.models import PermissionName
 from src.audiobook_studio.auth.router import router
 from src.audiobook_studio.database import Base, get_db
-from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_superuser, require_permission
 from src.audiobook_studio.models.user import User as UserModel
-from src.audiobook_studio.auth.models import PermissionName
 
 
 # Test database fixture
@@ -82,19 +83,16 @@ class TestLoginEndpoint:
         mock_user.roles = [mock_role]
         mock_rbac_manager.authenticate_user.return_value = mock_user
         mock_rbac_manager.get_user_permissions.return_value = {"project:read", "project:write"}
-        
+
         mock_jwt_handler.create_token_pair.return_value = {
             "access_token": "test_access_token",
             "refresh_token": "test_refresh_token",
             "token_type": "bearer",
-            "expires_in": 1800
+            "expires_in": 1800,
         }
 
-        response = client.post(
-            "/api/auth/login",
-            data={"username": "testuser", "password": "correct_password"}
-        )
-        
+        response = client.post("/api/auth/login", data={"username": "testuser", "password": "correct_password"})
+
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
@@ -105,24 +103,18 @@ class TestLoginEndpoint:
     def test_login_invalid_password(self, client, mock_rbac_manager):
         """Test login with wrong password."""
         mock_rbac_manager.authenticate_user.return_value = None
-        
-        response = client.post(
-            "/api/auth/login",
-            data={"username": "testuser", "password": "wrong_password"}
-        )
-        
+
+        response = client.post("/api/auth/login", data={"username": "testuser", "password": "wrong_password"})
+
         assert response.status_code == 401
         assert "Incorrect username or password" in response.json()["detail"]
 
     def test_login_user_not_found(self, client, mock_rbac_manager):
         """Test login with non-existent user."""
         mock_rbac_manager.authenticate_user.return_value = None
-        
-        response = client.post(
-            "/api/auth/login",
-            data={"username": "nonexistent", "password": "password"}
-        )
-        
+
+        response = client.post("/api/auth/login", data={"username": "nonexistent", "password": "password"})
+
         assert response.status_code == 401
 
     def test_login_inactive_user(self, client, mock_rbac_manager):
@@ -130,12 +122,9 @@ class TestLoginEndpoint:
         mock_user = MagicMock()
         mock_user.is_active = False
         mock_rbac_manager.authenticate_user.return_value = mock_user
-        
-        response = client.post(
-            "/api/auth/login",
-            data={"username": "inactive", "password": "password"}
-        )
-        
+
+        response = client.post("/api/auth/login", data={"username": "inactive", "password": "password"})
+
         assert response.status_code == 400
         assert "Inactive user" in response.json()["detail"]
 
@@ -155,16 +144,13 @@ class TestRefreshTokenEndpoint:
             "sub": "1",
             "username": "testuser",
             "roles": ["admin"],
-            "permissions": ["project:read"]
+            "permissions": ["project:read"],
         }
         mock_jwt_handler.create_refresh_token.return_value = "new_refresh_token"
         mock_jwt_handler.access_token_expire_minutes = 30
 
-        response = client.post(
-            "/api/auth/refresh",
-            json={"refresh_token": "valid_refresh_token"}
-        )
-        
+        response = client.post("/api/auth/refresh", json={"refresh_token": "valid_refresh_token"})
+
         assert response.status_code == 200
         data = response.json()
         assert data["access_token"] == "new_access_token"
@@ -174,12 +160,9 @@ class TestRefreshTokenEndpoint:
     def test_refresh_token_invalid(self, client, mock_jwt_handler):
         """Test refresh with invalid token."""
         mock_jwt_handler.refresh_access_token.return_value = None
-        
-        response = client.post(
-            "/api/auth/refresh",
-            json={"refresh_token": "invalid_token"}
-        )
-        
+
+        response = client.post("/api/auth/refresh", json={"refresh_token": "invalid_token"})
+
         assert response.status_code == 401
         assert "Invalid or expired refresh token" in response.json()["detail"]
 
@@ -208,26 +191,28 @@ class TestRegisterEndpoint:
         mock_rbac_manager.create_user.return_value = mock_user
 
         app = client.app
+
         def mock_superuser():
             user = MagicMock()
             user.is_superuser = True
             user.id = 1
             return user
+
         app.dependency_overrides[get_current_superuser] = mock_superuser
-        
+
         response = client.post(
             "/api/auth/register",
             json={
                 "username": "newuser",
                 "email": "new@example.com",
                 "password": "password123",
-                "full_name": "New User"
-            }
+                "full_name": "New User",
+            },
         )
-        
+
         if get_current_superuser in app.dependency_overrides:
             del app.dependency_overrides[get_current_superuser]
-        
+
         assert response.status_code == 201
         data = response.json()
         assert data["username"] == "newuser"
@@ -239,24 +224,21 @@ class TestRegisterEndpoint:
         mock_rbac_manager.get_user_by_email.return_value = None
 
         app = client.app
+
         def mock_superuser():
             user = MagicMock()
             user.is_superuser = True
             return user
+
         app.dependency_overrides[get_current_superuser] = mock_superuser
-        
+
         response = client.post(
-            "/api/auth/register",
-            json={
-                "username": "existing",
-                "email": "new@example.com",
-                "password": "password123"
-            }
+            "/api/auth/register", json={"username": "existing", "email": "new@example.com", "password": "password123"}
         )
-        
+
         if get_current_superuser in app.dependency_overrides:
             del app.dependency_overrides[get_current_superuser]
-        
+
         assert response.status_code == 400
         assert "Username already registered" in response.json()["detail"]
 
@@ -266,24 +248,22 @@ class TestRegisterEndpoint:
         mock_rbac_manager.get_user_by_email.return_value = MagicMock()
 
         app = client.app
+
         def mock_superuser():
             user = MagicMock()
             user.is_superuser = True
             return user
+
         app.dependency_overrides[get_current_superuser] = mock_superuser
-        
+
         response = client.post(
             "/api/auth/register",
-            json={
-                "username": "newuser",
-                "email": "existing@example.com",
-                "password": "password123"
-            }
+            json={"username": "newuser", "email": "existing@example.com", "password": "password123"},
         )
-        
+
         if get_current_superuser in app.dependency_overrides:
             del app.dependency_overrides[get_current_superuser]
-        
+
         assert response.status_code == 400
         assert "Email already registered" in response.json()["detail"]
 
@@ -305,15 +285,17 @@ class TestCurrentUserEndpoints:
         mock_user.roles = [mock_role]
         mock_user.hashed_password = "hashed"
         mock_user.created_at = "2024-01-01T00:00:00"
-        
+
         mock_rbac_manager.get_user_permissions.return_value = {"project:read"}
         mock_rbac_manager.get_user_project_permissions.return_value = []
 
         app = client.app
+
         def mock_active_user():
             return mock_user
+
         app.dependency_overrides[get_current_active_user] = mock_active_user
-        
+
         with patch("src.audiobook_studio.auth.router.UserOut.from_orm") as mock_from_orm:
             mock_user_out = MagicMock()
             mock_user_out.id = 1
@@ -334,15 +316,15 @@ class TestCurrentUserEndpoints:
                 "is_superuser": False,
                 "roles": ["admin"],
                 "project_permissions": [],
-                "created_at": "2024-01-01T00:00:00"
+                "created_at": "2024-01-01T00:00:00",
             }
             mock_from_orm.return_value = mock_user_out
-            
+
             response = client.get("/api/auth/me")
-        
+
         if get_current_active_user in app.dependency_overrides:
             del app.dependency_overrides[get_current_active_user]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == "testuser"
@@ -359,22 +341,21 @@ class TestCurrentUserEndpoints:
         mock_user.is_superuser = False
         mock_user.roles = []
         mock_user.hashed_password = "hashed"
-        
+
         mock_rbac_manager.update_user.return_value = mock_user
 
         app = client.app
+
         def mock_active_user():
             return mock_user
+
         app.dependency_overrides[get_current_active_user] = mock_active_user
-        
-        response = client.put(
-            "/api/auth/me",
-            json={"full_name": "Updated Name"}
-        )
-        
+
+        response = client.put("/api/auth/me", json={"full_name": "Updated Name"})
+
         if get_current_active_user in app.dependency_overrides:
             del app.dependency_overrides[get_current_active_user]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["full_name"] == "Updated Name"
@@ -387,12 +368,22 @@ class TestAdminUserEndpoints:
         """Test listing all users (admin)."""
         # Create real user objects in test_db
         user1 = UserModel(
-            id=1, username="user1", email="u1@test.com", full_name="User 1",
-            is_active=True, is_superuser=False, hashed_password="hash"
+            id=1,
+            username="user1",
+            email="u1@test.com",
+            full_name="User 1",
+            is_active=True,
+            is_superuser=False,
+            hashed_password="hash",
         )
         user2 = UserModel(
-            id=2, username="user2", email="u2@test.com", full_name="User 2",
-            is_active=True, is_superuser=False, hashed_password="hash"
+            id=2,
+            username="user2",
+            email="u2@test.com",
+            full_name="User 2",
+            is_active=True,
+            is_superuser=False,
+            hashed_password="hash",
         )
         test_db.add_all([user1, user2])
         test_db.commit()
@@ -400,17 +391,18 @@ class TestAdminUserEndpoints:
         # Create a fresh app without the client fixture's get_db override
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
         from src.audiobook_studio.database import get_db
-        
+
         app = FastAPI()
         app.include_router(router, prefix="/api")
-        
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users" and route.methods == {"GET"}:
@@ -418,18 +410,18 @@ class TestAdminUserEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
         app.dependency_overrides[get_db] = lambda: test_db
-        
+
         with TestClient(app) as client:
             response = client.get("/api/auth/users")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
         if get_db in app.dependency_overrides:
             del app.dependency_overrides[get_db]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
@@ -448,12 +440,13 @@ class TestAdminUserEndpoints:
         mock_rbac_manager.get_user.return_value = mock_user
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"GET"}:
@@ -461,14 +454,14 @@ class TestAdminUserEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.get("/api/auth/users/1")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == "testuser"
@@ -478,12 +471,13 @@ class TestAdminUserEndpoints:
         mock_rbac_manager.get_user.return_value = None
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"GET"}:
@@ -491,14 +485,14 @@ class TestAdminUserEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.get("/api/auth/users/999")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 404
         assert "User not found" in response.json()["detail"]
 
@@ -515,12 +509,13 @@ class TestRoleEndpoints:
         mock_rbac_manager.create_role.return_value = mock_role
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/roles" and route.methods == {"POST"}:
@@ -528,17 +523,14 @@ class TestRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.post(
-            "/api/auth/roles",
-            params={"name": "admin", "description": "Admin role"}
-        )
-        
+
+        response = client.post("/api/auth/roles", params={"name": "admin", "description": "Admin role"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "admin"
@@ -552,12 +544,13 @@ class TestRoleEndpoints:
         mock_rbac_manager.get_all_roles.return_value = mock_roles
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/roles" and route.methods == {"GET"}:
@@ -565,14 +558,14 @@ class TestRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.get("/api/auth/roles")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
@@ -582,12 +575,13 @@ class TestRoleEndpoints:
         mock_rbac_manager.assign_permission_to_role.return_value = True
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/roles/{role_name}/permissions" and route.methods == {"POST"}:
@@ -595,17 +589,14 @@ class TestRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.post(
-            "/api/auth/roles/admin/permissions",
-            params={"permission_name": "project:read"}
-        )
-        
+
+        response = client.post("/api/auth/roles/admin/permissions", params={"permission_name": "project:read"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "assigned to role" in response.json()["message"]
 
@@ -616,12 +607,13 @@ class TestInitRBACEndpoint:
     def test_initialize_rbac(self, client):
         """Test RBAC initialization."""
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/init-rbac" and route.methods == {"POST"}:
@@ -629,15 +621,15 @@ class TestInitRBACEndpoint:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         with patch("src.audiobook_studio.auth.rbac.init_rbac") as mock_init:
             response = client.post("/api/auth/init-rbac")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "RBAC initialized successfully" in response.json()["message"]
 
@@ -655,15 +647,14 @@ class TestAuthEdgeCases:
         mock_rbac_manager.authenticate_user.return_value = mock_user
         mock_rbac_manager.get_user_permissions.return_value = set()
         mock_jwt_handler.create_token_pair.return_value = {
-            "access_token": "token", "refresh_token": "refresh",
-            "token_type": "bearer", "expires_in": 1800
+            "access_token": "token",
+            "refresh_token": "refresh",
+            "token_type": "bearer",
+            "expires_in": 1800,
         }
 
-        response = client.post(
-            "/api/auth/login",
-            data={"username": "test@user", "password": "pass!@#$%"}
-        )
-        
+        response = client.post("/api/auth/login", data={"username": "test@user", "password": "pass!@#$%"})
+
         assert response.status_code == 200
 
 
@@ -685,12 +676,13 @@ class TestAdminUserEndpointsExtended:
         mock_rbac_manager.update_user.return_value = mock_user
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"PUT"}:
@@ -698,26 +690,34 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
+        from datetime import datetime
+
+        from src.audiobook_studio.auth.models import UserOut
+
+        # Create a real UserOut instance for response validation
+        user_out = UserOut(
+            id=1,
+            username="testuser",
+            email="test@example.com",
+            full_name="Updated Name",
+            is_active=True,
+            is_superuser=False,
+            created_at=datetime(2024, 1, 1),
+            roles=[],
+            project_permissions=[],
+        )
+
         with patch("src.audiobook_studio.auth.router.UserOut.from_orm") as mock_from_orm:
-            mock_user_out = MagicMock()
-            mock_user_out.model_dump.return_value = {
-                "id": 1, "username": "testuser", "email": "test@example.com",
-                "full_name": "Updated Name", "is_active": True, "is_superuser": False,
-                "roles": [], "project_permissions": [], "created_at": "2024-01-01T00:00:00"
-            }
-            mock_from_orm.return_value = mock_user_out
-            
-            response = client.put(
-                "/api/auth/users/1",
-                json={"full_name": "Updated Name"}
-            )
-        
+            mock_from_orm.return_value = user_out
+
+            response = client.put("/api/auth/users/1", json={"full_name": "Updated Name"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
 
     def test_update_user_not_found(self, client, mock_rbac_manager):
@@ -725,12 +725,13 @@ class TestAdminUserEndpointsExtended:
         mock_rbac_manager.get_user.return_value = None
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"PUT"}:
@@ -738,17 +739,14 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.put(
-            "/api/auth/users/999",
-            json={"full_name": "Updated Name"}
-        )
-        
+
+        response = client.put("/api/auth/users/999", json={"full_name": "Updated Name"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 404
         assert "User not found" in response.json()["detail"]
 
@@ -757,13 +755,14 @@ class TestAdminUserEndpointsExtended:
         mock_rbac_manager.delete_user.return_value = True
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             user.id = 2  # Different from user being deleted
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"DELETE"}:
@@ -771,27 +770,28 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/users/1")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "deleted successfully" in response.json()["message"]
 
     def test_delete_user_self(self, client, mock_rbac_manager):
         """Test admin cannot delete themselves."""
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             user.id = 1  # Same as user being deleted
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"DELETE"}:
@@ -799,14 +799,14 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/users/1")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "Cannot delete yourself" in response.json()["detail"]
 
@@ -815,13 +815,14 @@ class TestAdminUserEndpointsExtended:
         mock_rbac_manager.delete_user.return_value = False
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             user.id = 2
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}" and route.methods == {"DELETE"}:
@@ -829,14 +830,14 @@ class TestAdminUserEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/users/999")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 404
         assert "User not found" in response.json()["detail"]
 
@@ -849,12 +850,13 @@ class TestRoleEndpointsExtended:
         mock_rbac_manager.assign_permission_to_role.return_value = False
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/roles/{role_name}/permissions" and route.methods == {"POST"}:
@@ -862,17 +864,14 @@ class TestRoleEndpointsExtended:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.post(
-            "/api/auth/roles/nonexistent/permissions",
-            params={"permission_name": "project:read"}
-        )
-        
+
+        response = client.post("/api/auth/roles/admin/permissions", params={"permission_name": "project:read"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "Role or permission not found" in response.json()["detail"]
 
@@ -885,12 +884,13 @@ class TestUserRoleEndpoints:
         mock_rbac_manager.assign_role_to_user.return_value = True
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"POST"}:
@@ -898,16 +898,16 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.post(
             "/api/auth/users/1/roles/admin",
         )
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "assigned to user" in response.json()["message"]
 
@@ -916,12 +916,13 @@ class TestUserRoleEndpoints:
         mock_rbac_manager.assign_role_to_user.return_value = False
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"POST"}:
@@ -929,16 +930,16 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.post(
-            "/api/auth/users/999/roles/nonexistent",
+            "/api/auth/users/999/roles/admin",
         )
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "User or role not found" in response.json()["detail"]
 
@@ -947,12 +948,13 @@ class TestUserRoleEndpoints:
         mock_rbac_manager.remove_role_from_user.return_value = True
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"DELETE"}:
@@ -960,14 +962,14 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/users/1/roles/admin")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "removed from user" in response.json()["message"]
 
@@ -976,12 +978,13 @@ class TestUserRoleEndpoints:
         mock_rbac_manager.remove_role_from_user.return_value = False
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/users/{user_id}/roles/{role_name}" and route.methods == {"DELETE"}:
@@ -989,14 +992,14 @@ class TestUserRoleEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.delete("/api/auth/users/999/roles/nonexistent")
-        
+
+        response = client.delete("/api/auth/users/999/roles/admin")
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 400
         assert "User or role not found" in response.json()["detail"]
 
@@ -1014,12 +1017,13 @@ class TestProjectPermissionEndpoints:
         mock_rbac_manager.grant_project_permission.return_value = mock_perm
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/projects/{project_id}/permissions" and route.methods == {"POST"}:
@@ -1027,17 +1031,14 @@ class TestProjectPermissionEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
-        response = client.post(
-            "/api/auth/projects/1/permissions",
-            params={"user_id": 1, "role": "editor"}
-        )
-        
+
+        response = client.post("/api/auth/projects/1/permissions", params={"user_id": 1, "role": "editor"})
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["project_id"] == 1
@@ -1049,12 +1050,13 @@ class TestProjectPermissionEndpoints:
         mock_rbac_manager.revoke_project_permission.return_value = True
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/projects/{project_id}/permissions/{user_id}" and route.methods == {"DELETE"}:
@@ -1062,14 +1064,14 @@ class TestProjectPermissionEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/projects/1/permissions/1")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 200
         assert "revoked" in response.json()["message"]
 
@@ -1078,12 +1080,13 @@ class TestProjectPermissionEndpoints:
         mock_rbac_manager.revoke_project_permission.return_value = False
 
         app = client.app
+
         def mock_admin_user():
             user = MagicMock()
             user.is_superuser = True
             user.is_active = True
             return user
-        
+
         admin_dep = None
         for route in router.routes:
             if route.path == "/auth/projects/{project_id}/permissions/{user_id}" and route.methods == {"DELETE"}:
@@ -1091,14 +1094,14 @@ class TestProjectPermissionEndpoints:
                     if "permission_checker" in str(dep.call):
                         admin_dep = dep.call
                         break
-        
+
         app.dependency_overrides[admin_dep] = mock_admin_user
-        
+
         response = client.delete("/api/auth/projects/1/permissions/999")
-        
+
         if admin_dep in app.dependency_overrides:
             del app.dependency_overrides[admin_dep]
-        
+
         assert response.status_code == 404
         assert "Permission not found" in response.json()["detail"]
 
@@ -1109,58 +1112,80 @@ class TestListProjectPermissions:
     def test_list_project_permissions_success(self, client, mock_rbac_manager):
         """Test listing project permissions with access."""
         mock_rbac_manager.check_project_access.return_value = True
-        
+
+        from unittest.mock import MagicMock
+
+        from sqlalchemy.orm import Session
+
+        from src.audiobook_studio.models.user import ProjectPermission
+
         mock_perm1 = MagicMock()
         mock_perm1.user_id = 1
         mock_perm1.project_id = 1
         mock_perm1.role = "editor"
-        
+
         mock_perm2 = MagicMock()
         mock_perm2.user_id = 2
         mock_perm2.project_id = 1
         mock_perm2.role = "viewer"
-        
-        from src.audiobook_studio.models.user import ProjectPermission
-        with patch("src.audiobook_studio.auth.router.db") as mock_db:
-            mock_db.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
-            mock_rbac_manager.get_user.side_effect = [
-                MagicMock(username="user1"),
-                MagicMock(username="user2"),
-            ]
 
-            app = client.app
-            def mock_active_user():
-                user = MagicMock()
-                user.id = 1
-                user.is_active = True
-                return user
-            app.dependency_overrides[get_current_active_user] = mock_active_user
-            
-            response = client.get("/api/auth/projects/1/permissions")
-            
-            if get_current_active_user in app.dependency_overrides:
-                del app.dependency_overrides[get_current_active_user]
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 2
+        # Create a mock session
+        mock_session = MagicMock(spec=Session)
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
+        mock_rbac_manager.get_user.side_effect = [
+            MagicMock(username="user1"),
+            MagicMock(username="user2"),
+        ]
+
+        app = client.app
+
+        def mock_active_user():
+            user = MagicMock()
+            user.id = 1
+            user.is_active = True
+            return user
+
+        # Override the get_db dependency
+        def mock_get_db():
+            try:
+                yield mock_session
+            finally:
+                pass
+
+        from src.audiobook_studio.database import get_db
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_active_user] = mock_active_user
+
+        response = client.get("/api/auth/projects/1/permissions")
+
+        if get_db in app.dependency_overrides:
+            del app.dependency_overrides[get_db]
+        if get_current_active_user in app.dependency_overrides:
+            del app.dependency_overrides[get_current_active_user]
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
 
     def test_list_project_permissions_access_denied(self, client, mock_rbac_manager):
         """Test listing project permissions without access."""
         mock_rbac_manager.check_project_access.return_value = False
 
         app = client.app
+
         def mock_active_user():
             user = MagicMock()
             user.id = 1
             user.is_active = True
             return user
+
         app.dependency_overrides[get_current_active_user] = mock_active_user
-        
+
         response = client.get("/api/auth/projects/1/permissions")
-        
+
         if get_current_active_user in app.dependency_overrides:
             del app.dependency_overrides[get_current_active_user]
-        
+
         assert response.status_code == 403
         assert "Access denied" in response.json()["detail"]

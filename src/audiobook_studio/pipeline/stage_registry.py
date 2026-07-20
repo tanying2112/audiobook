@@ -61,7 +61,7 @@ class StageHandler(ABC):
         elif hasattr(result, "__dict__"):
             return vars(result)
         elif isinstance(result, (list, dict)):
-            return result  # type: ignore
+            return dict(result) if isinstance(result, dict) else {"items": list(result)}
         else:
             return {"result": str(result)}
 
@@ -397,10 +397,8 @@ class EditStage(StageHandler):
             _write_edit(db, paragraph, result)
 
 
-import json
+from dataclasses import asdict
 
-from ..schemas import ParagraphAnnotation
-from ..schemas.book import CharacterVoiceBinding
 from .audio_postprocess import AudioPostProcessor
 
 
@@ -415,38 +413,31 @@ class AudioPostprocessStage(StageHandler):
         if para is None:
             raise ValueError("audio_postprocess requires paragraph_id or paragraph_index")
 
-        # Build annotation from para
-        annotation = ParagraphAnnotation(
-            paragraph_index=para.index,
-            speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
-            is_dialogue=para.is_dialogue,
-            emotion=para.emotion or "neutral",
-            emotion_intensity=para.emotion_intensity or 0.5,
-            speech_rate=1.0,
-            pitch_shift_semitones=0,
-            pause_before_ms=para.pause_before_ms or 0,
-            pause_after_ms=para.pause_after_ms or 0,
-            confidence=para.confidence or 1.0,
-            needs_sfx=False,
-            sfx_tags=[],
-        )
-
-        # Build voice_map from chapter's analyzed_json
-        voice_map: list[CharacterVoiceBinding] = []
-        if chapter and chapter.analyzed_json:
-            raw = chapter.analyzed_json
-            if isinstance(raw, str):
-                raw = json.loads(raw)
-            vms = raw.get("character_voice_map", [])
-            for vm in vms:
-                voice_map.append(CharacterVoiceBinding(**vm))
+        # Determine next paragraph type for transition pause calculation
+        next_para_type = "end"
+        # Try to get next paragraph from chapter
+        if chapter and hasattr(chapter, "paragraphs") and chapter.paragraphs:
+            # Find current paragraph index and get next
+            for i, p in enumerate(chapter.paragraphs):
+                if p.id == para.id and i + 1 < len(chapter.paragraphs):
+                    next_para = chapter.paragraphs[i + 1]
+                    next_para_type = "dialogue" if next_para.is_dialogue else "narration"
+                    break
 
         processor = AudioPostProcessor()
-        params = processor.process(
-            annotation=annotation,
-            voice_map=voice_map if voice_map else None,
+        segment = processor.process_single(
+            para={
+                "text": para.text or "",
+                "speaker": para.speaker_canonical_name or "_narrator_",
+                "emotion": para.emotion or "neutral",
+                "is_dialogue": para.is_dialogue or False,
+                "emotion_intensity": para.emotion_intensity or 0.5,
+            },
+            next_para_type=next_para_type,
         )
-        return params
+
+        # Convert to dict for persistence and downstream stages
+        return asdict(segment)
 
     def persist(
         self,
@@ -462,6 +453,157 @@ class AudioPostprocessStage(StageHandler):
             from .orchestrator import _write_audio_postprocess
 
             _write_audio_postprocess(db, paragraph, result)
+
+
+class ReviewStage(StageHandler):
+    """Review stage: quality gate before synthesis (Module 4.1).
+
+    Runs at CHAPTER LEVEL after all paragraphs in a chapter have been
+    audio_postprocessed, but BEFORE any paragraph is synthesized.
+
+    Reviews paragraph annotations for:
+    1. Missing character voice bindings
+    2. JSON truncation in annotation fields
+    3. Tag logic consistency (emotion/speed/sfx vs text)
+
+    If issues found, emits fix commands for Developer Agent and fails the stage.
+    Terminal logs show interception/retry events.
+    """
+
+    def __init__(self):
+        import os
+
+        self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+    def run(self, **kwargs) -> Any:
+        import json
+        import os
+
+        chapter = kwargs.get("chapter")
+        project_id = kwargs.get("project_id")
+
+        if chapter is None or project_id is None:
+            raise ValueError("ReviewStage requires project_id and chapter")
+
+        # Collect all paragraphs for this chapter
+        paragraphs_data = []
+        if hasattr(chapter, "paragraphs") and chapter.paragraphs:
+            for p in chapter.paragraphs:
+                paragraphs_data.append(
+                    {
+                        "paragraph_index": p.index,
+                        "text": p.text or "",
+                        "speaker_canonical_name": p.speaker_canonical_name or "_narrator_",
+                        "is_dialogue": p.is_dialogue or False,
+                        "emotion": p.emotion or "neutral",
+                        "emotion_intensity": p.emotion_intensity or 0.5,
+                        "speech_rate": p.speech_rate or 1.0,
+                        "pitch_shift_semitones": p.pitch_shift_semitones or 0,
+                        "needs_sfx": p.needs_sfx or False,
+                        "sfx_tags": p.sfx_tags or [],
+                        "pause_before_ms": p.pause_before_ms or 300,
+                        "pause_after_ms": p.pause_after_ms or 500,
+                        "confidence": p.confidence or 0.9,
+                    }
+                )
+        else:
+            # Fallback: no paragraphs found
+            logger.warning(f"ReviewStage: No paragraphs found for chapter {chapter.index}")
+            return ReviewerJudgment(
+                project_id=project_id,
+                chapter_index=chapter.index,
+                overall_passed=True,
+                summary="No paragraphs to review",
+            )
+
+        # Build voice_map from chapter's analyzed_json
+        voice_map = []
+        if chapter and chapter.analyzed_json:
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            from ..schemas.book import CharacterVoiceBinding
+
+            voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+
+        if not voice_map:
+            voice_map = [
+                CharacterVoiceBinding(
+                    canonical_name="_narrator_",
+                    aliases=[],
+                    gender="neutral",
+                    age_range="adult",
+                    suggested_voice_id="zh-CN-XiaoxiaoNeural",
+                    sample_quote="旁白样本",
+                )
+            ]
+
+        # Build scene_tags
+        scene_tags = []
+        if chapter and chapter.analyzed_json:
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            scene_tags = raw.get("scene_tags", [])
+
+        # Build book_meta
+        book_meta = {}
+        if chapter and chapter.analyzed_json:
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            book_meta = raw.get("book_meta", {})
+
+        # Run Reviewer Agent
+        reviewer = ReviewerAgent(mock_mode=self.mock_mode)
+        input_data = ReviewerInput(
+            project_id=project_id,
+            chapter_index=chapter.index,
+            paragraphs=paragraphs_data,
+            character_voice_map=[c.model_dump() for c in voice_map],
+            scene_tags=scene_tags,
+            book_meta=book_meta,
+        )
+        judgment = reviewer.run(input_data)
+
+        # Store judgment on chapter for downstream access
+        if not hasattr(chapter, "reviewer_judgment"):
+            chapter.reviewer_judgment = {}
+        chapter.reviewer_judgment = judgment.model_dump()
+
+        # Log terminal interception/retry events
+        if not judgment.overall_passed:
+            logger.warning(
+                f"[REVIEWER INTERCEPT] Project {project_id} Ch{chapter.index}: "
+                f"BLOCKING={judgment.blocking_issues} WARN={judgment.warning_issues} "
+                f"FixCommands={len(judgment.fix_commands)}"
+            )
+            for cmd in judgment.fix_commands:
+                logger.warning(
+                    f"  [FIX CMD] {cmd.command_type} para={cmd.target_paragraph_index} "
+                    f"priority={cmd.priority}: {cmd.rationale}"
+                )
+        else:
+            logger.info(
+                f"[REVIEWER PASS] Project {project_id} Ch{chapter.index}: "
+                f"All {len(paragraphs_data)} paragraphs passed quality gate"
+            )
+
+        return judgment
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Review stage doesn't persist individual paragraph records
+        # The judgment is stored on the chapter object
+        pass
 
 
 from unittest.mock import MagicMock
@@ -658,7 +800,7 @@ class QualityStage(StageHandler):
             _write_quality(db, project_id, chapter, paragraph, result)
 
 
-from .translate import TranslateAndDubPipeline
+from .review import ReviewerAgent, ReviewerInput, ReviewerJudgment
 
 
 class TranslateStage(StageHandler):
@@ -727,6 +869,7 @@ StageRegistry.register("analyze", AnalyzeStage)
 StageRegistry.register("annotate", AnnotateStage)
 StageRegistry.register("edit", EditStage)
 StageRegistry.register("audio_postprocess", AudioPostprocessStage)
+StageRegistry.register("review", ReviewStage)
 StageRegistry.register("synthesize", SynthesizeStage)
 StageRegistry.register("quality", QualityStage)
 StageRegistry.register("translate", TranslateStage)
