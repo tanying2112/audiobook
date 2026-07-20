@@ -127,7 +127,7 @@ for mod_name in [
     "prometheus_client",
     "structlog",
     "python_json_logger",
-    "apscheduler",
+    "apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background",
     "redis",
     "redis.asyncio",
     "celery",
