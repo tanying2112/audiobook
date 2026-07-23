@@ -635,6 +635,10 @@ class LLMRouter:
                 # Filter and reorder providers based on hardware profile priority
                 providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
 
+        # Mock mode: return mock result immediately without checking providers
+        if self.mock_mode:
+            return self._create_mock_result(response_model, stage, **kwargs)
+
         if not providers:
             raise ValueError(f"No providers configured for stage: {stage}")
 

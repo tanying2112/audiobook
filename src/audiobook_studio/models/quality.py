@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
@@ -41,8 +41,8 @@ class Quality(Base):
     comments: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 问题列表
-    issues: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    fix_suggestions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    issues: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    fix_suggestions: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     needs_regeneration: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Judge 信息

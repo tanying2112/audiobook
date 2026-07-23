@@ -17,9 +17,6 @@ from pathlib import Path
 
 import pytest
 
-# Ensure src is on path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
 from audiobook_studio.feedback.critics.base import (
     BaseCritic,
     CriticEnsemble,
@@ -37,6 +34,9 @@ from audiobook_studio.feedback.critics.synthetic_critic import (
     _compute_f1_per_class,
     create_synthetic_critic,
 )
+
+# Ensure src is on path
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures

@@ -90,6 +90,20 @@ def mock_rbac_manager():
         yield rbac
 
 
+@pytest.fixture(autouse=True)
+def mock_redis():
+    """Mock Redis cache to ensure test isolation."""
+    with (
+        patch("src.audiobook_studio.auth.dependencies._get_cached_user") as mock_get,
+        patch("src.audiobook_studio.auth.dependencies._cache_user") as mock_set,
+        patch("src.audiobook_studio.auth.dependencies._invalidate_user_cache") as mock_del,
+    ):
+        mock_get.return_value = None
+        mock_set.return_value = None
+        mock_del.return_value = None
+        yield
+
+
 class TestGetCurrentUser:
     """Tests for get_current_user dependency."""
 

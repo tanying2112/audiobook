@@ -1291,7 +1291,7 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
             # 返回确定性的模拟嵌入向量 (基于文件名哈希，便于测试复现)
             import hashlib
 
-            seed = int(hashlib.md5(str(audio_path).encode()).hexdigest()[:8], 16)
+            seed = int(hashlib.sha256(str(audio_path).encode(), usedforsecurity=False).hexdigest()[:8], 16)
             rng = np.random.RandomState(seed)
             return SpeakerEmbedding(
                 embedding=rng.randn(self.EMBEDDING_DIM).astype(np.float32),
@@ -1432,7 +1432,7 @@ class WavLMBackend(SpeakerEmbeddingBackend):
             # 返回确定性的模拟嵌入向量
             import hashlib
 
-            seed = int(hashlib.md5(str(audio_path).encode()).hexdigest()[:8], 16)
+            seed = int(hashlib.sha256(str(audio_path).encode(), usedforsecurity=False).hexdigest()[:8], 16)
             rng = np.random.RandomState(seed)
             return SpeakerEmbedding(
                 embedding=rng.randn(self.EMBEDDING_DIM).astype(np.float32),

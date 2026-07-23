@@ -5,6 +5,8 @@ Extends export functionality with publishing capabilities:
 - Push to Audiobookshelf server
 - Generate Podcast RSS feed
 - Schedule automatic releases
+
+Uses Redis/DB persistence layer from tasks.publish_tasks for job state management.
 """
 
 import logging
@@ -16,10 +18,15 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
+from ..database import get_async_session
 from ..models.book import Project
+from ..tasks.publish_tasks import (
+    _get_job_state,
+    _persist_job_state,
+    _persist_job_state_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +103,67 @@ class RSSFeedOut(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# In-memory job store (for MVP)
+# Publish Job Persistence (uses Redis/DB from tasks.publish_tasks)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_publish_jobs: Dict[str, Dict[str, Any]] = {}
+# In-memory fallback for tests/development without Redis
+_publish_jobs_fallback: Dict[str, Dict[str, Any]] = {}
+
+# Backward compatibility alias for tests
+_publish_jobs = _publish_jobs_fallback
+
+
+async def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """Get job state from Redis/DB, with in-memory fallback."""
+    # Try Redis/DB persistence layer
+    job = await _get_job_state(job_id)
+    if job:
+        return job
+    # Fallback to in-memory for tests
+    return _publish_jobs_fallback.get(job_id)
+
+
+async def _set_job(job_id: str, state: Dict[str, Any]) -> None:
+    """Persist job state to Redis/DB, with in-memory fallback."""
+    await _persist_job_state(job_id, state)
+    # Also persist to DB as fallback
+    project_id = state.get("project_id", 0)
+    await _persist_job_state_db(job_id, project_id, state)
+    # In-memory fallback for tests
+    _publish_jobs_fallback[job_id] = state
+
+
+async def _delete_job(job_id: str) -> None:
+    """Delete job from Redis/DB and in-memory fallback."""
+    # Try Redis
+    try:
+        from ..config.settings import get_settings
+        import redis.asyncio as redis
+
+        settings = get_settings()
+        redis_client = redis.from_url(
+            settings.REDIS_URL,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=True,
+        )
+        key = f"publish:job:{job_id}"
+        await redis_client.delete(key)
+        await redis_client.aclose()
+    except Exception:
+        pass
+    # In-memory fallback
+    _publish_jobs_fallback.pop(job_id, None)
+
+
+async def _list_jobs(project_id: int) -> List[Dict[str, Any]]:
+    """List all jobs for a project (from in-memory fallback since Redis doesn't support listing easily)."""
+    # Note: For full production, you'd query the DB or use Redis SCAN
+    # For now, use in-memory fallback which is populated by _set_job
+    return [
+        job
+        for job in _publish_jobs_fallback.values()
+        if job.get("project_id") == project_id
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -112,7 +176,7 @@ async def publish_project(
     project_id: int,
     request: PublishRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Publish completed audiobook to destinations.
@@ -124,7 +188,9 @@ async def publish_project(
     Returns job_id for tracking progress.
     """
     # Verify project exists and is completed
-    project = db.query(Project).filter(Project.id == project_id).first()
+    from sqlalchemy import select
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -147,15 +213,17 @@ async def publish_project(
     # Generate job ID
     job_id = f"publish_{project_id}_{int(datetime.now().timestamp())}"
 
-    # Create job record
-    _publish_jobs[job_id] = {
+    # Create job record using persistence layer
+    created_at = datetime.now(timezone.utc).isoformat()
+    job_state = {
         "job_id": job_id,
         "project_id": project_id,
         "status": "pending",
         "destinations": request.destinations,
         "results": {},
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at,
     }
+    await _set_job(job_id, job_state)
 
     # Schedule background task
     background_tasks.add_task(
@@ -172,7 +240,7 @@ async def publish_project(
         project_id=project_id,
         status="pending",
         destinations=request.destinations,
-        created_at=_publish_jobs[job_id]["created_at"],
+        created_at=created_at,
     )
 
 
@@ -180,8 +248,8 @@ async def _publish_background(
     job_id: str,
     project_id: int,
     destinations: List[str],
-    audiobookshelf_config: Optional[dict] = None,
-    podcast_config: Optional[dict] = None,
+    audiobookshelf_config: Optional[dict[str, Any]] = None,
+    podcast_config: Optional[dict[str, Any]] = None,
 ):
     """
     Background task: Execute publishing.
@@ -191,12 +259,14 @@ async def _publish_background(
     2. Upload/publish
     3. Record result
     """
-    job = _publish_jobs.get(job_id)
+    # Get job from persistence layer
+    job = await _get_job(job_id)
     if not job:
         logger.error(f"Publish job {job_id} not found")
         return
 
     job["status"] = "publishing"
+    await _set_job(job_id, job)
 
     results = {}
 
@@ -249,11 +319,13 @@ async def _publish_background(
         errors = [r.get("error") for r in results.values() if r.get("error")]
         job["error"] = "; ".join(errors)
 
+    await _set_job(job_id, job)
+
 
 async def _publish_to_audiobookshelf(
     project_id: int,
-    config: dict,
-) -> dict:
+    config: dict[str, Any],
+) -> dict[str, Any]:
     """
     Publish to Audiobookshelf server.
 
@@ -281,6 +353,9 @@ async def _publish_to_audiobookshelf(
     """
     import asyncio
     import shutil
+    from sqlalchemy import select
+    from ..database import AsyncSessionLocal
+    from ..models.audio_segment import AudioSegment
 
     server_url = config.get("server_url", "").rstrip("/")
     api_key = config.get("api_key")
@@ -303,6 +378,39 @@ async def _publish_to_audiobookshelf(
             ".ogg": "audio/ogg",
             ".aac": "audio/aac",
         }.get(path.suffix.lower(), "application/octet-stream")
+
+    # Load project metadata & audio segments from DB using async session
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        result = await db.execute(
+            select(AudioSegment)
+            .where(
+                AudioSegment.project_id == project_id,
+                AudioSegment.is_current.is_(True),
+            )
+            .order_by(AudioSegment.id)
+        )
+        segments = result.scalars().all()
+
+    # Collect existing audio files
+    audio_files: List[Path] = []
+    total_size = 0
+    for seg in segments:
+        if seg.file_path:
+            p = Path(seg.file_path)
+            if p.exists() and p.is_file():
+                audio_files.append(p)
+                total_size += p.stat().st_size
+
+    if not audio_files:
+        raise ValueError(f"No audio files found for project {project_id}")
+
+    book_title = project.title or f"Project {project_id}"
+    author = project.author or "Unknown"
 
     async with aiohttp.ClientSession(headers=headers) as session:
         # ─────────────────────────────────────────────────────────────
@@ -336,46 +444,6 @@ async def _publish_to_audiobookshelf(
             if folders:
                 folder_id = folders[0].get("id")
                 logger.info(f"Using folder: {folder_id} in library {library_id}")
-
-        # ─────────────────────────────────────────────────────────────
-        # Step 2: Load project metadata & audio segments from DB
-        # ─────────────────────────────────────────────────────────────
-        from ..database import SessionLocal
-        from ..models.audio_segment import AudioSegment
-
-        db = SessionLocal()
-        try:
-            project = db.query(Project).filter(Project.id == project_id).first()
-            if not project:
-                raise ValueError(f"Project {project_id} not found")
-
-            segments = (
-                db.query(AudioSegment)
-                .filter(
-                    AudioSegment.project_id == project_id,
-                    AudioSegment.is_current.is_(True),
-                )
-                .order_by(AudioSegment.id)
-                .all()
-            )
-        finally:
-            db.close()
-
-        # Collect existing audio files
-        audio_files: List[Path] = []
-        total_size = 0
-        for seg in segments:
-            if seg.file_path:
-                p = Path(seg.file_path)
-                if p.exists() and p.is_file():
-                    audio_files.append(p)
-                    total_size += p.stat().st_size
-
-        if not audio_files:
-            raise ValueError(f"No audio files found for project {project_id}")
-
-        book_title = project.title or f"Project {project_id}"
-        author = project.author or "Unknown"
 
         # ─────────────────────────────────────────────────────────────
         # Step 3: Upload files
@@ -581,8 +649,8 @@ async def _publish_to_audiobookshelf(
 
 async def _generate_podcast_rss(
     project_id: int,
-    config: dict,
-) -> dict:
+    config: dict[str, Any],
+) -> dict[str, Any]:
     """
     Generate Podcast RSS feed.
 
@@ -593,29 +661,28 @@ async def _generate_podcast_rss(
     Returns:
         Result dict with rss_url and episode_count
     """
-    from ..database import SessionLocal
+    from sqlalchemy import select
+    from ..database import AsyncSessionLocal
     from ..models.audio_segment import AudioSegment
     from ..models.book import Project
 
-    db = SessionLocal()
-    try:
-        project = db.query(Project).filter(Project.id == project_id).first()
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
         # Get current audio segments (episodes)
-        segments = (
-            db.query(AudioSegment)
-            .filter(
+        result = await db.execute(
+            select(AudioSegment)
+            .where(
                 AudioSegment.project_id == project_id,
                 AudioSegment.is_current.is_(True),
             )
             .order_by(AudioSegment.index)
-            .all()
         )
+        segments = result.scalars().all()
         episode_count = len(segments)
-    finally:
-        db.close()
 
     # Build public URL for media files
     public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
@@ -635,7 +702,7 @@ async def _generate_podcast_rss(
 @router.get("/jobs/{job_id}", response_model=PublishJobOut)
 async def get_publish_job(project_id: int, job_id: str):
     """Get publish job status by ID."""
-    job = _publish_jobs.get(job_id)
+    job = await _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Publish job not found")
 
@@ -648,7 +715,7 @@ async def get_publish_job(project_id: int, job_id: str):
 @router.get("/history", response_model=List[PublishHistoryOut])
 async def get_publish_history(project_id: int):
     """Get publish history for a project."""
-    history = [job for job in _publish_jobs.values() if job["project_id"] == project_id]
+    history = await _list_jobs(project_id)
 
     # Sort by created_at descending
     history.sort(key=lambda x: x["created_at"], reverse=True)
@@ -676,35 +743,32 @@ async def get_podcast_rss_feed(
     owner_email: Optional[str] = None,
     categories: Optional[str] = None,  # comma-separated
     explicit: Optional[bool] = False,
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get Podcast RSS feed XML for a project.
 
     Returns generated RSS feed that can be submitted to podcast platforms.
     """
-    from ..database import SessionLocal
+    from sqlalchemy import select
     from ..models.audio_segment import AudioSegment
-    from ..models.book import Project
 
-    db = SessionLocal()
-    try:
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
 
-        # Get current audio segments (episodes)
-        segments = (
-            db.query(AudioSegment)
-            .filter(
-                AudioSegment.project_id == project_id,
-                AudioSegment.is_current.is_(True),
-            )
-            .order_by(AudioSegment.index)
-            .all()
+    # Get current audio segments (episodes)
+    result = await db.execute(
+        select(AudioSegment)
+        .where(
+            AudioSegment.project_id == project_id,
+            AudioSegment.is_current.is_(True),
         )
-        episode_count = len(segments)
-    finally:
-        db.close()
+        .order_by(AudioSegment.index)
+    )
+    segments = result.scalars().all()
+    episode_count = len(segments)
 
     # Build public URL for media files
     public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
@@ -748,8 +812,13 @@ async def get_podcast_rss_feed(
     ]
 
     # Add categories
-    for category in feed_categories:
-        xml_lines.append(f'    <itunes:category text="{category}"/>')
+    if feed_categories:
+        if isinstance(feed_categories, list):
+            for category in feed_categories:
+                xml_lines.append(f'    <itunes:category text="{category}"/>')
+        elif isinstance(feed_categories, str):
+            for category in feed_categories.split(","):
+                xml_lines.append(f'    <itunes:category text="{category.strip()}"/>')
 
     # Explicit tag
     xml_lines.append(f"    <itunes:explicit>{feed_explicit}</itunes:explicit>")
@@ -774,7 +843,7 @@ async def get_podcast_rss_feed(
         # We don't have a title in the segment model, so use index or a placeholder
         episode_title = f"Episode {i}"
         # Optionally, use a snippet of the text as description? We don't have text in segment.
-        episode_description = f"Chapter {seg.chapter_index if hasattr(seg, 'chapter_index') else '?'} Segment {seg.index if hasattr(seg, 'index') else i}"
+        episode_description = f"Chapter {seg.chapter_id if hasattr(seg, 'chapter_id') else '?'} Segment {seg.paragraph_id if hasattr(seg, 'paragraph_id') else i}"
 
         xml_lines.extend(
             [

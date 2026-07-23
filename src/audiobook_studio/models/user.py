@@ -1,17 +1,19 @@
 """User and RBAC models for Audiobook Studio."""
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Set
 
 from sqlalchemy import Boolean, Column, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, Integer, String, Table
+from sqlalchemy import ForeignKey, Integer, String, Table, Text
+from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
 
 if TYPE_CHECKING:
     from .book import Project
+    from .publish import PublishHistory, PublishJob
 
 # Association table for user roles
 user_roles = Table(
@@ -55,6 +57,12 @@ class User(Base):
         foreign_keys="ProjectPermission.user_id",
         back_populates="user",
     )
+    publish_jobs: Mapped[List["PublishJob"]] = relationship(
+        "PublishJob", back_populates="user", cascade="all, delete-orphan"
+    )
+    publish_history: Mapped[List["PublishHistory"]] = relationship(
+        "PublishHistory", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def has_permission(self, permission: str) -> bool:
         """Check if user has a specific permission."""
@@ -71,9 +79,9 @@ class User(Base):
             return True
         return any(r.name == role_name for r in self.roles)
 
-    def get_permissions(self) -> set:
+    def get_permissions(self) -> set[str]:
         """Get all permissions for this user."""
-        perms = set()
+        perms: set[str] = set()
         if self.is_superuser:
             perms.add("*")
         for role in self.roles:

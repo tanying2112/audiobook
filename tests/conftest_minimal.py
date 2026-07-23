@@ -124,13 +124,11 @@ for mod_name in [
     "pandas",
     "scikit_learn",
     "scipy",
-    "prometheus_client",
     "structlog",
     "python_json_logger",
-    "apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background",
+    "apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background", "apscheduler.triggers", "apscheduler.triggers.cron",
     "redis",
     "redis.asyncio",
-    "celery",
     "flower",
     "deepeval",
     "promptfoo",
@@ -157,7 +155,7 @@ for mod_name in [
     "bcrypt",
     "passlib",
     "cryptography",
-    "email_validator",
+    # "email_validator",  # Do NOT mock - Pydantic's EmailStr depends on it
     "python_multipart",
     "pydantic_settings",
     "python_dotenv",
@@ -185,13 +183,19 @@ for mod_name in [
     "opentelemetry.metrics",
     "opentelemetry.trace",
     "opentelemetry.instrument",
-    "prometheus_client",
     "celery",
+    "celery.states",
     "celery.schedules",
     "celery.signals",
 ]:
     if mod_name not in sys.modules:
         sys.modules[mod_name] = MagicMock()
+
+# Set celery states constants
+sys.modules["celery.states"].FAILURE = "FAILURE"
+sys.modules["celery.states"].RETRY = "RETRY"
+sys.modules["celery.states"].STARTED = "STARTED"
+sys.modules["celery.states"].SUCCESS = "SUCCESS"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Environment setup for all tests

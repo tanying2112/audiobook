@@ -12,8 +12,6 @@ import sys
 
 import pytest
 
-sys.path.insert(0, "src")
-
 
 def test_translate_pipeline_import():
     """Test that translate pipeline can be imported."""

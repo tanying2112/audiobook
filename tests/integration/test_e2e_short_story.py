@@ -9,8 +9,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, "src")
-
 import pytest
 
 from audiobook_studio.pipeline import (

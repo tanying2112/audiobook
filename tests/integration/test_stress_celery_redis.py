@@ -23,16 +23,14 @@ os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:63
 import pytest
 import redis
 
-from src.audiobook_studio.tasks.tts_tasks import (
+from audiobook_studio.tasks.tts_tasks import (
     _ACQUIRE_LUA,
     _RELEASE_LUA,
     TTSChapterTask,
     _get_redis,
     synthesize_chapter_task,
 )
-from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
-from src.audiobook_studio.tts.port_factory import reset_port as reset_port_factory
-from src.audiobook_studio.tts.port_factory import set_port
+from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
 # Test configuration
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/1")
@@ -54,13 +52,54 @@ def redis_client():
 @pytest.fixture(autouse=True)
 def reset_port_fixture():
     """Reset port factory for each test."""
-    reset_port_factory()
-    # Use fake port for testing
+    from audiobook_studio.tts.engine import get_engine_registry, set_engine_registry
+    from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+
+    # Reset registry
+    import audiobook_studio.tts.engine as engine_module
+    engine_module._global_registry = None
+
+    # Use fake registry for testing
+    from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
     fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
-    set_port(fake_port)
+
+    # Create a fake engine registry
+    from audiobook_studio.tts.engine import EngineRegistry
+    registry = EngineRegistry()
+
+    # Register fake engine
+    import asyncio
+
+    # Register the fake port as a mock engine
+    async def register_fake():
+        class FakeEngine:
+            engine_name = "fake"
+            _loaded = True
+
+            async def initialize(self):
+                pass
+
+            async def synthesize(self, payload, output_path):
+                from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+                fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
+                return await fake_port.synthesize(payload, output_path)
+
+            async def close(self):
+                pass
+
+        fake_engine = FakeEngine()
+        async with registry._lock():
+            registry._engines["fake"] = fake_engine
+            registry._default_engine = "fake"
+
+    asyncio.run(register_fake())
+    set_engine_registry(registry)
+
     yield
+
+    # Cleanup
     asyncio.run(fake_port.close())
-    reset_port_factory()
+    engine_module._global_registry = None
 
 
 @pytest.fixture

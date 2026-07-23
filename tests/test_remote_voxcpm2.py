@@ -3,6 +3,10 @@
 Uses pytest-httpx for mocking HTTP responses and testing retry/circuit breaker behavior.
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 import asyncio
 import json
 from pathlib import Path
@@ -11,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import httpx
 import pytest
 
-from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
-from src.audiobook_studio.tts.remote_voxcpm2_client import (
+from audiobook_studio.llm.circuit_breaker import CircuitBreaker
+from audiobook_studio.tasks.tts_tasks import TTSChapterTask
+from audiobook_studio.tts.remote_voxcpm2_client import (
     RemoteVoxCPM2Client,
     RemoteVoxCPM2Config,
     create_remote_voxcpm2_client,

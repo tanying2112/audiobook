@@ -34,26 +34,25 @@ from ..utils.gc_manager import cleanup_after_export
 logger = logging.getLogger(__name__)
 
 
-def _run_export_sync(project_id: int, job: ExportJob, db_session, task_self=None) -> ExportJob:
-    """Run export synchronously against the real 3-arg ``export_project``.
+async def _run_export_async(project_id: int, job: ExportJob, db_session=None) -> ExportJob:
+    """Run export asynchronously against the real 3-arg ``export_project``.
 
     ``export_project(project_id, session, job)`` writes progress onto the job
     object itself (batch_exporter.py:254) and has **no** progress-callback
     parameter. Sprint L's ``progress_callback`` plumbing called it with a
     phantom 4th arg → ``TypeError`` on every task → retry×3 → FAILURE.
-    ``task_self`` is kept (defaulting to ``None``) as the Celery task-context
+    ``db_session`` is kept (defaulting to ``None``) as the Celery task-context
     injection point — the caller ``export_project_async`` is ``bind=True`` and
-    passes ``self`` — so progress reporting can be re-added without touching the
-    call site.
+    passes ``self`` — so progress reporting can be re-added without touching
+    the call site.
     """
-    from ..database import SessionLocal
+    from ..database import AsyncSessionLocal
 
-    db = db_session or SessionLocal()
-    try:
-        return export_project(project_id, db, job)
-    finally:
-        if not db_session:
-            db.close()
+    if db_session is None:
+        async with AsyncSessionLocal() as db:
+            return await export_project(project_id, db, job)
+    else:
+        return await export_project(project_id, db_session, job)
 
 
 @celery_app.task(
@@ -116,13 +115,9 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
         )
 
         # Run export with progress tracking
-        from ..database import SessionLocal
+        import asyncio
 
-        db = SessionLocal()
-        try:
-            result_job = _run_export_sync(project_id, job, db, self)
-        finally:
-            db.close()
+        result_job = asyncio.run(_run_export_async(project_id, job))
 
         # Build response
         response = {
@@ -184,14 +179,16 @@ def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Opt
     logger.info(f"[{task_id}] Starting chapter export for project {project_id}, chapter {chapter_id}")
 
     try:
-        from ..database import SessionLocal
+        from ..database import AsyncSessionLocal
         from ..export.batch_exporter import export_chapter
 
-        db = SessionLocal()
-        try:
-            result_path = export_chapter(project_id, chapter_id, db, output_dir)
-        finally:
-            db.close()
+        async def _run():
+            async with AsyncSessionLocal() as db:
+                return await export_chapter(project_id, chapter_id, db, output_dir)
+
+        import asyncio
+
+        result_path = asyncio.run(_run())
 
         if result_path:
             response = {

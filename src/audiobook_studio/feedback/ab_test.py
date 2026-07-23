@@ -1006,15 +1006,11 @@ def run_ab_test_with_pipeline_rerun(
             output_a = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=mock_mode)
             if hasattr(output_a, "model_dump"):
                 output_a = output_a.model_dump()
-            elif hasattr(output_a, "dict"):
-                output_a = output_a.dict()
 
             # Run with new version
             output_b = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=mock_mode)
             if hasattr(output_b, "model_dump"):
                 output_b = output_b.model_dump()
-            elif hasattr(output_b, "dict"):
-                output_b = output_b.dict()
 
             sample = ABTestSample(
                 sample_id=str(uuid.uuid4()),

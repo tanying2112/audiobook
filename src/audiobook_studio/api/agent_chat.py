@@ -18,12 +18,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agent.fsm import PipelineFSM, PipelineMode, PipelineState, _fsm_instances, get_fsm, remove_fsm
 from ..agent.tools import TOOL_DEFINITIONS, TOOL_HANDLERS, execute_tool
+from ..api.dependencies import get_async_db
 from ..api.websocket import manager as ws_manager
-from ..database import get_db
+from ..database import create_async_session
 from ..models import Project
 from ..models.agent import AgentKnowledge, TaskRecord
 
@@ -195,23 +197,24 @@ async def _process_agent_message(
     _add_message(session_id, "user", user_message)
 
     # Get project context
-    from ..database import SessionLocal
-
-    db = SessionLocal()
+    db = create_async_session()
     try:
-        project = db.query(Project).filter(Project.id == project_id).first()
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
         project_title = project.title if project else f"Project {project_id}"
 
         # Get knowledge base entries
-        knowledge_count = db.query(AgentKnowledge).filter(AgentKnowledge.topic.contains(str(project_id))).count()
+        result = await db.execute(select(AgentKnowledge).where(AgentKnowledge.topic.contains(str(project_id))))
+        knowledge_count = len(result.scalars().all())
 
         # Get recent tasks
-        recent_tasks = (
-            db.query(TaskRecord).filter(TaskRecord.input_data.contains({"project_id": project_id})).limit(5).all()
+        result = await db.execute(
+            select(TaskRecord).where(TaskRecord.input_data.contains({"project_id": project_id})).limit(5)
         )
+        recent_tasks = result.scalars().all()
 
     finally:
-        db.close()
+        await db.close()
 
     # Prepare system prompt with tool definitions
     system_prompt = f"""你是 Audiobook Studio 的智能助手，负责帮助用户完成有声书制作全流程。
@@ -467,15 +470,18 @@ async def agent_chat_websocket(websocket: WebSocket, project_id: int):
 
                 elif msg_type == "status":
                     # Return agent status
-                    from ..database import SessionLocal
-
-                    db = SessionLocal()
+                    db = create_async_session()
                     try:
-                        project = db.query(Project).filter(Project.id == project_id).first()
-                        knowledge_count = db.query(AgentKnowledge).count()
-                        recent_tasks = db.query(TaskRecord).limit(10).all()
+                        result = await db.execute(select(Project).where(Project.id == project_id))
+                        project = result.scalar_one_or_none()
+
+                        result = await db.execute(select(AgentKnowledge))
+                        knowledge_count = len(result.scalars().all())
+
+                        result = await db.execute(select(TaskRecord).limit(10))
+                        recent_tasks = result.scalars().all()
                     finally:
-                        db.close()
+                        await db.close()
 
                     await websocket.send_text(
                         json.dumps(
@@ -535,14 +541,15 @@ async def agent_chat_websocket(websocket: WebSocket, project_id: int):
 
 
 @router.post("/chat", response_model=AgentChatResponse)
-async def agent_chat_http(request: AgentChatRequest, db: Session = Depends(get_db)):
+async def agent_chat_http(request: AgentChatRequest, db: AsyncSession = Depends(get_async_db)):
     """
     HTTP endpoint for agent chat (polling fallback).
 
     Send a message to the agent and get a response.
     """
     # Verify project exists
-    project = db.query(Project).filter(Project.id == request.project_id).first()
+    result = await db.execute(select(Project).where(Project.id == request.project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -561,9 +568,10 @@ async def agent_chat_http(request: AgentChatRequest, db: Session = Depends(get_d
 
 
 @router.get("/chat/{project_id}/history")
-async def get_chat_history(project_id: int, session_id: str, db: Session = Depends(get_db)):
+async def get_chat_history(project_id: int, session_id: str, db: AsyncSession = Depends(get_async_db)):
     """Get chat history for a session."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -584,9 +592,10 @@ async def get_chat_history(project_id: int, session_id: str, db: Session = Depen
 
 
 @router.get("/chat/{project_id}/sessions")
-async def list_chat_sessions(project_id: int, db: Session = Depends(get_db)):
+async def list_chat_sessions(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """List all chat sessions for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -605,9 +614,10 @@ async def list_chat_sessions(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/chat/{project_id}/sessions/{session_id}")
-async def delete_chat_session(project_id: int, session_id: str, db: Session = Depends(get_db)):
+async def delete_chat_session(project_id: int, session_id: str, db: AsyncSession = Depends(get_async_db)):
     """Delete a chat session."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -623,14 +633,17 @@ async def delete_chat_session(project_id: int, session_id: str, db: Session = De
 
 
 @router.get("/status/{project_id}", response_model=AgentStatusResponse)
-async def get_agent_status(project_id: int, db: Session = Depends(get_db)):
+async def get_agent_status(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get agent status for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    knowledge_count = db.query(AgentKnowledge).count()
-    recent_tasks = db.query(TaskRecord).limit(10).all()
+    result = await db.execute(select(AgentKnowledge))
+    knowledge_count = len(result.scalars().all())
+    result = await db.execute(select(TaskRecord).limit(10))
+    recent_tasks = result.scalars().all()
     active_sessions = len([s for s in agent_sessions.values() if s["project_id"] == project_id])
 
     return AgentStatusResponse(
@@ -649,10 +662,11 @@ async def add_knowledge(
     knowledge: Dict[str, Any],
     source_agent: str = "user",
     confidence: float = 1.0,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Add knowledge to the agent knowledge base."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -666,8 +680,8 @@ async def add_knowledge(
         last_accessed=datetime.now(timezone.utc),
     )
     db.add(knowledge_entry)
-    db.commit()
-    db.refresh(knowledge_entry)
+    await db.commit()
+    await db.refresh(knowledge_entry)
 
     # Broadcast knowledge update
     await _broadcast_agent_event(
@@ -684,17 +698,19 @@ async def add_knowledge(
 
 
 @router.get("/knowledge/{project_id}")
-async def list_knowledge(project_id: int, topic: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_knowledge(project_id: int, topic: Optional[str] = None, db: AsyncSession = Depends(get_async_db)):
     """List knowledge entries for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    query = db.query(AgentKnowledge)
+    query = select(AgentKnowledge)
     if topic:
-        query = query.filter(AgentKnowledge.topic.contains(topic))
+        query = query.where(AgentKnowledge.topic.contains(topic))
 
-    entries = query.order_by(AgentKnowledge.created_at.desc()).limit(50).all()
+    result = await db.execute(query.order_by(AgentKnowledge.created_at.desc()).limit(50))
+    entries = result.scalars().all()
 
     return {
         "project_id": project_id,
@@ -719,14 +735,15 @@ async def list_knowledge(project_id: int, topic: Optional[str] = None, db: Sessi
 
 
 @router.post("/pipeline/start", response_model=PipelineStartResponse)
-async def start_pipeline(request: PipelineStartRequest, db: Session = Depends(get_db)):
+async def start_pipeline(request: PipelineStartRequest, db: AsyncSession = Depends(get_async_db)):
     """Start pipeline execution (Autopilot or Interactive mode).
 
     - Autopilot: runs all stages sequentially to completion
     - Interactive: runs through annotate, then pauses at PENDING_HUMAN_CONFIRM
       waiting for user confirmation via POST /agent/pipeline/confirm
     """
-    project = db.query(Project).filter(Project.id == request.project_id).first()
+    result = await db.execute(select(Project).where(Project.id == request.project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -757,9 +774,10 @@ async def start_pipeline(request: PipelineStartRequest, db: Session = Depends(ge
 
 
 @router.post("/pipeline/confirm", response_model=PipelineConfirmResponse)
-async def confirm_pipeline(request: PipelineConfirmRequest, db: Session = Depends(get_db)):
+async def confirm_pipeline(request: PipelineConfirmRequest, db: AsyncSession = Depends(get_async_db)):
     """Confirm human review and continue pipeline (Interactive mode only)."""
-    project = db.query(Project).filter(Project.id == request.project_id).first()
+    result = await db.execute(select(Project).where(Project.id == request.project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -795,9 +813,10 @@ async def confirm_pipeline(request: PipelineConfirmRequest, db: Session = Depend
 
 
 @router.get("/pipeline/status/{project_id}", response_model=PipelineStatusResponse)
-async def get_pipeline_status(project_id: int, db: Session = Depends(get_db)):
+async def get_pipeline_status(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get current pipeline FSM status."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -826,9 +845,10 @@ async def get_pipeline_status(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/pipeline/stop/{project_id}")
-async def stop_pipeline(project_id: int, db: Session = Depends(get_db)):
+async def stop_pipeline(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Stop and cleanup pipeline FSM."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 

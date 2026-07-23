@@ -25,7 +25,6 @@ load_dotenv(_project_root / ".env")
 os.environ["MOCK_LLM"] = "true"
 
 # Add src to path
-sys.path.insert(0, "src")
 
 from audiobook_studio.pipeline import (
     analyze_structure,

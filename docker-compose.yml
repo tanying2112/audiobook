@@ -11,7 +11,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - AUDIO_OUTPUT_DIR=/app/output
       - CHECKPOINTS_DIR=/app/checkpoints
@@ -89,14 +89,12 @@ services:
     command: ["celery", "-A", "src.audiobook_studio.celery_app", "worker", "-l", "info", "-Q", "export,pipeline", "--concurrency=1"]
     environment:
       - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONPATH=/app/src
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-test-key-not-real}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-test-key-not-real}
       - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
     volumes:
       - ./output:/app/output

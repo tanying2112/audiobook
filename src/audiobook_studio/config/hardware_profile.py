@@ -12,7 +12,7 @@ import platform
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from pydantic import Field
@@ -250,7 +250,7 @@ class HardwareProfile:
     Uses pydantic-settings for type-safe configuration management.
     """
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[Union[str, Path]] = None):
         if config_path is None:
             config_path = Path(__file__).parent / "hardware_profile.yaml"
         self.config_path = Path(config_path)
@@ -317,6 +317,8 @@ class HardwareProfile:
 
     @property
     def config(self) -> HardwareProfileConfig:
+        if self._config is None:
+            raise RuntimeError("Configuration not loaded")
         return self._config
 
     @property

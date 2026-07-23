@@ -143,11 +143,11 @@ class ExtractStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        # For extract stage, chapter may not exist yet - _write_extract creates it
+        # For extract stage, chapter may not exist yet - write_extract creates it
         from ..models import Paragraph
-        from .orchestrator import _write_extract
+        from .persistence import write_extract
 
-        chapter_result = _write_extract(db, project_id, chapter_index or 1, result)
+        chapter_result = write_extract(db, project_id, chapter_index or 1, result)
         result._chapter_id = chapter_result.id
 
         # Create Paragraph records from extracted text (split by double newlines)
@@ -211,9 +211,9 @@ class AnalyzeStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if chapter:
-            from .orchestrator import _write_analyze
+            from .persistence import write_analyze
 
-            _write_analyze(db, chapter, result)
+            write_analyze(db, chapter, result)
 
 
 from .annotate_paragraph import AnnotateParagraphPipeline
@@ -323,10 +323,10 @@ class AnnotateStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if chapter and paragraph is not None:
-            from .orchestrator import _write_annotate
+            from .persistence import write_annotate
 
             para_index = getattr(result, "paragraph_index", paragraph_index or 0)
-            para = _write_annotate(
+            para = write_annotate(
                 db,
                 project_id=project_id,
                 chapter=chapter,
@@ -392,9 +392,9 @@ class EditStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if paragraph:
-            from .orchestrator import _write_edit
+            from .persistence import write_edit
 
-            _write_edit(db, paragraph, result)
+            write_edit(db, paragraph, result)
 
 
 from dataclasses import asdict
@@ -450,9 +450,9 @@ class AudioPostprocessStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if paragraph:
-            from .orchestrator import _write_audio_postprocess
+            from .persistence import write_audio_postprocess
 
-            _write_audio_postprocess(db, paragraph, result)
+            write_audio_postprocess(db, paragraph, result)
 
 
 class ReviewStage(StageHandler):
@@ -691,7 +691,7 @@ class SynthesizeStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if project_id and chapter and paragraph:
-            from .orchestrator import _write_synthesize
+            from .persistence import write_synthesize
 
             for seg in result:
                 seg_dict = {
@@ -701,7 +701,7 @@ class SynthesizeStage(StageHandler):
                     "voice_id": seg.voice_id,
                     "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
-                _write_synthesize(db, project_id, chapter, paragraph, seg_dict)
+                write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
     def get_result_snapshot(self, result: Any) -> Dict[str, Any]:
         """Serialize AudioSegment list for feedback."""
@@ -795,9 +795,9 @@ class QualityStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if project_id and chapter and paragraph:
-            from .orchestrator import _write_quality
+            from .persistence import write_quality
 
-            _write_quality(db, project_id, chapter, paragraph, result)
+            write_quality(db, project_id, chapter, paragraph, result)
 
 
 from .review import ReviewerAgent, ReviewerInput, ReviewerJudgment
@@ -836,7 +836,7 @@ class TranslateStage(StageHandler):
     ) -> None:
         # Translate stage produces audio segments, similar to synthesize
         if project_id and chapter and paragraph:
-            from .orchestrator import _write_synthesize
+            from .persistence import write_synthesize
 
             dubbed_segments, report = result
             for seg in dubbed_segments:
@@ -847,7 +847,7 @@ class TranslateStage(StageHandler):
                     "voice_id": seg.voice_id,
                     "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
-                _write_synthesize(db, project_id, chapter, paragraph, seg_dict)
+                write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
 
 def register_stage(name: str):

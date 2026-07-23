@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 # Add project path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def test_voice_cloning_imports():

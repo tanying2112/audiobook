@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
@@ -44,12 +44,15 @@ class AudioSegment(Base):
     # 合成信息
     engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # 版本控制
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
     parent_segment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("audio_segments.id"), nullable=True)
+
+    # 排序索引
+    index: Mapped[int] = mapped_column(Integer, default=0)
 
     # 质检关联
     quality_id: Mapped[Optional[int]] = mapped_column(ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True)

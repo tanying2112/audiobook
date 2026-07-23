@@ -2,15 +2,18 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
+from ..api.dependencies import get_async_db
+from ..database import create_async_session
 from ..models import Paragraph, Quality, Routing, TTSEdit
 from ..models.feedback_record import FeedbackRecord as FeedbackRecordModel
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
@@ -110,7 +113,7 @@ async def list_templates(
     stage: Optional[str] = None,
     pattern_tag: Optional[str] = None,
     pending_only: bool = False,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get template queue for project.
@@ -124,37 +127,41 @@ async def list_templates(
     - pattern_tag: Filter by specific pattern tag
     - pending_only: Only show unprocessed feedback (pending confirmation)
     """
-    query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.project_id == project_id)
+    query = select(FeedbackRecordModel).where(FeedbackRecordModel.project_id == project_id)
 
     if source:
-        query = query.filter(FeedbackRecordModel.source == source)
+        query = query.where(FeedbackRecordModel.source == source)
 
     if stage:
-        query = query.filter(FeedbackRecordModel.stage == stage)
+        query = query.where(FeedbackRecordModel.stage == stage)
 
     if pattern_tag:
-        query = query.filter(FeedbackRecordModel.pattern_tags.contains([pattern_tag]))
+        query = query.where(FeedbackRecordModel.pattern_tags.contains([pattern_tag]))
 
     if pending_only:
         # Show unprocessed feedback for confirmation
-        query = query.filter(FeedbackRecordModel.processed == False)
+        query = query.where(FeedbackRecordModel.processed == False)
     else:
         # Show confirmed templates
-        query = query.filter(FeedbackRecordModel.processed == True, FeedbackRecordModel.promoted == True)
+        query = query.where(FeedbackRecordModel.processed == True, FeedbackRecordModel.promoted == True)
 
-    records = query.order_by(FeedbackRecordModel.created_at.desc()).limit(100).all()
+    query = query.order_by(FeedbackRecordModel.created_at.desc()).limit(100)
+    result = await db.execute(query)
+    records = result.scalars().all()
 
     templates = [_feedback_to_template(r) for r in records]
 
     # Count pending
-    pending_count = (
-        db.query(FeedbackRecordModel)
-        .filter(
+    pending_count_query = (
+        select(func.count())
+        .select_from(FeedbackRecordModel)
+        .where(
             FeedbackRecordModel.project_id == project_id,
             FeedbackRecordModel.processed == False,
         )
-        .count()
     )
+    pending_result = await db.execute(pending_count_query)
+    pending_count = pending_result.scalar() or 0
 
     return TemplateListResponse(
         templates=templates,
@@ -168,7 +175,7 @@ async def confirm_template(
     project_id: int,
     template_id: int,
     request: TemplateConfirmRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Confirm or reject a template.
@@ -176,14 +183,13 @@ async def confirm_template(
     Confirm: Mark as processed=true, promoted=true (enters Golden Sample candidate queue)
     Reject: Mark as processed=true (not promoted)
     """
-    record = (
-        db.query(FeedbackRecordModel)
-        .filter(
+    result = await db.execute(
+        select(FeedbackRecordModel).where(
             FeedbackRecordModel.id == template_id,
             FeedbackRecordModel.project_id == project_id,
         )
-        .first()
     )
+    record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -201,8 +207,8 @@ async def confirm_template(
     else:
         raise HTTPException(status_code=400, detail=f"Invalid action: {request.action}")
 
-    db.commit()
-    db.refresh(record)
+    await db.commit()
+    await db.refresh(record)
 
     return {
         "id": record.id,
@@ -217,7 +223,7 @@ async def apply_template(
     project_id: int,
     request: TemplateApplyRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Apply template to project (batch apply to matching paragraphs).
@@ -230,14 +236,13 @@ async def apply_template(
     Returns a task ID for progress tracking (applied asynchronously).
     """
     # Verify template exists
-    template = (
-        db.query(FeedbackRecordModel)
-        .filter(
+    result = await db.execute(
+        select(FeedbackRecordModel).where(
             FeedbackRecordModel.id == request.template_id,
             FeedbackRecordModel.project_id == project_id,
         )
-        .first()
     )
+    template = result.scalar_one_or_none()
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -286,12 +291,7 @@ async def _apply_template_background(
        Quality for quality) using the template's corrected_output.
     3. Track progress in a global dictionary.
     """
-    import os
     from datetime import datetime
-
-    from sqlalchemy import create_engine
-    from sqlalchemy.exc import SQLAlchemyError
-    from sqlalchemy.orm import sessionmaker
 
     # Import models
     from ..models import FeedbackRecord as FeedbackRecordModel
@@ -310,22 +310,18 @@ async def _apply_template_background(
         "current_stage": None,
     }
 
-    # Create a new database session for this background task
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
-    engine = create_engine(database_url, connect_args={"check_same_thread": False})
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+    # Create a new async database session for this background task
+    db = create_async_session()
 
     try:
         # Fetch the template
-        template = (
-            db.query(FeedbackRecordModel)
-            .filter(
+        result = await db.execute(
+            select(FeedbackRecordModel).where(
                 FeedbackRecordModel.id == template_id,
                 FeedbackRecordModel.project_id == project_id,
             )
-            .first()
         )
+        template = result.scalar_one_or_none()
         if not template:
             raise ValueError(f"Template {template_id} not found for project {project_id}")
 
@@ -333,11 +329,11 @@ async def _apply_template_background(
             raise ValueError(f"Template {template_id} is not confirmed")
 
         # Determine target paragraphs
-        query = db.query(Paragraph).filter(Paragraph.project_id == project_id)
+        query = select(Paragraph).where(Paragraph.project_id == project_id)
 
         if scope == "chapter":
             if chapter_ids:
-                query = query.filter(Paragraph.chapter_id.in_(chapter_ids))
+                query = query.where(Paragraph.chapter_id.in_(chapter_ids))
             # else: no chapter_ids → treat as "all" for that scope
         elif scope == "pattern":
             # Match paragraphs whose annotation fields overlap with
@@ -352,8 +348,6 @@ async def _apply_template_background(
                 # No tags available — fall back to matching all paragraphs
                 pass
             else:
-                from sqlalchemy import or_
-
                 tag_filters = []
                 for tag in pattern_tags:
                     tag_lower = tag.lower()
@@ -374,10 +368,11 @@ async def _apply_template_background(
                         tag_filters.append(Paragraph.notes.ilike(f"%{tag}%"))
                 # A paragraph matches if it satisfies ANY of the tag conditions (OR logic)
                 if tag_filters:
-                    query = query.filter(or_(*tag_filters))
+                    query = query.where(or_(*tag_filters))
         # else scope == "all": no additional filter
 
-        paragraphs = query.all()
+        result = await db.execute(query)
+        paragraphs = result.scalars().all()
         total = len(paragraphs)
 
         # Update progress
@@ -393,13 +388,13 @@ async def _apply_template_background(
             try:
                 # Apply template based on stage
                 if template.stage == "annotate":
-                    _apply_annotation_template(db, para, template.corrected_output)
+                    await _apply_annotation_template(db, para, template.corrected_output)
                 elif template.stage == "edit_for_tts":
-                    _apply_edit_template(db, para, template.corrected_output)
+                    await _apply_edit_template(db, para, template.corrected_output)
                 elif template.stage == "routing":
-                    _apply_routing_template(db, para, template.corrected_output)
+                    await _apply_routing_template(db, para, template.corrected_output)
                 elif template.stage == "quality":
-                    _apply_quality_template(db, para, template.corrected_output)
+                    await _apply_quality_template(db, para, template.corrected_output)
                 else:
                     logger.warning(f"Unknown template stage: {template.stage}")
             except Exception as e:
@@ -420,10 +415,10 @@ async def _apply_template_background(
         _apply_template_background.progress[task_id]["status"] = "failed"
         _apply_template_background.progress[task_id]["error"] = str(e)
     finally:
-        db.close()
+        await db.close()
 
 
-def _apply_annotation_template(db: Session, pa: Paragraph, corrected_output: dict):
+async def _apply_annotation_template(db: AsyncSession, pa: Paragraph, corrected_output: dict):
     """Apply annotation template: update Paragraph annotation fields."""
     # Map corrected_output to Paragraph fields
     # corrected_output should match ParagraphAnnotation schema
@@ -449,10 +444,10 @@ def _apply_annotation_template(db: Session, pa: Paragraph, corrected_output: dic
         # We'll set edit_difficulty for consistency with annotation
         pa.edit_difficulty = corrected_output["difficulty"]
     db.add(pa)
-    db.commit()
+    await db.commit()
 
 
-def _apply_edit_template(db: Session, pa: Paragraph, corrected_output: dict):
+async def _apply_edit_template(db: AsyncSession, pa: Paragraph, corrected_output: dict):
     """Apply edit template: create new TTSEdit record."""
     # corrected_output should match TtsEditOutput schema
     tts_edit = TTSEdit(
@@ -472,7 +467,7 @@ def _apply_edit_template(db: Session, pa: Paragraph, corrected_output: dict):
         prompt_version=corrected_output.get("prompt_version"),
     )
     db.add(tts_edit)
-    db.commit()
+    await db.commit()
     # Optionally update paragraph's edited_text to latest
     pa.edited_text = tts_edit.edited_text
     pa.edit_changes_made = tts_edit.changes_made
@@ -481,10 +476,10 @@ def _apply_edit_template(db: Session, pa: Paragraph, corrected_output: dict):
     pa.edit_difficulty = tts_edit.difficulty
     pa.edit_forbid_edit = tts_edit.forbid_edit
     db.add(pa)
-    db.commit()
+    await db.commit()
 
 
-def _apply_routing_template(db: Session, pa: Paragraph, corrected_output: dict):
+async def _apply_routing_template(db: AsyncSession, pa: Paragraph, corrected_output: dict):
     """Apply routing template: create new Routing record."""
     # corrected_output should match TtsRoutingDecision schema
     routing = Routing(
@@ -506,7 +501,7 @@ def _apply_routing_template(db: Session, pa: Paragraph, corrected_output: dict):
         confidence=corrected_output.get("confidence"),
     )
     db.add(routing)
-    db.commit()
+    await db.commit()
     # Update paragraph's routing fields (latest)
     pa.routing_engine = routing.engine_choice
     pa.routing_voice_id = routing.voice_id
@@ -522,13 +517,14 @@ def _apply_routing_template(db: Session, pa: Paragraph, corrected_output: dict):
     pa.voice = routing.voice
     pa.confidence = routing.confidence
     db.add(pa)
-    db.commit()
+    await db.commit()
 
 
-def _apply_quality_template(db: Session, pa: Paragraph, corrected_output: dict):
+async def _apply_quality_template(db: AsyncSession, pa: Paragraph, corrected_output: dict):
     """Apply quality template: create new Quality record linked to latest TTSEdit."""
     # Get latest TTSEdit for this paragraph
-    latest_tts_edit = db.query(TTSEdit).filter(TTSEdit.paragraph_id == pa.id).order_by(TTSEdit.id.desc()).first()
+    result = await db.execute(select(TTSEdit).where(TTSEdit.paragraph_id == pa.id).order_by(TTSEdit.id.desc()))
+    latest_tts_edit = result.scalars().first()
     if not latest_tts_edit:
         logger.warning(f"No TTSEdit found for paragraph {pa.id}, skipping quality application")
         return
@@ -555,7 +551,7 @@ def _apply_quality_template(db: Session, pa: Paragraph, corrected_output: dict):
         audio_duration_ms=corrected_output.get("audio_duration_ms"),
     )
     db.add(quality)
-    db.commit()
+    await db.commit()
     # Update paragraph's quality fields (latest)
     pa.quality_speaker_clarity = quality.speaker_clarity
     pa.quality_emotion_match = quality.emotion_match
@@ -566,11 +562,11 @@ def _apply_quality_template(db: Session, pa: Paragraph, corrected_output: dict):
     pa.quality_fix_suggestions = quality.fix_suggestions
     pa.quality_needs_regeneration = quality.needs_regeneration
     db.add(pa)
-    db.commit()
+    await db.commit()
 
 
 async def _rerun_downstream_stages(
-    db: Session,
+    db: AsyncSession,
     project_id: int,
     applied_stage: str,
     paragraphs: list,

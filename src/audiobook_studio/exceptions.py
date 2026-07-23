@@ -3,7 +3,39 @@
 分层异常设计，便于捕获、分类和结构化日志记录。
 """
 
+from enum import IntEnum
 from typing import Any, Dict, List, Optional
+
+
+# ── Numeric error code enums (QUAL-003) ──────────────────────────────────────
+
+
+class ExtractionErrorCode(IntEnum):
+    """Error codes for document extraction / parsing failures."""
+    FILE_NOT_FOUND = 1001
+    UNSUPPORTED_FORMAT = 1002
+    OCR_FAILED = 1003
+    CHAPTER_SPLIT_FAILED = 1004
+    DB_COMMIT_FAILED = 1005
+    REDIS_JOB_LOST = 1006
+
+
+class TTSErrorCode(IntEnum):
+    """Error codes for TTS synthesis failures."""
+    MODEL_LOAD_FAILED = 2001
+    SYNTHESIS_FAILED = 2002
+    AUDIO_EXPORT_FAILED = 2003
+    ENGINE_UNAVAILABLE = 2004
+    VOICE_CLONE_FAILED = 2005
+
+
+class ExportErrorCode(IntEnum):
+    """Error codes for audio export / publishing failures."""
+    M4B_CONVERSION_FAILED = 3001
+    FFMPEG_TIMEOUT = 3002
+    OUTPUT_DIR_FULL = 3003
+    AUDIOBOOKSHELF_UPLOAD_FAILED = 3004
+    RSS_GENERATION_FAILED = 3005
 
 
 class AudiobookError(Exception):
@@ -28,7 +60,7 @@ class AudiobookError(Exception):
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为结构化字典，用于日志记录."""
-        data = {
+        data: Dict[str, Any] = {
             "error_type": self.__class__.__name__,
             "error_code": self.error_code,
             "message": self.message,

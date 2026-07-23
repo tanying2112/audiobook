@@ -15,7 +15,6 @@ import pytest
 # Set MOCK_LLM environment variable for mock mode testing
 os.environ["MOCK_LLM"] = "true"
 
-sys.path.insert(0, "src")
 
 from audiobook_studio.llm import create_router  # noqa: E402
 from audiobook_studio.pipeline import (  # noqa: E402
@@ -91,7 +90,7 @@ class TestGoldenDatasetAnalyzeStructure:
 
     @pytest.fixture(scope="class")
     def router(self):
-        return create_router()
+        return create_router(mock_mode=True)
 
     @pytest.fixture(scope="class")
     def pipeline(self, router):

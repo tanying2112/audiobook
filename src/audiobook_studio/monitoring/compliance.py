@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -174,14 +174,14 @@ class ComplianceMonitor:
 
         return results
 
-    def export_report(self, output_path: Optional[str] = None) -> str:
+    def export_report(self, output_path: Optional[Union[str, Path]] = None) -> str:
         """Export compliance report to JSON file."""
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = self.storage_path / f"compliance_report_{timestamp}.json"
 
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path_obj = Path(output_path)
+        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         report = {
             "session_start": self._session_start,
@@ -214,11 +214,11 @@ class ComplianceMonitor:
             ],
         }
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(output_path_obj, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"Compliance report exported to {output_path}")
-        return str(output_path)
+        logger.info(f"Compliance report exported to {output_path_obj}")
+        return str(output_path_obj)
 
     def reset(self):
         """Reset all collected data."""

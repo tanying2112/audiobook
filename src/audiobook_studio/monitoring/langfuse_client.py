@@ -111,7 +111,7 @@ def flush_langfuse() -> None:
 def _trace_context_manager(
     name: str,
     metadata: Optional[Dict[str, Any]] = None,
-    tags: Optional[list] = None,
+    tags: Optional[list[str]] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> Generator[Any, None, None]:
@@ -154,10 +154,10 @@ def _trace_context_manager(
 def trace(
     name: str,
     metadata: Optional[Dict[str, Any]] = None,
-    tags: Optional[list] = None,
+    tags: Optional[list[str]] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
-):
+) -> Generator[Any, None, None]:
     """Context manager for creating a trace (Langfuse v4 compatible).
 
     Usage:
@@ -322,7 +322,7 @@ def observe_quality_check(
     stage: str,
     passed: bool,
     score: float,
-    issues: list,
+    issues: list[str],
     latency_ms: float,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -363,7 +363,7 @@ def observe_quality_check(
 def trace_function(
     name: Optional[str] = None,
     stage: Optional[str] = None,
-    metadata_extractor: Optional[Callable] = None,
+    metadata_extractor: Optional[Callable[..., Any]] = None,
 ):
     """Decorator to trace a function call using Langfuse v4 @observe.
 
@@ -374,9 +374,9 @@ def trace_function(
     """
     from langfuse import observe as langfuse_observe
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             trace_name = name or f"{func.__module__}.{func.__name__}"
             meta = {}
             if metadata_extractor:
@@ -439,27 +439,27 @@ def score_trace(trace_obj: Any, score: float, comment: Optional[str] = None) -> 
 
 
 # Convenience functions for common pipeline stages
-def trace_extract(func: Callable) -> Callable:
+def trace_extract(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.extract", stage="extract")(func)
 
 
-def trace_analyze(func: Callable) -> Callable:
+def trace_analyze(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.analyze", stage="analyze")(func)
 
 
-def trace_annotate(func: Callable) -> Callable:
+def trace_annotate(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.annotate", stage="annotate")(func)
 
 
-def trace_edit(func: Callable) -> Callable:
+def trace_edit(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.edit", stage="edit")(func)
 
 
-def trace_synthesize(func: Callable) -> Callable:
+def trace_synthesize(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.synthesize", stage="synthesize")(func)
 
 
-def trace_quality(func: Callable) -> Callable:
+def trace_quality(func: Callable[..., Any]) -> Callable[..., Any]:
     return trace_function("pipeline.quality", stage="quality")(func)
 
 

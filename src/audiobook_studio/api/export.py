@@ -1,5 +1,5 @@
 """
-D4 — FastAPI 导出路由
+D4 — FastAPI 导出路由 (async SQLAlchemy 2.0)
 
 提供 REST API：
 - POST /api/projects/{id}/export — 发起批量导出 (异步 Celery 任务)
@@ -13,13 +13,14 @@ from typing import List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..celery_app import celery_app
 from ..export import ExportFormat, ExportJob, ExportProgress
 from ..models import Project
 from ..tasks.export_tasks import export_chapter_async, export_project_async, get_export_status
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ class TaskStatusOut(BaseModel):
 
 
 @router.get("/", response_model=List[FormatInfo])
-def list_export_formats(
+async def list_export_formats(
     project_id: int,
 ):
     """列出支持的导出格式."""
@@ -111,17 +112,18 @@ def list_export_formats(
 
 
 @router.post("/", response_model=ExportStatusOut, status_code=status.HTTP_202_ACCEPTED)
-def start_export(
+async def start_export(
     project_id: int,
     payload: ExportRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """启动项目导出任务 (异步).
 
     触发 Celery 任务，立即返回 task_id，前端可轮询 /api/export/tasks/{task_id}/status
     """
     # Validate project exists
-    project = db.query(Project).filter_by(id=project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -178,12 +180,13 @@ def start_export(
 
 
 @router.get("/status", response_model=ExportStatusOut)
-def get_export_status_endpoint(
+async def get_export_status_endpoint(
     project_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """查看项目的导出状态 (基于最新任务)."""
-    project = db.query(Project).filter_by(id=project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -196,14 +199,15 @@ def get_export_status_endpoint(
 
 
 @router.post("/chapter/{chapter_id}", response_model=ExportStatusOut, status_code=status.HTTP_202_ACCEPTED)
-def export_single_chapter(
+async def export_single_chapter(
     project_id: int,
     chapter_id: int,
     output_dir: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """导出一个章节为独立的 M4B 文件 (异步)."""
-    project = db.query(Project).filter_by(id=project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 

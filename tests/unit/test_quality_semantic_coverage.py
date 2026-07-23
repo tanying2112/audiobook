@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Add src to path
-sys.path.insert(0, "src")
 
 # Mock sentence_transformers module before importing our module
 mock_sentence_transformers = MagicMock()

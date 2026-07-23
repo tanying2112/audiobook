@@ -18,15 +18,16 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
+from ..api.dependencies import get_async_db
 from ..feedback.critics.base import CriticEnsembleEvaluator, CriticResult, CriticType
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
 from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
 from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
 from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
 from ..models.feedback_record import FeedbackRecord
+from ..models.paragraph import Paragraph
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +236,7 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
 @router.get("/status", response_model=SelfIterationStatus)
 async def get_harness_status(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get HARNESS self-iteration status overview.
@@ -244,7 +245,8 @@ async def get_harness_status(
     the FeedbackRecord table for unprocessed counts.
     """
     # Query unprocessed feedback count from DB
-    unprocessed_count = db.query(func.count(FeedbackRecord.id)).filter(FeedbackRecord.processed == False).scalar() or 0
+    result = await db.execute(func.count(FeedbackRecord.id).select().where(FeedbackRecord.processed == False))
+    unprocessed_count = result.scalar() or 0
 
     # If project_id given, try to get iteration loop status
     if project_id:
@@ -269,7 +271,7 @@ async def get_harness_status(
 @router.get("/feedback-funnel", response_model=FeedbackFunnel)
 async def get_feedback_funnel(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get feedback funnel metrics.
@@ -277,13 +279,18 @@ async def get_feedback_funnel(
     Shows: total → analyzed → triggered upgrade → promotion passed → published
     Aggregated from FeedbackRecord table.
     """
-    query = db.query(FeedbackRecord)
-    if project_id:
-        query = query.filter(FeedbackRecord.project_id == project_id)
+    from sqlalchemy import select
 
-    total = query.count()
-    analyzed = query.filter(FeedbackRecord.processed == True).count()
-    promoted = query.filter(FeedbackRecord.promoted == True).count()
+    query = select(FeedbackRecord)
+    if project_id:
+        query = query.where(FeedbackRecord.project_id == project_id)
+
+    result = await db.execute(query)
+    records = result.scalars().all()
+
+    total = len(records)
+    analyzed = sum(1 for r in records if r.processed)
+    promoted = sum(1 for r in records if r.promoted)
 
     # Conversion rates
     conversion_rates = {}
@@ -305,18 +312,21 @@ async def get_feedback_funnel(
 @router.get("/pattern-heatmap", response_model=PatternHeatmapResponse)
 async def get_pattern_heatmap(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get pattern tag frequency heatmap.
 
     Aggregates pattern_tags from processed FeedbackRecord entries.
     """
-    query = db.query(FeedbackRecord).filter(FeedbackRecord.processed == True)
-    if project_id:
-        query = query.filter(FeedbackRecord.project_id == project_id)
+    from sqlalchemy import select
 
-    records = query.all()
+    query = select(FeedbackRecord).where(FeedbackRecord.processed == True)
+    if project_id:
+        query = query.where(FeedbackRecord.project_id == project_id)
+
+    result = await db.execute(query)
+    records = result.scalars().all()
 
     # Aggregate pattern tags by stage
     tag_counter: Counter = Counter()
@@ -527,7 +537,7 @@ async def get_canaries():
 @router.get("/ab-tests", response_model=ABTestDashboardResponse)
 async def get_ab_tests(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get A/B test results dashboard.
@@ -536,6 +546,8 @@ async def get_ab_tests(
     Since A/B tests run in-memory, we provide the latest results from
     the promotion gate evaluation.
     """
+    from sqlalchemy import select
+
     # Build A/B test entries from prompt version comparison
     tests: List[ABTestResult] = []
 
@@ -586,7 +598,7 @@ async def get_ab_tests(
 @router.get("/critics/latest", response_model=CriticEnsembleResult)
 async def get_latest_critic_results(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get latest Critics Ensemble evaluation results.
@@ -594,15 +606,16 @@ async def get_latest_critic_results(
     Returns ensemble of 3 critics (semantic/structural/objective) with weighted verdict.
     If no quality-checked paragraphs exist, returns default empty state.
     """
-    from ..models.paragraph import Paragraph
+    from sqlalchemy import select
 
     # Find the latest paragraph with quality scores
-    query = db.query(Paragraph).filter(Paragraph.quality_overall_score.isnot(None)).order_by(Paragraph.id.desc())
+    query = select(Paragraph).where(Paragraph.quality_overall_score.is_not(None)).order_by(Paragraph.id.desc())
 
     if project_id:
-        query = query.filter(Paragraph.project_id == project_id)
+        query = query.where(Paragraph.project_id == project_id)
 
-    latest_para = query.first()
+    result = await db.execute(query)
+    latest_para = result.scalar_one_or_none()
 
     if not latest_para:
         return CriticEnsembleResult(
@@ -695,7 +708,7 @@ async def trigger_iteration(
 @router.get("/dashboard")
 async def get_full_dashboard(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get complete HARNESS dashboard (all metrics in one call).

@@ -23,6 +23,20 @@ from tests.conftest_minimal import *  # noqa: F403,F401
 # ════════════════════════════════════════════════════════════════════════════
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_sys_path():
+    """Prevent sys.path pollution across test modules (TEST-002).
+
+    Saves sys.path at session start and restores it after all tests,
+    so no single test module's import manipulation leaks into others.
+    """
+    import sys
+
+    orig = sys.path.copy()
+    yield
+    sys.path[:] = orig
+
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "e2e: mark test as end-to-end test (requires API keys)")

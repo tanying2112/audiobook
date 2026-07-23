@@ -8,18 +8,17 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..config import get_settings
-
-get_settings
-from ..database import SessionLocal, get_db
+from ..database import create_async_session
 from ..models.audio_segment import AudioSegment
 from ..models.book import Project
 from ..models.chapter import Chapter
@@ -158,15 +157,17 @@ def _get_checkpoint_manager(project_id: int) -> CheckpointManager:
     return CheckpointManager(project_id)
 
 
-def _create_paragraphs_from_chapters(db: Session, project_id: int):
+async def _create_paragraphs_from_chapters(db: AsyncSession, project_id: int):
     """Create Paragraph records from Chapter raw_text if they don't exist."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         return
 
     for chapter in project.chapters:
-        existing = db.query(Paragraph).filter(Paragraph.chapter_id == chapter.id).count()
-        if existing > 0:
+        result = await db.execute(select(Paragraph).where(Paragraph.chapter_id == chapter.id))
+        existing = result.scalars().all()
+        if existing:
             continue
 
         raw_text = chapter.raw_text or ""
@@ -181,7 +182,7 @@ def _create_paragraphs_from_chapters(db: Session, project_id: int):
                 book_id=project_id,  # For backwards compatibility
             )
             db.add(para)
-        db.commit()
+        await db.commit()
         logger.info(f"Created {len(paragraphs)} paragraphs for chapter {chapter.index}")
 
 
@@ -300,11 +301,12 @@ async def _run_single_stage(
     We iterate chapters (for extract/analyze) or paragraphs (for other stages)
     and emit progress events for each sub-item.
     """
-    db = SessionLocal()
+    db = create_async_session()
 
     try:
         # Verify project exists
-        project = db.query(Project).filter(Project.id == project_id).first()
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
@@ -312,7 +314,8 @@ async def _run_single_stage(
 
         if stage in ("extract", "analyze"):
             # These stages operate on chapters
-            chapters = project.chapters
+            result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+            chapters = result.scalars().all()
             total = len(chapters)
             if total == 0:
                 logger.warning(f"No chapters found for project {project_id} in stage {stage}")
@@ -375,7 +378,7 @@ async def _run_single_stage(
 
             # Create paragraphs after analyze stage (needed for downstream stages)
             if stage == "analyze":
-                _create_paragraphs_from_chapters(db, project_id)
+                await _create_paragraphs_from_chapters(db, project_id)
 
         elif stage in (
             "annotate",
@@ -385,7 +388,10 @@ async def _run_single_stage(
             "quality",
         ):
             # These stages operate on paragraphs
-            paragraphs = project.paragraphs
+            result = await db.execute(
+                select(Paragraph).where(Paragraph.project_id == project_id).order_by(Paragraph.index)
+            )
+            paragraphs = result.scalars().all()
             total = len(paragraphs)
             if total == 0:
                 logger.warning(f"No paragraphs found for project {project_id} in stage {stage}")
@@ -428,7 +434,8 @@ async def _run_single_stage(
             seen_chapters: set = set()
             for para in paragraphs:
                 if para.chapter_id and para.chapter_id not in seen_chapters:
-                    chapter = db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
+                    result = await db.execute(select(Chapter).where(Chapter.id == para.chapter_id))
+                    chapter = result.scalar_one_or_none()
                     if chapter:
                         checkpoint_mgr.mark_stage_done(stage, chapter.index)
                     seen_chapters.add(para.chapter_id)
@@ -448,7 +455,7 @@ async def _run_single_stage(
         logger.error(f"Error in _run_single_stage for stage {stage}: {e}")
         raise
     finally:
-        db.close()
+        await db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,7 +468,7 @@ async def start_auto_run(
     project_id: int,
     request: AutoRunStartRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Start one-click auto-run pipeline.
@@ -475,7 +482,8 @@ async def start_auto_run(
     Returns run_id for tracking.
     """
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -626,7 +634,7 @@ async def cancel_auto_run(project_id: int):
 async def start_autopilot(
     project_id: int,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Start autopilot one-click mode.
@@ -641,7 +649,8 @@ async def start_autopilot(
     Returns run_id for tracking.
     """
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -676,20 +685,21 @@ async def start_autopilot(
 
 
 @router.get("/autopilot/preview", response_model=AutopilotConfig)
-async def preview_autopilot_config(project_id: int, db: Session = Depends(get_db)):
+async def preview_autopilot_config(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """
     Preview the auto-detected configuration without starting the pipeline.
 
     Useful for showing the user what settings will be used.
     """
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     return await _generate_autopilot_config(project_id, db)
 
 
-async def _generate_autopilot_config(project_id: int, db: Session) -> AutoRunConfig:
+async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutoRunConfig:
     """
     Analyze project content and generate optimal configuration.
 
@@ -700,7 +710,8 @@ async def _generate_autopilot_config(project_id: int, db: Session) -> AutoRunCon
     - Project size for cost estimation
     """
     # Get project with chapters
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -825,7 +836,7 @@ async def get_intermediate_product(
     project_id: int,
     stage: str,
     chapter_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     View intermediate product from a pipeline stage.
@@ -842,17 +853,19 @@ async def get_intermediate_product(
     - quality: Quality scores and issues
     """
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     if stage not in _stage_order:
         raise HTTPException(status_code=400, detail=f"Unknown stage: {stage}")
 
-    # Helper to get first chapter if none specified
-    def get_chapter(cid: Optional[int]) -> Chapter:
+    # Helper to get chapter
+    async def get_chapter(cid: Optional[int]) -> Chapter:
         if cid is not None:
-            chapter = db.query(Chapter).filter(Chapter.id == cid, Chapter.project_id == project_id).first()
+            result = await db.execute(select(Chapter).where(Chapter.id == cid, Chapter.project_id == project_id))
+            chapter = result.scalar_one_or_none()
             if not chapter:
                 raise HTTPException(
                     status_code=404,
@@ -860,12 +873,13 @@ async def get_intermediate_product(
                 )
             return chapter
         # Return first chapter
-        chapter = db.query(Chapter).filter(Chapter.project_id == project_id).order_by(Chapter.index).first()
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+        chapter = result.scalar_one_or_none()
         if not chapter:
             raise HTTPException(status_code=404, detail=f"No chapters found for project {project_id}")
         return chapter
 
-    chapter = get_chapter(chapter_id)
+    chapter = await get_chapter(chapter_id)
 
     if stage == "extract":
         data = {
@@ -877,8 +891,6 @@ async def get_intermediate_product(
         product_type = "text"
 
     elif stage == "analyze":
-        # analyzed_json is a JSON string stored as Text; we stored as dict via json.loads? In _write_analyze we stored dict in analyzed_json column? Actually we stored json.loads(result.model_dump_json()) which is a dict.
-        # The column is probably JSON type.
         data = {
             "chapter_id": chapter.id,
             "chapter_index": chapter.index,
@@ -887,13 +899,12 @@ async def get_intermediate_product(
         product_type = "text"
 
     elif stage == "annotate":
-        # Need paragraphs for this chapter (maybe first paragraph only? we could list all)
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
-            .all()
         )
+        paragraphs = result.scalars().all()
         annotations = []
         for para in paragraphs:
             annotations.append(
@@ -920,12 +931,12 @@ async def get_intermediate_product(
         product_type = "text"
 
     elif stage == "edit":
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
-            .all()
         )
+        paragraphs = result.scalars().all()
         edits = []
         for para in paragraphs:
             edits.append(
@@ -949,12 +960,12 @@ async def get_intermediate_product(
         product_type = "text"
 
     elif stage == "audio_postprocess":
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
-            .all()
         )
+        paragraphs = result.scalars().all()
         params_list = []
         for para in paragraphs:
             params_list.append(
@@ -975,17 +986,17 @@ async def get_intermediate_product(
         product_type = "text"
 
     elif stage == "synthesize":
-        # Get audio segments via paragraphs
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
-            .all()
         )
+        paragraphs = result.scalars().all()
         segments = []
         for para in paragraphs:
             if para.audio_segment_id:
-                seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
+                result = await db.execute(select(AudioSegment).where(AudioSegment.id == para.audio_segment_id))
+                seg = result.scalar_one_or_none()
                 if seg:
                     segments.append(
                         {
@@ -1008,15 +1019,18 @@ async def get_intermediate_product(
         product_type = "audio"
 
     elif stage == "quality":
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
             .order_by(Paragraph.index)
-            .all()
         )
+        paragraphs = result.scalars().all()
         quality_entries = []
         for para in paragraphs:
-            qual = db.query(Quality).filter(Quality.paragraph_id == para.id).order_by(Quality.id.desc()).first()
+            result = await db.execute(
+                select(Quality).where(Quality.paragraph_id == para.id).order_by(Quality.id.desc())
+            )
+            qual = result.scalar_one_or_none()
             if qual:
                 quality_entries.append(
                     {

@@ -463,7 +463,7 @@ class VoiceCloningManager:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 生成输出文件名
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+        text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:8]
         output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
 
         # 尝试使用 kokoro-onnx 进行真实合成

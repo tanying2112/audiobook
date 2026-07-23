@@ -213,16 +213,17 @@ class TestFeedbackToTemplate:
 
 
 # ===========================================================================
-# _apply_annotation_template
+# _apply_annotation_template (async)
 # ===========================================================================
 
 
 class TestApplyAnnotationTemplate:
-    def test_applies_fields(self):
+    @pytest.mark.asyncio
+    async def test_applies_fields(self):
         """_apply_annotation_template 设置段落属性。"""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         corrected = {
             "speaker_canonical_name": "主角",
@@ -239,7 +240,7 @@ class TestApplyAnnotationTemplate:
             "notes": "test note",
             "difficulty": "C",
         }
-        _apply_annotation_template(db, pa, corrected)
+        await _apply_annotation_template(db, pa, corrected)
         assert pa.speaker_canonical_name == "主角"
         assert pa.emotion == "happy"
         assert pa.edit_difficulty == "C"
@@ -247,38 +248,41 @@ class TestApplyAnnotationTemplate:
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_partial_fields(self):
+    @pytest.mark.asyncio
+    async def test_partial_fields(self):
         """部分字段更新。"""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         corrected = {"emotion": "sad"}
-        _apply_annotation_template(db, pa, corrected)
+        await _apply_annotation_template(db, pa, corrected)
         assert pa.emotion == "sad"
         db.add.assert_called()
 
-    def test_empty_corrected(self):
+    @pytest.mark.asyncio
+    async def test_empty_corrected(self):
         """空 corrected_output 不会崩溃。"""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
-        _apply_annotation_template(db, pa, {})
+        await _apply_annotation_template(db, pa, {})
         db.add.assert_called()
 
 
 # ===========================================================================
-# _apply_edit_template
+# _apply_edit_template (async)
 # ===========================================================================
 
 
 class TestApplyEditTemplate:
-    def test_creates_tts_edit(self):
+    @pytest.mark.asyncio
+    async def test_creates_tts_edit(self):
         """_apply_edit_template 创建 TTSEdit 记录。"""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         pa.id = 5
         pa.edited_text = None
@@ -291,41 +295,44 @@ class TestApplyEditTemplate:
             "difficulty": "B",
             "forbid_edit": False,
         }
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
         db.add.assert_called()
         assert pa.edited_text == "编辑后文本"
 
-    def test_with_voice(self):
+    @pytest.mark.asyncio
+    async def test_with_voice(self):
         """包含 voice 字段。"""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         corrected = {"edited_text": "t", "voice": "v1"}
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
         assert pa.edited_text == "t"
 
-    def test_minimal_corrected(self):
+    @pytest.mark.asyncio
+    async def test_minimal_corrected(self):
         """最小 corrected_output。"""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
-        _apply_edit_template(db, pa, {})
+        await _apply_edit_template(db, pa, {})
         db.add.assert_called()
 
 
 # ===========================================================================
-# _apply_routing_template
+# _apply_routing_template (async)
 # ===========================================================================
 
 
 class TestApplyRoutingTemplate:
-    def test_creates_routing(self):
+    @pytest.mark.asyncio
+    async def test_creates_routing(self):
         """_apply_routing_template 创建 Routing 记录。"""
         from src.audiobook_studio.api.templates import _apply_routing_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         corrected = {
             "engine_choice": "kokoro",
@@ -335,39 +342,41 @@ class TestApplyRoutingTemplate:
             "estimated_cost_usd": 0.001,
             "estimated_duration_ms": 5000,
         }
-        _apply_routing_template(db, pa, corrected)
+        await _apply_routing_template(db, pa, corrected)
         db.add.assert_called()
         assert pa.routing_engine == "kokoro"
 
-    def test_defaults(self):
+    @pytest.mark.asyncio
+    async def test_defaults(self):
         """默认 routing 参数。"""
         from src.audiobook_studio.api.templates import _apply_routing_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
-        _apply_routing_template(db, pa, {})
+        await _apply_routing_template(db, pa, {})
         db.add.assert_called()
 
 
 # ===========================================================================
-# _apply_quality_template
+# _apply_quality_template (async)
 # ===========================================================================
 
 
 class TestApplyQualityTemplate:
-    def test_creates_quality(self):
+    @pytest.mark.asyncio
+    async def test_creates_quality(self):
         """_apply_quality_template 创建 Quality 记录。"""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         pa.id = 10
 
         mock_tts = MagicMock()
         mock_tts.id = 99
-        query = MagicMock()
-        query.filter.return_value.order_by.return_value.first.return_value = mock_tts
-        db.query.return_value = query
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_tts
+        db.execute.return_value = mock_result
 
         corrected = {
             "speaker_clarity": 0.9,
@@ -379,23 +388,24 @@ class TestApplyQualityTemplate:
             "issues": [],
             "fix_suggestions": [],
         }
-        _apply_quality_template(db, pa, corrected)
+        await _apply_quality_template(db, pa, corrected)
         db.add.assert_called()
         assert pa.quality_overall_score == 0.89
 
-    def test_no_tts_edit_skips(self):
+    @pytest.mark.asyncio
+    async def test_no_tts_edit_skips(self):
         """没有 TTSEdit 时跳过。"""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = MagicMock()
         pa.id = 20
 
-        query = MagicMock()
-        query.filter.return_value.order_by.return_value.first.return_value = None
-        db.query.return_value = query
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        db.execute.return_value = mock_result
 
-        _apply_quality_template(db, pa, {})
+        await _apply_quality_template(db, pa, {})
         db.add.assert_not_called()
 
 
@@ -433,13 +443,12 @@ class TestApplyTemplateBackground:
 class TestListTemplatesLogic:
     """直接测试 list_templates 函数逻辑（不通过 HTTP 层）。"""
 
-    @patch("src.audiobook_studio.api.templates.FeedbackRecordModel")
     @pytest.mark.asyncio
-    async def test_list_templates_filters(self, MockFeedback):
+    async def test_list_templates_filters(self):
         """list_templates 按条件过滤。"""
         from src.audiobook_studio.api.templates import list_templates
 
-        db = MagicMock()
+        db = AsyncMock()
 
         # Mock 记录
         record = MagicMock()
@@ -457,12 +466,14 @@ class TestListTemplatesLogic:
         record.processed = True
         record.promoted = True
 
-        query = MagicMock()
-        query.filter.return_value = query
-        query.order_by.return_value = query
-        query.limit.return_value = query
-        query.all.return_value = [record]
-        db.query.return_value = query
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [record]
+        db.execute.return_value = mock_result
+
+        # Mock pending count
+        pending_result = MagicMock()
+        pending_result.scalar.return_value = 0
+        db.execute.side_effect = [mock_result, pending_result]
 
         result = await list_templates(
             project_id=1,
@@ -486,13 +497,17 @@ class TestConfirmTemplateLogic:
         """confirm_template 确认操作。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest, confirm_template
 
-        db = MagicMock()
+        db = AsyncMock()
         record = MagicMock()
         record.id = 1
         record.feedback_id = "fb-1"
         record.processed = False
         record.promoted = False
-        db.query.return_value.filter.return_value.first.return_value = record
+        record.pattern_tags = []
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute.return_value = mock_result
 
         req = TemplateConfirmRequest(action="confirm")
         result = await confirm_template(project_id=1, template_id=1, request=req, db=db)
@@ -506,13 +521,17 @@ class TestConfirmTemplateLogic:
         """confirm_template 拒绝操作。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest, confirm_template
 
-        db = MagicMock()
+        db = AsyncMock()
         record = MagicMock()
         record.id = 1
         record.feedback_id = "fb-1"
         record.processed = False
         record.promoted = True
-        db.query.return_value.filter.return_value.first.return_value = record
+        record.pattern_tags = []
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute.return_value = mock_result
 
         req = TemplateConfirmRequest(action="reject")
         result = await confirm_template(project_id=1, template_id=1, request=req, db=db)
@@ -525,14 +544,17 @@ class TestConfirmTemplateLogic:
         """confirm 带 pattern_tags。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest, confirm_template
 
-        db = MagicMock()
+        db = AsyncMock()
         record = MagicMock()
         record.id = 1
         record.feedback_id = "fb-1"
         record.processed = False
         record.promoted = False
         record.pattern_tags = []
-        db.query.return_value.filter.return_value.first.return_value = record
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute.return_value = mock_result
 
         req = TemplateConfirmRequest(action="confirm", pattern_tags=["new_tag"])
         result = await confirm_template(project_id=1, template_id=1, request=req, db=db)
@@ -552,11 +574,14 @@ class TestApplyTemplateLogic:
 
         from src.audiobook_studio.api.templates import TemplateApplyRequest, apply_template
 
-        db = MagicMock()
+        db = AsyncMock()
         template = MagicMock()
         template.processed = False
         template.promoted = False
-        db.query.return_value.filter.return_value.first.return_value = template
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = template
+        db.execute.return_value = mock_result
 
         req = TemplateApplyRequest(template_id=1, scope="all")
         bg = MagicMock()
@@ -572,8 +597,11 @@ class TestApplyTemplateLogic:
 
         from src.audiobook_studio.api.templates import TemplateApplyRequest, apply_template
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = None
+        db = AsyncMock()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute.return_value = mock_result
 
         req = TemplateApplyRequest(template_id=999, scope="all")
         bg = MagicMock()
@@ -587,11 +615,14 @@ class TestApplyTemplateLogic:
         """apply_template 成功提交后台任务。"""
         from src.audiobook_studio.api.templates import TemplateApplyRequest, apply_template
 
-        db = MagicMock()
+        db = AsyncMock()
         template = MagicMock()
         template.processed = True
         template.promoted = True
-        db.query.return_value.filter.return_value.first.return_value = template
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = template
+        db.execute.return_value = mock_result
 
         req = TemplateApplyRequest(template_id=1, scope="all")
         bg = MagicMock()

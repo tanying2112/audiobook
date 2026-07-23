@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Add src to path
-sys.path.insert(0, "src")
-
 from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
+
+# Add src to path
+
 
 
 class TestSemanticCoherenceChecker:

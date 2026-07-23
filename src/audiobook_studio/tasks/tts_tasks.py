@@ -25,9 +25,10 @@ from typing import Any, Dict, List, Optional, Set
 
 from celery import Celery
 from celery.states import FAILURE, RETRY, STARTED, SUCCESS
+from sqlalchemy import select
 
 from ..celery_app import celery_app
-from ..database import SessionLocal
+from ..database import AsyncSessionLocal
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.synthesize import AudioSegment as PipelineAudioSegment
 from ..pipeline.synthesize import SynthesizePipeline
@@ -492,43 +493,14 @@ def _get_audio_duration(file_path: Path) -> int:
         return 0
 
 
-@celery_app.task(
-    bind=True,
-    base=TTSChapterTask,
-    name="src.audiobook_studio.tasks.tts_tasks.synthesize_chapter_task",
-    max_retries=3,
-    default_retry_delay=60,
-)
-def synthesize_chapter_task(
+async def _run_synthesize_chapter_async(
     self,
     project_id: int,
     chapter_id: int,
     chapter_index: int,
     paragraphs: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """
-    Synthesize a full chapter TTS via RemoteTTSPort with crossfade stitching.
-
-    This task is a LIGHTWEIGHT ORCHESTRATOR:
-    - Submits each paragraph to Hermes via Port
-    - Polls for completion
-    - Stitches segments locally with crossfade
-    - Does NOT run synthesis loops
-
-    Args:
-        project_id: Project ID
-        chapter_id: Chapter ID
-        chapter_index: Chapter index (1-based)
-        paragraphs: List of paragraph dicts with keys:
-            - paragraph_id: int
-            - paragraph_index: int
-            - text: str
-            - voice_id: str
-            - prosody: dict (rate, pitch, volume, etc.)
-
-    Returns:
-        Dict with task_id, status, chapter_audio_path, segments, failed_indices, error
-    """
+    """Async implementation of chapter synthesis using AsyncSessionLocal."""
     task_id = self.request.id
     logger.info(
         f"[{task_id}] Starting TTS chapter synthesis via Port: project={project_id}, chapter={chapter_id}, index={chapter_index}"
@@ -545,224 +517,243 @@ def synthesize_chapter_task(
             "failed_indices": [],
         }
 
-    db = SessionLocal()
-    try:
-        # Verify project and chapter exist
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            return {"task_id": task_id, "status": "failed", "error": f"Project {project_id} not found"}
+    async with AsyncSessionLocal() as db:
+        try:
+            # Verify project and chapter exist
+            result = await db.execute(select(Project).where(Project.id == project_id))
+            project = result.scalar_one_or_none()
+            if not project:
+                return {"task_id": task_id, "status": "failed", "error": f"Project {project_id} not found"}
 
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id, Chapter.project_id == project_id).first()
-        if not chapter:
+            result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
+            chapter = result.scalar_one_or_none()
+            if not chapter:
+                return {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": f"Chapter {chapter_id} not found in project {project_id}",
+                }
+
+            # Get output directory from project or default
+            output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Initialize pipeline for crossfade stitching only
+            pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
+
+            # Get failed paragraph indices for resume
+            failed_indices = self._get_failed_paragraphs(project_id, chapter_id)
+            if failed_indices:
+                logger.info(f"[{task_id}] Resuming from failed paragraphs: {sorted(failed_indices)}")
+
+            port = self._get_port()
+            segments: List[PipelineAudioSegment] = []
+            total = len(paragraphs)
+            failed_this_run = []
+            completed_indices: set[int] = set()
+
+            for i, para in enumerate(paragraphs):
+                para_id = para["paragraph_id"]
+                para_index = para["paragraph_index"]
+                text = para["text"]
+                voice_id = para["voice_id"]
+                prosody = para.get("prosody", {})
+
+                # Progress reporting
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "current": i + 1,
+                        "total": total,
+                        "paragraph_id": para_id,
+                        "paragraph_index": para_index,
+                    },
+                )
+
+                # Skip if already succeeded (not in failed set)
+                if para_index not in failed_indices:
+                    # Check idempotency key
+                    idem_key = self._idem_key(text, voice_id, prosody)
+                    if not self._check_and_set_idempotency(idem_key):
+                        logger.info(f"[{task_id}] Paragraph {para_index} already synthesized (idempotent), skipping")
+                        # Try to load existing segment from DB
+                        result = await db.execute(
+                            select(AudioSegment).where(
+                                AudioSegment.project_id == project_id,
+                                AudioSegment.chapter_id == chapter_id,
+                                AudioSegment.paragraph_id == para_id,
+                                AudioSegment.is_current.is_(True),
+                            )
+                        )
+                        existing = result.scalar_one_or_none()
+                        if existing and Path(existing.file_path).exists():
+                            segments.append(
+                                PipelineAudioSegment(
+                                    segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
+                                    file_path=existing.file_path,
+                                    duration_ms=existing.duration_ms or 0,
+                                    engine=existing.engine or "hermes",
+                                    voice_id=existing.voice_id or voice_id,
+                                    text_hash=hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12],
+                                )
+                            )
+                            continue
+
+                # Synthesize paragraph via Port
+                segment_id = f"{project_id}_ch{chapter_index}_p{para_index}"
+                output_path = output_dir / f"{segment_id}.wav"
+
+                try:
+                    logger.info(f"[{task_id}] Submitting paragraph {para_index}/{total} for synthesis: {segment_id}")
+
+                    duration_ms, engine = await _synthesize_via_port(
+                        port, text, voice_id, prosody, output_path, segment_id
+                    )
+
+                    # Create AudioSegment DB record
+                    audio_segment = AudioSegment(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        paragraph_id=para_id,
+                        file_path=str(output_path),
+                        format="wav",
+                        duration_ms=duration_ms,
+                        file_size_bytes=output_path.stat().st_size,
+                        sample_rate=24000,
+                        channels=1,
+                        engine=engine,
+                        voice_id=voice_id,
+                        prosody_overrides=prosody if prosody else None,
+                        version=1,
+                        is_current=True,
+                        status="completed",
+                    )
+                    db.add(audio_segment)
+                    await db.commit()
+
+                    # Add to segments for stitching
+                    segments.append(
+                        PipelineAudioSegment(
+                            segment_id=segment_id,
+                            file_path=str(output_path),
+                            duration_ms=duration_ms,
+                            engine=engine,
+                            voice_id=voice_id,
+                            text_hash=hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12],
+                        )
+                    )
+
+                    logger.info(f"[{task_id}] Paragraph {para_index} synthesized: {duration_ms}ms")
+
+                    # Track completed paragraph and save checkpoint
+                    completed_indices.add(para_index)
+                    self._save_checkpoint(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        completed_paragraphs=sorted(completed_indices),
+                        failed_paragraphs=sorted(failed_indices),
+                        chapter_audio_path=None,
+                        segments=[s.to_dict() for s in segments],
+                    )
+
+                except Exception as e:
+                    logger.error(f"[{task_id}] Paragraph {para_index} synthesis failed: {e}")
+                    failed_this_run.append(para_index)
+                    failed_indices.add(para_index)
+                    self._record_failed_paragraph(project_id, chapter_id, para_index)
+                    # Save checkpoint even on failure to track progress
+                    self._save_checkpoint(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        completed_paragraphs=sorted(completed_indices),
+                        failed_paragraphs=sorted(failed_indices),
+                        chapter_audio_path=None,
+                        segments=[s.to_dict() for s in segments],
+                    )
+                    # Continue with other paragraphs
+
+            # Chapter-level crossfade stitching (local, in Celery worker)
+            chapter_audio_path = None
+            if segments:
+                chapter_output = output_dir / f"chapter_{chapter_index}.mp3"
+                try:
+                    total_duration = pipeline._crossfade_stitch(segments, chapter_output)
+                    chapter_audio_path = str(chapter_output)
+                    logger.info(f"[{task_id}] Chapter stitched: {chapter_output} ({total_duration}ms)")
+                except Exception as e:
+                    logger.error(f"[{task_id}] Chapter stitching failed: {e}")
+                    chapter_audio_path = None
+            else:
+                logger.warning(f"[{task_id}] No segments synthesized for chapter {chapter_index}")
+
+            # Clear failed tracking if all succeeded
+            if not failed_this_run:
+                self._clear_failed_paragraphs(project_id, chapter_id)
+                self._clear_checkpoint(project_id, chapter_id)
+
+            # Save final checkpoint with chapter audio path
+            self._save_checkpoint(
+                project_id=project_id,
+                chapter_id=chapter_id,
+                completed_paragraphs=sorted(completed_indices),
+                failed_paragraphs=sorted(failed_indices),
+                chapter_audio_path=chapter_audio_path,
+                segments=[s.to_dict() for s in segments],
+            )
+
+            # Build response
+            response = {
+                "task_id": task_id,
+                "status": "completed" if not failed_this_run else "partial",
+                "chapter_audio_path": chapter_audio_path,
+                "segments": [s.to_dict() for s in segments],
+                "failed_indices": failed_this_run,
+                "total_paragraphs": total,
+                "succeeded": total - len(failed_this_run),
+                "failed": len(failed_this_run),
+            }
+
+            if failed_this_run:
+                response["error"] = f"{len(failed_this_run)} paragraphs failed: {failed_this_run}"
+                logger.warning(f"[{task_id}] Chapter synthesis partial: {len(failed_this_run)}/{total} failed")
+
+            logger.info(f"[{task_id}] Chapter synthesis completed: {response['status']}")
+            return response
+
+        except Exception as e:
+            logger.exception(f"[{task_id}] Chapter synthesis failed: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)
             return {
                 "task_id": task_id,
                 "status": "failed",
-                "error": f"Chapter {chapter_id} not found in project {project_id}",
+                "error": str(e),
+                "chapter_audio_path": None,
+                "segments": [],
+                "failed_indices": list(range(len(paragraphs))),
             }
+        finally:
+            pipeline.close()
 
-        # Get output directory from project or default
-        output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize pipeline for crossfade stitching only
-        pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
+@celery_app.task(
+    bind=True,
+    base=TTSChapterTask,
+    name="src.audiobook_studio.tasks.tts_tasks.synthesize_chapter_task",
+    max_retries=3,
+    default_retry_delay=60,
+)
+def synthesize_chapter_task(
+    self,
+    project_id: int,
+    chapter_id: int,
+    chapter_index: int,
+    paragraphs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Synthesize a full chapter TTS via RemoteTTSPort with crossfade stitching (sync wrapper)."""
+    import asyncio
 
-        # Get failed paragraph indices for resume
-        failed_indices = self._get_failed_paragraphs(project_id, chapter_id)
-        if failed_indices:
-            logger.info(f"[{task_id}] Resuming from failed paragraphs: {sorted(failed_indices)}")
-
-        port = self._get_port()
-        segments: List[PipelineAudioSegment] = []
-        total = len(paragraphs)
-        failed_this_run = []
-
-        for i, para in enumerate(paragraphs):
-            para_id = para["paragraph_id"]
-            para_index = para["paragraph_index"]
-            text = para["text"]
-            voice_id = para["voice_id"]
-            prosody = para.get("prosody", {})
-
-            # Progress reporting
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "current": i + 1,
-                    "total": total,
-                    "paragraph_id": para_id,
-                    "paragraph_index": para_index,
-                },
-            )
-
-            # Skip if already succeeded (not in failed set)
-            if para_index not in failed_indices:
-                # Check idempotency key
-                idem_key = self._idem_key(text, voice_id, prosody)
-                if not self._check_and_set_idempotency(idem_key):
-                    logger.info(f"[{task_id}] Paragraph {para_index} already synthesized (idempotent), skipping")
-                    # Try to load existing segment from DB
-                    existing = (
-                        db.query(AudioSegment)
-                        .filter(
-                            AudioSegment.project_id == project_id,
-                            AudioSegment.chapter_id == chapter_id,
-                            AudioSegment.paragraph_id == para_id,
-                            AudioSegment.is_current == True,
-                        )
-                        .first()
-                    )
-                    if existing and Path(existing.file_path).exists():
-                        segments.append(
-                            PipelineAudioSegment(
-                                segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
-                                file_path=existing.file_path,
-                                duration_ms=existing.duration_ms or 0,
-                                engine=existing.engine or "hermes",
-                                voice_id=existing.voice_id or voice_id,
-                                text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
-                            )
-                        )
-                        continue
-
-            # Synthesize paragraph via Port
-            segment_id = f"{project_id}_ch{chapter_index}_p{para_index}"
-            output_path = output_dir / f"{segment_id}.wav"
-
-            try:
-                logger.info(f"[{task_id}] Submitting paragraph {para_index}/{total} for synthesis: {segment_id}")
-
-                import asyncio
-
-                duration_ms, engine = asyncio.run(
-                    _synthesize_via_port(port, text, voice_id, prosody, output_path, segment_id)
-                )
-
-                # Create AudioSegment DB record
-                audio_segment = AudioSegment(
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    paragraph_id=para_id,
-                    file_path=str(output_path),
-                    format="wav",
-                    duration_ms=duration_ms,
-                    file_size_bytes=output_path.stat().st_size,
-                    sample_rate=24000,
-                    channels=1,
-                    engine=engine,
-                    voice_id=voice_id,
-                    prosody_overrides=prosody if prosody else None,
-                    version=1,
-                    is_current=True,
-                    status="completed",
-                )
-                db.add(audio_segment)
-                db.commit()
-
-                # Add to segments for stitching
-                segments.append(
-                    PipelineAudioSegment(
-                        segment_id=segment_id,
-                        file_path=str(output_path),
-                        duration_ms=duration_ms,
-                        engine=engine,
-                        voice_id=voice_id,
-                        text_hash=hashlib.md5(text.encode()).hexdigest()[:12],
-                    )
-                )
-
-                logger.info(f"[{task_id}] Paragraph {para_index} synthesized: {duration_ms}ms")
-
-                # Track completed paragraph and save checkpoint
-                completed_indices.add(para_index)
-                self._save_checkpoint(
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    completed_paragraphs=sorted(completed_indices),
-                    failed_paragraphs=sorted(failed_indices),
-                    chapter_audio_path=None,
-                    segments=[s.to_dict() for s in segments],
-                )
-
-            except Exception as e:
-                logger.error(f"[{task_id}] Paragraph {para_index} synthesis failed: {e}")
-                failed_this_run.append(para_index)
-                failed_indices.add(para_index)
-                self._record_failed_paragraph(project_id, chapter_id, para_index)
-                # Save checkpoint even on failure to track progress
-                self._save_checkpoint(
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    completed_paragraphs=sorted(completed_indices),
-                    failed_paragraphs=sorted(failed_indices),
-                    chapter_audio_path=None,
-                    segments=[s.to_dict() for s in segments],
-                )
-                # Continue with other paragraphs
-
-        # Chapter-level crossfade stitching (local, in Celery worker)
-        chapter_audio_path = None
-        if segments:
-            chapter_output = output_dir / f"chapter_{chapter_index}.mp3"
-            try:
-                total_duration = pipeline._crossfade_stitch(segments, chapter_output)
-                chapter_audio_path = str(chapter_output)
-                logger.info(f"[{task_id}] Chapter stitched: {chapter_output} ({total_duration}ms)")
-            except Exception as e:
-                logger.error(f"[{task_id}] Chapter stitching failed: {e}")
-                chapter_audio_path = None
-        else:
-            logger.warning(f"[{task_id}] No segments synthesized for chapter {chapter_index}")
-
-        # Clear failed tracking if all succeeded
-        if not failed_this_run:
-            self._clear_failed_paragraphs(project_id, chapter_id)
-            self._clear_checkpoint(project_id, chapter_id)
-
-        # Save final checkpoint with chapter audio path
-        self._save_checkpoint(
-            project_id=project_id,
-            chapter_id=chapter_id,
-            completed_paragraphs=sorted(completed_indices),
-            failed_paragraphs=sorted(failed_indices),
-            chapter_audio_path=chapter_audio_path,
-            segments=[s.to_dict() for s in segments],
-        )
-
-        # Build response
-        response = {
-            "task_id": task_id,
-            "status": "completed" if not failed_this_run else "partial",
-            "chapter_audio_path": chapter_audio_path,
-            "segments": [s.to_dict() for s in segments],
-            "failed_indices": failed_this_run,
-            "total_paragraphs": total,
-            "succeeded": total - len(failed_this_run),
-            "failed": len(failed_this_run),
-        }
-
-        if failed_this_run:
-            response["error"] = f"{len(failed_this_run)} paragraphs failed: {failed_this_run}"
-            logger.warning(f"[{task_id}] Chapter synthesis partial: {len(failed_this_run)}/{total} failed")
-
-        logger.info(f"[{task_id}] Chapter synthesis completed: {response['status']}")
-        return response
-
-    except Exception as e:
-        logger.exception(f"[{task_id}] Chapter synthesis failed: {e}")
-        if self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "error": str(e),
-            "chapter_audio_path": None,
-            "segments": [],
-            "failed_indices": list(range(len(paragraphs))),
-        }
-    finally:
-        db.close()
-        pipeline.close()
+    return asyncio.run(_run_synthesize_chapter_async(self, project_id, chapter_id, chapter_index, paragraphs))
 
 
 @celery_app.task(
@@ -786,40 +777,42 @@ def resume_chapter_task(
     task_id = self.request.id
     logger.info(f"[{task_id}] Resuming chapter synthesis: project={project_id}, chapter={chapter_id}")
 
-    db = SessionLocal()
-    try:
-        # Get chapter and paragraphs
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id, Chapter.project_id == project_id).first()
-        if not chapter:
-            return {"task_id": task_id, "status": "failed", "error": f"Chapter {chapter_id} not found"}
+    async def _run():
+        async with AsyncSessionLocal() as db:
+            # Get chapter and paragraphs
+            result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
+            chapter = result.scalar_one_or_none()
+            if not chapter:
+                return {"task_id": task_id, "status": "failed", "error": f"Chapter {chapter_id} not found"}
 
-        paragraphs = (
-            db.query(Paragraph)
-            .filter(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter_id)
-            .order_by(Paragraph.index)
-            .all()
-        )
+            result = await db.execute(
+                select(Paragraph)
+                .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter_id)
+                .order_by(Paragraph.index)
+            )
+            paragraphs = result.scalars().all()
 
-        if not paragraphs:
-            return {"task_id": task_id, "status": "failed", "error": "No paragraphs found for chapter"}
+            if not paragraphs:
+                return {"task_id": task_id, "status": "failed", "error": "No paragraphs found for chapter"}
 
-        # Build paragraph dicts
-        para_dicts = [
-            {
-                "paragraph_id": p.id,
-                "paragraph_index": p.index,
-                "text": p.text,
-                "voice_id": p.suggested_voice_id or "zh_female_1",
-                "prosody": p.prosody_overrides or {},
-            }
-            for p in paragraphs
-        ]
+            # Build paragraph dicts
+            para_dicts = [
+                {
+                    "paragraph_id": p.id,
+                    "paragraph_index": p.index,
+                    "text": p.text,
+                    "voice_id": p.suggested_voice_id or "zh_female_1",
+                    "prosody": p.prosody_overrides or {},
+                }
+                for p in paragraphs
+            ]
 
-        # Delegate to main synthesis task (will use failed indices from Redis)
-        return synthesize_chapter_task(project_id, chapter_id, chapter_index, para_dicts)
+            # Delegate to main synthesis task (will use failed indices from Redis)
+            return await _run_synthesize_chapter_async(self, project_id, chapter_id, chapter_index, para_dicts)
 
-    finally:
-        db.close()
+    import asyncio
+
+    return asyncio.run(_run())
 
 
 @celery_app.task(name="src.audiobook_studio.tasks.tts_tasks.get_tts_status")
@@ -1070,7 +1063,7 @@ def synthesize_paragraph_task(
     force_regenerate: bool = False,
 ) -> Dict[str, Any]:
     """
-    Synthesize a single paragraph TTS via RemoteTTSPort.
+    Synthesize a single paragraph TTS via RemoteTTSPort (sync wrapper).
 
     This task is a LIGHTWEIGHT ORCHESTRATOR for single-paragraph re-synthesis:
     - Submits single paragraph to Hermes via RemoteTTSPort
@@ -1087,6 +1080,19 @@ def synthesize_paragraph_task(
     Returns:
         Dict with task_id, status, segment info, error if any
     """
+    import asyncio
+
+    return asyncio.run(_run_synthesize_paragraph_async(self, project_id, chapter_id, paragraph_id, force_regenerate))
+
+
+async def _run_synthesize_paragraph_async(
+    self,
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    force_regenerate: bool = False,
+) -> Dict[str, Any]:
+    """Async implementation of single paragraph synthesis using AsyncSessionLocal."""
     task_id = self.request.id
     logger.info(
         f"[{task_id}] Starting single-paragraph TTS re-synthesis via Port: project={project_id}, chapter={chapter_id}, paragraph={paragraph_id}"
@@ -1104,153 +1110,152 @@ def synthesize_paragraph_task(
             "engine": None,
         }
 
-    db = SessionLocal()
-    try:
-        # Verify project and chapter exist
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            return {"task_id": task_id, "status": "failed", "error": f"Project {project_id} not found"}
-
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id, Chapter.project_id == project_id).first()
-        if not chapter:
-            return {
-                "task_id": task_id,
-                "status": "failed",
-                "error": f"Chapter {chapter_id} not found in project {project_id}",
-            }
-
-        # Get the paragraph
-        para = (
-            db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id,
-                Paragraph.chapter_id == chapter_id,
-                Paragraph.id == paragraph_id,
-            )
-            .first()
-        )
-        if not para:
-            return {"task_id": task_id, "status": "failed", "error": f"Paragraph {paragraph_id} not found"}
-
-        # Check if we should force regenerate or if no existing segment
-        existing_segment = (
-            db.query(AudioSegment)
-            .filter(
-                AudioSegment.project_id == project_id,
-                AudioSegment.chapter_id == chapter_id,
-                AudioSegment.paragraph_id == paragraph_id,
-                AudioSegment.is_current == True,
-            )
-            .first()
-        )
-
-        if existing_segment and not force_regenerate:
-            logger.info(
-                f"[{task_id}] Paragraph {paragraph_id} already has audio segment, skipping (use force_regenerate=True to override)"
-            )
-            return {
-                "task_id": task_id,
-                "status": "skipped",
-                "message": "Audio segment already exists. Use force_regenerate=True to force re-synthesis.",
-                "segment_id": (
-                    existing_segment.segment_id if hasattr(existing_segment, "segment_id") else str(existing_segment.id)
-                ),
-                "file_path": existing_segment.file_path,
-                "duration_ms": existing_segment.duration_ms,
-                "engine": existing_segment.engine,
-                "voice_id": existing_segment.voice_id,
-            }
-
-        # Get output directory
-        chapter_index = db.query(Chapter).filter(Chapter.id == chapter_id).first()
-        # Find chapter index
-        chapters = db.query(Chapter).filter(Chapter.project_id == project_id).order_by(Chapter.index).all()
-        chapter_index = 1
-        for i, ch in enumerate(chapters, 1):
-            if ch.id == chapter_id:
-                chapter_index = i
-                break
-
-        output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Get paragraph info
-        text = para.edited_text if para.edited_text else para.text
-        voice_id = para.routing_voice_id or "zh-CN-XiaoxiaoNeural"
-        prosody = para.routing_prosody_overrides or {}
-
-        # Prepare TTS task
-        segment_id = f"{project_id}_ch{chapter_index}_p{para.index}"
-        output_path = output_dir / f"{segment_id}.wav"
-
-        # Initialize pipeline for synthesis
-        pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
-        port = self._get_port()
-
-        logger.info(f"[{task_id}] Submitting paragraph {para.index} for synthesis: {segment_id}")
-
+    async with AsyncSessionLocal() as db:
         try:
-            duration_ms, engine = asyncio.run(
-                _synthesize_via_port(port, text, voice_id, prosody, output_path, segment_id)
+            # Verify project and chapter exist
+            result = await db.execute(select(Project).where(Project.id == project_id))
+            project = result.scalar_one_or_none()
+            if not project:
+                return {"task_id": task_id, "status": "failed", "error": f"Project {project_id} not found"}
+
+            result = await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.project_id == project_id))
+            chapter = result.scalar_one_or_none()
+            if not chapter:
+                return {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": f"Chapter {chapter_id} not found in project {project_id}",
+                }
+
+            # Get the paragraph
+            result = await db.execute(
+                select(Paragraph).where(
+                    Paragraph.project_id == project_id,
+                    Paragraph.chapter_id == chapter_id,
+                    Paragraph.id == paragraph_id,
+                )
             )
+            para = result.scalar_one_or_none()
+            if not para:
+                return {"task_id": task_id, "status": "failed", "error": f"Paragraph {paragraph_id} not found"}
 
-            # If replacing an existing segment, mark old as not current
-            if existing_segment:
-                existing_segment.is_current = False
-
-            # Create new AudioSegment DB record
-            audio_segment = AudioSegment(
-                project_id=project_id,
-                chapter_id=chapter_id,
-                paragraph_id=paragraph_id,
-                file_path=str(output_path),
-                format="wav",
-                duration_ms=duration_ms,
-                file_size_bytes=output_path.stat().st_size if output_path.exists() else 0,
-                sample_rate=24000,
-                channels=1,
-                engine=engine,
-                voice_id=voice_id,
-                prosody_overrides=prosody if prosody else None,
-                version=(existing_segment.version + 1) if existing_segment else 1,
-                is_current=True,
-                status="completed",
+            # Check if we should force regenerate or if no existing segment
+            result = await db.execute(
+                select(AudioSegment).where(
+                    AudioSegment.project_id == project_id,
+                    AudioSegment.chapter_id == chapter_id,
+                    AudioSegment.paragraph_id == paragraph_id,
+                    AudioSegment.is_current.is_(True),
+                )
             )
-            db.add(audio_segment)
-            db.commit()
-            db.refresh(audio_segment)
+            existing_segment = result.scalar_one_or_none()
 
-            # Update paragraph status
-            para.status = "completed"
-            db.commit()
+            if existing_segment and not force_regenerate:
+                logger.info(
+                    f"[{task_id}] Paragraph {paragraph_id} already has audio segment, skipping (use force_regenerate=True to override)"
+                )
+                return {
+                    "task_id": task_id,
+                    "status": "skipped",
+                    "message": "Audio segment already exists. Use force_regenerate=True to force re-synthesis.",
+                    "segment_id": (
+                        existing_segment.segment_id
+                        if hasattr(existing_segment, "segment_id")
+                        else str(existing_segment.id)
+                    ),
+                    "file_path": existing_segment.file_path,
+                    "duration_ms": existing_segment.duration_ms,
+                    "engine": existing_segment.engine,
+                    "voice_id": existing_segment.voice_id,
+                }
 
-            logger.info(f"[{task_id}] Paragraph {para.index} re-synthesized: {duration_ms}ms via {engine}")
+            # Get output directory
+            # Find chapter index
+            result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+            chapters = result.scalars().all()
+            chapter_index = 1
+            for i, ch in enumerate(chapters, 1):
+                if ch.id == chapter_id:
+                    chapter_index = i
+                    break
 
-            return {
-                "task_id": task_id,
-                "status": "completed",
-                "segment_id": str(audio_segment.id),
-                "file_path": str(output_path),
-                "duration_ms": duration_ms,
-                "engine": engine,
-                "voice_id": voice_id,
-            }
+            output_dir = Path(f"./output/project_{project_id}/chapter_{chapter_index}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Get paragraph info
+            text = para.edited_text if para.edited_text else para.text
+            voice_id = para.routing_voice_id or "zh-CN-XiaoxiaoNeural"
+            prosody = para.routing_prosody_overrides or {}
+
+            # Prepare TTS task
+            segment_id = f"{project_id}_ch{chapter_index}_p{para.index}"
+            output_path = output_dir / f"{segment_id}.wav"
+
+            # Initialize pipeline for synthesis
+            pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
+            port = self._get_port()
+
+            logger.info(f"[{task_id}] Submitting paragraph {para.index} for synthesis: {segment_id}")
+
+            try:
+                duration_ms, engine = await _synthesize_via_port(port, text, voice_id, prosody, output_path, segment_id)
+
+                # If replacing an existing segment, mark old as not current
+                if existing_segment:
+                    existing_segment.is_current = False
+
+                # Create new AudioSegment DB record
+                audio_segment = AudioSegment(
+                    project_id=project_id,
+                    chapter_id=chapter_id,
+                    paragraph_id=paragraph_id,
+                    file_path=str(output_path),
+                    format="wav",
+                    duration_ms=duration_ms,
+                    file_size_bytes=output_path.stat().st_size if output_path.exists() else 0,
+                    sample_rate=24000,
+                    channels=1,
+                    engine=engine,
+                    voice_id=voice_id,
+                    prosody_overrides=prosody if prosody else None,
+                    version=(existing_segment.version + 1) if existing_segment else 1,
+                    is_current=True,
+                    status="completed",
+                )
+                db.add(audio_segment)
+                await db.commit()
+                await db.refresh(audio_segment)
+
+                # Update paragraph status
+                para.status = "completed"
+                await db.commit()
+
+                logger.info(f"[{task_id}] Paragraph {para.index} re-synthesized: {duration_ms}ms via {engine}")
+
+                return {
+                    "task_id": task_id,
+                    "status": "completed",
+                    "segment_id": str(audio_segment.id),
+                    "file_path": str(output_path),
+                    "duration_ms": duration_ms,
+                    "engine": engine,
+                    "voice_id": voice_id,
+                }
+
+            except Exception as e:
+                logger.error(f"[{task_id}] Paragraph {para.index} synthesis failed: {e}", exc_info=True)
+                return {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": str(e),
+                }
+            finally:
+                self._release_semaphore()
 
         except Exception as e:
-            logger.error(f"[{task_id}] Paragraph {para.index} synthesis failed: {e}", exc_info=True)
-            return {
-                "task_id": task_id,
-                "status": "failed",
-                "error": str(e),
-            }
-        finally:
+            logger.error(f"[{task_id}] Task failed: {e}", exc_info=True)
             self._release_semaphore()
-            db.close()
-
-    except Exception as e:
-        logger.error(f"[{task_id}] Task failed: {e}", exc_info=True)
-        self._release_semaphore()
-        return {"task_id": task_id, "status": "failed", "error": str(e)}
+            return {"task_id": task_id, "status": "failed", "error": str(e)}
 
 
 # Ensure task is registered with celery_app

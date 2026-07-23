@@ -6,17 +6,16 @@ only exposes sub‑modules for convenient access.
 """
 
 # Import submodules to make them available when importing the package
+# Note: config, database, and observability are imported lazily to avoid
+# pulling in optional dependencies (opentelemetry, etc.) at import time.
 from . import (
     api,
     audio_quality,
-    config,
-    database,
     exceptions,
     feedback,
     llm,
     models,
     monitoring,
-    observability,
     pipeline,
     publish,
     schemas,
@@ -39,3 +38,25 @@ from .exceptions import (
     TTSError,
     ValidationError,
 )
+
+
+# Lazy import functions for config, database, and observability
+def get_config():
+    """Lazy import of config module to avoid circular dependencies."""
+    from . import config
+
+    return config
+
+
+def get_database():
+    """Lazy import of database module to avoid circular dependencies."""
+    from . import database
+
+    return database
+
+
+def get_observability():
+    """Lazy import of observability module to avoid optional dependencies."""
+    from . import observability
+
+    return observability

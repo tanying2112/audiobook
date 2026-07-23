@@ -9,9 +9,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-# Add src to path
-sys.path.insert(0, "src")
-
 from audiobook_studio.tts.clone import (
     AudioQuality,
     CloningConfig,
@@ -26,6 +23,9 @@ from audiobook_studio.tts.clone import (
     is_kokoro_available,
     load_voice_print,
 )
+
+# Add src to path
+
 
 
 def setUpModule():

@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add the src directory to the path so we can import the module as a package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
 # Set MOCK_LLM before importing the module (required for mock_mode behavior)
 os.environ["MOCK_LLM"] = "true"

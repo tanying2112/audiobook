@@ -59,6 +59,7 @@ from .feedback_record import FeedbackRecord
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
 from .project_segment import ProjectSegment
+from .publish import PublishHistory, PublishJob
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
@@ -83,4 +84,6 @@ __all__ = [
     "Permission",
     "ProjectPermission",
     "ProjectSegment",
+    "PublishHistory",
+    "PublishJob",
 ]

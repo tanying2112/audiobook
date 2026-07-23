@@ -140,7 +140,6 @@ config_loader_mock.PromptCompressionConfig = MagicMock()
 config_loader_mock.FallbackConfig = MagicMock()
 config_loader_mock.CostControlConfig = MagicMock()
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
 
 from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
 from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput

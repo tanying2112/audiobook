@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
@@ -32,16 +32,16 @@ class FeedbackRecord(Base):
     stage: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     # 快照数据
-    input_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
-    llm_output: Mapped[dict] = mapped_column(JSON, nullable=False)
-    corrected_output: Mapped[dict] = mapped_column(JSON, nullable=False)
+    input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    llm_output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    corrected_output: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     # 核心：修改理由
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Agent 自动生成
     diff_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    pattern_tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    pattern_tags: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
 
     # 处理状态
     processed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

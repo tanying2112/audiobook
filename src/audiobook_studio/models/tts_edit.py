@@ -28,8 +28,8 @@ class TTSEdit(Base):
 
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     edited_text: Mapped[str] = mapped_column(Text, nullable=False)
-    changes_made: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    forbidden_content_removed: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    changes_made: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    forbidden_content_removed: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     difficulty: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)

@@ -56,6 +56,13 @@ REQUIRED_PACKAGES = [
     "scipy",
     "pydub",
     "soundfile",
+    # 推理主路径硬依赖（src/voxcpm 实际 import，缺失会直接 ModuleNotFoundError）
+    "pydantic",  # config.py / voxcpm2.py / audio_vae_v2.py 顶层依赖
+    "librosa",  # voxcpm2.py 推理主路径
+    "wetext",  # utils/text_normalize.py 文本归一化
+    "inflect",  # utils/text_normalize.py
+    "regex",  # utils/text_normalize.py
+    "modelscope",  # zipenhancer.py（可选后处理，顶层 import，避免连带失败）
 ]
 
 logging.basicConfig(
@@ -202,8 +209,12 @@ def prepare_code_package() -> bool:
     CODE_PKG_DIR.mkdir(parents=True)
 
     # 复制核心文件
+    # 注：云端实际运行入口为 entry.sh（含 pip 分步安装、日志回传、崩溃保护），
+    # 仅 paddle_worker.py 是 torch 补丁半成品，不能作为入口。
     files_to_copy = [
-        "paddle_worker.py",
+        "paddle_job_entry.py",
+        "entry.sh",
+        "upload_log.py",
         "bos_sync.py",  # 备用
     ]
     for f in files_to_copy:
@@ -213,6 +224,41 @@ def prepare_code_package() -> bool:
 
             shutil.copy2(src, CODE_PKG_DIR / f)
             log.info(f"  ✓ {f}")
+
+    # 复制模型源码 src/voxcpm/（云端路径 /home/aistudio/src/voxcpm 证明必含）
+    src_pkg = PADDLE_DIR.parent.parent / "src" / "voxcpm"
+    if src_pkg.exists():
+        import os
+        import shutil
+
+        dst_pkg = CODE_PKG_DIR / "src" / "voxcpm"
+        dst_pkg.mkdir(parents=True, exist_ok=True)
+        for item in src_pkg.rglob("*"):
+            if item.is_file():
+                rel = item.relative_to(src_pkg)
+                target = dst_pkg / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+        # 需要 src/__init__.py 让 src.voxcpm 可导入
+        src_init = PADDLE_DIR.parent.parent / "src" / "__init__.py"
+        if src_init.exists():
+            (CODE_PKG_DIR / "src" / "__init__.py").parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_init, CODE_PKG_DIR / "src" / "__init__.py")
+        log.info(f"  ✓ src/voxcpm ({src_pkg.stat().st_size // 1024} KB)")
+    else:
+        log.error(f"未找到模型源码目录: {src_pkg}")
+        return False
+
+    # 注入 .env（含 R2/BOS/REDIS 凭证），否则云端 paddle_job_entry.py
+    # 无法回传日志，导致失败任务完全盲飞。
+    env_src = PADDLE_DIR / ".env"
+    if env_src.exists():
+        import shutil
+
+        shutil.copy2(env_src, CODE_PKG_DIR / ".env")
+        log.info(f"  ✓ .env (凭证注入，日志可回传 R2)")
+    else:
+        log.warning("未找到 .env，云端将无法回传日志")
 
     # 生成 requirements.txt
     req_path = CODE_PKG_DIR / "requirements.txt"
@@ -285,7 +331,7 @@ def submit_job() -> Optional[str]:
         "-p",
         str(CODE_PKG_DIR),
         "-c",
-        "pip install -r requirements.txt -q && python paddle_worker.py",
+        "bash entry.sh",
         "-e",
         ENV_VERSION,
         "-d",

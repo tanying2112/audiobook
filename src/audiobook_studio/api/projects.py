@@ -16,13 +16,14 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import get_current_active_user
 from ..auth.models import RoleName
 from ..models import Chapter, Paragraph, Project, ProjectPermission, User
 from ..storage import reports_dir
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -100,16 +101,16 @@ class ParagraphOut(BaseModel):
 
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(
+async def create_project(
     payload: ProjectCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new project."""
     project = Project(**payload.model_dump())
     db.add(project)
-    db.commit()
-    db.refresh(project)
+    await db.commit()
+    await db.refresh(project)
 
     # Grant project owner EDITOR permission
     permission = ProjectPermission(
@@ -118,55 +119,59 @@ def create_project(
         role=RoleName.EDITOR,
     )
     db.add(permission)
-    db.commit()
+    await db.commit()
 
     return project
 
 
 @router.get("/", response_model=List[ProjectOut])
-def list_projects(
+async def list_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all projects."""
-    return db.query(Project).offset(skip).limit(limit).all()
+    result = await db.execute(select(Project).offset(skip).limit(limit))
+    return result.scalars().all()
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-def get_project(project_id: int, db: Session = Depends(get_db)):
+async def get_project(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get a single project by ID."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
 
 @router.put("/{project_id}", response_model=ProjectOut)
-def update_project(
+async def update_project(
     project_id: int,
     payload: ProjectCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Update a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
-    db.commit()
-    db.refresh(project)
+    await db.commit()
+    await db.refresh(project)
     return project
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: int, db: Session = Depends(get_db)):
+async def delete_project(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Delete a project and all related data."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    db.delete(project)
-    db.commit()
+    await db.delete(project)
+    await db.commit()
     return None
 
 
@@ -174,41 +179,41 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{project_id}/chapters", response_model=List[ChapterOut])
-def list_chapters(
+async def list_chapters(
     project_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all chapters for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return (
-        db.query(Chapter)
-        .filter(Chapter.project_id == project_id)
+    result = await db.execute(
+        select(Chapter)
+        .where(Chapter.project_id == project_id)
         .order_by(Chapter.index)
         .offset(skip)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
 @router.get("/{project_id}/chapters/{chapter_id}", response_model=ChapterOut)
-def get_chapter(
+async def get_chapter(
     project_id: int,
     chapter_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get a single chapter by its DB ID."""
-    chapter = (
-        db.query(Chapter)
-        .filter(
+    result = await db.execute(
+        select(Chapter).where(
             Chapter.project_id == project_id,
             Chapter.id == chapter_id,
         )
-        .first()
     )
+    chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
     return chapter
@@ -221,57 +226,55 @@ def get_chapter(
     "/{project_id}/chapters/{chapter_id}/paragraphs",
     response_model=List[ParagraphOut],
 )
-def list_paragraphs(
+async def list_paragraphs(
     project_id: int,
     chapter_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all paragraphs for a chapter (by chapter DB ID)."""
-    chapter = (
-        db.query(Chapter)
-        .filter(
+    result = await db.execute(
+        select(Chapter).where(
             Chapter.project_id == project_id,
             Chapter.id == chapter_id,
         )
-        .first()
     )
+    chapter = result.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
-    return (
-        db.query(Paragraph)
-        .filter(
+    result = await db.execute(
+        select(Paragraph)
+        .where(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter.id,
         )
         .order_by(Paragraph.index)
         .offset(skip)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
 @router.get(
     "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
     response_model=ParagraphOut,
 )
-def get_paragraph(
+async def get_paragraph(
     project_id: int,
     chapter_id: int,
     paragraph_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get a single paragraph by its DB ID."""
-    para = (
-        db.query(Paragraph)
-        .filter(
+    result = await db.execute(
+        select(Paragraph).where(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter_id,
             Paragraph.id == paragraph_id,
         )
-        .first()
     )
+    para = result.scalar_one_or_none()
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
     return para
@@ -281,30 +284,29 @@ def get_paragraph(
     "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
     response_model=ParagraphOut,
 )
-def update_paragraph(
+async def update_paragraph(
     project_id: int,
     chapter_id: int,
     paragraph_id: int,
     payload: dict,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Update a paragraph by its DB ID."""
-    para = (
-        db.query(Paragraph)
-        .filter(
+    result = await db.execute(
+        select(Paragraph).where(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter_id,
             Paragraph.id == paragraph_id,
         )
-        .first()
     )
+    para = result.scalar_one_or_none()
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
     update_data = {k: v for k, v in payload.items() if k not in ("id",) and v is not None}
     for field, value in update_data.items():
         setattr(para, field, value)
-    db.commit()
-    db.refresh(para)
+    await db.commit()
+    await db.refresh(para)
     return para
 
 
@@ -346,7 +348,7 @@ class QualityReportOut(BaseModel):
 
 
 @router.get("/{project_id}/quality-report", response_model=QualityReportOut)
-def get_quality_report(
+async def get_quality_report(
     project_id: int,
     chapter_index: int = Query(0, ge=0, description="Chapter index (default: 0 for latest)"),
 ):
@@ -396,7 +398,7 @@ async def regenerate_paragraph(
     project_id: int,
     chapter_id: int,
     paragraph_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Regenerate a single paragraph's audio (single-sentence re-synthesis).
 
@@ -405,15 +407,14 @@ async def regenerate_paragraph(
     existing audio segments.
     """
     # Verify the paragraph exists and belongs to the project/chapter
-    para = (
-        db.query(Paragraph)
-        .filter(
+    result = await db.execute(
+        select(Paragraph).where(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter_id,
             Paragraph.id == paragraph_id,
         )
-        .first()
     )
+    para = result.scalar_one_or_none()
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
 
@@ -445,19 +446,18 @@ async def regenerate_paragraph(
 async def regenerate_paragraph_legacy(
     project_id: int,
     paragraph_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Legacy endpoint - redirects to new chapter-aware endpoint."""
     from ..models import Chapter, Paragraph
 
-    para = (
-        db.query(Paragraph)
-        .filter(
+    result = await db.execute(
+        select(Paragraph).where(
             Paragraph.project_id == project_id,
             Paragraph.id == paragraph_id,
         )
-        .first()
     )
+    para = result.scalar_one_or_none()
     if not para:
         raise HTTPException(status_code=404, detail="Paragraph not found")
 

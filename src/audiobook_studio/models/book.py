@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from .paragraph import Paragraph
     from .processing_run import ProcessingRun
     from .project_segment import ProjectSegment
-    from .user import ProjectPermission
+    from .publish import PublishHistory, PublishJob
+    from .user import ProjectPermission, User
 
 
 class Book(Base):
@@ -110,4 +111,10 @@ class Project(Base):
     permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project")
     segments: Mapped[List["ProjectSegment"]] = relationship(
         "ProjectSegment", back_populates="project", cascade="all, delete-orphan"
+    )
+    publish_jobs: Mapped[List["PublishJob"]] = relationship(
+        "PublishJob", back_populates="project", cascade="all, delete-orphan"
+    )
+    publish_history: Mapped[List["PublishHistory"]] = relationship(
+        "PublishHistory", back_populates="project", cascade="all, delete-orphan"
     )

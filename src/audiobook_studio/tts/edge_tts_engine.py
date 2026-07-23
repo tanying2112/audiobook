@@ -193,7 +193,7 @@ class EdgeTTSEngine(TTSEngine):
 
             dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
             sf.write(str(output_path), dummy_audio, self.sample_rate)
-            text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
             return SynthesisResult(
                 audio_path=str(output_path),
                 duration_ms=1000,
@@ -218,7 +218,7 @@ class EdgeTTSEngine(TTSEngine):
 
         # Calculate duration (approximate)
         duration_ms = len(text) * 80  # ~80ms per char estimate
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+        text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
         return SynthesisResult(
             audio_path=str(output_path),

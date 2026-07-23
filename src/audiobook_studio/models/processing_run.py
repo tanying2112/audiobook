@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from sqlalchemy import Float, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
@@ -30,7 +30,7 @@ class ProcessingRun(Base):
 
     # 运行快照
     config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # ProcessingConfig as JSON
-    prompt_versions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # {stage: version} mapping
+    prompt_versions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)  # {stage: version} mapping
     stages_completed: Mapped[List[str]] = mapped_column(JSON, nullable=False, default=list)
 
     # 运行结果

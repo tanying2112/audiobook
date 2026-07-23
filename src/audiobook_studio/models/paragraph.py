@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
@@ -52,7 +52,7 @@ class Paragraph(Base):
     speech_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pitch_shift_semitones: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     needs_sfx: Mapped[bool] = mapped_column(Boolean, default=False)
-    sfx_tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    sfx_tags: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     pause_before_ms: Mapped[int] = mapped_column(Integer, default=0)
     pause_after_ms: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -60,8 +60,8 @@ class Paragraph(Base):
 
     # 环节④编辑后文本
     edited_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    edit_changes_made: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    edit_forbidden_removed: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    edit_changes_made: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    edit_forbidden_removed: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     edit_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     edit_rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     edit_difficulty: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)
@@ -70,7 +70,7 @@ class Paragraph(Base):
     # 环节⑤路由决策
     routing_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    routing_prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    routing_prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     routing_fallback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     routing_estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
@@ -82,8 +82,8 @@ class Paragraph(Base):
     quality_prosody_naturalness: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_text_audio_alignment: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    quality_issues: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    quality_fix_suggestions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    quality_issues: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    quality_fix_suggestions: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     quality_needs_regeneration: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # 音频片段关联
@@ -124,7 +124,7 @@ class Paragraph(Base):
             speaker=self.speaker or self.speaker_canonical_name,
         )
 
-    def to_annotation_dict(self) -> dict:
+    def to_annotation_dict(self) -> dict[str, Any]:
         """Return annotation fields as a dict (aligned with ParagraphAnnotation schema)."""
         return {
             "speaker_canonical_name": self.speaker_canonical_name,

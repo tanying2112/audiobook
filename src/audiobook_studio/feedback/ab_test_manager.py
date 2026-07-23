@@ -398,7 +398,7 @@ class ABTestManager:
         }
 
 
-def main():
+def main() -> int:
     """主函数 - 演示 A/B 测试框架."""
     logger.info("=== Audiobook Studio A/B Test Manager Demo ===\n")
 

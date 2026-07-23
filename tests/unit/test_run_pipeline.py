@@ -25,15 +25,24 @@ if str(SRC_PATH) not in sys.path:
 @pytest.fixture
 def rp(monkeypatch):
     """Import run_pipeline module fresh for each test with dependencies patched."""
+    # Reload FIRST to get a fresh module with placeholders reset to None
+    import importlib
+
     import src.audiobook_studio.run_pipeline as run_pipeline
+
+    importlib.reload(run_pipeline)
 
     # Create mocks for the heavy dependencies
     mock_database = MagicMock()
-    mock_database.SessionLocal = MagicMock()
-    mock_database.init_db = MagicMock()
+    mock_session_local = MagicMock()
+    mock_init_db = MagicMock()
+    mock_database.SessionLocal = mock_session_local
+    mock_database.init_db = mock_init_db
 
     mock_models = MagicMock()
     mock_models.Project = MagicMock()
+    mock_models.Chapter = MagicMock()
+    mock_models.Paragraph = MagicMock()
 
     mock_orchestrator = MagicMock()
     mock_orchestrator.run_pipeline = AsyncMock()
@@ -46,20 +55,75 @@ def rp(monkeypatch):
     mock_gc = MagicMock()
     mock_gc.cleanup_after_export = MagicMock()
 
-    # Patch the module's attribute references (not sys.modules)
-    monkeypatch.setattr(run_pipeline, "SessionLocal", mock_database.SessionLocal)
-    monkeypatch.setattr(run_pipeline, "init_db", mock_database.init_db)
+    mock_schemas_book = MagicMock()
+    mock_schemas_book.CharacterVoiceBinding = MagicMock()
+
+    mock_schemas_review = MagicMock()
+    mock_schemas_review.FixCommand = MagicMock()
+
+    mock_export = MagicMock()
+    mock_export.ExportFormat = MagicMock()
+    mock_export.ExportJob = MagicMock()
+    mock_export.audio_ducking = MagicMock()
+    mock_export.audio_ducking.MixConfig = MagicMock()
+
+    mock_export_batch = MagicMock()
+    mock_export_batch.export_project = MagicMock()
+
+    # Store mocks on run_pipeline module for test access
+    run_pipeline._mock_init_db = mock_init_db
+    run_pipeline._mock_session_local = mock_session_local
+    run_pipeline._mock_project = mock_models.Project
+    run_pipeline._mock_chapter = mock_models.Chapter
+    run_pipeline._mock_paragraph = mock_models.Paragraph
+    run_pipeline._mock_orchestrator_run_pipeline = mock_orchestrator.run_pipeline
+    run_pipeline._mock_init_telemetry = mock_orchestrator.init_telemetry
+    run_pipeline._mock_shutdown_telemetry = mock_orchestrator.shutdown_telemetry
+    run_pipeline._mock_checkpoint_manager = mock_checkpoint.CheckpointManager
+    run_pipeline._mock_cleanup_after_export = mock_gc.cleanup_after_export
+    run_pipeline._mock_reports_dir = MagicMock(return_value="/tmp/reports")
+    run_pipeline._mock_character_voice_binding = mock_schemas_book.CharacterVoiceBinding
+    run_pipeline._mock_fix_command = mock_schemas_review.FixCommand
+    run_pipeline._mock_export_format = mock_export.ExportFormat
+    run_pipeline._mock_export_job = mock_export.ExportJob
+    run_pipeline._mock_mix_config = mock_export.audio_ducking.MixConfig
+    run_pipeline._mock_export_project = mock_export_batch.export_project
+
+    # Patch module-level placeholders (used by __getattr__)
+    monkeypatch.setattr(run_pipeline, "SessionLocal", mock_session_local)
+    monkeypatch.setattr(run_pipeline, "init_db", mock_init_db)
     monkeypatch.setattr(run_pipeline, "Project", mock_models.Project)
-    monkeypatch.setattr(run_pipeline, "orchestrator_run_pipeline", mock_orchestrator.run_pipeline)
-    monkeypatch.setattr(run_pipeline, "init_telemetry", mock_orchestrator.init_telemetry)
-    monkeypatch.setattr(run_pipeline, "shutdown_telemetry", mock_orchestrator.shutdown_telemetry)
     monkeypatch.setattr(run_pipeline, "CheckpointManager", mock_checkpoint.CheckpointManager)
+    monkeypatch.setattr(run_pipeline, "init_telemetry", mock_orchestrator.init_telemetry)
+    monkeypatch.setattr(run_pipeline, "orchestrator_run_pipeline", mock_orchestrator.run_pipeline)
+    monkeypatch.setattr(run_pipeline, "shutdown_telemetry", mock_orchestrator.shutdown_telemetry)
     monkeypatch.setattr(run_pipeline, "cleanup_after_export", mock_gc.cleanup_after_export)
 
-    # Reload to ensure patches are applied
-    import importlib
-
-    importlib.reload(run_pipeline)
+    # Patch internal accessor functions
+    monkeypatch.setattr(run_pipeline, "_get_session_local_and_init_db", lambda: (mock_session_local, mock_init_db))
+    monkeypatch.setattr(run_pipeline, "_get_project_model", lambda: mock_models.Project)
+    monkeypatch.setattr(run_pipeline, "_get_checkpoint_manager", lambda: mock_checkpoint.CheckpointManager)
+    monkeypatch.setattr(
+        run_pipeline,
+        "_get_orchestrator_functions",
+        lambda: (
+            mock_orchestrator.init_telemetry,
+            mock_orchestrator.run_pipeline,
+            mock_orchestrator.shutdown_telemetry,
+        ),
+    )
+    monkeypatch.setattr(run_pipeline, "_get_cleanup_after_export", lambda: mock_gc.cleanup_after_export)
+    monkeypatch.setattr(run_pipeline, "_get_reports_dir", lambda: MagicMock(return_value="/tmp/reports"))
+    monkeypatch.setattr(run_pipeline, "_get_chapter_model", lambda: mock_models.Chapter)
+    monkeypatch.setattr(run_pipeline, "_get_paragraph_model", lambda: mock_models.Paragraph)
+    monkeypatch.setattr(run_pipeline, "_get_character_voice_binding", lambda: mock_schemas_book.CharacterVoiceBinding)
+    monkeypatch.setattr(run_pipeline, "_get_fix_command", lambda: mock_schemas_review.FixCommand)
+    monkeypatch.setattr(
+        run_pipeline,
+        "_get_export_classes",
+        lambda: (mock_export.ExportFormat, mock_export.ExportJob, mock_export.audio_ducking.MixConfig),
+    )
+    monkeypatch.setattr(run_pipeline, "_get_export_project", lambda: mock_export_batch.export_project)
 
     yield run_pipeline
 
@@ -189,12 +253,13 @@ class TestInitializeDatabase:
             MagicMock(id=1),
             MagicMock(id=2),
         ]
-        with patch.object(rp, "init_db") as mock_init_db, patch.object(rp, "SessionLocal", return_value=mock_session):
-            rp.initialize_database(seed_projects=True)
-            mock_init_db.assert_called_once()
-            # No db.add nor db.commit (because both projects exist)
-            mock_session.add.assert_not_called()
-            assert mock_session.commit.call_count == 0
+        # Use fixture mocks via rp._mock_* attributes
+        rp._mock_session_local.return_value = mock_session
+        rp.initialize_database(seed_projects=True)
+        rp._mock_init_db.assert_called_once()
+        # No db.add nor db.commit (because both projects exist)
+        mock_session.add.assert_not_called()
+        assert mock_session.commit.call_count == 0
 
     def test_seed_creates_missing_project(self, rp):
         mock_session = MagicMock()
@@ -204,25 +269,24 @@ class TestInitializeDatabase:
             MagicMock(id=1),
         ]
         # When project created, db.add then commit then refresh
-        with patch.object(rp, "init_db"), patch.object(rp, "SessionLocal", return_value=mock_session):
-            rp.initialize_database(seed_projects=True)
-            # db.add called once for the missing project
-            assert mock_session.add.call_count == 1
-            assert mock_session.commit.call_count == 1
-            mock_session.refresh.assert_called_once()
+        rp._mock_session_local.return_value = mock_session
+        rp.initialize_database(seed_projects=True)
+        # db.add called once for the missing project
+        assert mock_session.add.call_count == 1
+        assert mock_session.commit.call_count == 1
+        mock_session.refresh.assert_called_once()
 
     def test_skip_seed(self, rp):
-        with patch.object(rp, "init_db") as mock_init_db:
-            rp.initialize_database(seed_projects=False)
-            mock_init_db.assert_called_once()
+        rp.initialize_database(seed_projects=False)
+        rp._mock_init_db.assert_called_once()
 
     def test_seed_error_rolls_back(self, rp):
         mock_session = MagicMock()
         mock_session.query.side_effect = RuntimeError("boom")
-        with patch.object(rp, "init_db"), patch.object(rp, "SessionLocal", return_value=mock_session):
-            with pytest.raises(RuntimeError):
-                rp.initialize_database(seed_projects=True)
-            mock_session.rollback.assert_called_once()
+        rp._mock_session_local.return_value = mock_session
+        with pytest.raises(RuntimeError):
+            rp.initialize_database(seed_projects=True)
+        mock_session.rollback.assert_called_once()
         # close is called in finally
         mock_session.close.assert_called_once()
 
@@ -349,9 +413,10 @@ class TestRunBookPipeline:
             mock_db = MagicMock()
             # _find_project returns None for unknown book
             mock_db.query.return_value.filter.return_value.first.return_value = None
-            with patch.object(rp, "SessionLocal", return_value=mock_db):
-                # Should not raise even though config is missing
-                rp.run_book_pipeline("does_not_exist", stages=["extract"])
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = []
+            # Should not raise even though config is missing
+            rp.run_book_pipeline("does_not_exist", stages=["extract"])
 
     def test_no_chapter_files_returns_early(self, rp, tmp_path):
         # book has config but no chapter files
@@ -360,8 +425,9 @@ class TestRunBookPipeline:
             # existing project
             mock_proj = MagicMock(id=1)
             mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
-            with patch.object(rp, "SessionLocal", return_value=mock_db):
-                rp.run_book_pipeline("红楼梦", stages=["extract"])
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = []
+            rp.run_book_pipeline("红楼梦", stages=["extract"])
 
     def test_chapter_filter_excludes_all(self, rp, tmp_path):
         # create chapter files
@@ -370,10 +436,11 @@ class TestRunBookPipeline:
         with patch.object(rp, "MOCK_DATA_DIR", tmp_path):
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(id=1)
-            with patch.object(rp, "SessionLocal", return_value=mock_db), patch.object(rp, "orchestrator_run_pipeline"):
-                rp.run_book_pipeline("红楼梦", stages=["extract"], chapter_filter=[99])
-                # Should return after filter empty, orchestrator not called
-                rp.orchestrator_run_pipeline.assert_not_called()
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = []
+            rp.run_book_pipeline("红楼梦", stages=["extract"], chapter_filter=[99])
+            # Should return after filter empty, orchestrator not called
+            rp._mock_orchestrator_run_pipeline.assert_not_called()
 
     def test_runs_extract_analyze_only(self, rp, tmp_path):
         # _get_chapter_files resolves chapter files under
@@ -395,17 +462,16 @@ class TestRunBookPipeline:
             # make asyncio.run raise TypeError (not a coroutine), which the
             # chapter-level ``except Exception`` would silently swallow — letting the
             # assertion pass while the async path never actually ran.
-            mock_orch = AsyncMock(return_value=[{"stage": "extract"}])
-            with (
-                patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline", new=mock_orch),
-            ):
-                rp.run_book_pipeline("红楼梦", stages=["extract", "analyze"])
-                # orchestrator called once for chapter-level
-                assert mock_orch.call_count == 1
-                # project updated to completed
-                assert mock_proj.current_stage == "completed"
-                mock_db.commit.assert_called()
+            # The fixture's _mock_orchestrator_run_pipeline is already an AsyncMock,
+            # just set its return_value directly (not wrapped in another AsyncMock)
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = [{"stage": "extract"}]
+            rp.run_book_pipeline("红楼梦", stages=["extract", "analyze"])
+            # orchestrator called once for chapter-level
+            assert rp._mock_orchestrator_run_pipeline.call_count == 1
+            # project updated to completed
+            assert mock_proj.current_stage == "completed"
+            mock_db.commit.assert_called()
 
     def test_empty_chapter_file_skipped(self, rp, tmp_path):
         book_dir = tmp_path / "红楼梦"
@@ -414,13 +480,11 @@ class TestRunBookPipeline:
         with patch.object(rp, "MOCK_DATA_DIR", tmp_path), patch.object(rp, "DATA_DIR", tmp_path):
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(id=1)
-            with (
-                patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline") as mock_orch,
-            ):
-                rp.run_book_pipeline("红楼梦", stages=["extract"])
-                # Empty file means orchestrator not called for this chapter
-                mock_orch.assert_not_called()
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = []
+            rp.run_book_pipeline("红楼梦", stages=["extract"])
+            # Empty file means orchestrator not called for this chapter
+            rp._mock_orchestrator_run_pipeline.assert_not_called()
 
     def test_orchestrator_exception_continues_next_chapter(self, rp, tmp_path):
         (tmp_path / "chapter_01.txt").write_text("content1", encoding="utf-8")
@@ -439,12 +503,10 @@ class TestRunBookPipeline:
                     raise RuntimeError("first chapter boom")
                 return []
 
-            with (
-                patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline", side_effect=side_effect),
-            ):
-                # Should not raise — single chapter error is swallowed
-                rp.run_book_pipeline("红楼梦", stages=["extract"])
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.side_effect = side_effect
+            # Should not raise — single chapter error is swallowed
+            rp.run_book_pipeline("红楼梦", stages=["extract"])
 
     def test_creates_project_when_missing(self, rp, tmp_path):
         (tmp_path / "chapter_01.txt").write_text("hello", encoding="utf-8")
@@ -454,14 +516,12 @@ class TestRunBookPipeline:
             mock_db.query.return_value.filter.return_value.first.return_value = None
             # And chapter query returns None
             mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
-            with (
-                patch.object(rp, "SessionLocal", return_value=mock_db),
-                patch.object(rp, "orchestrator_run_pipeline", return_value=[]),
-            ):
-                # Project is constructed via the mocked models.Project
-                rp.run_book_pipeline("红楼梦", stages=["extract"])
-                # db.add called once to create new project
-                mock_db.add.assert_called()
+            rp._mock_session_local.return_value = mock_db
+            rp._mock_orchestrator_run_pipeline.return_value = []
+            # Project is constructed via the mocked models.Project
+            rp.run_book_pipeline("红楼梦", stages=["extract"])
+            # db.add called once to create new project
+            mock_db.add.assert_called()
 
 
 # ── main() ────────────────────────────────────────────────────────────────────

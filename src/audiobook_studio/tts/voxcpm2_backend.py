@@ -179,7 +179,7 @@ class VoxCPM2Backend(TTSEngine):
 
         # If reference audio provided, compute embedding
         if reference_audio and Path(reference_audio).exists():
-            cache_key = hashlib.md5(reference_audio.encode()).hexdigest()
+            cache_key = hashlib.sha256(reference_audio.encode(), usedforsecurity=False).hexdigest()
             if cache_key in self._reference_audio_cache:
                 return self._reference_audio_cache[cache_key]
 
@@ -228,7 +228,7 @@ class VoxCPM2Backend(TTSEngine):
 
             dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
             sf.write(str(output_path), dummy_audio, self.sample_rate)
-            text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
             return SynthesisResult(
                 audio_path=str(output_path),
                 duration_ms=1000,

@@ -368,15 +368,11 @@ class SelfIterationLoop:
                     new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
                     if hasattr(new_output, "model_dump"):
                         new_output = new_output.model_dump()
-                    elif hasattr(new_output, "dict"):
-                        new_output = new_output.dict()
 
                     # Run with OLD prompt version (baseline)
                     old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=True)
                     if hasattr(old_output, "model_dump"):
                         old_output = old_output.model_dump()
-                    elif hasattr(old_output, "dict"):
-                        old_output = old_output.dict()
 
                     # Compare outputs using similarity
                     from .promotion_gate import _compute_output_similarity

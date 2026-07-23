@@ -16,12 +16,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
 from ..auth.dependencies import get_current_active_user, require_project_permission
 from ..auth.models import RoleName
-from ..database import get_db
+from ..database import get_async_session
 from ..models import Chapter, Project, ProjectSegment
 from ..models.user import User
 from ..pipeline.extract import extract_text
@@ -387,11 +389,11 @@ async def init_upload(
     file_size: int = Form(...),
     mime_type: str = Form(...),
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Initialize a multipart upload session."""
     # Verify project exists and user has access
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -433,7 +435,7 @@ async def upload_chunk(
     is_final: bool = Form(False),
     file: UploadFile = File(...),
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Upload a file chunk."""
     redis_client = await get_redis()
@@ -505,11 +507,11 @@ async def upload_file(
     project_id: int,
     file: UploadFile = File(...),
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Simple single-request file upload (for smaller files)."""
     # Verify project
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -595,13 +597,12 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         )
 
         # Create chapters from extracted text
-        from ..database import SessionLocal
+        from ..database import create_async_session
         from ..models import Project
         from ..schemas.paragraph import ContentRating
 
-        db = SessionLocal()
-        try:
-            project = db.query(Project).filter(Project.id == project_id).first()
+        async with create_async_session() as db:
+            project = await db.get(Project, project_id)
             if project:
                 chapters = split_into_chapters(result.raw_text)
                 await update_extraction_job(redis_client, job_id, total_chapters=len(chapters))
@@ -646,15 +647,12 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                         progress=0.5 + (0.4 * (i + 1) / len(chapters)),
                     )
 
-                db.commit()
+                await db.commit()
 
                 # Update project status
                 project.current_stage = "analyze"
                 project.progress = 0.15
-                db.commit()
-
-        finally:
-            db.close()
+                await db.commit()
 
         # Complete
         await update_extraction_job(
@@ -737,7 +735,7 @@ async def get_upload_status(
     project_id: int,
     upload_id: str,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get upload session status."""
     redis_client = await get_redis()
@@ -769,7 +767,7 @@ async def get_extraction_status(
     project_id: int,
     job_id: str,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get extraction job status."""
     redis_client = await get_redis()
@@ -788,7 +786,7 @@ async def get_extraction_status(
 async def list_extractions(
     project_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all extraction jobs for a project."""
     redis_client = await get_redis()
@@ -800,7 +798,7 @@ async def cancel_upload(
     project_id: int,
     upload_id: str,
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Cancel an upload session and cleanup."""
     redis_client = await get_redis()

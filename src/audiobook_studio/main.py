@@ -8,8 +8,11 @@ migrations instead of ``init_db``.
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 
 from .api.ab_test_interceptor import ABTestMiddleware
 from .api.agent_chat import router as agent_chat_router
@@ -36,6 +39,7 @@ from .api.sop_reflection import router as sop_reflection_router
 from .api.templates import router as templates_router
 from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
+from .api.admin import router as admin_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
 from .auth.dependencies import get_current_active_user
@@ -63,8 +67,10 @@ async def lifespan(app: FastAPI):
     # P0-3: Explicit CORS security validation
     settings.validate_cors_security()
 
+    # BP-003: Startup dependency validation — fast-fail on unreachable dependencies
+    await _validate_runtime_dependencies(settings)
+
     # P1-4: Use Alembic for DB migrations instead of create_all()
-    # This ensures migrations are applied and Alembic version table is tracked
     from subprocess import run
 
     result = run(["alembic", "upgrade", "head"], capture_output=True, text=True)
@@ -90,6 +96,61 @@ async def lifespan(app: FastAPI):
     shutdown_metrics()
 
 
+async def _validate_runtime_dependencies(settings) -> None:
+    """Validate critical runtime dependencies at startup (BP-003).
+
+    Checks DB connectivity, Redis ping, and model path existence.
+    Fast-fails with clear error messages on first failure.
+    """
+    import asyncio
+    import logging
+
+    logger = logging.getLogger("audiobook_studio.startup")
+    timeout = settings.HEALTH_CHECK_TIMEOUT
+
+    # 1. Database connectivity
+    try:
+        from .database import SessionLocal
+        from sqlalchemy import text
+
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            logger.info("Database connectivity: OK")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.critical(f"DATABASE_URL connect failed: {e}")
+        raise RuntimeError(
+            f"DATABASE_URL connect failed: {e}. "
+            f"Check DATABASE_URL={settings.DATABASE_URL}"
+        ) from e
+
+    # 2. Redis ping (optional — warn only)
+    try:
+        import redis.asyncio as aioredis
+        async with asyncio.timeout(timeout):
+            r = aioredis.from_url(settings.REDIS_URL)
+            await r.ping()
+            await r.aclose()
+            logger.info("Redis connectivity: OK")
+    except Exception as e:
+        logger.warning(f"Redis ping failed (non-fatal): {e}")
+
+    # 3. KOKORO_MODEL_PATH existence (if configured)
+    from pathlib import Path
+
+    kokoro_path = settings.KOKORO_MODEL_PATH
+    if kokoro_path:
+        model_file = Path(kokoro_path)
+        if not model_file.exists():
+            logger.error(f"KOKORO_MODEL_PATH not found: {kokoro_path}")
+            raise RuntimeError(
+                f"KOKORO_MODEL_PATH not found: {kokoro_path}. "
+                f"Download models or set ENABLE_LOCAL_TTS=false to fallback to Edge-TTS."
+            )
+
+
 app = FastAPI(
     title="Audiobook Studio API",
     version="0.1.0",
@@ -99,8 +160,17 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# CORS middleware - P0-3: Use explicit allow_methods from settings instead of "*"
+# Middleware order: Security → CORS → Compression → Normalization → Business
+# 1. TrustedHost (security — reject requests with spoofed Host headers)
+# 2. CORSMiddleware (cross-origin — must wrap all responses)
+# 3. GZipMiddleware (compression — applied after CORS headers are set)
+# 4. ISOTimestampMiddleware (response normalization — last before business logic)
+# 5. ABTestMiddleware (business routing — depends on normalized responses)
 settings = get_settings()
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -108,11 +178,8 @@ app.add_middleware(
     allow_methods=settings.CORS_ALLOW_METHODS,
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
-
-# Add ISO Timestamp Middleware (P1-8)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(ISOTimestampMiddleware)
-
-# Add A/B Test Middleware
 app.add_middleware(ABTestMiddleware)
 
 # Instrument with OpenTelemetry
@@ -159,60 +226,165 @@ app.include_router(upload_router)  # Has own per-endpoint project auth
 app.include_router(pipeline_router, dependencies=auth_dep)
 app.include_router(monitoring_router, prefix="/api", dependencies=auth_dep)
 app.include_router(agent_chat_router, dependencies=auth_dep)
+app.include_router(admin_router, dependencies=auth_dep)
 app.include_router(sop_reflection_router, dependencies=auth_dep)
 
 
-# Health check endpoint for CI verification
+# ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
+
 @app.get("/health")
 def health_check():
-    """Simple health endpoint used by CI to verify the container is running.
-
-    Returns a JSON payload with a status field. This endpoint does not require
-    any authentication and is safe to expose in a development environment.
-    """
+    """Simple liveness check — always returns 200 if process is alive."""
     return {"status": "ok"}
 
 
-# Detailed health check
-@app.get("/health/detailed")
-def detailed_health_check():
-    """Detailed health check with component status."""
-    from .auth.jwt_handler import jwt_handler
-    from .database import SessionLocal
-
-    db = SessionLocal()
-    db_status = "ok"
-    try:
-        from sqlalchemy import text
-
-        db.execute(text("SELECT 1"))
-    except Exception as e:
-        db_status = f"error: {e}"
-    finally:
-        db.close()
-
-    return {
-        "status": "ok" if db_status == "ok" else "degraded",
-        "database": db_status,
-        "version": "0.1.0",
-    }
+@app.get("/health/live")
+def health_live():
+    """K8s liveness probe — returns 200 as long as the process is running."""
+    return {"status": "alive"}
 
 
-@app.get("/health/db")
-def health_db():
-    """Database health check for CI."""
+@app.get("/health/ready")
+async def health_ready():
+    """K8s readiness probe — returns 200 only when all critical dependencies are up.
+
+    Checks: database SELECT 1, Redis ping, Kokoro model file existence.
+    Returns 503 with structured error details if any dependency is not ready.
+    """
+    import asyncio
+
     from sqlalchemy import text
 
+    from .config import get_settings
     from .database import SessionLocal
 
+    settings = get_settings()
+    timeout = settings.HEALTH_CHECK_TIMEOUT
+    checks: dict[str, Any] = {}
+
+    # DB check
     db = SessionLocal()
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected"}
+        checks["database"] = "ok"
     except Exception as e:
-        return {"status": "error", "database": str(e)}
+        checks["database"] = f"error: {e}"
     finally:
         db.close()
+
+    # Redis check
+    try:
+        import redis.asyncio as aioredis
+        async with asyncio.timeout(timeout):
+            r = aioredis.from_url(settings.REDIS_URL)
+            await r.ping()
+            await r.aclose()
+            checks["redis"] = "ok"
+    except Exception as e:
+        checks["redis"] = f"error: {e}"
+
+    # Kokoro model check
+    from pathlib import Path
+
+    kokoro_path = settings.KOKORO_MODEL_PATH
+    if kokoro_path:
+        checks["kokoro_model"] = "ok" if Path(kokoro_path).exists() else "model_not_found"
+    else:
+        checks["kokoro_model"] = "not_configured"
+
+    # TTS engine load status (PERF-001)
+    try:
+        from .di import get_app_container
+        from .tts.engine import EngineRegistry
+
+        container = get_app_container()
+        registry = container.get(EngineRegistry)
+        if registry is not None:
+            checks["tts_engines"] = registry.ready_status
+        else:
+            checks["tts_engines"] = "no_registry"
+    except Exception as e:
+        checks["tts_engines"] = f"error: {e}"
+
+    def _is_healthy(v: str | dict | bool) -> bool:
+        if isinstance(v, dict):
+            return all(_is_healthy(vv) for vv in v.values())
+        if isinstance(v, bool):
+            return v
+        return v == "ok" or v == "not_configured"
+
+    all_ok = _is_healthy(checks.get("database")) and _is_healthy(checks.get("redis"))
+    status_code = 200 if all_ok else 503
+    return JSONResponse(
+        content={"status": "ready" if all_ok else "not_ready", "checks": checks},
+        status_code=status_code,
+    )
+
+
+# ── Global exception handler (QUAL-003: structured error responses) ────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all exception handler returning structured JSON error responses.
+
+    AudiobookError subclasses include error_code and context details.
+    Unknown exceptions are logged with traceback and returned as INTERNAL_ERROR.
+    """
+    import logging
+    import traceback
+
+    logger = logging.getLogger("audiobook_studio.errors")
+
+    if hasattr(exc, "error_code") and hasattr(exc, "to_dict"):
+        # Structured AudiobookError — return with its error_code
+        # Custom exceptions have message, error_code, to_dict(), etc.
+        custom_exc: Any = exc
+        error_dict = custom_exc.to_dict()
+        status_code = _error_code_to_status(custom_exc.error_code)
+        logger.error(
+            f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
+            extra={"error_code": custom_exc.error_code, "context": getattr(custom_exc, "context", {})},
+        )
+        return JSONResponse(
+            content={"error": error_dict},
+            status_code=status_code,
+        )
+    # Starlette/FastAPI HTTPException — pass through
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if isinstance(exc, StarletteHTTPException):
+        return JSONResponse(
+            content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
+            status_code=exc.status_code,
+        )
+
+    # Unknown exception — log full traceback, return generic 500
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    logger.critical(f"Unhandled exception: {exc}\n{tb}")
+    return JSONResponse(
+        content={
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred. Check server logs for details.",
+            }
+        },
+        status_code=500,
+    )
+
+
+def _error_code_to_status(error_code: str) -> int:
+    """Map structured error codes to HTTP status codes."""
+    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR"):
+        return 422
+    if error_code in ("FILE_NOT_FOUND",):
+        return 404
+    if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
+        return 429
+    if error_code in ("CIRCUIT_OPEN", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"):
+        return 503
+    if error_code in ("CONFIG_ERROR",):
+        return 500
+    return 500
 
 
 if __name__ == "__main__":

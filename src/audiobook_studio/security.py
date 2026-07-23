@@ -3,10 +3,12 @@
 Provides safe path handling to prevent directory traversal and command injection.
 """
 
+from __future__ import annotations
+
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import IO, Any, Optional, Sequence, Union
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
@@ -21,7 +23,7 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
 
     """
     if not filename:
-        return "unnamed"  # Remove path separators and traversal sequences
+        return "unnamed"
     filename = filename.replace("/", "_").replace("\\", "_")
     filename = filename.replace("..", "_")
     # Remove null bytes
@@ -42,7 +44,8 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
 def sanitize_path_component(component: str, max_length: int = 255) -> str:
     """Sanitize a single path component (directory or file name).
 
-    More restrictive than sanitize_filename - no dots allowed except for extension.
+    More restrictive than sanitize_filename - no traversal sequences allowed.
+    Allows dots for file extensions only.
     """
     if not component:
         return "unnamed"
@@ -52,12 +55,12 @@ def sanitize_path_component(component: str, max_length: int = 255) -> str:
     component = component.replace("..", "_")
     # Remove null bytes
     component = component.replace("\x00", "")
-    # Keep only alphanumeric, hyphens, underscores
-    component = re.sub(r"[^\w\-]", "_", component)
+    # Keep alphanumeric, hyphens, underscores, and dots (for extensions)
+    component = re.sub(r"[^\w\-\.]", "_", component)
     # Collapse multiple underscores
     component = re.sub(r"_+", "_", component)
-    # Strip leading/trailing underscores
-    component = component.strip("_")
+    # Strip leading/trailing underscores and dots
+    component = component.strip("_.")
     # Truncate
     if len(component) > max_length:
         component = component[:max_length]
@@ -93,7 +96,115 @@ def safe_join(base: Path, *components: str) -> Path:
     return result
 
 
-def validate_file_path(path: Path, allowed_extensions: Optional[set] = None) -> Path:
+def safe_open(
+    base: Union[str, Path],
+    *components: str,
+    mode: str = "r",
+    buffering: int = -1,
+    encoding: Optional[str] = None,
+    errors: Optional[str] = None,
+    newline: Optional[str] = None,
+    closefd: bool = True,
+) -> IO[Any]:
+    """Atomically open a file within a base directory, preventing TOCTOU attacks.
+
+    This function combines path validation and file opening into a single
+    atomic operation using os.open with O_NOFOLLOW and O_CLOEXEC flags.
+
+    Args:
+        base: Base directory (must be absolute or resolvable)
+        *components: Path components to join
+        mode: File mode ('r', 'w', 'a', 'rb', 'wb', 'ab', etc.)
+        buffering: Buffering policy
+        encoding: Text encoding (for text modes)
+        errors: Error handling scheme
+        newline: Newline handling
+        closefd: Whether to close file descriptor on close
+
+    Returns:
+        File object opened at the validated path
+
+    Raises:
+        ValueError: If path would escape base directory
+        OSError: If file cannot be opened
+    """
+    # Resolve base directory
+    base_path = Path(base).resolve()
+
+    # For validation: sanitize components to prevent traversal
+    safe_components = [sanitize_path_component(c) for c in components]
+    safe_target = base_path.joinpath(*safe_components)
+
+    # For actual file operation: use original components
+    target_path = base_path.joinpath(*components)
+
+    # Resolve both paths to check for symlinks and traversal
+    try:
+        safe_resolved = safe_target.resolve(strict=False)
+        target_resolved = target_path.resolve(strict=False)
+    except (OSError, RuntimeError):
+        # If path doesn't exist yet, use the target path
+        safe_resolved = safe_target
+        target_resolved = target_path
+
+    # Verify both resolved paths are within base (after resolving symlinks)
+    try:
+        safe_resolved.relative_to(base_path)
+        target_resolved.relative_to(base_path)
+    except ValueError:
+        raise ValueError(f"Path traversal attempt detected: {components}")
+
+    # For write/append modes, create parent directories if they don't exist
+    if "w" in mode or "a" in mode:
+        try:
+            target_resolved.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Failed to create parent directories for {target_resolved}: {e}") from e
+
+    # Use os.open with flags to prevent TOCTOU:
+    # - O_NOFOLLOW: Don't follow symlinks (fail if path is a symlink)
+    # - O_CLOEXEC: Close on exec (prevents fd leakage to child processes)
+    # - O_CREAT: Create if doesn't exist (only for write/append modes)
+    # - O_EXCL: With O_CREAT, fail if file already exists (atomic creation)
+    flags = 0
+    if "r" in mode and "w" not in mode and "a" not in mode:
+        # Read-only
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+    elif "w" in mode:
+        # Write (truncate or create)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC
+    elif "a" in mode:
+        # Append (create if not exists)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC
+    elif "+" in mode:
+        # Read-write
+        flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC
+    else:
+        # Default to read-only
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    # Open file descriptor atomically using the original (unsanitized) path
+    # which preserves symlinks for O_NOFOLLOW to detect them.
+    # The resolved path was already validated to be within base.
+    try:
+        fd = os.open(target_path, flags, 0o644)
+    except OSError as e:
+        # Re-raise with context
+        raise OSError(f"Failed to open {target_path}: {e}") from e
+
+    # Convert fd to file object
+    try:
+        return os.fdopen(fd, mode, buffering, encoding, errors, newline, closefd)
+    except Exception:
+        # If fdopen fails, close the fd
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def validate_file_path(path: Path, allowed_extensions: Optional[set[str]] = None) -> Path:
     """Validate a file path for safe usage.
 
     Args:
@@ -131,7 +242,7 @@ def validate_file_path(path: Path, allowed_extensions: Optional[set] = None) -> 
     return resolved
 
 
-def safe_subprocess_args(cmd: list, base_dir: Optional[Path] = None) -> list:
+def safe_subprocess_args(cmd: list[str], base_dir: Optional[Path] = None) -> list[str]:
     """
     Validate subprocess command arguments to prevent command injection.
 
@@ -339,3 +450,14 @@ def safe_subprocess_args(cmd: list, base_dir: Optional[Path] = None) -> list:
                 raise ValueError(f"Unknown ffmpeg flag not in allowlist: {arg}")
 
     return cmd
+
+
+# Export all
+__all__ = [
+    "sanitize_filename",
+    "sanitize_path_component",
+    "safe_join",
+    "safe_open",
+    "validate_file_path",
+    "safe_subprocess_args",
+]

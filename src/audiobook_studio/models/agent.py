@@ -38,5 +38,5 @@ class TaskRecord(Base):
     @property
     def duration(self) -> Optional[float]:
         if self.completed_at:
-            return (self.completed_at - self.created_at).total_seconds()
+            return (self.completed_at - self.created_at).total_seconds()  # type: ignore[no-any-return]
         return None

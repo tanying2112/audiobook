@@ -5,6 +5,7 @@ Configures Redis broker/result backend and task routing.
 """
 
 import os
+from typing import Any
 
 from celery import Celery
 from celery.schedules import crontab
@@ -20,6 +21,7 @@ celery_app = Celery(
     include=[
         "src.audiobook_studio.tasks.export_tasks",
         "src.audiobook_studio.tasks.tts_tasks",
+        "src.audiobook_studio.tasks.publish_tasks",
     ],
 )
 
@@ -29,6 +31,8 @@ celery_app.conf.update(
     task_routes={
         "src.audiobook_studio.tasks.export_tasks.export_project_async": {"queue": "export"},
         "src.audiobook_studio.tasks.export_tasks.export_chapter_async": {"queue": "export"},
+        "src.audiobook_studio.tasks.publish_tasks.publish_project_async": {"queue": "publish"},
+        "src.audiobook_studio.tasks.publish_tasks.publish_audiobookshelf_async": {"queue": "publish"},
         "src.audiobook_studio.tasks.pipeline_tasks.*": {"queue": "pipeline"},
         "src.audiobook_studio.tasks.tts_tasks.synthesize_chapter_task": {"queue": "pipeline"},
         "src.audiobook_studio.tasks.tts_tasks.resume_chapter_task": {"queue": "pipeline"},
@@ -61,7 +65,9 @@ celery_app.autodiscover_tasks(
 
 
 # Health check task
-@celery_app.task(bind=True)
-def health_check(self):
+# use typing.cast or Any to suppress untyped-decorator
+def _health_check(self: Any) -> dict[str, str]:
     """Health check task."""
     return {"status": "healthy", "worker": self.request.hostname}
+
+health_check = celery_app.task(bind=True)(_health_check)

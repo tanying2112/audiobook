@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..config.acoustic_mapping import (
     DIALOGUE_SPEED_BOOST,
@@ -32,6 +32,9 @@ from ..config.acoustic_mapping import (
     get_punctuation_map,
     get_transition_map,
 )
+
+if TYPE_CHECKING:
+    from ..schemas.paragraph import ParagraphAnnotation
 
 
 @dataclass(frozen=True)
@@ -107,7 +110,7 @@ class AudioPostProcessor:
         if "paragraph_type" in para:
             pt = para["paragraph_type"]
             if pt in ("narration", "dialogue"):
-                return pt
+                return str(pt)
 
         # 回退：根据 is_dialogue 推断
         if para.get("is_dialogue", False):
@@ -201,7 +204,7 @@ class AudioPostProcessor:
     def process(
         self,
         annotation: "ParagraphAnnotation",
-        voice_map: Optional[list] = None,
+        voice_map: Optional[list[str]] = None,
         next_para_type: str = "end",
     ) -> PhysicalAudioSegment:
         """向后兼容的旧 API: 将 ParagraphAnnotation 转换为新格式并处理.

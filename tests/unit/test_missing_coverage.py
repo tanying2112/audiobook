@@ -2,7 +2,6 @@ import sys
 
 import pytest
 
-sys.path.insert(0, "src")
 from audiobook_studio.llm.config_loader import ProviderType
 from audiobook_studio.llm.router import LLMRouter
 

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.audiobook_studio.api.publish import _publish_jobs_fallback  # For test compatibility
 from src.audiobook_studio.api.publish import (
     AudiobookshelfConfig,
     PodcastRSSConfig,
@@ -204,14 +205,14 @@ class TestPublishToAudiobookshelf:
         """Clear job store after each test."""
         _publish_jobs.clear()
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @patch("src.audiobook_studio.api.publish.aiohttp.ClientSession")
     @pytest.mark.asyncio
     async def test_publish_to_audiobookshelf_success(self, mock_session_class, mock_db_class):
         """Test successful Audiobookshelf publish."""
-        # Setup mock database
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
+        # Setup mock async database session
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
         mock_project = MagicMock()
         mock_project.id = 1
@@ -220,13 +221,20 @@ class TestPublishToAudiobookshelf:
         mock_project.story_line_summary = "A test story"
         mock_project.genre = "fiction"
         mock_project.language = "zh"
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
         # Setup mock audio segments
         mock_segment = MagicMock()
         mock_segment.file_path = "/tmp/test.m4b"
         mock_segment.is_current = True
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_segment]
+
+        # Mock execute results - first call for project, second for segments
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_segment_result = MagicMock()
+        mock_segment_result.scalars.return_value.all.return_value = [mock_segment]
+
+        mock_session.execute.side_effect = [mock_project_result, mock_segment_result]
 
         # Setup mock file existence
         with (
@@ -238,8 +246,8 @@ class TestPublishToAudiobookshelf:
             mock_stat.return_value.st_size = 1024000
 
             # Setup mock aiohttp session properly
-            mock_session = AsyncMock()
-            mock_session_class.return_value.__aenter__.return_value = mock_session
+            mock_session_http = AsyncMock()
+            mock_session_class.return_value.__aenter__.return_value = mock_session_http
 
             # Create async context manager mocks for responses using a proper class
             class MockResponse:
@@ -292,9 +300,9 @@ class TestPublishToAudiobookshelf:
             # Setup side effects for get and post
             # session.get() should return the response object directly (not a coroutine)
             # because async with calls __aenter__ on the result
-            mock_session.get = MagicMock(side_effect=[mock_lib_resp, mock_lib_detail, mock_search])
-            mock_session.post = MagicMock(side_effect=[mock_upload, mock_scan, mock_cover])
-            mock_session.patch = MagicMock(return_value=mock_meta)
+            mock_session_http.get = MagicMock(side_effect=[mock_lib_resp, mock_lib_detail, mock_search])
+            mock_session_http.post = MagicMock(side_effect=[mock_upload, mock_scan, mock_cover])
+            mock_session_http.patch = MagicMock(return_value=mock_meta)
 
             config = {
                 "server_url": "https://audiobookshelf.example.com",
@@ -313,60 +321,65 @@ class TestPublishToAudiobookshelf:
         with pytest.raises(ValueError, match="server_url and api_key are required"):
             await _publish_to_audiobookshelf(1, {})
 
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
-    async def test_publish_to_audiobookshelf_missing_project(self):
+    async def test_publish_to_audiobookshelf_missing_project(self, mock_db_class):
         """Test Audiobookshelf publish fails when project not found."""
-        with patch("src.audiobook_studio.database.SessionLocal") as mock_db_class:
-            mock_db = MagicMock()
-            mock_db_class.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = None
+        # Setup mock async database session
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
-            config = {
-                "server_url": "https://audiobookshelf.example.com",
-                "api_key": "test_key",
-            }
+        # Mock execute result - project not found
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_project_result
 
-            # Need to mock aiohttp to avoid real network calls
-            with patch("src.audiobook_studio.api.publish.aiohttp.ClientSession") as mock_session_class:
-                mock_session = AsyncMock()
-                mock_session_class.return_value.__aenter__.return_value = mock_session
+        config = {
+            "server_url": "https://audiobookshelf.example.com",
+            "api_key": "test_key",
+        }
 
-                # Create async context manager mocks for responses using a proper class
-                class MockResponse:
-                    def __init__(self, status, json_data=None):
-                        self.status = status
-                        self._json_data = json_data
+        # Need to mock aiohttp to avoid real network calls
+        with patch("src.audiobook_studio.api.publish.aiohttp.ClientSession") as mock_session_class:
+            mock_session_http = AsyncMock()
+            mock_session_class.return_value.__aenter__.return_value = mock_session_http
 
-                    async def __aenter__(self):
+            # Create async context manager mocks for responses using a proper class
+            class MockResponse:
+                def __init__(self, status, json_data=None):
+                    self.status = status
+                    self._json_data = json_data
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *args):
+                    return None
+
+                async def json(self):
+                    return self._json_data
+
+                async def text(self):
+                    return "OK"
+
+                def __await__(self):
+                    async def dummy():
                         return self
 
-                    async def __aexit__(self, *args):
-                        return None
+                    return dummy().__await__()
 
-                    async def json(self):
-                        return self._json_data
+            def make_resp(status, json_data=None):
+                return MockResponse(status, json_data)
 
-                    async def text(self):
-                        return "OK"
+            mock_session_http.get = MagicMock(
+                side_effect=[
+                    make_resp(200, [{"id": "lib_1"}]),  # library list
+                    make_resp(200, {"id": "lib_1", "folders": [{"id": "folder_1"}]}),  # library detail
+                ]
+            )
 
-                    def __await__(self):
-                        async def dummy():
-                            return self
-
-                        return dummy().__await__()
-
-                def make_resp(status, json_data=None):
-                    return MockResponse(status, json_data)
-
-                mock_session.get = MagicMock(
-                    side_effect=[
-                        make_resp(200, [{"id": "lib_1"}]),  # library list
-                        make_resp(200, {"id": "lib_1", "folders": [{"id": "folder_1"}]}),  # library detail
-                    ]
-                )
-
-                with pytest.raises(ValueError, match="Project 1 not found"):
-                    await _publish_to_audiobookshelf(1, config)
+            with pytest.raises(ValueError, match="Project 1 not found"):
+                await _publish_to_audiobookshelf(1, config)
 
 
 class TestGeneratePodcastRSS:
@@ -380,12 +393,13 @@ class TestGeneratePodcastRSS:
         """Clear job store after each test."""
         _publish_jobs.clear()
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_generate_podcast_rss_success(self, mock_db_class):
         """Test successful podcast RSS generation."""
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
         mock_project = MagicMock()
         mock_project.id = 1
@@ -403,31 +417,14 @@ class TestGeneratePodcastRSS:
         mock_segment.index = 1
         mock_segment.is_current = True
 
-        # Mock the query chain - the function calls db.query() with model classes
-        # First call: db.query(Project)
-        project_query = MagicMock()
-        project_query.filter.return_value.first.return_value = mock_project
+        # Mock execute results
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_project
 
-        # Second call: db.query(AudioSegment)
-        segment_query = MagicMock()
-        segment_query.filter.return_value = segment_query
-        segment_query.order_by.return_value = segment_query
-        segment_query.all.return_value = [mock_segment]
+        mock_segment_result = MagicMock()
+        mock_segment_result.scalars.return_value.all.return_value = [mock_segment]
 
-        # Set up side_effect to return different queries based on the model passed
-        def query_side_effect(model):
-            if model.__name__ == "Project":
-                return project_query
-            elif model.__name__ == "AudioSegment":
-                return segment_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        # Also patch AudioSegment model to have index attribute for order_by
-        import src.audiobook_studio.models.audio_segment as audio_segment_module
-
-        audio_segment_module.AudioSegment.index = 1
+        mock_session.execute.side_effect = [mock_result, mock_segment_result]
 
         config = {
             "feed_title": "My Podcast",
@@ -438,46 +435,30 @@ class TestGeneratePodcastRSS:
         }
 
         result = await _generate_podcast_rss(1, config)
-
-        # Clean up
-        del audio_segment_module.AudioSegment.index
 
         assert result["success"] is True
         assert result["episode_count"] == 1
         assert "rss_url" in result
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_generate_podcast_rss_no_segments(self, mock_db_class):
         """Test podcast RSS generation with no segments."""
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
         mock_project = MagicMock()
         mock_project.id = 1
 
-        # Mock the query chain to return empty list
-        project_query = MagicMock()
-        project_query.filter.return_value.first.return_value = mock_project
+        # Mock execute results
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_project
 
-        segment_query = MagicMock()
-        segment_query.filter.return_value = segment_query
-        segment_query.order_by.return_value = segment_query
-        segment_query.all.return_value = []
+        mock_segment_result = MagicMock()
+        mock_segment_result.scalars.return_value.all.return_value = []
 
-        def query_side_effect(model):
-            if model.__name__ == "Project":
-                return project_query
-            elif model.__name__ == "AudioSegment":
-                return segment_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        # Also patch AudioSegment model to have index attribute for order_by
-        import src.audiobook_studio.models.audio_segment as audio_segment_module
-
-        audio_segment_module.AudioSegment.index = 1
+        mock_session.execute.side_effect = [mock_result, mock_segment_result]
 
         config = {
             "feed_title": "My Podcast",
@@ -489,19 +470,21 @@ class TestGeneratePodcastRSS:
 
         result = await _generate_podcast_rss(1, config)
 
-        # Clean up
-        del audio_segment_module.AudioSegment.index
-
         assert result["success"] is True
         assert result["episode_count"] == 0
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_generate_podcast_rss_project_not_found(self, mock_db_class):
         """Test podcast RSS generation when project not found."""
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
+
+        # Mock execute result - project not found
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
 
         config = {}
         with pytest.raises(ValueError, match="Project 1 not found"):
@@ -710,14 +693,15 @@ class TestRSSFeedGeneration:
         """Clear job store after each test."""
         _publish_jobs.clear()
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_get_podcast_rss_feed(self, mock_db_class):
         """Test RSS feed XML generation."""
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
         mock_project = MagicMock()
         mock_project.id = 1
@@ -734,28 +718,16 @@ class TestRSSFeedGeneration:
         mock_segment.index = 1
         mock_segment.is_current = True
 
-        # Mock the query chain for segments
-        project_query = MagicMock()
-        project_query.filter.return_value.first.return_value = mock_project
+        # Mock execute result
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_project
+        mock_session.execute.return_value = mock_result
 
-        segment_query = MagicMock()
-        segment_query.filter.return_value = segment_query
-        segment_query.order_by.return_value = segment_query
-        segment_query.all.return_value = [mock_segment]
-
-        def query_side_effect(model):
-            if model.__name__ == "Project":
-                return project_query
-            elif model.__name__ == "AudioSegment":
-                return segment_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        # Also patch AudioSegment model to have index attribute for order_by
-        import src.audiobook_studio.models.audio_segment as audio_segment_module
-
-        audio_segment_module.AudioSegment.index = 1
+        # For segments query
+        mock_segment_result = MagicMock()
+        mock_segment_result.scalars.return_value.all.return_value = [mock_segment]
+        # The second call to execute() will be for segments
+        mock_session.execute.side_effect = [mock_result, mock_segment_result]
 
         # Mock Path.exists for cover image check
         with patch("pathlib.Path.exists", return_value=False):
@@ -766,10 +738,8 @@ class TestRSSFeedGeneration:
                 feed_link="https://custom.com",
                 author="Custom Author",
                 owner_email="custom@example.com",
+                db=mock_session,  # Pass mock session directly
             )
-
-        # Clean up
-        del audio_segment_module.AudioSegment.index
 
         assert isinstance(result, RSSFeedOut)
         assert result.episode_count == 1
@@ -778,7 +748,7 @@ class TestRSSFeedGeneration:
         assert "audio/mp4" in result.xml
         assert "ep1.m4b" in result.xml
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_get_podcast_rss_feed_project_not_found(self, mock_db_class):
         """Test RSS feed when project not found."""
@@ -786,23 +756,28 @@ class TestRSSFeedGeneration:
 
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_podcast_rss_feed(project_id=999)
+            await get_podcast_rss_feed(project_id=999, db=mock_session)
 
         assert exc_info.value.status_code == 404
 
-    @patch("src.audiobook_studio.database.SessionLocal")
+    @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
     async def test_get_podcast_rss_feed_defaults(self, mock_db_class):
         """Test RSS feed with default values from project."""
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
-        mock_db = MagicMock()
-        mock_db_class.return_value = mock_db
+        # Create async session mock
+        mock_session = AsyncMock()
+        mock_db_class.return_value.__aenter__.return_value = mock_session
 
         mock_project = MagicMock()
         mock_project.id = 1
@@ -819,34 +794,17 @@ class TestRSSFeedGeneration:
         mock_segment.index = 1
         mock_segment.is_current = True
 
-        # Mock the query chain for segments
-        project_query = MagicMock()
-        project_query.filter.return_value.first.return_value = mock_project
+        # Mock execute result
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_project
 
-        segment_query = MagicMock()
-        segment_query.filter.return_value = segment_query
-        segment_query.order_by.return_value = segment_query
-        segment_query.all.return_value = [mock_segment]
+        mock_segment_result = MagicMock()
+        mock_segment_result.scalars.return_value.all.return_value = [mock_segment]
 
-        def query_side_effect(model):
-            if model.__name__ == "Project":
-                return project_query
-            elif model.__name__ == "AudioSegment":
-                return segment_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        # Also patch AudioSegment model to have index attribute for order_by
-        import src.audiobook_studio.models.audio_segment as audio_segment_module
-
-        audio_segment_module.AudioSegment.index = 1
+        mock_session.execute.side_effect = [mock_result, mock_segment_result]
 
         with patch("pathlib.Path.exists", return_value=False):
-            result = await get_podcast_rss_feed(project_id=1)
-
-        # Clean up
-        del audio_segment_module.AudioSegment.index
+            result = await get_podcast_rss_feed(project_id=1, db=mock_session)
 
         assert result.episode_count == 1
         assert "Test Podcast" in result.xml

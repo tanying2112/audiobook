@@ -1,59 +1,111 @@
-"""FastAPI router for ``Book`` CRUD operations (legacy API for backward compatibility)."""
+"""FastAPI router for ``Book`` CRUD operations (async SQLAlchemy 2.0)."""
 
-from typing import List
+import logging
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.legacy import LegacyBook as Book
+from ..models.legacy import LegacyBook
 from ..schemas.legacy import Book as BookSchema
-from .dependencies import get_db
+from .dependencies import get_async_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/books", tags=["books"])
 
 
-@router.post("/", response_model=BookSchema, status_code=status.HTTP_201_CREATED)
-def create_book(book: BookSchema, db: Session = Depends(get_db)):
-    db_book = Book(**book.model_dump())
-    db.add(db_book)
-    db.commit()
-    db.refresh(db_book)
-    return db_book.to_schema()
+# ── Pydantic schemas for API responses ────────────────────────────────────────
 
 
-@router.get("/", response_model=List[BookSchema])
-def list_books(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    books = db.query(Book).offset(skip).limit(limit).all()
-    return [b.to_schema() for b in books]
+class BookCreate(BaseModel):
+    """Schema for creating a new book."""
+
+    title: str
+    author: str
+    language: str
+    isbn: Optional[str] = None
 
 
-@router.get("/{book_id}", response_model=BookSchema)
-def get_book(book_id: int, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id).first()
+class BookUpdate(BaseModel):
+    """Schema for updating a book."""
+
+    title: Optional[str] = None
+    author: Optional[str] = None
+    language: Optional[str] = None
+    isbn: Optional[str] = None
+
+
+class BookOut(BookSchema):
+    """Book response schema with ORM config."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Book CRUD ──────────────────────────────────────────────────────────────────
+
+
+@router.post("/", response_model=BookOut, status_code=status.HTTP_201_CREATED)
+async def create_book(
+    payload: BookCreate, db: AsyncSession = Depends(get_async_db)
+):
+    """Create a new book."""
+    book = LegacyBook(**payload.model_dump())
+    db.add(book)
+    await db.commit()
+    await db.refresh(book)
+    return book
+
+
+@router.get("/", response_model=List[BookOut])
+async def list_books(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_async_db)):
+    """List all books."""
+    result = await db.execute(
+        select(LegacyBook)
+        .options(selectinload(LegacyBook.paragraphs))
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/{book_id}", response_model=BookOut)
+async def get_book(book_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Get a single book by ID."""
+    result = await db.execute(select(LegacyBook).where(LegacyBook.id == book_id))
+    book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    return book.to_schema()
+    return book
 
 
-@router.put("/{book_id}", response_model=BookSchema)
-def update_book(book_id: int, payload: BookSchema, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id).first()
+@router.put("/{book_id}", response_model=BookOut)
+async def update_book(
+    book_id: int, payload: BookUpdate, db: AsyncSession = Depends(get_async_db)
+):
+    """Update a book."""
+    result = await db.execute(select(LegacyBook).where(LegacyBook.id == book_id))
+    book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    # Exclude id from update
-    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
+    update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(book, field, value)
-    db.commit()
-    db.refresh(book)
-    return book.to_schema()
+    await db.commit()
+    await db.refresh(book)
+    return book
 
 
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_book(book_id: int, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id).first()
+async def delete_book(book_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Delete a book and all related data."""
+    result = await db.execute(select(LegacyBook).where(LegacyBook.id == book_id))
+    book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    db.delete(book)
-    db.commit()
+    await db.delete(book)
+    await db.commit()
     return None

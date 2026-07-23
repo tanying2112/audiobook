@@ -1,20 +1,12 @@
-import warnings
-
-import torch
-
-from .config import MiniCPM4Config
-
-# enable_gqa was added in PyTorch 2.2, skip entirely for older versions
-_TORCH_MAJOR = int(torch.__version__.split(".")[0])
-_TORCH_MINOR = int(torch.__version__.split(".")[1])
-_HAS_SDPA_ENABLE_GQA = (_TORCH_MAJOR, _TORCH_MINOR) >= (2, 2)
-
 import math
+import warnings
 from typing import List, Tuple
 
+import torch
 import torch.nn as nn
 
 from .cache import StaticKVCache
+from .config import MiniCPM4Config
 
 
 def rms_layernorm(hidden: torch.Tensor, weight: torch.Tensor, eps: float):
@@ -165,19 +157,20 @@ class MiniCPMAttention(nn.Module):
         query_states = query_states.contiguous()
         key_states = key_states.contiguous()
         value_states = value_states.contiguous()
-        if _HAS_SDPA_ENABLE_GQA:
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                query_states,
-                key_states,
-                value_states,
-                is_causal=is_causal,
-                enable_gqa=True,
-            )
+        # 手动展开 KV 头 + 手动 attention，完全绕过 torch SDPA
+        # （云端 PyTorch 2.0.x 的 scaled_dot_product_attention 不支持 GQA，
+        #  即使 repeat_interleave 后仍报维度不匹配）
+        if self.num_key_value_groups > 1:
+            key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
+            value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
+            scale = 1.0 / (self.head_dim**0.5)
+            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scale
+            if is_causal:
+                cmask = torch.triu(torch.ones(q_len, q_len, device=query_states.device, dtype=torch.bool), diagonal=1)
+                attn_weights = attn_weights.masked_fill(cmask, float("-inf"))
+            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1).to(query_states.dtype)
+            attn_output = torch.matmul(attn_weights, value_states)
         else:
-            # torch < 2.2: manually expand key/value heads for GQA
-            if self.num_key_value_groups > 1:
-                key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
-                value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
                 key_states,
@@ -228,19 +221,16 @@ class MiniCPMAttention(nn.Module):
         query_states = query_states.contiguous()
         key_cache = key_cache.contiguous()
         value_cache = value_cache.contiguous()
-        if _HAS_SDPA_ENABLE_GQA:
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                query_states,
-                key_cache,
-                value_cache,
-                attn_mask=attn_mask,
-                enable_gqa=True,
-            )
+        # 手动展开 KV 头 + 手动 attention（与 forward 保持一致）
+        if self.num_key_value_groups > 1:
+            key_cache = key_cache.repeat_interleave(self.num_key_value_groups, dim=1)
+            value_cache = value_cache.repeat_interleave(self.num_key_value_groups, dim=1)
+            scale = 1.0 / (self.head_dim**0.5)
+            attn_weights = torch.matmul(query_states, key_cache.transpose(-2, -1)) * scale
+            attn_weights = attn_weights.masked_fill(~attn_mask, float("-inf"))
+            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1).to(query_states.dtype)
+            attn_output = torch.matmul(attn_weights, value_cache)
         else:
-            # torch < 2.2: manually expand key/value heads for GQA
-            if self.num_key_value_groups > 1:
-                key_cache = key_cache.repeat_interleave(self.num_key_value_groups, dim=1)
-                value_cache = value_cache.repeat_interleave(self.num_key_value_groups, dim=1)
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
                 key_cache,

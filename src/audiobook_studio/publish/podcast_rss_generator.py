@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class PodcastRSSGenerator:
         # 重新分配 episode_number（如果没有手动设置的话）
         self._reassign_episode_numbers()
 
-    def _reassign_episode_numbers(self):
+    def _reassign_episode_numbers(self) -> None:
         """重新分配 épisode 编号（基于发布顺序）"""
         # 只为没有手动设置编号的 épisode 重新分配
         episodes_without_number = [ep for ep in self.feed.episodes if ep.episode_number is None]
@@ -274,7 +274,7 @@ class PodcastRSSGenerator:
         return len(errors) == 0, errors
 
 
-def main():
+def main() -> None:
     """主函数 - 演示 Podcast RSS Feed 生成"""
     logger.info("=== Audiobook Studio Podcast RSS Feed 生成演示 ===\n")
 
@@ -316,7 +316,7 @@ def main():
     logger.info("\n📖 添加有声书章节作为Podcast节目...")
 
     # 假设我们有一个有声书，包含若干章节
-    chapters_data = [
+    chapters_data: list[dict[str, Any]] = [
         {
             "title": "第一章 文化大革命的序曲",
             "description": "在这个动荡的时代，一个秘密的军事项目《红岸工程》正在酝酿之中。",

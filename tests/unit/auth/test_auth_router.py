@@ -175,27 +175,42 @@ class TestRefreshTokenEndpoint:
 class TestRegisterEndpoint:
     """Tests for /api/auth/register endpoint (admin only)."""
 
-    def test_register_success(self, client, mock_rbac_manager):
+    def test_register_success(self, client, mock_rbac_manager, test_db):
         """Test successful user registration."""
-        mock_user = MagicMock()
-        mock_user.id = 1
-        mock_user.username = "newuser"
-        mock_user.email = "new@example.com"
-        mock_user.full_name = "New User"
-        mock_user.is_active = True
-        mock_user.is_superuser = False
-        mock_user.roles = []
-        mock_user.hashed_password = "hashed"
+
+        # Create a plain object (not SQLAlchemy model) to avoid mock interference
+        class UserObj:
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        created_user = UserObj(
+            id=1,
+            username="newuser",
+            email="new@example.com",
+            full_name="New User",
+            is_active=True,
+            is_superuser=False,
+            hashed_password="hashed",
+            roles=[],
+            created_at="2024-01-01T00:00:00",
+        )
+
         mock_rbac_manager.get_user_by_username.return_value = None
         mock_rbac_manager.get_user_by_email.return_value = None
-        mock_rbac_manager.create_user.return_value = mock_user
+        mock_rbac_manager.create_user.return_value = created_user
 
         app = client.app
 
         def mock_superuser():
-            user = MagicMock()
-            user.is_superuser = True
-            user.id = 1
+            user = UserObj(
+                id=1,
+                username="admin",
+                email="admin@test.com",
+                hashed_password="hash",
+                is_active=True,
+                is_superuser=True,
+            )
             return user
 
         app.dependency_overrides[get_current_superuser] = mock_superuser
@@ -271,20 +286,32 @@ class TestRegisterEndpoint:
 class TestCurrentUserEndpoints:
     """Tests for /api/auth/me endpoints."""
 
-    def test_read_current_user(self, client, mock_rbac_manager):
+    def test_read_current_user(self, client, mock_rbac_manager, test_db):
         """Test getting current user profile."""
-        mock_user = MagicMock()
-        mock_user.id = 1
-        mock_user.username = "testuser"
-        mock_user.email = "test@example.com"
-        mock_user.full_name = "Test User"
-        mock_user.is_active = True
-        mock_user.is_superuser = False
-        mock_role = MagicMock()
-        mock_role.name = "admin"
-        mock_user.roles = [mock_role]
-        mock_user.hashed_password = "hashed"
-        mock_user.created_at = "2024-01-01T00:00:00"
+        # Create real user in test_db
+        test_user = UserModel(
+            id=1,
+            username="testuser",
+            email="test@example.com",
+            full_name="Test User",
+            is_active=True,
+            is_superuser=False,
+            hashed_password="hashed",
+        )
+        test_db.add(test_user)
+        test_db.commit()
+        test_db.refresh(test_user)
+
+        # Mock role
+        from src.audiobook_studio.models.user import Role
+
+        test_role = Role(id=1, name="admin")
+        test_db.add(test_role)
+        test_db.commit()
+
+        # Associate role with user
+        test_user.roles.append(test_role)
+        test_db.commit()
 
         mock_rbac_manager.get_user_permissions.return_value = {"project:read"}
         mock_rbac_manager.get_user_project_permissions.return_value = []
@@ -292,35 +319,11 @@ class TestCurrentUserEndpoints:
         app = client.app
 
         def mock_active_user():
-            return mock_user
+            return test_user
 
         app.dependency_overrides[get_current_active_user] = mock_active_user
 
-        with patch("src.audiobook_studio.auth.router.UserOut.from_orm") as mock_from_orm:
-            mock_user_out = MagicMock()
-            mock_user_out.id = 1
-            mock_user_out.username = "testuser"
-            mock_user_out.email = "test@example.com"
-            mock_user_out.full_name = "Test User"
-            mock_user_out.is_active = True
-            mock_user_out.is_superuser = False
-            mock_user_out.roles = ["admin"]
-            mock_user_out.project_permissions = []
-            mock_user_out.created_at = "2024-01-01T00:00:00"
-            mock_user_out.model_dump.return_value = {
-                "id": 1,
-                "username": "testuser",
-                "email": "test@example.com",
-                "full_name": "Test User",
-                "is_active": True,
-                "is_superuser": False,
-                "roles": ["admin"],
-                "project_permissions": [],
-                "created_at": "2024-01-01T00:00:00",
-            }
-            mock_from_orm.return_value = mock_user_out
-
-            response = client.get("/api/auth/me")
+        response = client.get("/api/auth/me")
 
         if get_current_active_user in app.dependency_overrides:
             del app.dependency_overrides[get_current_active_user]

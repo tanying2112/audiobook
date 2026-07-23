@@ -8,11 +8,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.feedback_record import FeedbackRecord as CollaborationRecord  # Reusing existing model for now
+from ..models.feedback_record import FeedbackRecord as CollaborationRecord
 from ..schemas.feedback import FeedbackRecord as CollaborationRecordSchema
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 router = APIRouter(prefix="/collab", tags=["collaboration"])
 
@@ -23,265 +24,441 @@ class CommentBase(BaseModel):
     comment_type: str = Field(..., description="comment, suggestion, question, or issue")
     task_id: Optional[int] = None
     file_path: Optional[str] = None
-    line_number: Optional[int] = None
-    parent_id: Optional[int] = None  # For replies to other comments
 
 
 class CommentCreate(CommentBase):
     pass
 
 
+class CommentUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1, max_length=2000)
+    comment_type: Optional[str] = None
+    task_id: Optional[int] = None
+    file_path: Optional[str] = None
+    processed: Optional[bool] = None
+
+
 class CommentResponse(CommentBase):
     id: int
-    author_id: str
+    project_id: Optional[int] = None
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
-    resolved: bool = False
-    resolved_by: Optional[str] = None
-    resolved_at: Optional[datetime] = None
+    processed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class TaskBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., max_length=2000)
-    status: str = Field(..., description="todo, in_progress, review, done, or archived")
-    assignee_id: Optional[str] = None
-    reporter_id: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    priority: int = Field(default=1, ge=1, le=5)  # 1-5, 5 being highest priority
-    estimated_hours: Optional[float] = Field(None, ge=0)
-    project_id: Optional[str] = None
-    parent_task_id: Optional[int] = None  # For subtasks
-    depends_on: List[int] = Field(default_factory=list)  # Predecessor task IDs
+class CommentListResponse(BaseModel):
+    comments: List[CommentResponse]
+    total: int
+    processed: int
+    pending: int
 
 
-class TaskCreate(TaskBase):
-    pass
+# ── API Endpoints ────────────────────────────────────────────────────────────
 
 
-class TaskResponse(TaskBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-    actual_hours: Optional[float] = None
+@router.get("/comments", response_model=CommentListResponse)
+async def list_comments(
+    project_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    comment_type: Optional[str] = None,
+    processed: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List comments with optional filters."""
+    query = select(CollaborationRecord)
 
-    model_config = ConfigDict(from_attributes=True)
+    if project_id is not None:
+        query = query.where(CollaborationRecord.project_id == project_id)
+    if user_id is not None:
+        query = query.where(CollaborationRecord.user_id == user_id)
+    if comment_type is not None:
+        query = query.where(CollaborationRecord.type == comment_type)
+    if processed is not None:
+        query = query.where(CollaborationRecord.processed == processed)
 
+    # Get total count
+    count_query = query
+    total_result = await db.execute(count_query)
+    total = len(total_result.scalars().all())
 
-class ApprovalRequestBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., max_length=2000)
-    approver_ids: List[str] = Field(..., min_length=1)
-    task_id: Optional[int] = None
-    artifact_path: Optional[str] = None  # Path to artifact being reviewed
-    required_approvals: int = Field(default=1, ge=1)
-    auto_approve_if_unstoppable: bool = Field(default=False)
+    # Get processed count
+    processed_query = query.where(CollaborationRecord.processed is True)
+    processed_result = await db.execute(processed_query)
+    processed_count = len(processed_result.scalars().all())
 
+    # Get paginated results
+    query = query.offset(skip).limit(limit).order_by(CollaborationRecord.created_at.desc())
+    result = await db.execute(query)
+    comments = result.scalars().all()
 
-class ApprovalRequestCreate(ApprovalRequestBase):
-    pass
-
-
-class ApprovalRequestResponse(ApprovalRequestBase):
-    id: int
-    requester_id: str
-    status: str = Field(..., description="pending, approved, rejected, or needs_changes")
-    created_at: datetime
-    updated_at: datetime
-    approvals: dict = Field(default_factory=dict)  # approver_id -> {status, comment, timestamp}
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ApprovalResponseBase(BaseModel):
-    approver_id: str
-    status: str = Field(..., description="pending, approved, rejected, or needs_changes")
-    comment: Optional[str] = None
-
-
-class ApprovalResponseCreate(ApprovalResponseBase):
-    pass
-
-
-# API Endpoints
+    return CommentListResponse(
+        comments=[CommentResponse.model_validate(c) for c in comments],
+        total=total,
+        processed=processed_count,
+        pending=total - processed_count,
+    )
 
 
-# Comment endpoints
 @router.post("/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
-def create_comment(comment: CommentCreate, db: Session = Depends(get_db)):
-    """创建新评论"""
-    # For now, we'll reuse the FeedbackRecord model
-    # In a full implementation, we'd have dedicated Comment model
+async def create_comment(
+    comment: CommentCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a new comment."""
     db_comment = CollaborationRecord(
+        type=comment.comment_type,
         content=comment.content,
-        feedback_type=comment.comment_type,
-        related_task_id=str(comment.task_id) if comment.task_id else None,
-        related_file_path=comment.file_path,
-        related_line_number=comment.line_number,
-        parent_id=str(comment.parent_id) if comment.parent_id else None,
-        # We'll need to get the current user ID from auth context
-        created_by="system",  # Placeholder
+        task_id=comment.task_id,
+        project_id=None,  # Will be set from context if available
+        user_id=None,  # Will be set from auth if available
+        processed=False,
     )
     db.add(db_comment)
-    db.commit()
-    db.refresh(db_comment)
-    return db_comment
+    await db.commit()
+    await db.refresh(db_comment)
+    return CommentResponse.model_validate(db_comment)
 
 
 @router.get("/comments/{comment_id}", response_model=CommentResponse)
-def get_comment(comment_id: int, db: Session = Depends(get_db)):
-    """获取特定评论"""
-    comment = db.query(CollaborationRecord).filter(CollaborationRecord.id == comment_id).first()
+async def get_comment(
+    comment_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a specific comment by ID."""
+    result = await db.execute(select(CollaborationRecord).where(CollaborationRecord.id == comment_id))
+    comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
-    return comment
+    return CommentResponse.model_validate(comment)
 
 
-@router.get("/comments", response_model=List[CommentResponse])
-def list_comments(
-    task_id: Optional[int] = None,
-    file_path: Optional[str] = None,
-    db: Session = Depends(get_db),
+@router.put("/comments/{comment_id}", response_model=CommentResponse)
+async def update_comment(
+    comment_id: int,
+    comment_update: CommentUpdate,
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """列出评论，可按任务或文件过滤"""
-    query = db.query(CollaborationRecord)
-    if task_id:
-        query = query.filter(CollaborationRecord.related_task_id == str(task_id))
-    if file_path:
-        query = query.filter(CollaborationRecord.related_file_path == file_path)
-    comments = query.all()
-    return comments
-
-
-@router.put("/comments/{comment_id}/resolve", response_model=CommentResponse)
-def resolve_comment(comment_id: int, resolved_by: str, db: Session = Depends(get_db)):
-    """解决评论"""
-    comment = db.query(CollaborationRecord).filter(CollaborationRecord.id == comment_id).first()
+    """Update a comment."""
+    result = await db.execute(select(CollaborationRecord).where(CollaborationRecord.id == comment_id))
+    comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
 
-    comment.resolved = True
-    comment.resolved_by = resolved_by
-    comment.resolved_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(comment)
-    return comment
+    update_data = comment_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(comment, field, value)
+
+    await db.commit()
+    await db.refresh(comment)
+    return CommentResponse.model_validate(comment)
 
 
-# Task endpoints
-@router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
-    """创建新任务"""
-    # For now, we'll create a simplified task representation
-    # In a full implementation, we'd have dedicated Task model
-    raise HTTPException(
-        status_code=501,
-        detail="Task management not yet implemented - placeholder for future development",
-    )
-
-
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: int, db: Session = Depends(get_db)):
-    """获取特定任务"""
-    raise HTTPException(
-        status_code=501,
-        detail="Task management not yet implemented - placeholder for future development",
-    )
-
-
-@router.get("/tasks", response_model=List[TaskResponse])
-def list_tasks(
-    assignee_id: Optional[str] = None,
-    status: Optional[str] = None,
-    db: Session = Depends(get_db),
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_comment(
+    comment_id: int,
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """列出任务，可按负责人或状态过滤"""
-    raise HTTPException(
-        status_code=501,
-        detail="Task management not yet implemented - placeholder for future development",
-    )
+    """Delete a comment."""
+    result = await db.execute(select(CollaborationRecord).where(CollaborationRecord.id == comment_id))
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    await db.delete(comment)
+    await db.commit()
+    return None
 
 
-@router.put("/tasks/{task_id}/status", response_model=TaskResponse)
-def update_task_status(task_id: int, status: str, updated_by: str, db: Session = Depends(get_db)):
-    """更新任务状态"""
-    raise HTTPException(
-        status_code=501,
-        detail="Task management not yet implemented - placeholder for future development",
-    )
-
-
-# Approval endpoints
-@router.post(
-    "/approvals",
-    response_model=ApprovalRequestResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_approval_request(approval: ApprovalRequestCreate, db: Session = Depends(get_db)):
-    """创建新审批请求"""
-    # For now, we'll create a simplified approval representation
-    # In a full implementation, we'd have dedicated Approval model
-    raise HTTPException(
-        status_code=501,
-        detail="Approval management not yet implemented - placeholder for future development",
-    )
-
-
-@router.get("/approvals/{approval_id}", response_model=ApprovalRequestResponse)
-def get_approval_request(approval_id: int, db: Session = Depends(get_db)):
-    """获取特定审批请求"""
-    raise HTTPException(
-        status_code=501,
-        detail="Approval management not yet implemented - placeholder for future development",
-    )
-
-
-@router.get("/approvals", response_model=List[ApprovalRequestResponse])
-def list_approval_requests(
-    task_id: Optional[int] = None,
-    status: Optional[str] = None,
-    db: Session = Depends(get_db),
+@router.post("/comments/{comment_id}/process", response_model=CommentResponse)
+async def process_comment(
+    comment_id: int,
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """列出审批请求，可按任务或状态过滤"""
-    raise HTTPException(
-        status_code=501,
-        detail="Approval management not yet implemented - placeholder for future development",
-    )
+    """Mark a comment as processed."""
+    result = await db.execute(select(CollaborationRecord).where(CollaborationRecord.id == comment_id))
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    comment.processed = True
+    await db.commit()
+    await db.refresh(comment)
+    return CommentResponse.model_validate(comment)
 
 
-@router.post("/approvals/{approval_id}/respond", response_model=ApprovalRequestResponse)
-def respond_to_approval(approval_id: int, response: ApprovalResponseCreate, db: Session = Depends(get_db)):
-    """响应审批请求"""
-    raise HTTPException(
-        status_code=501,
-        detail="Approval management not yet implemented - placeholder for future development",
-    )
+# ── Task Status endpoints ─────────────────────────────────────────────────────
 
 
-# Change history endpoints
-@router.get("/history", response_model=List[dict])
-def get_change_history(
-    entity_type: Optional[str] = None,
-    entity_id: Optional[int] = None,
+class TaskStatusBase(BaseModel):
+    task_id: int
+    status: str = Field(..., description="pending, in_progress, review, completed, blocked")
+    assignee_id: Optional[int] = None
+    due_date: Optional[datetime] = None
+
+
+class TaskStatusCreate(TaskStatusBase):
+    pass
+
+
+class TaskStatusUpdate(BaseModel):
+    status: Optional[str] = None
+    assignee_id: Optional[int] = None
+    due_date: Optional[datetime] = None
+
+
+class TaskStatusResponse(TaskStatusBase):
+    id: int
+    project_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/tasks", response_model=List[TaskStatusResponse])
+async def list_task_statuses(
+    project_id: Optional[int] = None,
+    status: Optional[str] = None,
+    assignee_id: Optional[int] = None,
+    skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """获取变更历史"""
-    # For now, return empty list as we don't have a dedicated change history model yet
-    # In a full implementation, we'd query the change history table
-    return []
+    """List task statuses with optional filters."""
+    # Note: Using CollaborationRecord as a generic table for now
+    # In production, this would be a separate TaskStatus model
+    query = select(CollaborationRecord).where(CollaborationRecord.type == "task_status")
+
+    if project_id is not None:
+        query = query.where(CollaborationRecord.project_id == project_id)
+    if status is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"status": "{status}"'))
+    if assignee_id is not None:
+        query = query.where(CollaborationRecord.user_id == assignee_id)
+
+    query = query.offset(skip).limit(limit).order_by(CollaborationRecord.created_at.desc())
+    result = await db.execute(query)
+    tasks = result.scalars().all()
+
+    return [TaskStatusResponse.model_validate(t) for t in tasks]
 
 
-# Statistics endpoints
-@router.get("/stats", response_model=dict)
-def get_collaboration_stats(db: Session = Depends(get_db)):
-    """获取协作统计信息"""
-    # For now, return basic stats
-    # In a full implementation, we'd compute real statistics from various tables
-    return {
-        "total_comments": db.query(CollaborationRecord).count(),
-        "processed_comments": db.query(CollaborationRecord).filter(CollaborationRecord.processed is True).count(),
-        "message": "Full collaboration statistics not yet implemented - placeholder",
-    }
+@router.post("/tasks", response_model=TaskStatusResponse, status_code=status.HTTP_201_CREATED)
+async def create_task_status(
+    task: TaskStatusCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a new task status entry."""
+    import json
+
+    db_task = CollaborationRecord(
+        type="task_status",
+        content=json.dumps(
+            {
+                "task_id": task.task_id,
+                "status": task.status,
+                "assignee_id": task.assignee_id,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+            }
+        ),
+        project_id=0,  # Would be set from context
+        user_id=task.assignee_id,
+        processed=False,
+    )
+    db.add(db_task)
+    await db.commit()
+    await db.refresh(db_task)
+    return TaskStatusResponse.model_validate(db_task)
+
+
+# ── Approval workflow endpoints ───────────────────────────────────────────────
+
+
+class ApprovalBase(BaseModel):
+    resource_type: str = Field(..., description="chapter, paragraph, audio_segment, project")
+    resource_id: int
+    action: str = Field(..., description="approve, reject, request_changes")
+    comments: Optional[str] = None
+
+
+class ApprovalCreate(ApprovalBase):
+    pass
+
+
+class ApprovalResponse(ApprovalBase):
+    id: int
+    user_id: int
+    status: str = Field(..., description="pending, approved, rejected, changes_requested")
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/approvals", response_model=List[ApprovalResponse])
+async def list_approvals(
+    project_id: Optional[int] = None,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[int] = None,
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List approvals with optional filters."""
+    query = select(CollaborationRecord).where(CollaborationRecord.type == "approval")
+
+    if project_id is not None:
+        query = query.where(CollaborationRecord.project_id == project_id)
+    if resource_type is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"resource_type": "{resource_type}"'))
+    if resource_id is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"resource_id": {resource_id}'))
+    if status is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"status": "{status}"'))
+
+    query = query.offset(skip).limit(limit).order_by(CollaborationRecord.created_at.desc())
+    result = await db.execute(query)
+    approvals = result.scalars().all()
+
+    return [ApprovalResponse.model_validate(a) for a in approvals]
+
+
+@router.post("/approvals", response_model=ApprovalResponse, status_code=status.HTTP_201_CREATED)
+async def create_approval(
+    approval: ApprovalCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a new approval request."""
+    import json
+
+    db_approval = CollaborationRecord(
+        type="approval",
+        content=json.dumps(
+            {
+                "resource_type": approval.resource_type,
+                "resource_id": approval.resource_id,
+                "action": approval.action,
+                "comments": approval.comments,
+                "status": "pending",
+            }
+        ),
+        project_id=0,  # Would be set from context
+        user_id=0,  # Would be set from auth
+        processed=False,
+    )
+    db.add(db_approval)
+    await db.commit()
+    await db.refresh(db_approval)
+    return ApprovalResponse.model_validate(db_approval)
+
+
+class ApprovalDecision(BaseModel):
+    decision: str = Field(..., description="approve, reject, or request_changes")
+    comments: Optional[str] = None
+
+
+@router.post("/approvals/{approval_id}/decide", response_model=ApprovalResponse)
+async def decide_approval(
+    approval_id: int,
+    payload: ApprovalDecision,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Make a decision on an approval request."""
+    result = await db.execute(select(CollaborationRecord).where(CollaborationRecord.id == approval_id))
+    approval = result.scalar_one_or_none()
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+
+    import json
+
+    content = json.loads(approval.content) if approval.content else {}
+    content["status"] = payload.decision
+    content["decision_comments"] = payload.comments
+    content["decided_at"] = datetime.now(timezone.utc).isoformat()
+
+    approval.content = json.dumps(content)
+    approval.processed = True
+    await db.commit()
+    await db.refresh(approval)
+    return ApprovalResponse.model_validate(approval)
+
+
+# ── Change History endpoints ───────────────────────────────────────────────────
+
+
+class ChangeHistoryBase(BaseModel):
+    resource_type: str
+    resource_id: int
+    change_type: str = Field(..., description="create, update, delete, move, reorder")
+    field_name: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class ChangeHistoryCreate(ChangeHistoryBase):
+    pass
+
+
+class ChangeHistoryResponse(ChangeHistoryBase):
+    id: int
+    project_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/history", response_model=List[ChangeHistoryResponse])
+async def list_change_history(
+    project_id: Optional[int] = None,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[int] = None,
+    change_type: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List change history with optional filters."""
+    query = select(CollaborationRecord).where(CollaborationRecord.type == "change_history")
+
+    if project_id is not None:
+        query = query.where(CollaborationRecord.project_id == project_id)
+    if resource_type is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"resource_type": "{resource_type}"'))
+    if resource_id is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"resource_id": {resource_id}'))
+    if change_type is not None:
+        query = query.where(CollaborationRecord.content.contains(f'"change_type": "{change_type}"'))
+
+    query = query.offset(skip).limit(limit).order_by(CollaborationRecord.created_at.desc())
+    result = await db.execute(query)
+    changes = result.scalars().all()
+
+    return [ChangeHistoryResponse.model_validate(c) for c in changes]
+
+
+@router.post("/history", response_model=ChangeHistoryResponse, status_code=status.HTTP_201_CREATED)
+async def record_change(
+    change: ChangeHistoryCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record a change in the history."""
+    import json
+
+    db_change = CollaborationRecord(
+        type="change_history",
+        content=json.dumps(change.model_dump()),
+        project_id=0,  # Would be set from context
+        user_id=change.user_id,
+        processed=True,  # History entries are always processed
+    )
+    db.add(db_change)
+    await db.commit()
+    await db.refresh(db_change)
+    return ChangeHistoryResponse.model_validate(db_change)

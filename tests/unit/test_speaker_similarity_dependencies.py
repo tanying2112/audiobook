@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-# Add the src directory to the path so we can import the module as a package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
-
 from src.audiobook_studio.quality.metrics import ECAPATDNNBackend, SpeakerSimilarityMetric, WavLMBackend
+
+# Add the src directory to the path so we can import the module as a package
+
 
 
 class TestSpeakerSimilarityDependencies(unittest.TestCase):

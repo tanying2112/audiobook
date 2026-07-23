@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
-
-logger = logging.getLogger(__name__)
+from ..api.dependencies import get_async_db
+from ..database import get_async_session
+from ..models.feedback_record import FeedbackRecord
 
 router = APIRouter(prefix="/golden", tags=["golden"])
 
@@ -270,7 +271,7 @@ async def get_golden_sample(stage: str, sample_id: str):
 @router.post("/contribute", response_model=GoldenContributionResponse)
 async def contribute_to_golden(
     request: GoldenContributionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Contribute template to golden dataset.
@@ -278,9 +279,8 @@ async def contribute_to_golden(
     Loads the FeedbackRecord by ID and extracts its input_snapshot + corrected_output
     as the golden sample's input/output pair. The rationale is stored as metadata.
     """
-    from ..models.feedback_record import FeedbackRecord
-
-    record = db.query(FeedbackRecord).filter(FeedbackRecord.id == request.template_id).first()
+    result = await db.execute(select(FeedbackRecord).where(FeedbackRecord.id == request.template_id))
+    record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(
             status_code=404,
@@ -416,6 +416,7 @@ def _compute_output_similarity(
 async def run_golden_regression(
     request: Optional[GoldenRegressionRequest] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Trigger golden dataset regression test.
@@ -441,7 +442,7 @@ async def run_golden_regression(
     database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+    db_session = SessionLocal()
 
     # Load all samples for requested stages
     stages_to_test = request.stages if request and request.stages else list(STAGE_DIRS.keys())
@@ -476,7 +477,7 @@ async def run_golden_regression(
                     # We use a dummy project_id=0 for regression testing (no DB writes)
                     actual_result = await run_stage(
                         stage,
-                        db,
+                        db_session,
                         project_id=0,
                         chapter_index=sample_input.get("chapter_index", 1),
                         paragraph_index=sample_input.get("paragraph_index", 1),
@@ -523,7 +524,7 @@ async def run_golden_regression(
             by_stage[stage] = {"passed": stage_passed, "failed": stage_failed}
 
     finally:
-        db.close()
+        db_session.close()
 
     total = passed_count + failed_count
     pass_rate = passed_count / total if total > 0 else 0.0

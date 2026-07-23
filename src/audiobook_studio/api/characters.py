@@ -13,10 +13,11 @@ from typing import Any, Dict, List, Optional
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Character, Project
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +84,17 @@ class VoiceMappingResponse(BaseModel):
 @router.get("", response_model=List[CharacterResponse])
 async def fetch_characters(
     project_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """获取项目下的所有角色."""
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    characters = db.query(Character).filter(Character.project_id == project_id).all()
+    result = await db.execute(select(Character).where(Character.project_id == project_id))
+    characters = result.scalars().all()
     return characters
 
 
@@ -99,23 +102,23 @@ async def fetch_characters(
 async def create_character(
     project_id: int,
     character: CharacterCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """创建新角色."""
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Check if canonical_name already exists in this project
-    existing = (
-        db.query(Character)
-        .filter(
+    result = await db.execute(
+        select(Character).where(
             Character.project_id == project_id,
             Character.canonical_name == character.canonical_name,
         )
-        .first()
     )
+    existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
             status_code=400,
@@ -124,8 +127,8 @@ async def create_character(
 
     db_character = Character(project_id=project_id, **character.model_dump())
     db.add(db_character)
-    db.commit()
-    db.refresh(db_character)
+    await db.commit()
+    await db.refresh(db_character)
     logger.info(f"Created character {db_character.id} for project {project_id}")
     return db_character
 
@@ -146,10 +149,11 @@ async def get_voice_mapping(
 async def fetch_character(
     project_id: int,
     character_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """获取特定角色."""
-    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
+    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
+    character = result.scalar_one_or_none()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
     return character
@@ -160,37 +164,37 @@ async def update_character(
     project_id: int,
     character_id: int,
     character_update: CharacterUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """更新角色."""
-    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
+    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
+    character = result.scalar_one_or_none()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
     # If canonical_name is being updated, check for conflicts
     if character_update.canonical_name is not None:
-        existing = (
-            db.query(Character)
-            .filter(
+        result = await db.execute(
+            select(Character).where(
                 Character.project_id == project_id,
                 Character.canonical_name == character_update.canonical_name,
                 Character.id != character_id,  # Exclude current character
             )
-            .first()
         )
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Character with canonical_name '{character_update.canonical_name}' already exists in this project",
-        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Character with canonical_name '{character_update.canonical_name}' already exists in this project",
+            )
 
     # Update fields
     update_data = character_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(character, field, value)
 
-    db.commit()
-    db.refresh(character)
+    await db.commit()
+    await db.refresh(character)
     logger.info(f"Updated character {character_id} for project {project_id}")
     return character
 
@@ -199,14 +203,15 @@ async def update_character(
 async def delete_character(
     project_id: int,
     character_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """删除角色."""
-    character = db.query(Character).filter(Character.project_id == project_id, Character.id == character_id).first()
+    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
+    character = result.scalar_one_or_none()
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    db.delete(character)
-    db.commit()
+    await db.delete(character)
+    await db.commit()
     logger.info(f"Deleted character {character_id} from project {project_id}")
     return None

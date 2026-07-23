@@ -11,7 +11,7 @@ All stage names are normalized to canonical form for consistent processing.
 """
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class CanonicalStage(Enum):
@@ -205,7 +205,7 @@ CHAPTER_STATUS_FIELDS = {
 }
 
 
-def infer_audio_postprocess_status(chapter_data: dict) -> str:
+def infer_audio_postprocess_status(chapter_data: dict[str, Any]) -> str:
     """
     Infer audio_postprocess status from route_status and edit_status.
 

@@ -1,4 +1,4 @@
-"""FastAPI router for ``Paragraph`` CRUD operations (legacy API)."""
+"""FastAPI router for ``Paragraph`` CRUD operations (async SQLAlchemy 2.0)."""
 
 import logging
 from datetime import datetime
@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.audio_segment import AudioSegment
 from ..models.paragraph import Paragraph
@@ -17,63 +18,14 @@ from ..models.routing import Routing
 from ..models.tts_edit import TTSEdit
 from ..schemas.legacy import Paragraph as ParagraphSchema
 from ..storage import audio_dir
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/paragraphs", tags=["paragraphs"])
 
 
-@router.post("/", response_model=ParagraphSchema, status_code=status.HTTP_201_CREATED)
-def create_paragraph(paragraph: ParagraphSchema, db: Session = Depends(get_db)):
-    db_par = Paragraph(**paragraph.model_dump())
-    db.add(db_par)
-    db.commit()
-    db.refresh(db_par)
-    return db_par.to_schema()
-
-
-@router.get("/", response_model=List[ParagraphSchema])
-def list_paragraphs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    items = db.query(Paragraph).offset(skip).limit(limit).all()
-    return [p.to_schema() for p in items]
-
-
-@router.get("/{paragraph_id}", response_model=ParagraphSchema)
-def get_paragraph(paragraph_id: int, db: Session = Depends(get_db)):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    return p.to_schema()
-
-
-@router.put("/{paragraph_id}", response_model=ParagraphSchema)
-def update_paragraph(paragraph_id: int, payload: ParagraphSchema, db: Session = Depends(get_db)):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    # Exclude id and other read-only fields from update
-    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
-    for field, value in update_data.items():
-        setattr(p, field, value)
-    db.commit()
-    db.refresh(p)
-    return p.to_schema()
-
-
-@router.delete("/{paragraph_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_paragraph(paragraph_id: int, db: Session = Depends(get_db)):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    db.delete(p)
-    db.commit()
-    return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Paragraph Detail Endpoint (P0-5: Aggregated endpoint with _embedded data)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Pydantic schemas for API responses ────────────────────────────────────────
 
 
 class ParagraphAnnotationDetail(BaseModel):
@@ -130,10 +82,10 @@ class ParagraphDetailOut(BaseModel):
 
     This endpoint joins:
     - Paragraph base data
-    - Annotation (speaker/emotion/etc.)
-    - TTS Edit decisions
-    - Routing decisions
-    - Quality scores
+    - ParagraphAnnotation (speaker/emotion/etc.)
+    - TTSEdit (edit decisions)
+    - Routing (TTS engine/voice selection)
+    - Quality (scores, issues, suggestions)
     """
 
     id: int
@@ -161,10 +113,74 @@ class ParagraphDetailOut(BaseModel):
     updated_at: Optional[str] = None
 
 
+# ── Paragraph CRUD ────────────────────────────────────────────────────────────
+
+
+@router.post("/", response_model=ParagraphSchema, status_code=status.HTTP_201_CREATED)
+async def create_paragraph(paragraph: ParagraphSchema, db: AsyncSession = Depends(get_async_db)):
+    """Create a new paragraph."""
+    db_par = Paragraph(**paragraph.model_dump())
+    db.add(db_par)
+    await db.commit()
+    await db.refresh(db_par)
+    return db_par.to_schema()
+
+
+@router.get("/", response_model=List[ParagraphSchema])
+async def list_paragraphs(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_async_db)):
+    """List all paragraphs."""
+    result = await db.execute(select(Paragraph).offset(skip).limit(limit))
+    items = result.scalars().all()
+    return [p.to_schema() for p in items]
+
+
+@router.get("/{paragraph_id}", response_model=ParagraphSchema)
+async def get_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Get a paragraph by ID."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+    return p.to_schema()
+
+
+@router.put("/{paragraph_id}", response_model=ParagraphSchema)
+async def update_paragraph(paragraph_id: int, payload: ParagraphSchema, db: AsyncSession = Depends(get_async_db)):
+    """Update a paragraph."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+    # Exclude id and other read-only fields from update
+    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
+    for field, value in update_data.items():
+        setattr(p, field, value)
+    await db.commit()
+    await db.refresh(p)
+    return p.to_schema()
+
+
+@router.delete("/{paragraph_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Delete a paragraph."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Paragraph not found")
+    await db.delete(p)
+    await db.commit()
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Paragraph Detail Endpoint (P0-5: Aggregated endpoint with _embedded data)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 @router.get("/{paragraph_id}/detail", response_model=ParagraphDetailOut)
-def get_paragraph_detail(
+async def get_paragraph_detail(
     paragraph_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get paragraph with full embedded data.
@@ -180,16 +196,22 @@ def get_paragraph_detail(
     For list views, use GET /paragraphs/ (limited fields).
     """
     # Get base paragraph
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Paragraph not found")
 
     # Get latest TTS edit
-    tts_edit_record = db.query(TTSEdit).filter(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()).first()
+    result = await db.execute(select(TTSEdit).where(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()))
+    tts_edit_record = result.scalars().first()
+
     # Get latest Routing
-    routing_record = db.query(Routing).filter(Routing.paragraph_id == paragraph_id).order_by(Routing.id.desc()).first()
+    result = await db.execute(select(Routing).where(Routing.paragraph_id == paragraph_id).order_by(Routing.id.desc()))
+    routing_record = result.scalars().first()
+
     # Get latest Quality
-    quality_record = db.query(Quality).filter(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()).first()
+    result = await db.execute(select(Quality).where(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()))
+    quality_record = result.scalars().first()
 
     # Build annotation data from paragraph attributes (with fallback to placeholder defaults)
     annotation_data = {
@@ -308,20 +330,19 @@ def get_paragraph_detail(
 
 
 @router.get("/{paragraph_id}/audio")
-def serve_paragraph_audio(paragraph_id: int, db: Session = Depends(get_db)):
+async def serve_paragraph_audio(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
     """Serve the audio file for a paragraph.
 
     Looks up the AudioSegment record, then serves the file from storage.
     Returns 404 if no audio has been generated for this paragraph.
     """
-    segment = (
-        db.query(AudioSegment)
-        .filter(
+    result = await db.execute(
+        select(AudioSegment).where(
             AudioSegment.paragraph_id == paragraph_id,
             AudioSegment.is_current.is_(True),
         )
-        .first()
     )
+    segment = result.scalar_one_or_none()
     if not segment:
         raise HTTPException(status_code=404, detail="No audio found for this paragraph")
 
@@ -361,14 +382,12 @@ class AudioSegmentOut(BaseModel):
 
 
 @router.get("/{paragraph_id}/audio-segments", response_model=List[AudioSegmentOut])
-def list_paragraph_audio_segments(paragraph_id: int, db: Session = Depends(get_db)):
+async def list_paragraph_audio_segments(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
     """List all audio segments for a paragraph (including old versions)."""
-    segments = (
-        db.query(AudioSegment)
-        .filter(AudioSegment.paragraph_id == paragraph_id)
-        .order_by(AudioSegment.version.desc())
-        .all()
+    result = await db.execute(
+        select(AudioSegment).where(AudioSegment.paragraph_id == paragraph_id).order_by(AudioSegment.version.desc())
     )
+    segments = result.scalars().all()
     return segments
 
 
@@ -399,9 +418,10 @@ class QualityResultOut(BaseModel):
 
 
 @router.get("/{paragraph_id}/quality", response_model=List[QualityResultOut])
-def get_paragraph_quality(paragraph_id: int, db: Session = Depends(get_db)):
+async def get_paragraph_quality(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get quality check results for a paragraph."""
-    qualities = db.query(Quality).filter(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()).all()
+    result = await db.execute(select(Quality).where(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()))
+    qualities = result.scalars().all()
     return qualities
 
 
@@ -411,32 +431,32 @@ def get_paragraph_quality(paragraph_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{paragraph_id}/regenerate")
-def trigger_paragraph_regeneration(paragraph_id: int, db: Session = Depends(get_db)):
+async def trigger_paragraph_regeneration(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
     """Trigger audio regeneration for a single paragraph.
 
     Marks the paragraph's audio for re-synthesis.
     The actual synthesis will be picked up by the next pipeline run.
     """
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Paragraph not found")
 
     # Mark current audio segment as not current
-    current_segment = (
-        db.query(AudioSegment)
-        .filter(
+    result = await db.execute(
+        select(AudioSegment).where(
             AudioSegment.paragraph_id == paragraph_id,
             AudioSegment.is_current.is_(True),
         )
-        .first()
     )
+    current_segment = result.scalar_one_or_none()
     if current_segment:
         current_segment.is_current = False
-        db.commit()
+        await db.commit()
 
     # Reset paragraph status to trigger re-synthesis
     p.status = "edited"
-    db.commit()
+    await db.commit()
 
     return {
         "status": "queued",

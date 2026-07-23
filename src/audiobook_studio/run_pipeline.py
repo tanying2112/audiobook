@@ -2,6 +2,21 @@
 """
 Audiobook Studio V2 - 统一流水线执行脚本（带安全参数锁）
 
+⚠️  DEPRECATED: This script is deprecated in favor of the new modular CLI:
+    python -m audiobook_studio.cli <command>
+
+    Available commands:
+      - mock-data    : Generate mock chapter text files
+      - init-db      : Initialize database schema and seed projects
+      - pipeline run : Run the audiobook processing pipeline
+      - pipeline resume : Resume pipeline from checkpoint
+      - export       : Export audiobook to final formats
+      - book         : Manage book projects
+
+This module is kept for backward compatibility and is still imported by the
+new CLI for shared constants (BOOK_CONFIG, STAGES, etc.). It is no longer
+the primary entry point.
+
 支持:
   --mock-data  生成/刷新 Mock 测试文本（按章节拆分，包含真实风格的中文小说内容）
   --init-db    初始化或重置数据库表结构（含项目种子数据）
@@ -25,17 +40,246 @@ import os
 import re
 import signal
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-from audiobook_studio.database import SessionLocal, init_db
-from audiobook_studio.models import Project
-from audiobook_studio.pipeline.checkpoint import CheckpointManager
-from audiobook_studio.pipeline.orchestrator import init_telemetry
-from audiobook_studio.pipeline.orchestrator import run_pipeline as orchestrator_run_pipeline
-from audiobook_studio.pipeline.orchestrator import shutdown_telemetry
-from audiobook_studio.utils.gc_manager import cleanup_after_export
+# Show deprecation warning when imported (not when run as __main__)
+if __name__ != "__main__":
+    warnings.warn(
+        "audiobook_studio.run_pipeline is deprecated; " "use 'python -m audiobook_studio.cli' instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+# ── Lazy imports to avoid pulling in optional dependencies at module load ───────
+# These are imported inside functions that need them to avoid importing the
+# entire audiobook_studio package (which pulls in opentelemetry, etc.) at import time.
+
+
+def _get_checkpoint_manager():
+    """Lazy import of CheckpointManager."""
+    from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
+
+    return CheckpointManager
+
+
+def _get_session_local_and_init_db():
+    """Lazy import of database module."""
+    from src.audiobook_studio.database import SessionLocal, init_db
+
+    return SessionLocal, init_db
+
+
+def _get_project_model():
+    """Lazy import of Project model."""
+    from src.audiobook_studio.models import Project
+
+    return Project
+
+
+def _get_orchestrator_functions():
+    """Lazy import of orchestrator functions."""
+    from src.audiobook_studio.pipeline.orchestrator import init_telemetry
+    from src.audiobook_studio.pipeline.orchestrator import run_pipeline as orchestrator_run_pipeline
+    from src.audiobook_studio.pipeline.orchestrator import shutdown_telemetry
+
+    return init_telemetry, orchestrator_run_pipeline, shutdown_telemetry
+
+
+def _get_cleanup_after_export():
+    """Lazy import of cleanup function."""
+    from src.audiobook_studio.utils.gc_manager import cleanup_after_export
+
+    return cleanup_after_export
+
+
+def _get_reports_dir():
+    """Lazy import of reports_dir."""
+    from src.audiobook_studio.storage import reports_dir
+
+    return reports_dir
+
+
+def _get_chapter_model():
+    """Lazy import of Chapter model."""
+    from src.audiobook_studio.models import Chapter
+
+    return Chapter
+
+
+def _get_paragraph_model():
+    """Lazy import of Paragraph model."""
+    from src.audiobook_studio.models import Paragraph
+
+    return Paragraph
+
+
+def _get_character_voice_binding():
+    """Lazy import of CharacterVoiceBinding schema."""
+    from src.audiobook_studio.schemas.book import CharacterVoiceBinding
+
+    return CharacterVoiceBinding
+
+
+def _get_fix_command():
+    """Lazy import of FixCommand schema."""
+    from src.audiobook_studio.schemas.review import FixCommand
+
+    return FixCommand
+
+
+def _get_export_classes():
+    """Lazy import of export classes."""
+    from src.audiobook_studio.export import ExportFormat, ExportJob
+    from src.audiobook_studio.export.audio_ducking import MixConfig
+
+    return ExportFormat, ExportJob, MixConfig
+
+
+def _get_export_project():
+    """Lazy import of export_project function."""
+    from src.audiobook_studio.export.batch_exporter import export_project
+
+    return export_project
+
+
+# ── Module-level placeholders for test patching (do not import heavy deps) ──────
+# These are set to None at module level; tests patch them with mocks.
+# Internal functions check these first, falling back to lazy loaders.
+SessionLocal = None
+init_db = None
+Project = None
+CheckpointManager = None
+init_telemetry = None
+orchestrator_run_pipeline = None
+shutdown_telemetry = None
+cleanup_after_export = None
+
+
+# ── Module-level __getattr__ for backward compatibility with test patches ──────
+# Tests patch module attributes directly; this allows module.SessionLocal, module.init_db, etc.
+# to return the patched value (or fall back to lazy loader) when accessed as module attributes.
+def __getattr__(name: str):
+    """Provide module-level access to patched or lazily-loaded dependencies."""
+    if name == "SessionLocal":
+        return SessionLocal or _get_session_local_and_init_db()[0]
+    if name == "init_db":
+        return init_db or _get_session_local_and_init_db()[1]
+    if name == "Project":
+        return Project or _get_project_model()
+    if name == "CheckpointManager":
+        return CheckpointManager or _get_checkpoint_manager()
+    if name == "init_telemetry":
+        return init_telemetry or _get_orchestrator_functions()[0]
+    if name == "orchestrator_run_pipeline":
+        return orchestrator_run_pipeline or _get_orchestrator_functions()[1]
+    if name == "shutdown_telemetry":
+        return shutdown_telemetry or _get_orchestrator_functions()[2]
+    if name == "cleanup_after_export":
+        return cleanup_after_export or _get_cleanup_after_export()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+# Internal accessor functions that respect test patches
+def _get_session_local_and_init_db():
+    """Lazy import of SessionLocal and init_db, respecting test patches."""
+    if SessionLocal is not None and init_db is not None:
+        return SessionLocal, init_db
+    from src.audiobook_studio.database import SessionLocal as _SessionLocal
+    from src.audiobook_studio.database import init_db as _init_db
+
+    return _SessionLocal, _init_db
+
+
+def _get_project_model():
+    """Lazy import of Project model, respecting test patches."""
+    if Project is not None:
+        return Project
+    from src.audiobook_studio.models import Project as _Project
+
+    return _Project
+
+
+def _get_checkpoint_manager():
+    """Lazy import of CheckpointManager, respecting test patches."""
+    if CheckpointManager is not None:
+        return CheckpointManager
+    from src.audiobook_studio.pipeline.checkpoint import CheckpointManager as _CM
+
+    return _CM
+
+
+def _get_orchestrator_functions():
+    """Lazy import of orchestrator functions, respecting test patches."""
+    if init_telemetry is not None and orchestrator_run_pipeline is not None and shutdown_telemetry is not None:
+        return init_telemetry, orchestrator_run_pipeline, shutdown_telemetry
+    from src.audiobook_studio.pipeline.orchestrator import init_telemetry as _it
+    from src.audiobook_studio.pipeline.orchestrator import run_pipeline as _orp
+    from src.audiobook_studio.pipeline.orchestrator import shutdown_telemetry as _st
+
+    return _it, _orp, _st
+
+
+def _get_cleanup_after_export():
+    """Lazy import of cleanup function, respecting test patches."""
+    if cleanup_after_export is not None:
+        return cleanup_after_export
+    from src.audiobook_studio.utils.gc_manager import cleanup_after_export as _cae
+
+    return _cae
+
+
+def _get_reports_dir():
+    """Lazy import of reports_dir."""
+    from src.audiobook_studio.storage import reports_dir
+
+    return reports_dir
+
+
+def _get_chapter_model():
+    """Lazy import of Chapter model."""
+    from src.audiobook_studio.models import Chapter
+
+    return Chapter
+
+
+def _get_paragraph_model():
+    """Lazy import of Paragraph model."""
+    from src.audiobook_studio.models import Paragraph
+
+    return Paragraph
+
+
+def _get_character_voice_binding():
+    """Lazy import of CharacterVoiceBinding schema."""
+    from src.audiobook_studio.schemas.book import CharacterVoiceBinding
+
+    return CharacterVoiceBinding
+
+
+def _get_fix_command():
+    """Lazy import of FixCommand schema."""
+    from src.audiobook_studio.schemas.review import FixCommand
+
+    return FixCommand
+
+
+def _get_export_classes():
+    """Lazy import of export classes."""
+    from src.audiobook_studio.export import ExportFormat, ExportJob
+    from src.audiobook_studio.export.audio_ducking import MixConfig
+
+    return ExportFormat, ExportJob, MixConfig
+
+
+def _get_export_project():
+    """Lazy import of export_project function."""
+    from src.audiobook_studio.export.batch_exporter import export_project
+
+    return export_project
+
 
 # ── 日志配置 ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -97,7 +341,8 @@ def developer_apply_fixes(
 
     This is a synchronous helper used in the run_pipeline closed loop.
     """
-    from audiobook_studio.agent.developer import DeveloperAgent
+    # Lazy import to avoid pulling in heavy agent dependencies at module load
+    from src.audiobook_studio.agent.developer import DeveloperAgent
 
     developer = DeveloperAgent(mock_mode=True)
     fixed = developer.apply_fix_commands(paragraph_data, fix_commands)
@@ -105,7 +350,9 @@ def developer_apply_fixes(
 
 
 # ── 全局状态：用于信号处理 ──────────────────────────────────────────────────
-_current_checkpoint_manager: Optional[CheckpointManager] = None
+# We use a sentinel to defer CheckpointManager import until needed
+_CheckpointManager_holder: dict = {}
+_current_checkpoint_manager: Optional[object] = None
 _current_project_id: Optional[int] = None
 _interrupted = False
 
@@ -303,7 +550,8 @@ def initialize_database(seed_projects: bool = True) -> None:
     print("🗄️ [Action] 正在初始化/重置数据库表结构...")
 
     # 第 1 步：创建所有表（幂等，CREATE TABLE IF NOT EXISTS）
-    init_db()
+    init_db_fn = _get_session_local_and_init_db()[1]
+    init_db_fn()
     print("  ✅ 数据库表结构已就绪。")
 
     if not seed_projects:
@@ -311,8 +559,10 @@ def initialize_database(seed_projects: bool = True) -> None:
         return
 
     # 第 2 步：检查并创建项目记录
+    SessionLocal = _get_session_local_and_init_db()[0]
     db = SessionLocal()
     try:
+        Project = _get_project_model()
         for _book_name, config in BOOK_CONFIG.items():
             existing = db.query(Project).filter(Project.title == config["title"]).first()
             if existing:
@@ -354,13 +604,27 @@ def initialize_database(seed_projects: bool = True) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _find_project(db_session, book_name: str) -> Optional[Project]:
-    """通过书名查找 Project 记录。"""
+def _find_project(db_session, book_name: str) -> Optional[object]:
+    """通过书名查找 Project 记录 (sync version for legacy code)."""
+    Project = _get_project_model()
     if book_name in BOOK_CONFIG:
         title = BOOK_CONFIG[book_name]["title"]
     else:
         title = book_name
     return db_session.query(Project).filter(Project.title == title).first()
+
+
+async def find_project_async(db_session, book_name: str) -> Optional[object]:
+    """通过书名查找 Project 记录 (async version)."""
+    Project = _get_project_model()
+    if book_name in BOOK_CONFIG:
+        title = BOOK_CONFIG[book_name]["title"]
+    else:
+        title = book_name
+    from sqlalchemy import select
+
+    result = await db_session.execute(select(Project).where(Project.title == title))
+    return result.scalar_one_or_none()
 
 
 def _get_chapter_files(book_name: str) -> List[Tuple[int, Path]]:
@@ -423,6 +687,20 @@ def run_book_pipeline(
     """
     active_stages = stages or STAGES
     print(f"📖 正在处理: 《{book_name}》...")
+
+    # Lazy imports (respect test patches via module-level placeholders)
+    SessionLocal, _ = _get_session_local_and_init_db()
+    CheckpointManager = _get_checkpoint_manager()
+    init_telemetry, orchestrator_run_pipeline, shutdown_telemetry = _get_orchestrator_functions()
+    reports_dir = _get_reports_dir()
+    Chapter = _get_chapter_model()
+    Paragraph = _get_paragraph_model()
+    CharacterVoiceBinding = _get_character_voice_binding()
+    FixCommand = _get_fix_command()
+    ExportFormat, ExportJob, MixConfig = _get_export_classes()
+    export_project = _get_export_project()
+    cleanup_after_export = _get_cleanup_after_export()
+    Project = _get_project_model()
 
     db = SessionLocal()
     try:
@@ -490,8 +768,6 @@ def run_book_pipeline(
                 print("ℹ️  非交互模式，自动从检查点恢复...")
 
         # ── 初始化遥测收集器 ────────────────────────────────────────────
-        from audiobook_studio.storage import reports_dir
-
         output_dir = reports_dir(project_id, ensure=True)
         init_telemetry(
             project_id=str(project_id),
@@ -554,8 +830,6 @@ def run_book_pipeline(
                     print(f"    ✅ 第{chap_num}章 章节级流水线完成（{len(results)} 个阶段输出）")
 
                 # Fetch chapter from DB after extract/analyze
-                from audiobook_studio.models import Chapter
-
                 chapter = db.query(Chapter).filter(Chapter.project_id == project_id, Chapter.index == chap_num).first()
                 if not chapter:
                     print(f"    ❌ 找不到第{chap_num}章记录，跳过段落级流水线。")
@@ -565,8 +839,6 @@ def run_book_pipeline(
                 paragraph_stages_pre = [s for s in active_stages if s in ("annotate", "edit", "audio_postprocess")]
                 if paragraph_stages_pre:
                     # Get paragraphs for this chapter
-                    from audiobook_studio.models import Paragraph
-
                     paragraphs = (
                         db.query(Paragraph)
                         .filter(
@@ -603,9 +875,12 @@ def run_book_pipeline(
                 # Refresh chapter to get updated paragraphs with audio_postprocess results
                 db.refresh(chapter)
 
+                Chapter = _get_chapter_model()
+                Paragraph = _get_paragraph_model()
+
                 # ── 阶段 6: 章节级 Review (quality gate before synthesis) ──
                 if "review" in active_stages:
-                    print(f"    🔍 运行 Reviewer Agent 质量门禁...")
+                    print("    🔍 运行 Reviewer Agent 质量门禁...")
                     review_results = asyncio.run(
                         orchestrator_run_pipeline(
                             stages=["review"],
@@ -634,8 +909,6 @@ def run_book_pipeline(
                             print(f"    🔧 Developer Agent 自动修复模式开启 (最大 {max_iterations} 次迭代)...")
 
                             # Fetch latest paragraphs from DB for fixing
-                            from audiobook_studio.models import Paragraph
-
                             paragraphs = (
                                 db.query(Paragraph)
                                 .filter(
@@ -670,6 +943,8 @@ def run_book_pipeline(
                             # Get voice_map and scene_tags from chapter
                             import json
 
+                            CharacterVoiceBinding = _get_character_voice_binding()
+
                             voice_map = []
                             scene_tags = []
                             book_meta = {}
@@ -677,8 +952,6 @@ def run_book_pipeline(
                                 raw = chapter.analyzed_json
                                 if isinstance(raw, str):
                                     raw = json.loads(raw)
-                                from audiobook_studio.schemas.book import CharacterVoiceBinding
-
                                 voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
                                 scene_tags = raw.get("scene_tags", [])
                                 book_meta = raw.get("book_meta", {})
@@ -696,13 +969,12 @@ def run_book_pipeline(
                                 ]
 
                             # Run closed loop: DeveloperAgent applies fixes -> re-review
+                            FixCommand = _get_fix_command()
+
                             for iteration in range(max_iterations):
                                 print(f"      🔄 迭代 {iteration + 1}/{max_iterations}: 应用修复并重新审查...")
 
                                 # Apply fixes using DeveloperAgent
-                                from audiobook_studio.agent.developer import apply_fixes_and_rerun
-                                from audiobook_studio.schemas.review import FixCommand
-
                                 fix_cmds = [FixCommand(**cmd.model_dump()) for cmd in review_judgment.fix_commands]
 
                                 # Apply fixes to paragraph data
@@ -772,8 +1044,6 @@ def run_book_pipeline(
                 # ── 阶段 7-8: 段落级后半段 (synthesize, quality) ──
                 paragraph_stages_post = [s for s in active_stages if s in ("synthesize", "quality")]
                 if paragraph_stages_post:
-                    from audiobook_studio.models import Paragraph
-
                     paragraphs = (
                         db.query(Paragraph)
                         .filter(
@@ -823,9 +1093,6 @@ def run_book_pipeline(
         if bgm_path:
             print("🎵 开始导出音频（包含背景音乐混音）...")
             try:
-                from audiobook_studio.export import ExportFormat, ExportJob
-                from audiobook_studio.export.audio_ducking import MixConfig
-
                 # MixConfig 仅暴露 ducking 参数（bgm_volume_db / duck_attack_ms /
                 # duck_release_ms / ...）；bgm 路径交给 ExportJob(Form) 承载。
                 mix_config = MixConfig(
@@ -844,12 +1111,6 @@ def run_book_pipeline(
                     mix_config=mix_config,
                     output_dir=None,
                 )
-
-                # Run export synchronously. 注意：SessionLocal 已在模块顶部导入
-                # (from audiobook_studio.database import SessionLocal)，此处切勿局部
-                # 重导入——否则 Python 会把 SessionLocal 局部化，导致函数顶部
-                # db = SessionLocal() 触发 UnboundLocalError（即便该分支不执行）。
-                from audiobook_studio.export.batch_exporter import export_project
 
                 export_db = SessionLocal()
                 try:

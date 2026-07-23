@@ -22,7 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
-from ..config.settings import get_settings
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 

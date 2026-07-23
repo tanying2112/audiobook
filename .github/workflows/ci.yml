@@ -120,7 +120,7 @@ jobs:
         run: |
           mkdir -p output storage logs models
           echo "DATABASE_URL=sqlite:///test.db" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci-only" >> $GITHUB_ENV
+          echo "JWT_SECRET_KEY=CiTestSecretKey32BytesLongEnough32==" >> $GITHUB_ENV
           echo "LOG_LEVEL=DEBUG" >> $GITHUB_ENV
 
       - name: Run security module tests (infrastructure gates)
@@ -187,7 +187,7 @@ jobs:
       - name: Run env_checker --fail-on-warning (HARD GATE)
         env:
           DATABASE_URL: sqlite:///test.db
-          SECRET_KEY: test-secret-key-for-ci-only
+          JWT_SECRET_KEY: CiTestSecretKey32BytesLongEnough32==
           REDIS_URL: redis://localhost:6379/0
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/0
@@ -253,9 +253,7 @@ jobs:
       - name: Generate OpenAPI spec
         run: |
           python -c "
-          import sys
-          sys.path.insert(0, 'src')
-          from audiobook_studio.main import app
+          from src.audiobook_studio.main import app
           import json
           with open('openapi.json', 'w') as f:
               json.dump(app.openapi(), f, indent=2)
@@ -264,7 +262,7 @@ jobs:
 
       - name: Run contract tests
         run: |
-          python -m pytest tests/contract/test_contract.py -v --tb=short
+          python -m pytest tests/contract/contract_check.py -v --tb=short
 
   # ---------------------------------------------------------------------------
   # DOCKER BUILD (Multi-stage, uses updated Dockerfile)
@@ -309,7 +307,7 @@ jobs:
         run: |
           docker run --rm \
             -e DATABASE_URL=sqlite:///test.db \
-            -e SECRET_KEY=test-secret \
+            -e JWT_SECRET_KEY=CiTestSecretKey32BytesLongEnough32== \
             -e REDIS_URL=redis://redis:6379/0 \
             -e CELERY_BROKER_URL=redis://redis:6379/0 \
             -e CELERY_RESULT_BACKEND=redis://redis:6379/0 \
@@ -323,7 +321,7 @@ jobs:
         run: |
           CONTAINER_ID=$(docker run -d \
             -e DATABASE_URL=sqlite:///test.db \
-            -e SECRET_KEY=test-secret \
+            -e JWT_SECRET_KEY=CiTestSecretKey32BytesLongEnough32== \
             -p 8000:8000 \
             ${{ env.DOCKER_IMAGE }}:latest)
           sleep 10
@@ -338,7 +336,7 @@ jobs:
           docker run --rm \
             -e REDIS_URL=redis://redis:6379/0 \
             -e DATABASE_URL=sqlite:///test.db \
-            -e SECRET_KEY=test-secret \
+            -e JWT_SECRET_KEY=CiTestSecretKey32BytesLongEnough32== \
             ${{ env.DOCKER_IMAGE }}:latest \
             celery -A src.audiobook_studio.celery_app inspect ping 2>&1 | head -5 || true
           echo "✅ Celery worker entrypoint available"
@@ -386,7 +384,7 @@ jobs:
         run: |
           docker compose run --rm -T \
             -e DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook \
-            -e SECRET_KEY=test-secret \
+            -e JWT_SECRET_KEY=CiTestSecretKey32BytesLongEnough32== \
             web \
             python -m src.audiobook_studio.utils.env_checker --fail-on-warning
 

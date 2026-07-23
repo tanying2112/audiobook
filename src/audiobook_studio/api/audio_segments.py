@@ -1,4 +1,4 @@
-"""FastAPI router for audio segment operations.
+"""FastAPI router for audio segment operations (async SQLAlchemy 2.0).
 
 Provides endpoints for:
 - GET /api/audio-segments/{book_id} - List audio segments for a book
@@ -12,9 +12,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 router = APIRouter(prefix="/audio-segments", tags=["audio-segments"])
 
@@ -52,7 +52,7 @@ class MergeRequest(BaseModel):
 
 
 @router.get("/book/{book_id}", response_model=List[AudioSegmentResponse])
-def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
+async def list_audio_segments(book_id: str, db: AsyncSession = Depends(get_async_db)):
     """List all audio segments for a book.
 
     In MVP implementation, scans the storage directory for audio files.
@@ -79,7 +79,7 @@ def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{segment_id}", response_model=AudioSegmentResponse)
-def get_audio_segment(segment_id: str, book_id: str, db: Session = Depends(get_db)):
+async def get_audio_segment(segment_id: str, book_id: str, db: AsyncSession = Depends(get_async_db)):
     """Get a specific audio segment."""
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"
 
@@ -94,11 +94,11 @@ def get_audio_segment(segment_id: str, book_id: str, db: Session = Depends(get_d
 
 
 @router.patch("/{segment_id}/reorder")
-def reorder_segments(
+async def reorder_segments(
     segment_id: str,
     request: ReorderRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Reorder audio segments.
 
@@ -114,11 +114,11 @@ def reorder_segments(
 
 
 @router.post("/{segment_id}/trim")
-def trim_segment(
+async def trim_segment(
     segment_id: str,
     request: TrimRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Trim audio segment to specified range.
 
@@ -146,10 +146,10 @@ def trim_segment(
 
 
 @router.post("/merge")
-def merge_segments(
+async def merge_segments(
     request: MergeRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Merge multiple audio segments into one.
 
@@ -175,10 +175,10 @@ def merge_segments(
 
 
 @router.delete("/{segment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_audio_segment(
+async def delete_audio_segment(
     segment_id: str,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Delete an audio segment."""
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"

@@ -12,7 +12,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +289,7 @@ def cleanup_after_export(
     pipeline_output_dir: Optional[str] = None,
     storage_root: Optional[str] = None,
     policy: Optional[GCRetentionPolicy] = None,
-) -> Dict:
+) -> Dict[str, Any]:
     """Convenience function to clean up segments after successful export.
 
     Args:
@@ -330,7 +330,7 @@ def gc_sweep_all(
     pipeline_output_dir: Optional[str] = None,
     storage_root: Optional[str] = None,
     dry_run: bool = False,
-) -> List[Dict]:
+) -> List[Dict[str, Any]]:
     """Convenience function for periodic GC sweep of all projects.
 
     Returns list of dict results for each project.

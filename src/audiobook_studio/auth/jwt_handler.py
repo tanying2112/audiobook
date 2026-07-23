@@ -10,7 +10,6 @@ from src.audiobook_studio.config import get_settings
 
 try:
     import bcrypt
-
     BCRYPT_AVAILABLE = True
 except ImportError:
     BCRYPT_AVAILABLE = False
@@ -30,7 +29,10 @@ class TokenPayload(BaseModel):
 
 
 class JWTHandler:
-    """Handles JWT token creation, validation, and decoding."""
+    """Handles JWT token creation, validation, and decoding.
+
+    Requires bcrypt for password hashing (mandatory dependency since SEC-002).
+    """
 
     def __init__(self):
         self.settings = get_settings()
@@ -39,36 +41,39 @@ class JWTHandler:
         self.access_token_expire_minutes = self.settings.ACCESS_TOKEN_EXPIRE_MINUTES
         self.refresh_token_expire_days = self.settings.REFRESH_TOKEN_EXPIRE_DAYS
 
-        # Password hashing — bcrypt preferred; fall back to SHA-256 if unavailable
-        # Install bcrypt for production: pip install bcrypt
+        # Password hashing — bcrypt is now mandatory (SEC-002)
         if not BCRYPT_AVAILABLE:
-            import warnings
-
-            warnings.warn(
-                "bcrypt is not installed; falling back to SHA-256 hashing. "
-                "Install bcrypt for secure password hashing: pip install bcrypt",
-                UserWarning,
-                stacklevel=2,
+            raise RuntimeError(
+                "bcrypt is not installed but required for secure password hashing. "
+                "Install with: pip install bcrypt>=4.0.0"
             )
 
     def _hash_password(self, password: str) -> str:
-        """Hash a password using bcrypt (or SHA-256 fallback)."""
+        """Hash a password using bcrypt."""
         password_bytes = password.encode("utf-8")
-        if BCRYPT_AVAILABLE:
-            salt = bcrypt.gensalt(rounds=12)
-            hashed = bcrypt.hashpw(password_bytes, salt)
-            return hashed.decode("utf-8")
-        # Fallback: SHA-256 + salt (not as secure as bcrypt)
-        salt = os.urandom(32)
-        hashed = hashlib.sha256(salt + password_bytes).digest()
-        return f"sha256${salt.hex()}${hashed.hex()}"
+        salt = bcrypt.gensalt(rounds=self.settings.BCRYPT_ROUNDS)
+        hashed = bcrypt.hashpw(password_bytes, salt)
+        return hashed.decode("utf-8")
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash."""
+        """Verify a password against its hash.
+
+        Supports:
+        - bcrypt (current default)
+        - Legacy SHA-256+salt (sha256$...) for migration
+        - passlib sha256_crypt ($5$...) for migration
+        """
         password_bytes = plain_password.encode("utf-8")
-        if BCRYPT_AVAILABLE and not hashed_password.startswith("sha256$") and not hashed_password.startswith("$5$"):
-            hashed_bytes = hashed_password.encode("utf-8")
-            return bcrypt.checkpw(password_bytes, hashed_password)
+
+        # Current bcrypt format (no prefix, or $2b$ prefix)
+        if not hashed_password.startswith("sha256$") and not hashed_password.startswith("$5$"):
+            try:
+                hashed_bytes = hashed_password.encode("utf-8")
+                return bcrypt.checkpw(password_bytes, hashed_bytes)
+            except Exception:
+                return False
+
+        # Legacy SHA-256 migration path
         if hashed_password.startswith("sha256$"):
             parts = hashed_password.split("$")
             if len(parts) != 3:
@@ -76,14 +81,15 @@ class JWTHandler:
             salt = bytes.fromhex(parts[1])
             expected = hashlib.sha256(salt + password_bytes).digest()
             return expected.hex() == parts[2]
+
+        # Legacy passlib sha256_crypt format
         if hashed_password.startswith("$5$"):
-            # sha256_crypt format ($5$rounds=...)
             try:
                 import passlib.hash
-
-                return passlib.hash.sha256_crypt.verify(plain_password, hashed_password)
+                return passlib.hash.sha256_crypt.verify(plain_password, hashed_password)  # type: ignore[no-any-return]
             except Exception:
                 return False
+
         return False
 
     def create_access_token(
@@ -114,7 +120,7 @@ class JWTHandler:
         }
 
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
-        return encoded_jwt
+        return encoded_jwt  # type: ignore[no-any-return]
 
     def create_refresh_token(
         self,
@@ -137,7 +143,7 @@ class JWTHandler:
         }
 
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
-        return encoded_jwt
+        return encoded_jwt  # type: ignore[no-any-return]
 
     def create_token_pair(
         self,
@@ -145,7 +151,7 @@ class JWTHandler:
         username: str,
         roles: List[str] = None,
         permissions: List[str] = None,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """Create both access and refresh tokens."""
         access_token = self.create_access_token(user_id, username, roles, permissions)
         refresh_token = self.create_refresh_token(user_id, username)
@@ -161,7 +167,7 @@ class JWTHandler:
         """Decode and validate a JWT token."""
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            return payload
+            return payload  # type: ignore[no-any-return]
         except JWTError as e:
             raise ValueError(f"Invalid token: {e}")
 
@@ -220,11 +226,28 @@ class JWTHandler:
         )
 
 
-# Global JWT handler instance
-jwt_handler = JWTHandler()
+# Lazy JWT handler initialization to avoid circular imports and require env var at import time
+_jwt_handler: Optional[JWTHandler] = None
 
 
-# Convenience functions
+def _get_jwt_handler() -> JWTHandler:
+    """Get or create the global JWT handler instance (lazy initialization)."""
+    global _jwt_handler
+    if _jwt_handler is None:
+        _jwt_handler = JWTHandler()
+    return _jwt_handler
+
+
+class _LazyJWTProxy:
+    """Proxy that lazy-loads the JWTHandler singleton on attribute access."""
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_get_jwt_handler(), name)
+
+
+jwt_handler: Any = _LazyJWTProxy()
+
+
+# Convenience functions that use lazy initialization
 def create_access_token(
     user_id: int,
     username: str,
@@ -233,7 +256,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Create an access token."""
-    return jwt_handler.create_access_token(user_id, username, roles, permissions, expires_delta)
+    return _get_jwt_handler().create_access_token(user_id, username, roles, permissions, expires_delta)
 
 
 def create_refresh_token(
@@ -242,24 +265,24 @@ def create_refresh_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Create a refresh token."""
-    return jwt_handler.create_refresh_token(user_id, username, expires_delta)
+    return _get_jwt_handler().create_refresh_token(user_id, username, expires_delta)
 
 
 def decode_token(token: str) -> Dict[str, Any]:
     """Decode a token."""
-    return jwt_handler.decode_token(token)
+    return _get_jwt_handler().decode_token(token)
 
 
 def verify_token(token: str) -> bool:
     """Verify a token."""
-    return jwt_handler.verify_token(token)
+    return _get_jwt_handler().verify_token(token)
 
 
 def hash_password(password: str) -> str:
     """Hash a password."""
-    return jwt_handler.hash_password(password)
+    return _get_jwt_handler().hash_password(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password."""
-    return jwt_handler.verify_password(plain_password, hashed_password)
+    return _get_jwt_handler().verify_password(plain_password, hashed_password)

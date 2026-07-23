@@ -198,12 +198,93 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 ## 八、遗留风险与后续行动 (Post-v0.2.0)
 
+### ✅ Task 9: 发布任务状态持久化迁移至 Redis/DB (2026-07-23 完成)
+
+| 项目 | 状态 | 关键验收证据 |
+|------|------|--------------|
+| API 层集成 | ✅ 完成 | `src/audiobook_studio/api/publish.py` 使用 `_get_job_state`/`_persist_job_state`/`_persist_job_state_db` 替代内存字典 |
+| Celery Tasks | ✅ 完成 | `src/audiobook_studio/tasks/publish_tasks.py` 三个异步任务 + 状态查询/历史查询任务 |
+| SQLAlchemy 模型 | ✅ 完成 | `src/audiobook_studio/models/publish.py` - PublishJob, PublishHistory 模型及关系 |
+| Redis 持久化 | ✅ 完成 | 7 天 TTL, key 前缀 `publish:job:` |
+| DB 回退持久化 | ✅ 完成 | 当 Redis 不可用时自动回退到数据库 |
+| 测试全绿 | ✅ 完成 | 42/42 api 测试通过, 252/252 audiobookshelf 单元测试通过, 109/109 api 单元测试通过 |
+
+### ✅ Task 12: Auth 用户信息 Redis 缓存 (2026-07-23 完成)
+
+| 项目 | 状态 | 关键验收证据 |
+|------|------|--------------|
+| JWT 依赖集成 Redis | ✅ 完成 | `src/audiobook_studio/auth/dependencies.py` - `_get_cached_user`, `_cache_user`, `_invalidate_user_cache` |
+| 缓存失效机制 | ✅ 完成 | 用户更新/删除/角色变更时自动失效缓存 |
+| 测试全绿 | ✅ 完成 | 135/135 auth 单元测试通过 |
+
+### 当前遗留风险与后续行动
+
 | 风险项 | 严重度 | 状态 | 缓解计划 |
 |--------|--------|------|----------|
 | hypothesis 包损坏导致 4 个测试文件无法收集 | 🟡 中 | 进行中 | `pip install --force-reinstall hypothesis` 或排除 hypothesis 测试 |
 | `.gitignore` 缺失 `storage/books/` `voxcpm2-pool/` 白名单 | 🟡 中 | 待处理 | 补全 `.gitignore` 防御规则，防止运行时产物误提交 |
 | 远端分支 `origin/refactor/p2-engineering-debt` 不存在 | 🟢 低 | 待处理 | `git push -u origin refactor/p2-engineering-debt` 备份本地改动 |
 | 测试环境 Python 3.14 兼容性 (pytest-typeguard 等依赖缺失) | 🟢 低 | 记录在案 | CI 使用 Python 3.11/3.12，本地仅开发验证 |
+
+---
+
+## 九、本次审查新增 Issue 追踪 (2026-07-21)
+
+### P0 级 (生产阻断 / 安全关键) — 必须本周解除阻断
+
+| Issue | 标题 | 状态 | GitHub Issue | 关联 PR | 目标完成 |
+|-------|------|------|--------------|---------|----------|
+| SEC-001 | JWT 密钥强制校验 + 密钥生成脚本 | 🟢 Done | #17 | — | 2026-07-23 |
+| SEC-002 | bcrypt 强依赖 + 密码哈希迁移 | 🟢 Done | #18 | — | 2026-07-23 |
+| SEC-003 | safe_join TOCTOU 修复 + 统一 safe_open | 🟢 Done | #19 | — | 2026-07-24 |
+| SEC-004 | 清理所有硬编码/配置泄露的凭证占位符 | 🟢 Done | #20 | — | 2026-07-23 |
+| QUAL-001 | 拆解循环依赖 (audiobook_studio.__init__ ↔ config ↔ database) | 🟢 Done | #13 | — | 2026-07-24 |
+
+### P1 级 (高危技术债 / 架构隐患) — 下周迭代
+
+| Issue | 标题 | 状态 | GitHub Issue | 关联 PR | 目标完成 |
+|-------|------|------|--------------|---------|----------|
+| QUAL-002 | TTS 抽象层精简 30% (Port/Adapter 过度设计) | 🟢 Done | #34 | — | 2026-07-28 |
+| QUAL-003 | 统一结构化异常 + 错误码枚举 | 🟢 Done | #35 | — | 2026-07-22 |
+| QUAL-004 | mypy --strict 分阶段达标 | 🟡 脚手架就绪 | #36 | — | 2026-07-30 |
+| BP-001 | 统一 Pydantic v2 `.model_dump()` 替代 `.dict()` | 🟢 Done | #26 | — | 2026-07-22 |
+| BP-002 | FastAPI 中间件顺序修正 | 🟢 Done | #44 | — | 2026-07-22 |
+| BP-003 | 启动时配置探活 (DB/Redis/模型路径) | 🟢 Done | #27 | — | 2026-07-22 |
+| PERF-001 | 模型懒加载 + 预热端点 | 🟢 Done | #29 | — | 2026-07-22 |
+| PERF-002 | 消除 N+1 查询风险 | 🟢 Done | #30 | — | 2026-07-22 |
+| PERF-003 | Redis 连接池调优 | 🟢 Done | #31 | — | 2026-07-22 |
+| PERF-004 | ffmpeg 子进程并发控制信号量 | 🟢 Done | #32 | — | 2026-07-22 |
+
+### P2 级 (最佳实践 / 测试 / 文档) — 持续改进
+
+| Issue | 标题 | 状态 | GitHub Issue | 关联 PR | 目标完成 |
+|-------|------|------|--------------|---------|----------|
+| TEST-001 | 覆盖率达 80% (当前 ~46%) | 🟡 环境受阻 | #41 | — | 2026-08-04 |
+| TEST-002 | 消除测试顺序依赖 / 全局状态污染 | 🟢 Done | #42 | — | 2026-07-22 |
+| TEST-003 | 引入 schemathesis 契约测试 + mutmut 变异测试 | 🟢 契约部分 Done | #43 | — | 2026-08-08 |
+| DOC-001 | 补充 4 份核心 ADR (认证/TTS/存储/调度) | 🟢 Done | #28 | — | 2026-07-22 |
+
+---
+
+*文档版本: 2026-07-22 Issue 修复后更新 · 唯一真相源: PROJECT_STATUS.md*
+
+---
+
+## 十、2026-07-22 批量 Issue 修复记录
+
+| Issue | 变更概要 | 关键文件 |
+|-------|---------|---------|
+| BP-001 | 全仓 8 处 `.dict()` fallback 移除, Pydantic v2 纯化 | `llm/judge.py`, `feedback/{integration,ab_test,promotion_gate}.py` |
+| BP-002 | 中间件排序: TrustedHost→CORS→GZip→ISOTimestamp→ABTest | `main.py`, `settings.py` (+ALLOWED_HOSTS) |
+| BP-003 | `/health/live` + `/health/ready`(DB/Redis/Kokoro/引擎状态), lifespan 探活 | `main.py`, `settings.py` |
+| QUAL-003 | `ExtractionErrorCode`/`TTSErrorCode`/`ExportErrorCode` IntEnum + 全局异常处理器 JSON 结构化输出 | `exceptions.py`, `main.py` |
+| PERF-004 | `asyncio.Semaphore` 限制并发 ffmpeg 子进程 | 新建 `export/pool.py`, `settings.py` (+FFMPEG_CONCURRENCY) |
+| PERF-003 | 单例 async Redis ConnectionPool (连接复用 > 90%) | 新建 `utils/redis_pool.py`, `settings.py` (+4 配置项) |
+| PERF-002 | `selectinload` 预加载关联消除 N+1 (books+projects 列表接口) | `api/books.py`, `api/projects.py` |
+| PERF-001 | 引擎懒加载 (`_loaded` 守卫) + `EngineRegistry.warmup()` + `POST /admin/warmup` | `tts/engine.py`, `tts/kokoro_backend.py`, 新建 `api/admin.py` |
+| TEST-002 | 移除 28 行 `sys.path.insert` + `pythonpath=["src"]` + `_isolate_sys_path` fixture | `pyproject.toml`, `tests/conftest.py`, 15 测试文件 |
+| TEST-003 | hypothesis 属性测试 (safe_join/safe_open/sanitize_filename 4 类 15 测试), CI 路径修正 | 新建 `tests/unit/security/test_security_hypothesis.py`, `.github/workflows/ci.yml` |
+| DOC-001 | 4 份 ADR: 认证/JWT, TTS 后端编排, 存储层演进, 任务调度引擎 | 新建 `docs/adr/001~004-*.md` |
 
 ---
 

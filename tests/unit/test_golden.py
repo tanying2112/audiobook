@@ -1,67 +1,47 @@
-"""Tests for Golden Dataset API endpoints."""
+"""Tests for Golden Dataset API endpoints.
+
+Covers:
+- Golden sample listing (all stages, by stage, human_verified filter)
+- Golden sample detail retrieval
+- Contribution from FeedbackRecord
+- Approval/rejection of contributions
+- Regression testing
+- Trend tracking
+- Bootstrap few-shot optimization
+"""
 
 import json
-import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+
+from src.audiobook_studio.api.dependencies import get_async_db as golden_get_async_db
 
 # Import the API router and dependencies
 from src.audiobook_studio.api.golden import router as golden_router
-from src.audiobook_studio.database import Base
-from src.audiobook_studio.database import get_db as golden_get_db
-from src.audiobook_studio.models.feedback_record import FeedbackRecord
 
 # Create test app
 test_app = FastAPI()
 test_app.include_router(golden_router)
 
 
-# Test database setup
-@pytest.fixture(scope="function")
-def db_engine():
-    """Create an in-memory SQLite engine for testing."""
-    # Use file-based SQLite to avoid issues with in-memory DB in multi-threaded TestClient
-    import tempfile
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    engine.dispose()
-    import os
-
-    os.unlink(tmp.name)
-
-
-@pytest.fixture(scope="function")
-def db_session(db_engine):
-    """Provide a SQLAlchemy session bound to the test engine."""
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @pytest.fixture
-def client(db_session):
-    """FastAPI test client with database override."""
+def client(golden_temp_dir):
+    """FastAPI test client with mocked async database."""
 
-    def get_test_db():
-        try:
-            yield db_session
-        finally:
-            pass
+    async def get_test_db():
+        db = AsyncMock()
+        # Mock execute/scalar_one_or_none for FeedbackRecord queries
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute.return_value = mock_result
+        yield db
 
-    test_app.dependency_overrides[golden_get_db] = get_test_db
+    test_app.dependency_overrides[golden_get_async_db] = get_test_db
     with TestClient(test_app) as client:
         yield client
     test_app.dependency_overrides.clear()
@@ -124,6 +104,23 @@ def golden_temp_dir(tmp_path):
         yield golden_dir
 
 
+def _make_feedback_record(fid=1):
+    """Create a mock FeedbackRecord."""
+    record = MagicMock()
+    record.id = fid
+    record.project_id = 1
+    record.stage = "extract"
+    record.feedback_id = f"test_feedback_{fid:03d}"
+    record.source = "test"
+    record.input_snapshot = {"text": "test input"}
+    record.llm_output = {"result": "original output"}
+    record.corrected_output = {"result": "test output"}
+    record.rationale = "Test rationale"
+    record.pattern_tags = ["test_pattern"]
+    record.created_at = datetime.now(timezone.utc)
+    return record
+
+
 class TestGoldenSamplesListing:
     """Tests for listing golden samples."""
 
@@ -180,51 +177,67 @@ class TestGoldenSampleDetail:
 class TestGoldenContribution:
     """Tests for contributing to golden dataset."""
 
-    def test_contribute_from_feedback_record(self, client, db_session, golden_temp_dir):
+    @pytest.mark.asyncio
+    async def test_contribute_from_feedback_record(self, client, golden_temp_dir):
         """Test contributing a template from FeedbackRecord to golden dataset."""
-        from datetime import datetime, timezone
+        # Mock the database to return a FeedbackRecord
+        from src.audiobook_studio.api.golden import router
 
-        # Create a FeedbackRecord with all required fields
-        feedback = FeedbackRecord(
-            project_id=1,
-            stage="extract",
-            feedback_id="test_feedback_001",
-            source="test",
-            input_snapshot={"text": "test input"},
-            llm_output={"result": "original output"},
-            corrected_output={"result": "test output"},
-            rationale="Test rationale",
-            pattern_tags=["test_pattern"],
-            created_at=datetime.now(timezone.utc),
-        )
-        db_session.add(feedback)
-        db_session.commit()
-        db_session.refresh(feedback)
+        # Get the test db from dependency override
+        test_db = AsyncMock()
+        mock_result = MagicMock()
+        feedback = _make_feedback_record(1)
+        mock_result.scalar_one_or_none.return_value = feedback
+        test_db.execute.return_value = mock_result
 
-        # Make contribution request
-        response = client.post(
-            "/golden/contribute",
-            json={"template_id": feedback.id, "stage": "extract", "quality_score": 0.9, "notes": "Test contribution"},
-        )
+        # Override the dependency for this test
+        test_app.dependency_overrides[golden_get_async_db] = lambda: test_db
 
-        assert response.status_code == 200
-        data = response.json()
-        assert "contribution_id" in data
-        assert data["status"] == "pending"
-        assert str(feedback.id) in data["message"]
+        try:
+            response = client.post(
+                "/golden/contribute",
+                json={
+                    "template_id": feedback.id,
+                    "stage": "extract",
+                    "quality_score": 0.9,
+                    "notes": "Test contribution",
+                },
+            )
 
-    def test_contribute_nonexistent_feedback(self, client, db_session, golden_temp_dir):
+            assert response.status_code == 200
+            data = response.json()
+            assert "contribution_id" in data
+            assert data["status"] == "pending"
+            assert str(feedback.id) in data["message"]
+        finally:
+            test_app.dependency_overrides.clear()
+            # Re-apply the default override
+            test_app.dependency_overrides[golden_get_async_db] = lambda: AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_contribute_nonexistent_feedback(self, client, golden_temp_dir):
         """Test contributing from non-existent FeedbackRecord returns 404."""
-        response = client.post(
-            "/golden/contribute",
-            json={
-                "template_id": 99999,
-                "stage": "extract",
-                "quality_score": 0.9,
-            },
-        )
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        # Mock the database to return None for non-existent record
+        test_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        test_db.execute.return_value = mock_result
+
+        test_app.dependency_overrides[golden_get_async_db] = lambda: test_db
+
+        try:
+            response = client.post(
+                "/golden/contribute",
+                json={
+                    "template_id": 99999,
+                    "stage": "extract",
+                    "quality_score": 0.9,
+                },
+            )
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"]
+        finally:
+            test_app.dependency_overrides.clear()
 
 
 class TestGoldenApproval:
@@ -232,29 +245,29 @@ class TestGoldenApproval:
 
     def test_approve_sample(self, client, golden_temp_dir):
         """Test approving a pending golden sample."""
-        # First contribute a sample
-        with patch("src.audiobook_studio.api.golden._save_golden_sample") as mock_save:
-            mock_save.return_value = "contrib_extract_12345"
-
-            # Create a mock sample file for approval
-            stage_dir = golden_temp_dir / "extract"
-            sample_file = stage_dir / "contrib_extract_12345.json"
-            sample_file.write_text(
-                json.dumps(
-                    {
-                        "input": {"text": "test"},
-                        "output": {"result": "test"},
-                        "human_verified": False,
-                        "source": "contribution",
-                    }
-                )
+        # Create a mock sample file for approval
+        stage_dir = golden_temp_dir / "extract"
+        sample_file = stage_dir / "contrib_extract_12345.json"
+        sample_file.write_text(
+            json.dumps(
+                {
+                    "input": {"text": "test"},
+                    "output": {"result": "test"},
+                    "human_verified": False,
+                    "source": "contribution",
+                }
             )
+        )
 
-            response = client.post("/golden/approve/contrib_extract_12345?stage=extract")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "approved"
-            assert data["human_verified"] is True
+        response = client.post("/golden/approve/contrib_extract_12345?stage=extract")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "approved"
+        assert data["human_verified"] is True
+
+        # Verify file was updated
+        updated_data = json.loads(sample_file.read_text())
+        assert updated_data["human_verified"] is True
 
     def test_reject_sample(self, client, golden_temp_dir):
         """Test rejecting a pending golden sample."""
@@ -287,35 +300,50 @@ class TestGoldenRegression:
     """Tests for running golden dataset regression."""
 
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_run_regression(self, mock_run_stage, client, golden_temp_dir, db_session):
+    @pytest.mark.asyncio
+    async def test_run_regression(self, mock_run_stage, client, golden_temp_dir):
         """Test running golden dataset regression test."""
         # Mock run_stage to return a result similar to expected
         mock_result = MagicMock()
         mock_result.model_dump.return_value = {"result": "extracted"}
         mock_run_stage.return_value = mock_result
 
-        response = client.post("/golden/run-regression", json={"stages": ["extract"], "prompt_versions": {}})
+        # Mock the database dependency
+        test_db = AsyncMock()
+        test_app.dependency_overrides[golden_get_async_db] = lambda: test_db
 
-        assert response.status_code == 200
-        data = response.json()
-        assert "run_id" in data
-        assert "total_samples" in data
-        assert "passed_count" in data
-        assert "pass_rate" in data
-        assert "by_stage" in data
-        assert "results" in data
+        try:
+            response = client.post("/golden/run-regression", json={"stages": ["extract"], "prompt_versions": {}})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "run_id" in data
+            assert "total_samples" in data
+            assert "passed_count" in data
+            assert "pass_rate" in data
+            assert "by_stage" in data
+            assert "results" in data
+        finally:
+            test_app.dependency_overrides.clear()
 
     @patch("src.audiobook_studio.pipeline.orchestrator.run_stage")
-    def test_run_regression_empty_stages(self, mock_run_stage, client, golden_temp_dir):
+    @pytest.mark.asyncio
+    async def test_run_regression_empty_stages(self, mock_run_stage, client, golden_temp_dir):
         """Test running regression with no stages specified (should test all)."""
         mock_result = MagicMock()
         mock_result.model_dump.return_value = {"result": "extracted"}
         mock_run_stage.return_value = mock_result
 
-        response = client.post("/golden/run-regression", json={})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total_samples"] > 0
+        test_db = AsyncMock()
+        test_app.dependency_overrides[golden_get_async_db] = lambda: test_db
+
+        try:
+            response = client.post("/golden/run-regression", json={})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_samples"] > 0
+        finally:
+            test_app.dependency_overrides.clear()
 
 
 class TestGoldenTrend:
@@ -367,8 +395,6 @@ class TestGoldenEdgeCases:
 
     def test_get_sample_wrong_stage(self, client, golden_temp_dir):
         """Test getting sample from wrong stage returns 404."""
-        # case_001 exists in extract but not in analyze with same ID (they have different stage dirs)
-        # Actually both have case_001, so let's use a non-existent ID
         response = client.get("/golden/samples/analyze/nonexistent_sample_id")
         assert response.status_code == 404
 

@@ -256,8 +256,6 @@ Be strict but fair. Output ONLY valid JSON matching the schema."""
         if annotation is not None:
             if hasattr(annotation, "model_dump"):
                 annotation_dict = annotation.model_dump()
-            elif hasattr(annotation, "dict"):
-                annotation_dict = annotation.dict()
             else:
                 annotation_dict = annotation
 

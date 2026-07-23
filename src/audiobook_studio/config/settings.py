@@ -47,6 +47,12 @@ class Settings(BaseSettings):
         alias="CORS_ALLOW_HEADERS",
     )
 
+    # Security - Trusted Hosts (for TrustedHostMiddleware)
+    ALLOWED_HOSTS: List[str] = Field(
+        default=["localhost", "127.0.0.1"],
+        alias="ALLOWED_HOSTS",
+    )
+
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
 
@@ -77,6 +83,19 @@ class Settings(BaseSettings):
     STORAGE_PATH: str = Field(default="./storage", alias="STORAGE_PATH")
     MAX_UPLOAD_SIZE: int = Field(default=100 * 1024 * 1024, alias="MAX_UPLOAD_SIZE")  # 100MB
 
+    # Redis (connectivity + pool)
+    REDIS_URL: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    REDIS_MAX_CONNECTIONS: int = Field(default=50, alias="REDIS_MAX_CONNECTIONS")
+    REDIS_POOL_SIZE: int = Field(default=20, alias="REDIS_POOL_SIZE")
+    REDIS_SOCKET_KEEPALIVE: int = Field(default=30, alias="REDIS_SOCKET_KEEPALIVE")
+    REDIS_RETRY_ON_TIMEOUT: bool = Field(default=True, alias="REDIS_RETRY_ON_TIMEOUT")
+
+    # Health check
+    HEALTH_CHECK_TIMEOUT: float = Field(default=5.0, alias="HEALTH_CHECK_TIMEOUT")
+
+    # ffmpeg concurrency control
+    FFMPEG_CONCURRENCY: int = Field(default=0, alias="FFMPEG_CONCURRENCY")  # 0=auto(cpu_count-1)
+
     # Logging
     LOG_LEVEL: str = Field(default="INFO", alias="LOG_LEVEL")
     LOG_FORMAT: str = Field(default="json", alias="LOG_FORMAT")
@@ -92,14 +111,15 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: Optional[str] = Field(default=None, alias="LANGFUSE_HOST")
 
     # =========================================================================
-    # P0-2: JWT 密钥启动校验
+    # P0-2: JWT 密钥启动校验（无条件强制执行，满足 SEC-001）
     # =========================================================================
     def validate_jwt_secret(self) -> None:
-        """Validate JWT secret is not the default placeholder.
+        """Validate JWT secret is not a default placeholder and has sufficient entropy.
 
         Raises:
-            RuntimeError: If JWT_SECRET_KEY is the default placeholder.
+            RuntimeError: If JWT_SECRET_KEY is a default placeholder or has < 256-bit entropy.
         """
+        # Check for default placeholders
         default_placeholders = {
             "your-super-secret-key-change-in-production",
             "test-secret-key-for-ci-only",
@@ -109,8 +129,32 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 f"Refusing to start: JWT_SECRET_KEY is a default placeholder "
                 f"({self.JWT_SECRET_KEY[:20]}...). "
-                f"Set a strong random secret via JWT_SECRET_KEY environment variable. "
-                f"See docs/AUDIT_REPORT_v3.md P0-2."
+                f"Generate a secure key with: python scripts/generate_secrets.py --format env"
+            )
+
+        # Check minimum entropy: 256 bits = 32 bytes = at least 43 URL-safe base64 chars (without padding)
+        # Base64 URL-safe alphabet: A-Z, a-z, 0-9, -, _ (64 chars = 6 bits/char)
+        # 32 bytes -> 43-44 chars (without '=' padding)
+        min_chars = 43
+        if len(self.JWT_SECRET_KEY) < min_chars:
+            raise RuntimeError(
+                f"Refusing to start: JWT_SECRET_KEY is too short "
+                f"({len(self.JWT_SECRET_KEY)} chars, need ≥{min_chars} for 256-bit entropy). "
+                f"Generate a secure key with: python scripts/generate_secrets.py --format env"
+            )
+
+        # Verify it's valid URL-safe base64 (no disallowed chars)
+        import base64
+        try:
+            # Add padding if needed for validation
+            padded = self.JWT_SECRET_KEY + "=" * ((4 - len(self.JWT_SECRET_KEY) % 4) % 4)
+            decoded = base64.urlsafe_b64decode(padded)
+            if len(decoded) < 32:
+                raise ValueError("Decoded length < 32 bytes")
+        except Exception:
+            raise RuntimeError(
+                f"Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
+                f"Generate a secure key with: python scripts/generate_secrets.py --format env"
             )
 
     def validate_cors_security(self) -> None:
@@ -133,18 +177,3 @@ class Settings(BaseSettings):
                     f"Set CORS_ORIGINS to explicit origins and CORS_ALLOW_METHODS to explicit methods. "
                     f"See docs/AUDIT_REPORT_v3.md P0-3."
                 )
-
-
-# Global settings instance
-_settings: Optional[Settings] = None
-
-
-def get_settings() -> Settings:
-    """Get or create the global settings instance."""
-    global _settings
-    if _settings is None:
-        _settings = Settings()
-        # Validate security settings on first load
-        _settings.validate_jwt_secret()
-        _settings.validate_cors_security()
-    return _settings

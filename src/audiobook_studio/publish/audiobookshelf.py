@@ -730,7 +730,7 @@ def main():
     logger.info(f"   文件名: {audio_file.file_path.name}")
     logger.info(f"   文件大小: {audio_file.size_bytes / (1024*1024):.1f} MB")
     logger.info(
-        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"
+        f"   时长: {int(audio_file.duration_seconds // 3600):02d}:{int((audio_file.duration_seconds % 3600) // 60):02d}:{int(audio_file.duration_seconds % 60):02d}"
     )
     logger.info(f"   格式: {audio_file.format}")
     logger.info(f"   比特率: {audio_file.bitrate_kbps} kbps")

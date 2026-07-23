@@ -8,9 +8,10 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    import redis
 
 
 @dataclass
@@ -171,7 +172,7 @@ class TTSRateLimiter:
         bucket = self._get_bucket(provider)
         return bucket.consume(tokens)
 
-    def get_status(self, provider: str) -> dict:
+    def get_status(self, provider: str) -> dict[str, Any]:
         """Get current rate limiter status for a provider."""
         bucket = self._get_bucket(provider)
         config = self.configs.get(provider)
@@ -185,7 +186,7 @@ class TTSRateLimiter:
             "configured_rpd": config.requests_per_day if config else None,
         }
 
-    def get_all_status(self) -> Dict[str, dict]:
+    def get_all_status(self) -> Dict[str, dict[str, Any]]:
         """Get status for all configured providers."""
         return {name: self.get_status(name) for name in self.configs.keys()}
 

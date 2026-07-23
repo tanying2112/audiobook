@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-# Add the src directory to the path so we can import the module as a package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
-
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
+
+# Add the src directory to the path so we can import the module as a package
+
 
 
 class TestQualityCheckPipelineNonMock:

@@ -10,10 +10,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
-from ..database import SessionLocal, get_db
+from ..database import create_async_session
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.checkpoint import CheckpointManager
 from ..pipeline.orchestrator import run_stage
@@ -101,31 +103,32 @@ async def _run_translate_stage(
 
     This operates on chapters that have completed synthesis (have audio segments).
     """
-    db = SessionLocal()
+    db = create_async_session()
     try:
-        project = db.query(Project).filter(Project.id == project_id).first()
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
         # Determine which chapters to translate
         if chapter_indices:
-            chapters = (
-                db.query(Chapter)
-                .filter(Chapter.project_id == project_id, Chapter.index.in_(chapter_indices))
+            result = await db.execute(
+                select(Chapter)
+                .where(Chapter.project_id == project_id, Chapter.index.in_(chapter_indices))
                 .order_by(Chapter.index)
-                .all()
             )
+            chapters = result.scalars().all()
         else:
             # Default: all chapters that have synthesized audio
-            chapters = (
-                db.query(Chapter)
-                .filter(
+            result = await db.execute(
+                select(Chapter)
+                .where(
                     Chapter.project_id == project_id,
                     Chapter.synthesize_status == "completed",
                 )
                 .order_by(Chapter.index)
-                .all()
             )
+            chapters = result.scalars().all()
 
         if not chapters:
             return {
@@ -144,16 +147,16 @@ async def _run_translate_stage(
 
         for chapter in chapters:
             # Get paragraphs with audio segments for this chapter
-            paragraphs = (
-                db.query(Paragraph)
-                .filter(
+            result = await db.execute(
+                select(Paragraph)
+                .where(
                     Paragraph.project_id == project_id,
                     Paragraph.chapter_id == chapter.id,
                     Paragraph.status == "synthesized",
                 )
                 .order_by(Paragraph.index)
-                .all()
             )
+            paragraphs = result.scalars().all()
 
             if not paragraphs:
                 continue
@@ -161,14 +164,13 @@ async def _run_translate_stage(
             # Build segments list from paragraphs with audio
             segments = []
             for para in paragraphs:
-                audio_segments = (
-                    db.query(AudioSegment)
-                    .filter(
+                result = await db.execute(
+                    select(AudioSegment).where(
                         AudioSegment.paragraph_id == para.id,
                         AudioSegment.is_current == True,
                     )
-                    .all()
                 )
+                audio_segments = result.scalars().all()
                 for seg in audio_segments:
                     # Attach annotation data to segment for translate
                     seg.text = para.edited_text or para.text
@@ -243,7 +245,7 @@ async def _run_translate_stage(
 
             # Emit stage exit
             await emit_pipeline_event(
-                project_id=project_id,
+                project_idproject_id=project_id,
                 event_type=PipelineEventType.STAGE_EXIT,
                 stage="translate",
                 chapter_index=chapter.index,
@@ -261,7 +263,7 @@ async def _run_translate_stage(
         }
 
     finally:
-        db.close()
+        await db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,14 +276,15 @@ async def run_pipeline_stage(
     project_id: int,
     request: StageRunRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Run a single pipeline stage.
 
     This endpoint triggers a specific pipeline stage for a project/chapter/paragraph.
     Progress is emitted via WebSocket.
     """
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -339,14 +342,15 @@ async def run_translate(
     project_id: int,
     request: TranslateRunRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Run multilingual translation and dubbing for a project.
 
     This translates all synthesized chapters to the target language,
     preserving character voices and emotional continuity.
     """
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -388,27 +392,32 @@ async def run_translate(
 
 
 @router.get("/translate/status")
-async def get_translate_status(project_id: int, db: Session = Depends(get_db)):
+async def get_translate_status(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get the status of translation for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Count translated audio segments (paragraph_id > 10000 indicates translated)
-    total_translated = (
-        db.query(AudioSegment).filter(AudioSegment.project_id == project_id, AudioSegment.paragraph_id > 10000).count()
+    total_translated_result = await db.execute(
+        select(func.count())
+        .select_from(AudioSegment)
+        .where(AudioSegment.project_id == project_id, AudioSegment.paragraph_id > 10000)
     )
+    total_translated = total_translated_result.scalar() or 0
 
     # Count original segments
-    total_original = (
-        db.query(AudioSegment)
-        .filter(
+    total_original_result = await db.execute(
+        select(func.count())
+        .select_from(AudioSegment)
+        .where(
             AudioSegment.project_id == project_id,
             AudioSegment.paragraph_id <= 10000,
             AudioSegment.is_current == True,
         )
-        .count()
     )
+    total_original = total_original_result.scalar() or 0
 
     return {
         "project_id": project_id,

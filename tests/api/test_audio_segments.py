@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import pytest_asyncio
 
 from src.audiobook_studio.api.audio_segments import (
     AudioSegmentResponse,
@@ -100,7 +101,8 @@ class TestSchemas:
 class TestBusinessLogic:
     """Test business logic functions directly."""
 
-    def test_list_audio_segments_empty_dir(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_list_audio_segments_empty_dir(self, tmp_path, monkeypatch):
         """Test list_audio_segments returns empty when book dir missing."""
         from fastapi import FastAPI
 
@@ -113,12 +115,13 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        result = list_audio_segments("nonexistent_book", db=FakeDB())
+        result = await list_audio_segments("nonexistent_book", db=FakeDB())
         assert result == []
 
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.glob")
-    def test_list_audio_segments_with_files(self, mock_glob, mock_exists):
+    @pytest.mark.asyncio
+    async def test_list_audio_segments_with_files(self, mock_glob, mock_exists):
         """Test list_audio_segments returns segments when files exist."""
         from src.audiobook_studio.api.audio_segments import list_audio_segments
 
@@ -130,11 +133,12 @@ class TestBusinessLogic:
             pass
 
         with patch.object(Path, "exists", return_value=True), patch.object(Path, "glob", return_value=mock_files):
-            segments = list_audio_segments("test_book", db=FakeDB())
+            segments = await list_audio_segments("test_book", db=FakeDB())
             # Should return list (may be empty if mocking not applied correctly)
             assert isinstance(segments, list)
 
-    def test_merge_segments_validation_minimum(self):
+    @pytest.mark.asyncio
+    async def test_merge_segments_validation_minimum(self):
         """Test merge requires at least 2 segments."""
         from fastapi import HTTPException
 
@@ -146,10 +150,11 @@ class TestBusinessLogic:
             pass
 
         with pytest.raises(HTTPException) as exc_info:
-            merge_segments(request, book_id="test_book", db=FakeDB())
+            await merge_segments(request, book_id="test_book", db=FakeDB())
         assert exc_info.value.status_code == 400
 
-    def test_trim_segment_validation(self):
+    @pytest.mark.asyncio
+    async def test_trim_segment_validation(self):
         """Test trim validation rejects start >= end."""
         from fastapi import HTTPException
 
@@ -161,10 +166,11 @@ class TestBusinessLogic:
             pass
 
         with pytest.raises(HTTPException) as exc_info:
-            trim_segment("seg_1", request, book_id="test_book", db=FakeDB())
+            await trim_segment("seg_1", request, book_id="test_book", db=FakeDB())
         assert exc_info.value.status_code == 400
 
-    def test_trim_segment_success(self):
+    @pytest.mark.asyncio
+    async def test_trim_segment_success(self):
         """Test trim returns correct response structure."""
         from src.audiobook_studio.api.audio_segments import trim_segment
 
@@ -173,14 +179,15 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        result = trim_segment("seg_1", request, book_id="test_book", db=FakeDB())
+        result = await trim_segment("seg_1", request, book_id="test_book", db=FakeDB())
         assert result["status"] == "success"
         assert result["segment_id"] == "seg_1_trimmed"
         assert result["trimmed_duration_ms"] == 2000
         assert result["trim_range"]["start_ms"] == 1000
         assert result["trim_range"]["end_ms"] == 3000
 
-    def test_merge_segments_success(self):
+    @pytest.mark.asyncio
+    async def test_merge_segments_success(self):
         """Test merge returns correct response structure."""
         from src.audiobook_studio.api.audio_segments import merge_segments
 
@@ -189,12 +196,13 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        result = merge_segments(request, book_id="test_book", db=FakeDB())
+        result = await merge_segments(request, book_id="test_book", db=FakeDB())
         assert result["status"] == "success"
         assert result["merged_segment_count"] == 3
         assert result["estimated_duration_ms"] == 15000  # 3 * 5000
 
-    def test_merge_segments_custom_output(self):
+    @pytest.mark.asyncio
+    async def test_merge_segments_custom_output(self):
         """Test merge with custom output path."""
         from src.audiobook_studio.api.audio_segments import merge_segments
 
@@ -206,10 +214,11 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        result = merge_segments(request, book_id="test_book", db=FakeDB())
+        result = await merge_segments(request, book_id="test_book", db=FakeDB())
         assert result["output_path"] == "/custom/output.mp3"
 
-    def test_reorder_segments_success(self):
+    @pytest.mark.asyncio
+    async def test_reorder_segments_success(self):
         """Test reorder returns correct response structure."""
         from src.audiobook_studio.api.audio_segments import reorder_segments
 
@@ -221,7 +230,7 @@ class TestBusinessLogic:
         class FakeDB:
             pass
 
-        result = reorder_segments(
+        result = await reorder_segments(
             "seg_1",
             request,
             book_id="test_book",
@@ -236,7 +245,8 @@ class TestGetAudioSegment:
     """Test get_audio_segment endpoint - lines 90-95."""
 
     @patch("pathlib.Path.exists", return_value=False)
-    def test_get_audio_segment_not_found(self, mock_exists):
+    @pytest.mark.asyncio
+    async def test_get_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 92-93)."""
         from fastapi import HTTPException
 
@@ -246,19 +256,20 @@ class TestGetAudioSegment:
             pass
 
         with pytest.raises(HTTPException) as exc_info:
-            get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+            await get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Segment not found"
 
     @patch("pathlib.Path.exists", return_value=True)
-    def test_get_audio_segment_success(self, mock_exists):
+    @pytest.mark.asyncio
+    async def test_get_audio_segment_success(self, mock_exists):
         """Test successful segment retrieval (lines 95-99)."""
         from src.audiobook_studio.api.audio_segments import get_audio_segment
 
         class FakeDB:
             pass
 
-        result = get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        result = await get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
         assert isinstance(result, AudioSegmentResponse)
         assert result.id == "seg_1"
         assert "seg_1.mp3" in result.file_path
@@ -269,7 +280,8 @@ class TestDeleteAudioSegment:
     """Test delete_audio_segment endpoint - lines 192-198."""
 
     @patch("pathlib.Path.exists", return_value=False)
-    def test_delete_audio_segment_not_found(self, mock_exists):
+    @pytest.mark.asyncio
+    async def test_delete_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 194-195)."""
         from fastapi import HTTPException
 
@@ -279,12 +291,13 @@ class TestDeleteAudioSegment:
             pass
 
         with pytest.raises(HTTPException) as exc_info:
-            delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+            await delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Segment not found"
 
     @patch("pathlib.Path.exists", return_value=True)
-    def test_delete_audio_segment_success(self, mock_exists):
+    @pytest.mark.asyncio
+    async def test_delete_audio_segment_success(self, mock_exists):
         """Test successful segment deletion (line 197-198).
 
         Note: Current implementation doesn't actually delete the file
@@ -296,5 +309,5 @@ class TestDeleteAudioSegment:
         class FakeDB:
             pass
 
-        result = delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
+        result = await delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
         assert result is None

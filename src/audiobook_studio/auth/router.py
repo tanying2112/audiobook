@@ -4,7 +4,7 @@ Provides endpoints for login, registration, token refresh, and user management.
 """
 
 from datetime import timedelta
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -18,6 +18,7 @@ from src.audiobook_studio.auth.dependencies import (
     get_current_user,
     require_permission,
     require_role,
+    _invalidate_user_cache,
 )
 from src.audiobook_studio.auth.jwt_handler import jwt_handler
 
@@ -150,7 +151,19 @@ async def register(
         full_name=user_data.full_name,
     )
 
-    return UserOut.from_orm(user)
+    # Construct UserOut manually to avoid from_attributes issues with roles relationship
+    user_data_dict = {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "is_active": user.is_active,
+        "is_superuser": user.is_superuser,
+        "created_at": user.created_at,
+        "roles": [role.name for role in user.roles],
+        "project_permissions": [],
+    }
+    return UserOut.model_validate(user_data_dict)
 
 
 @router.get("/me", response_model=UserOut)
@@ -179,11 +192,19 @@ async def read_current_user(
             )
         )
 
-    user_out = UserOut.from_orm(current_user)
-    user_out.roles = roles
-    user_out.project_permissions = project_perms_out
-
-    return user_out
+    # Construct UserOut manually to avoid from_attributes issues with roles relationship
+    user_data = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "full_name": current_user.full_name,
+        "is_active": current_user.is_active,
+        "is_superuser": current_user.is_superuser,
+        "created_at": current_user.created_at,
+        "roles": roles,
+        "project_permissions": project_perms_out,
+    }
+    return UserOut.model_validate(user_data)
 
 
 @router.put("/me", response_model=UserOut)
@@ -198,7 +219,22 @@ async def update_current_user(
     update_data = user_update.model_dump(exclude_unset=True)
     user = rbac.update_user(current_user, **update_data)
 
-    return UserOut.from_orm(user)
+    # Invalidate cache after update
+    await _invalidate_user_cache(current_user.id)
+
+    # Construct UserOut manually to avoid from_attributes issues with roles relationship
+    user_data = {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "is_active": user.is_active,
+        "is_superuser": user.is_superuser,
+        "created_at": user.created_at,
+        "roles": [role.name for role in user.roles],
+        "project_permissions": [],
+    }
+    return UserOut.model_validate(user_data)
 
 
 # Admin endpoints
@@ -211,7 +247,22 @@ async def list_users(
 ):
     """List all users (admin only)."""
     users = db.query(UserModel).offset(skip).limit(limit).all()
-    return [UserOut.from_orm(u) for u in users]
+    return [
+        UserOut.model_validate(
+            {
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "full_name": u.full_name,
+                "is_active": u.is_active,
+                "is_superuser": u.is_superuser,
+                "created_at": u.created_at,
+                "roles": [role.name for role in u.roles],
+                "project_permissions": [],
+            }
+        )
+        for u in users
+    ]
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -227,7 +278,19 @@ async def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return UserOut.from_orm(user)
+    # Construct UserOut manually to avoid from_attributes issues with roles relationship
+    user_data = {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "is_active": user.is_active,
+        "is_superuser": user.is_superuser,
+        "created_at": user.created_at,
+        "roles": [role.name for role in user.roles],
+        "project_permissions": [],
+    }
+    return UserOut.model_validate(user_data)
 
 
 @router.put("/users/{user_id}", response_model=UserOut)
@@ -246,6 +309,9 @@ async def update_user(
 
     update_data = user_update.model_dump(exclude_unset=True)
     user = rbac.update_user(user, **update_data)
+
+    # Invalidate cache after update
+    await _invalidate_user_cache(user_id)
 
     return UserOut.from_orm(user)
 
@@ -266,6 +332,9 @@ async def delete_user(
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Invalidate cache after delete
+    await _invalidate_user_cache(user_id)
+
     return MessageResponse(message="User deleted successfully")
 
 
@@ -283,7 +352,7 @@ async def create_role(
     return {"id": role.id, "name": role.name, "description": role.description}
 
 
-@router.get("/roles", response_model=List[dict])
+@router.get("/roles", response_model=List[dict[str, Any]])
 async def list_roles(
     current_user: UserModel = Depends(require_permission(PermissionName.ADMIN_USERS)),
     db: Session = Depends(get_db),
@@ -392,7 +461,7 @@ async def revoke_project_permission(
     return {"message": "Project permission revoked"}
 
 
-@router.get("/projects/{project_id}/permissions", response_model=List[dict])
+@router.get("/projects/{project_id}/permissions", response_model=List[dict[str, Any]])
 async def list_project_permissions(
     project_id: int,
     current_user: UserModel = Depends(get_current_active_user),

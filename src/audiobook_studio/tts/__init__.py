@@ -15,14 +15,15 @@ from .edge_tts_engine import EdgeTTSEngine, create_edge_tts_engine
 from .edge_tts_port import EdgeTTSPort, create_edge_tts_port
 from .engine import (
     EngineRegistry,
-    SynthesisResult,
     TTSEngine,
     VoiceInfo,
-    cleanup_all_engines,
-    get_engine,
+    SynthesisResult,
     get_engine_registry,
-    initialize_all_engines,
+    set_engine_registry,
+    get_engine,
     register_engine,
+    initialize_all_engines,
+    cleanup_all_engines,
 )
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
@@ -36,7 +37,6 @@ from .model_downloader import (
     verify_models,
 )
 from .port import (
-    PortFactory,
     RemoteTTSPort,
     TTSProsody,
     TTSStatus,
@@ -45,7 +45,14 @@ from .port import (
     TTSTaskStatus,
     TTSVoiceAnchor,
 )
-from .port_factory import create_port, get_port, make_port_factory, reset_port, set_port
+from .port_factory import (
+    create_configured_registry,
+    create_engine,
+    engine_context,
+    get_default_engine,
+    get_engine_registry,
+    get_port,
+)
 from .rate_limiter import (
     DEFAULT_TTS_RATE_LIMITS,
     ProviderRateLimiter,
@@ -73,8 +80,9 @@ __all__ = [
     "SynthesisResult",
     "EngineRegistry",
     "get_engine_registry",
-    "register_engine",
+    "set_engine_registry",
     "get_engine",
+    "register_engine",
     "initialize_all_engines",
     "cleanup_all_engines",
     # Voice cloning
@@ -102,7 +110,6 @@ __all__ = [
     "TTSTaskResult",
     "TTSTaskStatus",
     "RemoteTTSPort",
-    "PortFactory",
     # Port Implementations
     "FakeRemoteTTSPort",
     "MockRemoteTTSPort",
@@ -113,17 +120,18 @@ __all__ = [
     "create_edge_tts_port",
     "KokoroPort",
     "create_kokoro_port",
-    # Port Factory
-    "create_port",
+    # New Engine Registry
+    "get_engine_registry",
+    "set_engine_registry",
+    "get_engine",
+    "register_engine",
+    "initialize_all_engines",
+    "cleanup_all_engines",
+    "create_engine",
+    "create_configured_registry",
+    "engine_context",
+    "get_default_engine",
     "get_port",
-    "set_port",
-    "reset_port",
-    "make_port_factory",
-    # Port Exceptions
-    "PortError",
-    "PortTimeoutError",
-    "PortConnectionError",
-    "PortRemoteError",
     # Circuit Breaker
     "CircuitBreaker",
     # Rate Limiter

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
@@ -29,7 +29,7 @@ class Routing(Base):
     # HARNESS fields
     engine_choice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     fallback_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)

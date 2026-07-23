@@ -1,4 +1,4 @@
-"""Monitoring Dashboard API endpoints for telemetry visualization."""
+"""Monitoring Dashboard API endpoints for telemetry visualization (async SQLAlchemy 2.0)."""
 
 import json
 import logging
@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..models import Project
 from ..storage import reports_dir
-from .dependencies import get_db
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -116,23 +118,22 @@ async def get_metrics_history(
 
 
 @router.get("/projects")
-async def list_projects_with_metrics(db: Session = Depends(get_db)):
+async def list_projects_with_metrics(db: AsyncSession = Depends(get_async_db)):
     """
     List all projects that have metrics data available.
 
     Used by dashboard to show project selector.
     """
-    from ..models import Project
-
-    projects = db.query(Project).filter(Project.id.isnot(None)).all()
-    result = []
+    result = await db.execute(select(Project).where(Project.id.isnot(None)))
+    projects = result.scalars().all()
+    result_list = []
     for p in projects:
         reports_path = reports_dir(p.id)
         if reports_path.exists():
             metrics_files = list(reports_path.glob("metrics_summary*.json"))
             if metrics_files:
                 latest = max(metrics_files, key=lambda f: f.stat().st_mtime)
-                result.append(
+                result_list.append(
                     {
                         "project_id": p.id,
                         "title": p.title,
@@ -141,7 +142,7 @@ async def list_projects_with_metrics(db: Session = Depends(get_db)):
                     }
                 )
 
-    return {"projects": sorted(result, key=lambda x: x["last_updated"], reverse=True)}
+    return {"projects": sorted(result_list, key=lambda x: x["last_updated"], reverse=True)}
 
 
 def _load_metrics(path: Path) -> dict:

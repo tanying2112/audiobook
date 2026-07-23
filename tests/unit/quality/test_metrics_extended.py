@@ -1,9 +1,5 @@
 import os
 import sys
-
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
-
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -25,6 +21,11 @@ from src.audiobook_studio.quality.metrics import (
     WERResult,
     WhisperBackend,
 )
+
+# Add the src directory to the path
+
+
+
 
 
 class TestDNSMOSMetric(unittest.TestCase):

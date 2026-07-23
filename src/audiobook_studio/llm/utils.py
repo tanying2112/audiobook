@@ -5,9 +5,16 @@ to avoid circular imports.
 """
 
 import json
-from typing import Any, Dict, Type, TypeVar
+from typing import Any, Dict, Protocol, Type, TypeVar
 
 T = TypeVar("T")
+
+
+class SupportsModelValidate(Protocol):
+    """Protocol for Pydantic models with model_validate method."""
+
+    @classmethod
+    def model_validate(cls: type[T], obj: Any) -> T: ...
 
 
 class LLMParseError(Exception):
@@ -19,7 +26,9 @@ class LLMParseError(Exception):
         self.stage = stage
 
 
-def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], stage: str) -> T:
+def validate_and_parse_llm_response(
+    raw_response: Any, response_model: type[SupportsModelValidate], stage: str
+) -> SupportsModelValidate:
     """
     Pre-validate LLM response before Pydantic model validation.
 
@@ -75,4 +84,4 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
     # Validate against Pydantic model if it has model_validate method
     if hasattr(response_model, "model_validate"):
         return response_model.model_validate(raw_response)
-    return raw_response
+    return raw_response  # type: ignore[return-value]

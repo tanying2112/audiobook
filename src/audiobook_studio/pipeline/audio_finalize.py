@@ -13,6 +13,7 @@ TTS 合成完成后，对音频进行标准化后处理：
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import subprocess
@@ -20,7 +21,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..analyzer import DEFAULT_EFFECTS_LIBRARY_PATH, SceneTagMapper
+from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
 from ..schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
+from ..security import safe_subprocess_args
+from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +254,10 @@ class AudioFinalizer:
         # Execute ffmpeg
         try:
             logger.info(f"Running ffmpeg: {' '.join(cmd[:10])}...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
                 errors.append(f"ffmpeg failed: {result.stderr}")
@@ -266,7 +273,7 @@ class AudioFinalizer:
 
             shutil.copy2(input_path, output_path)
             warnings.append("ffmpeg not found, fell back to simple copy")
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             errors.append("ffmpeg timed out")
             import shutil
 
@@ -386,7 +393,10 @@ class AudioFinalizer:
         )
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = asyncio.run(run_ffmpeg(cmd, timeout=60))
             if result.returncode == 0:
                 temp_path.replace(audio_path)
                 logger.info(f"Embedded metadata into {audio_path.name}")
@@ -419,7 +429,10 @@ class AudioFinalizer:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = asyncio.run(run_ffmpeg(cmd, timeout=60))
             stderr = result.stderr
 
             # Parse ebur128 output
@@ -456,7 +469,10 @@ class AudioFinalizer:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = asyncio.run(run_ffmpeg(cmd, timeout=10))
             return int(float(result.stdout.strip()) * 1000)
         except Exception as e:
             logger.warning(f"Failed to get duration: {e}")

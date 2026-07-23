@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from sqlalchemy import Float, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
@@ -28,9 +28,9 @@ class Chapter(Base):
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    analyzed_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    annotated_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    edited_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    analyzed_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    annotated_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    edited_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # 处理状态
     status: Mapped[str] = mapped_column(String, default="pending")

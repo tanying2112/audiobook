@@ -25,10 +25,12 @@ from typing import List, Optional
 from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..di import get_app_container
+from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
 from ..llm import LLMRouter, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
 from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
+from ..security import safe_subprocess_args
 from ..tts import (
     EngineRegistry,
     RemoteTTSPort,
@@ -140,7 +142,16 @@ class SynthesizePipeline:
         )
 
         # Remote TTS Port - the single abstraction for all synthesis
-        self._port = port or get_port()
+        # Use mock port for mock_mode, lazy initialization for real port
+        if port is not None:
+            self._port = port
+        elif self.mock_mode:
+            # Use FakeRemoteTTSPort for testing - synchronous, no async init needed
+            self._port = FakeRemoteTTSPort()
+        else:
+            # Lazy initialization: port will be created on first use
+            self._port = None
+            self._pending_port = get_port()
 
         # Crossfade duration for segment stitching
         if crossfade_ms is not None:
@@ -153,8 +164,21 @@ class SynthesizePipeline:
         self._mock_segment_counter = 0
 
         logger.info(
-            f"SynthesizePipeline initialized with port: {type(self._port).__name__}, crossfade_ms={self.crossfade_ms}"
+            f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}"
         )
+
+    async def _get_port(self) -> RemoteTTSPort:
+        """Lazily initialize and return the RemoteTTSPort."""
+        if self._port is None:
+            # Lazy initialization for real port
+            if hasattr(self, '_pending_port') and self._pending_port is not None:
+                self._port = await self._pending_port
+                self._pending_port = None
+            else:
+                # Fallback - shouldn't happen
+                from ..tts.fake_port import FakeRemoteTTSPort
+                self._port = FakeRemoteTTSPort()
+        return self._port
 
     def _text_hash(self, text: str) -> str:
         # Use SHA256 with usedforsecurity=False for cache key generation (non-cryptographic)
@@ -274,7 +298,8 @@ class SynthesizePipeline:
         task_id = f"{segment_id}-{int(time.time() * 1000)}"
         logger.info(f"Submitting synthesis task {task_id} for segment {segment_id}")
 
-        accepted = await self._port.submit(task_id, payload)
+        port = await self._get_port()
+        accepted = await port.submit(task_id, payload)
         if not accepted:
             raise RuntimeError(f"Task {task_id} rejected by scheduling layer (duplicate or unavailable)")
 
@@ -631,8 +656,12 @@ class SynthesizePipeline:
                 ]
             )
 
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+
             logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            # Run under global semaphore with timeout
+            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
                 logger.error(f"ffmpeg crossfade failed: {result.stderr}")
@@ -694,7 +723,13 @@ class SynthesizePipeline:
                     "copy",
                     str(output_path),
                 ]
-                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+
+                # Validate command args for security
+                cmd = safe_subprocess_args(cmd)
+
+                # Run under global semaphore with timeout
+                result = asyncio.run(run_ffmpeg(cmd, timeout=60))
+                result.check_returncode()
 
             duration = get_duration_sync(output_path)
             logger.info(f"Simple concat {len(segments)} segments into {output_path.name}, total {duration}ms")
@@ -724,7 +759,6 @@ class SynthesizePipeline:
         Returns:
             Total duration of output in ms
         """
-        import os
 
         crossfade_ms = self.crossfade_ms
 
@@ -816,17 +850,14 @@ class SynthesizePipeline:
                 ]
             )
 
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+
             logger.info(
                 f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
             )
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-            if result.returncode != 0:
-                logger.error(f"ffmpeg crossfade replace failed: {result.stderr}")
-                # Fallback: simple replace without crossfade
-                return self._simple_replace_segment(
-                    chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
-                )
+            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
+            result.check_returncode()
 
             duration = get_duration_sync(output_path)
             logger.info(f"Crossfade replace complete: {output_path.name}, total {duration}ms")
@@ -860,45 +891,41 @@ class SynthesizePipeline:
 
                 # Extract pre
                 if start_ms > 0:
-                    subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-y",
-                            "-i",
-                            str(chapter_audio_path),
-                            "-ss",
-                            "0",
-                            "-to",
-                            f"{start_ms/1000.0}",
-                            "-c",
-                            "copy",
-                            str(pre_path),
-                        ],
-                        check=True,
-                        capture_output=True,
-                        timeout=60,
-                    )
+                    cmd_pre = [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(chapter_audio_path),
+                        "-ss",
+                        "0",
+                        "-to",
+                        f"{start_ms/1000.0}",
+                        "-c",
+                        "copy",
+                        str(pre_path),
+                    ]
+                    cmd_pre = safe_subprocess_args(cmd_pre)
+                    result = asyncio.run(run_ffmpeg(cmd_pre, timeout=60))
+                    result.check_returncode()
                 else:
                     pre_path = None
 
                 # Extract post
                 if end_ms < total_duration:
-                    subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-y",
-                            "-i",
-                            str(chapter_audio_path),
-                            "-ss",
-                            f"{end_ms/1000.0}",
-                            "-c",
-                            "copy",
-                            str(post_path),
-                        ],
-                        check=True,
-                        capture_output=True,
-                        timeout=60,
-                    )
+                    cmd_post = [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(chapter_audio_path),
+                        "-ss",
+                        f"{end_ms/1000.0}",
+                        "-c",
+                        "copy",
+                        str(post_path),
+                    ]
+                    cmd_post = safe_subprocess_args(cmd_post)
+                    result = asyncio.run(run_ffmpeg(cmd_post, timeout=60))
+                    result.check_returncode()
                 else:
                     post_path = None
 
@@ -911,24 +938,22 @@ class SynthesizePipeline:
                     if post_path and post_path.exists():
                         f.write(f"file '{post_path.absolute()}'\n")
 
-                subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-y",
-                        "-f",
-                        "concat",
-                        "-safe",
-                        "0",
-                        "-i",
-                        str(concat_list),
-                        "-c",
-                        "copy",
-                        str(output_path),
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=60,
-                )
+                cmd_concat = [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_list),
+                    "-c",
+                    "copy",
+                    str(output_path),
+                ]
+                cmd_concat = safe_subprocess_args(cmd_concat)
+                result = asyncio.run(run_ffmpeg(cmd_concat, timeout=60))
+                result.check_returncode()
 
             duration = get_duration_sync(output_path)
             return duration

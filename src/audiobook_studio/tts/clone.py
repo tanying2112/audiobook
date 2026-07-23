@@ -423,7 +423,6 @@ class VoiceCloningEngine:
 
         # 计算平均特征
         try:
-            total_duration = sum(s.duration for s in valid_samples)
             avg_snr = sum(s.snr_db for s in valid_samples) / len(valid_samples)
 
             # 生成声音哈希（基于所有样本的组合特征）
@@ -544,7 +543,7 @@ class VoiceCloningEngine:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 生成输出文件名
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+        text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:8]
         output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
 
         # 实际 TTS 调用 - 使用 Kokoro-ONNX
