@@ -45,6 +45,7 @@ from ..tts import (
     VoiceInfo,
     get_port,
 )
+from ..tts.fake_port import FakeRemoteTTSPort
 from ..tts.clone import CloningConfig, VoiceCloningManager
 from ..utils.ffmpeg_probe import get_duration_sync
 
@@ -163,20 +164,19 @@ class SynthesizePipeline:
         self.existing_segments = {}
         self._mock_segment_counter = 0
 
-        logger.info(
-            f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}"
-        )
+        logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
 
     async def _get_port(self) -> RemoteTTSPort:
         """Lazily initialize and return the RemoteTTSPort."""
         if self._port is None:
             # Lazy initialization for real port
-            if hasattr(self, '_pending_port') and self._pending_port is not None:
+            if hasattr(self, "_pending_port") and self._pending_port is not None:
                 self._port = await self._pending_port
                 self._pending_port = None
             else:
                 # Fallback - shouldn't happen
                 from ..tts.fake_port import FakeRemoteTTSPort
+
                 self._port = FakeRemoteTTSPort()
         return self._port
 
