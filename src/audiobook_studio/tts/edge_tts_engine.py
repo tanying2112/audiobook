@@ -17,15 +17,7 @@ try:
 except ImportError:
     edge_tts = None
 
-from .engine import (
-    BaseTTSEngine,
-    SynthesisResult,
-    TTSEngine,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    VoiceInfo,
-)
+from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
