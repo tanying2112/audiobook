@@ -1,0 +1,14 @@
+{
+  "id": "yingtan2112/voxcpm2-kaggle-worker",
+  "title": "VoxCPM2 Kaggle Worker",
+  "code_file": "kaggle_voxcpm2_test_fixed.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}
