@@ -34,12 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from audiobook_studio.tts.port import (  # noqa: E402
-    TTSProsody,
-    TTSVoiceAnchor,
-    TTSTaskPayload,
-    TTSStatus,
-)
+from audiobook_studio.tts.port import TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor  # noqa: E402
 from audiobook_studio.tts.port_factory import create_engine  # noqa: E402
 
 OUT = ROOT / "output" / "fallback_e2e"
@@ -72,9 +67,7 @@ async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dic
     assert size > 1000, f"[{tier}] 产物体积异常({size}B < 1000)，疑似空/损坏: {path}"
     info = await probe_audio(path)
     dur_s = float(info["duration_s"])
-    assert dur_s >= min_duration_s, (
-        f"[{tier}] 时长 {dur_s:.2f}s < 阈值 {min_duration_s}s: {path}"
-    )
+    assert dur_s >= min_duration_s, f"[{tier}] 时长 {dur_s:.2f}s < 阈值 {min_duration_s}s: {path}"
     sr = info.get("sample_rate") or "?"
     print(f"    [{tier}] ✅ 真音频: {path.name} | {dur_s:.2f}s | {size/1024:.1f}KB | {sr}Hz")
     return {"path": str(path), "duration_s": dur_s, "size_bytes": size, "sample_rate": sr}
@@ -153,8 +146,7 @@ def test_routing():
 # ---------------------------------------------------------------------------
 # Part 2: Tier2 Kokoro 真音频 —— auto 默认分支 → submit/poll/真WAV断言
 # ---------------------------------------------------------------------------
-async def _synthesize_tier(port, task_id: str, text: str, voice_id: str,
-                           prosody: TTSProsody | None, name: str) -> Path:
+async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str) -> Path:
     payload = TTSTaskPayload(
         text=text,
         voice_anchor=TTSVoiceAnchor(voice_id=voice_id, language="zh-CN"),
@@ -193,9 +185,9 @@ async def test_tier2_kokoro_real_audio():
     assert type(port).__name__ == "KokoroPort", f"期望 KokoroPort，得到 {type(port).__name__}"
     tid = f"fb_kokoro_{uuid.uuid4().hex[:6]}"
     text = "三级降级链路验证：这是 Kokoro 本地引擎生成的真实中文音频。"
-    out = await _synthesize_tier(port, tid, text, voice_id="zf_xiaoxiao",
-                                 prosody=TTSProsody(rate=1.0, emotion="neutral"),
-                                 name="Tier2-Kokoro")
+    out = await _synthesize_tier(
+        port, tid, text, voice_id="zf_xiaoxiao", prosody=TTSProsody(rate=1.0, emotion="neutral"), name="Tier2-Kokoro"
+    )
     return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
 
 
@@ -206,9 +198,14 @@ async def test_tier3_edge_real_audio():
     assert type(port).__name__ == "EdgeTTSPort", f"期望 EdgeTTSPort，得到 {type(port).__name__}"
     tid = f"fb_edge_{uuid.uuid4().hex[:6]}"
     text = "三级降级链路验证：这是 Edge-TTS 云端引擎生成的真实中文兜底音频。"
-    out = await _synthesize_tier(port, tid, text, voice_id="zh-CN-XiaoxiaoNeural",
-                                 prosody=TTSProsody(rate=1.0, emotion="neutral"),
-                                 name="Tier3-Edge")
+    out = await _synthesize_tier(
+        port,
+        tid,
+        text,
+        voice_id="zh-CN-XiaoxiaoNeural",
+        prosody=TTSProsody(rate=1.0, emotion="neutral"),
+        name="Tier3-Edge",
+    )
     return await assert_real_audio(out, min_duration_s=1.5, tier="Tier3-Edge")
 
 
@@ -225,6 +222,7 @@ def test_tier1_voxcpm2_reserved():
         assert cls == "RemoteVoxCPM2Port", f"期望 RemoteVoxCPM2Port，得到 {cls}"
         # 验证该 port 带运行时降级 seam（circuit breaker 错误类存在）
         from audiobook_studio.tts.remote_voxcpm2_port import PortCircuitOpenError
+
         print(f"    [Tier1-VoxCPM2] ✅ 选路可达: {cls}（endpoint={os.environ['VOXCPM2_ENDPOINT']}）")
         print(f"    [Tier1-VoxCPM2] ✅ 运行时 failover seam 存在: PortCircuitOpenError")
         print("    [Tier1-VoxCPM2] ⏸ 真实音频：voxcpm2-pool/ 远端 worker 处于 ADR-2026-07-19 PENDING")
@@ -259,18 +257,23 @@ async def main():
     print(f" {'层':<6} {'引擎':<14} {'选路':<10} {'真音频':<22} {'状态'}")
     print("-" * 72)
     print(f" {'Tier1':<6} {'VoxCPM2':<14} {'✅':<10} {'⏸ PENDING-ADR':<22} 预留 seam")
-    print(f" {'Tier2':<6} {'Kokoro':<14} {'✅':<10} "
-          f"{'✅ %5.2fs' % kokoro['duration_s']:<22} 真降落")
-    print(f" {'Tier3':<6} {'Edge-TTS':<14} {'✅':<10} "
-          f"{'✅ %5.2fs' % edge['duration_s']:<22} 真兜底")
+    print(f" {'Tier2':<6} {'Kokoro':<14} {'✅':<10} " f"{'✅ %5.2fs' % kokoro['duration_s']:<22} 真降落")
+    print(f" {'Tier3':<6} {'Edge-TTS':<14} {'✅':<10} " f"{'✅ %5.2fs' % edge['duration_s']:<22} 真兜底")
     chain_json = OUT / "fallback_chain_report.json"
     import json
-    chain_json.write_text(json.dumps({
-        "routing_cases": [{"label": l, "got": g, "want": w} for l, g, w in routing],
-        "tier1_voxcpm2": vox,
-        "tier2_kokoro": kokoro,
-        "tier3_edge": edge,
-    }, ensure_ascii=False, indent=2))
+
+    chain_json.write_text(
+        json.dumps(
+            {
+                "routing_cases": [{"label": l, "got": g, "want": w} for l, g, w in routing],
+                "tier1_voxcpm2": vox,
+                "tier2_kokoro": kokoro,
+                "tier3_edge": edge,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     print(f"\n 链路报告: {chain_json}")
     print(" 结果：Tier2/3 真音频深度断言全绿；Tier1 按规预留 seam（不伪造）。")
     print("=" * 72)
