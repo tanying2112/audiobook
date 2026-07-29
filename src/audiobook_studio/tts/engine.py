@@ -62,9 +62,9 @@ class TTSVoiceAnchor:
 class TTSProsody:
     """Prosody controls for TTS synthesis."""
 
-    rate: float = 1.0      # Speech rate multiplier (0.5-2.0)
-    pitch: float = 0.0     # Pitch shift in semitones (-12 to +12)
-    volume: float = 0.0    # Volume gain in dB (-20 to +20)
+    rate: float = 1.0  # Speech rate multiplier (0.5-2.0)
+    pitch: float = 0.0  # Pitch shift in semitones (-12 to +12)
+    volume: float = 0.0  # Volume gain in dB (-20 to +20)
     emotion: Optional[str] = None  # Emotional tag (happy, sad, neutral, etc.)
 
 
@@ -90,7 +90,7 @@ class TTSTaskResult:
 
     task_id: str
     status: str  # PENDING, RUNNING, DONE, FAILED
-    audio_path: Optional[str] = None          # R2 object key or local path
+    audio_path: Optional[str] = None  # R2 object key or local path
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
     dnsmos_score: Optional[float] = None
@@ -100,6 +100,7 @@ class TTSTaskResult:
     completed_at: Optional[str] = None
     engine: str = "unknown"
     text_hash: Optional[str] = None
+    voice_id: Optional[str] = None
 
 
 @dataclass
@@ -259,13 +260,14 @@ class BaseTTSEngine:
 # ---------------------------------------------------------------------------
 
 from tenacity import (
+    after_log,
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
-    retry_if_exception_type,
-    before_sleep_log,
-    after_log,
 )
+
 
 # Common retry policy for external engines
 def tts_retry_policy(
@@ -317,13 +319,16 @@ def rate_limiter(max_calls: int, period: float = 60.0):
                     window_start = time.time()
                 calls_made += 1
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # Engine Registry (replaces PortFactory + PortContext + Global Port)
 # ---------------------------------------------------------------------------
+
 
 class EngineRegistry:
     """Simple registry for TTS engines with config-driven loading.
@@ -377,24 +382,25 @@ class EngineRegistry:
             self._config = config
 
         # Import backend factories here to avoid circular imports
-        from .kokoro_backend import create_kokoro_engine
         from .edge_tts_engine import create_edge_tts_engine
+        from .kokoro_backend import create_kokoro_backend
+
         # from .voxcpm2_backend import create_voxcpm2_engine
 
         engine_factories = {
-            "kokoro": create_kokoro_engine,
+            "kokoro": create_kokoro_backend,
             "edge": create_edge_tts_engine,
             # "voxcpm2": create_voxcpm2_engine,
         }
 
-        async with self._lock:
-            for engine_name, engine_config in self._config.items():
-                if engine_name in engine_factories:
-                    factory = engine_factories[engine_name]
-                    engine = factory(**engine_config)
-                    await self.register(engine, engine_name)
-                else:
-                    logger.warning(f"Unknown engine type: {engine_name}")
+        for engine_name, engine_config in self._config.items():
+            if engine_name in engine_factories:
+                factory = engine_factories[engine_name]
+                # Factories are async coroutines (create + initialize the engine)
+                engine = await factory(**engine_config)
+                await self.register(engine, engine_name)  # register acquires self._lock internally
+            else:
+                logger.warning(f"Unknown engine type: {engine_name}")
 
         # PERF-001: Do NOT eagerly initialize engines here.
         # Each engine auto-initializes on first synthesize() call.
@@ -458,6 +464,9 @@ class EngineRegistry:
         await self.close_all()
 
 
+_global_registry: Optional[EngineRegistry] = None
+
+
 def get_engine_registry() -> EngineRegistry:
     """Get global engine registry."""
     global _global_registry
@@ -482,7 +491,16 @@ def get_engine(name: str) -> Optional[TTSEngine]:
 def register_engine(engine: TTSEngine, set_as_default: bool = False) -> None:
     """Register an engine in the global registry."""
     registry = get_engine_registry()
-    registry.register(engine, set_as_default=set_as_default)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # If we're in an async context, we can't block
+        # Schedule the coroutine to run
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            pool.submit(asyncio.run, registry.register(engine, set_as_default=set_as_default)).result()
+    else:
+        asyncio.run(registry.register(engine, set_as_default=set_as_default))
 
 
 async def initialize_all_engines() -> None:

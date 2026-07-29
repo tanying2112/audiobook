@@ -2,23 +2,34 @@
 
 Local CPU-based TTS using Kokoro-ONNX model (~82M params).
 Optimized for cloud_hybrid and potato hardware profiles.
+
+Refactored to use kokoro_onnx.Kokoro class directly (fixes NpzFile .item() bug,
+placeholder phonemizer, token_lengths input mismatch, style shape issues).
 """
 
+import asyncio
 import hashlib
 import logging
-import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .engine import SynthesisResult, TTSEngine, VoiceInfo
+from .engine import (
+    BaseTTSEngine,
+    EngineRegistry,
+    SynthesisResult,
+    TTSEngine,
+    TTSTaskPayload,
+    TTSTaskResult,
+    TTSTaskStatus,
+    VoiceInfo,
+)
 
 logger = logging.getLogger(__name__)
 
-
 # Kokoro voice presets (from kokoro-onnx voice list)
-KOKORO_VOICES = {
+KOKORO_VOICES: Dict[str, Dict[str, str]] = {
     "af": {
         "name": "af",
         "language": "en",
@@ -136,8 +147,12 @@ KOKORO_VOICES = {
 }
 
 
-class KokoroBackend(TTSEngine):
-    """Kokoro-ONNX TTS Backend for local CPU synthesis."""
+class KokoroBackend(BaseTTSEngine):
+    """Kokoro-ONNX TTS Backend for local CPU synthesis.
+
+    Wraps kokoro_onnx.Kokoro class which handles tokenization, phonemization,
+    and ONNX inference correctly (fixes bugs in prior manual implementation).
+    """
 
     def __init__(
         self,
@@ -146,43 +161,40 @@ class KokoroBackend(TTSEngine):
         device: str = "cpu",
         sample_rate: int = 24000,
         providers: Optional[List[str]] = None,
-        session_options: Optional[Dict] = None,
+        session_options: Optional[Dict[str, Any]] = None,
         mock_mode: bool = False,
-        **kwargs,
+        output_dir: str = "./output",
+        max_concurrent: int = 2,
+        **kwargs: Any,
     ):
-        super().__init__(model_path, device, sample_rate, mock_mode=mock_mode, **kwargs)
+        super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
+        self.model_path = model_path
         self.voices_path = voices_path
+        self.device = device
+        self.sample_rate = sample_rate
         self.providers = providers or ["CPUExecutionProvider"]
-        self.session_options = session_options or {
-            "intra_op_num_threads": 4,
-            "inter_op_num_threads": 2,
-        }
-        self._session = None
-        self._phonemizer = None
-        self._voice_embeddings = KOKORO_VOICES  # Use predefined voices
+        self.session_options = session_options or {}
+        self.mock_mode = mock_mode
+        self._kokoro = None
+        self._loaded = False
 
     @property
     def engine_name(self) -> str:
         return "kokoro"
 
     @property
-    def supports_streaming(self) -> bool:
-        return False  # Kokoro-ONNX doesn't support streaming yet
-
-    @property
-    def supports_batch(self) -> bool:
-        return False  # Single utterance at a time
+    def is_available(self) -> bool:
+        return self._loaded
 
     async def initialize(self) -> None:
-        """Initialize Kokoro-ONNX session and phonemizer."""
-        # Mock mode: skip actual model loading
+        """Initialize kokoro_onnx.Kokoro instance."""
         if self.mock_mode:
-            self._initialized = True
+            self._loaded = True
             logger.info("KokoroBackend initialized in mock mode")
             return
 
         try:
-            import onnxruntime as ort
+            from kokoro_onnx import Kokoro
 
             # Resolve model path
             if self.model_path is None:
@@ -198,78 +210,38 @@ class KokoroBackend(TTSEngine):
             if not Path(self.voices_path).exists():
                 raise FileNotFoundError(f"Kokoro voices not found: {self.voices_path}")
 
-            # Create ONNX session
-            sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = self.session_options.get("intra_op_num_threads", 4)
-            sess_options.inter_op_num_threads = self.session_options.get("inter_op_num_threads", 2)
+            # Create Kokoro instance - this handles ONNX session, phonemizer, voice embeddings correctly
+            self._kokoro = Kokoro(self.model_path, self.voices_path)
 
-            self._session = ort.InferenceSession(
-                self.model_path,
-                sess_options=sess_options,
-                providers=self.providers,
+            self._loaded = True
+            logger.info(
+                f"Kokoro-ONNX initialized via kokoro_onnx.Kokoro: "
+                f"model={self.model_path}, voices={self.voices_path}"
             )
 
-            # Initialize phonemizer (misaki for English, espeak-ng for Chinese)
-            try:
-                from misaki import en, zh
-
-                self._phonemizer_en = en.G2P()
-                self._phonemizer_zh = zh.G2P()
-            except ImportError:
-                logger.warning("misaki not installed, using fallback phonemization")
-                self._phonemizer_en = None
-                self._phonemizer_zh = None
-
-            # Load voice embeddings
-            self._voice_embeddings = np.load(self.voices_path, allow_pickle=True).item()
-
-            self._initialized = True
-            logger.info(f"Kokoro-ONNX initialized: model={self.model_path}, voices={len(self._voice_embeddings)}")
-
         except ImportError:
-            logger.error("onnxruntime not installed. Run: pip install onnxruntime")
+            logger.error("kokoro-onnx not installed. Run: pip install kokoro-onnx")
             raise
         except Exception as e:
             logger.error(f"Failed to initialize Kokoro backend: {e}")
             raise
 
-    def _phonemize(self, text: str, voice_id: str) -> Tuple[np.ndarray, np.ndarray]:
-        """Convert text to phonemes and return (phoneme IDs for Kokoro."""
-        # Determine language from voice_id
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-
-        if lang == "zh" and self._phonemizer_zh:
-            phonemes = self._phonemizer_zh(text)
-        elif lang == "en" and self._phonemizer_en:
-            phonemes = self._phonemizer_en(text)
-        else:
-            # Fallback: simple character-based phonemization
-            logger.warning(f"No phonemizer for lang={lang}, using fallback")
-            phonemes = list(text)
-
-        # Convert phonemes to Kokoro token IDs
-        # This is simplified - real implementation uses Kokoro's tokenizer
-        token_ids = [ord(p) % 256 for p in phonemes]  # Placeholder
-        return np.array([token_ids], dtype=np.int64), np.array([len(token_ids)], dtype=np.int64)
-
-    async def synthesize(
+    async def _synthesize_internal(
         self,
         text: str,
         voice_id: str,
         output_path: Path,
-        prosody: Optional[Dict] = None,
+        prosody: Optional[Dict[str, Any]] = None,
         reference_audio: Optional[str] = None,
         embedding: Optional[np.ndarray] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> SynthesisResult:
-        """Synthesize text using Kokoro-ONNX."""
-        if not self._initialized:
+        """Internal synthesis method using kokoro_onnx.Kokoro.create()."""
+        if not self._loaded:
             await self.initialize()
 
         # Mock mode: create empty audio file
         if self.mock_mode:
-            # Create a dummy audio file for testing
-            import numpy as np
             import soundfile as sf
 
             dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
@@ -284,49 +256,40 @@ class KokoroBackend(TTSEngine):
                 sample_rate=self.sample_rate,
             )
 
-        # Get voice embedding - support custom embedding from voice cloning
-        if embedding is not None:
-            # Use custom embedding from voice cloning
-            voice_embedding = np.array(embedding, dtype=np.float32).reshape(1, -1)
-            logger.info(f"Using custom voice embedding with shape {voice_embedding.shape}")
-        elif voice_id not in self._voice_embeddings:
-            logger.warning(f"Voice {voice_id} not found, using default 'zf_xiaoxiao'")
-            voice_id = "zf_xiaoxiao"
+        # Determine language from voice_id (fallback to 'en' for unknown)
+        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
 
-            voice_embedding = self._voice_embeddings[voice_id]
-            if isinstance(voice_embedding, dict):
-                voice_embedding = voice_embedding.get("embedding", list(voice_embedding.values())[0])
-            voice_embedding = np.array(voice_embedding, dtype=np.float32).reshape(1, -1)
-        else:
-            voice_embedding = self._voice_embeddings[voice_id]
-            if isinstance(voice_embedding, dict):
-                voice_embedding = voice_embedding.get("embedding", list(voice_embedding.values())[0])
-            voice_embedding = np.array(voice_embedding, dtype=np.float32).reshape(1, -1)
+        # Map language codes for phonemizer (espeak uses 'cmn' for Mandarin, not 'zh')
+        phonemizer_lang = "cmn" if lang == "zh" else lang
 
-        # Phonemize text
-        tokens, token_lengths = self._phonemize(text, voice_id)
-
-        # Prepare inputs for ONNX
+        # Map prosody rate to speed
         speed = prosody.get("rate", 1.0) if prosody else 1.0
-        # Kokoro expects: tokens, token_lengths, voice_embedding, speed
-        inputs = {
-            "tokens": tokens,
-            "token_lengths": token_lengths,
-            "style": voice_embedding,
-            "speed": np.array([speed], dtype=np.float32),
-        }
 
-        # Run inference
-        outputs = self._session.run(None, inputs)
-        audio = outputs[0].squeeze()  # (samples,)
+        # Voice cloning: if embedding provided, we'd need custom handling
+        # For now, use standard voice_id mapping
+        if embedding is not None:
+            logger.warning("Custom voice embedding provided but not supported by kokoro_onnx.Kokoro yet; using voice_id")
 
-        # Apply prosody adjustments
+        # Run synthesis via kokoro_onnx.Kokoro.create()
+        # This handles tokenization, phonemization, and inference correctly
+        try:
+            # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate)
+            audio, sample_rate = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._kokoro.create(
+                    text=text,
+                    voice=voice_id,
+                    speed=speed,
+                    lang=phonemizer_lang,
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Kokoro synthesis failed: {e}")
+            raise
+
+        # Apply prosody adjustments (volume, pitch - pitch not directly supported)
         if prosody:
-            pitch_shift = prosody.get("pitch", 0)  # semitones
             volume = prosody.get("volume", 0)  # dB
-            if pitch_shift != 0:
-                # Simple pitch shift via resampling (placeholder)
-                pass
             if volume != 0:
                 audio = audio * (10 ** (volume / 20.0))
 
@@ -334,13 +297,15 @@ class KokoroBackend(TTSEngine):
         import soundfile as sf
 
         wav_path = output_path.with_suffix(".wav")
-        sf.write(str(wav_path), audio, self.sample_rate)
+        # Ensure output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(str(wav_path), audio, sample_rate)
 
         # Convert to MP3 if needed
         if output_path.suffix == ".mp3":
             import subprocess
 
-            subprocess.run(
+            result = subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
@@ -353,11 +318,15 @@ class KokoroBackend(TTSEngine):
                     str(output_path),
                 ],
                 capture_output=True,
-                check=True,
             )
-            wav_path.unlink(missing_ok=True)
+            if result.returncode != 0:
+                logger.warning(f"ffmpeg MP3 conversion failed: {result.stderr.decode()}")
+                # Fall back to WAV
+                output_path = wav_path
+            else:
+                wav_path.unlink(missing_ok=True)
 
-        duration_ms = int(len(audio) / self.sample_rate * 1000)
+        duration_ms = int(len(audio) / sample_rate * 1000)
         text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
         return SynthesisResult(
@@ -366,9 +335,132 @@ class KokoroBackend(TTSEngine):
             engine=self.engine_name,
             voice_id=voice_id,
             text_hash=text_hash,
-            sample_rate=self.sample_rate,
-            metadata={"speed": speed, "voice_embedding_shape": voice_embedding.shape},
+            sample_rate=sample_rate,
+            metadata={"speed": speed},
         )
+
+    # --- TTSEngine Protocol Implementation ---
+
+    async def synthesize(
+        self,
+        payload: TTSTaskPayload,
+        output_path: Path,
+    ) -> TTSTaskResult:
+        """Synthesize text to speech using TTSTaskPayload."""
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+        metadata = payload.metadata
+
+        # Extract parameters from payload
+        voice_id = voice_anchor.voice_id
+        reference_audio = voice_anchor.reference_audio_path
+        embedding = metadata.get("embedding") if metadata else None
+
+        prosody_dict = None
+        if prosody:
+            prosody_dict = {
+                "rate": prosody.rate,
+                "pitch": prosody.pitch,
+                "volume": prosody.volume,
+                "emotion": prosody.emotion,
+            }
+
+        try:
+            result = await self._synthesize_internal(
+                text=text,
+                voice_id=voice_id,
+                output_path=output_path,
+                prosody=prosody_dict,
+                reference_audio=reference_audio,
+                embedding=embedding,
+            )
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="DONE",
+                audio_path=result.audio_path,
+                duration_ms=result.duration_ms,
+                engine=result.engine,
+                text_hash=result.text_hash,
+                voice_id=result.voice_id,
+                started_at=None,
+            )
+        except Exception as e:
+            logger.error(f"Synthesis failed: {e}")
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="FAILED",
+                error_message=str(e),
+                engine=self.engine_name,
+            )
+
+    async def submit(self, task_id: str, payload: TTSTaskPayload) -> bool:
+        """Submit a task for async processing."""
+        if task_id in self._tasks:
+            return False
+        self._tasks[task_id] = {"status": "PENDING", "payload": payload}
+        asyncio.create_task(self._run_task(task_id, payload))
+        return True
+
+    async def _run_task(self, task_id: str, payload: TTSTaskPayload) -> None:
+        """Background task runner."""
+        try:
+            self._tasks[task_id]["status"] = "RUNNING"
+            output_path = self._build_output_path(task_id, payload.voice_anchor.voice_id)
+            result = await self.synthesize(payload, output_path)
+            self._tasks[task_id] = {"status": "DONE", "result": result}
+        except Exception as e:
+            self._tasks[task_id] = {"status": "FAILED", "error": str(e)}
+
+    async def get_status(self, task_id: str) -> TTSTaskStatus:
+        """Poll for task status."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return TTSTaskStatus(
+                task_id=task_id,
+                status="PENDING",
+                error_message=f"Task {task_id} not found",
+            )
+        return TTSTaskStatus(
+            task_id=task_id,
+            status=task["status"],
+            error_message=task.get("error"),
+        )
+
+    async def get_result(self, task_id: str) -> TTSTaskResult:
+        """Get full task result."""
+        task = self._tasks.get(task_id)
+        if not task or "result" not in task:
+            raise KeyError(f"Task {task_id} not found or not ready")
+        return task["result"]
+
+    async def cancel(self, task_id: str) -> bool:
+        """Cancel a pending/running task."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task["status"] in ("DONE", "FAILED"):
+            return False
+        task["status"] = "FAILED"
+        task["error"] = "Cancelled"
+        return True
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Check engine health."""
+        return {
+            "healthy": self._loaded,
+            "engine": self.engine_name,
+            "loaded": self._loaded,
+            "mock_mode": self.mock_mode,
+            "sample_rate": self.sample_rate,
+            "device": self.device,
+        }
+
+    async def close(self) -> None:
+        """Clean up kokoro instance."""
+        self._kokoro = None
+        self._loaded = False
+        logger.info("Kokoro backend cleaned up")
 
     def get_voices(self) -> List[VoiceInfo]:
         """Get available Kokoro voices."""
@@ -389,18 +481,15 @@ class KokoroBackend(TTSEngine):
             )
         return voices
 
-    def estimate_duration(self, text: str, voice_id: str, **kwargs) -> int:
+    def estimate_duration(self, text: str, voice_id: str, **kwargs: Any) -> int:
         """Estimate duration based on text length and average speech rate."""
-        # Kokoro average: ~150 chars/sec for Chinese, ~100 chars/sec for English
         lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-        chinese_chars = sum(1 for c in text if "一" <= c <= "鿿")
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         english_chars = len(text) - chinese_chars
 
         if lang == "zh":
-            # Chinese: ~5 chars/sec natural speed, Kokoro slightly faster
             est_sec = chinese_chars / 5.0 + english_chars / 10.0
         else:
-            # English: ~150 words/min = ~750 chars/min = ~12.5 chars/sec
             est_sec = chinese_chars / 5.0 + english_chars / 12.5
 
         speed = kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
@@ -408,21 +497,18 @@ class KokoroBackend(TTSEngine):
 
         return max(500, int(est_sec * 1000))
 
-    async def cleanup(self) -> None:
-        """Clean up ONNX session."""
-        self._session = None
-        self._voice_embeddings = None
-        self._initialized = False
-        logger.info("Kokoro backend cleaned up")
-
 
 async def create_kokoro_backend(
     model_path: Optional[str] = None,
     voices_path: Optional[str] = None,
     device: str = "cpu",
-    **kwargs,
+    **kwargs: Any,
 ) -> KokoroBackend:
     """Factory function to create and initialize Kokoro backend."""
     backend = KokoroBackend(model_path=model_path, voices_path=voices_path, device=device, **kwargs)
     await backend.initialize()
     return backend
+
+
+# Alias for compatibility with engine.py
+create_kokoro_engine = create_kokoro_backend

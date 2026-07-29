@@ -103,13 +103,32 @@ class EdgeTTSPort(RemoteTTSPort):
                 async with self._lock:
                     self._tasks[task_id]["progress"] = 0.5
 
-                # Synthesize
-                result = await engine.synthesize(
-                    text=payload.text,
-                    voice_id=voice_id,
-                    output_path=output_path,
-                    prosody=prosody,
+                # Synthesize using Edge engine (adapts RemoteTTSPort -> TTSEngine)
+                # Convert port.TTSTaskPayload to engine.TTSTaskPayload
+                from audiobook_studio.tts.engine import (
+                    TTSTaskPayload as EnginePayload,
+                    TTSVoiceAnchor as EngineVoiceAnchor,
+                    TTSProsody as EngineProsody,
                 )
+                
+                engine_payload = EnginePayload(
+                    text=payload.text,
+                    voice_anchor=EngineVoiceAnchor(
+                        voice_id=payload.voice_anchor.voice_id,
+                        speaker_name=payload.voice_anchor.speaker_name,
+                        language=payload.voice_anchor.language,
+                        reference_audio_path=payload.voice_anchor.reference_audio_path,
+                    ),
+                    prosody=EngineProsody(
+                        rate=payload.prosody.rate,
+                        pitch=payload.prosody.pitch,
+                        volume=payload.prosody.volume,
+                        emotion=payload.prosody.emotion,
+                    ) if payload.prosody else None,
+                    metadata=payload.metadata,
+                )
+                
+                result = await engine.synthesize(engine_payload, output_path)
 
                 # Update task with result
                 async with self._lock:
@@ -198,7 +217,7 @@ class EdgeTTSPort(RemoteTTSPort):
     async def close(self) -> None:
         """Close the port and cleanup."""
         if self._engine:
-            await self._engine.cleanup()
+            await self._engine.close()
         logger.info("EdgeTTSPort closed")
 
 
