@@ -105,12 +105,10 @@ class EdgeTTSPort(RemoteTTSPort):
 
                 # Synthesize using Edge engine (adapts RemoteTTSPort -> TTSEngine)
                 # Convert port.TTSTaskPayload to engine.TTSTaskPayload
-                from audiobook_studio.tts.engine import (
-                    TTSTaskPayload as EnginePayload,
-                    TTSVoiceAnchor as EngineVoiceAnchor,
-                    TTSProsody as EngineProsody,
-                )
-                
+                from audiobook_studio.tts.engine import TTSProsody as EngineProsody
+                from audiobook_studio.tts.engine import TTSTaskPayload as EnginePayload
+                from audiobook_studio.tts.engine import TTSVoiceAnchor as EngineVoiceAnchor
+
                 engine_payload = EnginePayload(
                     text=payload.text,
                     voice_anchor=EngineVoiceAnchor(
@@ -119,15 +117,19 @@ class EdgeTTSPort(RemoteTTSPort):
                         language=payload.voice_anchor.language,
                         reference_audio_path=payload.voice_anchor.reference_audio_path,
                     ),
-                    prosody=EngineProsody(
-                        rate=payload.prosody.rate,
-                        pitch=payload.prosody.pitch,
-                        volume=payload.prosody.volume,
-                        emotion=payload.prosody.emotion,
-                    ) if payload.prosody else None,
+                    prosody=(
+                        EngineProsody(
+                            rate=payload.prosody.rate,
+                            pitch=payload.prosody.pitch,
+                            volume=payload.prosody.volume,
+                            emotion=payload.prosody.emotion,
+                        )
+                        if payload.prosody
+                        else None
+                    ),
                     metadata=payload.metadata,
                 )
-                
+
                 result = await engine.synthesize(engine_payload, output_path)
 
                 # Update task with result
