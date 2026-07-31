@@ -3,14 +3,18 @@
 Runs or resumes the audiobook processing pipeline for specified books.
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.audiobook_studio.database import AsyncSessionLocal, create_async_session, init_async_db
 from src.audiobook_studio.models import Chapter, Project
@@ -29,7 +33,7 @@ from src.audiobook_studio.run_pipeline import find_project_async as _find_projec
 from src.audiobook_studio.storage import reports_dir
 
 
-def add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
+def add_pipeline_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add pipeline subcommand with run/resume subcommands."""
     parser = subparsers.add_parser(
         "pipeline",
@@ -108,22 +112,23 @@ def add_pipeline_parser(subparsers: argparse._SubParsersAction) -> None:
     resume_parser.set_defaults(func=sync_pipeline_resume_command)
 
 
-async def _get_book_chapters(db, project_id: int, chapter_filter: Optional[int] = None) -> List[Chapter]:
+async def _get_book_chapters(db: AsyncSession, project_id: int, chapter_filter: Optional[int] = None) -> List[Chapter]:
     """Get chapters for a project, optionally filtered by chapter number."""
     query = select(Chapter).where(Chapter.project_id == project_id)
     if chapter_filter:
         query = query.where(Chapter.index == chapter_filter)
     result = await db.execute(query.order_by(Chapter.index))
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 async def _run_chapter_pipeline(
-    db,
+    db: AsyncSession,
     project: Project,
     chapter: Chapter,
     stages: List[str],
     checkpoint_manager: CheckpointManager,
     chapter_index: int,
+    book_name: str,
 ) -> bool:
     """Run pipeline stages for a single chapter."""
     try:
@@ -136,7 +141,7 @@ async def _run_chapter_pipeline(
                 project_id=project.id,
                 chapter_index=chapter.index,
                 checkpoint_manager=checkpoint_manager,
-                file_path=str(MOCK_DATA_DIR / project.title / f"chapter_{chapter.index:02d}.txt"),
+                file_path=str(MOCK_DATA_DIR / book_name / f"chapter_{chapter.index:02d}.txt"),
                 mime_type="text/plain",
                 detect_language=True,
                 title_hint=project.title,
@@ -161,8 +166,12 @@ async def _run_chapter_pipeline(
             paragraphs = result.scalars().all()
 
             if paragraphs:
-                print(f"    📄 Processing {len(paragraphs)} paragraphs...")
-                for para in paragraphs:
+                valid_paras = [p for p in paragraphs if p.text and len(p.text.strip()) >= 10]
+                skipped = len(paragraphs) - len(valid_paras)
+                if skipped:
+                    print(f"    ⚠️  Skipping {skipped} empty paragraph(s)")
+                print(f"    📄 Processing {len(valid_paras)} paragraphs...")
+                for para in valid_paras:
                     para_results = await orchestrator_run_pipeline(
                         stages=para_stages_pre,
                         db=db,
@@ -213,8 +222,17 @@ async def _run_chapter_pipeline(
             paragraphs = result.scalars().all()
 
             if paragraphs:
-                print(f"    🎙️ Synthesizing {len(paragraphs)} paragraphs...")
-                for para in paragraphs:
+                # Same filter as pre-review path (line ~158): skip empty paragraphs.
+                # Empty paragraphs can enter the DB from earlier mock-session residue
+                # or stale checkpoints; synthesize cannot TTS an empty string and
+                # TtsRoutingInput enforces text min_length=1, which otherwise crashes
+                # the whole chapter on the first empty segment.
+                valid_paras = [p for p in paragraphs if p.text and len(p.text.strip()) >= 10]
+                skipped = len(paragraphs) - len(valid_paras)
+                if skipped:
+                    print(f"    ⚠️  Skipping {skipped} empty paragraph(s)")
+                print(f"    🎙️ Synthesizing {len(valid_paras)} paragraphs...")
+                for para in valid_paras:
                     para_results = await orchestrator_run_pipeline(
                         stages=para_stages_post,
                         db=db,
@@ -269,7 +287,7 @@ async def pipeline_run_command(args: argparse.Namespace) -> int:
                 if not project:
                     config = BOOK_CONFIG[book_name]
 
-                    now = datetime.now().isoformat()
+                    now = datetime.now()
                     project = Project(
                         title=config["title"],
                         author=config["author"],
@@ -348,14 +366,16 @@ async def pipeline_run_command(args: argparse.Namespace) -> int:
                         await db.commit()
                         await db.refresh(chapter)
 
-                    success = await _run_chapter_pipeline(db, project, chapter, stages, checkpoint_manager, chap_num)
+                    success = await _run_chapter_pipeline(
+                        db, project, chapter, stages, checkpoint_manager, chap_num, book_name
+                    )
                     if not success:
                         has_error = True
 
                 # Update project status
                 project.current_stage = "completed"
                 project.progress = 100.0
-                project.updated_at = datetime.now().isoformat()
+                project.updated_at = datetime.now()
                 await db.commit()
 
                 # Export if BGM provided
