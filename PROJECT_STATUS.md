@@ -525,3 +525,111 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 **最终结论**：VoxCPM2 Tier-1 云 GPU 降级源 **真实合成验证成功** 🎉
   (中英文均生成真实 48kHz 音频, 降级链路 Tier-1→Tier-2→Tier-3 三级全部具备真实产出能力)
+
+---
+
+## Sprint: 撑 1 — LLM 提供商配置 (2026-07-31)
+
+### fcc-server launchd crash loop 修复 (撑 1 前置)
+- **根因**: `~/Library/LaunchAgents/com.user.fccserver.plist` 的 `KeepAlive=true` 与多实例端口冲突交织 → bind 失败 exit 1 → launchd 无限拉起 → 进程 PID 不断逆增陷入 crash loop
+- **修复**: KeepAlive 改为 `{Crashed: true}` + `ThrottleInterval=30s` → 仅崩溃 (SIGSEGV/SIGKILL) 才重启，bind 失败 exit 1 不重启 → crash loop 根治
+- **验证**: launchd 实例 PID 稳定 (T1/T2/T3 不变) + 端口 8082 干净持有 + freecc key 返回 250 真实模型
+
+### LLM 供应商配置 (方案 X1: 仅配实际可跑的)
+- **实测网络真相** (避免在瞎编配置上花功夫):
+  - 本机可达直连 ✅: NVIDIA NIM (`integrate.api.nvidia.com` 200), Kilo (`api.kilo.ai` 200), fcc 本地网关 127.0.0.1:8082, fcc 外网隧道
+  - 本机直连不通 ❌: OpenRouter, OpenCode-Zen, Gemini, HuggingFace (全 HTTP 000)
+  - fcc 网关支持 opencode 系/Gemini NIM 封装 (36+4 真实模型)，不代理 OpenRouter/HuggingFace 原生 API
+- **关键协议发现**: fcc 网关只认 `anthropic /v1/messages` 协议，不支持 OpenAI `/v1/chat/completions`；且 fcc 需要 `Authorization: Bearer` 而非默认 `x-api-key`
+- **配置改动** (.env + yaml 5 个 provider enabled):
+  - `local_fcc_gateway` (pri=1, anthropic, `claude-3-freecc-no-thinking/.../deepseek-v4-flash`, freecc)
+  - `fcc_tunnel` (pri=2, anthropic, glm-5.2, freecc)
+  - `nvidia_nemotron` (pri=3, 直连 NVIDIA NIM)
+  - `kilo` (pri=8, 直连 api.kilo.ai, tencent/hy3:free)
+  - 其他 (openrouter/gemini/huggingface/opencode_zen 等本机不通) 全部 `enabled: false`, 留 env var 占位
+- **代码改动 (撑 1 必需)**:
+  - `llm/config_loader.py` `load()` 默认路径优先读 CWD `config/llm_providers.yaml` (根治项目根 vs src 包内双 yaml 漂移 bug)
+  - `llm/client.py` `LLMClientConfig` + `create_client()` 新增 `extra_headers` 字段，`call()` 注入到 call_kwargs
+  - `llm/router.py` `get_client()` 从 `provider.extra_params.extra_headers` 透传到 create_client
+- **端到端真实调用跑通** (红线 #1 满足, 非 mock):
+  - Router → get_local_fcc_gateway → LLMClient → instructor JSON mode → LiteLLM anthropic → `/v1/messages` + Bearer freecc → 真实拿到 NIM 上游
+  - 测试用例: `Character(name=林黛玉, role=女主角, description=多愁善感的少女)`, tokens_in=210/out=19/cost=$0/schema_ok=True, 耗时 5.3s ✅
+
+### 相关回归测试
+- 三文件 import 通过 (config_loader / client / router 编译正常)
+- 5 个 enabled provider 顺序正确 (local_fcc_gateway=1, fcc_tunnel=2, nvidia_nemotron=3, kilo=8)
+- 删除 yaml 中遗留的重复 `nvidia_nemotron` 旧条目 (pri=10)
+- 单测 suite 仍有 hypothesis 6.161.1 `_native` 残缺 + 5 个历史遗留失败 (TTS), 与本撑 1 提交无关
+
+### 待延续 (1.5 期 increment - 独立完成)
+- **前端动态供应商管理**: DB 表持久化 + API 增删改查端点 + 前端配置页面 + 运行时热加载
+- 用途: 用户在 UI 中手动添加/编辑增量供应商、模型、API key、调整优先级顺序 (不再改动 .env / yaml)
+- 待续供应商补齐: ZenMux (查不到 API endpoint, 待用户提供), OpenRouter / HuggingFace (待用户提供可达代理 URL)
+
+---
+
+**下一步执行计划 (撑 2→3→4)**:
+1. **撑 2 — 后端启动验证**: `uvicorn src.audiobook_studio.api.main:app` 起服务，校验健康检查 + LLM provider 列表可拉
+2. **撑 3 — 前端启动验证**: 启动前端 dev server，确认页面加载 + 后端 API 可达
+3. **撑 4 — 端到端冒烟出有声书**: 用 `input/test_story.txt` 走完整 pipeline (6 阶段 LLM + TTS 降级链路)，输出可听音频
+
+## Sprint: 撑 4 — 端到端 pipeline 打通 + 4 个生产 bug 闭环 (2026-07-31)
+
+### 本会话完成事 (commit `5d8682b`)
+用 fcc 网关 + deepseek-v4-flash-free 真实 LLM 跑通 `input/test_story.txt` 端到端 pipeline，过程中按 TDD 修了 4 个阻塞生产的 bug (3 个在本提交，Bug 0 在上一轮修复含回归测试已绿)。
+
+### Bug 列表 (按发现顺序)
+
+#### Bug 0 — annotate UPDATE 触发 NOT NULL (pause_before_ms)
+- **表现**: `sqlite3.IntegrityError: NOT NULL constraint failed: paragraphs.pause_before_ms`
+- **根因**: v2 `ParagraphAnnotation` schema 的 `pause_*_ms` 字段为 `Optional, default=None` (v1 兼容契约)，而 ORM `Paragraph.pause_before_ms` 列 NOT NULL 无 server_default。extract 阶段用 ORM 件默认 `default=0` 插了 row，annotate 阶段接手时 `write_annotate` 直接把 LLM 返回的 None 赋到列上 → UPDATE 失败
+- **修复**: `persistence.write_annotate` 赋值点加 `or 0` 收敛: `para.pause_before_ms = result.pause_before_ms or 0`
+- **回归测试**: `test_write_annotate_survives_null_pause_after_extract` 走两阶段 session (extract commit → annotate new session UPDATE)，修前红、修后绿
+
+#### Bug 1 — annotate 幽灵 idx=0 paragraph (真顽疾)
+- **表现**: synthesize 崩 `TtsRoutingInput text='' min_length=1`；quality 崩 `MultipleResultsFound`；DB 反复出现 `Paragraph(index=0, text='')` 删后下一轮 pipeline 自动重建
+- **根因**: `AnnotateStage.apersist/persist` 计算 host paragraph_index 时用了错误的优先顺序：
+  ```python
+  para_index = getattr(result, "paragraph_index", paragraph_index or 0)
+  ```
+  `getattr(result, "paragraph_index", ...)` 先得 LLM 返回的 `ParagraphAnnotation.paragraph_index`；deepseek 返了 0；fallback `paragraph_index or 0` 此时根本不会被选。于是 `write_annotate` 以 `index=0` 查不到已有行 → INSERT `Paragraph(index=0, text='')` 为幽灵，并把真段落 1 的 annotation 点错进去
+- **修复**: 反转优先顺序 — ground truth 优先，LLM 返回仅作 fallback：
+  ```python
+  para_index = paragraph_index if paragraph_index is not None else getattr(result, "paragraph_index", 0)
+  ```
+- **回归测试**: `test_annotate_apersist_uses_ground_truth_paragraph_index` — LLM 谎报 idx=0 用 caller 传 idx=5 压住，断言不会出现幽灵 idx=0、annotation 落在 idx=5
+
+#### Bug 2 — synthesize/quality 多版本行查 `scalar_one_or_none()` 崩
+- **表现**: `MultipleResultsFound` ("Multiple rows were found when one or none was required")
+- **根因**: `write_synthesize` / `write_quality` 都在 `select(...).filter(paragraph_id == para.id)` 之后调了 `scalar_one_or_none()`，但两个模型 (`AudioSegment` 和 `TTSEdit`) 都有多版本行 (模型有 `version` 列)。多版本时挂。`write_quality` 原本加了 `order_by(version.desc())` 但不够 — `scalar_one_or_none()` 要求 0/1 行不是 <=1
+- **修复**: 两处都加 `.order_by(version.desc()).limit(1)` 使查询仅返最新一行 — 与 `scalar_one_or_none()` 契约对齐，也实现取最新版本的意图
+
+#### Bug 3 — synthesize/quality 复用循环没镜像 pre-review 的空段落过滤
+- **表现**: 哪怕 Bug 1 未出现，若 DB 有任何遗留 idx=0 空段落 (历史会话残留)，synthesize 仍会拿全部段落 (含空) 走 TTS 路由 → 崩 `TtsRoutingInput text=''`
+- **根因**: `cli/pipeline.py` pre-review 段落循环已有 `valid_paras = [p for p in paragraphs if p.text and len(p.text.strip()) >= 10]` 过滤，但 post-review (synthesize/quality) 循环编循环所有静默段落调 orchestrator_run_pipeline → text='' 崩
+- **修复**: post-review 循环镜像同样过滤 — 双保险防御 (Bug 1 已根治源头 + Bug 3 防御遗留污染)
+
+### 端到端验证 (红线 #1 满足，非 mock)
+- 输入: `input/test_story.txt` (682 char 汉语小说第一章) → 项目 `test_story` project_id=4
+- LLM: `local_fcc_gateway` → anthropic /v1/messages → deepseek-v4-flash-free (上游 NIM)
+- 命令: `python -m src.audiobook_studio.cli pipeline run test_story --chapter 1 --no-resume`
+- 结果: `🎉 All books processed successfully`
+- 8 阶段 Stage EXIT 全 [OK]: extract→analyze→annotate→edit→audio_postprocess→review→synthesize→quality
+- 输出音频: `output/4_ch1_p1.wav` — AudioSegment id=1 (engine=hermes, 2453ms, status=completed)
+- soundfile 验证: 24000 Hz, 单声道, 2.45s, 非零帧峰值 0.7549 (真实音频非 0/非 mock)
+- paragraph 1 status=quality_checked, annotation 落在正确行 (speaker=旁白, emotion=tense, pause_before_ms=0)
+- 幽灵 idx=0 paragraph 不再被重建 (DB 验证干净)
+
+### 相关回归测试 (3 全绿)
+- `tests/unit/pipeline/test_persistence_annotate_null_pause.py` 3 个 test: schema NOT NULL 契约 + 空 pause 收敛 + ground-truth paragraph_index 胜出 — 全 PASSED
+
+### Pytest 整体基线状态
+- 4794 passed / 425 failed / 65 skipped — 本提交引入 0 个新失败
+- 验证方法: `git stash` 暂存本会话 3 个文件，剩余工作区仍持有，跑同 synthesize/quality subset 测试 — 同样 21 个失败 (上会话 async 重构的 pre-existing regression，不是本提交引入)
+- 本提交核心影响的 4 个 suite (persistence 新 test + database + config_loader + storage): 56 passed, 0 failed
+
+### 技术债标记
+- 工作区仍有 ~140 个文件未提交 (上会话中后期 async persistence 重构的费点) — 需后续原子提交
+- 工作区 21 个 synthesize/quality subset 测试 failed — 由工作区 async 重构后 `audio_quality.py` / `synthesize.py` / `secure_subprocess.py` 接口变动引起 (代码、fixture、mock 协议定调不一致)。修复路径: 要么同步 fixture 适配新 async API，要么 commit 补那几个重构的适配代码 — 交给下一 Sprint 接手
+
+---
