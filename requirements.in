@@ -25,6 +25,12 @@ pymupdf>=1.23.0
 ebooklib>=0.18
 python-docx>=1.1.0
 pillow>=10.0.0
+# OCR for scanned-image / image-only PDFs (P1.8). pytesseract is a thin wrapper
+# around the system `tesseract` binary — install the binary too (apt-get install
+# tesseract-ocr tesseract-ocr-chi-sim / brew install tesseract tesseract-lang).
+# extract.py gates OCR on BOTH the import AND the binary (red line #1), so a
+# missing pyproject pin alone is not enough; see the Dockerfile RUN line.
+pytesseract>=0.3.10
 
 # TTS
 edge-tts>=6.1.0

@@ -188,36 +188,41 @@ class TestExtractPipelineRealLogic:
     @patch("src.audiobook_studio.pipeline.extract.pytesseract")
     def test_extract_pdf_fallback_to_ocr(self, mock_pytesseract, mock_fitz, mock_pdfplumber):
         """Test _extract_pdf falls back to OCR when text too short."""
-        mock_page = Mock()
-        mock_page.extract_text.return_value = "短"
+        # P1.8: OCR_AVAILABLE now reflects end-to-end capability (imports AND
+        # tesseract binary), so gate the OCR branch. Patch it True so this test
+        # still exercises the honest "OCR available → fallback fires" path; the
+        # OCR-disabled honesty contract is covered by test_extract_ocr_truth.py.
+        with patch("src.audiobook_studio.pipeline.extract.OCR_AVAILABLE", True):
+            mock_page = Mock()
+            mock_page.extract_text.return_value = "短"
 
-        mock_pdf = Mock()
-        mock_pdf.pages = [mock_page]
-        mock_pdfplumber.open.return_value.__enter__.return_value = mock_pdf
+            mock_pdf = Mock()
+            mock_pdf.pages = [mock_page]
+            mock_pdfplumber.open.return_value.__enter__.return_value = mock_pdf
 
-        mock_doc = Mock()
-        mock_page_pymupdf = Mock()
-        mock_pix = Mock()
-        mock_pix.width = 100
-        mock_pix.height = 100
-        mock_pix.samples = b"\x00" * 30000  # RGB image data
-        mock_page_pymupdf.get_pixmap.return_value = mock_pix
-        mock_doc.__len__ = Mock(return_value=1)
-        mock_doc.__getitem__ = Mock(return_value=mock_page_pymupdf)
-        mock_fitz.open.return_value = mock_doc
+            mock_doc = Mock()
+            mock_page_pymupdf = Mock()
+            mock_pix = Mock()
+            mock_pix.width = 100
+            mock_pix.height = 100
+            mock_pix.samples = b"\x00" * 30000  # RGB image data
+            mock_page_pymupdf.get_pixmap.return_value = mock_pix
+            mock_doc.__len__ = Mock(return_value=1)
+            mock_doc.__getitem__ = Mock(return_value=mock_page_pymupdf)
+            mock_fitz.open.return_value = mock_doc
 
-        # Mock pytesseract
-        mock_pytesseract.image_to_string.return_value = "OCR identified content"
+            # Mock pytesseract
+            mock_pytesseract.image_to_string.return_value = "OCR identified content"
 
-        test_file = Path(self.temp_dir) / "test.pdf"
-        test_file.write_bytes(b"%PDF-1.4 dummy")
+            test_file = Path(self.temp_dir) / "test.pdf"
+            test_file.write_bytes(b"%PDF-1.4 dummy")
 
-        text, pages, has_ocr, ocr_ratio = self.pipeline._extract_pdf(str(test_file))
+            text, pages, has_ocr, ocr_ratio = self.pipeline._extract_pdf(str(test_file))
 
-        assert "OCR identified content" in text
-        assert pages == 1
-        assert has_ocr is True
-        assert ocr_ratio == 1.0
+            assert "OCR identified content" in text
+            assert pages == 1
+            assert has_ocr is True
+            assert ocr_ratio == 1.0
 
     @patch("src.audiobook_studio.pipeline.extract.epub")
     def test_extract_epub(self, mock_epub):

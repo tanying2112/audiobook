@@ -1050,3 +1050,52 @@
 5. **根因正确性**：修复打在根因（模块导入期惰性 client 的 eager `script_load`），非压制报错——Redis 在线时 `script_load` 正常 warm-up（行为不变），离线时诚实降级 `None`（与既有 `_get_redis()` 契约一致，非假通过）。
 
 **DoD 实证**：一次"无网无服务"的 `pytest tests/ --collect-only` 现在干净收齐 **5459** 个测试、**0** 错误——这为 P1.5 覆盖率权威基线（需在全量测试集上跑 `coverage run -m pytest`）与 P1.7 mypy 收网先把脚手架立稳。下步进入 P1.5。
+
+---
+
+## 日期：2026-08-15（P1 阶段 · P1.5 + P1.8）
+
+### 完成的工作：P1.5 覆盖率权威基线（收敛"一门三数"矛盾）
+
+> 对应 `docs/EVOLUTION_ROADMAP.md` P1.5，修复审计 `docs/AUDIT_REPORT_2026-08-14.md` §5.3 / §七#6（PROJECT_STATUS.md 三处 TEST-001 覆盖率给出三个互斥数字：65.28%、17.54%、17.5%——同一指标三门口径，违反 SSOT 红线 #3 与"覆盖率权威基线"目标）。红线 #1：数字由真实全量跑测得出，不采信旧子集口径；红线 #3：三处全收敛至单一权威数，且落盘 `coverage.json` 永久可复算。
+
+**根因**：旧两数来源不同口径——17.54%/17.5% 为**早期 `api` 子集**口径（只跑 `tests/unit/api/`），65.28% 为**上一轮非全量**口径。两数既非同一测试集、也非同一 `--include` 范围，无法横向比较，更不是"全 `src/` 权威值"。真正基线必须是**一次全量跑测**喂 coverage 合并出的单一 `percent_covered`。
+
+**权威方法（可复算）**：
+1. 全量收集已由 P1.6 确保干净（5459 tests、0 error、无 Redis/无网）。
+2. 跑 `PYTHONPATH=src .venv/bin/python -m coverage run --include="src/audiobook_studio/*" -m pytest tests/ --ignore=tests/unit/tts/remote_workers -p no:cacheprovider -q`（隔离 `remote_workers` 影子代码：其 `test_base_worker.py::worker.run()` 调 `base_worker.py:255 time.sleep(5)` 在 Redis 缺失下死循环，pytest-timeout 杀不掉 C 级 `time.sleep`，会挂死 session teardown——该目录按 `worker-unification-pending.md` 已隔离，非生产路径）。
+3. 结果：`228 failed, 4551 passed, 17 skipped in 393.65s`。coverage 在 pytest 进程退出时 flush `.coverage.<pid>`（84KB）——**注意**：pytest exit code 1（因 228 个与 OCR/edge_tts/asset 无关的旧 fail）不影响 coverage 合并；228 失败多为本机缺二进制/网络的真实失败（红线 #1 记其存在），不污染覆盖率统计分子分母（未触达的行仍计为 missed）。
+4. `.venv/bin/python -m coverage json --include="src/audiobook_studio/*" -o coverage.json` → `percent_covered = 77.5973…`（四舍五入 77.60%），`covered_lines=8313`, `num_statements=10713`, `missing_lines=2400`, `excluded_lines=795`。`coverage.json` 已落盘仓根，永久可 `python -m coverage report` 复算。
+
+**收敛落地**：`PROJECT_STATUS.md` 三处 TEST-001 全部改为单一权威数 **77.60%**，并保留一句"旧 65.28%/17.54% 系旧口径/子集口径矛盾"的溯源注记（非活口径，仅交代矛盾来源）。距 80% 目标仅差 **2.4pp**，补 tts/pipeline/tasks/feedback 少量单测即可达标（旧估"500+ 单测 / 60h"系子集口径下的过时外推，全量基线下残余工作量大幅收敛）。
+
+**验收（DoD）达成：**
+1. **单一权威数（DoD①，SSOT 红线#3）**：`PROJECT_STATUS.md` 不再出现互斥的 65.28%/17.54%/17.5%；三处统一为 77.60%——通过。
+2. **数字真跑得出（DoD②，红线#1）**：数字来自一次实跑全量 `coverage run -m pytest`，`coverage.json` 落盘可复算，无 mock/无采信旧口径——通过。
+3. **方法可复算（DoD③）**：`coverage.json` + 本节方法注记齐全，任何分支可 `.venv/bin/python -m coverage report --include="src/audiobook_studio/*"` 复现——通过。
+
+**DoD 实证**：TEST-001 覆盖率权威基线 = **77.60%**（8313/10713 行），`coverage.json` 已落盘。距 80% 仅差 2.4pp。下步 P1.7（mypy strict）。
+
+---
+
+### 完成的工作：P1.8 OCR 主路径真实性（"真OCR或诚实降级"，绝不 fake-success）
+
+> 对应 `docs/EVOLUTION_ROADMAP.md` P1.8，修复审计 `docs/AUDIT_REPORT_2026-08-14.md` §5.2 / §七#5（`extract.py` 仅据 `import pytesseract` 成功就把 `OCR_AVAILABLE=True`，而 pytesseract 只是 `tesseract` 系统二进制的薄包装——缺二进制仍能 import 成功 → 进 OCR 分支 → `pytesseract.image_to_string` 抛 `TesseractNotFoundError` → 被 except 静默吞 → 退回嵌入文本层（扫描件为空）→ **fake-success**：扫描图/PDF 被当"已提取"却交付空串）。红线 #1（主路径真实性）：修真因，不压制；缺二进制就诚实 disable + 明确告警，绝不假装 OCR 成功。红线 #3：状态记此 SSOT。
+
+**改动清单（4 个文件 + 1 新测试）：**
+1. **`src/audiobook_studio/pipeline/extract.py`（改，根因核心）**
+   - 顶部 OCR 可用性判定重写：`OCR_AVAILABLE` 改为同时要求 (a) `pytesseract`/`PIL` import 成功 AND (b) `shutil.which("tesseract")`（可 `TESSERACT_CMD` 覆盖）解析到二进制。二者缺一即 `OCR_AVAILABLE=False` + 诚实分级告警（缺模块说模块、缺二进制说二进制及安装命令）。带设计注释解释为何"import 成功 ≠ OCR 可用"。
+   - `_extract_pdf` 诚实化：OCR 分支由 `if len(extracted_text) < 100 and OCR_AVAILABLE:` 门控；仅当 OCR **真的产出文本**时才 `has_ocr=True`（老版本在分支入口就无条件 `has_ocr=True`，并把字典块文本当 OCR 页计入——fake OCR）。新增 `elif … and not OCR_AVAILABLE:` 诚实降级日志（明告"无二进制，只返回嵌入文本层，has_ocr 保持 False 不假装"）。删去老的把 `else` 字典块当 OCR 的伪装路径。
+   - `_extract_image` 诚实化：`OCR_AVAILABLE=False` 时 **直接 `raise ValueError`**（扫描图无嵌入文本层可退，返回 `("", False)` 等同假装成功）；raise 文信息含模块+二进制两半的安装命令。
+2. **`requirements.in`（改）**：`pytesseract>=0.3.10` 此前仅在 `requirements.txt`（pip-compile 产物）有一行，`requirements.in`（源）**未列**——源/产物口径不一致。现于 `pillow>=10.0.0` 后补 `pytesseract>=0.3.10` 并带注释说明"pytesseract 是 `tesseract` 二进制薄包装，需另装系统二进制"。
+3. **`Dockerfile`（改）**：runtime `apt-get install` 增 `tesseract-ocr` + `tesseract-ocr-chi-sim`（带 P1.8 红线 #1 注释）——pytesseract pin 离了二进制无效，容器内必须同时有二进制，`OCR_AVAILABLE` 门才真。
+4. **`tests/unit/test_extract_ocr_truth.py`（新）**：5 个不变式测试锁定"OCR gate 反映端到端能力、非仅 import"——`test_ocr_available_false_when_binary_missing`（模块在二进制缺即 False）、`test_ocr_available_false_on_no_extras`、`test_extract_image_raises_when_ocr_disabled`（禁役时 raise 不返回 ("",False)）、`test_tesseract_cmd_env_is_honored_as_binary`、`test_extract_pdf_no_fake_success_on_scanned_only_when_disabled`（文本层<100 + OCR 禁 ⟹ 不许 `has_ocr=True`——**此测试真抓到老 `_extract_pdf` 的 fake-success bug**，促成本次 _extract_pdf 诚实化；用 `_reload_extract()` 重导按当下 env 复算 `OCR_AVAILABLE`）。
+5. **`tests/unit/test_extract.py::test_extract_pdf_fallback_to_ocr`（改）**：P1.8 的 `OCR_AVAILABLE` 门控使该测试在本机（无 tesseract 二进制）进不了 OCR 分支 → 旧断言失败。用 `with patch("…extract.OCR_AVAILABLE", True):` 门控为 True 仍跑通"OCR 可用 → fallback 触发"的诚实路径；OCR 禁役诚实性由 `test_extract_ocr_truth.py` 独立覆盖（职责分离，不靠 mock 装真）。
+
+**验收（DoD）达成：**
+1. **不用 import 假装 OCR 可用（DoD①，红线#1）**：`OCR_AVAILABLE` 现要 import AND 二进制；本机实测 `OCR_AVAILABLE=False, _TESSERACT_BIN=None`，诚实告警打印——通过。
+2. **扫描图不 fake-success（DoD②，红线#1）**：`_extract_image` 禁役即 `raise ValueError`（不返回 `("",False)`）；`_extract_pdf` 文本层薄 + OCR 禁 ⟹ `has_ocr=False`——通过。
+3. **测试锁定不变式且真抓 bug（DoD③，红线#1）**：`tests/unit/test_extract.py tests/unit/test_extract_ocr_truth.py` → **27 passed, 1 skipped**（1 skip：本机装了 pytesseract/PIL，故非 import 变体由别处覆盖；属环境分流，非假通过）。`test_extract_pdf_no_fake_success…` 真抓到 fake-success 并已修——根因正确性验证。
+4. **部署一致性（DoD④）**：`Dockerfile` 装二进制、`requirements.in` 列 pin——容器内 OCR 可真跑，非纸面 pin。
+
+**DoD 实证**：`pytesseract` 不再"能 import 就假装 OCR 可用"。本机无 `tesseract` 二进制 → `OCR_AVAILABLE=False` + 明确告警，扫描图 `_extract_image` raise、扫描 PDF `has_ocr` 保持 False；Dockerfile 装二进制后容器内 OCR 可真跑。`27 passed, 1 skipped`。下步 P1.7（mypy strict）。

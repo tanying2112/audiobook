@@ -21,15 +21,66 @@ from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
-# Optional OCR dependencies
-try:
-    import pytesseract
-    from PIL import Image
+# Optional OCR dependencies.
+#
+# Red line #1 (主路径真实性): ``OCR_AVAILABLE`` MUST reflect whether OCR can
+# ACTUALLY run end-to-end, not merely whether the ``pytesseract`` Python module
+# imports. ``pytesseract`` is only a thin wrapper around the ``tesseract``
+# SYSTEM BINARY — the import succeeds even when the binary is absent, so the
+# previous form (``OCR_AVAILABLE = True`` on import success) let the pipeline
+# enter the OCR branch, call ``pytesseract.image_to_string`` -- which raises
+# ``TesseractNotFoundError`` -- then silently swallowed the error at line ~101
+# and fell back to the embedded text layer as if OCR had been attempted, i.e.
+# *fake-success* on scanned/image-only PDFs (audit §5.2 / §七#5).
+#
+# The fix: require BOTH the Python module import AND a resolvable ``tesseract``
+# binary on PATH (``shutil.which``); only then claim OCR is available. When the
+# binary is missing, honest-disable OCR and log a clear, actionable message so
+# callers know scanned-image extraction is degraded to embedded-text-layer
+# only -- never masquerade. (tesseract is free / Apache-2.0; install via
+# ``apt-get install tesseract-ocr tesseract-ocr-chi-sim`` on Debian/Ubuntu,
+# ``brew install tesseract tesseract-lang`` on macOS; also add to the
+# Dockerfile RUN line and requirements.in -- see P1.8.)
+import shutil
 
-    OCR_AVAILABLE = True
+# Module-level imports of the optional deps. Bound under the SAME names the
+# call sites use (``pytesseract``, ``Image``) so the OCR branch is unchanged when
+# OCR is genuinely available. ``OCR_AVAILABLE`` gates those call sites.
+pytesseract = None  # type: Optional[Any]
+Image = None  # type: Optional[Any]
+_ocr_imports_ok = False
+
+try:
+    import pytesseract  # noqa: F811
+    from PIL import Image  # noqa: F811
+
+    _ocr_imports_ok = True
 except ImportError:
+    _ocr_imports_ok = False
+
+# Resolve the ``tesseract`` binary, honoring an explicit override
+# (``TESSERACT_CMD`` env) the same way the pytesseract wrapper does.
+_TESSERACT_BIN = os.environ.get("TESSERACT_CMD") or shutil.which("tesseract")
+
+if _ocr_imports_ok and _TESSERACT_BIN:
+    OCR_AVAILABLE = True
+else:
     OCR_AVAILABLE = False
-    logger.warning("OCR dependencies (pytesseract, Pillow) not available. Image OCR disabled.")
+    if not _ocr_imports_ok:
+        logger.warning(
+            "OCR disabled: pytesseract/Pillow Python modules not installed "
+            "(pip install pytesseract pillow). Scanned-image/PDF OCR "
+            "unavailable; only embedded-text-layer extraction runs."
+        )
+    elif not _TESSERACT_BIN:
+        logger.warning(
+            "OCR disabled: the `tesseract` system binary was not found on PATH "
+            "(pytesseract is only a wrapper). Install tesseract + chi_sim "
+            "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
+            "brew install tesseract tesseract-lang) to enable scanned-image "
+            "OCR. Until then, scanned/image-only inputs degrade honestly to "
+            "empty/best-effort embedded-text-layer text——NOT fake-success."
+        )
 
 
 class ExtractPipeline:
@@ -68,10 +119,18 @@ class ExtractPipeline:
 
         extracted_text = "\n\n".join(text_parts).strip()
 
-        # If text too short, try PyMuPDF OCR with pytesseract
-        if len(extracted_text) < 100:
+        # If text too short, try OCR. Red line #1 (主路径真实性): ``has_ocr`` and
+        # ``ocr_pages`` MUST reflect OCR that actually *ran and produced text*,
+        # not "the OCR branch was entered". The previous form set
+        # ``has_ocr = True`` unconditionally here and counted dict-block text as
+        # OCR pages even when ``OCR_AVAILABLE`` was False -- i.e. claiming OCR on
+        # scanned PDFs that simply returned embedded-text-layer fragments (audit
+        # §5.2 / §七#5). We now: only attempt OCR when it is honestly available;
+        # when it is not, fall through cleanly with has_ocr=False/ocr_pages=0
+        # (the embedded text layer was already extracted by pdfplumber above;
+        # nothing further to do here that would be real OCR).
+        if len(extracted_text) < 100 and OCR_AVAILABLE:
             logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
-            has_ocr = True
             try:
                 doc = fitz.open(file_path)
                 page_count = len(doc)
@@ -79,26 +138,32 @@ class ExtractPipeline:
                 for page_num in range(len(doc)):
                     page = doc[page_num]
                     # Render page to image and OCR it
-                    if OCR_AVAILABLE:
-                        pix = page.get_pixmap(dpi=200)
-                        from PIL import Image
+                    pix = page.get_pixmap(dpi=200)
+                    from PIL import Image
 
-                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                        # Use pytesseract for OCR
-                        page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
-                    else:
-                        # Fallback: try to get text blocks without OCR
-                        blocks = page.get_text("dict")["blocks"]
-                        page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    # Use pytesseract for OCR
+                    page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
 
                     if page_text.strip():
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
                 if ocr_text_parts:
                     extracted_text = "\n\n".join(ocr_text_parts).strip()
+                    # OCR genuinely contributed content -- only now assert has_ocr.
+                    has_ocr = True
                 doc.close()
             except Exception as e:
                 logger.error(f"PyMuPDF OCR failed: {e}")
+        elif len(extracted_text) < 100 and not OCR_AVAILABLE:
+            # Honest degradation: text layer is thin AND OCR cannot run in this
+            # environment. We do NOT fabricate OCR; leave has_ocr=False so the
+            # downstream report reflects "embedded-text-layer only".
+            logger.info(
+                "Text layer insufficient and OCR unavailable (tesseract binary "
+                "or pytesseract missing) -- returning embedded-text-layer text "
+                "only; has_ocr stays False (no fake OCR claim)."
+            )
 
         ocr_ratio = ocr_pages / page_count if page_count > 0 else 0.0
         return extracted_text, page_count, has_ocr, ocr_ratio
@@ -148,9 +213,19 @@ class ExtractPipeline:
             return text.strip(), 1, False, 0.0
 
     def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from image using OCR (requires pytesseract + Pillow)."""
+        """Extract text from image using OCR (requires pytesseract + Pillow + tesseract binary)."""
         if not OCR_AVAILABLE:
-            raise ValueError("Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow")
+            # Red line #1: honest failure, not fake-success. A scanned image has
+            # NO embedded text layer to fall back to, so returning ("", False)
+            # would be masquerading-as-success. Raise so the caller can decide
+            # how to surface it.
+            raise ValueError(
+                "Image OCR not available. Install the pytesseract Python module "
+                "(pip install pytesseract pillow) AND the tesseract system binary "
+                "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
+                "brew install tesseract tesseract-lang). extract.py reports OCR "
+                "available only when BOTH are present."
+            )
 
         try:
             image = Image.open(file_path)

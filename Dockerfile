@@ -62,12 +62,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install ONLY runtime dependencies (no build toolchain).
 # tini: proper signal handling & zombie reaping for PID 1.
+# tesseract-ocr + tesseract-ocr-chi-sim (P1.8): the binary required by the
+# pytesseract wrapper for scanned-image / image-only-PDF OCR. The Python pin
+# alone does nothing without the system binary; extract.py's OCR_AVAILABLE gate
+# is true only when BOTH are present (red line #1 — 主路径真实性).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ffmpeg \
     libsndfile1 \
     postgresql-client \
     tini \
+    tesseract-ocr \
+    tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

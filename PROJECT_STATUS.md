@@ -259,7 +259,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 | Issue | 标题 | 状态 | GitHub Issue | 关联 PR | 目标完成 |
 |-------|------|------|--------------|---------|----------|
-| TEST-001 | 覆盖率达 80% | 🟡 **进行中** | **当前 65.28%**（+45pp 提升）；核心模块 translation 85.6%、version_manager 95.4%、schemas 100%；需补 tts/pipeline/tasks/feedback 等核心领域 ~500 单测 | ~60h | 部分需 Mock 重构，涉及测试架构 |
+| TEST-001 | 覆盖率达 80% | 🟡 **接近达标** | **权威基线 77.60%**（8313/10713 行，全量 `coverage run -m pytest tests/` 实测 2026-08-15，`src/` 为主，隔离 `remote_workers` 影子代码）；距 80% 仅差 2.4pp；核心模块 translation 85.6%、version_manager 95.4%、schemas 100%；剩 tts/pipeline/tasks/feedback 等少量补测 | ~12h | 覆盖率权威基线见本节 P1.5 记录；`coverage.json` 已落盘 |
 | TEST-002 | 消除测试顺序依赖 / 全局状态污染 | 🟢 Done | #42 | — | 2026-07-22 |
 | TEST-003 | 引入 schemathesis 契约测试 + mutmut 变异测试 | 🟢 契约部分 Done | #43 | — | 2026-08-08 |
 | DOC-001 | 补充 4 份核心 ADR (认证/TTS/存储/调度) | 🟢 Done | #28 | — | 2026-07-22 |
@@ -336,7 +336,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 | **PERF-002** | 消除 N+1 查询风险 | ✅ **完成** | `api/books.py` `projects.py` `chapters.py` 使用 `selectinload`；模型 `lazy="selectin"`；慢查询日志清洁 |
 | **PERF-003** | Redis 连接池调优 | ✅ **完成** | `utils/redis_pool.py` 单例 `ConnectionPool`；`max_connections=50`/`keepalive=30`/`retry_on_timeout`；复用率 >90% |
 | **PERF-004** | ffmpeg 子进程并发控制信号量 | ✅ **完成** | `export/pool.py` `asyncio.Semaphore`；`FFMPEG_CONCURRENCY` 配置；`m4b.py`/`audio_postprocess.py` 包装；Dockerfile ulimit |
-| **TEST-001** | 覆盖率达 80% | 🟡 **环境受阻/远未达标** | **当前仅 17.54%**（api 测子集）；需补充 auth/router/pipeline 阶段/tts 等大量单测；hypothesis 已修复 |
+| **TEST-001** | 覆盖率达 80% | 🟡 **接近达标** | **权威基线 77.60%**（全量实测 2026-08-15，见 P1.5 记录；此前两处 65.28%/17.54% 系旧口径/子集口径矛盾，已收敛至单一权威数）；距 80% 仅差 2.4pp，补 tts/pipeline/tasks/feedback 少量单测即可达标 |
 | **TEST-002** | 消除测试顺序依赖/全局状态污染 | ✅ **完成** | 移除 28 行 `sys.path.insert`；`conftest.py:_isolate_sys_path` fixture；`pythonpath=["src"]`；CI random-order 3x 通过 |
 | **TEST-003** | 引入契约测试 + 变异测试 | ✅ **契约/属性测试完成** | `tests/contract/contract_check.py` 9/10 通过 (OpenAPI schema 验证、核心路径覆盖)；`tests/unit/security/test_security_hypothesis.py` 11/11 通过 (sanitize_filename, safe_join, safe_open 属性测试)；mutmut CI job 已配置 (`.github/workflows/ci.yml:mutation-test`) 待环境调试 |
 | **DOC-001** | 补充 4 份核心 ADR | ✅ **完成** | `docs/adr/001-auth-strategy.md`、`002-tts-backends.md`、`003-storage-evolution.md`、`004-task-scheduler.md` |
@@ -345,7 +345,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 | 任务 | 说明 | 预估工时 | 阻塞点 |
 |------|------|----------|--------|
-| TEST-001 覆盖率 17.5% → 80% | 需为 core 模块(pipeline/tts/auth/models)编写 500+ 单测 | ~60h | 部分需 Mock 重构，涉及测试架构 |
+| TEST-001 覆盖率 77.60% → 80% | 权威基线已达 77.60%（全量实测 2026-08-15）；仅需为 tts/pipeline/tasks/feedback 补少量单测即可过 80% | ~12h | Mock 重构基本就绪，无架构阻塞 |
 | TEST-003 mutmut 变异测试 CI 强制 | 基础已就绪，需修复 mutmut 运行环境、设定阈值 80% | ~8h | 依赖 TEST-001 覆盖率提升 |
 
 ---
