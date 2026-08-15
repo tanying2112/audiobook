@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -39,8 +39,10 @@ class AnalyzeStructurePipeline:
 
         # Setup Jinja2 environment
         if prompt_dir is None:
-            prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
-        self.prompt_dir = Path(prompt_dir)
+            resolved_prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
+        else:
+            resolved_prompt_dir = Path(prompt_dir)
+        self.prompt_dir = resolved_prompt_dir
 
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompt_dir)),
@@ -137,7 +139,7 @@ def analyze_structure(
     raw_text: str,
     title_hint: Optional[str] = None,
     author_hint: Optional[str] = None,
-    target_difficulty: str = "B",
+    target_difficulty: Literal["A", "B", "C", "D"] = "B",
     mock_mode: bool = True,
 ) -> BookAnalysisOutput:
     """Convenience function for structure analysis."""

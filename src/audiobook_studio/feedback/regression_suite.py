@@ -85,7 +85,7 @@ class RegressionSuite:
         # failure_id → KnownFailure（在册，无论 active/retired）
         self._failures: Dict[str, KnownFailure] = {}
         # 已退役（不再用作主动拒绝判据，但仍审计在册）
-        self._retired: set = set()
+        self._retired: set[str] = set()
         # 反查：坏例 id → 产出它的 producer（便于"新失败入库后能拒绝其 producer"）
         self._producer_to_failures: Dict[str, List[str]] = {}
 
@@ -216,8 +216,8 @@ class RegressionSuite:
                     regressed_on.append(added.failure_id)
 
         # 去重：同一 failure_id 在 regressed_on 中只出现一次（regress + new-add 不双计）
-        seen: set = set()
-        dedup = []
+        seen: set[str] = set()
+        dedup: List[str] = []
         for fid in regressed_on:
             if fid not in seen:
                 seen.add(fid)

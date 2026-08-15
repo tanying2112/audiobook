@@ -9,10 +9,12 @@
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ..config.hardware_profile import get_hardware_profile
 from ..quality.metrics import SpeakerSimilarityMetric, SpeakerSimilarityResult
+from ..schemas.book import CharacterVoiceBinding
+from ..schemas.tts_routing import TtsRoutingInput
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class VoiceAnchorRecord:
     embedding_model: str = "wavlm_large"
     created_at: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "character_name": self.character_name,
             "voice_id": self.voice_id,
@@ -70,7 +72,7 @@ class VoiceAnchorManager:
     def __init__(self, config: Optional[VoiceAnchorConfig] = None):
         self.config = config or VoiceAnchorConfig()
         self._anchors: Dict[str, VoiceAnchorRecord] = {}  # character_name -> anchor
-        self._drift_alerts: Dict[int, List[dict]] = {}  # chapter_index -> alerts
+        self._drift_alerts: Dict[int, List[Dict[str, Any]]] = {}  # chapter_index -> alerts
         self._reference_audio_dir = Path(self.config.reference_audio_dir)
         self._reference_audio_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,7 +100,7 @@ class VoiceAnchorManager:
         reference_audio_path: str,
         chapter_index: int,
         paragraph_index: int,
-    ) -> VoiceAnchorRecord:
+    ) -> Optional[VoiceAnchorRecord]:
         """注册角色的首次声纹参考音频.
 
         Args:
@@ -266,7 +268,7 @@ class VoiceAnchorManager:
                 chapter_index,
             )
 
-    def get_drift_alerts(self, chapter_index: int) -> List[dict]:
+    def get_drift_alerts(self, chapter_index: int) -> List[Dict[str, Any]]:
         """获取章节的声纹漂移告警."""
         return self._drift_alerts.get(chapter_index, [])
 
@@ -277,8 +279,8 @@ class VoiceAnchorManager:
     def inject_reference_audio(
         self,
         character_name: str,
-        prosody_overrides: dict,
-    ) -> dict:
+        prosody_overrides: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """将参考音频注入韵律覆盖参数 (供 TTS 引擎使用).
 
         Args:
@@ -299,7 +301,7 @@ class VoiceAnchorManager:
 
         return prosody_overrides
 
-    def get_summary(self) -> dict:
+    def get_summary(self) -> Dict[str, Any]:
         """获取 Voice Anchor 状态摘要."""
         return {
             "enabled": self.config.enabled,
@@ -349,9 +351,9 @@ def reset_voice_anchor_manager() -> None:
 # Integration helper for SynthesizePipeline
 async def apply_voice_anchor(
     manager: VoiceAnchorManager,
-    inputs: List,  # List[TtsRoutingInput]
-    voice_map: List,  # List[CharacterVoiceBinding]
-) -> List:
+    inputs: List[TtsRoutingInput],  # List[TtsRoutingInput]
+    voice_map: List[CharacterVoiceBinding],  # List[CharacterVoiceBinding]
+) -> List[TtsRoutingInput]:
     """为输入段落应用 Voice Anchor (自动注入 reference_audio).
 
     此函数在 SynthesizePipeline.run() 内部调用，
@@ -386,8 +388,11 @@ async def apply_voice_anchor(
             # Inject reference audio for subsequent appearances
             ref_audio = manager.get_reference_audio(char_name)
             if ref_audio:
-                # This will be picked up by _make_routing_decision or run()
-                inp.paragraph_annotation.voice_anchor_ref = ref_audio
+                # This will be picked up by _make_routing_decision or run().
+                # Stashed dynamically: ParagraphAnnotation (extra="forbid") has
+                # no declared voice_anchor_ref field, so use setattr to express
+                # the runtime stash without overshooting the schema contract.
+                setattr(inp.paragraph_annotation, "voice_anchor_ref", ref_audio)
 
     return inputs
 

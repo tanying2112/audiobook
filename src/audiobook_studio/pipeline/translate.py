@@ -6,7 +6,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from ..llm import create_router
 from ..models.audio_segment import AudioSegment
@@ -74,7 +74,7 @@ class TranslateAndDubPipeline:
             semantic_checker = None
 
         dubbed_segments = []
-        report = {
+        report: Dict[str, Any] = {
             "source_segments": len(segments),
             "target_language": target_language,
             "book_title": book_title,
@@ -167,17 +167,19 @@ class TranslateAndDubPipeline:
             try:
                 # 这里我们需要提取文本进行语义连贯性检查
                 # 在实际实现中，这会更复杂
-                source_texts = [getattr(s, "text", "") for s in segments if hasattr(s, "text")]
-                dubbed_texts = [
+                source_texts: List[str] = [
+                    getattr(s, "text", "") for s in segments if hasattr(s, "text")
+                ]
+                dubbed_texts: List[str] = [
                     getattr(s, "text", "")
                     for s in dubbed_segments
                     if hasattr(s, "text") and not (hasattr(s, "segment_id") and "_FAILED" in s.segment_id)
                 ]
 
                 if source_texts and dubbed_texts:
-                    # 调用语义连贯性检查器
+                    # 调用语义连贯性检查器：dubbed 作为待检查段落, source 作为翻译前后对比参考
                     coherence_result = semantic_checker.check_coherence(
-                        source_texts, dubbed_texts, check_emotional_curve=True
+                        dubbed_texts, check_emotional_curve=True, reference_paragraphs=source_texts
                     )
 
                     report["semantic_coherence_score"] = coherence_result.get("score")
@@ -197,7 +199,7 @@ class TranslateAndDubPipeline:
 
         return dubbed_segments, report
 
-    def _get_target_voice(self, character_name: str, target_language: str, emotion: str) -> dict:
+    def _get_target_voice(self, character_name: str, target_language: str, emotion: str) -> Dict[str, Any]:
         """Return a voice configuration for the given target language by querying
         the character voice binding database. Falls back to default if not found.
         """
@@ -209,10 +211,10 @@ class TranslateAndDubPipeline:
             # 查找角色的声音绑定
             character = db.query(Character).filter(Character.canonical_name == character_name).first()
 
-            if character and character.voice_mapping:
-                # 尝试获取目标语言的 voice_id
-                voice_mapping = character.voice_mapping
-                if isinstance(voice_mapping, dict):
+            if character is not None:
+                # voice_mapping 为按语言映射的 voice_id (JSON 字段, ORM 未显式声明该列)
+                voice_mapping = getattr(character, "voice_mapping", None)
+                if voice_mapping is not None and isinstance(voice_mapping, dict):
                     voice_id = voice_mapping.get(target_language)
                     if voice_id:
                         return {
@@ -293,13 +295,15 @@ class TranslateAndDubPipeline:
                     {"role": "user", "content": prompt},
                 ],
             )
-            return result.output.translated_text.strip()
+            # router.call 依据 response_model 动态构造 LLMCallResult.output, 静态返回 Any, 按 TranslationResult 收窄
+            translated = cast(TranslationResult, result.output)
+            return translated.translated_text.strip()
         except Exception as e:
             logger.error(f"LLM translation failed: {e}")
             # Fallback to a simple placeholder if translation fails
             return f"[{target_language}] {text}"
 
-    def _apply_voice_characteristics(self, annotation: ParagraphAnnotation, voice_config: dict) -> dict:
+    def _apply_voice_characteristics(self, annotation: ParagraphAnnotation, voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """Convert emotion to speech_rate and pitch_shift_semitones adjustments."""
         emotion_adjustments = {
             "neutral": (1.0, 0.0, 1.0),
@@ -329,7 +333,7 @@ class TranslateAndDubPipeline:
         original_segment: AudioSegment,
         translated_text: str,
         target_language: str,
-        voice_params: dict,
+        voice_params: Dict[str, Any],
     ) -> AudioSegment:
         """Synthesize dubbed audio using the TTS pipeline."""
         # Obtain annotation (make a mutable copy if needed)
@@ -342,7 +346,7 @@ class TranslateAndDubPipeline:
                 emotion="neutral",
                 emotion_intensity=0.5,
                 speech_rate=1.0,
-                pitch_shift_semitones=0.0,
+                pitch_shift_semitones=0,
                 pause_before_ms=300,
                 pause_after_ms=500,
                 confidence=0.9,
@@ -364,9 +368,6 @@ class TranslateAndDubPipeline:
             age_range="unknown",
             suggested_voice_id="zh-CN-XiaoxiaoNeural",
             sample_quote=sample_quote,
-            cost_limit_per_book=20.0,
-            cost_limit_per_chapter=5.0,
-            prefer_local=True,
             contract_version=1,
         )
 
@@ -418,6 +419,6 @@ class TranslateAndDubPipeline:
             voice_id=voice_id,
             prosody_overrides=None,
         )
-        # Add text attribute for test compatibility
-        new_segment.text = translated_text
+        # Add text attribute for test compatibility (ORM 模型未声明 text 列, 以动态属性承载)
+        setattr(new_segment, "text", translated_text)
         return new_segment

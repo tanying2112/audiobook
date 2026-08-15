@@ -216,7 +216,7 @@ class QualityMetric(ABC):
     """质量指标基类."""
 
     @abstractmethod
-    def compute(self, *args, **kwargs) -> Any:
+    def compute(self, *args: Any, **kwargs: Any) -> Any:
         """计算质量指标."""
         pass
 
@@ -298,11 +298,11 @@ class DNSMOSMetric(QualityMetric):
         else:
             self.model_path = Path(model_path)
 
-        self._session = None
+        self._session: Any = None
         self._initialized = False
 
         # Mock mode 固定返回值 (用于测试和 CI)
-        self._mock_scores = {
+        self._mock_scores: Dict[str, float] = {
             "mos_overall": 4.2,
             "mos_sig": 4.1,
             "mos_bak": 4.3,
@@ -349,7 +349,7 @@ class DNSMOSMetric(QualityMetric):
 
         return False
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 ONNX Runtime 会话."""
         if self._initialized:
             return
@@ -382,6 +382,7 @@ class DNSMOSMetric(QualityMetric):
             logger.info(f"DNSMOS model initialized from {self.model_path}")
 
             # 验证模型输入输出
+            assert self._session is not None  # set by InferenceSession above
             inputs = self._session.get_inputs()
             outputs = self._session.get_outputs()
             logger.debug(f"DNSMOS model inputs: {[i.name for i in inputs]}")
@@ -418,7 +419,7 @@ class DNSMOSMetric(QualityMetric):
                     audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
                 except ImportError:
                     audio = self._resample_via_ffmpeg(audio_path)  # 落到 ffmpeg
-            return audio.astype(np.float32, copy=False)
+            return np.asarray(audio, dtype=np.float32)
         except Exception as e:
             logger.debug(f"soundfile read failed for {audio_path} ({e}); trying ffmpeg")
             return self._resample_via_ffmpeg(audio_path)
@@ -427,7 +428,7 @@ class DNSMOSMetric(QualityMetric):
         """ffmpeg 重采样到 16kHz mono float32 的回退路径。"""
         import asyncio
 
-        async def _resample():
+        async def _resample() -> np.ndarray:
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
                 "-y",
@@ -641,7 +642,7 @@ class FunASRBackend(ASRBackend):
         self.device = device
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
     def _get_cache_dir(self) -> Path:
@@ -668,7 +669,7 @@ class FunASRBackend(ASRBackend):
         logger.debug(f"FunASR cache directory: {cache_dir}")
         return True
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         if self._initialized:
             return
         if self.mock_mode:
@@ -845,7 +846,7 @@ class WhisperBackend(ASRBackend):
         self.use_faster = use_faster
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
     def _get_cache_dir(self) -> Path:
@@ -861,7 +862,7 @@ class WhisperBackend(ASRBackend):
         logger.debug(f"Whisper cache directory: {cache_dir}")
         return True
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         if self._initialized:
             return
         if self.mock_mode:
@@ -1095,7 +1096,7 @@ class ASRWerMetric(QualityMetric):
         # Levenshtein distance with operation tracking
         n, m = len(ref_tokens), len(hyp_tokens)
         dp = [[0] * (m + 1) for _ in range(n + 1)]
-        ops = [[None] * (m + 1) for _ in range(n + 1)]
+        ops: List[List[Optional[str]]] = [[None] * (m + 1) for _ in range(n + 1)]
 
         for i in range(n + 1):
             dp[i][0] = i
@@ -1281,13 +1282,13 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
         self.device = device
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "speechbrain"
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 SpeechBrain ECAPA-TDNN 模型."""
         if self._initialized:
             return
@@ -1417,14 +1418,14 @@ class WavLMBackend(SpeakerEmbeddingBackend):
         self.device = device
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "transformers"
-        self._model = None
-        self._feature_extractor = None
+        self._model: Any = None
+        self._feature_extractor: Any = None
         self._initialized = False
 
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 WavLM 模型."""
         if self._initialized:
             return
@@ -1748,7 +1749,7 @@ class QualityCheckSuite:
         self._speaker_sim: Optional[SpeakerSimilarityMetric] = None
         self._initialized = False
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化所有组件.
 
         Each metric is initialized independently — a missing dependency

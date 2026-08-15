@@ -17,7 +17,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 # ── Optional dspy dependency (P0.4 Route B — honesty) ───────────────────────
 # dspy is NOT a declared dependency (absent from requirements / pyproject). It
@@ -32,12 +32,35 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # remain importable and usable with dspy absent. Calling the real optimiser
 # without dspy raises a clear, actionable error instead of an import-time crash.
 # See docs/AUDIT_REPORT_2026-08-14.md §4.4 and tests/unit/test_feedback_import_safety.py.
-dspy = None
+#
+# Typing strategy: under ``TYPE_CHECKING`` we import the real dspy symbols so
+# mypy --strict sees their (untyped → Any) shapes for annotations and base
+# classes. At runtime ``dspy`` is typed ``Any`` (the real module or ``None``),
+# and ``_DspyModule`` is a real class in both the present- and absent-branches,
+# so guarded ``dspy.Predict`` / ``dspy.Signature`` accesses behind
+# ``DSPY_AVAILABLE`` checks do not trip ``None``-attribute errors, and
+# ``class X(_DspyModule)`` is a valid base in both branches.
+if TYPE_CHECKING:
+    import dspy
+    from dspy import Example, Prediction
+    from dspy.teleprompt.gepa import GEPA
+    from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
+    from dspy import Module as _DspyModule
+else:
+    # Runtime stand-in base; swapped for the real ``dspy.Module`` below when
+    # dspy is importable. When dspy is absent this remains, and constructing a
+    # subclass instance raises a clear actionable error via ``_require_dspy``.
+    class _DspyModule:  # minimal stand-in base; raises on construction
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            _require_dspy("CharacterRecognitionModule / VoiceDesignModule")
+
+dspy: Any = None
 try:  # pragma: no cover - exercised in test_feedback_import_safety with dspy blocked
-    import dspy  # type: ignore[import-not-found]
-    from dspy import Example, Prediction  # noqa: F401  (kept for API parity)
-    from dspy.teleprompt.gepa import GEPA  # noqa: F401
-    from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401
+    import dspy  # noqa: F811  (TYPE_CHECKING import is for static typing only)
+    from dspy import Example, Prediction  # noqa: F401,F811  (kept for API parity)
+    from dspy.teleprompt.gepa import GEPA  # noqa: F401,F811
+    from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401,F811
+    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
     DSPY_AVAILABLE: bool = True
 except ModuleNotFoundError:
     DSPY_AVAILABLE = False
@@ -65,7 +88,7 @@ DEFAULT_EARLY_STOP_PATIENCE = 10
 DEFAULT_LONG_NOVEL_DIR = "data/long_novel"
 
 
-def configure_dspy_optimizer(use_mock: bool = True):
+def configure_dspy_optimizer(use_mock: bool = True) -> Any:
     """Configure DSPy with appropriate LM for optimization."""
     if use_mock:
         # Use a mock LM for testing
@@ -74,11 +97,11 @@ def configure_dspy_optimizer(use_mock: bool = True):
 
         # Create a simple mock LM that returns deterministic responses
         class MockLM(LM):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__(model="mock", temperature=0.0)
                 self.call_count = 0
 
-            def basic_request(self, prompt, **kwargs):
+            def basic_request(self, prompt: str, **kwargs: Any) -> List[Dict[str, str]]:
                 self.call_count += 1
                 # Return mock response based on prompt type
                 # DSPy's JSONAdapter expects JSON with output fields
@@ -89,7 +112,12 @@ def configure_dspy_optimizer(use_mock: bool = True):
                 else:
                     return [{"text": '{"character_name": "旁白"}'}]
 
-            def __call__(self, prompt=None, messages=None, **kwargs):
+            def __call__(
+                self,
+                prompt: Optional[str] = None,
+                messages: Optional[List[Dict[str, Any]]] = None,
+                **kwargs: Any,
+            ) -> List[Dict[str, str]]:
                 # Handle both prompt= and messages= calling conventions
                 if messages is not None:
                     # Extract prompt from messages
@@ -202,26 +230,18 @@ class MultiObjectiveLoss:
         )
 
 
-# The two DSPy modules below subclass ``dspy.Module``. When dspy is absent we
-# swap in a lightweight stand-in base so the module still *imports* (no
-# import-time crash) and only raises a clear error once the optimiser is
-# actually exercised. Non-dpsy code paths above are unaffected.
-if DSPY_AVAILABLE:
-    _DspyModule = dspy.Module  # type: ignore[union-attr]
-else:
-
-    class _DspyModule:  # minimal stand-in base; raises on construction
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            _require_dspy("CharacterRecognitionModule / VoiceDesignModule")
-
-
+# The two DSPy modules below subclass ``_DspyModule``. ``_DspyModule`` resolves
+# to the real ``dspy.Module`` (set up at module import above) when dspy is
+# present, or to a lightweight stand-in base when dspy is absent, so the module
+# still *imports* (no import-time crash) and only raises a clear error once the
+# optimiser is actually exercised. Non-dspy code paths above are unaffected.
 class CharacterRecognitionModule(_DspyModule):
     """DSPy module for character recognition optimization.
 
     Signature: Extract character name from paragraph text.
     """
 
-    def __init__(self, prompt_template: str = ""):
+    def __init__(self, prompt_template: str = "") -> None:
         if not DSPY_AVAILABLE:
             _require_dspy("CharacterRecognitionModule")
         super().__init__()
@@ -232,15 +252,17 @@ class CharacterRecognitionModule(_DspyModule):
             )
         )
 
-    def forward(self, paragraph_text: str = None, **kwargs) -> str:
+    def forward(self, paragraph_text: Optional[str] = None, **kwargs: Any) -> str:
         # Handle both positional and keyword arguments
         if paragraph_text is None:
-            paragraph_text = kwargs.get("paragraph_text", "")
+            paragraph_text = str(kwargs.get("paragraph_text", ""))
         result = self.predict(paragraph_text=paragraph_text)
-        return result.character_name
+        # DSPy Prediction objects expose attribute access; coerce to str so the
+        # declared return type holds even though dspy is untyped (Any).
+        return str(result.character_name)
 
     # DSPy calls modules with **inputs, so we need to handle that
-    def __call__(self, **kwargs):
+    def __call__(self, **kwargs: Any) -> str:
         return self.forward(**kwargs)
 
 
@@ -250,7 +272,7 @@ class VoiceDesignModule(_DspyModule):
     Signature: Determine appropriate voice style from context.
     """
 
-    def __init__(self, prompt_template: str = ""):
+    def __init__(self, prompt_template: str = "") -> None:
         if not DSPY_AVAILABLE:
             _require_dspy("VoiceDesignModule")
         super().__init__()
@@ -268,7 +290,8 @@ class VoiceDesignModule(_DspyModule):
             character_name=character_name,
             emotion=emotion,
         )
-        return result.voice_design
+        # DSPy Prediction objects expose attribute access; coerce to str.
+        return str(result.voice_design)
 
 
 def extract_paragraphs_from_text(text: str, max_paragraphs: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -353,7 +376,7 @@ def extract_paragraphs_from_text(text: str, max_paragraphs: Optional[int] = None
 def create_multi_objective_metric(
     char_weight: float = 0.5,
     voice_weight: float = 0.5,
-):
+) -> Callable[..., ScoreWithFeedback]:
     """Create combined multi-objective metric for GEPA.
 
     Returns a ScoreWithFeedback combining both objectives.
@@ -362,17 +385,24 @@ def create_multi_objective_metric(
     if not DSPY_AVAILABLE:
         _require_dspy("create_multi_objective_metric")
 
-    def metric(gold: Example, pred: Prediction, trace=None, pred_name=None, pred_trace=None) -> ScoreWithFeedback:
+    def metric(
+        gold: Example,
+        pred: Prediction,
+        trace: Optional[Any] = None,
+        pred_name: Optional[Any] = None,
+        pred_trace: Optional[Any] = None,
+    ) -> ScoreWithFeedback:
         # Get predicted output - handle both dict and object formats
+        pred_output_dict: Dict[str, Any]
         if isinstance(pred, dict):
-            pred_output = pred
+            pred_output_dict = pred
         elif hasattr(pred, "__dict__"):
-            pred_output = pred.__dict__
+            pred_output_dict = pred.__dict__
         else:
-            pred_output = {}
+            pred_output_dict = {}
 
         # Extract character prediction
-        pred_char = pred_output.get("character_name", "") if isinstance(pred_output, dict) else ""
+        pred_char = pred_output_dict.get("character_name", "") if isinstance(pred_output_dict, dict) else ""
         ground_char = gold.character if hasattr(gold, "character") else gold.outputs.get("character", "")
 
         # Handle nested ground truth
@@ -384,7 +414,7 @@ def create_multi_objective_metric(
             char_correct = pred_char.strip().lower() == str(ground_char).strip().lower()
 
         # Extract voice prediction
-        pred_voice = pred_output.get("voice_design", "") if isinstance(pred_output, dict) else ""
+        pred_voice = pred_output_dict.get("voice_design", "") if isinstance(pred_output_dict, dict) else ""
         ground_voice = gold.voice if hasattr(gold, "voice") else gold.outputs.get("voice", "")
 
         voice_correct = False
@@ -394,7 +424,7 @@ def create_multi_objective_metric(
         # Combined score (higher is better, range 0-1)
         score = char_weight * (1.0 if char_correct else 0.0) + voice_weight * (1.0 if voice_correct else 0.0)
 
-        feedback_parts = []
+        feedback_parts: List[str] = []
         if pred_char or ground_char:
             feedback_parts.append(f"Character: predicted='{pred_char}', expected='{ground_char}'")
         if pred_voice or ground_voice:
@@ -504,7 +534,12 @@ def run_pipeline_on_book_data(
 
         # Extract character voice map from analysis
         character_voice_map = book_analysis.character_voice_map
-        emotion_snapshot = book_analysis.emotion_snapshots[0] if book_analysis.emotion_snapshots else None
+        # EmotionSnapshot is required by ParagraphAnnotationInput (schema marks
+        # emotion_snapshots with min_length=1). The defensive ``else None`` would
+        # produce a value the downstream schema rejects, so narrow to the
+        # schema-guaranteed non-empty case and surface emptiness loudly.
+        assert book_analysis.emotion_snapshots, "emotion_snapshots must be non-empty (schema min_length=1)"
+        emotion_snapshot = book_analysis.emotion_snapshots[0]
         story_line_summary = book_analysis.story_line_summary
         global_style_notes = book_analysis.global_style_notes
         book_meta = book_analysis.book_meta
@@ -516,8 +551,8 @@ def run_pipeline_on_book_data(
         full_text = Path(book_data.book_path).read_text(encoding="utf-8")
         paragraphs = extract_paragraphs_from_text(full_text, max_paragraphs)
 
-        character_examples = []
-        unique_characters = set()
+        character_examples: List[Tuple[str, Dict[str, Any]]] = []
+        unique_characters: set[str] = set()
 
         for i, para in enumerate(paragraphs):
             if max_paragraphs and i >= max_paragraphs:
@@ -535,12 +570,15 @@ def run_pipeline_on_book_data(
                 global_style_notes=global_style_notes,
             )
 
-            # Run annotation
-            annotation = annotate_pipeline.run(annotate_input)
+            # Run annotation. AnnotateParagraphPipeline.run is now typed
+            # (returns ParagraphAnnotation); widen to Any for the duck-typed
+            # attribute access below.
+            raw_annotation = annotate_pipeline.run(annotate_input)
+            annotation: Any = raw_annotation
 
             # Extract character and voice
             character = annotation.speaker_canonical_name
-            voice = None
+            voice: Optional[str] = None
             for cv in character_voice_map:
                 if cv.canonical_name == character:
                     voice = cv.suggested_voice_id
@@ -636,13 +674,15 @@ def save_optimized_prompt(
     Returns:
         Path to saved prompt file
     """
+    # Resolve to a Path up front rather than mutating the Optional[str] param
+    # (which would broaden its type from str|None to Path and break strict).
     if output_dir is None:
-        output_dir = Path("prompts") / stage
+        resolved_dir: Path = Path("prompts") / stage
     else:
-        output_dir = Path(output_dir) / stage
+        resolved_dir = Path(output_dir) / stage
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    prompt_file = output_dir / f"v{version}.j2"
+    resolved_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = resolved_dir / f"v{version}.j2"
 
     prompt_file.write_text(optimized_prompt, encoding="utf-8")
     logger.info(f"Saved optimized prompt to {prompt_file}")

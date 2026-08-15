@@ -13,22 +13,33 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from ..models import FeedbackRecord as FeedbackRecordModel
 
+if TYPE_CHECKING:
+    # Avoid runtime circular import; the real import happens lazily inside
+    # _get_llm_analyzer(). Used only for the type annotation below.
+    from .llm_analyzer import LLMFeedbackAnalyzer
+
 logger = logging.getLogger(__name__)
 
 # ── LLM 语义分析器（懒加载，避免循环导入）────────────────────────────────────
-_llm_analyzer = None
+# ``_llm_analyzer`` is None before first attempt and None again if the lazy
+# import failed; ``_llm_analyzer_tried`` distinguishes "not yet tried" from
+# "tried and failed" so we don't retry the (expensive, router-creating) import
+# on every call. The previous code used a ``False`` sentinel which mixed bool
+# with the analyzer type and broke --strict narrowing.
+_llm_analyzer: Optional["LLMFeedbackAnalyzer"] = None
+_llm_analyzer_tried: bool = False
 
 
-def _get_llm_analyzer():
+def _get_llm_analyzer() -> Optional["LLMFeedbackAnalyzer"]:
     """懒加载 LLMFeedbackAnalyzer，避免初始化时强制创建 router."""
-    global _llm_analyzer
-    if _llm_analyzer is None:
+    global _llm_analyzer, _llm_analyzer_tried
+    if _llm_analyzer is None and not _llm_analyzer_tried:
         try:
             from .llm_analyzer import LLMFeedbackAnalyzer
 
@@ -36,8 +47,9 @@ def _get_llm_analyzer():
             logger.info("LLMFeedbackAnalyzer 初始化成功")
         except Exception as e:
             logger.warning(f"LLMFeedbackAnalyzer 初始化失败，将使用关键词匹配降级: {e}")
-            _llm_analyzer = False  # 标记为不可用
-    return _llm_analyzer if _llm_analyzer is not False else None
+        finally:
+            _llm_analyzer_tried = True
+    return _llm_analyzer
 
 
 # ── Known pattern tag taxonomy ────────────────────────────────────────────────
@@ -323,8 +335,8 @@ def analyze_batch(
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    pattern_counter: Counter = Counter()
-    stage_counter: Counter = Counter()
+    pattern_counter: Counter[str] = Counter()
+    stage_counter: Counter[str] = Counter()
     all_patterns: List[str] = []
 
     for record in records:
@@ -401,9 +413,9 @@ def get_trend_report(
         query = query.filter(FeedbackRecordModel.project_id == project_id)
 
     records = query.all()
-    pattern_counter: Counter = Counter()
-    stage_counter: Counter = Counter()
-    source_counter: Counter = Counter()
+    pattern_counter: Counter[str] = Counter()
+    stage_counter: Counter[str] = Counter()
+    source_counter: Counter[str] = Counter()
 
     for r in records:
         stage_counter[r.stage] += 1

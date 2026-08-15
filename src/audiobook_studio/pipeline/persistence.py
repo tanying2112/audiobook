@@ -8,7 +8,7 @@ All functions are async and require an AsyncSession.
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 async def write_extract(
-    db,
+    db: AsyncSession,
     project_id: int,
     chapter_index: int,
     result: ExtractionResult,
@@ -38,7 +38,7 @@ async def write_extract(
 ) -> Chapter:
     """Create or update a Chapter record with extraction output."""
 
-    chapter = None
+    chapter: Optional[Chapter] = None
     if chapter_id:
         result_q = await db.execute(select(Chapter).filter(Chapter.id == chapter_id))
         chapter = result_q.scalar_one_or_none()
@@ -64,7 +64,7 @@ async def write_extract(
 
 
 async def write_analyze(
-    db,
+    db: AsyncSession,
     chapter: Chapter,
     result: BookAnalysisOutput,
 ) -> None:
@@ -76,7 +76,7 @@ async def write_analyze(
 
 
 async def write_annotate(
-    db,
+    db: AsyncSession,
     project_id: int,
     chapter: Chapter,
     paragraph_index: int,
@@ -91,7 +91,7 @@ async def write_annotate(
             Paragraph.index == paragraph_index,
         )
     )
-    para = result_q.scalar_one_or_none()
+    para: Optional[Paragraph] = result_q.scalar_one_or_none()
     if not para:
         para = Paragraph(
             project_id=project_id,
@@ -123,7 +123,7 @@ async def write_annotate(
 
 
 async def write_edit(
-    db,
+    db: AsyncSession,
     para: Paragraph,
     result: TtsEditOutput,
 ) -> TTSEdit:
@@ -159,7 +159,7 @@ async def write_edit(
 
 
 async def write_synthesize(
-    db,
+    db: AsyncSession,
     project_id: int,
     chapter: Chapter,
     para: Paragraph,
@@ -173,7 +173,7 @@ async def write_synthesize(
         .order_by(AudioSegmentModel.version.desc())
         .limit(1)
     )
-    existing = result_q.scalar_one_or_none()
+    existing: Optional[AudioSegmentModel] = result_q.scalar_one_or_none()
 
     if existing:
         # Update existing record
@@ -223,7 +223,7 @@ async def write_synthesize(
 
 
 async def write_quality(
-    db,
+    db: AsyncSession,
     project_id: int,
     chapter: Chapter,
     para: Paragraph,
@@ -239,7 +239,7 @@ async def write_quality(
     result_q = await db.execute(
         select(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).limit(1)
     )
-    tts_edit = result_q.scalar_one_or_none()
+    tts_edit: Optional[TTSEdit] = result_q.scalar_one_or_none()
 
     # If no TTSEdit exists, create a dummy one to satisfy NOT NULL constraint
     if tts_edit is None:
@@ -290,7 +290,11 @@ async def write_quality(
     para.quality_prosody_naturalness = result.prosody_naturalness
     para.quality_text_audio_alignment = result.text_audio_alignment
     para.quality_overall_score = result.overall_score
-    para.quality_issues = result.issues
+    # ``result.issues`` is ``list[Literal[str]]``; the ``quality_issues`` column
+    # is typed ``Optional[list[str]]``. List invariance rejects the
+    # literal-typed list even though every literal IS a ``str``; cast reflects
+    # the real string-valued payload.
+    para.quality_issues = cast(list[str], result.issues)
     para.quality_fix_suggestions = [s.model_dump() for s in result.fix_suggestions] if result.fix_suggestions else None
     para.quality_needs_regeneration = result.needs_regeneration
     para.status = "quality_checked"
@@ -305,16 +309,19 @@ async def write_quality(
 
 
 async def write_audio_postprocess(
-    db,
+    db: AsyncSession,
     para: Paragraph,
-    params: Dict[str, Any],
+    params: Union[AudioPostProcessParams, Dict[str, Any]],
 ) -> None:
     """Update Paragraph DB record with audio post-process params.
 
     Accepts both legacy AudioPostProcessParams and new PhysicalAudioSegment dict format.
     """
-    # Handle both dict and object with attributes
-    if hasattr(params, "speech_rate"):
+    # Handle both the typed AudioPostProcessParams Pydantic object (has typed
+    # attributes) and the PhysicalAudioSegment dict variant (loose mapping with
+    # "speed"/"pitch_hz"). isinstance narrows the Union so attribute access on
+    # the object branch is type-checked.
+    if isinstance(params, AudioPostProcessParams):
         # Legacy AudioPostProcessParams object
         speech_rate = params.speech_rate
         pitch_shift_semitones = params.pitch_shift_semitones

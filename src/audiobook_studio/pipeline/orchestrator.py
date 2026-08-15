@@ -158,7 +158,7 @@ def _emit_pipeline_end(context: Dict[str, Any], result: Any = None, error: Excep
 def _default_stage_hook(
     event: str,
     stage: str,
-    context: dict,
+    context: Dict[str, Any],
     result: Any = None,
     error: Exception | None = None,
 ) -> None:
@@ -228,7 +228,7 @@ def get_telemetry() -> Optional[TelemetryCollector]:
     return _telemetry_collector
 
 
-def shutdown_telemetry() -> Optional[dict]:
+def shutdown_telemetry() -> Optional[Dict[str, Any]]:
     """Shutdown telemetry and return final summary."""
     global _telemetry_collector
     if _telemetry_collector:
@@ -257,7 +257,7 @@ async def run_stage(
     paragraph_index: Optional[int] = None,
     paragraph_id: Optional[int] = None,
     feedback_collector: Optional[FeedbackCollector] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Any:
     """Run a pipeline stage and persist its output to the database.
 
@@ -288,19 +288,18 @@ async def run_stage(
     -------
     The pipeline stage result (Pydantic model) and writes side effects to DB.
     """
-    # Check if we're using async session
-    is_async = isinstance(db, AsyncSession)
-
-    # Resolve chapter
-    chapter = None
+    # Resolve chapter. Branch on isinstance directly so mypy narrows the
+    # Union[Session, AsyncSession] — the sync branch's ``db.query(...)`` is
+    # only valid on Session, and AsyncSession lacks it.
+    chapter: Optional[Chapter] = None
     if chapter_id:
-        if is_async:
+        if isinstance(db, AsyncSession):
             result = await db.execute(select(Chapter).filter(Chapter.id == chapter_id))
             chapter = result.scalar_one_or_none()
         else:
             chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
     elif chapter_index is not None and project_id is not None:
-        if is_async:
+        if isinstance(db, AsyncSession):
             result = await db.execute(
                 select(Chapter).filter(
                     Chapter.project_id == project_id,
@@ -319,23 +318,23 @@ async def run_stage(
             )
 
     # Resolve paragraph
-    para = None
+    para: Optional[Paragraph] = None
     if paragraph_id:
-        if is_async:
-            result = await db.execute(select(Paragraph).filter(Paragraph.id == paragraph_id))
-            para = result.scalar_one_or_none()
+        if isinstance(db, AsyncSession):
+            para_result = await db.execute(select(Paragraph).filter(Paragraph.id == paragraph_id))
+            para = para_result.scalar_one_or_none()
         else:
             para = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
     elif paragraph_index is not None and chapter is not None:
-        if is_async:
-            result = await db.execute(
+        if isinstance(db, AsyncSession):
+            para_result = await db.execute(
                 select(Paragraph).filter(
                     Paragraph.project_id == project_id,
                     Paragraph.chapter_id == chapter.id,
                     Paragraph.index == paragraph_index,
                 )
             )
-            para = result.scalar_one_or_none()
+            para = para_result.scalar_one_or_none()
         else:
             para = (
                 db.query(Paragraph)
@@ -400,8 +399,16 @@ async def run_stage(
         # Run stage logic
         result = handler.run(**context)
 
-        # Persist result to database (async)
-        await handler.apersist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
+        # Persist result to database (async). The base ``StageHandler`` only
+        # declares the sync ``persist``; the async ``apersist`` is provided by
+        # every concrete stage subclass, so fetch it dynamically and guard for
+        # None rather than asserting the base declares it (base lives in
+        # stage_registry, outside this module's scope).
+        apersist = getattr(handler, "apersist", None)
+        if apersist is not None:
+            await apersist(
+                db, project_id, chapter, para, result, chapter_index, paragraph_index
+            )
 
         # Capture feedback
         if feedback_capture:
@@ -487,7 +494,7 @@ async def run_pipeline(
     paragraph_id: Optional[int] = None,
     feedback_collector: Optional[FeedbackCollector] = None,
     checkpoint_manager: Optional[CheckpointManager] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> List[Any]:
     """Run multiple pipeline stages sequentially with hooks and checkpoint support.
 
@@ -547,7 +554,7 @@ async def run_pipeline(
             return []
 
     _emit_pipeline_start(pipeline_context)
-    results = []
+    results: List[Any] = []
 
     try:
         for stage in stages:

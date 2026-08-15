@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from ..models import FeedbackRecord as FeedbackRecordModel
 from ..pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from ..storage import project_dir
-from .ab_test import build_ab_samples, run_ab_test
+from .ab_test import ABTestReport, build_ab_samples, run_ab_test
 from .auto_processor import FeedbackAutoProcessor, create_auto_processor
 from .collector import (
     capture_edit_feedback,
@@ -43,6 +43,7 @@ from .promotion_gate import _load_golden_examples as load_golden_for_ab
 from .promotion_gate import _run_stage_with_prompt_version, evaluate_promotion
 from .prompt_upgrader import _load_current_prompt, batch_upgrade, upgrade_prompt
 from .quality_enhancement import (
+    FreeTierHealth,
     check_semantic_coherence,
     get_false_positive_tracker,
     get_free_tier_health,
@@ -127,7 +128,7 @@ class SelfIterationLoop:
         self._iteration_count = 0
         self._last_analysis_result: Optional[AggregateAnalysis] = None
         self._upgraded_prompts: Dict[str, Path] = {}
-        self._validation_results: List[Dict[str, Any]] = []
+        self._validation_results: Dict[str, Dict[str, Any]] = {}
         self._pr_results: List[PRResult] = []
         self._merge_results: List[MergeResult] = []
 
@@ -243,7 +244,7 @@ class SelfIterationLoop:
                 promoted_any = True
 
                 # 4. Run A/B test for promoted prompts
-                ab_test_result = None
+                ab_test_result: Optional[ABTestReport] = None
                 try:
                     ab_test_result = self._run_ab_test_for_stage(stage, old_version, new_version)
                 except Exception as e:
@@ -352,9 +353,9 @@ class SelfIterationLoop:
             pipeline_stage = _golden_to_pipeline_stage(stage)
 
             # Run validation for each example
-            validation_scores = []
+            validation_scores: List[Dict[str, Any]] = []
             passed_count = 0
-            failed_details = []
+            failed_details: List[Dict[str, Any]] = []
 
             for i, example in enumerate(canary_examples):
                 if "input" not in example or "expected_output" not in example:
@@ -422,7 +423,7 @@ class SelfIterationLoop:
             avg_quality_ratio = sum(s["quality_ratio"] for s in validation_scores) / total if total > 0 else 0.0
 
             # Run semantic coherence check
-            coherence_results = []
+            coherence_results: List[float] = []
             for s in validation_scores:
                 if "new_output" in s:  # Would need actual output
                     coherence = check_semantic_coherence([s.get("new_output", "")])
@@ -469,7 +470,7 @@ class SelfIterationLoop:
 
         return results
 
-    def _mock_validation_result(self, health) -> Dict[str, Any]:
+    def _mock_validation_result(self, health: FreeTierHealth) -> Dict[str, Any]:
         """Fallback mock validation result when golden dataset is missing."""
         return {
             "canary_examples_tested": 0,
@@ -500,7 +501,7 @@ class SelfIterationLoop:
             "failed_details": [],
         }
 
-    def _run_ab_test_for_stage(self, stage: str, old_version: int, new_version: int) -> None:
+    def _run_ab_test_for_stage(self, stage: str, old_version: int, new_version: int) -> Optional[ABTestReport]:
         """Run A/B test for a specific stage comparing old vs new prompt versions."""
         logger.info(f"Running A/B test for {stage}: v{old_version} vs v{new_version}")
 
@@ -518,7 +519,7 @@ class SelfIterationLoop:
                     "new_version": new_version,
                 },
             )
-            return
+            return None
 
         # Build A/B test samples from golden dataset
         samples = build_ab_samples(stage, golden_examples, old_version, new_version)
@@ -534,7 +535,7 @@ class SelfIterationLoop:
                     "new_version": new_version,
                 },
             )
-            return
+            return None
 
         logger.info(f"Running A/B test with {len(samples)} samples for {stage}")
 
@@ -741,7 +742,7 @@ def save_quality_feedback(
     quality_judgment: Dict[str, Any],
     corrected_judgment: Dict[str, Any],
     rationale: str,
-):
+) -> Path:
     """Save quality judge feedback (source=quality_judge) using file-based collector."""
     capture = collector.capture_stage(
         stage=stage,
@@ -766,7 +767,7 @@ def save_user_rating_feedback(
     paragraph_id: int,
     user_rating: Dict[str, Any],
     rationale: str,
-):
+) -> Path:
     """Save user rating feedback (source=user_rating) using file-based collector."""
     # User rating is both the LLM output and the corrected output
     capture = collector.capture_stage(

@@ -5,6 +5,8 @@ feedback 模块初始化
 A/B 测试、Kill Switch 降级、质量增强等功能。
 """
 
+from typing import Any
+
 from .ab_test import blind_evaluate, build_ab_samples, run_ab_test
 from .ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
 from .auto_processor import FeedbackAutoProcessor, create_auto_processor, run_feedback_analysis_cli
@@ -211,7 +213,7 @@ _BOOTSTRAP_FEW_SHOT = frozenset(
 )
 
 
-def __getattr__(name):  # noqa: D401 — PEP 562 lazy module attribute
+def __getattr__(name: str) -> Any:  # noqa: D401 — PEP 562 lazy module attribute
     if name in _BOOTSTRAP_FEW_SHOT:
         from . import bootstrap_fewshot
 

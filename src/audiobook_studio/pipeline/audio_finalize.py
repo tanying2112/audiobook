@@ -125,8 +125,8 @@ class AudioFinalizer:
         scene_tags: Optional[List[str]] = None,
     ) -> AudioFinalizeResult:
         """Real mode: actual ffmpeg processing."""
-        warnings = []
-        errors = []
+        warnings: List[str] = []
+        errors: List[str] = []
 
         # Validate input
         if not input_path.exists():

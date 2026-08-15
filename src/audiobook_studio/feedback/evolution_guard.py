@@ -76,7 +76,7 @@ class EvolutionGuard:
         # 子→父；用于剪枝后代
         self._children: Dict[str, List[str]] = {}
         # 被剪枝的节点 id 集合（保留在 _nodes 供审计，但不再可晋升）
-        self._pruned: set = set()
+        self._pruned: set[str] = set()
         # 当前生效基线指针
         self._active_id: Optional[str] = None
         # 根节点 id（第一个无父的节点）
@@ -238,7 +238,7 @@ class EvolutionGuard:
         """当前 active 自根的祖先链（只含未剪枝的晋升路径，回溯只读）。"""
         chain: List[PromNode] = []
         cur = self.active_node
-        seen: set = set()
+        seen: set[str] = set()
         while cur is not None and cur.node_id not in seen:
             seen.add(cur.node_id)
             chain.append(cur)

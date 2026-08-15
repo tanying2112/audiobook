@@ -17,13 +17,30 @@ P0.3 防止 reward-hacking 扩展（evaluate_promotion_anti_hack 主入口）：
   - 元门禁：裁判 prompt / 评估集 / 指标定义文件对进化循环只读，CI 校验未被动
 """
 
+from __future__ import annotations
+
+# P1.7: four internal factory helpers (_constitution/_held_out/_evolution_guard/
+# _regression_suite) forward-reference classes imported only under
+# TYPE_CHECKING (to break a static-only circular import). With eager annotation
+# evaluation a bare "-> ConstitutionAdjudicator" raised NameError at def-time
+# because those names are absent from the module namespace at runtime. PEP 563
+# makes all annotations lazy strings — they are NOT evaluated at def-time — so
+# the forward refs resolve only for static checkers (mypy reads them via the
+# TYPE_CHECKING block). Verified: no inspect.get_type_hints / __annotations__
+# runtime reflection in this file, so lazy annotations are safe.
 import json
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .constitution import ConstitutionAdjudicator
+    from .evolution_guard import EvolutionGuard
+    from .held_out_eval import HeldOutDataset
+    from .regression_suite import RegressionSuite
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +239,7 @@ def _char_ngram_similarity(text_a: str, text_b: str, n: int = 2) -> float:
     import math
     from collections import Counter
 
-    def get_ngrams(text: str) -> Counter:
+    def get_ngrams(text: str) -> Counter[str]:
         return Counter(text[i : i + n] for i in range(len(text) - n + 1))
 
     vec_a = get_ngrams(text_a)
@@ -333,7 +350,11 @@ def _run_stage_with_prompt_version(
         target_content = target_path.read_text(encoding="utf-8")
         v1_path.write_text(target_content, encoding="utf-8")
 
-        # Run the stage with the new prompt
+        # Run the stage with the new prompt. The six stage pipelines are
+        # structurally unrelated (no shared base class) and a couple carry
+        # untyped run() signatures, so we hold the instance as Any — the
+        # honest union here — and the function already returns Any upstream.
+        pipeline: Any = None
         if pipeline_stage == "edit":
             from ..pipeline.edit_for_tts import EditForTtsPipeline
 
@@ -452,17 +473,17 @@ class GateResult:
 class PromotionGate:
     """4-criteria promotion gate evaluator."""
 
-    DEFAULT_THRESHOLDS = {
+    DEFAULT_THRESHOLDS: Dict[str, float] = {
         "格式合规率": 0.95,
         "黄金数据集通过率": 0.90,
         "quality_vs_old": 1.02,
         "人工抽样通过率": 0.85,
     }
 
-    def __init__(self, thresholds=None):
-        self.thresholds = thresholds or dict(self.DEFAULT_THRESHOLDS)
+    def __init__(self, thresholds: Optional[Dict[str, float]] = None) -> None:
+        self.thresholds: Dict[str, float] = thresholds or dict(self.DEFAULT_THRESHOLDS)
 
-    def get_status(self):
+    def get_status(self) -> Dict[str, Any]:
         return {"thresholds": self.thresholds}
 
 
@@ -1084,22 +1105,22 @@ class AntiHackVerdict:
         }
 
 
-def _constitution():
+def _constitution() -> ConstitutionAdjudicator:
     from .constitution import get_constitution_adjudicator
     return get_constitution_adjudicator()
 
 
-def _held_out(stage):
+def _held_out(stage: str) -> HeldOutDataset:
     from .held_out_eval import HeldOutDataset
     return HeldOutDataset(stage)
 
 
-def _evolution_guard():
+def _evolution_guard() -> EvolutionGuard:
     from .evolution_guard import get_evolution_guard
     return get_evolution_guard()
 
 
-def _regression_suite():
+def _regression_suite() -> RegressionSuite:
     from .regression_suite import get_regression_suite
     return get_regression_suite()
 

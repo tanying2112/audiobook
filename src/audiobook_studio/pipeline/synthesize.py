@@ -20,7 +20,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Coroutine, Dict, List, Literal, Optional, Tuple, TypeVar, cast
 
 from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
@@ -52,7 +52,10 @@ from ..utils.ffmpeg_probe import get_duration_sync
 logger = logging.getLogger(__name__)
 
 
-def _run_async(coro):
+_T = TypeVar("_T")
+
+
+def _run_async(coro: Coroutine[Any, Any, _T]) -> _T:
     """Run a coroutine from a sync caller, safe inside a running event loop.
 
     The pipeline orchestrator ``run_stage`` is ``async`` but invokes each
@@ -71,7 +74,7 @@ def _run_async(coro):
 
     import concurrent.futures
 
-    def _runner():
+    def _runner() -> _T:
         new_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(new_loop)
         try:
@@ -87,6 +90,12 @@ def _run_async(coro):
 # (Edge voice IDs come from the book analysis stage's default
 # ``zh-CN-XiaoxiaoNeural`` suggested_voice_id; Kokoro uses a disjoint set.
 # Without this map, Kokoro rejects the Edge ID and synthesise fails.)
+
+# The set of engines TtsRoutingDecision.engine_choice / fallback_engine may
+# name (mirrors the Literal on the schema without reaching into its private
+# type alias).
+EngineChoice = Literal["kokoro", "edge", "azure", "gcp", "human_clone"]
+
 _EDGE_TO_KOKORO: Dict[str, str] = {
     "zh-CN-XiaoxiaoNeural": "zf_xiaoxiao",
     "zh-CN-XiaoyiNeural": "zf_xiaobei",
@@ -126,7 +135,7 @@ def _normalize_voice_id(voice_id: str, engine_choice: str) -> str:
     return "zh-CN-XiaoxiaoNeural" if not voice_id.startswith("zh-") else voice_id
 
 
-def _port_engine_name(port) -> str:
+def _port_engine_name(port: RemoteTTSPort) -> str:
     """Return the active engine name (kokoro/edge/voxcpm2/...) for a port.
 
     ``port_factory.get_port()`` returns an ``EnginePortAdapter`` wrapping the
@@ -156,7 +165,7 @@ class AudioSegment:
     voice_id: str
     text_hash: str  # For incremental regeneration detection
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "segment_id": self.segment_id,
@@ -237,6 +246,8 @@ class SynthesizePipeline:
 
         # Remote TTS Port - the single abstraction for all synthesis
         # Use mock port for mock_mode, lazy initialization for real port
+        self._port: Optional[RemoteTTSPort]
+        self._pending_port: Optional["Coroutine[Any, Any, RemoteTTSPort]"]
         if port is not None:
             self._port = port
         elif self.mock_mode:
@@ -254,7 +265,7 @@ class SynthesizePipeline:
             self.crossfade_ms = self.get_crossfade_ms()
 
         # Track existing segments for incremental synthesis
-        self.existing_segments = {}
+        self.existing_segments: dict[str, AudioSegment] = {}
         self._mock_segment_counter = 0
 
         logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
@@ -332,7 +343,7 @@ class SynthesizePipeline:
         except OSError as exc:
             logger.warning("Unable to persist segment metadata %s: %s", metadata_path, exc)
 
-    def _build_payload(self, text: str, voice_id: str, prosody: dict) -> TTSTaskPayload:
+    def _build_payload(self, text: str, voice_id: str, prosody: dict[str, Any]) -> TTSTaskPayload:
         """Build a TTSTaskPayload from synthesis parameters."""
         # Convert prosody dict to TTSProsody
         tts_prosody = TTSProsody(
@@ -363,7 +374,7 @@ class SynthesizePipeline:
         self,
         text: str,
         voice_id: str,
-        prosody: dict,
+        prosody: dict[str, Any],
         output_path: Path,
         segment_id: str,
     ) -> tuple[int, str]:
@@ -409,14 +420,15 @@ class SynthesizePipeline:
         poll_interval = 0.5  # seconds
         max_wait = 300  # 5 minutes max
         waited = 0.0
+        result: Optional[TTSTaskResult] = None
 
         while waited < max_wait:
-            status = await self._port.get_status(task_id)
+            status = await port.get_status(task_id)
             logger.debug(f"Task {task_id} status: {status.status.value}, progress: {status.progress}")
 
             if status.status == TTSStatus.DONE:
                 # Get full result
-                result = await self._port.get_result(task_id)
+                result = await port.get_result(task_id)
                 break
             elif status.status == TTSStatus.FAILED:
                 error_msg = status.error_message or "Unknown error"
@@ -427,6 +439,11 @@ class SynthesizePipeline:
                 continue
             else:
                 raise RuntimeError(f"Unknown task status: {status.status}")
+
+        # If the poll loop exited without a DONE break (timeout), result is
+        # still None — there is no synthesis to download.
+        if result is None:
+            raise RuntimeError(f"Synthesis task {task_id} timed out after {max_wait}s")
 
         # Download audio from R2/path to local output_path
         if result.audio_path:
@@ -439,8 +456,12 @@ class SynthesizePipeline:
         # Get duration
         duration_ms = result.duration_ms or get_duration_sync(output_path)
 
-        # Engine name from metadata or default
-        engine = result.metadata.get("engine", "hermes") if hasattr(result, "metadata") else "hermes"
+        # Engine name from metadata or default. ``TTSTaskResult`` itself does
+        # not carry metadata, but some port implementations (e.g. the Edge
+        # port) attach an extra ``metadata`` dict to the returned result; fall
+        # back to "hermes" when it is absent or None.
+        result_meta: Optional[dict[str, Any]] = getattr(result, "metadata", None)
+        engine = result_meta.get("engine", "hermes") if result_meta else "hermes"
 
         logger.info(f"Segment {segment_id} synthesized via {engine}: {duration_ms}ms")
         return duration_ms, engine
@@ -466,7 +487,7 @@ class SynthesizePipeline:
             # This is a placeholder for real implementation
             raise NotImplementedError(f"Remote audio download from {source_path} not implemented")
 
-    @trace_function(name="pipeline.synthesize.run", stage="synthesize")
+    @trace_function(name="pipeline.synthesize.run", stage="synthesize")  # type: ignore[untyped-decorator]  # trace_function (monitoring/) returns Callable[...,Any] w/o preserving the wrapped signature; fix lives outside this file's scope.
     def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
         """Synthesize multiple paragraphs incrementally with quality gate.
 
@@ -484,9 +505,9 @@ class SynthesizePipeline:
 
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
-        segments = []
-        segment_files = []
-        segment_ids = []
+        segments: list[AudioSegment] = []
+        segment_files: list[Path] = []
+        segment_ids: list[str] = []
 
         for inp in inputs:
             decision = self._make_routing_decision(inp)
@@ -502,11 +523,11 @@ class SynthesizePipeline:
                     segments.append(existing)
                     continue
 
-            existing = self._load_existing_segment_from_disk(segment_id, text_hash)
-            if existing is not None:
-                self.existing_segments[segment_id] = existing
+            disk_existing = self._load_existing_segment_from_disk(segment_id, text_hash)
+            if disk_existing is not None:
+                self.existing_segments[segment_id] = disk_existing
                 logger.info(f"Segment {segment_id} loaded from disk, skipping")
-                segments.append(existing)
+                segments.append(disk_existing)
                 continue
 
             # Synthesize via Port
@@ -514,8 +535,12 @@ class SynthesizePipeline:
 
             success = False
             duration = 0
-            engine = decision.engine_choice
-            synthesis_latency_ms = 0
+            # ``engine`` starts as the routing-decision Literal but is later
+            # overwritten with the real engine name (a plain ``str`` from
+            # ``_synthesize_via_port``, which may even report "hermes"), so
+            # type it as ``str`` rather than the narrow Literal.
+            engine: str = decision.engine_choice
+            synthesis_latency_ms: float = 0.0
             cost_usd = 0.0
             tokens_in = max(1, len(inp.text) // 4)
             tokens_out = 0
@@ -774,7 +799,8 @@ class SynthesizePipeline:
             result = _run_async(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
-                logger.error(f"ffmpeg crossfade failed: {result.stderr}")
+                stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+                logger.error(f"ffmpeg crossfade failed: {stderr_text}")
                 # Fallback: simple concat without crossfade
                 return self._simple_concat(valid_segments, output_path)
 
@@ -854,7 +880,7 @@ class SynthesizePipeline:
         segment_index: int,
         new_segment_path: Path,
         output_path: Path,
-        segment_boundaries_ms: List[tuple],
+        segment_boundaries_ms: List[tuple[int, int]],
     ) -> int:
         """
         Replace a single segment in chapter audio with crossfade at boundaries.
@@ -985,7 +1011,7 @@ class SynthesizePipeline:
         segment_index: int,
         new_segment_path: Path,
         output_path: Path,
-        segment_boundaries_ms: List[tuple],
+        segment_boundaries_ms: List[tuple[int, int]],
     ) -> int:
         """Simple segment replacement without crossfade as fallback."""
         try:
@@ -996,8 +1022,8 @@ class SynthesizePipeline:
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                pre_path = Path(tmpdir) / "pre.mp3"
-                post_path = Path(tmpdir) / "post.mp3"
+                pre_path: Optional[Path] = Path(tmpdir) / "pre.mp3"
+                post_path: Optional[Path] = Path(tmpdir) / "post.mp3"
 
                 # Extract pre
                 if start_ms > 0:
@@ -1087,11 +1113,14 @@ class SynthesizePipeline:
             (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
             None,
         )
-        voice_id = char.suggested_voice_id if char else "default"
+        suggested = char.suggested_voice_id if char else None
+        voice_id: str = suggested or "default"
 
         # Respect ENABLE_LOCAL_TTS environment variable for engine selection
         enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
 
+        engine_choice: EngineChoice
+        fallback_engine: EngineChoice
         if enable_local_tts:
             # Prefer local engine (Kokoro) when enabled
             engine_choice = "kokoro"
@@ -1156,11 +1185,11 @@ def synthesize_paragraphs(
     output_dir: str = "./output",
     mock_mode: bool = False,
     port: Optional[RemoteTTSPort] = None,
-) -> List:
+) -> List[AudioSegment]:
     """Convenience function to synthesize paragraphs."""
     pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode, port=port)
     try:
-        return pipeline.run(inputs)
+        return cast(List[AudioSegment], pipeline.run(inputs))
     finally:
         pipeline.close()
 

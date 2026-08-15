@@ -12,7 +12,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple, TypeAlias, cast
 
 import numpy as np
 
@@ -22,9 +22,15 @@ from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
 from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
+from ..schemas.quality import FixSuggestion
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
 logger = logging.getLogger(__name__)
+
+# One segment passed to the quality-check run loop:
+# (audio_path, paragraph_annotation, routing_decision, reference_text).
+# audio_path is path-like (str/Path牧场 — callers pass str); cast below narrows it.
+QualityRunInput: TypeAlias = Tuple[Any, ParagraphAnnotation, TtsRoutingDecision, str]
 
 
 @dataclass
@@ -33,7 +39,7 @@ class AudioAnalysisResult:
 
     duration_ms: int
     has_silence: bool
-    silence_regions: List[Tuple[int, int]]  # (start_ms, end_ms)
+    silence_regions: List[Tuple[float, float]]  # (start_ms, end_ms) — floats from ffprobe
     has_clipping: bool
     rms_db: float
     peak_db: float
@@ -57,18 +63,25 @@ class QualityCheckPipeline:
 
     def __init__(
         self,
-        router=None,
-        judge=None,
+        router: Optional[LLMRouter] = None,
+        judge: Optional[LLMJudge] = None,
         mock_mode: Optional[bool] = None,
         config_path: str = "./config/quality_thresholds.yaml",
         hardware_profile: Optional[HardwareProfile] = None,
-    ):
+    ) -> None:
         # mock_mode is ONLY for testing — production always uses real analysis.
         # Default to False (real path); only set True via explicit parameter or MOCK_LLM env.
         if mock_mode is not None:
             self.mock_mode = mock_mode
         else:
             self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Hard-metric thresholds overridden by hardware profile (Optional — None when
+        # the profile does not enable hardware-tier thresholds). Declared here so the
+        # later Optional[float] assignments (mock/potato tier) are type-consistent.
+        self._hw_dnsmos_min: Optional[float] = None
+        self._hw_asr_wer_max: Optional[float] = None
+        self._hw_speaker_sim_min: Optional[float] = None
 
         # Check which optional hard-metric dependencies are available.
         # This enables graceful degradation: missing deps skip their metric
@@ -89,7 +102,8 @@ class QualityCheckPipeline:
         # Load quality thresholds for compliance monitoring
         self.quality_thresholds = load_quality_thresholds(config_path)
         self._config_path = config_path
-        self._last_config_modified = None
+        # mtime of config at last load — None until first reload records one.
+        self._last_config_modified: Optional[float] = None
 
         # Initialize hard quality check suite (DNSMOS + ASR WER + Speaker Sim)
         self._quality_suite = QualityCheckSuite(
@@ -163,7 +177,7 @@ class QualityCheckPipeline:
 
         return features
 
-    def _apply_hardware_profile_quality_config(self):
+    def _apply_hardware_profile_quality_config(self) -> None:
         """Apply quality check settings from hardware profile."""
         if not self.hardware_profile:
             return
@@ -186,7 +200,7 @@ class QualityCheckPipeline:
         self._hw_asr_enabled = qc.asr_enabled
         self._hw_speaker_sim_enabled = qc.speaker_similarity_enabled
 
-    def _reload_config_if_changed(self):
+    def _reload_config_if_changed(self) -> None:
         """Hot-reload quality thresholds if config file changed."""
         from ..config.loader import reload_config_if_changed
 
@@ -194,10 +208,12 @@ class QualityCheckPipeline:
             self._config_path, self._last_config_modified
         )
 
-    def _get_threshold(self, *keys, default=None):
+    def _get_threshold(self, *keys: str, default: Any = None) -> Any:
         """Get nested threshold value from config.
 
         Hardware profile thresholds take precedence over file config.
+        Threshold values are heterogeneous (floats/ints), so the return is Any;
+        callers fold the result into typed locals with explicit defaults.
         """
         # Check hardware profile thresholds first
         if keys == ("audio", "dnsmos_min") and hasattr(self, "_hw_dnsmos_min") and self._hw_dnsmos_min is not None:
@@ -211,7 +227,8 @@ class QualityCheckPipeline:
         ):
             return self._hw_speaker_sim_min
 
-        value = self.quality_thresholds
+        # Walk nested config; values are heterogeneous (dicts/scalars), so Any.
+        value: Any = self.quality_thresholds
         for key in keys:
             if isinstance(value, dict):
                 value = value.get(key)
@@ -446,8 +463,6 @@ class QualityCheckPipeline:
                 logger.info(
                     f"Multimodal quality judge completed for {segment_id}: score={result.output.overall_score:.2f}"
                 )
-                from typing import cast
-
                 return cast(QualityJudgment, result.output)
 
         except Exception as e:
@@ -529,8 +544,8 @@ class QualityCheckPipeline:
             reference_speaker_audio=reference_speaker_audio,
         )
 
-    @trace_function(name="pipeline.quality_check.run", stage="quality")
-    def run(self, inputs: List[tuple]) -> List[QualityJudgment]:
+    @trace_function(name="pipeline.quality_check.run", stage="quality")  # type: ignore[untyped-decorator]  # langfuse trace_function returns Callable[..., Any]; cannot make it parametric from here
+    def run(self, inputs: List[QualityRunInput]) -> List[QualityJudgment]:
         """Run quality check on synthesized segments.
 
         Args:
@@ -538,7 +553,7 @@ class QualityCheckPipeline:
         """
         logger.info(f"Quality checking {len(inputs)} segments")
 
-        judgments = []
+        judgments: List[QualityJudgment] = []
 
         for audio_path, annotation, routing, reference_text in inputs:
             logger.info(f"Checking quality: {audio_path}")
@@ -562,8 +577,6 @@ class QualityCheckPipeline:
             # MOCK: 待真实实现
             # Mock mode: return simulated judgment after rule-based analysis
             if self.mock_mode:
-                from ..schemas.quality import FixSuggestion
-
                 # Determine if regeneration is needed based on rule-based issues
                 needs_regeneration = len(analysis.issues) > 0
                 # Call judge in mock mode to get the mock judgment
@@ -573,14 +586,21 @@ class QualityCheckPipeline:
                     audio_description=f"Mock audio analysis: duration={analysis.duration_ms}ms, issues={analysis.issues}",
                     reference_text=reference_text,
                 )
-                # Merge rule-based issues into judgment
+                # Merge rule-based issues into judgment.
+                # analysis.issues are free-text diagnostics (List[str]); QualityJudgment.issues
+                # is a strict Literal enum, so the free-text diagnostics are surfaced via the
+                # rationale-bearing FixSuggestion. cast preserves the existing runtime merge
+                # of diagnostics into the typed issues list against the (out-of-scope) schema.
                 if analysis.issues:
-                    judgment.issues = list(analysis.issues) + list(judgment.issues)
+                    judgment.issues = cast(
+                        List[Any], list(analysis.issues) + list(judgment.issues)
+                    )
                     judgment.needs_regeneration = True
                     judgment.fix_suggestions = [
                         FixSuggestion(
                             suggestion_type="content_edit",
                             target_text=reference_text[:50] if reference_text else "",
+                            current_value=None,
                             suggested_value="重新合成以修复音频质量问题",
                             rationale=f"Rule-based issues: {analysis.issues}",
                         )
@@ -633,19 +653,38 @@ class QualityCheckPipeline:
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
 
-                # Combine rule-based issues
+                # Combine rule-based issues (free-text diagnostics into the typed issues list,
+                # see schema-gap note above; cast preserves existing runtime behaviour).
                 if analysis.issues:
-                    judgment.issues.extend(analysis.issues)
+                    cast(List[Any], judgment.issues).extend(analysis.issues)
                     # If rule-based issues exist, may need regeneration
                     if any("clipping" in i or "silence" in i for i in analysis.issues):
                         judgment.needs_regeneration = True
-                        judgment.fix_suggestions.extend(["重新合成以修复音频质量问题"])
+                        judgment.fix_suggestions.append(
+                            FixSuggestion(
+                                suggestion_type="content_edit",
+                                target_text=reference_text[:50] if reference_text else "",
+                                current_value=None,
+                                suggested_value="重新合成以修复音频质量问题",
+                                rationale="rule-based clipping/silence issue",
+                            )
+                        )
 
                 # Incorporate hard quality check results into judgment
                 if not hard_result.passed:
                     judgment.needs_regeneration = True
-                    judgment.issues.append(f"Hard quality check failed: {hard_result.overall_message}")
-                    judgment.fix_suggestions.append("重新合成以通过硬质检门禁")
+                    cast(List[Any], judgment.issues).append(
+                        f"Hard quality check failed: {hard_result.overall_message}"
+                    )
+                    judgment.fix_suggestions.append(
+                        FixSuggestion(
+                            suggestion_type="content_edit",
+                            target_text=reference_text[:50] if reference_text else "",
+                            current_value=None,
+                            suggested_value="重新合成以通过硬质检门禁",
+                            rationale=f"hard quality check failed: {hard_result.overall_message}",
+                        )
+                    )
 
                 # Adjust scores based on hard checks
                 if hard_result.dnsmos and hard_result.dnsmos.success:
@@ -667,7 +706,9 @@ class QualityCheckPipeline:
 
                 # Record LLM judge quality check observation
                 judge_passed = not judgment.needs_regeneration
-                judge_issues = judgment.issues if judgment.issues else []
+                # observe_quality_check expects list[str]; judgment.issues is a list of
+                # Literal issue tags (each a str value) — cast narrows the invariant list.
+                judge_issues: List[str] = cast(List[str], judgment.issues) if judgment.issues else []
                 observe_quality_check(
                     stage="llm_judge",
                     passed=judge_passed,
@@ -724,12 +765,14 @@ class QualityCheckPipeline:
 
 
 def quality_check(
-    inputs: List[tuple],
+    inputs: List[QualityRunInput],
     mock_mode: bool = False,
 ) -> List[QualityJudgment]:
     """Convenience function for quality check."""
     pipeline = QualityCheckPipeline(mock_mode=mock_mode)
-    return pipeline.run(inputs)
+    # run() is wrapped by trace_function (returns Callable[..., Any]), so its
+    # declared return type is erased to Any here; cast restores the contract.
+    return cast(List[QualityJudgment], pipeline.run(inputs))
 
 
 if __name__ == "__main__":  # pragma: no cover

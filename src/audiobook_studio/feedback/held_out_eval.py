@@ -135,7 +135,7 @@ class HeldOutDataset:
         cases, origin = self._load_frozen(stage, root)
         # 关键不可变点：cases 为 tuple，任何 append/mutation 都会抛
         self._cases: Tuple[HeldOutCase, ...] = tuple(cases)
-        self._cases_index: MappingProxyType = MappingProxyType(
+        self._cases_index: MappingProxyType[str, HeldOutCase] = MappingProxyType(
             {c.case_id: c for c in self._cases}
         )
         self._manifest = self._build_manifest(origin)

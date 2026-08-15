@@ -17,6 +17,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Dict, List, Optional
 
 from ..storage import project_dir
@@ -104,7 +105,7 @@ class FeedbackCollector:
             return Path("/dev/null")
 
         # Build the feedback record matching FeedbackRecord schema
-        record = {
+        record: Dict[str, Any] = {
             "id": capture.feedback_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": capture.source or "human_edit",
@@ -182,7 +183,7 @@ class StageCapture:
         paragraph_id: Optional[int] = None,
         input_snapshot: Optional[Dict[str, Any]] = None,
     ):
-        self.collector = collector
+        self.collector: Optional["FeedbackCollector"] = collector
         self.feedback_id = feedback_id
         self.stage = stage
         self.project_id = project_id
@@ -226,10 +227,16 @@ class StageCapture:
     def __enter__(self) -> "StageCapture":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional["TracebackType"],
+    ) -> None:
         # Auto-save if we have the minimum required data
         if not self._is_disabled and self.llm_output and self.corrected_output and self.rationale:
-            self.collector.save_feedback(self)
+            if self.collector is not None:
+                self.collector.save_feedback(self)
 
     def set_llm_output(self, output: Dict[str, Any]) -> None:
         """Set the LLM's output (required)."""

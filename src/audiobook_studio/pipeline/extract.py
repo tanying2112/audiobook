@@ -8,7 +8,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Literal, Optional
 
 import fitz  # pymupdf
 import pdfplumber
@@ -20,6 +20,22 @@ from ..monitoring import record_stage_performance
 from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
+
+# MIME types accepted by ExtractionInput.mime_type. Kept in sync with the
+# Literal in schemas/extraction.py (ExtractionInput.mime_type); widening to a
+# bare ``str`` would let unsupported values through silently.
+ExtractMimeType = Literal[
+    "application/pdf",
+    "application/epub+zip",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/bmp",
+    "image/webp",
+]
 
 # Optional OCR dependencies.
 #
@@ -131,6 +147,9 @@ class ExtractPipeline:
         # nothing further to do here that would be real OCR).
         if len(extracted_text) < 100 and OCR_AVAILABLE:
             logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
+            # OCR_AVAILABLE is only True when both modules imported; narrow for the
+            # type checker so the call sites below are not flagged union-attr.
+            assert Image is not None and pytesseract is not None
             try:
                 doc = fitz.open(file_path)
                 page_count = len(doc)
@@ -139,9 +158,8 @@ class ExtractPipeline:
                     page = doc[page_num]
                     # Render page to image and OCR it
                     pix = page.get_pixmap(dpi=200)
-                    from PIL import Image
 
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                     # Use pytesseract for OCR
                     page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
 
@@ -226,6 +244,10 @@ class ExtractPipeline:
                 "brew install tesseract tesseract-lang). extract.py reports OCR "
                 "available only when BOTH are present."
             )
+
+        # OCR_AVAILABLE is True => both modules imported; narrow for the type
+        # checker so the call sites below are not flagged union-attr.
+        assert Image is not None and pytesseract is not None
 
         try:
             image = Image.open(file_path)
@@ -362,7 +384,7 @@ class ExtractPipeline:
 
 def extract_text(
     file_path: str,
-    mime_type: str,
+    mime_type: ExtractMimeType,
     detect_language: bool = True,
     mock_mode: Optional[bool] = None,
 ) -> ExtractionResult:
@@ -378,6 +400,7 @@ def extract_text(
 
 if __name__ == "__main__":  # pragma: no cover
     import sys
+    from typing import cast
 
     logging.basicConfig(level=logging.INFO)
 
@@ -385,7 +408,10 @@ if __name__ == "__main__":  # pragma: no cover
         logger.info("Usage: python extract.py <file_path> <mime_type>")
         sys.exit(1)
 
-    result = extract_text(sys.argv[1], sys.argv[2])
+    # ``sys.argv[2]`` is runtime ``str`` from the shell; we cannot statically
+    # prove it is one of the accepted MIME literals, so cast the CLI boundary
+    # value (ExtractionInput will still validate it).
+    result = extract_text(sys.argv[1], cast(ExtractMimeType, sys.argv[2]))
     logger.info(f"Language: {result.language}")
     logger.info(f"Pages: {result.page_count}")
     logger.info(f"OCR: {result.has_ocr} ({result.ocr_page_ratio:.1%})")
