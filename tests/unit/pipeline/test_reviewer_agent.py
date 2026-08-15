@@ -63,13 +63,24 @@ def mock_heavy_deps(monkeypatch):
 
 
 # Now import the schemas and reviewer agent after mocks are in place
-# Use importlib to load modules without triggering full import chain
+# Use importlib to load modules without triggering full import chain.
+#
+# P1.6.3 (test-collection robustness): resolve module paths RELATIVE to this
+# test file instead of hardcoding an absolute path. The previous form pointed
+# at "/Users/guwj/Desktop/AI_Lab/audiobook/..." (the repo's pre-move location)
+# and raised FileNotFoundError at *collection time*, aborting the whole unit
+# suite (432 tests stopped after 1 error). `PROJECT_ROOT` is derived from
+# this file's location so the test is portable across machines/branches.
 import importlib.util
 import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # Load schemas.review (no external deps)
 SCHEMA_SPEC = importlib.util.spec_from_file_location(
-    "schemas_review", "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/schemas/review.py"
+    "schemas_review",
+    str(PROJECT_ROOT / "src" / "audiobook_studio" / "schemas" / "review.py"),
 )
 schemas_review = importlib.util.module_from_spec(SCHEMA_SPEC)
 SCHEMA_SPEC.loader.exec_module(schemas_review)
@@ -77,14 +88,13 @@ sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
 
 # Create a mock for the pipeline/review module dependencies
 review_spec = importlib.util.spec_from_file_location(
-    "review", "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/pipeline/review.py"
+    "review",
+    str(PROJECT_ROOT / "src" / "audiobook_studio" / "pipeline" / "review.py"),
 )
 review = importlib.util.module_from_spec(review_spec)
 review.__package__ = "src.audiobook_studio.pipeline"
 
 # Inject schemas.review into the review module namespace
-import sys
-
 sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
 
 # Now we need to also mock the pipeline/review imports
@@ -92,7 +102,7 @@ sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
 # which will use the schemas_review we injected above
 REVIEW_SPEC = importlib.util.spec_from_file_location(
     "src.audiobook_studio.pipeline.review",
-    "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/pipeline/review.py",
+    str(PROJECT_ROOT / "src" / "audiobook_studio" / "pipeline" / "review.py"),
 )
 REVIEW_MODULE = importlib.util.module_from_spec(REVIEW_SPEC)
 sys.modules["src.audiobook_studio.pipeline.review"] = REVIEW_MODULE

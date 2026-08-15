@@ -194,6 +194,12 @@ src/master/
 src/voxcpm/
 src/dashboard/
 
+# P1.6.1: mutmut scratch worktree — mutmut copies the whole project tree into
+# mutants/ (src/, tests/, pyproject.toml, .mypy_cache/, .meta files, storage/).
+# It is 100% regenerable from `mutmut run` and must NEVER enter version control.
+# Seen untracked in audit 2026-08-14 (docs/AUDIT_REPORT_2026-08-14.md §5.4).
+mutants/
+
 # Misc temp
 i
 storage/books/

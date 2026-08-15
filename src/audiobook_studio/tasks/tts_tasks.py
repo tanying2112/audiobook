@@ -87,9 +87,27 @@ end
 return 0
 """
 
+# P1.6.3 (test-collection robustness): ``redis.from_url`` is LAZY — it returns a
+# client object without opening a socket, so the ``except`` above only catches an
+# absent ``redis`` import, never a refused connection. ``script_load`` is the first
+# call that actually dials Redis. Running it at module import time therefore
+# aborted pytest collection whenever Redis was down
+# (``redis.exceptions.ConnectionError: Error 61 connecting to localhost:6379``),
+# making the entire unit+integration suites uncollectable without a live broker.
+# Guard the eager warm-up so a missing Redis degrades to "semaphore disabled"
+# (the same contract ``_get_redis`` already promises) instead of crashing import.
 if _redis_client is not None:
-    _acquire_sha = _redis_client.script_load(_ACQUIRE_LUA)
-    _release_sha = _redis_client.script_load(_RELEASE_LUA)
+    try:
+        _acquire_sha = _redis_client.script_load(_ACQUIRE_LUA)
+        _release_sha = _redis_client.script_load(_RELEASE_LUA)
+    except Exception as e:
+        logger.warning(
+            "Redis warm-up (script_load) failed, idempotency/semaphore "
+            f"degraded until broker available: {e}"
+        )
+        _redis_client = None
+        _acquire_sha = None
+        _release_sha = None
 
 
 def _get_redis() -> Optional["redis.Redis"]:

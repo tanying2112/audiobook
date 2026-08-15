@@ -1024,3 +1024,29 @@
 **DoD 实证**：一个"LLM 自评分很高(0.95) 但 WER 变差(0.80)、破音(MOS=2.0)"的候选 → `evaluate_promotion_anti_hack` 第①关 `ConstitutionAdjudicator.adjudge` 用 P0.2 真 WER/MOS 机械裁决 `INTELLIGIBLE`(WER 0.80>0.35) + `NO_CLIPPING`(MOS 2.0<3.0) 双违反 → `passed=False`、不进入双裁判软打分即被拒——reward-hacking 被堵在源头可验证证据。反之 clean 候选（+0.3 effect、低 WER、高 MOS、双裁判一致、无回归复发）→ `passed=True`，正常晋升。连续 2 格留出集退化 → 自动回滚基线 + 剪枝后代。这就是 reward-hacking 被堵住的可验证证据。
 
 人工复听抽样协议（流程文档化，DoD⑦③）：晋升门每自动晋升约 50 次，人工随机抽 1 次**独立复听**留出集输出——对照宪法三硬关 + 效应量是否落在合理区间；如复听发现偏差则 `RegressionSuite.add_failure` 入册坏例、`EvolutionGuard` 必要时回滚。该抽样率记录在 PR/PROJECT.md 状态，确保尺度不被自动化悄悄腐化。
+
+## 日期：2026-08-15（P1 阶段启动）
+
+### 完成的工作：P1.6 测试收集健壮化（先打脚手架，再立覆盖率/mypy 基线）
+
+> 对应 `docs/EVOLUTION_ROADMAP.md` P1.6，修复审计报告 `docs/AUDIT_REPORT_2026-08-14.md` §5.4 / §七#7（mutmut 工作树入仓、notebook-as-`*.py` 崩收集、服务不可用即崩整批）。先做这步是因为 P1.5 覆盖率基线与 P1.7 mypy 收网都依赖"能干净收齐全部测试"——收集都不稳谈不上权威基线。红线 #1：每条都真跑验证、不假通过；红线 #3：状态记此一处 SSOT。
+
+**改动清单（3 子任务）：**
+1. **P1.6.1 `mutants/` 入 .gitignore** `.gitignore`（改）
+   - `mutants/` 此前**未跟踪**（`git status` 见 `?? mutants/`）**且不在 .gitignore**——mutmut 把整棵项目树（`src/`/`tests/`/`pyproject.toml`/`.mypy_cache/`/`.meta`）拷进 `mutants/`，全可由 `mutmut run` 重生，绝不可入仓。审计 2026-08-14 §5.4 已记其未跟踪。现新增 `.gitignore` 条目（带设计注释说明为何只读不可入仓）。
+   - 验证：`git check-ignore mutants` → `mutants`（已忽略）；`git status --porcelain` 不再见 `mutants/`；`git ls-files mutants/` 返回 0（无已跟踪文件被误删）。
+2. **P1.6.2 notebook `e2e_kaggle_test.py` → `.ipynb`** `e2e_kaggle_test.py` → `e2e_kaggle_test.ipynb`（重命名，未跟踪文件零历史损失）
+   - 该文件实为 **nbformat 4 的 Jupyter notebook JSON**（9 cell，确证 `json.load` 成功），却以 `.py` 后缀散在仓根——pytest 试图按 Python 收集，`NameError: null`（不存在的机内变量）崩收集。重命名为 `.ipynb` 后 pytest 不再自动收集（无 `nbval`/`nbsmoke` 插件，`pytest.ini` 未配 notebook 收集）。
+   - 验证：`pytest --collect-only tests/` 中不再出现该文件的 NameError；`.ipynb` 仍为合法 notebook（`nbformat 4 / 9 cells`）。
+3. **P1.6.3 服务不可用即降级/跳过，不再崩收集**（3 处真改）
+   - **`tests/unit/pipeline/test_reviewer_agent.py` + `tests/unit/test_monitoring.py`（修）**：两文件硬编码旧仓绝对路径 `/Users/guwj/Desktop/AI_Lab/audiobook/src/...`（项目搬迁前位置），importlib `spec_from_file_location` 收集时 `FileNotFoundError`，**中止整批 unit 收集**（434 tests 仅收 434 便因 1 error 停）。改为 `Path(__file__).resolve().parents[N]` 相对本文件解析——跨机/分支可移植。
+   - **`src/audiobook_studio/tasks/tts_tasks.py`（修，根因）**：模块顶 `if _redis_client is not None: _acquire_sha = _redis_client.script_load(_ACQUIRE_LUA)` 是**模块导入期**对 Redis 的真实连接。`redis.from_url()` 是**惰性**的（返回 client 不开 socket），故 54-60 行的 `except` 只兜得住"`redis` 包缺失"，兜不住"连接被拒"；`script_load` 才是第一个真正拨号调用——结果只要没 Redis，`from src.audiobook_studio.tasks import tts_tasks` 在收集期直接 `ConnectionError: Error 61 connecting to localhost:6379`，连累了 `tests/unit/tasks/test_tts_tasks.py`（unit，不该崩）、`tests/integration/test_stress_celery_redis.py`、`tests/test_remote_voxcpm2.py` 三处 import 全崩。现把 `script_load` 包进 try/except，失败即把 `_redis_client/_acquire_sha/_release_sha` 全置 `None`（与 `_get_redis()` 早已承诺的"Redis 不可用则信号量降级"契约一致），import 不再触网。`test_tts_tasks.py` 本就 `patch.object(tts_tasks,'_get_redis',return_value=None)` 测试 no-redis 路径——本改使该路径在无 Redis 真机上也能 collect+pass。
+
+**验收（DoD）达成：**
+1. **`mutmut` 工作树不再入仓**（DoD①）：`mutants/` 入 `.gitignore` 且无已跟踪文件受损——通过。
+2. **collection 不再 `NameError: null`**（DoD②）：notebook 改 `.ipynb`，全文 `--collect-only` 不再见该崩——通过。
+3. **无服务零错误收集**（DoD③，红线#1 真测）：`PYTHONPATH=src CI=1 python -m pytest tests/ --collect-only -q` 在**无 Redis、无任何服务**下 → **5459 tests collected in 5.78s, 0 errors**（此前基线：434 tests 收到 1 error 即 `Interrupted` 中止）。DoD 收集时长 <3min 满足（5.78s ≪ 180s）。
+4. **无回归**（红线#1 真跑）：`tests/unit/tasks/test_tts_tasks.py` 26 passed（module 级惰性 warm-up 改动未破坏 no-redis 路径与既有逻辑）；`test_reviewer_agent.py` 可正常 import（路径可移植）；`tests/integration/test_stress_celery_redis.py` 13 collected、`tests/test_remote_voxcpm2.py` 40 collected（此前 import 即崩，现可收集；Integration 默认按 `tests/conftest.py` `pytest_collection_modifyitems` 在无 `--integration` 时 skip）。
+5. **根因正确性**：修复打在根因（模块导入期惰性 client 的 eager `script_load`），非压制报错——Redis 在线时 `script_load` 正常 warm-up（行为不变），离线时诚实降级 `None`（与既有 `_get_redis()` 契约一致，非假通过）。
+
+**DoD 实证**：一次"无网无服务"的 `pytest tests/ --collect-only` 现在干净收齐 **5459** 个测试、**0** 错误——这为 P1.5 覆盖率权威基线（需在全量测试集上跑 `coverage run -m pytest`）与 P1.7 mypy 收网先把脚手架立稳。下步进入 P1.5。

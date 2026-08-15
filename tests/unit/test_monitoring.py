@@ -1,6 +1,9 @@
 """Tests for monitoring module (standalone monitoring.py)."""
 
-# Import the standalone monitoring.py module using importlib
+# Import the standalone monitoring.py module using importlib.
+# P1.6.3: resolve the path RELATIVE to this file instead of hardcoding the
+# repo's pre-move absolute path ("/Users/guwj/Desktop/AI_Lab/audiobook/..."),
+# which raised FileNotFoundError and aborted the whole unit collection.
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -9,7 +12,7 @@ import pytest
 
 spec = importlib.util.spec_from_file_location(
     "monitoring_standalone",
-    "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/monitoring.py",
+    str(Path(__file__).resolve().parents[2] / "src" / "audiobook_studio" / "monitoring.py"),
 )
 monitoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitoring)
