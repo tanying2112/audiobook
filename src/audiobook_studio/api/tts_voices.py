@@ -46,6 +46,10 @@ class TTSEngine(BaseModel):
     priority: int = Field(0, description="Engine priority (lower = higher priority)")
     supports_prosody: bool = Field(True, description="Whether engine supports prosody controls")
     supports_ssml: bool = Field(False, description="Whether engine supports SSML")
+    supports_emotion: bool = Field(
+        False,
+        description="Whether engine renders voice from emotion (metadata-only otherwise)",
+    )
 
 
 class TTSVoicesResponse(BaseModel):
@@ -246,8 +250,10 @@ async def list_tts_voices(
         supports_ssml=True,
     )
 
-    # Azure (requires API key)
-    azure_available = True  # TODO: Check actual availability
+    # Azure (requires API key). P1.9: honest availability — express False
+    # when no key, rather than a fake hardcoded True. No real azure backend
+    # module exists (only this API placeholder); aligns with status endpoint.
+    azure_available = bool(os.environ.get("AZURE_TTS_KEY"))
     engines["azure"] = TTSEngine(
         id="azure",
         name="Azure Cognitive Services",
@@ -258,8 +264,10 @@ async def list_tts_voices(
         supports_ssml=True,
     )
 
-    # GCP (requires API key)
-    gcp_available = True  # TODO: Check actual availability
+    # GCP (requires API key). P1.9: honest availability — GOOGLE_APPLICATION_CREDENTIALS
+    # is the service-account key path (.env.example). No real gcp backend module
+    # exists (only this API placeholder); aligns with status endpoint.
+    gcp_available = bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
     engines["gcp"] = TTSEngine(
         id="gcp",
         name="Google Cloud TTS",

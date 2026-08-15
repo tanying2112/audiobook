@@ -1160,3 +1160,41 @@
 - **零回归双盲**：P1.9 树 vs baseline(9bea109) 树同批跑（synthesize+orchestrator+pipeline 子目录）→ `comm -13 baseline_fail P1.9_fail`（P1.9 独有失败）= **0**；`comm -23`（baseline 独有/P1.9 修好）= **4**（正是目标 4 测试）。P1.9 树 fail 51 vs baseline 55（-4，即修好的 4 个），**零新回归、反修 4 个**。`test_synthesize.py::test_routing_decision_voice_id_from_character_map`（Edge ID 在 kokoro 下期望逆映射）经单独实例证为 **pre-existing 红**（`strict=False` 原行为下同样 `zf_xiaoxiao != zh-CN`，与 strict/prosody 改动正交）。
 
 **DoD 实证**：路由决策 `prosody_overrides` 现含 `rate/pitch/volume/emotion` 全四键（volume 来自 emotion 表的 dB，emotion 透传）；自定义 voice_id 在显式 map 命中下经 strict 透传不再被吞、未知 ID 生产面仍安全兜底。4 目标测试红→绿、零回归双盲核实（P1.9 独有失败 0）。mypy strict 仍 `Success`。P1.9 后续：`supports_emotion` 能力字段 + 分发守卫、`tts_voices.py:262` GCP 诚实缺口。
+
+---
+
+## 日期：2026-08-16（P1 阶段 · P1.9 余项 · 后端能力矩阵诚实收尾）
+
+### 完成的工作：P1.9 余项 · 后端能力矩阵诚实收尾（supports_emotion 字段 + azure/gcp availability 诚实化）
+
+> 承接上一条「P1.9 核心改造链」的"后续"钩子。对应 `docs/EVOLUTION_ROADMAP.md` P1.9「后端能力矩阵」收尾。红线 #1（主路径真实性）：能力声明与可用性**不再假**；红线 #3：真因链记此 SSOT。本批**只动一个代码文件**（`api/tts_voices.py`），不碰合成层——合成层的「引擎级 emotion→acoustic 渲染」是更大的新任务，留待用户定夺，本批**不擅自扩大**。
+
+**真因链（红线 #1，坐实到行）——颠覆 P1.9 原始预期**：
+原以为「补 `supports_emotion` 字段让引擎用 emotion 改声」，探查三引擎 `_synthesize_internal` 后发现真相**反转**：
+1. **`rate`/`volume`/`pitch` 是真消费**：edge 的 `_build_ssml`（`edge_tts_engine.py:_build_ssml`）把 rate/pitch/volume 进 `<prosody>` SSML 标签 → `edge_tts.Communicate(ssml, voice_id)` 真改声；kokoro 取 `speed=prosody.get("rate")` 进 `self._kokoro.create(...)`、`audio * 10**(volume/20)` 应用 volume（`kokoro_backend.py:262/306`）；kokoro 注释明示 **pitch 不直接支持**（诚实）。
+2. **`emotion` 零消费（空壳）**：三引擎全文 `emotion` 仅各出现 1 次，皆 `"emotion": prosody.emotion` 写进**结果元数据 dict**（`edge_tts_engine.py:284` / `kokoro_backend.py:379` / `voxcpm2_backend.py:318`）——**没有任何一处用它驱动合成**。
+3. → 结论：**诚实的 `supports_emotion` 对全引擎（edge/kokoro/voxcpm2/azure/gcp）都是 `False`**。若声明 `True` 即假声明，违背红线 #1。
+
+**附带既存红线缺口（同文件，两处自相矛盾）**：
+- `api/tts_voices.py:250/262` `azure_available = True # TODO` / `gcp_available = True # TODO` —— 两引擎注释明示「requires API key」却硬编码 True。且仓库**无** `tts/azure_engine.py`/`gcp_engine.py` 真后端（ls 确认仅有 edge_tts/kokoro/voxcpm2 三个真后端 + engine/port plumbing）—— azure/gcp 是纯 API 占位；当前 `.env` 也无 `AZURE_TTS_KEY`/`GOOGLE_APPLICATION_CREDENTIALS`。**双重假声明**。
+- 同文件 status 端点 `:393/394` **已是** `azure_available = False # TODO` / `gcp_available = False # TODO` —— voices 端点说 True、status 端点说 False，自相矛盾。
+
+**改动（唯一代码文件 `api/tts_voices.py`，0 行为删改）**：
+1. **TTSEngine 模型加 `supports_emotion` 字段**（`:48` 后）：`supports_emotion: bool = Field(False, …)`。默认 `False` 是诚实值（三引擎均不真改声）。**不**给任何引擎实例显式传 `supports_emotion=True`（无引擎配此能力）。Pydantic 加默认字段不破裂既有构造/断言（测试不查字段集封闭）。
+2. **azure availability env 判定**（`was :250`）：`azure_available = bool(os.environ.get("AZURE_TTS_KEY"))`。env 名取 `.env.example:101` 权威 `AZURE_TTS_KEY`；无 key→False（诚实降级），与 status 端点 `:393` 一致。复用本文件既有 inline `os.environ.get` 模式（参考 `:223` `ENABLE_LOCAL_TTS`），不引入新 helper。
+3. **gcp availability env 判定**（`was :262`）：`gcp_available = bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))`。env 名取 `.env.example:109` 权威（service-account key 路径）；无凭证→False，与 status 端点 `:394` 一致。
+- `available=… or include_unavailable` 逻辑不变：无 key 时 `available=False` 但 `include_unavailable=True` 仍列出该引擎（优雅降级非删除）。
+
+**红线 #1 关键决策 — 禁止「丢弃守卫」方案**：
+本可考虑「`supports_emotion=False` 时在 `_make_routing_decision` 把 emotion 从 `prosody_overrides` 丢弃」的守卫。但这会令上一批已绿的验收测试 `test_acoustic_to_tts_wiring::test_prosody_overrides_include_volume_from_emotion`（`assert "emotion" in prosody_overrides` + `== "angry"`，:301/:304）转红。故 **emotion 必须保留在 `prosody_overrides` 作 metadata 透传**——这本身诚实（它确实被透传记录了），引擎不消费改声也不会被谎报（因 `supports_emotion=False`）。本批**不改 `synthesize.py`**（emotion 写入点 `:1204/1221`、strict 调用 `:1192` 已是 a641d37 提交态，验收已绿）。
+
+**DoD 实证**：
+- **目标验收不回归**：`test_acoustic_to_tts_wiring.py` 19 passed（含上一批 4 条目标）；`test_tts_voices.py` 31 passed（`test_list_voices_default`/`_include_unavailable` 断言"azure/gcp in engines"键存在、不依赖 available 值 → 仍过；`TestTTSEngine` 模型测试不查字段集封闭 → 加默认字段仍过）。
+- **mypy 不退步**：`.venv/bin/python -m mypy src/audiobook_studio/api/tts_voices.py --no-incremental` → `Success: no issues found`（注意须用 `python -m mypy`，`.venv/bin/mypy` shebang 失效）。
+- **环境真值核对**：本机 `.env` 无 `AZURE_TTS_KEY`/`GOOGLE_APPLICATION_CREDENTIALS` → `list_tts_voices()` 实测 azure/gcp `available=False`、全引擎 `supports_emotion=False`；`include_unavailable=True` 仍列出两者 → 优雅降级非删除，契约自洽。
+- **双盲回归（红线 #1 不采信自报）**：P1.9 余项树 vs baseline(a641d37) 树 `git stash` 互切同批跑同一测试集（6 文件：test_tts_voices/test_acoustic_to_tts_wiring/test_synthesize_nonmock/test_synthesize/test_tts_engine/test_tts_engine_coverage），失败集排序去重后 `comm` 比对：
+  - `comm -13 base change`（余项独有回归）= **0**（空）→ **零新增失败**；
+  - `comm -23`（修好 baseline-only）= 0（本批只降级不修旧，符合预期）；
+  - `comm -12`（两边共有预先存在）= **14 条**逐行一致——`test_routing_decision_voice_id_from_character_map`（已知 pre-existing，kokoro 逆映射）+ `test_synthesize_via_port_success`（async port）+ `test_tts_engine_coverage` 12 条（engine registry 抽象/兼容垫片，与 `api/tts_voices.py` Pydantic 模型无关）。14 条全部 a641d37 之前已红、与余项正交。改动树与 baseline 树均 **14 failed / 152 passed**。
+
+**留待用户定夺的更大新任务（不擅自扩大）**：「引擎级 emotion→acoustic 渲染」——使某引擎真消费 `emotion` 键改声（如 edge 的 `mstts:express-as` style、或 kokoro/voxcpm2 的情感模型接入），届时该引擎的 `supports_emotion` 方可诚实置 `True`。本批如真如实地把这条真因链记入 SSOT、把能力矩阵诚实落地（全 False + env-gated availability），合成层改造留作独立 P 级任务。下步 P1.10（断网马铃薯档 / 离线 CPU 端到端验收）。
