@@ -15,7 +15,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -71,8 +71,9 @@ def load_baseline(baseline_path: Optional[str]) -> Optional[Dict[str, float]]:
 
     try:
         with open(baseline_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("latency_ms", {})
+            data: Dict[str, Any] = json.load(f)
+            latency_data = data.get("latency_ms", {})
+            return latency_data if isinstance(latency_data, dict) else None
     except Exception as e:
         print(f"警告: 无法加载基准文件 {baseline_path}: {e}", file=sys.stderr)
         return None
@@ -154,7 +155,7 @@ def measure_stage_latency(stage: str, mock: bool = False) -> float:
     return statistics.mean(latencies)
 
 
-def _get_test_data_for_stage(stage: str) -> Dict:
+def _get_test_data_for_stage(stage: str) -> Dict[str, Any]:
     """为特定阶段获取测试数据。"""
     # 这里返回简化的测试数据，实际测试中应使用更真实的数据
     if stage == "extract":
@@ -222,7 +223,7 @@ def _get_test_data_for_stage(stage: str) -> Dict:
 
 def evaluate_performance(
     current: Dict[str, float], baseline: Optional[Dict[str, float]], threshold: float
-) -> Tuple[bool, List[Dict]]:
+) -> Tuple[bool, List[Dict[str, Any]]]:
     """评估性能是否在可接受范围内。
 
     返回:

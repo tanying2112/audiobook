@@ -411,6 +411,33 @@ async def _run_single_stage(
                 if config.target_difficulty:
                     stage_kwargs["target_difficulty"] = config.target_difficulty
 
+                # Per-paragraph checkpoint skip (ADR-005): paragraph-level
+                # stages are tracked at (stage, chapter, paragraph) granularity.
+                # Look up the chapter index for this paragraph so we can ask
+                # the checkpoint whether this specific paragraph already had
+                # this stage completed.
+                chapter_row = None
+                if para.chapter_id:
+                    result = await db.execute(
+                        select(Chapter).where(Chapter.id == para.chapter_id)
+                    )
+                    chapter_row = result.scalar_one_or_none()
+                if chapter_row is not None and checkpoint_mgr.is_stage_done(
+                    stage, chapter_row.index, para.index
+                ):
+                    logger.info(
+                        "Checkpoint: ch%d p%d stage '%s' already done, skipping",
+                        chapter_row.index, para.index, stage,
+                    )
+                    progress = idx / total
+                    await emit_pipeline_event(
+                        project_id=project_id,
+                        event_type=PipelineEventType.STAGE_PROGRESS,
+                        stage=stage,
+                        progress=progress,
+                    )
+                    continue
+
                 await asyncio.to_thread(
                     run_stage,
                     stage,
@@ -421,6 +448,13 @@ async def _run_single_stage(
                     **stage_kwargs,
                 )
 
+                # Mark per-paragraph checkpoint (ADR-005): the old code marked
+                # the stage as done at chapter granularity, which caused the
+                # remaining paragraphs to be silently skipped once paragraph 1
+                # completed the stage. Track completion per paragraph instead.
+                if chapter_row is not None:
+                    checkpoint_mgr.mark_stage_done(stage, chapter_row.index, para.index)
+
                 # Emit progress
                 progress = idx / total
                 await emit_pipeline_event(
@@ -430,15 +464,8 @@ async def _run_single_stage(
                     progress=progress,
                 )
 
-            # Mark stage done for all chapters (paragraph-level stages cover entire project)
-            seen_chapters: set = set()
-            for para in paragraphs:
-                if para.chapter_id and para.chapter_id not in seen_chapters:
-                    result = await db.execute(select(Chapter).where(Chapter.id == para.chapter_id))
-                    chapter = result.scalar_one_or_none()
-                    if chapter:
-                        checkpoint_mgr.mark_stage_done(stage, chapter.index)
-                    seen_chapters.add(para.chapter_id)
+            # The per-paragraph loop above now records completion per paragraph
+            # (ADR-005); no extra chapter-level bookkeeping is needed here.
 
         else:
             logger.warning(f"Unknown stage '{stage}' in auto-run")
@@ -699,7 +726,7 @@ async def preview_autopilot_config(project_id: int, db: AsyncSession = Depends(g
     return await _generate_autopilot_config(project_id, db)
 
 
-async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutoRunConfig:
+async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutopilotConfig:
     """
     Analyze project content and generate optimal configuration.
 
@@ -819,7 +846,7 @@ async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutoR
         f"Rate={speech_rate_preference}, Cost limit=${cost_limit_usd:.2f}"
     )
 
-    return AutoRunConfig(
+    return AutopilotConfig(
         target_difficulty=target_difficulty,
         primary_voice_preference=primary_voice_preference,
         speech_rate_preference=speech_rate_preference,
@@ -828,6 +855,8 @@ async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutoR
         max_regeneration_attempts=max_regeneration_attempts,
         enable_background_music=enable_background_music,
         enable_sfx=enable_sfx,
+        reasoning=reasoning,
+        confidence=0.85,
     )
 
 
@@ -874,7 +903,7 @@ async def get_intermediate_product(
             return chapter
         # Return first chapter
         result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
-        chapter = result.scalar_one_or_none()
+        chapter = result.scalars().first()
         if not chapter:
             raise HTTPException(status_code=404, detail=f"No chapters found for project {project_id}")
         return chapter

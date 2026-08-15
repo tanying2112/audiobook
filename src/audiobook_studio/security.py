@@ -90,8 +90,8 @@ def safe_join(base: Path, *components: str) -> Path:
     # Verify result is within base
     try:
         result.relative_to(base)
-    except ValueError:
-        raise ValueError(f"Path traversal attempt detected: {components}")
+    except ValueError as e:
+        raise ValueError(f"Path traversal attempt detected: {components}") from e
 
     return result
 
@@ -151,8 +151,8 @@ def safe_open(
     try:
         safe_resolved.relative_to(base_path)
         target_resolved.relative_to(base_path)
-    except ValueError:
-        raise ValueError(f"Path traversal attempt detected: {components}")
+    except ValueError as e:
+        raise ValueError(f"Path traversal attempt detected: {components}") from e
 
     # For write/append modes, create parent directories if they don't exist
     if "w" in mode or "a" in mode:
@@ -300,8 +300,8 @@ def safe_subprocess_args(cmd: list[str], base_dir: Optional[Path] = None) -> lis
                 try:
                     p = Path(arg).resolve()
                     p.relative_to(base_dir)
-                except (ValueError, OSError):
-                    raise ValueError(f"Path argument {i} escapes base directory: {arg}")
+                except (ValueError, OSError) as e2:
+                    raise ValueError(f"Path argument {i} escapes base directory: {arg}") from e2
 
     # ffmpeg-specific validation against known-safe argument patterns
     if cmd[0] in {"ffmpeg", "ffprobe"}:

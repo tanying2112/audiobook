@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +107,14 @@ def _cosine_similarity(text_a: str, text_b: str) -> float:
     """计算两段文本的余弦相似度 (基于字符 n-gram)."""
 
     # Build char-level 2-gram sets (simplified TF-IDF)
-    def get_ngrams(text: str, n: int = 2) -> Counter:
+    def get_ngrams(text: str, n: int = 2) -> Counter[str]:
         return Counter(text[i : i + n] for i in range(len(text) - n + 1))
 
     vec_a = get_ngrams(text_a)
     vec_b = get_ngrams(text_b)
 
     # Compute dot product
-    all_grams = set(vec_a.keys()) | set(vec_b.keys())
+    all_grams: set[str] = set(vec_a.keys()) | set(vec_b.keys())
     dot_product = sum(vec_a[g] * vec_b[g] for g in all_grams)
 
     magnitude_a = math.sqrt(sum(v**2 for v in vec_a.values()))
@@ -171,7 +171,7 @@ _VALID_EMOTIONS = {
 
 def validate_emotions(
     annotations: List[Dict[str, Any]],
-    valid_emotions: Optional[set] = None,
+    valid_emotions: Optional[Set[str]] = None,
 ) -> ValidationReport:
     """验证情感标注集合.
 
@@ -183,7 +183,7 @@ def validate_emotions(
         ValidationReport 报告
     """
     emotions = valid_emotions or _VALID_EMOTIONS
-    emotion_counter: Counter = Counter()
+    emotion_counter: Counter[str] = Counter()
     other_count = 0
     unexpected: List[Tuple[str, int]] = []
 
@@ -254,7 +254,7 @@ _DEFAULT_DIFFICULTY_WEIGHTS = {
 def _compute_text_difficulty(text: str) -> Dict[str, float]:
     """计算文本的各项难度指标."""
     # Character-level entropy (vocabulary richness)
-    char_freq: Counter = Counter(text)
+    char_freq: Counter[str] = Counter(text)
     total_chars = len(text)
     entropy = -sum((c / total_chars) * math.log(c / total_chars) for c in char_freq.values() if c > 0)
 
@@ -508,16 +508,16 @@ class FalsePositiveTracker:
         penalty = fp_rate * 0.2  # 每 10% 误报扣 2 分
         return max(0.0, min(1.0, raw_score - penalty))
 
-    def get_high_fp_issues(self, threshold: float = 0.2) -> Counter:
+    def get_high_fp_issues(self, threshold: float = 0.2) -> Counter[str]:
         """获取高频误报类型 (错误率 > threshold)."""
-        type_counts: Counter = Counter()
-        type_fp: Counter = Counter()
+        type_counts: Counter[str] = Counter()
+        type_fp: Counter[str] = Counter()
 
         for issue in self.issues:
             type_counts[issue.issue_type] += 1
             type_fp[issue.issue_type] += 1
 
-        high_fp: Counter = Counter()
+        high_fp: Counter[str] = Counter()
         for issue_type, count in type_fp.items():
             total = type_counts.get(issue_type, 1)
             fp_rate = count / total

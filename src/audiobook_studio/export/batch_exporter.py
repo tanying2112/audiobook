@@ -13,7 +13,7 @@ import zipfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
 from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
@@ -71,7 +71,7 @@ def _collect_chapter_data(
     project_id: int,
     chapter_id: int,
     session,
-) -> Optional[dict]:
+) -> Optional[Dict[str, Any]]:
     """从数据库收集单个章节的导出数据.
 
     返回:
@@ -104,7 +104,7 @@ def _collect_chapter_data(
     }
 
 
-def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
+def _build_chapter_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMarker]:
     """从章节数据构建 M4B 章节标记."""
     markers: List[ChapterMarker] = []
     cumulative_ms = 0
@@ -146,7 +146,7 @@ def _build_chapter_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
     return markers
 
 
-def _build_segment_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
+def _build_segment_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMarker]:
     """Build one marker per audio segment (for non-stitched audio)."""
     markers: List[ChapterMarker] = []
     cumulative_ms = 0
@@ -184,7 +184,7 @@ def _build_segment_markers(chapter_data: List[dict]) -> List[ChapterMarker]:
     return markers
 
 
-def _collect_audio_files(chapter_data: List[dict]) -> List[Path]:
+def _collect_audio_files(chapter_data: List[Dict[str, Any]]) -> List[Path]:
     """收集章节所有音频文件路径."""
     files: List[Path] = []
     for data in chapter_data:
@@ -202,7 +202,7 @@ def _collect_audio_files(chapter_data: List[dict]) -> List[Path]:
 
 
 def _build_subtitle_entries(
-    chapter_data: List[dict],
+    chapter_data: List[Dict[str, Any]],
 ) -> List[SubtitleEntry]:
     """从章节数据构建字幕条目."""
     entries: List[SubtitleEntry] = []
@@ -241,7 +241,7 @@ def _build_subtitle_entries(
     return entries
 
 
-def _build_project_metadata(chapter_data: List[dict], project) -> M4bMetadata:
+def _build_project_metadata(chapter_data: List[Dict[str, Any]], project) -> M4bMetadata:
     """构建 M4B 元数据."""
     first_chapter = chapter_data[0]["chapter"] if chapter_data else None
     return M4bMetadata(
@@ -283,7 +283,7 @@ def export_project(
     # Collect chapter data
     chapters_to_export = job.chapter_ids or [ch.id for ch in sorted(project.chapters, key=lambda c: c.index)]
 
-    chapter_data_list: List[dict] = []
+    chapter_data_list: List[Dict[str, Any]] = []
     for ch_id in chapters_to_export:
         data = _collect_chapter_data(project_id, ch_id, session)
         if data:

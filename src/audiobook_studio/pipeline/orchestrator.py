@@ -13,9 +13,11 @@ Usage::
 
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.websocket import get_pause_event, is_paused, pause_check
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
@@ -198,6 +200,11 @@ def init_telemetry(
         logger.debug("Telemetry module not available, skipping initialization")
         return None
 
+    # Shutdown existing telemetry if already initialized
+    if _telemetry_collector:
+        logger.debug("Telemetry already initialized, shutting down existing collector")
+        shutdown_telemetry()
+
     _telemetry_collector = TelemetryCollector(
         project_id=project_id,
         pipeline_id=pipeline_id,
@@ -226,15 +233,12 @@ def shutdown_telemetry() -> Optional[dict]:
     global _telemetry_collector
     if _telemetry_collector:
         summary = _telemetry_collector.get_summary()
-        # Unregister hooks
-        if _telemetry_collector.on_pipeline_start in _pipeline_hooks:
-            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_start)
-        if _telemetry_collector.on_pipeline_end in _pipeline_hooks:
-            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_end)
-        if _telemetry_collector.on_stage_enter in _stage_hooks:
-            _stage_hooks.remove(_telemetry_collector.on_stage_enter)
-        if _telemetry_collector.on_stage_exit in _stage_hooks:
-            _stage_hooks.remove(_telemetry_collector.on_stage_exit)
+        # Unregister hooks - use indices to avoid bound method identity issues
+        global _pipeline_hooks, _stage_hooks
+        _pipeline_hooks = [h for h in _pipeline_hooks
+                          if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
+        _stage_hooks = [h for h in _stage_hooks
+                       if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
         _telemetry_collector = None
         return summary
     return None
@@ -245,7 +249,7 @@ def shutdown_telemetry() -> Optional[dict]:
 
 async def run_stage(
     stage: str,
-    db: Session,
+    db: Union[Session, AsyncSession],
     *,
     project_id: Optional[int] = None,
     chapter_index: Optional[int] = None,
@@ -263,7 +267,7 @@ async def run_stage(
         One of ``"extract"``, ``"analyze"``, ``"annotate"``, ``"edit"``,
         ``"audio_postprocess"``, ``"synthesize"``, ``"quality"``.
     db:
-        SQLAlchemy session for persistence.
+        SQLAlchemy session for persistence (sync or async).
     project_id:
         Required for stages that create/update Project-level records.
     chapter_index:
@@ -284,34 +288,64 @@ async def run_stage(
     -------
     The pipeline stage result (Pydantic model) and writes side effects to DB.
     """
+    # Check if we're using async session
+    is_async = isinstance(db, AsyncSession)
+
     # Resolve chapter
     chapter = None
     if chapter_id:
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
+        if is_async:
+            result = await db.execute(select(Chapter).filter(Chapter.id == chapter_id))
+            chapter = result.scalar_one_or_none()
+        else:
+            chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
     elif chapter_index is not None and project_id is not None:
-        chapter = (
-            db.query(Chapter)
-            .filter(
-                Chapter.project_id == project_id,
-                Chapter.index == chapter_index,
+        if is_async:
+            result = await db.execute(
+                select(Chapter).filter(
+                    Chapter.project_id == project_id,
+                    Chapter.index == chapter_index,
+                )
             )
-            .first()
-        )
+            chapter = result.scalar_one_or_none()
+        else:
+            chapter = (
+                db.query(Chapter)
+                .filter(
+                    Chapter.project_id == project_id,
+                    Chapter.index == chapter_index,
+                )
+                .first()
+            )
 
     # Resolve paragraph
     para = None
     if paragraph_id:
-        para = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+        if is_async:
+            result = await db.execute(select(Paragraph).filter(Paragraph.id == paragraph_id))
+            para = result.scalar_one_or_none()
+        else:
+            para = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
     elif paragraph_index is not None and chapter is not None:
-        para = (
-            db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id,
-                Paragraph.chapter_id == chapter.id,
-                Paragraph.index == paragraph_index,
+        if is_async:
+            result = await db.execute(
+                select(Paragraph).filter(
+                    Paragraph.project_id == project_id,
+                    Paragraph.chapter_id == chapter.id,
+                    Paragraph.index == paragraph_index,
+                )
             )
-            .first()
-        )
+            para = result.scalar_one_or_none()
+        else:
+            para = (
+                db.query(Paragraph)
+                .filter(
+                    Paragraph.project_id == project_id,
+                    Paragraph.chapter_id == chapter.id,
+                    Paragraph.index == paragraph_index,
+                )
+                .first()
+            )
 
     # Build input snapshot for feedback collection
     input_snapshot = {
@@ -366,8 +400,8 @@ async def run_stage(
         # Run stage logic
         result = handler.run(**context)
 
-        # Persist result to database
-        handler.persist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
+        # Persist result to database (async)
+        await handler.apersist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
 
         # Capture feedback
         if feedback_capture:
@@ -495,6 +529,23 @@ async def run_pipeline(
         "kwargs": _sanitize_kwargs(kwargs),
     }
 
+    # Early exit: if all stages are already completed, don't run anything
+    if checkpoint_manager and chapter_index is not None:
+        all_done = True
+        for stage in stages:
+            if not checkpoint_manager.is_stage_done(stage, chapter_index, paragraph_index):
+                all_done = False
+                break
+        if all_done:
+            if paragraph_index is not None:
+                logger.info(
+                    "All stages already completed for ch%d p%d, skipping pipeline",
+                    chapter_index, paragraph_index,
+                )
+            else:
+                logger.info(f"All stages already completed for ch{chapter_index}, skipping pipeline")
+            return []
+
     _emit_pipeline_start(pipeline_context)
     results = []
 
@@ -509,18 +560,23 @@ async def run_pipeline(
                 logger.info(f"Pipeline {project_id} resumed")
             # Checkpoint: skip already completed stages
             if checkpoint_manager and chapter_index is not None:
-                if checkpoint_manager.is_stage_done(stage, chapter_index):
-                    logger.info(
-                        "Checkpoint: skipping stage '%s' for ch%d (already done)",
-                        stage,
-                        chapter_index,
-                    )
+                if checkpoint_manager.is_stage_done(stage, chapter_index, paragraph_index):
+                    if paragraph_index is not None:
+                        logger.info(
+                            "Checkpoint: skipping stage '%s' for ch%d p%d (already done)",
+                            stage, chapter_index, paragraph_index,
+                        )
+                    else:
+                        logger.info(
+                            "Checkpoint: skipping stage '%s' for ch%d (already done)",
+                            stage, chapter_index,
+                        )
                     results.append(None)
                     continue
 
             # Mark stage as started
             if checkpoint_manager and chapter_index is not None:
-                checkpoint_manager.mark_stage_started(stage, chapter_index)
+                checkpoint_manager.mark_stage_started(stage, chapter_index, paragraph_index)
 
             # run_stage is a coroutine; must be awaited or the result is a
             # never-awaited coroutine object rather than the stage output.
@@ -539,7 +595,7 @@ async def run_pipeline(
 
             # Mark stage as completed
             if checkpoint_manager and chapter_index is not None:
-                checkpoint_manager.mark_stage_done(stage, chapter_index)
+                checkpoint_manager.mark_stage_done(stage, chapter_index, paragraph_index)
 
         _emit_pipeline_end(pipeline_context, results, None)
         return results

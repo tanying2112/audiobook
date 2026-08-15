@@ -7,6 +7,7 @@ migrations instead of ``init_db``.
 
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from .api.ab_test_interceptor import ABTestMiddleware
+from .api.admin import router as admin_router
 from .api.agent_chat import router as agent_chat_router
 from .api.audio_segments import router as audio_segments_router
 from .api.auto_run import router as auto_run_router
@@ -39,7 +41,6 @@ from .api.sop_reflection import router as sop_reflection_router
 from .api.templates import router as templates_router
 from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
-from .api.admin import router as admin_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
 from .auth.dependencies import get_current_active_user
@@ -68,7 +69,7 @@ async def lifespan(app: FastAPI):
     settings.validate_cors_security()
 
     # BP-003: Startup dependency validation — fast-fail on unreachable dependencies
-    await _validate_runtime_dependencies(settings)
+    await settings.validate_runtime_dependencies(timeout=settings.HEALTH_CHECK_TIMEOUT)
 
     # P1-4: Use Alembic for DB migrations instead of create_all()
     from subprocess import run
@@ -96,61 +97,6 @@ async def lifespan(app: FastAPI):
     shutdown_metrics()
 
 
-async def _validate_runtime_dependencies(settings) -> None:
-    """Validate critical runtime dependencies at startup (BP-003).
-
-    Checks DB connectivity, Redis ping, and model path existence.
-    Fast-fails with clear error messages on first failure.
-    """
-    import asyncio
-    import logging
-
-    logger = logging.getLogger("audiobook_studio.startup")
-    timeout = settings.HEALTH_CHECK_TIMEOUT
-
-    # 1. Database connectivity
-    try:
-        from .database import SessionLocal
-        from sqlalchemy import text
-
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            logger.info("Database connectivity: OK")
-        finally:
-            db.close()
-    except Exception as e:
-        logger.critical(f"DATABASE_URL connect failed: {e}")
-        raise RuntimeError(
-            f"DATABASE_URL connect failed: {e}. "
-            f"Check DATABASE_URL={settings.DATABASE_URL}"
-        ) from e
-
-    # 2. Redis ping (optional — warn only)
-    try:
-        import redis.asyncio as aioredis
-        async with asyncio.timeout(timeout):
-            r = aioredis.from_url(settings.REDIS_URL)
-            await r.ping()
-            await r.aclose()
-            logger.info("Redis connectivity: OK")
-    except Exception as e:
-        logger.warning(f"Redis ping failed (non-fatal): {e}")
-
-    # 3. KOKORO_MODEL_PATH existence (if configured)
-    from pathlib import Path
-
-    kokoro_path = settings.KOKORO_MODEL_PATH
-    if kokoro_path:
-        model_file = Path(kokoro_path)
-        if not model_file.exists():
-            logger.error(f"KOKORO_MODEL_PATH not found: {kokoro_path}")
-            raise RuntimeError(
-                f"KOKORO_MODEL_PATH not found: {kokoro_path}. "
-                f"Download models or set ENABLE_LOCAL_TTS=false to fallback to Edge-TTS."
-            )
-
-
 app = FastAPI(
     title="Audiobook Studio API",
     version="0.1.0",
@@ -160,29 +106,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# Middleware order: Security → CORS → Compression → Normalization → Business
-# 1. TrustedHost (security — reject requests with spoofed Host headers)
-# 2. CORSMiddleware (cross-origin — must wrap all responses)
-# 3. GZipMiddleware (compression — applied after CORS headers are set)
-# 4. ISOTimestampMiddleware (response normalization — last before business logic)
-# 5. ABTestMiddleware (business routing — depends on normalized responses)
-settings = get_settings()
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS,
-)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=settings.CORS_ALLOW_METHODS,
-    allow_headers=settings.CORS_ALLOW_HEADERS,
-)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(ISOTimestampMiddleware)
-app.add_middleware(ABTestMiddleware)
-
-# Instrument with OpenTelemetry
+# Instrument with OpenTelemetry FIRST (so it's outermost for response, innermost for request)
 instrument_app(
     app,
     service_name="audiobook-studio",
@@ -191,6 +115,38 @@ instrument_app(
     enable_console_exporter=os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower() == "true",
     prometheus_port=int(os.getenv("PROMETHEUS_PORT", "9090")),
     exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
+)
+
+# Middleware order (added FIRST = innermost for response, LAST = outermost for request):
+# Request flow (outermost to innermost):
+# 1. TrustedHostMiddleware (security — reject requests with spoofed Host headers)
+# 2. CORSMiddleware (cross-origin — must wrap all responses)
+# 3. GZipMiddleware (compression — applied after CORS headers are set)
+# 4. ISOTimestampMiddleware (response normalization — last before business logic)
+# 5. ABTestMiddleware (business routing — depends on normalized responses)
+# 6. ObservabilityMiddleware (observability — added by instrument_app, innermost for request)
+# Response flow (innermost to outermost):
+# 1. ObservabilityMiddleware
+# 2. ABTestMiddleware
+# 3. ISOTimestampMiddleware
+# 4. GZipMiddleware
+# 5. CORSMiddleware (adds CORS headers)
+# 6. TrustedHostMiddleware
+settings = get_settings()
+# Add in REVERSE of request order (so first added = innermost for response = outermost for request)
+app.add_middleware(ABTestMiddleware)
+app.add_middleware(ISOTimestampMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
+)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
 # Include routers with global auth default-deny (P1-1)
@@ -232,6 +188,7 @@ app.include_router(sop_reflection_router, dependencies=auth_dep)
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
 
+
 @app.get("/health")
 def health_check():
     """Simple liveness check — always returns 200 if process is alive."""
@@ -248,7 +205,7 @@ def health_live():
 async def health_ready():
     """K8s readiness probe — returns 200 only when all critical dependencies are up.
 
-    Checks: database SELECT 1, Redis ping, Kokoro model file existence.
+    Checks: database SELECT 1, Redis ping, Kokoro model file existence, LLM API key format.
     Returns 503 with structured error details if any dependency is not ready.
     """
     import asyncio
@@ -275,6 +232,7 @@ async def health_ready():
     # Redis check
     try:
         import redis.asyncio as aioredis
+
         async with asyncio.timeout(timeout):
             r = aioredis.from_url(settings.REDIS_URL)
             await r.ping()
@@ -306,14 +264,29 @@ async def health_ready():
     except Exception as e:
         checks["tts_engines"] = f"error: {e}"
 
-    def _is_healthy(v: str | dict | bool) -> bool:
+    # LLM API key format validation
+    try:
+        settings._validate_llm_api_keys()
+        checks["llm_keys"] = "ok"
+    except RuntimeError as e:
+        checks["llm_keys"] = f"error: {e}"
+    except Exception as e:
+        checks["llm_keys"] = f"error: {e}"
+
+    def _is_healthy(v: str | dict[str, Any] | bool) -> bool:
         if isinstance(v, dict):
             return all(_is_healthy(vv) for vv in v.values())
         if isinstance(v, bool):
             return v
         return v == "ok" or v == "not_configured"
 
-    all_ok = _is_healthy(checks.get("database")) and _is_healthy(checks.get("redis"))
+    # Critical dependencies: DB and Redis must be healthy
+    # LLM keys are validated but invalid format only matters if keys are configured
+    db_ok = _is_healthy(checks.get("database"))
+    redis_ok = _is_healthy(checks.get("redis"))
+    llm_ok = _is_healthy(checks.get("llm_keys"))
+
+    all_ok = db_ok and redis_ok and llm_ok
     status_code = 200 if all_ok else 503
     return JSONResponse(
         content={"status": "ready" if all_ok else "not_ready", "checks": checks},
@@ -322,6 +295,7 @@ async def health_ready():
 
 
 # ── Global exception handler (QUAL-003: structured error responses) ────────────
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

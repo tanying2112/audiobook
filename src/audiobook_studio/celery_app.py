@@ -70,4 +70,5 @@ def _health_check(self: Any) -> dict[str, str]:
     """Health check task."""
     return {"status": "healthy", "worker": self.request.hostname}
 
+
 health_check = celery_app.task(bind=True)(_health_check)

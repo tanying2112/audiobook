@@ -14,7 +14,6 @@ from src.audiobook_studio.quality.metrics import ECAPATDNNBackend, SpeakerSimila
 # Add the src directory to the path so we can import the module as a package
 
 
-
 class TestSpeakerSimilarityDependencies(unittest.TestCase):
 
     @patch("src.audiobook_studio.quality.metrics._speechbrain_available", True)

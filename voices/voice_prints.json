@@ -263,8 +263,8 @@
     "quality": "good",
     "sample_count": 1,
     "avg_snr": 22.0,
-    "created_at": "2026-07-20T07:42:39.805657",
-    "updated_at": "2026-07-20T07:42:39.805662"
+    "created_at": "2026-07-26T14:04:48.651731",
+    "updated_at": "2026-07-26T14:04:48.651736"
   },
   "existing_speaker": {
     "speaker_id": "existing_speaker",
@@ -531,7 +531,7 @@
     "sample_count": 1,
     "avg_snr": 25.0,
     "created_at": "2026-01-01",
-    "updated_at": "2026-07-20T07:42:39.808887"
+    "updated_at": "2026-07-26T14:04:48.660353"
   },
   "spk1": {
     "speaker_id": "spk1",
@@ -540,7 +540,7 @@
       0.5,
       0.6666666666666666,
       0.1,
-      0.941,
+      0.932,
       0.5,
       0.5,
       0.5,
@@ -797,7 +797,7 @@
     "quality": "excellent",
     "sample_count": 1,
     "avg_snr": 25.0,
-    "created_at": "2026-07-20T08:54:17.255794",
-    "updated_at": "2026-07-20T15:26:29.468918"
+    "created_at": "2026-07-29T21:03:07.029909",
+    "updated_at": "2026-07-29T21:03:07.092276"
   }
 }

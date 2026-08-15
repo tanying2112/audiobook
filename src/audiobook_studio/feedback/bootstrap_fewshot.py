@@ -10,6 +10,8 @@ E2 — BootstrapFewShot (DSPy 介入)
 - 支持多书籍批量优化
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -17,10 +19,41 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import dspy
-from dspy import Example, Prediction
-from dspy.teleprompt.gepa import GEPA
-from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
+# ── Optional dspy dependency (P0.4 Route B — honesty) ───────────────────────
+# dspy is NOT a declared dependency (absent from requirements / pyproject). It
+# is hand-installed only in some local dev venvs, so a bare ``import dspy`` at
+# module top crashed every consumer that imported this module directly:
+#   ModuleNotFoundError: No module named 'dspy'
+# The package ``feedback/__init__.py`` already PEP 562 lazy-loads this module so
+# the app *starts* without dspy, but a direct import (tests, a future eager
+# import, scripting) still died. We now import dspy defensively and gate EVERY
+# dspy-dependent symbol behind ``DSPY_AVAILABLE``. Non-dspy helpers (paragraph
+# extraction, data loading, metrics dataclasses, loss math, early-stopping)
+# remain importable and usable with dspy absent. Calling the real optimiser
+# without dspy raises a clear, actionable error instead of an import-time crash.
+# See docs/AUDIT_REPORT_2026-08-14.md §4.4 and tests/unit/test_feedback_import_safety.py.
+dspy = None
+try:  # pragma: no cover - exercised in test_feedback_import_safety with dspy blocked
+    import dspy  # type: ignore[import-not-found]
+    from dspy import Example, Prediction  # noqa: F401  (kept for API parity)
+    from dspy.teleprompt.gepa import GEPA  # noqa: F401
+    from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401
+    DSPY_AVAILABLE: bool = True
+except ModuleNotFoundError:
+    DSPY_AVAILABLE = False
+
+
+def _require_dspy(feature: str) -> None:
+    """Raise a clear error for a dspy-only feature when dspy is absent."""
+    if not DSPY_AVAILABLE:
+        raise RuntimeError(
+            f"{feature} requires the optional 'dspy' dependency, which is not installed. "
+            "The DSPy-backed few-shot optimiser is experimental and not enabled in the "
+            "default pipeline. Install dspy separately to opt in, or use the heuristic "
+            "SOP reflection / promotion-gate paths instead. "
+            "(docs/AUDIT_REPORT_2026-08-14.md §4.4, docs/EVOLUTION_ROADMAP.md P0.4)"
+        )
+
 
 logger = logging.getLogger(__name__)
 
@@ -169,13 +202,28 @@ class MultiObjectiveLoss:
         )
 
 
-class CharacterRecognitionModule(dspy.Module):
+# The two DSPy modules below subclass ``dspy.Module``. When dspy is absent we
+# swap in a lightweight stand-in base so the module still *imports* (no
+# import-time crash) and only raises a clear error once the optimiser is
+# actually exercised. Non-dpsy code paths above are unaffected.
+if DSPY_AVAILABLE:
+    _DspyModule = dspy.Module  # type: ignore[union-attr]
+else:
+
+    class _DspyModule:  # minimal stand-in base; raises on construction
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            _require_dspy("CharacterRecognitionModule / VoiceDesignModule")
+
+
+class CharacterRecognitionModule(_DspyModule):
     """DSPy module for character recognition optimization.
 
     Signature: Extract character name from paragraph text.
     """
 
     def __init__(self, prompt_template: str = ""):
+        if not DSPY_AVAILABLE:
+            _require_dspy("CharacterRecognitionModule")
         super().__init__()
         self.predict = dspy.Predict(
             dspy.Signature(
@@ -196,13 +244,15 @@ class CharacterRecognitionModule(dspy.Module):
         return self.forward(**kwargs)
 
 
-class VoiceDesignModule(dspy.Module):
+class VoiceDesignModule(_DspyModule):
     """DSPy module for Voice Design optimization.
 
     Signature: Determine appropriate voice style from context.
     """
 
     def __init__(self, prompt_template: str = ""):
+        if not DSPY_AVAILABLE:
+            _require_dspy("VoiceDesignModule")
         super().__init__()
         self.predict = dspy.Predict(
             dspy.Signature(
@@ -309,6 +359,8 @@ def create_multi_objective_metric(
     Returns a ScoreWithFeedback combining both objectives.
     The metric is used by GEPA to evaluate and guide optimization.
     """
+    if not DSPY_AVAILABLE:
+        _require_dspy("create_multi_objective_metric")
 
     def metric(gold: Example, pred: Prediction, trace=None, pred_name=None, pred_trace=None) -> ScoreWithFeedback:
         # Get predicted output - handle both dict and object formats
@@ -677,6 +729,8 @@ class BootstrapFewShotOptimizer:
         Returns:
             OptimizationResult with optimized prompt and metrics
         """
+        if not DSPY_AVAILABLE:
+            _require_dspy("BootstrapFewShotOptimizer.optimize")
         # Configure DSPy with mock LM for testing
         configure_dspy_optimizer(use_mock=True)
 

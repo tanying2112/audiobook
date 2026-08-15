@@ -10,12 +10,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Float, String, Text
+from sqlalchemy import DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -41,7 +42,7 @@ class Book(Base):
     language: Mapped[str] = mapped_column(String(2), nullable=False, default="en")
     isbn: Mapped[Optional[str]] = mapped_column(String, nullable=True, unique=True)
 
-    def to_schema(self):
+    def to_schema(self) -> "BookSchema":
         from ..schemas.book import Book as BookSchema
 
         return BookSchema(
@@ -84,37 +85,42 @@ class Project(Base):
     cost_limit_per_chapter: Mapped[float] = mapped_column(Float, default=5.0)
 
     # 时间戳
-    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    completed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    # ── Relationships ──
+    # ── Relationships (lazy="selectin" for eager loading, raiseload for forbidden lazy loads) ──
+    from sqlalchemy.orm import raiseload
+
     characters: Mapped[List[Character]] = relationship(
-        "Character", back_populates="project", cascade="all, delete-orphan"
+        "Character", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     emotion_snapshots: Mapped[List[EmotionSnapshot]] = relationship(
-        "EmotionSnapshot", back_populates="project", cascade="all, delete-orphan"
+        "EmotionSnapshot", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
-    chapters: Mapped[List[Chapter]] = relationship("Chapter", back_populates="project", cascade="all, delete-orphan")
+    chapters: Mapped[List[Chapter]] = relationship("Chapter", back_populates="project", cascade="all, delete-orphan", lazy="selectin")
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
-        "FeedbackRecord", back_populates="project", cascade="all, delete-orphan"
+        "FeedbackRecord", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     paragraphs: Mapped[List[Paragraph]] = relationship(
-        "Paragraph", back_populates="project", cascade="all, delete-orphan"
+        "Paragraph", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     audio_segments: Mapped[List[AudioSegment]] = relationship(
-        "AudioSegment", back_populates="project", cascade="all, delete-orphan"
+        "AudioSegment", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     processing_runs: Mapped[List[ProcessingRun]] = relationship(
-        "ProcessingRun", back_populates="project", cascade="all, delete-orphan"
+        "ProcessingRun", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
-    permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project")
+    permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project", cascade="all, delete-orphan", lazy="selectin")
     segments: Mapped[List["ProjectSegment"]] = relationship(
-        "ProjectSegment", back_populates="project", cascade="all, delete-orphan"
+        "ProjectSegment", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     publish_jobs: Mapped[List["PublishJob"]] = relationship(
-        "PublishJob", back_populates="project", cascade="all, delete-orphan"
+        "PublishJob", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
     publish_history: Mapped[List["PublishHistory"]] = relationship(
-        "PublishHistory", back_populates="project", cascade="all, delete-orphan"
+        "PublishHistory", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    # Forbid lazy loading on detail endpoints that should use selectinload explicitly
+    __raised_load_attrs__ = (raiseload("*"),)

@@ -178,7 +178,14 @@ class SOPConfig:
         return "default"
 
     def update_genre_rules(self, genre: str, new_rules: Dict[str, Any], confidence: float, reasoning: str) -> bool:
-        """Merge new rules into genre config."""
+        """Merge new rules into genre config.
+
+        P0.3 不变式（防 reward-hacking）：此处合并到的学习规则**生效到生产候选前**必须经
+        ``audiobook_studio.feedback.constitution`` 创作宪法 + 留出集双裁判 + ≥0.25 效应量
+        的晋升门严格裁决（``evaluate_promotion_anti_hack``）。本方法只把规则写进
+        ``agent_sop.json``；一个让"逐字朗读 / 可懂 / 不破音"任一硬规则被违反的规则，会在
+        晋升门被宪法**先于打分**拒绝，因此进化循环无法绕过硬规则把退化悄悄晋升上生产。
+        """
         with self._lock:
             genre_key = self._normalize_genre(genre)
             if genre_key not in self._config.get("genres", {}):

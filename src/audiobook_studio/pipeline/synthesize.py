@@ -52,6 +52,99 @@ from ..utils.ffmpeg_probe import get_duration_sync
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro):
+    """Run a coroutine from a sync caller, safe inside a running event loop.
+
+    The pipeline orchestrator ``run_stage`` is ``async`` but invokes each
+    stage handler's ``run()`` synchronously (``handler.run(**context)``).
+    Synthesize's ``run()`` is sync but needs to drive async TTS Port / ffmpeg
+    calls. Plain ``asyncio.run()`` inside an already-running loop raises
+    ``RuntimeError: asyncio.run() cannot be called from a running event
+    loop``. When a loop is already running we hop onto a worker thread with
+    its own loop (the same pattern used in ``tts/voice_cloning.py``);
+    otherwise we fall back to ``asyncio.run``.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    import concurrent.futures
+
+    def _runner():
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(_runner).result(timeout=300)
+
+
+# Edge-TTS voice_id  ->  Kokoro equivalent voice_id
+# (Edge voice IDs come from the book analysis stage's default
+# ``zh-CN-XiaoxiaoNeural`` suggested_voice_id; Kokoro uses a disjoint set.
+# Without this map, Kokoro rejects the Edge ID and synthesise fails.)
+_EDGE_TO_KOKORO: Dict[str, str] = {
+    "zh-CN-XiaoxiaoNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoyiNeural": "zf_xiaobei",
+    "zh-CN-Xiaoni": "zf_xiaoni",
+    "zh-CN-XiaoxuanNeural": "zf_xiaoxuan",
+    "zh-CN-YunjianNeural": "zm_yunjian",
+    "zh-CN-YunxiNeural": "zm_yunxi",
+    "zh-CN-YunxiaNeural": "zm_yunxia",
+    "zh-CN-YunyangNeural": "zm_yunyang",
+}
+
+
+def _normalize_voice_id(voice_id: str, engine_choice: str) -> str:
+    """Pick a voice_id understood by the chosen TTS engine.
+
+    Edge-TTS voice IDs (e.g. ``zh-CN-XiaoxiaoNeural``) are the default stored in
+    the book analyse stage. Kokoro uses a different naming scheme (e.g.
+    ``zf_xiaoxiao``). If a non-native voice_id is passed to Kokoro it rejects
+    the voice and silently fails synthesis. This helper cross-maps when
+    possible and otherwise falls back to a safe default for the engine.
+    """
+    if voice_id == "default":
+        return "zf_xiaoxiao" if engine_choice == "kokoro" else "zh-CN-XiaoxiaoNeural"
+    if engine_choice == "kokoro":
+        # Map Edge voice_id to Kokoro equivalent; pass through if it's already a
+        # Kokoro ID, else default to ``zf_xiaoxiao``.
+        if voice_id in _EDGE_TO_KOKORO:
+            return _EDGE_TO_KOKORO[voice_id]
+        # Already a Kokoro ID? accept as-is.
+        if voice_id in ("zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan", "zf_xiaoxiao"
+                        , "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang"):
+            return voice_id
+        # Unknown — fall back to the canonical narrator voice.
+        return "zf_xiaoxiao"
+    # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
+    # map Kokoro IDs back to Edge if we get one (edge case).
+    return "zh-CN-XiaoxiaoNeural" if not voice_id.startswith("zh-") else voice_id
+
+
+def _port_engine_name(port) -> str:
+    """Return the active engine name (kokoro/edge/voxcpm2/...) for a port.
+
+    ``port_factory.get_port()`` returns an ``EnginePortAdapter`` wrapping the
+    default ``TTSEngine``; we infer the engine kind from the wrapped object's
+    class name because the routing ``engine_choice`` field is only advisory
+    and may disagree with the production port in degraded local-only setups.
+    """
+    inner = getattr(port, "engine", None)
+    if inner is None:
+        return "kokoro"  # safe default; matches the production Kokoro link
+    cls = inner.__class__.__name__.lower()
+    for tag in ("kokoro", "edge", "voxcpm2"):
+        if tag in cls:
+            return tag
+    # Unknown engine class — default to kokoro normalization.
+    return "kokoro"
+
+
 @dataclass
 class AudioSegment:
     """Represents a synthesized audio segment."""
@@ -292,13 +385,22 @@ class SynthesizePipeline:
             RuntimeError: If synthesis fails or times out.
         """
         # Build payload
+        port = await self._get_port()
+        # The routing decision may have tagged ``engine_choice`` based on cost
+        # preferences, but the production port is whichever engine the
+        # registry defaults to (Kokoro today). Re-normalize voice_id against
+        # the port's real engine so we never feed an Edge voice_id to
+        # Kokoro (or vice versa). See ADR-005 / fallback-chain.
+        actual_engine = _port_engine_name(port)
+        voice_id = _normalize_voice_id(voice_id, actual_engine)
         payload = self._build_payload(text, voice_id, prosody)
 
         # Submit to Hermes layer
         task_id = f"{segment_id}-{int(time.time() * 1000)}"
-        logger.info(f"Submitting synthesis task {task_id} for segment {segment_id}")
-
-        port = await self._get_port()
+        logger.info(
+            "Submitting synthesis task %s for segment %s (engine=%s, voice=%s)",
+            task_id, segment_id, actual_engine, voice_id,
+        )
         accepted = await port.submit(task_id, payload)
         if not accepted:
             raise RuntimeError(f"Task {task_id} rejected by scheduling layer (duplicate or unavailable)")
@@ -422,7 +524,7 @@ class SynthesizePipeline:
                 start_time = time.time()
 
                 # Run async synthesis via port
-                duration, engine = asyncio.run(
+                duration, engine = _run_async(
                     self._synthesize_via_port(
                         inp.text,
                         decision.voice_id,
@@ -533,7 +635,7 @@ class SynthesizePipeline:
 
                 try:
                     logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
-                    retry_duration, retry_engine = asyncio.run(
+                    retry_duration, retry_engine = _run_async(
                         self._synthesize_via_port(
                             seg_input.text,
                             decision.voice_id,
@@ -559,13 +661,15 @@ class SynthesizePipeline:
                     return None
 
             # Run quality checks with auto-retry
-            quality_report: QualityReport = check_all_segments(
-                segment_files=segment_files,
-                segment_ids=segment_ids,
-                project_id=project_id,
-                chapter_index=chapter_index,
-                max_retries=2,
-                retry_callback=retry_callback,
+            quality_report: QualityReport = _run_async(
+                check_all_segments(
+                    segment_files=segment_files,
+                    segment_ids=segment_ids,
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    max_retries=2,
+                    retry_callback=retry_callback,
+                )
             )
 
             # Save quality report
@@ -582,7 +686,13 @@ class SynthesizePipeline:
                 f"overall={'PASSED' if quality_report.overall_passed else 'FAILED'}"
             )
             for result in quality_report.segment_results:
-                if not result.passed:
+                if getattr(result, "needs_manual_review", False):
+                    # 三振出局：已重合 max_retries 次仍不过 → 人工复核，不再无限重试（P0.2）
+                    logger.warning(
+                        f"  Segment {result.segment_id} needs MANUAL REVIEW "
+                        f"(3-strike exhausted, issues: {', '.join(result.issues)})"
+                    )
+                elif not result.passed:
                     logger.warning(f"  Segment {result.segment_id} FAILED: {', '.join(result.issues)}")
                 else:
                     logger.debug(f"  Segment {result.segment_id} passed")
@@ -661,7 +771,7 @@ class SynthesizePipeline:
 
             logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
             # Run under global semaphore with timeout
-            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
+            result = _run_async(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
                 logger.error(f"ffmpeg crossfade failed: {result.stderr}")
@@ -728,7 +838,7 @@ class SynthesizePipeline:
                 cmd = safe_subprocess_args(cmd)
 
                 # Run under global semaphore with timeout
-                result = asyncio.run(run_ffmpeg(cmd, timeout=60))
+                result = _run_async(run_ffmpeg(cmd, timeout=60))
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -856,7 +966,7 @@ class SynthesizePipeline:
             logger.info(
                 f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
             )
-            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
+            result = _run_async(run_ffmpeg(cmd, timeout=120))
             result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -905,7 +1015,7 @@ class SynthesizePipeline:
                         str(pre_path),
                     ]
                     cmd_pre = safe_subprocess_args(cmd_pre)
-                    result = asyncio.run(run_ffmpeg(cmd_pre, timeout=60))
+                    result = _run_async(run_ffmpeg(cmd_pre, timeout=60))
                     result.check_returncode()
                 else:
                     pre_path = None
@@ -924,7 +1034,7 @@ class SynthesizePipeline:
                         str(post_path),
                     ]
                     cmd_post = safe_subprocess_args(cmd_post)
-                    result = asyncio.run(run_ffmpeg(cmd_post, timeout=60))
+                    result = _run_async(run_ffmpeg(cmd_post, timeout=60))
                     result.check_returncode()
                 else:
                     post_path = None
@@ -952,7 +1062,7 @@ class SynthesizePipeline:
                     str(output_path),
                 ]
                 cmd_concat = safe_subprocess_args(cmd_concat)
-                result = asyncio.run(run_ffmpeg(cmd_concat, timeout=60))
+                result = _run_async(run_ffmpeg(cmd_concat, timeout=60))
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1004,6 +1114,14 @@ class SynthesizePipeline:
             mock_info += f" (prefer_local={inp.prefer_local})"
 
         reasoning = f"Auto routing: {engine_choice} preferred, {fallback_engine} fallback ({mock_info})"
+        # Voice IDs are engine-specific. The book analyse stage writes
+        # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
+        # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
+        # disjoint set (``zf_xiaoxiao``/``zm_yunjian`` etc.). Without mapping,
+        # Kokoro rejects the Edge voice ID and synthesize fails silently.
+        # Map Edge voice IDs to Kokoro equivalents when engine_choice is
+        # kokoro; pass through Edge IDs (and Kokoro IDs) to their native engine.
+        voice_id = _normalize_voice_id(voice_id, engine_choice)
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice=engine_choice,
@@ -1026,7 +1144,7 @@ class SynthesizePipeline:
         """Close the port and release resources."""
         if self._port:
             try:
-                asyncio.run(self._port.close())
+                _run_async(self._port.close())
             except RuntimeError:
                 # Event loop may be closed
                 pass

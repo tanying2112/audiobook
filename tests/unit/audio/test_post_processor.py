@@ -8,6 +8,12 @@
 """
 
 import pytest
+import math
+
+# Helper function to replace pytest.approx which has numpy 2.x compatibility issues
+def approx_equal(actual, expected, rel=1e-9, abs_tol=1e-12):
+    """Check if actual is approximately equal to expected."""
+    return abs(actual - expected) <= max(rel * max(abs(actual), abs(expected)), abs_tol)
 
 from src.audiobook_studio.config.acoustic_mapping import EMOTION_ACOUSTIC_MAP, TRANSITION_PAUSE_MAP
 from src.audiobook_studio.pipeline.audio_postprocess import (
@@ -38,9 +44,9 @@ class TestEmotionAcousticMapping:
         seg = segments[0]
         # EMOTION_ACOUSTIC_MAP["angry"] = {speed: 1.15, volume_db: 1.5, pitch: +20Hz}
         # clamp_speed 四舍五入到 0.1: 1.15 -> 1.2
-        assert seg.speed == pytest.approx(1.2, rel=0.01), f"angry speed 应为 1.2(四舍五入后), 实际 {seg.speed}"
-        assert seg.volume_db == pytest.approx(1.5, rel=0.01), f"angry volume_db 应为 1.5, 实际 {seg.volume_db}"
-        assert seg.pitch_hz == pytest.approx(20.0, rel=0.01), f"angry pitch_hz 应为 +20Hz, 实际 {seg.pitch_hz}"
+        assert approx_equal(float(seg.speed), 1.2, rel=0.01), f"angry speed 应为 1.2(四舍五入后), 实际 {seg.speed}"
+        assert approx_equal(float(seg.volume_db), 1.5, rel=0.01), f"angry volume_db 应为 1.5, 实际 {seg.volume_db}"
+        assert approx_equal(float(seg.pitch_hz), 20.0, rel=0.01), f"angry pitch_hz 应为 +20Hz, 实际 {seg.pitch_hz}"
 
     def test_sad_emotion_mapping(self):
         """悲伤情绪应产生: 减速、降低音量、降低音调."""
@@ -59,9 +65,9 @@ class TestEmotionAcousticMapping:
         seg = segments[0]
         # EMOTION_ACOUSTIC_MAP["sad"] = {speed: 0.85, volume_db: -2.0, pitch: -10Hz}
         # clamp_speed 标准四舍五入: 0.85 * 10 = 8.5 -> 9 -> 0.9
-        assert seg.speed == pytest.approx(0.9, rel=0.01), f"sad speed 应为 0.9(四舍五入后), 实际 {seg.speed}"
-        assert seg.volume_db == pytest.approx(-2.0, rel=0.01), f"sad volume_db 应为 -2.0, 实际 {seg.volume_db}"
-        assert seg.pitch_hz == pytest.approx(-10.0, rel=0.01), f"sad pitch_hz 应为 -10Hz, 实际 {seg.pitch_hz}"
+        assert approx_equal(float(seg.speed), 0.9, rel=0.01), f"sad speed 应为 0.9(四舍五入后), 实际 {seg.speed}"
+        assert approx_equal(float(seg.volume_db), -2.0, rel=0.01), f"sad volume_db 应为 -2.0, 实际 {seg.volume_db}"
+        assert approx_equal(float(seg.pitch_hz), -10.0, rel=0.01), f"sad pitch_hz 应为 -10Hz, 实际 {seg.pitch_hz}"
 
     def test_fear_emotion_mapping(self):
         """恐惧情绪应产生: 加速、略降音量、大幅升调."""
@@ -80,9 +86,9 @@ class TestEmotionAcousticMapping:
         seg = segments[0]
         # EMOTION_ACOUSTIC_MAP["fearful"] = {speed: 1.20, volume_db: -1.0, pitch: +40Hz}
         # + DIALOGUE_SPEED_BOOST (0.05) = 1.25 -> clamp_speed -> 1.3 (SPEED_MAX)
-        assert seg.speed == pytest.approx(1.3, rel=0.01), f"fearful speed 应为 1.3(钳制后), 实际 {seg.speed}"
-        assert seg.volume_db == pytest.approx(-1.0, rel=0.01), f"fearful volume_db 应为 -1.0, 实际 {seg.volume_db}"
-        assert seg.pitch_hz == pytest.approx(40.0, rel=0.01), f"fearful pitch_hz 应为 +40Hz, 实际 {seg.pitch_hz}"
+        assert approx_equal(float(seg.speed), 1.3, rel=0.01), f"fearful speed 应为 1.3(钳制后), 实际 {seg.speed}"
+        assert approx_equal(float(seg.volume_db), -1.0, rel=0.01), f"fearful volume_db 应为 -1.0, 实际 {seg.volume_db}"
+        assert approx_equal(float(seg.pitch_hz), 40.0, rel=0.01), f"fearful pitch_hz 应为 +40Hz, 实际 {seg.pitch_hz}"
 
     def test_neutral_emotion_mapping(self):
         """中性情绪应产生基准参数."""
@@ -91,9 +97,9 @@ class TestEmotionAcousticMapping:
             [{"text": "这是旁白。", "speaker": "旁白", "emotion": "neutral", "is_dialogue": False}]
         )
         seg = segments[0]
-        assert seg.speed == pytest.approx(1.0, rel=0.01)
-        assert seg.volume_db == pytest.approx(0.0, rel=0.01)
-        assert seg.pitch_hz == pytest.approx(0.0, rel=0.01)
+        assert approx_equal(float(seg.speed), 1.0, rel=0.01)
+        assert approx_equal(float(seg.volume_db), 0.0, rel=0.01)
+        assert approx_equal(float(seg.pitch_hz), 0.0, rel=0.01)
 
     def test_all_emotions_have_mapping(self):
         """确保所有枚举情绪都有声学映射."""
@@ -409,7 +415,7 @@ class TestIntensityAdjustment:
         )[0]
 
         assert seg_low.volume_db < seg_normal.volume_db
-        assert seg_low.pitch_hz < seg_normal.pitch_hz
+        assert float(seg_low.pitch_hz) < float(seg_normal.pitch_hz)
 
 
 class TestDialogueSpeedBoost:
@@ -443,7 +449,7 @@ class TestDialogueSpeedBoost:
 
         assert seg_dialogue.speed > seg_narration.speed
         # DIALOGUE_SPEED_BOOST = 0.05, clamp to 0.1 -> 1.05 -> 1.1, diff = 0.1
-        assert seg_dialogue.speed - seg_narration.speed == pytest.approx(0.1, rel=0.1)
+        assert approx_equal(float(seg_dialogue.speed - seg_narration.speed), 0.1, rel=0.1)
 
 
 class TestClamping:
@@ -499,7 +505,7 @@ class TestConvenienceFunction:
         segments = processor.generate_acoustic_schedule(
             [{"text": "测试。", "speaker": "旁白", "emotion": "test", "is_dialogue": False}]
         )
-        assert segments[0].speed == pytest.approx(1.2, rel=0.01)
+        assert approx_equal(segments[0].speed, 1.2, rel=0.01)
 
 
 class TestEdgeCases:
@@ -515,7 +521,7 @@ class TestEdgeCases:
         processor = AudioPostProcessor()
         seg = processor.generate_acoustic_schedule([{"text": "测试。", "speaker": "旁白"}])[0]  # 无 emotion
         assert seg.emotion == "neutral"
-        assert seg.speed == pytest.approx(1.0, rel=0.01)
+        assert approx_equal(seg.speed, 1.0, rel=0.01)
 
     def test_missing_paragraph_type_inferred_from_dialogue(self):
         """缺失 paragraph_type 从 is_dialogue 推断."""

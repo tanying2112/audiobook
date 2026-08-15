@@ -22,6 +22,7 @@ async def warmup_engines(background_tasks: BackgroundTasks):
     engine initialization in a background task so the response is
     not blocked by model loading (2-5s for ONNX models).
     """
+
     async def _warmup() -> None:
         from ..di import get_app_container
         from ..tts.engine import EngineRegistry

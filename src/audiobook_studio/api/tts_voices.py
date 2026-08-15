@@ -611,7 +611,7 @@ async def clone_voice(
         raise
     except Exception as e:
         logger.error(f"Voice cloning failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Voice cloning failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Voice cloning failed: {str(e)}") from e
     finally:
         # Cleanup temp file
         if tmp_path.exists():

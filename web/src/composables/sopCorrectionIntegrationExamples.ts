@@ -1,5 +1,13 @@
 /**
- * SOP Correction Integration Examples
+ * SOP Correction Integration Examples（参考示例，非运行集成）
+ *
+ * ⚠️ 本文件为**纯参考文档**：展示 useSopCorrection 的集成模式，被注释为 `/* … */`，
+ * 不导出任何运行时符号，也**不是** ParagraphEditor.vue / CharacterManager.vue 的引用源。
+ * 真实集成已直接落在：
+ *   - web/src/components/ParagraphEditor.vue（段落正文翻改 → edited_text 投喂）
+ *   - web/src/views/CharacterManager.vue（角色改名 / 声音重绑 → speaker_canonical_name / suggested_voice_id 投喂）
+ *   - 后端 src/audiobook_studio/api/feedback.py（create_feedback → CorrectionCollector 入队）
+ * 如需调整集成，请改上面的真实文件，本文件仅作模式参考。
  *
  * 以下示例展示如何在 ParagraphEditor.vue 和 CharacterManager.vue 中集成 useSopCorrection
  * 这些是参考实现，实际集成时请根据项目现有组件结构调整

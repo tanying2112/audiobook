@@ -15,7 +15,6 @@ from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRo
 # Add the src directory to the path so we can import the module as a package
 
 
-
 class TestQualityCheckPipelineNonMock:
     """Test QualityCheckPipeline class in non-mock mode."""
 

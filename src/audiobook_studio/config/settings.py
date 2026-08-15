@@ -1,9 +1,17 @@
 """Application settings for Audiobook Studio."""
 
+import asyncio
+import logging
+import re
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from ..database import _get_async_database_url
 
 
 class Settings(BaseSettings):
@@ -145,17 +153,18 @@ class Settings(BaseSettings):
 
         # Verify it's valid URL-safe base64 (no disallowed chars)
         import base64
+
         try:
             # Add padding if needed for validation
             padded = self.JWT_SECRET_KEY + "=" * ((4 - len(self.JWT_SECRET_KEY) % 4) % 4)
             decoded = base64.urlsafe_b64decode(padded)
             if len(decoded) < 32:
                 raise ValueError("Decoded length < 32 bytes")
-        except Exception:
+        except Exception as e:
             raise RuntimeError(
                 f"Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
                 f"Generate a secure key with: python scripts/generate_secrets.py --format env"
-            )
+            ) from e
 
     def validate_cors_security(self) -> None:
         """Validate CORS configuration for production security.
@@ -177,3 +186,127 @@ class Settings(BaseSettings):
                     f"Set CORS_ORIGINS to explicit origins and CORS_ALLOW_METHODS to explicit methods. "
                     f"See docs/AUDIT_REPORT_v3.md P0-3."
                 )
+
+    # =========================================================================
+    # BP-003: Runtime dependency validation (DB, Redis, Models, LLM Keys)
+    # =========================================================================
+    async def validate_runtime_dependencies(self, timeout: float = 5.0) -> None:
+        """Validate critical runtime dependencies at startup (BP-003).
+
+        Checks:
+        1. Database connectivity (async SELECT 1)
+        2. Redis connectivity (async ping)
+        3. Model file existence (Kokoro model path if configured)
+        4. LLM API key format validation (basic format checks for configured keys)
+
+        Args:
+            timeout: Timeout in seconds for each connectivity check.
+
+        Raises:
+            RuntimeError: If any critical dependency check fails with clear error message.
+        """
+        logger = logging.getLogger("audiobook_studio.startup")
+
+        # 1. Database connectivity (async)
+        try:
+            async_engine = create_async_engine(
+                _get_async_database_url(),
+                pool_pre_ping=True,
+            )
+            async with asyncio.timeout(timeout):
+                async with async_engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+            await async_engine.dispose()
+            logger.info("Database connectivity: OK")
+        except Exception as e:
+            logger.critical(f"DATABASE_URL connect failed: {e}")
+            raise RuntimeError(
+                f"DATABASE_URL connect failed: {e}. "
+                f"Check DATABASE_URL={self.DATABASE_URL}"
+            ) from e
+
+        # 2. Redis connectivity (async ping)
+        try:
+            import redis.asyncio as aioredis
+
+            async with asyncio.timeout(timeout):
+                r = aioredis.from_url(self.REDIS_URL)
+                await r.ping()
+                await r.aclose()
+            logger.info("Redis connectivity: OK")
+        except Exception as e:
+            logger.critical(f"Redis ping failed: {e}")
+            raise RuntimeError(f"Redis ping failed: {e}. Check REDIS_URL={self.REDIS_URL}") from e
+
+        # 3. Kokoro model file existence (if local TTS enabled)
+        if self.ENABLE_LOCAL_TTS and self.KOKORO_MODEL_PATH:
+            model_path = Path(self.KOKORO_MODEL_PATH)
+            if not model_path.exists():
+                logger.critical(f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}")
+                raise RuntimeError(
+                    f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}. "
+                    f"Download models or set ENABLE_LOCAL_TTS=false to use Edge-TTS fallback."
+                )
+            logger.info(f"Kokoro model file found: {self.KOKORO_MODEL_PATH}")
+
+        # 4. LLM API key format validation (basic format checks for configured keys)
+        self._validate_llm_api_keys()
+
+    def _validate_llm_api_keys(self) -> None:
+        """Validate format of configured LLM API keys.
+
+        Performs basic format validation on known LLM provider API keys.
+        Does not validate actual API access (too slow for startup).
+        """
+        import re
+
+        logger = logging.getLogger("audiobook_studio.startup")
+
+        # Provider -> (key attr name, regex pattern, description)
+        validators = {
+            "GROQ_API_KEY": (
+                self.GROQ_API_KEY,
+                r"^gsk_[A-Za-z0-9]{52}$",
+                "GROQ (format: gsk_<52-chars>)",
+            ),
+            "OPENAI_API_KEY": (
+                self.OPENAI_API_KEY,
+                r"^sk-[A-Za-z0-9]{48,}$",
+                "OPENAI (format: sk-<48+ chars>)",
+            ),
+            "ANTHROPIC_API_KEY": (
+                self.ANTHROPIC_API_KEY,
+                r"^sk-ant-api03-[A-Za-z0-9\-_]{95,}$",
+                "ANTHROPIC (format: sk-ant-api03-<95+ chars>)",
+            ),
+            "GEMINI_API_KEY": (
+                self.GEMINI_API_KEY,
+                r"^[A-Za-z0-9\-_]{39}$",
+                "GEMINI (format: 39 chars alphanumeric/underscore/hyphen)",
+            ),
+            "DEEPSEEK_API_KEY": (
+                self.DEEPSEEK_API_KEY,
+                r"^sk-[A-Za-z0-9]{32,}$",
+                "DEEPSEEK (format: sk-<32+ chars>)",
+            ),
+            "OPENROUTER_API_KEY": (
+                self.OPENROUTER_API_KEY,
+                r"^sk-or-v1-[A-Za-z0-9]{64,}$",
+                "OPENROUTER (format: sk-or-v1-<64+ chars>)",
+            ),
+            "NVIDIA_API_KEY": (
+                self.NVIDIA_API_KEY,
+                r"^nvapi-[A-Za-z0-9\-_]{60,}$",
+                "NVIDIA (format: nvapi-<60+ chars>)",
+            ),
+        }
+
+        for attr_name, (key_value, pattern, description) in validators.items():
+            if key_value is not None and key_value.strip():
+                if not re.match(pattern, key_value.strip()):
+                    logger.critical(f"Invalid {attr_name} format: expected {description}")
+                    raise RuntimeError(
+                        f"Invalid {attr_name} format (expected {description}). "
+                        f"Check {attr_name} in environment/.env — invalid format will cause API failures."
+                    )
+                logger.info(f"{attr_name} format: OK")

@@ -331,7 +331,7 @@ async def approve_golden_sample(stage: str, sample_id: str):
             encoding="utf-8",
         )
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update sample: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update sample: {e}") from e
 
     return {
         "sample_id": sample_id,
@@ -368,7 +368,7 @@ async def reject_golden_sample(stage: str, sample_id: str):
         )
         sample_file.unlink()
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reject sample: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reject sample: {e}") from e
 
     return {
         "sample_id": sample_id,
@@ -635,23 +635,46 @@ async def bootstrap_fewshot(
     optimization_target: str = "diversity",
 ):
     """
-    Trigger DSPy Bootstrap Few-shot optimization.
+    DSPy Bootstrap Few-shot optimization (EXPERIMENTAL, optional dependency).
 
-    Selects optimal subset of golden samples as few-shot examples
-    using multi-objective Pareto optimization.
+    Selects an optimal subset of golden samples as few-shot examples using
+    multi-objective (GEPA) Pareto optimization. This path is **not** part of the
+    default pipeline: it requires the optional ``dspy`` dependency which is not
+    bundled in ``requirements.txt`` and is therefore absent from the production
+    Docker image. The default self-improvement loop is the SOP reflection +
+    promotion-gate path (see ``feedback/sop_reflection.py``,
+    ``feedback/promotion_gate.py``).
 
     Args:
     - stage: Which stage to optimize
     - max_samples: Maximum few-shot examples to select
     - optimization_target: "diversity", "coverage", or "accuracy"
     """
-    # Placeholder - would call bootstrap_fewshot.py
-    # In production, this runs GEPA optimization
+    # The DSPy-backed optimiser is an *optional, experimental* feature gated on
+    # the (undeclared) ``dspy`` dependency. Surface its status honestly rather
+    # than claiming work was queued when nothing runs (docs/AUDIT_REPORT_2026-08-14.md §4.4).
+    dspy_available = False
+    try:
+        import dspy  # noqa: F401
+        dspy_available = True
+    except ModuleNotFoundError:
+        dspy_available = False
 
     return {
-        "status": "queued",
+        "status": "not_enabled" if not dspy_available else "available",
         "stage": stage,
         "max_samples": max_samples,
         "optimization_target": optimization_target,
-        "message": "Few-shot optimization started. Results will be available shortly.",
+        "dspy_available": dspy_available,
+        "message": (
+            "The DSPy-backed few-shot optimiser is experimental and not enabled in the "
+            "default pipeline (requires the optional 'dspy' dependency, which is not bundl"
+            "ed). The default self-improvement path is SOP reflection + promotion gate. "
+            "Install dspy separately and set the flag to opt in. "
+            "See docs/AUDIT_REPORT_2026-08-14.md §4.4."
+            if not dspy_available
+            else "dspy is installed; the experimental GEPA optimiser can be run explicitly. "
+            "Note: it remains outside the default evolution loop (use the promotion gate for "
+            "gated, regression-safe self-improvement)."
+        ),
     }

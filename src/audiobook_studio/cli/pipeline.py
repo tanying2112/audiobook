@@ -328,8 +328,7 @@ async def pipeline_run_command(args: argparse.Namespace) -> int:
                         response = input().strip().lower()
                         if response and response[0] != "y":
                             print("  Starting fresh, clearing checkpoints...")
-                            checkpoint_manager._data = {"project_id": project_id, "chapters": {}, "version": 2}
-                            checkpoint_manager._save()
+                            checkpoint_manager.reset_all()
                     elif has_incomplete:
                         print("ℹ️  Non-interactive mode: auto-resuming from checkpoint...")
 

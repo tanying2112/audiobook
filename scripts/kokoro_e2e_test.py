@@ -10,6 +10,7 @@ Kokoro End-to-End 全链路测试
 import re
 import time
 from pathlib import Path
+
 import numpy as np
 import soundfile as sf
 from kokoro_onnx import Kokoro
@@ -32,15 +33,24 @@ CHARACTER_VOICES = {
 
 # 情绪关键词 -> 语速映射
 EMOTION_SPEED = {
-    "压低声音": 0.80, "极度阴沉": 0.75,
-    "沙哑冷笑": 0.78, "语速缓慢": 0.72,
-    "歇斯底里": 1.30, "震惊兼暴怒": 1.25,
-    "极度恐慌": 1.40, "急促": 1.50,
-    "疯狂大笑": 1.20, "绝望尖叫": 1.35,
-    "咬牙切齿": 0.75, "悲伤抽泣": 0.65,
-    "咆哮怒吼": 1.15, "冷嘲热讽": 1.05,
-    "高亢": 1.20, "温和低沉": 0.85,
-    "轻声叹息": 0.70, "意味深长": 0.82,
+    "压低声音": 0.80,
+    "极度阴沉": 0.75,
+    "沙哑冷笑": 0.78,
+    "语速缓慢": 0.72,
+    "歇斯底里": 1.30,
+    "震惊兼暴怒": 1.25,
+    "极度恐慌": 1.40,
+    "急促": 1.50,
+    "疯狂大笑": 1.20,
+    "绝望尖叫": 1.35,
+    "咬牙切齿": 0.75,
+    "悲伤抽泣": 0.65,
+    "咆哮怒吼": 1.15,
+    "冷嘲热讽": 1.05,
+    "高亢": 1.20,
+    "温和低沉": 0.85,
+    "轻声叹息": 0.70,
+    "意味深长": 0.82,
     "语速放缓": 0.80,
 }
 
@@ -65,13 +75,13 @@ def parse_story(filepath: str) -> list[dict]:
 
             # Match: "CharacterName："inner text""
             # Quotes: " (U+201C) and " (U+201D) - Chinese curly quotes
-            match = re.match('^(.+?)[：:]\s*[“”](.+?)[“”]$', line)
+            match = re.match("^(.+?)[：:]\s*[“”](.+?)[“”]$", line)
             if match:
                 character = match.group(1)
                 inner = match.group(2)
 
                 # Parse emotion annotation "(emotion) text"
-                em_match = re.match(r'[（(]([^）)]+)[）)](.*)', inner)
+                em_match = re.match(r"[（(]([^）)]+)[）)](.*)", inner)
                 if em_match:
                     emotion = em_match.group(1)
                     text = em_match.group(2)
@@ -79,32 +89,38 @@ def parse_story(filepath: str) -> list[dict]:
                     emotion = "neutral"
                     text = inner
 
-                segments.append({
-                    "type": "character_line",
-                    "character": character,
-                    "emotion_raw": emotion,
-                    "text": text,
-                    "voice": CHARACTER_VOICES.get(character, "zf_xiaoxiao"),
-                })
+                segments.append(
+                    {
+                        "type": "character_line",
+                        "character": character,
+                        "emotion_raw": emotion,
+                        "text": text,
+                        "voice": CHARACTER_VOICES.get(character, "zf_xiaoxiao"),
+                    }
+                )
             elif "旁白" in line:
                 # Narration
-                text = re.split(r'[：:]', line, maxsplit=1)[-1].strip()
-                segments.append({
-                    "type": "narration",
-                    "character": "旁白",
-                    "emotion_raw": "neutral",
-                    "text": text,
-                    "voice": CHARACTER_VOICES["旁白"],
-                })
+                text = re.split(r"[：:]", line, maxsplit=1)[-1].strip()
+                segments.append(
+                    {
+                        "type": "narration",
+                        "character": "旁白",
+                        "emotion_raw": "neutral",
+                        "text": text,
+                        "voice": CHARACTER_VOICES["旁白"],
+                    }
+                )
             else:
                 # Plain narration without prefix
-                segments.append({
-                    "type": "narration",
-                    "character": "旁白",
-                    "emotion_raw": "neutral",
-                    "text": line,
-                    "voice": CHARACTER_VOICES["旁白"],
-                })
+                segments.append(
+                    {
+                        "type": "narration",
+                        "character": "旁白",
+                        "emotion_raw": "neutral",
+                        "text": line,
+                        "voice": CHARACTER_VOICES["旁白"],
+                    }
+                )
     return segments
 
 
@@ -222,8 +238,12 @@ def main():
     total_start = time.time()
 
     for i, seg in enumerate(speech_segments):
-        print(f"    [{i+1:2d}/{len(speech_segments)}] {seg['character']:<8} "
-              f"{seg['emotion_raw'][:12]:<12} {seg['voice']:<12}", end=" ", flush=True)
+        print(
+            f"    [{i+1:2d}/{len(speech_segments)}] {seg['character']:<8} "
+            f"{seg['emotion_raw'][:12]:<12} {seg['voice']:<12}",
+            end=" ",
+            flush=True,
+        )
         t0 = time.time()
         result = synthesize(kokoro, seg, i, OUTPUT_DIR)
         dt = time.time() - t0
@@ -256,9 +276,11 @@ def main():
     print(f"  Chapter audio:    {chapter_path} ({chapter_path.stat().st_size/1024**2:.1f} MB)")
     print(f"\n  Segment details:")
     for r in results:
-        print(f"    seg_{r['segment_id']:03d} | {r['character']:<8} | "
-              f"{r['voice']:<12} | spd={r['speed']:.2f} | "
-              f"{r['duration_s']:.1f}s | {r['text_preview']}")
+        print(
+            f"    seg_{r['segment_id']:03d} | {r['character']:<8} | "
+            f"{r['voice']:<12} | spd={r['speed']:.2f} | "
+            f"{r['duration_s']:.1f}s | {r['text_preview']}"
+        )
 
     print(f"\n  END-TO-END TEST PASSED!")
     return 0

@@ -18,7 +18,6 @@ from audiobook_studio.quality.metrics import (
 # Add src to path
 
 
-
 class TestDataClasses:
     """Test the data classes in metrics.py."""
 

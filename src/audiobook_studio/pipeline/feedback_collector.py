@@ -17,7 +17,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ..storage import project_dir
 
@@ -73,7 +73,7 @@ class FeedbackCollector:
             StageCapture context manager
         """
         if not self.enable:
-            return StageCapture._disabled()
+            return StageCapture._create_disabled()
 
         capture = StageCapture(
             collector=self,
@@ -100,7 +100,7 @@ class FeedbackCollector:
         Returns:
             Path to saved feedback file
         """
-        if not self.enable or capture._disabled:
+        if not self.enable or capture._is_disabled:
             return Path("/dev/null")
 
         # Build the feedback record matching FeedbackRecord schema
@@ -145,7 +145,8 @@ class FeedbackCollector:
         """Load a feedback record by ID."""
         for filepath in self._feedback_dir.glob(f"*_{feedback_id}.json"):
             with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data: Dict[str, Any] = json.load(f)
+                return data
         return None
 
     def list_feedback(
@@ -192,19 +193,19 @@ class StageCapture:
         self.input_snapshot = input_snapshot or {}
 
         # To be filled by the pipeline stage
-        self.llm_output: Optional[Dict[str, Any]] = None
-        self.corrected_output: Optional[Dict[str, Any]] = None
-        self.rationale: Optional[str] = None
-        self.diff_summary: Optional[str] = None
-        self.pattern_tags: Optional[list[str]] = None
+        self.llm_output: Dict[str, Any] = {}
+        self.corrected_output: Dict[str, Any] = {}
+        self.rationale: str = ""
+        self.diff_summary: str = ""
+        self.pattern_tags: List[str] = []
         self.source: str = "human_edit"
-        self._disabled = False
+        self._is_disabled: bool = False
 
     @classmethod
-    def _disabled(cls) -> "StageCapture":
+    def _create_disabled(cls) -> "StageCapture":
         """Create a no-op disabled capture."""
         capture = cls.__new__(cls)
-        capture._disabled = True
+        capture._is_disabled = True
         capture.feedback_id = "disabled"
         capture.stage = "disabled"
         capture.project_id = 0
@@ -213,11 +214,11 @@ class StageCapture:
         capture.chapter_id = None
         capture.paragraph_id = None
         capture.input_snapshot = {}
-        capture.llm_output = None
-        capture.corrected_output = None
-        capture.rationale = None
-        capture.diff_summary = None
-        capture.pattern_tags = None
+        capture.llm_output = {}
+        capture.corrected_output = {}
+        capture.rationale = ""
+        capture.diff_summary = ""
+        capture.pattern_tags = []
         capture.source = "disabled"
         capture.collector = None
         return capture
@@ -227,7 +228,7 @@ class StageCapture:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         # Auto-save if we have the minimum required data
-        if not self._disabled and self.llm_output and self.corrected_output and self.rationale:
+        if not self._is_disabled and self.llm_output and self.corrected_output and self.rationale:
             self.collector.save_feedback(self)
 
     def set_llm_output(self, output: Dict[str, Any]) -> None:

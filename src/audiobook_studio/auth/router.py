@@ -12,13 +12,13 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from src.audiobook_studio.auth.dependencies import (
+    _invalidate_user_cache,
     authenticate_user,
     get_current_active_user,
     get_current_superuser,
     get_current_user,
     require_permission,
     require_role,
-    _invalidate_user_cache,
 )
 from src.audiobook_studio.auth.jwt_handler import jwt_handler
 

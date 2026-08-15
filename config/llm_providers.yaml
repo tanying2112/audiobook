@@ -3,20 +3,43 @@
 # 优先级由 priority 决定，数值越小优先级越高
 
 providers:
-  # OpenRouter (Qwen3 80B) - 免费，已验证可用
-  - name: openrouter
-    provider: openrouter
-    model: qwen/qwen3-next-80b-a3b-instruct:free
-    api_key_env: OPENROUTER_API_KEY
-    api_key_pool_env:
-      - OPENROUTER_API_KEY_1
-    priority: 5
-    max_tokens_per_minute: 5000
-    max_requests_per_minute: 20
+  # fcc 本地聚合网关 (主路径, launchd 托管 127.0.0.1:8082, key=freecc)
+  # 协议: anthropic /v1/messages (实测不支持 OpenAI /v1/chat/completions)
+  # base_url 不带 /v1 (LiteLLM anthropic provider 会自动补 /v1/messages)
+  # extra_params.extra_headers 注入 Authorization: Bearer (fcc 不获批默认的 x-api-key)
+  # model 选用 no-thinking 变体: 避免 thinking 占满 max_tokens, 保证 JSON 输出
+  - name: local_fcc_gateway
+    provider: anthropic
+    model: opencode/deepseek-v4-flash-free
+    api_key_env: FCC_LOCAL_API_KEY
+    base_url: http://127.0.0.1:8082
+    priority: 1
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 60
+    timeout_seconds: 120
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
+    extra_params:
+      extra_headers:
+        Authorization: Bearer freecc
 
-  # NVIDIA NIM (MiniMax M2.7) - 免费，已验证可用 (openai/ prefix + base_url)
+  # fcc 外网隧道 (降级备份, Cloudflare 中转, 同一服务)
+  - name: fcc_tunnel
+    provider: anthropic
+    model: claude-3-freecc-no-thinking/nvidia_nim/z-ai/glm-5.2
+    api_key_env: FCC_TUNNEL_API_KEY
+    base_url: https://fcc.guwj609.ccwu.cc
+    priority: 2
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 30
+    timeout_seconds: 120
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+    extra_params:
+      extra_headers:
+        Authorization: Bearer freecc
+
+  # NVIDIA NIM (MiniMax M2.7) - 本机直连可达✅, 官方key直连降级
   - name: nvidia_nemotron
     provider: openai
     model: minimaxai/minimax-m2.7
@@ -24,11 +47,46 @@ providers:
     api_key_pool_env:
       - NVIDIA_API_KEY_1
     base_url: https://integrate.api.nvidia.com/v1
-    priority: 10
+    priority: 3
     max_tokens_per_minute: 4000
     max_requests_per_minute: 20
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
+
+  # Kilo (api.kilo.ai 直连可及✅, model: tencent/hy3:free 开源中文模型)
+  - name: kilo
+    provider: openai
+    model: tencent/hy3:free
+    api_key_env: KILO_API_KEY
+    base_url: https://api.kilo.ai/api/gateway/v1
+    priority: 8
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 30
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+
+  # Anthropic Claude (历史配置; fcc 网关已代理 Claude, 此直连保留禁用)
+  - name: anthropic_claude
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    api_key_env: ANTHROPIC_API_KEY
+    base_url: https://fcc.guwj609.ccwu.cc
+    priority: 5
+    max_tokens_per_minute: 30000
+    max_requests_per_minute: 60
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false
+
+  # OpenRouter (本机直连不通❌, 待 1.5 期前端录入代理后启用)
+  - name: openrouter
+    provider: openrouter
+    model: qwen/qwen3-next-80b-a3b-instruct:free
+    api_key_env: OPENROUTER_API_KEY
+    api_key_pool_env:
+      - OPENROUTER_API_KEY_1
+    priority: 10
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false
 
   # OpenCode Zen - 首选的 OpenAI 兼容路由，极速稳定 (当前连接异常，暂禁用)
   - name: opencode_zen

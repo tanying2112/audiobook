@@ -247,8 +247,11 @@ class DNSMOSMetric(QualityMetric):
     - 输出: SIG, BAK, OVR 三个分数 (1-5 范围)
     """
 
-    # 官方 DNSMOS 模型下载地址 (Microsoft DNS Challenge)
-    MODEL_URL = "https://github.com/microsoft/DNS-Challenge/raw/main/DNSMOS/DNSMOS.onnx"
+    # 官方 DNSMOS P.835 组合模型 (Microsoft DNS Challenge)。
+    # 输出 3 个维度分 SIG/BAK/OVR，形状 (N,3)，与本类 _compute_dnsmos 读取方式一致。
+    # 原路径 .../raw/main/DNSMOS/DNSMOS.onnx 已 404（仓库重构后该文件移至 DNSMOS/DNSMOS/
+    # 目录并更名 sig_bak_ovr.onnx）。免费 CPU 可跑，模型约 1.1MB。
+    MODEL_URL = "https://github.com/microsoft/DNS-Challenge/raw/master/DNSMOS/DNSMOS/sig_bak_ovr.onnx"
     MODEL_FILENAME = "dnsmos.onnx"
     DEFAULT_SAMPLE_RATE = 16000
     # DNSMOS 官方模型输入长度: 9.01 秒 = 144160 个采样点
@@ -393,8 +396,35 @@ class DNSMOSMetric(QualityMetric):
     def _preprocess_audio(self, audio_path: Path) -> np.ndarray:
         """预处理音频为 DNSMOS 所需格式 (16kHz 单声道 float32).
 
-        使用 ffmpeg 重采样并转换格式。
+        优先用 soundfile 直接读取（已是 16kHz mono float 则无需 ffmpeg）；
+        仅当格式不符且 ffmpeg 可用时才回退到 ffmpeg 重采样。这让免费 CPU
+        potato 模式在仅装 pip 依赖（soundfile）而系统无 ffmpeg 的机器上也能跑通（红线 #1 主路径真实）。
         """
+        # 路径 1：soundfile 直读（无需 ffmpeg）。需要的话做简单的降混+重采样。
+        try:
+            import soundfile as sf
+
+            audio, sr = sf.read(str(audio_path), dtype="float32", always_2d=False)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)  # 多声道 → 单声道
+            if sr != self.sample_rate:
+                # 若 numpy 线性重采样够用则用之，避免拉起 ffmpeg；否则落到 ffmpeg 分支
+                try:
+                    from scipy.signal import resample_poly
+
+                    from math import gcd
+
+                    g = gcd(int(sr), self.sample_rate)
+                    audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
+                except ImportError:
+                    audio = self._resample_via_ffmpeg(audio_path)  # 落到 ffmpeg
+            return audio.astype(np.float32, copy=False)
+        except Exception as e:
+            logger.debug(f"soundfile read failed for {audio_path} ({e}); trying ffmpeg")
+            return self._resample_via_ffmpeg(audio_path)
+
+    def _resample_via_ffmpeg(self, audio_path: Path) -> np.ndarray:
+        """ffmpeg 重采样到 16kHz mono float32 的回退路径。"""
         import asyncio
 
         async def _resample():
@@ -427,10 +457,9 @@ class DNSMOSMetric(QualityMetric):
     def _prepare_input_frames(self, audio: np.ndarray) -> np.ndarray:
         """准备 DNSMOS 模型输入帧.
 
-        官方 DNSMOS 模型接受形状为 (1, 1, T) 的输入，其中 T 是采样点数。
-        模型内部会处理分帧，但建议输入至少 9.01 秒的音频以获得稳定预测。
-
-        如果音频较短，进行填充；如果较长，取前 9.01 秒（或分段处理并平均）。
+        官方 DNSMOS P.835 组合模型 (sig_bak_ovr.onnx) 接受形状 (N, 144160) 的 rank-2 输入；
+        若加载的模型实际期望别的 rank，按其输入声明的维度数自适应填充，避免硬编码 (1,1,T)。
+        输入至少 9.01 秒以获得稳定预测；不足则零填充，超长则取中间段。
         """
         target_len = self.INPUT_LENGTH_SAMPLES
 
@@ -442,9 +471,18 @@ class DNSMOSMetric(QualityMetric):
             # 太短，零填充
             audio = np.pad(audio, (0, target_len - len(audio)), mode="constant")
 
-        # 添加 batch 和 channel 维度: (1, 1, T)
-        input_tensor = audio.reshape(1, 1, -1).astype(np.float32)
-        return input_tensor
+        audio = audio.astype(np.float32)
+
+        # 按模型实际声明的输入 rank 适配：P.835 组合模型期望 (N, 144160)。
+        try:
+            expected_rank = len(self._session.get_inputs()[0].shape)
+        except Exception:
+            expected_rank = None
+
+        if expected_rank == 2:
+            return audio.reshape(1, -1)  # (1, 144160)
+        # 回退：其它 DNSMOS 变体可能期望 (1, 1, T) 或 (1, T, F)
+        return audio.reshape(1, 1, -1)
 
     def _compute_dnsmos(self, audio: np.ndarray) -> Tuple[float, float, float, float]:
         """计算 DNSMOS 分数.

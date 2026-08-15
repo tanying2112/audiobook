@@ -14,3 +14,9 @@ Auto-generated log of commits affecting schema/prompt/contract files.
 - 2026-07-20 04:40 [fc2d70d] Your Name: refactor: P3 architecture/code-smell cleanup (AUDIT_REPORT_v3 §四)
 - 2026-07-20 16:10 [c1c17e6] Your Name: feat: Complete all 12 commercialization tasks (P0-P5)
 - 2026-07-21 00:52 [fd11913] Your Name: fix: Replace MD5 with SHA256 in A/B testing and other non-crypto uses (bandit B324)
+- 2026-07-23 20:14 [40abf43] Your Name: fix: Complete P0/P1 fixes for hypothesis, uv sync, mypy, and test collection
+- 2026-07-23 20:24 [5ab630d] Your Name: fix: Mock mode support for golden dataset tests and pipeline synthesis
+- 2026-07-29 20:52 [0bd3c16] Your Name: test(tts): fix fallback chain e2e test async probe_audio and assert_real_audio
+- 2026-07-29 22:18 [ed7514e] Your Name: security: redact secrets in voxcpm2-pool/paddle deployment configs (red-line #5)
+- 2026-07-30 04:05 [ccef503] Your Name: feat(voxcpm2): add Kaggle T4 notebook validating VoxCPM2 end-to-end generation
+- 2026-07-31 16:17 [5d8682b] Your Name: fix(pipeline): unblock end-to-end production pipeline — annotate/synthesize/quality persistence fixe

@@ -19,7 +19,7 @@ from sqlalchemy import ForeignKey, Integer, String, Table, Text
 from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .user import User

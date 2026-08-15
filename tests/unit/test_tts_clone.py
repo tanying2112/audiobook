@@ -27,7 +27,6 @@ from audiobook_studio.tts.clone import (
 # Add src to path
 
 
-
 def setUpModule():
     """Re-import the real tts.clone module if an earlier test replaced it.
 

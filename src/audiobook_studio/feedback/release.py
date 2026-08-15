@@ -18,9 +18,14 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Type aliases for complex types
+MetricsHistory = Deque[Dict[str, Any]]
+CanaryDict = Dict[str, Any]
+RollbackEntry = Dict[str, Any]
 
 
 @dataclass
@@ -39,7 +44,7 @@ class PromotionGateResult:
     """Promotion Gate 结果"""
 
     passed: bool
-    failed_criteria: list
+    failed_criteria: List[str]
     metrics: PromotionMetrics
     timestamp: datetime
 
@@ -226,8 +231,8 @@ class CanaryRelease:
 
     def __init__(self, config: CanaryConfig):
         self.config = config
-        self.active_canaries: Dict[str, Dict[str, Any]] = {}
-        self.metrics_history: Dict[str, deque] = {}
+        self.active_canaries: Dict[str, CanaryDict] = {}
+        self.metrics_history: Dict[str, MetricsHistory] = {}
 
     def start_canary(self, stage: str, version: str, baseline_score: float) -> bool:
         """启动 Canary 发布."""
@@ -407,9 +412,9 @@ class VersionStore:
         except Exception as e:
             logger.error(f"Failed to write rollback log: {e}")
 
-    def get_rollback_history(self, stage: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_rollback_history(self, stage: Optional[str] = None, limit: int = 50) -> List[RollbackEntry]:
         """获取回滚历史."""
-        history = []
+        history: List[RollbackEntry] = []
         if not self.rollback_log.exists():
             return history
 

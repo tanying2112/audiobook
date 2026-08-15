@@ -44,9 +44,9 @@ class TTSVoiceAnchor:
 class TTSProsody:
     """Prosody controls for TTS synthesis."""
 
-    rate: float = 1.0      # Speech rate multiplier (0.5-2.0)
-    pitch: float = 0.0     # Pitch shift in semitones (-12 to +12)
-    volume: float = 0.0    # Volume gain in dB (-20 to +20)
+    rate: float = 1.0  # Speech rate multiplier (0.5-2.0)
+    pitch: float = 0.0  # Pitch shift in semitones (-12 to +12)
+    volume: float = 0.0  # Volume gain in dB (-20 to +20)
     emotion: Optional[str] = None  # Emotional tag
 
 
@@ -72,7 +72,7 @@ class TTSTaskResult:
 
     task_id: str
     status: TTSStatus
-    audio_path: Optional[str] = None          # R2 object key or local path
+    audio_path: Optional[str] = None  # R2 object key or local path
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
     dnsmos_score: Optional[float] = None

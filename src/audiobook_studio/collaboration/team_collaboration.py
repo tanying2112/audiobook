@@ -13,9 +13,18 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class CommentData(TypedDict):
+    """评论数据字典类型"""
+
+    task_id: str
+    content: str
+    comment_type: CommentType
+    author_id: str
 
 
 class CommentType(Enum):
@@ -498,9 +507,11 @@ class CollaborationManager:
 
         # 审批状态统计
         approval_status_counts = {}
-        for status in ApprovalStatus:
-            approval_status_counts[status.value] = sum(
-                1 for req in self.approval_requests.values() if req.status == status
+        for approval_status in ApprovalStatus:
+            approval_status_counts[approval_status.value] = sum(
+                1
+                for req in self.approval_requests.values()
+                if req.status == approval_status
             )
 
         return {
@@ -615,11 +626,14 @@ def main():
 
     task_ids = []
     for task_data in tasks_data:
+        now = datetime.now()
         task = Task(
             id="",
             title=task_data["title"],
             description=task_data["description"],
             status=TaskStatus.TODO,
+            created_at=now,
+            updated_at=now,
             assignee_id=task_data["assignee_id"],
             reporter_id=task_data["reporter_id"],
             tags=task_data["tags"],
@@ -642,7 +656,7 @@ def main():
     logger.info("\n💬 添加评论和讨论...\n")
 
     # 为任务添加一些评论
-    comments_data = [
+    comments_data: List[CommentData] = [
         {
             "task_id": task_ids[0],  # 翻译任务
             "content": "我在翻译的时候发现《三体》中有些科幻概念很难直译，可能需要加注或者使用意译。例如『智子』这个概念，直接翻译为 'Sophon' 可能让西方读者不太理解其含义。",
@@ -671,12 +685,15 @@ def main():
 
     comment_ids = []
     for comment_data in comments_data:
+        now = datetime.now()
         comment = Comment(
             id="",
             content=comment_data["content"],
             author_id=comment_data["author_id"],
             comment_type=comment_data["comment_type"],
             task_id=comment_data["task_id"],
+            created_at=now,
+            updated_at=now,
         )
         comment_id = collab_manager.add_comment(comment)
         comment_ids.append(comment_id)

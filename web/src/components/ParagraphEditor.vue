@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { Paragraph } from '../types'
+import { ref, watch, onMounted } from 'vue'
+import type { Paragraph, BookGenre } from '../types'
+import * as api from '../api'
+import { useSopCorrection } from '../composables/useSopCorrection'
 
 const props = defineProps<{
   paragraph: Paragraph | null
@@ -17,6 +19,34 @@ const editText = ref('')
 const editNotes = ref('')
 const hasChanges = ref(false)
 const isSaving = ref(false)
+
+// ── SOP correction capture (P0.1) ─────────────────────────────────────────
+// 用户翻改段落文本 = 对"剧本内容"的人工纠错，投喂 SOP 反思循环。
+// genre 来自后端 Project.genre；在已知后初始化 composable，避免向空 genre 发送无意义修正。
+const genre = ref<BookGenre>('其他')
+let sendCorrection: ((
+  field: string,
+  originalValue: string,
+  correctedValue: string,
+  paragraphIndex: number,
+  chapterIndex: number,
+  context?: string,
+) => Promise<boolean>) | null = null
+
+onMounted(async () => {
+  try {
+    const project = await api.fetchProject(props.projectId)
+    if (project?.genre) genre.value = project.genre as BookGenre
+  } catch {
+    // 体裁解析失败不阻塞编辑；用默认 genre 继续
+  }
+  sendCorrection = useSopCorrection({
+    projectId: props.projectId,
+    genre: genre.value,
+    autoConnect: true,
+    onFallback: (reason) => console.warn('[SOP ParagraphEditor] HTTP 回退:', reason),
+  }).sendCorrection
+})
 
 watch(
   () => props.paragraph,
@@ -37,10 +67,29 @@ function onTextChange() {
 async function handleSave() {
   if (!props.paragraph?.id || !hasChanges.value) return
   isSaving.value = true
+  const originalText = props.paragraph.original_text || props.paragraph.text || ''
+  const correctedText = editText.value
+  const paragraphIndex = props.paragraph.index ?? props.paragraph.id
   try {
     emit('save', props.paragraph.id, {
-      edited_text: editText.value,
+      edited_text: correctedText,
     } as any)
+
+    // ✅ 投喂 SOP 纠错（保存后入队，入队失败静默降级，不阻塞保存/emit）。
+    // 仅当正文确实发生变化时投喂（备注改动不投喂——不在 SOP 学习域内）。
+    if (originalText && correctedText !== originalText && sendCorrection) {
+      void sendCorrection(
+        'edited_text',
+        originalText,
+        correctedText,
+        paragraphIndex,
+        props.chapterId,
+        'ParagraphEditor: 用户人工翻改段落正文',
+      ).catch((e) => {
+        console.warn('[SOP ParagraphEditor] 投喂失败（静默降级）:', e?.message || e)
+      })
+    }
+
     hasChanges.value = false
   } finally {
     isSaving.value = false

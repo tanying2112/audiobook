@@ -22,11 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_async_session
 from ..models.book import Project
-from ..tasks.publish_tasks import (
-    _get_job_state,
-    _persist_job_state,
-    _persist_job_state_db,
-)
+from ..tasks.publish_tasks import _get_job_state, _persist_job_state, _persist_job_state_db
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +133,9 @@ async def _delete_job(job_id: str) -> None:
     """Delete job from Redis/DB and in-memory fallback."""
     # Try Redis
     try:
-        from ..config.settings import get_settings
         import redis.asyncio as redis
+
+        from ..config.settings import get_settings
 
         settings = get_settings()
         redis_client = redis.from_url(
@@ -159,11 +156,7 @@ async def _list_jobs(project_id: int) -> List[Dict[str, Any]]:
     """List all jobs for a project (from in-memory fallback since Redis doesn't support listing easily)."""
     # Note: For full production, you'd query the DB or use Redis SCAN
     # For now, use in-memory fallback which is populated by _set_job
-    return [
-        job
-        for job in _publish_jobs_fallback.values()
-        if job.get("project_id") == project_id
-    ]
+    return [job for job in _publish_jobs_fallback.values() if job.get("project_id") == project_id]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -189,6 +182,7 @@ async def publish_project(
     """
     # Verify project exists and is completed
     from sqlalchemy import select
+
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -353,7 +347,9 @@ async def _publish_to_audiobookshelf(
     """
     import asyncio
     import shutil
+
     from sqlalchemy import select
+
     from ..database import AsyncSessionLocal
     from ..models.audio_segment import AudioSegment
 
@@ -662,6 +658,7 @@ async def _generate_podcast_rss(
         Result dict with rss_url and episode_count
     """
     from sqlalchemy import select
+
     from ..database import AsyncSessionLocal
     from ..models.audio_segment import AudioSegment
     from ..models.book import Project
@@ -751,6 +748,7 @@ async def get_podcast_rss_feed(
     Returns generated RSS feed that can be submitted to podcast platforms.
     """
     from sqlalchemy import select
+
     from ..models.audio_segment import AudioSegment
 
     result = await db.execute(select(Project).where(Project.id == project_id))

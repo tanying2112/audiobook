@@ -89,7 +89,7 @@ class FakeRemoteTTSPort(RemoteTTSPort):
 
         self._tasks: dict[str, _TaskState] = {}
         self._lock = asyncio.Lock()
-        self._background_tasks: set[asyncio.Task] = set()
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     async def submit(self, task_id: str, payload: TTSTaskPayload) -> bool:
         """Submit a TTS synthesis task (idempotent)."""
@@ -317,7 +317,7 @@ class MockRemoteTTSPort(RemoteTTSPort):
         self._result_side_effect: Optional[Exception] = None
         self._cancel_return: bool = True
         self._health_return: dict[str, Any] = {"healthy": True, "latency_ms": 0.0}
-        self._call_log: list[tuple[str, tuple, dict]] = []
+        self._call_log: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
     # Configuration methods for test setup
 
@@ -377,7 +377,7 @@ class MockRemoteTTSPort(RemoteTTSPort):
 
     # Inspection for tests
 
-    def get_call_log(self) -> list[tuple[str, tuple, dict]]:
+    def get_call_log(self) -> list[tuple[str, tuple[Any, ...], dict[str, Any]]]:
         return self._call_log.copy()
 
     def reset_call_log(self) -> None:

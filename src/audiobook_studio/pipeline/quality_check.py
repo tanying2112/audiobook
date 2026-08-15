@@ -12,7 +12,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any
 
 import numpy as np
 
@@ -33,7 +33,7 @@ class AudioAnalysisResult:
 
     duration_ms: int
     has_silence: bool
-    silence_regions: List[tuple]  # (start_ms, end_ms)
+    silence_regions: List[Tuple[int, int]]  # (start_ms, end_ms)
     has_clipping: bool
     rms_db: float
     peak_db: float
@@ -106,7 +106,7 @@ class QualityCheckPipeline:
         logger.info(f"Quality features — enabled: {enabled}, disabled: {disabled}")
 
     @staticmethod
-    def _check_optional_dependencies() -> dict:
+    def _check_optional_dependencies() -> Dict[str, bool]:
         """Check availability of optional hard-metric dependencies.
 
         Returns a dict mapping feature name to bool (available or not).
@@ -119,7 +119,7 @@ class QualityCheckPipeline:
             - asr: FunASR, faster-whisper, or openai-whisper for WER
             - speaker_sim: torch + SpeechBrain for speaker embeddings
         """
-        features: dict = {
+        features: Dict[str, bool] = {
             "ffmpeg": True,  # Always available — core dependency
             "dnsmos": False,  # ONNX Runtime for DNSMOS scoring
             "asr": False,  # FunASR or faster-whisper for WER
@@ -446,7 +446,9 @@ class QualityCheckPipeline:
                 logger.info(
                     f"Multimodal quality judge completed for {segment_id}: score={result.output.overall_score:.2f}"
                 )
-                return result.output
+                from typing import cast
+
+                return cast(QualityJudgment, result.output)
 
         except Exception as e:
             logger.warning(f"Multimodal quality judge failed for {segment_id}: {e}")

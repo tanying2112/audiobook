@@ -1,32 +1,50 @@
 """Checkpoint manager — progress snapshots and resume capability.
 
-Saves per-project, per-chapter checkpoints as JSON files in
+Saves per-project, per-chapter, per-paragraph checkpoints as JSON files in
 ``storage/books/<project_id>/reports/checkpoints.json``.
 
-The checkpoint tracks which pipeline stages have been completed and which
-paragraph indices have been processed, enabling resume from the last
-successful stage without reprocessing the entire pipeline.
+The checkpoint tracks which pipeline stages have been completed for each
+chapter and each paragraph, enabling resume from the last successful stage
+without reprocessing the entire pipeline.
+
+Stage granularity (ADR-005):
+  - Chapter-level stages (``extract``/``analyze``/``review``) are tracked with
+    the ``(stage, chapter_index)`` tuple.
+  - Paragraph-level stages (``annotate``/``edit``/``audio_postprocess``/
+    ``synthesize``/``quality``) are tracked with the
+    ``(stage, chapter_index, paragraph_index)`` tuple. Without this per-
+    paragraph granularity, completing a paragraph-level stage for paragraph 1
+    would mark it done for the whole chapter and cause paragraphs 2..N to be
+    silently skipped (see ``storage/books/4/logs/pipe_fix8.log``).
 
 Usage::
 
     from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
 
     cp = CheckpointManager(project_id=1)
+    # chapter-level stage:
     cp.mark_stage_done("extract", chapter_index=1)
     if cp.is_stage_done("extract", chapter_index=1):
         logger.info("Already extracted, skipping")
+    # paragraph-level stage:
+    cp.mark_stage_done("annotate", chapter_index=1, paragraph_index=3)
+    if cp.is_stage_done("annotate", chapter_index=1, paragraph_index=3):
+        logger.info("Paragraph 3 already annotated, skipping")
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 from ..storage import reports_dir
 
 logger = logging.getLogger(__name__)
 
-# Pipeline stages in order (used for resume logic)
+# Current checkpoint schema version.
+CHECKPOINT_VERSION = 3
+
+# Pipeline stages in order (used for resume logic).
 STAGE_ORDER = [
     "extract",
     "analyze",
@@ -35,6 +53,13 @@ STAGE_ORDER = [
     "synthesize",
     "quality",
 ]
+
+# Stages that operate per-paragraph and therefore require paragraph_index in
+# checkpoint tracking (ADR-005).
+PACKAGE_STAGES = frozenset({"annotate", "edit", "synthesize", "quality"})
+
+# Chapter-level stages tracked with (stage, chapter_index) only.
+CHAPTER_STAGES = frozenset({"extract", "analyze", "review"})
 
 
 class CheckpointManager:
@@ -55,14 +80,56 @@ class CheckpointManager:
         if path.exists():
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data: Dict[str, Any] = json.load(f)
+                    return self._migrate_to_v3(data)
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load checkpoint, starting fresh: %s", e)
         return {
             "project_id": self.project_id,
             "chapters": {},
-            "version": 2,
+            "version": CHECKPOINT_VERSION,
         }
+
+    def _migrate_to_v3(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Migrate v2 (and earlier) checkpoint data to the v3 schema.
+
+        v2 ``chapters[c].stages_done`` may erroneously contain paragraph-level
+        stage names (``annotate``/``edit``/``audio_postprocess``/
+        ``synthesize``/``quality``) because the v2 code tracked per-paragraph
+        stages at chapter granularity. Those entries are unreliable --
+        completing the stage for paragraph 1 was recorded as if all paragraphs
+        were done -- so we drop them during the migration and signal that the
+        affected paragraph-level stages need to re-run.
+
+        The new v3 structure lives under ``chapters[c].paragraphs[str(p)].
+        stages_done`` for paragraph-level stages and ``chapters[c].stages_done``
+        for chapter-level stages (extract/analyze/review).
+        """
+        version = data.get("version", 2)
+        if version >= 3:
+            return data
+
+        # v2 → v3 migration: drop paragraph-level stages from chapter-level list,
+        # carry forward only chapter-level stages (extract/analyze/review).
+        chapters = data.get("chapters", {})
+        for ch_key, ch_data in chapters.items():
+            old_stage_list = ch_data.get("stages_done", [])
+            # Keep only genuine chapter-level stages; drop the buggy
+            # per-paragraph stage entries that v2 mistakenly stored here.
+            kept = [s for s in old_stage_list if s in CHAPTER_STAGES]
+            ch_data["stages_done"] = kept
+            # Introduce the new paragraphs sub-dict (shares paragraph_index keys
+            # as strings, matching the JSON convention).
+            ch_data.setdefault("paragraphs", {})
+            # ``paragraphs_done`` (legacy 1-bit-per-paragraph field) is kept
+            # for backward compatibility with the old ``mark_paragraph_done`` /
+            # ``are_paragraphs_done`` / ``get_pending_paragraphs`` APIs which
+            # some downstream callers still use; per-stage paragraph tracking
+            # lives under the new ``paragraphs`` sub-dict.
+            # Note: ``paragraphs_done`` was never written by orchestrator in
+            # the v2 era (only ``stages_done`` was), so it is usually empty.
+        data["version"] = CHECKPOINT_VERSION
+        return data
 
     def _save(self) -> None:
         path = self._checkpoint_path()
@@ -78,29 +145,80 @@ class CheckpointManager:
 
     # ── Per-chapter checkpoint data ────────────────────────────────────────
 
-    def _chapter(self, chapter_index: int) -> Dict[str, Any]:
+    def _chapter(self, chapter_index: int) -> dict[str, Any]:
         key = str(chapter_index)
         if key not in self._data["chapters"]:
             self._data["chapters"][key] = {
                 "stages_done": [],
                 "paragraphs_done": [],
+                "paragraphs": {},
                 "current_stage": None,
             }
             self._dirty = True
-        return self._data["chapters"][key]
+        return cast(dict[str, Any], self._data["chapters"][key])
+
+    def _paragraph(self, chapter_index: int, paragraph_index: int) -> dict[str, Any]:
+        """Get (or create) the per-paragraph checkpoint sub-dict (ADR-005)."""
+        ch = self._chapter(chapter_index)
+        p_key = str(paragraph_index)
+        paras = cast(dict[str, Any], ch.setdefault("paragraphs", {}))
+        if p_key not in paras:
+            paras[p_key] = {"stages_done": []}
+            self._dirty = True
+        return cast(dict[str, Any], paras[p_key])
 
     # ── Stage tracking ─────────────────────────────────────────────────────
 
-    def is_stage_done(self, stage: str, chapter_index: int) -> bool:
-        """Check if a stage has been completed for a chapter."""
-        return stage in self._chapter(chapter_index).get("stages_done", [])
+    def is_stage_done(
+        self,
+        stage: str,
+        chapter_index: int,
+        paragraph_index: Optional[int] = None,
+    ) -> bool:
+        """Check if a stage has been completed.
+
+        Granularity is chosen by STAGE TYPE, not by whether ``paragraph_index``
+        was supplied (ADR-005): chapter-level stages (``extract``/``analyze``/
+        ``review``) are always tracked at chapter granularity, while
+        paragraph-level stages (``annotate``/``edit``/``audio_postprocess``/
+        ``synthesize``/``quality``) always use the per-paragraph sub-dict. This
+        means callers passing ``paragraph_index`` to a chapter-level stage is a
+        no-op (the call falls back to the chapter-level lookup).
+        """
+        if stage in CHAPTER_STAGES or paragraph_index is None:
+            return stage in self._chapter(chapter_index).get("stages_done", [])
+        p_stages = self._paragraph(chapter_index, paragraph_index).get("stages_done", [])
+        return stage in p_stages
 
     def has_checkpoint(self, stage: str, chapter_index: int = 1) -> bool:
         """Alias for is_stage_done for backward compatibility."""
         return self.is_stage_done(stage, chapter_index)
 
-    def mark_stage_done(self, stage: str, chapter_index: int) -> None:
-        """Mark a pipeline stage as completed for a chapter."""
+    def mark_stage_done(
+        self,
+        stage: str,
+        chapter_index: int,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        """Mark a pipeline stage as completed.
+
+        Stage type determines storage location (ADR-005): chapter-level stages
+        are recorded under ``chapters[c].stages_done`` regardless of whether
+        ``paragraph_index`` is given; paragraph-level stages use the
+        per-paragraph sub-dict.
+        """
+        if stage not in CHAPTER_STAGES and paragraph_index is not None:
+            p = self._paragraph(chapter_index, paragraph_index)
+            p_stages = p.setdefault("stages_done", [])
+            if stage not in p_stages:
+                p_stages.append(stage)
+                self._dirty = True
+                self._flush()
+                logger.info(
+                    "Checkpoint: ch%d p%d stage '%s' completed",
+                    chapter_index, paragraph_index, stage,
+                )
+            return
         ch = self._chapter(chapter_index)
         if stage not in ch["stages_done"]:
             ch["stages_done"].append(stage)
@@ -109,8 +227,19 @@ class CheckpointManager:
             self._flush()
             logger.info("Checkpoint: ch%d stage '%s' completed", chapter_index, stage)
 
-    def mark_stage_started(self, stage: str, chapter_index: int) -> None:
-        """Mark a pipeline stage as in-progress for a chapter."""
+    def mark_stage_started(
+        self,
+        stage: str,
+        chapter_index: int,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        """Mark a pipeline stage as in-progress.
+
+        For paragraph-level stages (``paragraph_index`` provided) there is no
+        distinct in-progress field per paragraph -- we record progress at the
+        chapter-level ``current_stage`` for observability, while the precise
+        per-paragraph-per-stage completion is tracked via ``mark_stage_done``.
+        """
         ch = self._chapter(chapter_index)
         ch["current_stage"] = stage
         self._dirty = True

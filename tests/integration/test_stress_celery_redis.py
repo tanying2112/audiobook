@@ -52,19 +52,21 @@ def redis_client():
 @pytest.fixture(autouse=True)
 def reset_port_fixture():
     """Reset port factory for each test."""
+    # Reset registry
+    import audiobook_studio.tts.engine as engine_module
     from audiobook_studio.tts.engine import get_engine_registry, set_engine_registry
     from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
-    # Reset registry
-    import audiobook_studio.tts.engine as engine_module
     engine_module._global_registry = None
 
     # Use fake registry for testing
     from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+
     fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
 
     # Create a fake engine registry
     from audiobook_studio.tts.engine import EngineRegistry
+
     registry = EngineRegistry()
 
     # Register fake engine
@@ -81,6 +83,7 @@ def reset_port_fixture():
 
             async def synthesize(self, payload, output_path):
                 from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+
                 fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
                 return await fake_port.synthesize(payload, output_path)
 

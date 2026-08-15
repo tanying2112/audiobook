@@ -42,11 +42,44 @@ from .kill_switch import DegradationLevel, KillSwitch, KillSwitchConfig, get_kil
 from .llm_analyzer import LLMFeedbackAnalyzer
 from .processor import analyze_batch, analyze_single_feedback, get_trend_report
 from .promotion_gate import (
+    AntiHackVerdict,
+    DEFAULT_JUDGE_POOL,
+    DualJudgeEvaluator,
+    DualJudgeResult,
+    JudgeVerdict,
+    META_GUARD_READONLY_PATHS,
     check_format_compliance,
     check_golden_dataset,
     check_human_sample,
     check_quality_improvement,
     evaluate_promotion,
+    evaluate_promotion_anti_hack,
+    verify_meta_guard,
+)
+from .constitution import (
+    Constitution,
+    ConstitutionAdjudicator,
+    ConstitutionVerdict,
+    HardRule,
+    get_constitution_adjudicator,
+)
+from .held_out_eval import (
+    CandidateEvalResult,
+    DatasetManifest,
+    HeldOutCase,
+    HeldOutDataset,
+)
+from .evolution_guard import (
+    EvolutionGuard,
+    PromNode,
+    RollbackResult,
+    get_evolution_guard,
+)
+from .regression_suite import (
+    KnownFailure,
+    RegressionSuite,
+    RegressionVerdict,
+    get_regression_suite,
 )
 from .prompt_upgrader import batch_upgrade, upgrade_prompt
 from .quality_enhancement import (
@@ -182,5 +215,18 @@ def __getattr__(name):  # noqa: D401 — PEP 562 lazy module attribute
     if name in _BOOTSTRAP_FEW_SHOT:
         from . import bootstrap_fewshot
 
+        # DSPy is an *optional* dependency of bootstrap_fewshot. Keep the
+        # optimiser's symbols importable-but-honest: if dspy is absent, surface
+        # a clear ``ModuleNotFoundError`` on access (not a deferred call-time
+        # surprise). This preserves the contract asserted by
+        # tests/unit/test_feedback_import_safety.py while the module itself
+        # stays safe to import without dspy.
+        if not bootstrap_fewshot.DSPY_AVAILABLE:
+            raise ModuleNotFoundError(
+                "No module named 'dspy' — the DSPy-backed few-shot optimiser "
+                f"({name}) requires the optional 'dspy' dependency, which is not "
+                "installed. The optimiser is experimental and not enabled in the "
+                "default pipeline. See docs/AUDIT_REPORT_2026-08-14.md §4.4."
+            )
         return getattr(bootstrap_fewshot, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

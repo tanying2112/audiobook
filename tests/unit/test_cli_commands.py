@@ -17,27 +17,30 @@ _SRC = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-import audiobook_studio.cli.mock_data as cli_mock
-import audiobook_studio.cli.init_db as cli_init
-import audiobook_studio.cli.pipeline as cli_pipeline
-import audiobook_studio.cli.export as cli_export
 import audiobook_studio.cli.book as cli_book
-
+import audiobook_studio.cli.export as cli_export
+import audiobook_studio.cli.init_db as cli_init
+import audiobook_studio.cli.mock_data as cli_mock
+import audiobook_studio.cli.pipeline as cli_pipeline
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_args():
     """Create a mock argparse.Namespace for command testing."""
+
     def _make(**kwargs):
         ns = argparse.Namespace()
         for k, v in kwargs.items():
             setattr(ns, k, v)
         return ns
+
     return _make
 
 
 # ── CLI Mock Data Tests ─────────────────────────────────────────────────────
+
 
 class TestMockDataCommand:
     """Tests for the mock-data subcommand."""
@@ -57,6 +60,7 @@ class TestMockDataCommand:
 
 
 # ── CLI Init DB Tests ────────────────────────────────────────────────────────
+
 
 class TestInitDbCommand:
     """Tests for the init-db subcommand."""
@@ -81,9 +85,11 @@ class TestInitDbCommand:
 
     def test_init_db_drop_first(self, mock_args, monkeypatch):
         """drop_first drops tables before init."""
-        with patch("audiobook_studio.cli.init_db.drop_async_db") as mock_drop, \
-             patch("audiobook_studio.cli.init_db.init_async_db") as mock_init, \
-             patch("audiobook_studio.cli.init_db.initialize_database") as mock_seed:
+        with (
+            patch("audiobook_studio.cli.init_db.drop_async_db") as mock_drop,
+            patch("audiobook_studio.cli.init_db.init_async_db") as mock_init,
+            patch("audiobook_studio.cli.init_db.initialize_database") as mock_seed,
+        ):
             args = mock_args(no_seed=False, drop_first=True)
             result = cli_init.init_db_command(args)
             assert result == 0
@@ -100,6 +106,7 @@ class TestInitDbCommand:
 
 # ── CLI Pipeline Tests ───────────────────────────────────────────────────────
 
+
 class TestPipelineCommand:
     """Tests for the pipeline run/resume subcommands."""
 
@@ -108,9 +115,16 @@ class TestPipelineCommand:
         # Mock the run_pipeline_sync to return success
         with patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run:
             mock_run.return_value = []
-            args = mock_args(books=["红楼梦"], stages=["extract"], quick=False,
-                             chapter=None, bg_music=None, bg_volume=-20.0,
-                             keep_tmp=False, no_resume=False)
+            args = mock_args(
+                books=["红楼梦"],
+                stages=["extract"],
+                quick=False,
+                chapter=None,
+                bg_music=None,
+                bg_volume=-20.0,
+                keep_tmp=False,
+                no_resume=False,
+            )
             result = cli_pipeline.pipeline_run_command(args)
             assert result == 0
             assert mock_run.called
@@ -119,19 +133,28 @@ class TestPipelineCommand:
         """quick flag restricts stages to extract/analyze/annotate."""
         with patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run:
             mock_run.return_value = []
-            args = mock_args(books=["红楼梦"], quick=True,
-                             stages=None, chapter=None, bg_music=None, bg_volume=-20.0,
-                             keep_tmp=False, no_resume=False)
+            args = mock_args(
+                books=["红楼梦"],
+                quick=True,
+                stages=None,
+                chapter=None,
+                bg_music=None,
+                bg_volume=-20.0,
+                keep_tmp=False,
+                no_resume=False,
+            )
             result = cli_pipeline.pipeline_run_command(args)
             assert result == 0
             assert mock_run.called
 
     def test_resume_pipeline(self, mock_args):
         """pipeline_resume_command calls run_pipeline_sync with checkpoint resume."""
-        with patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run, \
-             patch("audiobook_studio.cli.pipeline.SessionLocal") as mock_session, \
-             patch("audiobook_studio.cli.pipeline.Project") as mock_project_class, \
-             patch("audiobook_studio.cli.pipeline.Chapter") as mock_chapter_class:
+        with (
+            patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run,
+            patch("audiobook_studio.cli.pipeline.SessionLocal") as mock_session,
+            patch("audiobook_studio.cli.pipeline.Project") as mock_project_class,
+            patch("audiobook_studio.cli.pipeline.Chapter") as mock_chapter_class,
+        ):
 
             mock_run.return_value = []
             mock_db = MagicMock()
@@ -160,6 +183,7 @@ class TestPipelineCommand:
 
 # ── CLI Export Tests ────────────────────────────────────────────────────────
 
+
 class TestExportCommand:
     """Tests for the export subcommand."""
 
@@ -170,10 +194,12 @@ class TestExportCommand:
         mock_job.output_paths = {"m4b": "/out.m4b"}
         mock_job.error = None
 
-        with patch("audiobook_studio.cli.export.export_project", return_value=mock_job), \
-             patch("audiobook_studio.cli.export.SessionLocal") as mock_session, \
-             patch("audiobook_studio.cli.export.Project") as mock_project, \
-             patch("audiobook_studio.run_pipeline.cleanup_after_export") as mock_cleanup:
+        with (
+            patch("audiobook_studio.cli.export.export_project", return_value=mock_job),
+            patch("audiobook_studio.cli.export.SessionLocal") as mock_session,
+            patch("audiobook_studio.cli.export.Project") as mock_project,
+            patch("audiobook_studio.run_pipeline.cleanup_after_export") as mock_cleanup,
+        ):
 
             mock_db = MagicMock()
             mock_session.return_value = mock_db
@@ -183,9 +209,18 @@ class TestExportCommand:
             mock_project.progress = 100  # Numeric progress
             mock_db.query.return_value.filter.return_value.first.return_value = mock_project
 
-            args = mock_args(project_id=1, formats=["m4b_srt"], bg_music=None, bg_volume=-20.0,
-                             cover=None, include_cover=True, no_normalize=False, keep_tmp=False,
-                             output_dir=None, chapters=None)
+            args = mock_args(
+                project_id=1,
+                formats=["m4b_srt"],
+                bg_music=None,
+                bg_volume=-20.0,
+                cover=None,
+                include_cover=True,
+                no_normalize=False,
+                keep_tmp=False,
+                output_dir=None,
+                chapters=None,
+            )
             result = cli_export.export_command(args)
             assert result == 0
 
@@ -206,9 +241,11 @@ class TestExportCommand:
         mock_job.progress.value = "failed"
         mock_job.error = "disk full"
 
-        with patch("audiobook_studio.cli.export.export_project", return_value=mock_job), \
-             patch("audiobook_studio.cli.export.SessionLocal") as mock_session, \
-             patch("audiobook_studio.cli.export.Project") as mock_project:
+        with (
+            patch("audiobook_studio.cli.export.export_project", return_value=mock_job),
+            patch("audiobook_studio.cli.export.SessionLocal") as mock_session,
+            patch("audiobook_studio.cli.export.Project") as mock_project,
+        ):
 
             mock_db = MagicMock()
             mock_session.return_value = mock_db
@@ -220,6 +257,7 @@ class TestExportCommand:
 
 
 # ── CLI Book Tests ──────────────────────────────────────────────────────────
+
 
 class TestBookCommand:
     """Tests for the book list/create/show/delete subcommands."""
@@ -249,8 +287,10 @@ class TestBookCommand:
         mock_proj = MagicMock()
         mock_proj.id = 42
 
-        with patch("audiobook_studio.cli.book.SessionLocal") as mock_session, \
-             patch("audiobook_studio.cli.book.Project", return_value=mock_proj) as mock_project_class:
+        with (
+            patch("audiobook_studio.cli.book.SessionLocal") as mock_session,
+            patch("audiobook_studio.cli.book.Project", return_value=mock_proj) as mock_project_class,
+        ):
 
             mock_db = MagicMock()
             mock_session.return_value = mock_db
@@ -314,12 +354,14 @@ class TestBookCommand:
 
 # ── Parser Integration Tests ─────────────────────────────────────────────────
 
+
 class TestCliParserIntegration:
     """Integration tests for the full CLI parser."""
 
     def test_main_parser_has_all_commands(self):
         """Main parser includes all 5 top-level commands."""
         from audiobook_studio.cli.main import create_parser
+
         parser = create_parser()
         # Check subparsers exist
         assert hasattr(parser, "_subparsers")

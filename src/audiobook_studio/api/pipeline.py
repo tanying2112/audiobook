@@ -5,17 +5,21 @@ the translate stage for multilingual dubbing.
 """
 
 import asyncio
+import concurrent.futures
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
-from ..database import create_async_session
+from ..database import create_async_session, get_sync_engine_url
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.checkpoint import CheckpointManager
 from ..pipeline.orchestrator import run_stage
@@ -305,6 +309,13 @@ async def run_pipeline_stage(
             detail=f"Invalid stage: {request.stage}. Valid stages: {valid_stages}",
         )
 
+    # Validate chapter_id for stages that require it
+    if request.stage in ("extract", "analyze") and not request.chapter_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"chapter_id is required for stage '{request.stage}'",
+        )
+
     # For translate stage, delegate to specialized handler
     if request.stage == "translate":
         if not request.target_language:
@@ -329,11 +340,34 @@ async def run_pipeline_stage(
             progress=0.0,
         )
 
-    # For other stages, use existing run_stage logic
-    # This would be implemented similarly to auto_run.py
-    raise HTTPException(
-        status_code=501,
-        detail=f"Stage '{request.stage}' execution not yet implemented via this endpoint. Use /auto-run for full pipeline.",
+    # For other stages, run via orchestrator.run_stage in thread pool with sync session
+    import asyncio
+    from sqlalchemy.orm import Session
+    from sqlalchemy import create_engine
+    from ..database import get_sync_engine_url
+
+    # Create a sync engine for the thread pool
+    sync_engine = create_engine(get_sync_engine_url(), pool_pre_ping=True)
+    SyncSession = sessionmaker(bind=sync_engine, class_=Session, expire_on_commit=False)
+
+    try:
+        result = await asyncio.to_thread(
+            run_stage,
+            request.stage,
+            SyncSession(),  # Sync session for the thread
+            project_id=project_id,
+            chapter_id=request.chapter_id if request.chapter_id else None,
+            target_difficulty=request.target_difficulty,
+        )
+    finally:
+        sync_engine.dispose()
+
+    return StageRunResponse(
+        stage=request.stage,
+        status="completed",
+        message=f"Stage {request.stage} completed",
+        progress=1.0,
+        result={"status": "ok"},
     )
 
 

@@ -492,11 +492,13 @@ def register_engine(engine: TTSEngine, set_as_default: bool = False) -> None:
     """Register an engine in the global registry."""
     registry = get_engine_registry()
     import asyncio
+
     loop = asyncio.get_event_loop()
     if loop.is_running():
         # If we're in an async context, we can't block
         # Schedule the coroutine to run
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             pool.submit(asyncio.run, registry.register(engine, set_as_default=set_as_default)).result()
     else:

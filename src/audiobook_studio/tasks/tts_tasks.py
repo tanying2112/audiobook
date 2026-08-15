@@ -47,6 +47,10 @@ logger = logging.getLogger(__name__)
 
 # Redis connection for idempotency/semaphore/failed tracking/checkpoints
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+_redis_client: Optional["redis.Redis"] = None
+_acquire_sha: Optional[str] = None
+_release_sha: Optional[str] = None
+
 try:
     import redis
 
@@ -83,8 +87,9 @@ end
 return 0
 """
 
-_acquire_sha = None
-_release_sha = None
+if _redis_client is not None:
+    _acquire_sha = _redis_client.script_load(_ACQUIRE_LUA)
+    _release_sha = _redis_client.script_load(_RELEASE_LUA)
 
 
 def _get_redis() -> Optional["redis.Redis"]:

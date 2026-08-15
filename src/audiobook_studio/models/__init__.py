@@ -56,6 +56,13 @@ from .character import Character
 # ---------------------------------------------------------------------------
 from .emotion_snapshot import EmotionSnapshot
 from .feedback_record import FeedbackRecord
+from .legacy import (
+    LegacyBook,
+    LegacyParagraph,
+    LegacyTTSEdit,
+    LegacyRouting,
+    LegacyQuality,
+)
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
 from .project_segment import ProjectSegment
@@ -86,4 +93,9 @@ __all__ = [
     "ProjectSegment",
     "PublishHistory",
     "PublishJob",
+    "LegacyBook",
+    "LegacyParagraph",
+    "LegacyTTSEdit",
+    "LegacyRouting",
+    "LegacyQuality",
 ]

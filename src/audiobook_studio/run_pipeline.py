@@ -43,7 +43,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 # Show deprecation warning when imported (not when run as __main__)
 if __name__ != "__main__":
@@ -52,98 +52,6 @@ if __name__ != "__main__":
         DeprecationWarning,
         stacklevel=2,
     )
-
-# ── Lazy imports to avoid pulling in optional dependencies at module load ───────
-# These are imported inside functions that need them to avoid importing the
-# entire audiobook_studio package (which pulls in opentelemetry, etc.) at import time.
-
-
-def _get_checkpoint_manager():
-    """Lazy import of CheckpointManager."""
-    from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
-
-    return CheckpointManager
-
-
-def _get_session_local_and_init_db():
-    """Lazy import of database module."""
-    from src.audiobook_studio.database import SessionLocal, init_db
-
-    return SessionLocal, init_db
-
-
-def _get_project_model():
-    """Lazy import of Project model."""
-    from src.audiobook_studio.models import Project
-
-    return Project
-
-
-def _get_orchestrator_functions():
-    """Lazy import of orchestrator functions."""
-    from src.audiobook_studio.pipeline.orchestrator import init_telemetry
-    from src.audiobook_studio.pipeline.orchestrator import run_pipeline as orchestrator_run_pipeline
-    from src.audiobook_studio.pipeline.orchestrator import shutdown_telemetry
-
-    return init_telemetry, orchestrator_run_pipeline, shutdown_telemetry
-
-
-def _get_cleanup_after_export():
-    """Lazy import of cleanup function."""
-    from src.audiobook_studio.utils.gc_manager import cleanup_after_export
-
-    return cleanup_after_export
-
-
-def _get_reports_dir():
-    """Lazy import of reports_dir."""
-    from src.audiobook_studio.storage import reports_dir
-
-    return reports_dir
-
-
-def _get_chapter_model():
-    """Lazy import of Chapter model."""
-    from src.audiobook_studio.models import Chapter
-
-    return Chapter
-
-
-def _get_paragraph_model():
-    """Lazy import of Paragraph model."""
-    from src.audiobook_studio.models import Paragraph
-
-    return Paragraph
-
-
-def _get_character_voice_binding():
-    """Lazy import of CharacterVoiceBinding schema."""
-    from src.audiobook_studio.schemas.book import CharacterVoiceBinding
-
-    return CharacterVoiceBinding
-
-
-def _get_fix_command():
-    """Lazy import of FixCommand schema."""
-    from src.audiobook_studio.schemas.review import FixCommand
-
-    return FixCommand
-
-
-def _get_export_classes():
-    """Lazy import of export classes."""
-    from src.audiobook_studio.export import ExportFormat, ExportJob
-    from src.audiobook_studio.export.audio_ducking import MixConfig
-
-    return ExportFormat, ExportJob, MixConfig
-
-
-def _get_export_project():
-    """Lazy import of export_project function."""
-    from src.audiobook_studio.export.batch_exporter import export_project
-
-    return export_project
-
 
 # ── Module-level placeholders for test patching (do not import heavy deps) ──────
 # These are set to None at module level; tests patch them with mocks.
@@ -324,6 +232,24 @@ BOOK_CONFIG: dict = {
         "genre": "历史小说",
         "era": "明代",
         "difficulty": "C",
+        "language": "zh",
+        "num_mock_chapters": 3,
+    },
+    "Carnival": {
+        "title": "Carnival",
+        "author": "Annette Keen",
+        "genre": "Graded Reader",
+        "era": "现代",
+        "difficulty": "B",
+        "language": "en",
+        "num_mock_chapters": 1,
+    },
+    "test_story": {
+        "title": "暗夜风暴前的裂痕",
+        "author": "测试作者",
+        "genre": "悬疑小说",
+        "era": "现代",
+        "difficulty": "B",
         "language": "zh",
         "num_mock_chapters": 3,
     },
@@ -549,10 +475,13 @@ def initialize_database(seed_projects: bool = True) -> None:
     """
     print("🗄️ [Action] 正在初始化/重置数据库表结构...")
 
-    # 第 1 步：创建所有表（幂等，CREATE TABLE IF NOT EXISTS）
+    # 第 1 步：导入所有模型以注册到 Base.metadata
+    from src.audiobook_studio import models  # noqa: F401
+
+    # 第 2 步：创建所有表（幂等，CREATE TABLE IF NOT EXISTS）
     init_db_fn = _get_session_local_and_init_db()[1]
     init_db_fn()
-    print("  ✅ 数据库表结构已就绪。")
+    print("  ✅ 数据库表结构已就绪.")
 
     if not seed_projects:
         print("ℹ️  跳过项目种子数据创建。")
@@ -569,7 +498,7 @@ def initialize_database(seed_projects: bool = True) -> None:
                 print(f"  ℹ️  Project 已存在: {config['title']} (id={existing.id})")
                 continue
 
-            now = datetime.now().isoformat()
+            now = datetime.now()
             project = Project(
                 title=config["title"],
                 author=config["author"],
@@ -756,8 +685,7 @@ def run_book_pipeline(
                     response = input().strip().lower()
                     if response and response[0] != "y":
                         print("用户选择重新开始，清除检查点...")
-                        checkpoint_manager._data = {"project_id": project_id, "chapters": {}, "version": 2}
-                        checkpoint_manager._save()
+                        checkpoint_manager.reset_all()
                     else:
                         print("✅ 从检查点恢复，跳过已完成阶段...")
                 except (EOFError, KeyboardInterrupt):

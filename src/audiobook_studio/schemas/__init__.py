@@ -85,6 +85,7 @@ __all__ = [
     "ChapterSourceCollection",
     "ChapterSourceParagraph",
     # 音频后处理契约
+    "AudioPostProcessParams",
     "AudioFinalizeParams",
     "AudioFinalizeResult",
 ]

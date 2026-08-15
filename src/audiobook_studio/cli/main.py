@@ -83,14 +83,15 @@ Examples:
     return parser
 
 
-def main(argv: list[str] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = create_parser()
     args = parser.parse_args(argv)
 
     # Execute the command function
     if hasattr(args, "func"):
-        return args.func(args)
+        result = args.func(args)
+        return result if isinstance(result, int) else 0
     else:
         parser.print_help()
         return 1

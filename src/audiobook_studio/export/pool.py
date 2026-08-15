@@ -32,7 +32,7 @@ def get_ffmpeg_semaphore() -> asyncio.Semaphore:
     return _semaphore
 
 
-async def run_ffmpeg(args: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
+async def run_ffmpeg(args: Sequence[str], **kwargs) -> subprocess.CompletedProcess[bytes]:
     """Run ffmpeg under the global concurrency semaphore.
 
     Wraps subprocess.run in asyncio.to_thread so the event loop stays responsive,

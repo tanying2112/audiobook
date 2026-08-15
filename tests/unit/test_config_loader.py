@@ -242,13 +242,41 @@ class TestConfigFileLock:
     """Tests for ConfigFileLock class."""
 
     def test_lock_acquire_release(self):
-        """Test file lock acquire and release."""
+        """Test file lock acquire/release: held inside context, released after, cross-thread safe."""
+        import threading
+
         from src.audiobook_studio.config.loader import ConfigFileLock
 
-        with ConfigFileLock.acquire("/tmp/test_config.yaml"):
-            # Lock acquired
-            pass
-        # Lock released
+        # Force a unique path per test run (RLocks are keyed by resolved path and persist class-wide)
+        path = f"/tmp/test_config_{threading.get_ident()}.yaml"
+        resolved = str(Path(path).resolve())
+
+        # Inside the context, the per-path RLock must exist and be held by THIS thread
+        # (RLock is reentrant, so a nested acquire on the same thread must not block).
+        reentered = {}
+        with ConfigFileLock.acquire(path):
+            lock = ConfigFileLock._locks[resolved]
+            assert isinstance(lock, type(threading.RLock()))
+            # Reentrant: same-thread acquire must succeed immediately without blocking
+            got = lock.acquire(blocking=False)
+            assert got is True, "RLock should be reentrant for the holding thread"
+            lock.release()  # balance the reentrant acquire BEFORE exiting the context
+
+        # After the context exits, another thread must be able to acquire the same path
+        # (proves the lock was released, not left held).
+        holder = {}
+
+        def grab():
+            with ConfigFileLock.acquire(path):
+                holder["got"] = True
+
+        t = threading.Thread(target=grab)
+        t.start()
+        t.join(timeout=5.0)
+        assert holder.get("got") is True, "Lock should be releasable by another thread after context exit"
+        assert not t.is_alive(), "Lock-acquire thread should have finished, not deadlock"
+        # Cleanup class-level state to avoid leaking RLocks across test runs
+        ConfigFileLock._locks.pop(resolved, None)
 
 
 if __name__ == "__main__":

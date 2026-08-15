@@ -6,8 +6,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..models.legacy import LegacyBook
 from ..schemas.legacy import Book as BookSchema
@@ -49,9 +49,7 @@ class BookOut(BookSchema):
 
 
 @router.post("/", response_model=BookOut, status_code=status.HTTP_201_CREATED)
-async def create_book(
-    payload: BookCreate, db: AsyncSession = Depends(get_async_db)
-):
+async def create_book(payload: BookCreate, db: AsyncSession = Depends(get_async_db)):
     """Create a new book."""
     book = LegacyBook(**payload.model_dump())
     db.add(book)
@@ -63,12 +61,7 @@ async def create_book(
 @router.get("/", response_model=List[BookOut])
 async def list_books(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_async_db)):
     """List all books."""
-    result = await db.execute(
-        select(LegacyBook)
-        .options(selectinload(LegacyBook.paragraphs))
-        .offset(skip)
-        .limit(limit)
-    )
+    result = await db.execute(select(LegacyBook).options(selectinload(LegacyBook.paragraphs)).offset(skip).limit(limit))
     return result.scalars().all()
 
 
@@ -83,9 +76,7 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_async_db)):
 
 
 @router.put("/{book_id}", response_model=BookOut)
-async def update_book(
-    book_id: int, payload: BookUpdate, db: AsyncSession = Depends(get_async_db)
-):
+async def update_book(book_id: int, payload: BookUpdate, db: AsyncSession = Depends(get_async_db)):
     """Update a book."""
     result = await db.execute(select(LegacyBook).where(LegacyBook.id == book_id))
     book = result.scalar_one_or_none()

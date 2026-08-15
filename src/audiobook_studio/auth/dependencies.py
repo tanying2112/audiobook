@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
@@ -19,6 +19,12 @@ from src.audiobook_studio.database import get_db
 from src.audiobook_studio.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# Extension for User model to support cached roles
+class _UserWithCache(User):
+    """User class with dynamic _cached_roles attribute for cached auth."""
+    __allow_unmapped__ = True
+    _cached_roles: List[str]
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(
@@ -48,7 +54,7 @@ async def _get_redis():
     )
 
 
-async def _get_cached_user(user_id: int) -> Optional[dict]:
+async def _get_cached_user(user_id: int) -> Optional[Dict[str, Any]]:
     """Get user from Redis cache."""
     try:
         redis = await _get_redis()
@@ -57,7 +63,7 @@ async def _get_cached_user(user_id: int) -> Optional[dict]:
         await redis.aclose()
         if cached:
             logger.debug(f"Cache hit for user {user_id}")
-            return json.loads(cached)
+            return json.loads(cached)  # type: ignore[no-any-return]
     except Exception as e:
         logger.warning(f"Failed to get cached user {user_id}: {e}")
     return None
@@ -127,10 +133,10 @@ async def get_current_user(
             roles=roles,
             permissions=permissions,
         )
-    except JWTError:
-        raise credentials_exception
-    except Exception:
-        raise credentials_exception
+    except JWTError as e:
+        raise credentials_exception from e
+    except Exception as e:
+        raise credentials_exception from e
 
     # Try to get user from Redis cache first
     cached_user = await _get_cached_user(user_id)
@@ -149,7 +155,7 @@ async def get_current_user(
                 )
 
         # Create a User object from cached data
-        user = User(
+        user = _UserWithCache(
             id=cached_user["id"],
             email=cached_user["email"],
             username=cached_user["username"],

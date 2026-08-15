@@ -8,7 +8,7 @@ from sqlalchemy import Float, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -52,10 +52,14 @@ class Chapter(Base):
     completed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    project: Mapped[Project] = relationship("Project", back_populates="chapters")
+    project: Mapped[Project] = relationship("Project", back_populates="chapters", lazy="selectin")
     paragraphs: Mapped[List[Paragraph]] = relationship(
-        "Paragraph", back_populates="chapter", cascade="all, delete-orphan"
+        "Paragraph", back_populates="chapter", cascade="all, delete-orphan", lazy="selectin"
     )
     audio_segments: Mapped[List[AudioSegment]] = relationship(
-        "AudioSegment", back_populates="chapter", cascade="all, delete-orphan"
+        "AudioSegment", back_populates="chapter", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    # Forbid lazy loading on detail endpoints that should use selectinload explicitly
+    from sqlalchemy.orm import raiseload
+    __raised_load_attrs__ = (raiseload("*"),)

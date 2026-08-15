@@ -166,11 +166,19 @@ class LLMProvidersConfig(BaseSettings):
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "LLMProvidersConfig":
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file.
+
+        Path resolution priority (避免项目根 / 包内双 yaml 漂移):
+          1. 显式传入的 config_path
+          2. 当前工作目录 (CWD) 下的 config/llm_providers.yaml  ← 项目根运维版本优先
+          3. 本包同目录的下 config/llm_providers.yaml            ← pip install -e 后的 fallback
+        """
         import yaml
 
         if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+            cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
+            pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+            config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
 
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)

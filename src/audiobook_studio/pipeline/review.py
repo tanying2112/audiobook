@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from ..schemas.review import (
     FixCommand,
@@ -398,84 +398,85 @@ class ReviewerAgent:
                 )
 
         # Fix truncated fields
-        for check in truncation_checks:
-            if check.is_truncated and check.severity == "error":
+        for trunc_check in truncation_checks:
+            if trunc_check.is_truncated and trunc_check.severity == "error":
                 commands.append(
                     FixCommand(
                         command_type="fix_truncated_field",
-                        target_paragraph_index=check.paragraph_index,
+                        target_paragraph_index=trunc_check.paragraph_index,
                         parameters={
-                            "field_name": check.field_name,
+                            "field_name": trunc_check.field_name,
                             "action": "re_extract_or_default",
                         },
                         priority=9,
-                        rationale=f"Field '{check.field_name}' in paragraph {check.paragraph_index} is truncated: {check.issue}",
+                        rationale=f"Field '{trunc_check.field_name}' in paragraph {trunc_check.paragraph_index} is truncated: {trunc_check.issue}",
                     )
                 )
 
         # Fix tag inconsistencies
-        for check in tag_checks:
-            if not check.passed and (check.severity == "error" or check.check_type == "pause_logic"):
-                if check.check_type == "emotion_text_match":
+        for tag_check in tag_checks:
+            if not tag_check.passed and (tag_check.severity == "error" or tag_check.check_type == "pause_logic"):
+                if tag_check.check_type == "emotion_text_match":
                     # paragraph_index is 1-based in checks, but paragraphs list is 0-based
-                    para_idx = check.paragraph_index - 1 if check.paragraph_index > 0 else 0
+                    para_idx = tag_check.paragraph_index - 1 if tag_check.paragraph_index > 0 else 0
                     commands.append(
                         FixCommand(
                             command_type="correct_emotion_tag",
-                            target_paragraph_index=check.paragraph_index,
+                            target_paragraph_index=tag_check.paragraph_index,
                             parameters={
-                                "current_emotion": check.actual,
+                                "current_emotion": tag_check.actual,
                                 "suggested_emotion": self._suggest_emotion_from_text(
                                     paragraphs[para_idx].get("text", "") if para_idx < len(paragraphs) else ""
                                 ),
                             },
                             priority=7,
-                            rationale=f"Emotion tag mismatch: {check.issue}",
+                            rationale=f"Emotion tag mismatch: {tag_check.issue}",
                         )
                     )
-                elif check.check_type == "speed_range":
+                elif tag_check.check_type == "speed_range":
                     commands.append(
                         FixCommand(
                             command_type="adjust_speed",
-                            target_paragraph_index=check.paragraph_index,
+                            target_paragraph_index=tag_check.paragraph_index,
                             parameters={
-                                "current_speed": check.actual,
+                                "current_speed": tag_check.actual,
                                 "clamped_speed": max(
-                                    self.speed_min, min(self.speed_max, float(check.actual) if check.actual else 1.0)
+                                    self.speed_min, min(self.speed_max, float(tag_check.actual) if tag_check.actual else 1.0)
                                 ),
                             },
                             priority=6,
-                            rationale=f"Speech rate out of range: {check.issue}",
+                            rationale=f"Speech rate out of range: {tag_check.issue}",
                         )
                     )
-                elif check.check_type == "sfx_context":
+                elif tag_check.check_type == "sfx_context":
                     commands.append(
                         FixCommand(
                             command_type="add_sfx_tag",
-                            target_paragraph_index=check.paragraph_index,
+                            target_paragraph_index=tag_check.paragraph_index,
                             parameters={
-                                "invalid_tag": check.actual,
+                                "invalid_tag": tag_check.actual,
                                 "action": "remove_or_replace",
-                                "allowed_tags": check.expected,
+                                "allowed_tags": tag_check.expected,
                             },
                             priority=5,
-                            rationale=f"Invalid SFX tag: {check.issue}",
+                            rationale=f"Invalid SFX tag: {tag_check.issue}",
                         )
                     )
-                elif check.check_type == "pause_logic":
+                elif tag_check.check_type == "pause_logic":
                     # pause_logic checks have severity="warning" but we still generate fix commands
-                    val = check.actual.replace("ms", "") if "ms" in str(check.actual) else check.actual
+                    actual_val = tag_check.actual or "0ms"
+                    val = actual_val.replace("ms", "") if "ms" in actual_val else actual_val
                     commands.append(
                         FixCommand(
                             command_type="fix_pause_timing",
-                            target_paragraph_index=check.paragraph_index,
+                            target_paragraph_index=tag_check.paragraph_index,
                             parameters={
-                                "field": "pause_before_ms" if "before" in (check.issue or "") else "pause_after_ms",
-                                "current_value": check.actual,
+                                "field": "pause_before_ms" if "before" in (tag_check.issue or "") else "pause_after_ms",
+                                "current_value": tag_check.actual,
                                 "clamped_value": max(0, min(5000, int(val) if val else 300)),
                             },
                             priority=4,
-                            rationale=f"Unrealistic pause timing: {check.issue}",
+                            rationale=f"Unrealistic pause timing: {tag_check.issue}",
                         )
                     )
 
@@ -558,29 +559,29 @@ class ReviewerAgent:
         judgment.tag_consistency_checks = tag_checks
 
         # Evaluate overall
-        for check in voice_checks:
-            if not check.found_in_voice_map and check.severity == "error":
-                judgment.add_blocking_issue(check.issue or f"Missing voice binding for {check.speaker_canonical_name}")
-            elif check.severity == "warning":
-                judgment.add_warning(check.issue or f"Voice binding warning for {check.speaker_canonical_name}")
+        for vc in voice_checks:
+            if not vc.found_in_voice_map and vc.severity == "error":
+                judgment.add_blocking_issue(vc.issue or f"Missing voice binding for {vc.speaker_canonical_name}")
+            elif vc.severity == "warning":
+                judgment.add_warning(vc.issue or f"Voice binding warning for {vc.speaker_canonical_name}")
 
-        for check in truncation_checks:
-            if check.is_truncated:
-                if check.severity == "error":
+        for trunc in truncation_checks:
+            if trunc.is_truncated:
+                if trunc.severity == "error":
                     judgment.add_blocking_issue(
-                        check.issue or f"Truncated field {check.field_name} in para {check.paragraph_index}"
+                        trunc.issue or f"Truncated field {trunc.field_name} in para {trunc.paragraph_index}"
                     )
                 else:
-                    judgment.add_warning(check.issue or f"Truncation warning in {check.field_name}")
+                    judgment.add_warning(trunc.issue or f"Truncation warning in {trunc.field_name}")
 
-        for check in tag_checks:
-            if not check.passed:
-                if check.severity == "error" or (check.severity == "warning" and self.strict_mode):
+        for tag in tag_checks:
+            if not tag.passed:
+                if tag.severity == "error" or (tag.severity == "warning" and self.strict_mode):
                     judgment.add_blocking_issue(
-                        check.issue or f"Tag check failed: {check.check_type} para {check.paragraph_index}"
+                        tag.issue or f"Tag check failed: {tag.check_type} para {tag.paragraph_index}"
                     )
                 else:
-                    judgment.add_warning(check.issue or f"Tag warning: {check.check_type} para {check.paragraph_index}")
+                    judgment.add_warning(tag.issue or f"Tag warning: {tag.check_type} para {tag.paragraph_index}")
 
         # Generate fix commands if there are issues
         if not judgment.overall_passed:

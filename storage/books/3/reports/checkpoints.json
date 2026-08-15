@@ -4,7 +4,17 @@
     "1": {
       "stages_done": [
         "extract",
-        "analyze"
+        "analyze",
+        "annotate"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null
+    },
+    "2": {
+      "stages_done": [
+        "extract",
+        "analyze",
+        "annotate"
       ],
       "paragraphs_done": [],
       "current_stage": null

@@ -23,7 +23,8 @@ import pytest
 class TestFeedbackToTemplateConversion:
     """Test _feedback_to_template converts FeedbackRecord to TemplateItem."""
 
-    def test_full_record_conversion(self):
+    @pytest.mark.asyncio
+    async def test_full_record_conversion(self):
         from src.audiobook_studio.api.templates import _feedback_to_template
 
         record = MagicMock()
@@ -51,7 +52,8 @@ class TestFeedbackToTemplateConversion:
         assert item.input_snapshot == {"text": "原文"}
         assert item.corrected_output == {"emotion": "happy"}
 
-    def test_none_pattern_tags_becomes_empty_list(self):
+    @pytest.mark.asyncio
+    async def test_none_pattern_tags_becomes_empty_list(self):
         from src.audiobook_studio.api.templates import _feedback_to_template
 
         record = MagicMock()
@@ -73,7 +75,8 @@ class TestFeedbackToTemplateConversion:
         # When created_at is None, it should use current time
         assert item.created_at is not None
 
-    def test_empty_list_pattern_tags_stays_empty(self):
+    @pytest.mark.asyncio
+    async def test_empty_list_pattern_tags_stays_empty(self):
         from src.audiobook_studio.api.templates import _feedback_to_template
 
         record = MagicMock()
@@ -126,10 +129,11 @@ class TestApplyAnnotationTemplateBusiness:
             setattr(pa, k, v)
         return pa
 
-    def test_full_annotation_update(self):
+    @pytest.mark.asyncio
+    async def test_full_annotation_update(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         corrected = {
             "speaker_canonical_name": "林黛玉",
@@ -146,7 +150,7 @@ class TestApplyAnnotationTemplateBusiness:
             "notes": "轻声细语",
             "difficulty": "A",
         }
-        _apply_annotation_template(db, pa, corrected)
+        await _apply_annotation_template(db, pa, corrected)
 
         assert pa.speaker_canonical_name == "林黛玉"
         assert pa.is_dialogue is True
@@ -164,13 +168,14 @@ class TestApplyAnnotationTemplateBusiness:
         db.add.assert_called_with(pa)
         db.commit.assert_called_once()
 
-    def test_partial_update_only_specified_fields(self):
+    @pytest.mark.asyncio
+    async def test_partial_update_only_specified_fields(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para(speaker_canonical_name="旁白")
         corrected = {"emotion": "angry"}
-        _apply_annotation_template(db, pa, corrected)
+        await _apply_annotation_template(db, pa, corrected)
 
         # Only emotion should change
         assert pa.emotion == "angry"
@@ -178,31 +183,34 @@ class TestApplyAnnotationTemplateBusiness:
         assert pa.speaker_canonical_name == "旁白"
         assert pa.is_dialogue is False
 
-    def test_empty_corrected_output_no_changes(self):
+    @pytest.mark.asyncio
+    async def test_empty_corrected_output_no_changes(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
-        _apply_annotation_template(db, pa, {})
+        await _apply_annotation_template(db, pa, {})
         # No fields changed, but db.add/commit still called
         db.add.assert_called_with(pa)
         db.commit.assert_called_once()
 
-    def test_difficulty_sets_edit_difficulty(self):
+    @pytest.mark.asyncio
+    async def test_difficulty_sets_edit_difficulty(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
-        _apply_annotation_template(db, pa, {"difficulty": "B"})
+        await _apply_annotation_template(db, pa, {"difficulty": "B"})
         assert pa.edit_difficulty == "B"
 
-    def test_unknown_fields_ignored(self):
+    @pytest.mark.asyncio
+    async def test_unknown_fields_ignored(self):
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         # corrected_output contains fields not in the mapped list
-        _apply_annotation_template(db, pa, {"nonexistent_field": "value", "emotion": "tender"})
+        await _apply_annotation_template(db, pa, {"nonexistent_field": "value", "emotion": "tender"})
         assert pa.emotion == "tender"
 
 
@@ -228,11 +236,12 @@ class TestApplyEditTemplateBusiness:
         pa.edit_forbid_edit = None
         return pa
 
-    def test_creates_tts_edit_with_all_fields(self):
+    @pytest.mark.asyncio
+    async def test_creates_tts_edit_with_all_fields(self):
         from src.audiobook_studio.api.templates import _apply_edit_template
         from src.audiobook_studio.models import TTSEdit
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         corrected = {
             "edited_text": "新编辑文本",
@@ -248,7 +257,7 @@ class TestApplyEditTemplateBusiness:
             "prompt_version": "v2",
         }
 
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
 
         # Verify db.add was called (once for TTSEdit, once for para update)
         assert db.add.call_count == 2
@@ -257,25 +266,27 @@ class TestApplyEditTemplateBusiness:
         # Verify paragraph fields updated
         assert pa.edited_text == "新编辑文本"
 
-    def test_fallback_to_original_text_when_no_edited_text(self):
+    @pytest.mark.asyncio
+    async def test_fallback_to_original_text_when_no_edited_text(self):
         from src.audiobook_studio.api.templates import _apply_edit_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         pa.edited_text = None  # No previous edit
         corrected = {}  # No edited_text in corrected output
 
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
         # Should use pa.text as fallback
         assert pa.edited_text == "原始文本"
 
-    def test_source_defaults_to_template(self):
+    @pytest.mark.asyncio
+    async def test_source_defaults_to_template(self):
         from src.audiobook_studio.api.templates import _apply_edit_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         corrected = {"edited_text": "更新"}
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
         assert db.add.call_count == 2  # TTSEdit + paragraph
 
 
@@ -307,10 +318,11 @@ class TestApplyRoutingTemplateBusiness:
         pa.confidence = None
         return pa
 
-    def test_creates_routing_record(self):
+    @pytest.mark.asyncio
+    async def test_creates_routing_record(self):
         from src.audiobook_studio.api.templates import _apply_routing_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         corrected = {
             "engine_choice": "kokoro",
@@ -322,7 +334,7 @@ class TestApplyRoutingTemplateBusiness:
             "status": "completed",
         }
 
-        _apply_routing_template(db, pa, corrected)
+        await _apply_routing_template(db, pa, corrected)
 
         assert db.add.call_count == 2  # Routing + paragraph
         assert db.commit.call_count == 2
@@ -334,21 +346,23 @@ class TestApplyRoutingTemplateBusiness:
         assert pa.routing_estimated_duration == 8000
         assert pa.status == "completed"
 
-    def test_defaults_applied(self):
+    @pytest.mark.asyncio
+    async def test_defaults_applied(self):
         from src.audiobook_studio.api.templates import _apply_routing_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
-        _apply_routing_template(db, pa, {})
+        await _apply_routing_template(db, pa, {})
 
         assert pa.routing_engine == "kokoro"  # default
         assert pa.routing_voice_id == "kokoro_narrator"  # default
         assert pa.routing_fallback == "edge"  # default
 
-    def test_all_fields_set(self):
+    @pytest.mark.asyncio
+    async def test_all_fields_set(self):
         from src.audiobook_studio.api.templates import _apply_routing_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         corrected = {
             "engine_choice": "edge",
@@ -366,7 +380,7 @@ class TestApplyRoutingTemplateBusiness:
             "confidence": 0.92,
         }
 
-        _apply_routing_template(db, pa, corrected)
+        await _apply_routing_template(db, pa, corrected)
         assert pa.routing_engine == "edge"
         assert pa.routing_voice_id == "edge_female"
         assert pa.routing_prosody_overrides == {"rate": 1.2}
@@ -405,13 +419,18 @@ class TestApplyQualityTemplateBusiness:
         edit.id = 100
         return edit
 
-    def test_creates_quality_record(self):
+    @pytest.mark.asyncio
+    async def test_creates_quality_record(self):
         from src.audiobook_studio.api.templates import _apply_quality_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         tts_edit = self._make_tts_edit()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = tts_edit
+
+        # Mock db.execute → result.scalars().first() → tts_edit
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = tts_edit
+        db.execute = AsyncMock(return_value=mock_result)
 
         corrected = {
             "speaker_clarity": 0.95,
@@ -425,7 +444,7 @@ class TestApplyQualityTemplateBusiness:
             "fix_suggestions": [],
         }
 
-        _apply_quality_template(db, pa, corrected)
+        await _apply_quality_template(db, pa, corrected)
 
         assert db.add.call_count == 2  # Quality + paragraph
         assert db.commit.call_count == 2
@@ -436,29 +455,36 @@ class TestApplyQualityTemplateBusiness:
         assert pa.quality_overall_score == 0.91
         assert pa.quality_needs_regeneration is False
 
-    def test_no_tts_edit_skips_quality_application(self):
+    @pytest.mark.asyncio
+    async def test_no_tts_edit_skips_quality_application(self):
         from src.audiobook_studio.api.templates import _apply_quality_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         # No TTSEdit found
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
 
-        _apply_quality_template(db, pa, {"speaker_clarity": 0.9})
+        await _apply_quality_template(db, pa, {"speaker_clarity": 0.9})
 
         # Should skip — no quality record created
         db.add.assert_not_called()
         db.commit.assert_not_called()
 
-    def test_partial_quality_fields(self):
+    @pytest.mark.asyncio
+    async def test_partial_quality_fields(self):
         from src.audiobook_studio.api.templates import _apply_quality_template
 
-        db = MagicMock()
+        db = AsyncMock()
         pa = self._make_para()
         tts_edit = self._make_tts_edit()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = tts_edit
 
-        _apply_quality_template(db, pa, {"overall_score": 0.75, "needs_regeneration": True})
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = tts_edit
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await _apply_quality_template(db, pa, {"overall_score": 0.75, "needs_regeneration": True})
 
         assert pa.quality_overall_score == 0.75
         assert pa.quality_needs_regeneration is True
@@ -482,7 +508,7 @@ class TestRerunDownstreamStages:
     async def test_annotate_triggers_edit_and_beyond(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "annotate", [para])
@@ -498,7 +524,7 @@ class TestRerunDownstreamStages:
     async def test_edit_for_tts_triggers_synthesize_and_quality(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "edit_for_tts", [para])
@@ -511,7 +537,7 @@ class TestRerunDownstreamStages:
     async def test_routing_triggers_synthesize_and_quality(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "routing", [para])
@@ -521,7 +547,7 @@ class TestRerunDownstreamStages:
     async def test_quality_triggers_nothing(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "quality", [para])
@@ -531,7 +557,7 @@ class TestRerunDownstreamStages:
     async def test_unknown_stage_triggers_nothing(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para = MagicMock(id=1, chapter_id=1)
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "unknown_stage", [para])
@@ -541,7 +567,7 @@ class TestRerunDownstreamStages:
     async def test_multiple_paragraphs_each_gets_all_stages(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         paras = [MagicMock(id=i, chapter_id=1) for i in range(3)]
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage") as mock_run:
             await _rerun_downstream_stages(db, 10, "annotate", paras)
@@ -552,7 +578,7 @@ class TestRerunDownstreamStages:
     async def test_failure_in_one_paragraph_does_not_abort_others(self):
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
-        db = MagicMock()
+        db = AsyncMock()
         para1 = MagicMock(id=1, chapter_id=1)
         para2 = MagicMock(id=2, chapter_id=1)
 
@@ -586,54 +612,49 @@ class TestApplyTemplateBackground:
     async def test_progress_tracking_lifecycle(self):
         """Background task tracks progress from running to completed."""
         from src.audiobook_studio.api.templates import _apply_annotation_template, _apply_template_background
-        from src.audiobook_studio.models import FeedbackRecord as FR
-        from src.audiobook_studio.models import Paragraph
 
         task_id = "test_task_001"
 
-        # Create mock db session
-        mock_db = MagicMock()
+        # Create mock async db session
+        mock_db = AsyncMock()
 
-        # Mock template record (first query: FeedbackRecordModel)
+        # Mock template record
         mock_template = MagicMock()
         mock_template.stage = "annotate"
         mock_template.corrected_output = {"emotion": "happy"}
         mock_template.processed = True
         mock_template.promoted = True
 
-        # Mock paragraphs (second query: Paragraph)
+        # Mock paragraph
         mock_para = MagicMock()
         mock_para.id = 1
         mock_para.project_id = 10
         mock_para.chapter_id = 1
 
-        # The function makes two db.query() calls:
-        # 1. db.query(FeedbackRecordModel).filter(...).first() → template
-        # 2. db.query(Paragraph).filter(...).all() → paragraphs
-        # Use side_effect to differentiate: first call returns template filter chain,
-        # second call returns paragraph filter chain.
-        mock_filter_result = MagicMock()
-        mock_filter_result.first.return_value = mock_template
-        mock_filter_result.all.return_value = [mock_para]
-        mock_filter_result.order_by.return_value.all.return_value = [mock_para]
+        # Mock execute result: first call returns template, second returns paragraphs
+        mock_scalar_one = MagicMock()
+        mock_scalar_one.scalar_one_or_none.return_value = mock_template
 
-        mock_db.query.return_value.filter.return_value = mock_filter_result
+        mock_scalar_all = MagicMock()
+        mock_scalar_all.scalars.return_value.all.return_value = [mock_para]
 
-        with patch("sqlalchemy.create_engine"):
-            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                with patch("os.getenv", return_value="sqlite:///./test.db"):
-                    with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
-                        with patch(
-                            "src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock
-                        ):
-                            await _apply_template_background(
-                                project_id=10,
-                                template_id=42,
-                                scope="all",
-                                chapter_ids=None,
-                                pattern_filter=None,
-                                task_id=task_id,
-                            )
+        mock_db.execute = AsyncMock(side_effect=[mock_scalar_one, mock_scalar_all])
+
+        with patch(
+            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
+        ):
+            with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
+                with patch(
+                    "src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock
+                ):
+                    await _apply_template_background(
+                        project_id=10,
+                        template_id=42,
+                        scope="all",
+                        chapter_ids=None,
+                        pattern_filter=None,
+                        task_id=task_id,
+                    )
 
         # Verify progress was tracked
         progress = _apply_template_background.progress.get(task_id)
@@ -651,20 +672,24 @@ class TestApplyTemplateBackground:
         from src.audiobook_studio.api.templates import _apply_template_background
 
         task_id = "test_task_002"
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None  # No template
+        mock_db = AsyncMock()
 
-        with patch("sqlalchemy.create_engine"):
-            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                with patch("os.getenv", return_value="sqlite:///./test.db"):
-                    await _apply_template_background(
-                        project_id=10,
-                        template_id=999,
-                        scope="all",
-                        chapter_ids=None,
-                        pattern_filter=None,
-                        task_id=task_id,
-                    )
+        # execute returns no template
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
+        ):
+            await _apply_template_background(
+                project_id=10,
+                template_id=999,
+                scope="all",
+                chapter_ids=None,
+                pattern_filter=None,
+                task_id=task_id,
+            )
 
         progress = _apply_template_background.progress.get(task_id)
         assert progress is not None
@@ -680,23 +705,27 @@ class TestApplyTemplateBackground:
         from src.audiobook_studio.api.templates import _apply_template_background
 
         task_id = "test_task_003"
-        mock_db = MagicMock()
+        mock_db = AsyncMock()
+
         mock_template = MagicMock()
         mock_template.processed = False  # Not confirmed
         mock_template.promoted = False
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_template
 
-        with patch("sqlalchemy.create_engine"):
-            with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: mock_db):
-                with patch("os.getenv", return_value="sqlite:///./test.db"):
-                    await _apply_template_background(
-                        project_id=10,
-                        template_id=42,
-                        scope="all",
-                        chapter_ids=None,
-                        pattern_filter=None,
-                        task_id=task_id,
-                    )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_template
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
+        ):
+            await _apply_template_background(
+                project_id=10,
+                template_id=42,
+                scope="all",
+                chapter_ids=None,
+                pattern_filter=None,
+                task_id=task_id,
+            )
 
         progress = _apply_template_background.progress.get(task_id)
         assert progress is not None

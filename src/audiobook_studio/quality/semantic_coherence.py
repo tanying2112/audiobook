@@ -34,7 +34,7 @@ class SemanticCoherenceChecker:
         """加载质量阈值配置."""
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
+                config: Dict[str, Any] = yaml.safe_load(f) or {}
             logger.info(f"✅ 已加载质量阈值配置: {self.config_path}")
             return config
         except FileNotFoundError:

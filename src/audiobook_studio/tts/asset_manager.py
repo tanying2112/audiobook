@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 from tqdm import tqdm
@@ -20,7 +20,7 @@ CACHE_DIR = Path(os.environ.get("AUDIOBOOK_STUDIO_MODEL_CACHE", "~/.cache/audiob
 
 # Hardcoded asset configuration for Kokoro-ONNX v0.19
 # Official release from hexgrad/Kokoro-82M on Hugging Face
-KOKORO_ASSETS: Dict[str, Dict] = {
+KOKORO_ASSETS: dict[str, dict[str, Any]] = {
     "kokoro-v0_19.onnx": {
         "url": "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v0_19.onnx",
         "size_mb": 308,
@@ -36,7 +36,7 @@ KOKORO_ASSETS: Dict[str, Dict] = {
 }
 
 # Fallback: GitHub releases from thewh1teagle/kokoro-onnx
-KOKORO_FALLBACK_ASSETS: Dict[str, Dict] = {
+KOKORO_FALLBACK_ASSETS: dict[str, dict[str, Any]] = {
     "kokoro-v0_19.onnx": {
         "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.19/kokoro-v0_19.onnx",
         "size_mb": 308,
@@ -133,12 +133,12 @@ def download_file(
     return False, f"Max retries exceeded after {MAX_RETRIES} attempts"
 
 
-def verify_asset_files(cache_dir: Path, assets_spec: Dict) -> Tuple[bool, list]:
+def verify_asset_files(cache_dir: Path, assets_spec: dict[str, dict[str, Any]]) -> tuple[bool, list[str]]:
     """
     Verify all required asset files exist and have valid checksums.
     Returns: (all_valid, list_of_issues)
     """
-    issues = []
+    issues: list[str] = []
 
     for filename, spec in assets_spec.items():
         filepath = cache_dir / filename
@@ -167,7 +167,7 @@ def verify_asset_files(cache_dir: Path, assets_spec: Dict) -> Tuple[bool, list]:
 
 def download_assets(
     cache_dir: Path,
-    assets_spec: Dict,
+    assets_spec: dict[str, dict[str, Any]],
     max_workers: int = 1,
     force: bool = False,
 ) -> bool:

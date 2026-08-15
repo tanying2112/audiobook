@@ -76,6 +76,8 @@ nav:
     - Analysis:
       - Architecture Analysis: ANALYSIS_SUMMARY.md
       - Execution Checklist: EXECUTION_CHECKLIST.md
+    - Full Audit (2026-08): AUDIT_REPORT_2026-08-14.md
+    - Evolution Roadmap: EVOLUTION_ROADMAP.md
 
   - Appendix:
     - API Reference (CN): api.md

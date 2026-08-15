@@ -191,11 +191,7 @@ async def list_chapters(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     result = await db.execute(
-        select(Chapter)
-        .where(Chapter.project_id == project_id)
-        .order_by(Chapter.index)
-        .offset(skip)
-        .limit(limit)
+        select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index).offset(skip).limit(limit)
     )
     return result.scalars().all()
 
@@ -328,6 +324,12 @@ class QualityReportSegment(BaseModel):
     clipping_detected: bool
     peak_db: float
     rms_db: float
+    # 硬质检三件套 (P0.2) — Optional 以兼容旧 report；None = 未计算/降级跳过
+    mos: Optional[float] = None
+    wer: Optional[float] = None
+    voice_cosine: Optional[float] = None
+    metrics_status: Optional[str] = None
+    needs_manual_review: bool = False
     passed: bool
     issues: List[str]
 
@@ -388,9 +390,9 @@ async def get_quality_report(
             generated_at=data["generated_at"],
         )
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}")
+        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}") from e
     except KeyError as e:
-        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}")
+        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}") from e
 
 
 @router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")

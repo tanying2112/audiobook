@@ -7,8 +7,57 @@
         "analyze"
       ],
       "paragraphs_done": [],
-      "current_stage": "annotate"
+      "current_stage": null,
+      "paragraphs": {
+        "1": {
+          "stages_done": [
+            "annotate",
+            "edit",
+            "audio_postprocess",
+            "synthesize",
+            "quality"
+          ]
+        }
+      }
+    },
+    "2": {
+      "stages_done": [
+        "extract",
+        "analyze"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null,
+      "paragraphs": {
+        "2": {
+          "stages_done": [
+            "annotate",
+            "edit",
+            "audio_postprocess",
+            "synthesize",
+            "quality"
+          ]
+        }
+      }
+    },
+    "3": {
+      "stages_done": [
+        "extract",
+        "analyze"
+      ],
+      "paragraphs_done": [],
+      "current_stage": null,
+      "paragraphs": {
+        "3": {
+          "stages_done": [
+            "annotate",
+            "edit",
+            "audio_postprocess",
+            "synthesize",
+            "quality"
+          ]
+        }
+      }
     }
   },
-  "version": 2
+  "version": 3
 }

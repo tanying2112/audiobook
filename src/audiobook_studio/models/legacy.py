@@ -6,12 +6,13 @@ used by the existing API tests. Class names are prefixed with "Legacy" to avoid 
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 
 class LegacyBook(Base):
@@ -24,6 +25,8 @@ class LegacyBook(Base):
     author: Mapped[str] = mapped_column(String, nullable=False)
     language: Mapped[str] = mapped_column(String(2), nullable=False)
     isbn: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     paragraphs: Mapped[List[LegacyParagraph]] = relationship(
@@ -52,6 +55,8 @@ class LegacyParagraph(Base):
     index: Mapped[int] = mapped_column(nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     speaker: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     book: Mapped[LegacyBook] = relationship("LegacyBook", back_populates="paragraphs")
@@ -83,6 +88,8 @@ class LegacyTTSEdit(Base):
     paragraph_id: Mapped[int] = mapped_column(ForeignKey("legacy_paragraphs.id", ondelete="CASCADE"), nullable=False)
     edited_text: Mapped[str] = mapped_column(Text, nullable=False)
     voice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     paragraph: Mapped[LegacyParagraph] = relationship("LegacyParagraph", back_populates="tts_edits")

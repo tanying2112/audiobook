@@ -3,13 +3,12 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional, Set
 
-from sqlalchemy import Boolean, Column, DateTime
+from sqlalchemy import JSON, Boolean, Column, DateTime
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, Integer, String, Table, Text
-from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .book import Project
@@ -49,6 +48,7 @@ class User(Base):
         DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)
     )
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    password_migrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=user_roles, back_populates="users")

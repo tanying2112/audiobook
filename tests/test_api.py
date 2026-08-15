@@ -20,8 +20,12 @@ the duration of a request.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from typing import Generator
+
+# Set ALLOWED_HOSTS BEFORE importing main app to configure TrustedHostMiddleware correctly
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
 import anyio
 import pytest
@@ -29,7 +33,18 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.audiobook_studio.api.dependencies import get_db
+from src.audiobook_studio.api.dependencies import get_db, get_async_db
+from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_user
+from src.audiobook_studio.models.user import User
+
+# Import legacy models so they are registered with Base.metadata
+from src.audiobook_studio.models.legacy import (
+    LegacyBook,
+    LegacyParagraph,
+    LegacyTTSEdit,
+    LegacyRouting,
+    LegacyQuality,
+)
 
 # ``get_db`` is defined in the API dependencies module. Import it from there.
 from src.audiobook_studio.database import Base
@@ -65,9 +80,21 @@ def db_engine() -> Generator["Engine", None, None]:
 @pytest.fixture(scope="function")
 def db_session(db_engine) -> Generator["Session", None, None]:
     """Provide a SQLAlchemy session bound to the test engine."""
+    from src.audiobook_studio.models.user import User
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     session = SessionLocal()
     try:
+        # Create a test user for authentication
+        test_user = User(
+            id=1,
+            email="test@example.com",
+            username="testuser",
+            hashed_password="hashed",
+            is_active=True,
+            is_superuser=True,
+        )
+        session.merge(test_user)
+        session.commit()
         yield session
     finally:
         session.close()
@@ -82,7 +109,7 @@ def override_get_db(session):
 
 
 @pytest.fixture(scope="function")
-async def async_client(db_session):
+async def async_client(db_engine):
     """Async HTTP client for FastAPI with ``get_db`` overridden.
 
     ``httpx.AsyncClient`` can be instantiated directly with the FastAPI ``app``
@@ -90,18 +117,100 @@ async def async_client(db_session):
     environment.
     """
 
-    # Define a proper generator dependency that yields the session.
-    def get_test_db():
-        try:
-            yield db_session
-        finally:
-            pass
+    # Override settings to allow testserver host FIRST (before reset_settings)
+    import os
+    os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
+    # Override the global async engine/session factory to use the test engine
+    import src.audiobook_studio.database as database_module
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+    # Convert the sync test engine URL to async
+    test_async_url = str(db_engine.url).replace("sqlite:///", "sqlite+aiosqlite:///")
+    test_async_engine = create_async_engine(test_async_url, pool_pre_ping=True)
+    test_async_session_factory = async_sessionmaker(
+        test_async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
+
+    # Save original and override
+    orig_async_engine = database_module._async_engine
+    orig_async_session_factory = database_module._async_session_factory
+    database_module._async_engine = test_async_engine
+    database_module._async_session_factory = test_async_session_factory
+
+    # Define a proper generator dependency that yields the session (sync).
+    def get_test_db():
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+        session = SessionLocal()
+        try:
+            # Create a test user for authentication
+            test_user = User(
+                id=1,
+                email="test@example.com",
+                username="testuser",
+                hashed_password="hashed",
+                is_active=True,
+                is_superuser=True,
+            )
+            session.merge(test_user)
+            session.commit()
+            yield session
+        finally:
+            session.close()
+
+    # Define async generator for get_async_db
+    async def get_test_async_db():
+        async with test_async_session_factory() as session:
+            yield session
+
+    # Override settings to allow testserver host
+    from audiobook_studio.config.loader import get_settings, reset_settings
+
+    reset_settings()
+
+    # Create test user in the async database ONCE at fixture setup
+    # This ensures the user exists in the SQLite file for ALL sessions (sync and async)
+    async def create_test_user():
+        async with test_async_session_factory() as session:
+            test_user = User(
+                id=1,
+                email="test@example.com",
+                username="testuser",
+                hashed_password="hashed",
+                is_active=True,
+                is_superuser=True,
+            )
+            session.add(test_user)
+            await session.commit()
+
+    await create_test_user()
+
+    # Override get_current_user to return the test user without JWT validation
+    async def override_get_current_user():
+        # We need to query from an async session (same DB file, just async driver)
+        async with test_async_session_factory() as session:
+            from sqlalchemy import select
+            result = await session.execute(select(User).where(User.id == 1))
+            return result.scalar_one_or_none()
+
+    # Override both sync and async database dependencies, and auth
     app.dependency_overrides[get_db] = get_test_db
+    app.dependency_overrides[get_async_db] = get_test_async_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
     app.dependency_overrides.clear()
+    reset_settings()
+
+    # Restore original async engine/session factory
+    database_module._async_engine = orig_async_engine
+    database_module._async_session_factory = orig_async_session_factory
+    await test_async_engine.dispose()
 
 
 # ---------------------------------------------------------------------------

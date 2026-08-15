@@ -425,6 +425,7 @@ class LLMRouter:
                 provider.get_litellm_model_name(),
                 api_base=provider.base_url,
                 timeout=provider.timeout_seconds or None,  # 0 or None = no timeout
+                extra_headers=provider.extra_params.get("extra_headers") if provider.extra_params else None,
                 langfuse_public_key=self.langfuse_public_key,
                 langfuse_secret_key=self.langfuse_secret_key,
                 langfuse_host=self.langfuse_host,
@@ -432,7 +433,7 @@ class LLMRouter:
             )
         return self.clients[key]
 
-    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list:
+    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list[dict[str, str]]:
         """Build messages with explicit JSON output requirement."""
         system_content = (
             f"你是专业的有声书{stage.value}专家。"
@@ -622,7 +623,13 @@ class LLMRouter:
             return result
 
     @_lazy_trace_function(stage="llm")
-    def call(self, stage: str, response_model, messages: list, **kwargs):
+    def call(
+        self,
+        stage: str,
+        response_model: type,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> Any:
         stage_enum = StageName(stage)
 
         # Get providers from config
@@ -709,7 +716,7 @@ class LLMRouter:
                     # Defensive JSON parsing validation
                     # The raw_response should be validated before Pydantic validation
                     if hasattr(result, "raw_response") and result.raw_response is not None:
-                        from .client import validate_and_parse_llm_response
+                        from .utils import validate_and_parse_llm_response
 
                         try:
                             validate_and_parse_llm_response(result.raw_response, response_model, stage)
@@ -912,6 +919,17 @@ class LLMRouter:
                 root_cause="prompt 缺少对话归属推断的明确规则",
                 confidence=0.85,
             )
+        elif response_model == PairwiseJudgment:
+            mock_output = PairwiseJudgment(
+                segment_id=kwargs.get("segment_id", "mock_segment"),
+                winner="tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning="Mock pairwise judgment for testing",
+                judge_model="mock-model",
+                judge_prompt_version="mock_v1",
+            )
         else:
             # For any other response model, try to create a default instance
             try:
@@ -932,7 +950,7 @@ class LLMRouter:
             raw_response=None,
         )
 
-    def get_free_tier_health(self) -> dict:
+    def get_free_tier_health(self) -> dict[str, Any]:
         """Expose free tier health status for Promotion Gate and monitoring."""
         enabled = self.config.get_all_enabled()
         free_providers = [p for p in enabled if p.max_daily_cost_usd == 0]
@@ -982,7 +1000,7 @@ class LLMRouter:
             },
         }
 
-    def get_quota_status(self, provider_name: str = None) -> dict:
+    def get_quota_status(self, provider_name: str | None = None) -> dict[str, Any]:
         """Get quota registry status for all or a specific provider."""
         if provider_name:
             return self.quota_registry.get_quota_status(provider_name)

@@ -10,7 +10,6 @@ from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 # Add src to path
 
 
-
 class TestSemanticCoherenceChecker:
     """Test SemanticCoherenceChecker class."""
 

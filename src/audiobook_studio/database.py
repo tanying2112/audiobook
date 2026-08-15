@@ -5,39 +5,14 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 """
 
 import os
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, TYPE_CHECKING
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-# ── Base class for all ORM models (SQLAlchemy 2.0 style) ───
-
-
-class Base(DeclarativeBase):
-    """SQLAlchemy 2.0 DeclarativeBase with common helpers."""
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize model instance to a plain dict (JSON-safe)."""
-        result = {}
-        for col in self.__table__.columns:
-            val = getattr(self, col.name)
-            if isinstance(val, datetime):
-                val = val.isoformat()
-            result[col.name] = val
-        return result
-
-    def __repr__(self) -> str:
-        pk = [c.name for c in self.__table__.primary_key.columns]
-        pk_vals = {k: getattr(self, k) for k in pk}
-        return f"<{self.__class__.__name__}({pk_vals})>"
+from .orm_base import Base
 
 
 # ── Sync Engine & Session Factory (legacy, for backward compatibility) ───
@@ -57,10 +32,17 @@ engine = create_engine(
 )
 
 # Session factory (2.0 style)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    SyncSessionFactory = sessionmaker[Session]
+else:
+    SyncSessionFactory = sessionmaker
+
+SessionLocal: SyncSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 
-def get_db():
+def get_db() -> AsyncGenerator[Any, None]:
     """Generator function that yields database sessions (sync)"""
     db = SessionLocal()
     try:
@@ -71,8 +53,19 @@ def get_db():
 
 # ── Async Engine & Session Factory (new, recommended) ───
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from sqlalchemy.orm import Session, sessionmaker
+
+    AsyncSessionFactory = async_sessionmaker[AsyncSession]
+else:
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from sqlalchemy.orm import Session, sessionmaker
+
+    AsyncSessionFactory = async_sessionmaker
+
 _async_engine: Optional[AsyncEngine] = None
-_async_session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+_async_session_factory: Optional[AsyncSessionFactory] = None
 
 
 def _get_async_database_url() -> str:
@@ -87,6 +80,11 @@ def _get_async_database_url() -> str:
     elif url.startswith("postgresql+psycopg2://"):
         return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
     return url
+
+
+def get_sync_engine_url() -> str:
+    """Get the sync database URL for sync engine creation."""
+    return DATABASE_URL
 
 
 def get_async_engine() -> AsyncEngine:
@@ -129,7 +127,7 @@ async def drop_async_db() -> None:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-async def get_async_session() -> AsyncSession:
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """Async generator function that yields database sessions (for FastAPI dependency)."""
     factory = get_async_session_factory()
     async with factory() as session:
@@ -170,23 +168,11 @@ def create_async_session() -> AsyncSession:
 
 
 def init_db() -> None:
-    """Create all tables if they do not exist (sync version, MVP convenience)."""
-    # Import all models to register with Base (lazy import to avoid circular deps)
-    from .models import (  # noqa: F401
-        audio_segment,
-        book,
-        chapter,
-        character,
-        collaboration,
-        emotion_snapshot,
-        feedback_record,
-        paragraph,
-        processing_run,
-        quality,
-        routing,
-        tts_edit,
-    )
+    """Create all tables if they do not exist (sync version, MVP convenience).
 
+    Note: Models must be imported before calling this function to register
+    with Base.metadata. Caller is responsible for importing all models.
+    """
     Base.metadata.create_all(bind=engine)
 
 
@@ -200,6 +186,7 @@ __all__ = [
     "get_db",
     "init_db",
     "DATABASE_URL",
+    "get_sync_engine_url",
     # Async (new, recommended)
     "get_async_engine",
     "get_async_session_factory",

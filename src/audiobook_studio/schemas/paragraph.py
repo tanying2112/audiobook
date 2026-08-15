@@ -37,7 +37,7 @@ PauseMs = Annotated[int, Field(ge=0, le=2000)]
 class ParagraphAnnotationInput(BaseModel):
     """环节③输入：单段文本 + 注入的上帝视角上下文."""
 
-    paragraph_text: str = Field(..., min_length=10, max_length=2000, description="段落文本")
+    paragraph_text: str = Field(..., min_length=10, max_length=10000, description="段落文本")
     paragraph_index: int = Field(..., ge=0, description="段落索引")
     chapter_index: int = Field(..., ge=1, description="章节索引")
 

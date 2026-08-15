@@ -16,7 +16,7 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 为实现“让人人都能用得起开源智能有声书”的普惠目标，系统深度解耦并支持一键切换运行模式：
 - 🥔 **土豆模式 (Potato Mode)**：无 GPU、断网可用。依赖 `Qwen2.5-3B-GGUF` (CPU 推理) + `Kokoro-82M ONNX`。零成本、绝对隐私。
 - ☁️ **云端白嫖模式 (Cloud-Hybrid, 默认)**：轻量级本地。依赖 `QuotaRegistry` 调度的免费大模型 API 轮换池 + 本地 `Kokoro-82M` 极速合成。
-- 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2` 实现零样本声纹锁定克隆，并启用 DSPy 深度演进循环。
+- 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2` 实现零样本声纹锁定克隆。默认的自我迭代演进通过 **SOP 反思 + 晋升门禁** 路径实现（见 `feedback/sop_reflection.py` + `promotion_gate.py`）；**DSPy 深度演进循环**(GEPA / BootstrapFewShot)为可选实验性路径，需单独安装未声明的 `dspy` 依赖后才可启用，默认未启用。
 
 ## 快速开始 (Quick Start)
 ```bash

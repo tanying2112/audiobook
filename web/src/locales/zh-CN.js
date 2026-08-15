@@ -1120,6 +1120,7 @@ export default {
   total_tokens: '总 Token 数',
   total_audio: '总音频时长',
   rtf: '实时因子 (RTF)',
+  cost_per_audio_min: '每分钟音频成本',
   synthesis_rate: '合成率',
   tts_success_rate: 'TTS 成功率',
 

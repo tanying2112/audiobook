@@ -481,7 +481,7 @@ class PromptRegistry:
 
         except TemplateError as e:
             logger.error(f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}")
-            raise ValueError(f"Template rendering failed: {e}")
+            raise ValueError(f"Template rendering failed: {e}") from e
 
     def load_prompts_from_directory(self) -> int:
         """Load all .j2 templates from the prompts directory.

@@ -11,14 +11,14 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Any
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
+async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
     """Run ffprobe asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
         "ffprobe",
@@ -40,7 +40,7 @@ async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.Complet
         raise
 
 
-async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = False) -> subprocess.CompletedProcess:
+async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = False) -> subprocess.CompletedProcess[str | bytes]:
     """Run ffmpeg asynchronously and return result.
 
     Args:
@@ -56,18 +56,20 @@ async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = 
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        # stderr is always decoded to str in both branches
+        stderr_str = stderr.decode("utf-8", errors="ignore")
         if binary_output:
             return subprocess.CompletedProcess(
                 args=["ffmpeg"] + args,
                 returncode=proc.returncode,
                 stdout=stdout,
-                stderr=stderr.decode("utf-8", errors="ignore"),
+                stderr=stderr_str,
             )
         return subprocess.CompletedProcess(
             args=["ffmpeg"] + args,
             returncode=proc.returncode,
             stdout=stdout.decode("utf-8", errors="ignore"),
-            stderr=stderr.decode("utf-8", errors="ignore"),
+            stderr=stderr_str,
         )
     except asyncio.TimeoutError:
         proc.kill()
@@ -131,7 +133,7 @@ async def detect_silence(
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg silencedetect failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg silencedetect failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
     stderr = result.stderr
     silence_starts: List[float] = []
@@ -186,7 +188,7 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg astats failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg astats failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
     stderr = result.stderr
     rms_db = -60.0
@@ -237,7 +239,7 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
     return (rms_db, peak_db)
 
 
-async def get_audio_info(path: Path) -> dict:
+async def get_audio_info(path: Path) -> dict[str, Any]:
     """Get comprehensive audio info using ffprobe.
 
     Args:
@@ -261,7 +263,7 @@ async def get_audio_info(path: Path) -> dict:
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr}")
 
-    return json.loads(result.stdout)
+    return json.loads(result.stdout)  # type: ignore[no-any-return]
 
 
 async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
@@ -295,7 +297,7 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
     raw_bytes = result.stdout
     if not raw_bytes:
@@ -325,7 +327,7 @@ def get_rms_peak_sync(path: Path) -> Tuple[float, float]:
     return asyncio.run(get_rms_peak(path))
 
 
-def get_audio_info_sync(path: Path) -> dict:
+def get_audio_info_sync(path: Path) -> dict[str, Any]:
     """Synchronous wrapper for get_audio_info."""
     return asyncio.run(get_audio_info(path))
 
