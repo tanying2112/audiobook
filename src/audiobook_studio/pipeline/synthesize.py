@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Coroutine, Dict, List, Literal, Optional, Tuple, TypeVar, cast
 
 from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
+from ..config.acoustic_mapping import get_emotion_map
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..di import get_app_container
 from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
@@ -108,7 +109,7 @@ _EDGE_TO_KOKORO: Dict[str, str] = {
 }
 
 
-def _normalize_voice_id(voice_id: str, engine_choice: str) -> str:
+def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = False) -> str:
     """Pick a voice_id understood by the chosen TTS engine.
 
     Edge-TTS voice IDs (e.g. ``zh-CN-XiaoxiaoNeural``) are the default stored in
@@ -116,6 +117,28 @@ def _normalize_voice_id(voice_id: str, engine_choice: str) -> str:
     ``zf_xiaoxiao``). If a non-native voice_id is passed to Kokoro it rejects
     the voice and silently fails synthesis. This helper cross-maps when
     possible and otherwise falls back to a safe default for the engine.
+
+    P1.9 red-line #1 (主路径真实性): introducing ``strict`` decouples the two
+    legitimate intents that previously collided in a single silent-fallback:
+
+    * ``strict=False`` (default) — production-safe: an unknown voice_id (not in
+      either naming scheme) is replaced with the engine's canonical narrator
+      voice (Kokoro ``zf_xiaoxiao`` / Edge ``zh-CN-XiaoxiaoNeural``) and
+      ``"default"`` resolves to the same. This matches the old behaviour and
+      keeps a misconfigured book from silently failing synthesis. Use it for
+      the engine-facing call (``_synthesize_via_port``) where the routing layer
+      has *already* decided what to trust.
+
+    * ``strict=True`` — pass-through: an unknown voice_id (e.g. a caller-supplied
+      ``suggested_voice_id`` for a custom/clone voice, or a test fixture ID) is
+      returned **as-is**, NOT swallowed into the narrator default. Edge↔Kokoro
+      cross-mapping still applies when an ID is recognised and needs translating
+      to the chosen engine's scheme; ``strict`` only governs what happens to IDs
+      the engine does not know. The routing decision uses this when an explicit
+      ``character_voice_map`` binding was matched — the user explicitly named a
+      voice, so we honour it instead of overriding it. Unknown → engine still
+      owns the final accept/reject (it may raise honestly at synthesis time,
+      which is preferable to silently swapping voices).
     """
     if voice_id == "default":
         return "zf_xiaoxiao" if engine_choice == "kokoro" else "zh-CN-XiaoxiaoNeural"
@@ -128,11 +151,19 @@ def _normalize_voice_id(voice_id: str, engine_choice: str) -> str:
         if voice_id in ("zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan", "zf_xiaoxiao"
                         , "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang"):
             return voice_id
-        # Unknown — fall back to the canonical narrator voice.
+        # Unknown — in strict mode honour it (caller explicitly named a voice,
+        # e.g. a custom voice ID); the engine owns the honest accept/reject.
+        # Otherwise fall back to the canonical narrator voice (production-safe).
+        if strict:
+            return voice_id
         return "zf_xiaoxiao"
     # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
     # map Kokoro IDs back to Edge if we get one (edge case).
-    return "zh-CN-XiaoxiaoNeural" if not voice_id.startswith("zh-") else voice_id
+    if not voice_id.startswith("zh-"):
+        # Unknown / Kokoro-style ID on edge engine. Strict mode honours it
+        # (edge may reject honestly); non-strict falls back to the Edge default.
+        return voice_id if strict else "zh-CN-XiaoxiaoNeural"
+    return voice_id
 
 
 def _port_engine_name(port: RemoteTTSPort) -> str:
@@ -1150,18 +1181,44 @@ class SynthesizePipeline:
         # Kokoro rejects the Edge voice ID and synthesize fails silently.
         # Map Edge voice IDs to Kokoro equivalents when engine_choice is
         # kokoro; pass through Edge IDs (and Kokoro IDs) to their native engine.
-        voice_id = _normalize_voice_id(voice_id, engine_choice)
+        #
+        # P1.9 strict pass-through (red-line #1): when an explicit
+        # ``character_voice_map`` binding was matched (``char is not None``) the
+        # user *named* a voice, so honour an unknown ID as-is instead of
+        # silently swapping it for the narrator default — the engine then owns
+        # the honest accept/reject at synthesis time. When no binding matched
+        # (``char is None``, voice_id == "default") keep the production-safe
+        # fallback. See ``_normalize_voice_id`` docstring for the contract.
+        voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
+        # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
+        # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
+        # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
+        # each emotion -> (speed, volume_db, pitch_hz); the routing decision
+        # pre-existed for ``rate`` (speed) and ``pitch`` (semitones, already the
+        # right unit — do NOT use ``pitch_hz`` here, different unit). We add
+        # ``volume`` (the emotion's ``volume_db`` as a numeric dB float, matching
+        # ``TTSProsody.volume``) and ``emotion`` (the annotation's emotion tag,
+        # passed through so downstream engines that support emotion can use it and
+        # those that don't can ignore it).
+        annotation = inp.paragraph_annotation
+        emotion_tag = annotation.emotion
+        emotion_acoustic = get_emotion_map().get(emotion_tag)
+        volume_db = float(emotion_acoustic.volume_db) if emotion_acoustic is not None else 0.0
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice=engine_choice,
             voice_id=voice_id,
             prosody_overrides={
-                "rate": float(inp.paragraph_annotation.speech_rate) if inp.paragraph_annotation.speech_rate else 1.0,
+                "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
                 "pitch": (
-                    float(inp.paragraph_annotation.pitch_shift_semitones)
-                    if inp.paragraph_annotation.pitch_shift_semitones is not None
+                    float(annotation.pitch_shift_semitones)
+                    if annotation.pitch_shift_semitones is not None
                     else 0.0
                 ),
+                # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
+                "volume": volume_db,
+                # pass the emotion tag through for engines that support emotion
+                "emotion": emotion_tag,
             },
             fallback_engine=fallback_engine,
             reasoning=reasoning,

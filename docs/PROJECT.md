@@ -1136,3 +1136,27 @@
 4. **方法可复算（DoD④）**：`/tmp/mypy_p17_strict.ini` 方法 + 32 文件注解修复 + journal 全留存，任何分支可复跑。
 
 **DoD 实证**：`mypy.ini` 的 40 条 `ignore_errors` 覆盖被绕过（未删 ini，因其它非核心模块仍依赖时序迁移），quality/pipeline/feedback 三核心域 32 文件**真的**收 `--strict`：367 错误 → 0，靠真注解/守卫/收窄 + PEP 563，0 裸 ignore、0 行为改、0 新回归（双盲核实 P1.7 树较 baseline 树反减 4 失败）。已知带 why 的合法 scoped ignore：2 处 `trace_function` 装饰器 typing 缺口（根治待 `monitoring` 域）。下步 P1.9（路由矩阵）。
+
+---
+
+## 日期：2026-08-16（P1 阶段 · P1.9 核心改造链）
+
+### 完成的工作：P1.9 路由矩阵 · 核心改造链（emotion→prosody 补全 + voice_id strict 分道）
+
+> 对应 `docs/EVOLUTION_ROADMAP.md` P1.9，修复审计 `docs/AUDIT_REPORT_2026-08-14.md` §5.6（`synthesize._make_routing_decision` 丢弃 emotion/volume，`_normalize_voice_id` 对未知 voice_id 静默兜底致自定义声线被吞）。红线 #1：定位到真因行、不假通过、双盲判零回归。本批为 P1.9"后端能力矩阵优先"的第一步（核心路由链）；`supports_emotion` 字段 + 分发守卫 + `tts_voices.py:262` GCP 诚实缺口为 P1.9 后续。
+
+**真因定位（红线 #1，到行）**：
+1. **`synthesize.py:1188` `_make_routing_decision` 的 `prosody_overrides`** 只硬拼 `rate`/`pitch` 两键，**丢 `volume`/`emotion`**——`ParagraphAnnotation.emotion`/`emotion_intensity` 完全不被消费。而下游 `edge_tts_port:94-99` 早已透传全四键、`TTSProsody`（`tts/port.py:44`）四字段早全在、`config/acoustic_mapping.py` 的 `EMOTION_ACOUSTIC_MAP`（14 情感→speed/volume_db/pitch_hz）早就有——基础设施全就绪，唯缺这一环自己硬拼残缺 dict。
+2. **`synthesize.py:111` `_normalize_voice_id`** 对未知 voice_id 一律兜底引擎默认（kokoro→`zf_xiaoxiao`），不透传自定义 ID——生产注释明说"非原生 ID 给 Kokoro 被拒、静默失败"，故兜底护生产；但测试期望自定义 ID 透传。**这是真实设计张力**（护生产防静默失败 vs 支持自定义声线），非"过测试"。
+
+**单位坑（红线 #1 避真因错修）**：三套单位并存——`ParagraphAnnotation.pitch_shift_semitones`（半音）、`EmotionAcousticProfile.pitch_hz`（Hz）、`TTSProsody.pitch`（半音）。原版 `float(pitch_shift_semitones)` 当 pitch 恰同单位（半音）。补 `volume` **只取** `EmotionAcousticProfile.volume_db`（数字 dB，正合 `TTSProsody.volume`），**不取** 其 `pitch_hz`（Hz 与 semitone 不可混，否则单位错位）。
+
+**改动（`synthesize.py` 一文件，+123/-37，0 行为删改，mypy strict 仍过）**：
+- **失败1 真修**：`_make_routing_decision` 新增 `from ..config.acoustic_mapping import get_emotion_map`，用 `annotation.emotion` 查 `get_emotion_map()` 取 `volume_db` 补 `prosody_overrides["volume"]`（数字 dB），`emotion` 键透传 `annotation.emotion` 字符串。`rate`（speech_rate）/`pitch`（semitone）保持原逻辑单位不变。`angry→1.5>0`、`whisper→-6<0`、`neutral→0` 全对契约。
+- **失败2 真修（方案3，strict 分道）**：`_normalize_voice_id(voice_id, engine, *, strict=False)` 加形参——`strict=False`（默认）保生产兜底（未知 ID→引擎安全默认，护防静默失败，行为不变）；`strict=True` 透传未知 ID（Edge↔Kokoro 跨映射仍生效，strict 只管"未知 ID"何去何从）。`_make_routing_decision` 调用点传 `strict=(char is not None)`——显式 `character_voice_map` 命中即"用户命名了 voice"→ honour as-is；无命中（`char is None`→`"default"`）→ 保兜底。`:436` 引擎实际调用点保 `strict=False`（routing 层已决策、引擎面要安全）。
+
+**红线 #1 双盲核赛（不采信自报）**：
+- **目标测试真跑**：`test_acoustic_to_tts_wiring` 3 条（含 volume/emotion 契约）+ `test_synthesize_nonmock::test_pipeline_with_different_voices`（strict 透传 test_voice）→ **4 passed**。
+- **零回归双盲**：P1.9 树 vs baseline(9bea109) 树同批跑（synthesize+orchestrator+pipeline 子目录）→ `comm -13 baseline_fail P1.9_fail`（P1.9 独有失败）= **0**；`comm -23`（baseline 独有/P1.9 修好）= **4**（正是目标 4 测试）。P1.9 树 fail 51 vs baseline 55（-4，即修好的 4 个），**零新回归、反修 4 个**。`test_synthesize.py::test_routing_decision_voice_id_from_character_map`（Edge ID 在 kokoro 下期望逆映射）经单独实例证为 **pre-existing 红**（`strict=False` 原行为下同样 `zf_xiaoxiao != zh-CN`，与 strict/prosody 改动正交）。
+
+**DoD 实证**：路由决策 `prosody_overrides` 现含 `rate/pitch/volume/emotion` 全四键（volume 来自 emotion 表的 dB，emotion 透传）；自定义 voice_id 在显式 map 命中下经 strict 透传不再被吞、未知 ID 生产面仍安全兜底。4 目标测试红→绿、零回归双盲核实（P1.9 独有失败 0）。mypy strict 仍 `Success`。P1.9 后续：`supports_emotion` 能力字段 + 分发守卫、`tts_voices.py:262` GCP 诚实缺口。
