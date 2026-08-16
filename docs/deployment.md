@@ -428,3 +428,146 @@ find storage/ -type f -mtime +30 -delete
 ---
 
 *🚀 Audiobook Studio — 自动化有声书制作平台*
+## 十一、免费 GPU 算力池（VoxCPM2）
+
+本项目组建跨平台免费 GPU 算力池来运行 [VoxCPM2](https://github.com/FunAudioLLM/VoxCPM2) TTS 模型生成音频。
+配置位于 [`voxcpm2-pool/`](../voxcpm2-pool/)，架构为「拉模式（pull）」：
+
+```
+Pool API (Redis 队列调度)
+        │  BLPOP tts:tasks
+        ▼
+┌───────────────┬───────────────┬───────────────┬───────────────┐
+│  kaggle-01    │  paddle-01    │ modelscope-01 │  modal-01     │
+│  T4×2 (免费)  │  V100 (免费) │  V100 (免费)  │  T4 (按量)   │
+└───────────────┴───────────────┴───────────────┴───────────────┘
+        │  RPUSH tts:results (音频上传 R2)
+        ▼
+   Cloudflare R2 存储
+```
+
+### 节点清单（`pool/pool_config.yaml`）
+
+| 节点 ID | 平台 | GPU | 费用 | 模式 | 参考脚本 |
+|--------|------|-----|------|------|---------|
+| kaggle-01 | Kaggle | T4×2 | 免费 | pull | `kaggle/kaggle_setup.py`、`kaggle_voxcpm2_test_fixed.ipynb` |
+| paddle-01 | 百度云 | V100 | 免费 | pull | `paddle/paddle_job_entry.py` |
+| modelscope-01 | 魔搭社区 | V100 | 免费 | pull | `modelscope/modelscope_worker.py` |
+| modal-01 | Modal | T4 | ~$0.73/h | push | `modal/modal_app.py` |
+| lightning-01 | Lightning | T4 | ~$1.2/h | pull | `lightning/lightning_work.py` |
+
+任一 Worker 共用同一套协议：连接 Redis (`tts:tasks` 队列) → 下载并加载 VoxCPM2 到 GPU →
+`BLPOP` 拉取任务 → 合成音频上传 Cloudflare R2 → `RPUSH tts:results` 回写结果。
+
+### 11.1 配置 ModelScope（魔搭社区免费 GPU）
+
+魔搭社区 https://modelscope.cn 提供带免费单卡 GPU（V100/A100，按当日配额）的 Notebook，
+与 Kaggle/Paddle 节点对等接入算力池，成本 0。
+
+**步骤：**
+
+1. 打开 https://modelscope.cn → 「我的Notebook」→ 启动 GPU 实例（镜像建议 py3.10 + CUDA 11.x/12.x）。
+2. 在终端克隆本仓库并进入目录：
+   ```bash
+   git clone <repo> && cd <repo>/voxcpm2-pool/modelscope
+   ```
+3. 注入 Secrets（红线#5：仓库不接受真实凭据）。新建 `.env` 或在 Notebook cell 中用 `os.environ` 注入：
+   ```bash
+   cat > .env <<'EOF'
+   REDIS_HOST=casual-sawfish-86152.upstash.io
+   REDIS_PORT=6379
+   REDIS_AUTH=<在 Upstash 控制台获取真值>
+   R2_ENDPOINT=https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+   R2_ACCESS_KEY_ID=<在 Cloudflare 控制台获取真值>
+   R2_SECRET_ACCESS_KEY=<在 Cloudflare 控制台获取真值>
+   R2_BUCKET=audiobook-assets
+   R2_PUBLIC_URL=https://pub-xxx.r2.dev
+   WORKER_ID=modelscope-v100-01
+   VOXCPM2_MS_REPO=openbmb/VoxCPM2,OpenBMB/VoxCPM2
+   MODEL_CACHE=/mnt/workspace/VoxCPM2
+   VOXCPM2_PIP=voxcpm==2.0.3
+   EOF
+   ```
+4. 一键部署：
+   ```bash
+   ./deploy_modelscope.sh
+   ```
+5. 或在 Notebook 中分步执行（先用 `modelscope_voxcpm2_test.ipynb` 单机烟测，再 `exec(open("modelscope_worker.py").read())` 转入 Worker 模式）。
+
+**模型下载策略（`modelscope_worker.py`）：**
+
+- 方案 A：`modelscope.snapshot_download()` 内网直连（魔搭平台最快）
+- 方案 B：HF 镜像 `hf-mirror.com` requests 逐文件下载（绕过 `huggingface_hub` HEAD bug，Kaggle V5 已验证可行）
+
+**兼容性补丁（与其它节点共用）：**
+
+- `torch.load` 强制 `weights_only=False`（PyTorch 2.6+ 兼容）
+- `torch.nn.attention.flex_attention.BlockMask` 注入 Dummy 类（PyTorch 2.5+ 与 transformers 类型提示冲突）
+- `generate()` 统一包装：兼容官方 `text=` / 项目源码 `target_text=` 两种签名
+- `config.json` 修复：补 `model_type=voxcpm2`、`dtype=float16`
+
+### 11.2 全平台部署
+
+```bash
+cd voxcpm2-pool && ./deploy_all.sh    # 一键部署所有节点 + Pool API + 烟测
+```
+
+`deploy_all.sh` 依次部署 Modal / Lightning / Paddle / **ModelScope** / Pool API，
+最后运行 `smoke_test.py` 对所有平台提交烟测任务并校验 WAV。
+
+> ⚠️ 免费节点（Kaggle / Paddle / ModelScope）无持久公网 IP，重启需重新下载+加载模型，
+> 适合开发与算力池的拉模式节点；生产环境建议 Modal (A10G/V100) + 固定端点。
+
+### 11.3 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `voxcpm2-pool/modelscope/modelscope_worker.py` | 自包含 Worker 入口（下载→加载→队列→合成→上传） |
+| `voxcpm2-pool/modelscope/modelscope_setup.py` | 配置与 Secrets 注入脚本（占位化） |
+| `voxcpm2-pool/modelscope/deploy_modelscope.sh` | 一键部署脚本 |
+| `voxcpm2-pool/modelscope/requirements.txt` | 依赖清单（幂等补装） |
+| `modelscope_voxcpm2_test.ipynb` | 单机 GPU 烟测 Notebook（对照 `kaggle_voxcpm2_test_fixed.ipynb`） |
+| `voxcpm2-pool/pool/pool_config.yaml` | 算力池节点清单（含 modelscope-01） |
+| `voxcpm2-pool/worker/worker.py` | 供 Modal/Lightning 复用的核心 Worker 逻辑 |
+
+### 11.4 配置 Modal（model.com，GPU T4 按量节点）
+
+Modal（[modal.com](https://modal.com)）提供 Serverless GPU（T4 16GB，约 $0.73/h，按秒计费、空闲 scale-to-zero）。
+将已验证的 Kaggle / ModelScope voxcpm2 推理链路同步到 Modal T4 节点：
+
+**参考实现：** `voxcpm2-pool/modal/modal_app.py`（完全镜像 `modelscope_worker.py` 的验证逻辑）
+
+**依赖的选择来自 Kaggle V208 验证（非 FunASR / 非 AutoModelForCausalLM）：**
+- 官方推理库 `voxcpm==2.0.3` + `VoxCPM.from_pretrained(load_denoiser=False)`
+- 模型下载：ModelScope SDK 内网直连优先，`hf-mirror.com` requests 逐文件兜底（绕过 HEAD bug）
+- 兼容补丁：`torch.load weights_only=False` + `flex_attention.BlockMask` Dummy
+- 采样率 48kHz、`generate(text=, cfg_value=2.0, inference_timesteps=10)`
+
+**本机一键部署（T4）：**
+
+```bash
+# 1. 安装并登录 Modal 本地 CLI
+pip install -U modal
+modal token set <token-id> <secret>
+
+# 2. 部署（会注入占位 secrets 并 push）
+cd voxcpm2-pool/modal
+bash deploy_modal.sh
+
+# 3. 本机冒烟（触发一次云端冷启验证）
+modal run modal_app.py
+```
+
+> ⚠️ 红线#5：`deploy_modal.sh` / `secrets_setup.py` 内为占位符。
+>    部署前请在 Modal 控制台创建 secret `audiobook-config` 并填入轮换后的真值，
+>    或在脚本中替换 `<REDACTED_*>` 后再执行。存储、Redis、R2 需与其它节点一致
+>    （Upstash Redis + Cloudflare R2）。
+
+**与免费节点（Kaggle/ModelScope）区别：**
+
+| 维度 | Kaggle/ModelScope | Modal |
+|------|-------------------|-------|
+| GPU | T4×2 / V100（免费） | T4（按秒计费） |
+| 公网端点 | 无持久 IP | 固定端点 + 自动扩缩 |
+| 常驻 | 需手动保活 | Serverless scale-to-zero |
+| 适用 | 开发 / 免费算力 | 生产 / 突发补位（push） |
