@@ -20,3 +20,6 @@ Auto-generated log of commits affecting schema/prompt/contract files.
 - 2026-07-29 22:18 [ed7514e] Your Name: security: redact secrets in voxcpm2-pool/paddle deployment configs (red-line #5)
 - 2026-07-30 04:05 [ccef503] Your Name: feat(voxcpm2): add Kaggle T4 notebook validating VoxCPM2 end-to-end generation
 - 2026-07-31 16:17 [5d8682b] Your Name: fix(pipeline): unblock end-to-end production pipeline — annotate/synthesize/quality persistence fixe
+- 2026-08-16 14:01 [086fd46] Your Name: test(P1): 收口游离后端单元测试 — pipeline/auth/api/security/models/schemas/tasks/translation/tts/publish
+- 2026-08-16 14:01 [6255ac6] Your Name: test(web,P0.1): add ParagraphEditor & CharacterManager SOP-correction vitest specs
+- 2026-08-16 14:02 [b9c5e6b] Your Name: feat(voxcpm2): Modal 部署脚本 + endpoint 烟测 + kaggle/modelscope 云验证 notebook + pi compute wrapper
