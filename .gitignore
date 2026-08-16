@@ -203,3 +203,11 @@ mutants/
 # Misc temp
 i
 storage/books/
+
+# P1 untracked-residue hygiene — audit 2026-08-16 (copied-tree leftover partials + scratch)
+# Canonical inputs/fixtures live under input/ and data/golden/ — these below are NOT tracked.
+*.aria2
+.voices-*.bin.*
+pyproject_mutmut_temp.toml
+.claude/settings.local.json
+data/mock_data/
