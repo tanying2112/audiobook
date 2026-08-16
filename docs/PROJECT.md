@@ -1198,3 +1198,46 @@
   - `comm -12`（两边共有预先存在）= **14 条**逐行一致——`test_routing_decision_voice_id_from_character_map`（已知 pre-existing，kokoro 逆映射）+ `test_synthesize_via_port_success`（async port）+ `test_tts_engine_coverage` 12 条（engine registry 抽象/兼容垫片，与 `api/tts_voices.py` Pydantic 模型无关）。14 条全部 a641d37 之前已红、与余项正交。改动树与 baseline 树均 **14 failed / 152 passed**。
 
 **留待用户定夺的更大新任务（不擅自扩大）**：「引擎级 emotion→acoustic 渲染」——使某引擎真消费 `emotion` 键改声（如 edge 的 `mstts:express-as` style、或 kokoro/voxcpm2 的情感模型接入），届时该引擎的 `supports_emotion` 方可诚实置 `True`。本批如真如实地把这条真因链记入 SSOT、把能力矩阵诚实落地（全 False + env-gated availability），合成层改造留作独立 P 级任务。下步 P1.10（断网马铃薯档 / 离线 CPU 端到端验收）。
+
+---
+
+## 日期：2026-08-16（P1 阶段 · P1.10 · 断网马铃薯档 / 离线 CPU 端到端验收）
+
+### 完成的工作：P1.10 · 断网马铃薯档 端到端验收（方案1 诚实降级验收）
+
+对应 `docs/EVOLUTION_ROADMAP.md` :138-141 P1.10「免费资源下沉档（断网马铃薯）无人验证」：README 承诺「断网可用、CPU/offline 真能出成音」，却无端到端验收证据。DoD ①一本短样例全程无网 CPU 跑通并产出可播放音频 ②记入 SSOT。**用户选方案1「诚实降级验收」**：真跑断网 → LLM 层走 `_heuristic_fallback`（诚实标 `model=heuristic_fallback`/`schema_compliance=False`，非伪造）+ TTS 层本地真合成 → 真音频.wav；**不装新依赖**（`llama-cpp-python`/Ollama 都不装），最合红线#1。
+
+**真因链（红线 #1，坐实到行）——颠覆 README 与执行手册的原始预期**：
+
+1. **`README.md:17`「土豆模式：断网可用，依赖 `Qwen2.5-3B-GGUF` (CPU 推理)+`Kokoro-82M ONNX`」是过度承诺**：
+   - `Qwen2.5-3B-GGUF` (CPU 推理) 在仓库**无代码无依赖**——`llama_cpp`/`llama-cpp-python` grep 全 src 空，`config/hardware_profile.py` 的 `potato` 档是**死配置**（`is_potato_mode()`/`get_tts_fallback_chain()` 全库无人 import 调用）。README 暗示「断网时用 Qwen 本地 GGUF CPU 推理做 LLM」实不存在。
+   - 真相：断网时 LLM 层走 `llm/router.py:504` `_heuristic_fallback`（**启发式规则，非真生成**，诚实标 `schema_compliance=False`），覆盖 analyze/annotate/edit/judge 四 stage；TTS 层走 `KokoroPort._synthesize_task`（`tts/kokoro_port.py:76`，**in-process async 合成**，`asyncio.create_task` 非网络派发）→ `kokoro_backend.py:205` `from kokoro_onnx import Kokoro` 真 ONNX `create()`（非 mock，`MOCK_TTS` 未设）→ 真音频。**断网不影响 TTS 合成本身**。
+2. **execute 手册反复引用的「记入 `docs/PROJECT_STATUS.md`」是假记忆**：`git status`/`git log` 坐实 `docs/PROJECT_STATUS.md` **从未存在**（git 历史空）。真 SSOT 是 `docs/PROJECT.md`（125KB，git tracked）。本条记此不一致项。
+3. **`config/llm_providers.yaml` 全 4 个 enabled provider 需联网**（`local_fcc_gateway`/`fcc_tunnel`/`nvidia_nemotron`/`kilo`）。`.env` 的 `LLM_PROVIDER=local_fcc_gateway` 是死 env（grep 全 src 无映射本义）；router 实际提供者来自 `config_loader.py:221` `get_providers_for_stage`（`enabled and stage in stages`）。
+
+**验收方法（红线 #1 双信源，不信自述）**：真断网注入（非停 fcc-server——它有 7 个用户 codex 进程直连 `127.0.0.1:8082` 绝不能停）→ 把全 4 enabled provider 的 `base_url` 改指 `http://127.0.0.1:1`（端口 1 闭合，**真 `[Errno 61] ConnectionRefused`**，即时 0.000s）。共三轮，最终以**轮3 干净断网重跑**为 DoD 证据：
+- **轮1 ONLINE**（fcc 可达基线）：38 次真 LLM 调用成功（analyze×1 annotate×13 edit×13，via fcc，`schema_ok=True`，56-135s 延迟）+ 8 次 heuristic 兜底（judge×4 全兜底，`judge_model=heuristic_fallback` DB 持久化坐实）。90 REAL wav（soundfile 独立核验 sr=24000 非静音）。
+- **轮2 OFFLINE_INJECTED**（首注断网）：0 真 LLM / 46 provider 全失败 / 0 崩溃，全程成功。但**音频侧命中 `synthesize.py:557` `_load_existing_segment_from_disk` 缓存复用**（`loaded from disk, skipping`），15 段全未新合成——90 wav 实为轮1 残留（mtime 09:34-10:00，早于轮2 启动 10:47）。**坐实一个险些违反红线#1 的陷阱**：差点把轮1音频谎报为轮2断网音频写进 SSOT。
+- **轮3 OFFLINE 干净重跑**（最终 DoD 证据）：注入断网 + **清段缓存**（`4_ch1_p*.json` metadata 15 + wav 90 + `storage/books/4/reports/checkpoints.json` 1，全清强制走 :583 `_synthesize_via_port` 真合成）+ 后台真跑 460s。**双信源独立复核**：脚本裁决 + 我直查日志 + soundfile 独立核验 + mtime 铁证。
+
+**DoD 实证（轮3）**：
+| DoD 项 | 结果 |
+|---|---|
+| `offline_produced_new_real_audio` | **true** — 90 新 wav 全 REAL（mtime 11:37-11:42 晚于注入 11:35 + soundfile 非静音；采样 sr=24000 dur 2.45/11.22/4.22s peak 0.77-0.80 rms 0.15-0.16，与轮1真合成同范围）|
+| `offline_llm_all_degraded_heuristic` | **true** — `LLM call [`=0 / `All LLM providers failed`=46 / `model=heuristic_fallback`=31；prompt 跑 `[Errno 61] Connection refused` 4 个 provider 全失败 |
+| `no_cache_reuse_this_round` | **true** — `loaded from disk, skipping`=0（强制新合成，非缓存复用）|
+| `no_crash` | **true** — 0 Traceback，`All books processed successfully`=1，exit 0 |
+| `red_line_1_honest` | **true** — 断网（真不可达）下 TTS 真合成出 90 可播放音频 + LLM 诚实降级 heuristic（非伪造成功）|
+
+4 个 provider 全注 `127.0.0.1:1`：`local_fcc_gateway`(was 8082)/`fcc_tunnel`(was fcc.guwj609)/`nvidia_nemotron`(was integrate.api.nvidia.com/v1)/`kilo`(was api.kilo.ai)。yaml 注入态在脚本 `finally` 块恢复（`git diff config/llm_providers.yaml` 空 + 0 死地址残留坐实）。
+
+**README 过度承诺诚实标注（`README.md:17`）**：把「无 GPU、断网可用。依赖 `Qwen2.5-3B-GGUF` (CPU 推理)+`Kokoro-82M ONNX`」改为诚实化——断网时 LLM **降级为启发式**（非 Qwen GGUF CPU 推理，该模型在仓库无落地代码/依赖，属规划项），TTS 仍真本地 Kokoro 合成。「断网可用」字面成立（仍出真音频），但 LLM 那半如实标为降级而非本地推理。
+
+**红线 #1 关键决策记录**：
+- **不停 fcc-server**：PID 46429 的 fcc-server 有 7 个用户 codex 进程直连 `127.0.0.1:8082`，停了会杀其他用户。改为改 yaml `base_url`→`127.0.0.1:1`（闭真连接失败），`git checkout` 可恢复——比停进程更安全且可逆。
+- **必须清缓存**：光删 wav 不够（`synthesize.py:329` 检 metadata 存在、`:342` 检 wav 存在，两者都命中才复用）。轮2 只删了部分残留、metadata 还在 → 缓存命中 → 险些谎报。轮3 清 json+wav+checkpoint 三者，强制新合成。
+- **不装新依赖严格契合方案1**：用户明确「不装 `llama-cpp-python`/Ollama」「以免费资源为上限」。诚实降级 heuristic 比假装有 Qwen CPU 推理更合红线#1。
+
+**不一致项（红线 #3 真SSOT）**：`docs/EVOLUTION_ROADMAP.md` 反复引用「记入 `docs/PROJECT_STATUS.md`」，但该文件从未存在（git 历史空）。真 SSOT 是 `docs/PROJECT.md`，本条记此。
+
+P1.10 完成。P1 阶段 P1.5~P1.10 全部收尾（覆盖率权威基线 / 测试收集健壮化 / mypy strict / OCR 真或降级 / 路由矩阵 / 断网档验收）。下一步取决于用户（P2 或其他）。
