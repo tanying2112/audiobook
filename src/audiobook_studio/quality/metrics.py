@@ -36,6 +36,20 @@ try:
     import torch
 
     _torch_available = True
+    # 版本桥接 (P2.13 路甲): speechbrain>=1.1 调用 torch.amp.custom_fwd(fwd, device_type=, cast_inputs=),
+    # 该签名在 torch 2.3 才存在 (从 torch.cuda.amp 提升到顶层 torch.amp 并加 device_type 形参).
+    # macos x86_64 + py3.12 pip wheel 上限即 2.2.2, 无 2.3+, 故桥接此 API gap.
+    # torch 2.2 的 torch.cuda.amp.custom_fwd 只收 (fwd, cast_inputs), 忽略 device_type (CPU 无 autocast 需求).
+    try:
+        torch.amp.custom_fwd  # type: ignore[attr-defined]
+    except AttributeError:
+
+        def _amp_custom_fwd(fwd=None, *, cast_inputs=None, device_type=None):  # noqa: ARG001
+            # device_type 在 CPU 推理路径无意义 (无 autocast), 仅 CUDA 才用;
+            # torch 2.2 cuda custom_fwd 不接受 device_type, 故吞掉后转发.
+            return torch.cuda.amp.custom_fwd(fwd, cast_inputs=cast_inputs)  # type: ignore[attr-defined]
+
+        torch.amp.custom_fwd = _amp_custom_fwd  # type: ignore[attr-defined]
 except ImportError:
     pass
 try:
@@ -57,6 +71,27 @@ try:
     _speechbrain_available = True
 except ImportError:
     pass
+
+
+def _tensor_to_float32_l2norm(t: Any) -> np.ndarray:
+    """将 torch tensor 转 float32 ndarray 并 L2 归一化 (余弦相似度所需).
+
+    版本桥接 (P2.13 路甲): torch 2.2.2 针对 numpy 1.x ABI 编译, 当环境装 numpy 2.x
+    时 torch tensor 的 .numpy() 触发 `RuntimeError: Numpy is not available`. 免费资源
+    上限约束下 macos x86_64+py3.12 同时保留 numpy-2 (Kokoro/pandas/scipy 硬依赖
+    numpy>=2) 与 torch-2.2 互操作, 故此处优先走 .numpy() (兼容 path), 失败回退
+    .tolist()->np.array (纯 torch C 实现, 不经 numpy C ABI, numpy-2 下仍可跑).
+    保留 L2 归一化 (cosine similarity 范围 -1..1).
+    """
+    cpu = t.squeeze().cpu()
+    try:
+        emb = cpu.numpy().astype(np.float32)
+    except (RuntimeError, AttributeError):
+        emb = np.array(cpu.tolist(), dtype=np.float32)
+    norm = float(np.linalg.norm(emb)) if emb.size else 0.0
+    if norm > 0:
+        emb = emb / norm
+    return emb
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1361,13 +1396,9 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
             # 提取嵌入向量
             with torch.no_grad():
                 embedding = self._model.encode_batch(waveform)
-                # embedding shape: (1, 1, 192) -> (192,)
-                embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
-
-            # L2 归一化 (余弦相似度需要)
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding = embedding / norm
+                # embedding shape: (1, 1, 192) -> (192,), L2 归一化
+                # P2.13: _tensor_to_float32_l2norm 兼容 numpy-2/torch-2.2.2 gap (.numpy() -> .tolist() 回退)
+                embedding = _tensor_to_float32_l2norm(embedding)
 
             return SpeakerEmbedding(
                 embedding=embedding,
@@ -1511,14 +1542,9 @@ class WavLMBackend(SpeakerEmbeddingBackend):
                 outputs = self._model(input_values)
                 # last_hidden_state: (batch, seq_len, hidden_dim)
                 last_hidden = outputs.last_hidden_state
-                # 均值池化: (batch, hidden_dim)
-                embedding = last_hidden.mean(dim=1)
-                embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
-
-            # L2 归一化
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding = embedding / norm
+                # 均值池化: (batch, hidden_dim), L2 归一化
+                # P2.13: _tensor_to_float32_l2norm 兼容 numpy-2/torch-2.2.2 gap
+                embedding = _tensor_to_float32_l2norm(last_hidden.mean(dim=1))
 
             return SpeakerEmbedding(
                 embedding=embedding,
@@ -1586,17 +1612,23 @@ class SpeakerSimilarityMetric(QualityMetric):
         self._reference_embeddings: Dict[str, SpeakerEmbedding] = {}
 
     def _create_backend(self, backend: str, device: str) -> SpeakerEmbeddingBackend:
-        """创建指定的后端实例."""
+        """创建指定的后端实例.
+
+        红线A: 不在依赖缺失时静默退化为 mock_data 伪嵌入。当且仅当调用方
+        显式传 mock_mode=True 时才走伪嵌入; 依赖缺失且未显式 mock 时, 后端
+        以真模型模式构造 (不预加载模型), 首次 extract_embedding -> _initialize
+        抛 RuntimeError (依赖 ImportError), 由 compute 捕获返回 success=False,
+        上游 orchestrator 据此诚实跳过 (而非伪报同一说话人 success=True)。
+        """
         if backend == "ecapa_tdnn":
-            mock_mode = self.mock_mode or not (_speechbrain_available and _torch_available and _torchaudio_available)
-            return ECAPATDNNBackend(device=device, mock_mode=mock_mode, cache_dir=self.cache_dir)
+            # 仅显式 mock_mode 才走伪嵌入; 依赖缺失不禁用诚实降级路径
+            return ECAPATDNNBackend(device=device, mock_mode=self.mock_mode, cache_dir=self.cache_dir)
         elif backend in ("wavlm_large", "wavlm_base_plus", "wavlm_base", "wavlm"):
             model_name = backend if backend != "wavlm" else self.wavlm_model
-            mock_mode = self.mock_mode or not (_torch_available and _torchaudio_available and _transformers_available)
             return WavLMBackend(
                 model_name=model_name,
                 device=device,
-                mock_mode=mock_mode,
+                mock_mode=self.mock_mode,
                 cache_dir=self.cache_dir,
             )
         else:

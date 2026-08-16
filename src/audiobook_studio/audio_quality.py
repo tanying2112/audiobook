@@ -104,6 +104,22 @@ class QualityReport:
     overall_passed: bool
     generated_at: str
 
+    # ── P2.13 长文一致性聚合字段 — 全章视角的声纹漂移观测 ───────────────────
+    # voice_cosine_mean: 本章所有已计算声纹余弦的均值 (None=全段无参考未算, 诚实降级)
+    # chapter_voice_cosine_means: {speaker_canonical_name: mean_cosine} 每角色均值, 空 dict=无
+    # drift_alerts: 本章 VoiceAnchor 记录的漂移告警列表 (over-threshold 角色段).
+    # breach_reason: 若 overall_passed=False 时简述首条越界原因 (供 UI 高亮), None=通过.
+    voice_cosine_mean: Optional[float] = None
+    chapter_voice_cosine_means: Dict[str, float] = None
+    drift_alerts: List[Dict[str, Any]] = None
+    breach_reason: Optional[str] = None
+
+    def __post_init__(self):
+        if self.chapter_voice_cosine_means is None:
+            self.chapter_voice_cosine_means = {}
+        if self.drift_alerts is None:
+            self.drift_alerts = []
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "project_id": self.project_id,
@@ -114,6 +130,10 @@ class QualityReport:
             "segment_results": [r.to_dict() for r in self.segment_results],
             "overall_passed": self.overall_passed,
             "generated_at": self.generated_at,
+            "voice_cosine_mean": self.voice_cosine_mean,
+            "chapter_voice_cosine_means": self.chapter_voice_cosine_means,
+            "drift_alerts": self.drift_alerts,
+            "breach_reason": self.breach_reason,
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -121,6 +141,7 @@ class QualityReport:
 
 
 # ── Async check functions ────────────────────────────────────────────────────
+
 
 async def _check_silence_async(file_path: Path) -> Dict[str, Any]:
     """Check for excessive silence in audio segment (async version)."""
@@ -154,8 +175,7 @@ async def _check_silence_async(file_path: Path) -> Dict[str, Any]:
         result["silence_detected"] = silence_ratio > MAX_SILENCE_RATIO
 
         logger.debug(
-            f"Silence check {file_path.name}: ratio={silence_ratio:.2%}, "
-            f"detected={result['silence_detected']}"
+            f"Silence check {file_path.name}: ratio={silence_ratio:.2%}, " f"detected={result['silence_detected']}"
         )
 
     except Exception as e:
@@ -261,7 +281,11 @@ async def _check_clipping_async(file_path: Path) -> Dict[str, Any]:
 
 
 async def _run_hard_metrics_async(
-    file_path: Path, reference_text: str = ""
+    file_path: Path,
+    reference_text: str = "",
+    reference_speaker_audio: Optional[Path] = None,
+    reference_speaker_id: Optional[str] = None,
+    suite: Any = None,
 ) -> Dict[str, Any]:
     """Run DNSMOS/ASR-WER/Speaker-Sim hard metrics on a segment (P0.2).
 
@@ -270,27 +294,52 @@ async def _run_hard_metrics_async(
     该指标：返回 None 并在 status 里诚实记录"skipped"，绝不用跳过充当"通过"（红线 #1）。
     仅当指标 success=True 才填入数值并可计入越界 issues。
 
+    P2.13: reference_speaker_audio / reference_speaker_id 由真主路径 (synthesize.run
+    via check_all_segments) 透传而来 —— VoiceAnchor 唯一参考音频源。此前 check_all 仅
+    收 audio_path+reference_text，speaker_sim 恒无参考 → voice_cosine 恒 None → 漂移门死。
+    reference_speaker_id 命中 SpeakerSimilarityMetric._reference_embeddings 缓存 (P2.13 §36)
+    后免去每段重 HF-extract。
+
+    suite: 复用的 QualityCheckSuite 实例 (P2.13 §36 缓存跨段保留)。None (默认) 时惰性
+    新建 —— 但新建实例的 _reference_embeddings 为空，缓存不跨段命中，仅向后兼容单段调用。
+
     runs QualityCheckSuite.check_all in a worker thread (it loads ONNX/torch
     models synchronously) so this stays non-blocking under the async loop.
     """
     # delayed import: allows systems without onnxruntime to import audio_quality
     # without paying for the quality package import chain at module load.
     try:
-        from .quality import QualityCheckSuite, QualityCheckResult
+        from .quality import QualityCheckResult, QualityCheckSuite
     except ModuleNotFoundError:
         logger.debug("quality package unavailable — hard metrics skipped")
-        return {"mos": None, "wer": None, "voice_cosine": None, "issues": [], "status": "skipped:quality-package-unavailable"}
+        return {
+            "mos": None,
+            "wer": None,
+            "voice_cosine": None,
+            "issues": [],
+            "status": "skipped:quality-package-unavailable",
+        }
 
-    suite = QualityCheckSuite()
+    # 复用传入 suite (跨段缓存生效); 否则惰性新建 (向后兼容, 缓存仅本段)。
+    if suite is None:
+        suite = QualityCheckSuite()
     try:
         qc_result: QualityCheckResult = await asyncio.to_thread(
             suite.check_all,
             audio_path=Path(file_path),
             reference_text=reference_text,
+            reference_speaker_id=reference_speaker_id,
+            reference_speaker_audio=reference_speaker_audio,
         )
     except Exception as e:  # 指标层任何异常都不应击穿启发式主流程
         logger.warning(f"Hard metrics suite raised for {file_path}: {e}")
-        return {"mos": None, "wer": None, "voice_cosine": None, "issues": [f"硬指标计算失败: {e}"], "status": f"skipped:suite-error:{type(e).__name__}"}
+        return {
+            "mos": None,
+            "wer": None,
+            "voice_cosine": None,
+            "issues": [f"硬指标计算失败: {e}"],
+            "status": f"skipped:suite-error:{type(e).__name__}",
+        }
 
     out: Dict[str, Any] = {"mos": None, "wer": None, "voice_cosine": None, "issues": []}
     skipped: List[str] = []
@@ -324,11 +373,19 @@ async def _run_hard_metrics_async(
         out["issues"].append(f"硬质检门禁: {qc_result.overall_message}")
 
     out["status"] = ("skipped:" + ",".join(skipped)) if skipped else "all-ran"
+    out["speaker_sim_result"] = qc_result.speaker_sim  # 原始 SpeakerSimilarityResult (P2.13 漂移门用)
     return out
 
 
 async def _check_segment_async(
-    file_path: Path, segment_id: str, reference_text: str = ""
+    file_path: Path,
+    segment_id: str,
+    reference_text: str = "",
+    speaker: Optional[str] = None,
+    chapter_index: int = 0,
+    book_id: str = "",
+    suite: Any = None,
+    registered_speakers: Optional[set] = None,
 ) -> SegmentQualityResult:
     """Run all quality checks on a single audio segment (async version).
 
@@ -337,6 +394,13 @@ async def _check_segment_async(
         segment_id: Segment identifier.
         reference_text: Optional reference transcript — enables ASR WER (免费 CPU
             backends faster-whisper/funasr 不可用时该指标诚实跳过，略过不充当通过）。
+        speaker: P2.13 该段说话人规范名 (由 synthesize 透传)。VoiceAnchor 据此取参考音频。
+        chapter_index: P2.13 章节顺序号 (synthesize 的 inp.chapter_index, 非 DB chapter_id)。
+            VoiceAnchor per-chapter 锚 / 漂移告警按此键。
+        book_id: P2.13 用于 §36 缓存键 f"{book_id}/ch{chapter}/{speaker}" 区分跨书同角色。
+        suite: 复用的 QualityCheckSuite (跨段 §36 缓存生效)。None (默认) 时 _run_hard_metrics_async 惰性新建。
+        registered_speakers: 调用方持有的已注册 §36 缓存键集合 (跨段共享)。首次命中角色时
+            register_speaker 写入缓存 + 加入本集合, 后续段命中即跳过注册 (避免重复 extract)。
     """
     result = SegmentQualityResult(
         segment_id=segment_id,
@@ -375,15 +439,79 @@ async def _check_segment_async(
     if result.clipping_detected:
         result.issues.append(f"Clipping detected: peak {result.peak_db:.1f}dB > {CLIPPING_THRESHOLD_DB}dB")
 
+    # ── P2.13: VoiceAnchor 唯一参考音频源 → §36 缓存注册/命中 → speaker_sim ──
+    # 此前 _run_hard_metrics_async 只传 audio_path+reference_text, speaker_sim 恒无参考 →
+    # voice_cosine 恒 None → 漂移门死。现在从 VA 取参考音频, 首次命中角色注册 §36 缓存,
+    # 后续段复用嵌入 (reference_speaker_id 命中), 免每段重 HF-extract ECAPA (贵)。
+    # compute 同时收 reference_audio + reference_id 时 reference_audio 优先 (每段重 extract),
+    # 故已注册后只传 reference_speaker_id 命中缓存。
+    ref_speaker_audio: Optional[Path] = None
+    ref_speaker_id: Optional[str] = None
+    if speaker:
+        try:
+            from .pipeline.voice_anchor import get_voice_anchor_manager
+
+            va = get_voice_anchor_manager()
+            if va.config.enabled:
+                ref_path_str = va.get_reference_audio(speaker, chapter_index=chapter_index)
+                if ref_path_str and Path(ref_path_str).exists():
+                    ref_id = f"{book_id}/ch{chapter_index}/{speaker}" if book_id else f"ch{chapter_index}/{speaker}"
+                    # §36: 首次命中角色注册缓存; registered_speakers 跨段共享避免重复 extract。
+                    if registered_speakers is None:
+                        registered_speakers = set()
+                    if ref_id not in registered_speakers and suite is not None:
+                        # register 需复用同一 suite, 否则缓存随新建实例丢失。
+                        if suite.register_speaker(ref_id, Path(ref_path_str)):
+                            registered_speakers.add(ref_id)
+                            ref_speaker_id = ref_id
+                        else:
+                            # 注册失败 (依赖缺/extract 异常) -> fallback 每段传 audio (诚实降级, 仍可算 sim)
+                            ref_speaker_audio = Path(ref_path_str)
+                    else:
+                        ref_speaker_id = ref_id  # 命中已注册缓存
+        except Exception as e:
+            logger.debug(f"P2.13 VoiceAnchor reference resolve failed for {segment_id}: {e}")
+            ref_speaker_audio = None
+            ref_speaker_id = None
+
     # ── 硬质检三件套 (P0.2) — 复用 quality/metrics.py 的 QualityCheckSuite ──────
     # 不重复造指标；每个指标各自依赖门控，缺失依赖只跳过该指标，略过不充当通过（红线 #1）。
     # metrics_status 诚实记录降级，只把"已计算且越界"的指标计入 issues / passed 翻转。
-    metrics_run = await _run_hard_metrics_async(file_path, reference_text)
+    metrics_run = await _run_hard_metrics_async(
+        file_path,
+        reference_text,
+        reference_speaker_audio=ref_speaker_audio,
+        reference_speaker_id=ref_speaker_id,
+        suite=suite,
+    )
     result.mos = metrics_run.get("mos")
     result.wer = metrics_run.get("wer")
     result.voice_cosine = metrics_run.get("voice_cosine")
     result.metrics_status = metrics_run.get("status")
     result.issues.extend(metrics_run.get("issues", []))
+
+    # ── P2.13: 漂移门 — speaker_sim 计算成功且非同一说话人 → 录漂移告警 ──────────
+    sim_result = metrics_run.get("speaker_sim_result")
+    if (
+        sim_result is not None
+        and getattr(sim_result, "success", False)
+        and speaker
+        and not getattr(sim_result, "is_same_speaker", True)
+    ):
+        try:
+            from .pipeline.voice_anchor import get_voice_anchor_manager
+
+            va = get_voice_anchor_manager()
+            if va.config.enabled:
+                va._record_drift_alert(
+                    character_name=speaker,
+                    chapter_index=chapter_index,
+                    similarity=sim_result.similarity,
+                    threshold=sim_result.threshold,
+                    generated_audio=str(file_path),
+                )
+        except Exception as e:
+            logger.debug(f"P2.13 drift alert record failed for {segment_id}: {e}")
 
     result.passed = len(result.issues) == 0
 
@@ -391,6 +519,7 @@ async def _check_segment_async(
 
 
 # ── Sync wrappers for backward compatibility ────────────────────────────────
+
 
 def check_silence(file_path: Path) -> Dict[str, Any]:
     """Sync wrapper for silence check."""
@@ -403,6 +532,7 @@ def check_silence(file_path: Path) -> Dict[str, Any]:
         # We're in an async context - can't use asyncio.run()
         # Run in executor to avoid nested event loop
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(asyncio.run, _check_silence_async(file_path))
             return future.result()
@@ -419,6 +549,7 @@ def check_corruption(file_path: Path) -> Dict[str, Any]:
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(asyncio.run, _check_corruption_async(file_path))
             return future.result()
@@ -435,6 +566,7 @@ def check_clipping(file_path: Path) -> Dict[str, Any]:
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(asyncio.run, _check_clipping_async(file_path))
             return future.result()
@@ -451,6 +583,7 @@ def check_segment(file_path: Path, segment_id: str) -> SegmentQualityResult:
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(asyncio.run, _check_segment_async(file_path, segment_id))
             return future.result()
@@ -466,6 +599,7 @@ async def check_all_segments(
     max_retries: int = 2,
     retry_callback=None,
     reference_texts: Optional[List[str]] = None,
+    speaker_map: Optional[Dict[str, str]] = None,
 ) -> QualityReport:
     """Check quality of all segments with auto-retry on failure (async version).
 
@@ -478,6 +612,9 @@ async def check_all_segments(
         retry_callback: Optional async callback(segment_id, attempt) -> new_file_path for re-synthesis
         reference_texts: Optional per-segment reference transcripts enabling ASR WER.
             Same length/order as segment_files. Omissions → WER honestly skipped.
+        speaker_map: P2.13 segment_id -> speaker_canonical_name (由 synthesize.run 透传).
+            驱动 VoiceAnchor 参考音频注入 + §36 嵌入缓存 + 漂移门。None (默认, 向后兼容)
+            时 speaker_sim 恒无参考 (与改造前等价, 诚实 skip)。
 
     Returns:
         QualityReport with results for all segments. Segments still failing after
@@ -485,12 +622,26 @@ async def check_all_segments(
     """
     from datetime import datetime, timezone
 
+    # P2.13 §36: suite 跨段复用, _reference_embeddings 缓存不随新建实例丢失。
+    # 复用前需 quality 包可 import; 不可用时 speaker_sim 路径降级 (suite=None, 仍跑规则+dnsmos/wer)。
+    shared_suite: Any = None
+    if speaker_map:
+        try:
+            from .quality import QualityCheckSuite
+
+            shared_suite = QualityCheckSuite()
+        except ModuleNotFoundError:
+            logger.debug("quality package unavailable — P2.13 speaker_sim/drift path degraded")
+            shared_suite = None
+    registered_speakers: set = set()
+
     segment_results = []
     passed = 0
     failed = 0
 
     for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids)):
         ref_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
+        speaker = speaker_map.get(segment_id) if speaker_map else None
 
         if not file_path.exists():
             logger.warning(f"Segment file not found: {file_path}")
@@ -510,7 +661,16 @@ async def check_all_segments(
             continue
 
         # Initial check
-        result = await _check_segment_async(file_path, segment_id, reference_text=ref_text)
+        result = await _check_segment_async(
+            file_path,
+            segment_id,
+            reference_text=ref_text,
+            speaker=speaker,
+            chapter_index=chapter_index,
+            book_id=project_id,
+            suite=shared_suite,
+            registered_speakers=registered_speakers,
+        )
 
         # Retry on failure (P0.2 DoD #5: capped, then manual review — never infinite)
         attempt = 0
@@ -524,7 +684,16 @@ async def check_all_segments(
                 new_path = retry_callback(segment_id, attempt)
                 if new_path and Path(new_path).exists():
                     current_path = Path(new_path)
-                    result = await _check_segment_async(current_path, segment_id, reference_text=ref_text)
+                    result = await _check_segment_async(
+                        current_path,
+                        segment_id,
+                        reference_text=ref_text,
+                        speaker=speaker,
+                        chapter_index=chapter_index,
+                        book_id=project_id,
+                        suite=shared_suite,
+                        registered_speakers=registered_speakers,
+                    )
                     logger.info(f"Retry {attempt} for {segment_id}: {'passed' if result.passed else 'failed'}")
                 else:
                     logger.warning(f"Retry {attempt} for {segment_id} returned no valid file")
@@ -556,6 +725,48 @@ async def check_all_segments(
         generated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     )
 
+    # ── P2.13: 聚合声纹漂移观测到 QualityReport (全章视角) ─────────────────────
+    # voice_cosine_mean / chapter_voice_cosine_means: 从 segment_results 按 speaker
+    # 聚合 (speaker 来自 speaker_map 反查)。仅计入非 None 的 voice_cosine (已计算者)，
+    # None (无参考未算) 不污染均值 — 这是诚实降级, 非"跳过当通过" (红线 #1)。
+    # drift_alerts: 从 VoiceAnchor 取本章漂移告警 (over-threshold 角色段)。
+    # breach_reason: overall_passed=False 时首条越界原因 (drift_alerts 优先, 次段 issues)。
+    per_speaker_cosines: Dict[str, List[float]] = {}
+    all_cosines: List[float] = []
+    for seg in segment_results:
+        if seg.voice_cosine is None:
+            continue
+        all_cosines.append(seg.voice_cosine)
+        speaker = speaker_map.get(seg.segment_id) if speaker_map else None
+        if speaker:
+            per_speaker_cosines.setdefault(speaker, []).append(seg.voice_cosine)
+    report.voice_cosine_mean = round(sum(all_cosines) / len(all_cosines), 4) if all_cosines else None
+    report.chapter_voice_cosine_means = {sp: round(sum(cs) / len(cs), 4) for sp, cs in per_speaker_cosines.items()}
+
+    try:
+        from .pipeline.voice_anchor import get_voice_anchor_manager
+
+        va = get_voice_anchor_manager()
+        if va.config.enabled:
+            report.drift_alerts = list(va.get_drift_alerts(chapter_index))
+    except Exception as e:
+        logger.debug(f"P2.13 drift alerts aggregation failed for chapter {chapter_index}: {e}")
+
+    if not report.overall_passed:
+        if report.drift_alerts:
+            first = report.drift_alerts[0]
+            report.breach_reason = (
+                f"声纹漂移: {first.get('character_name')} ch{first.get('chapter_index')} "
+                f"cosine={first.get('similarity')} < 阈值{first.get('threshold')}"
+            )
+        else:
+            # 取首条段越界 issue (非人工复核占位)
+            for seg in segment_results:
+                real_issues = [i for i in seg.issues if i and "人工复核" not in i]
+                if real_issues:
+                    report.breach_reason = real_issues[0]
+                    break
+
     return report
 
 
@@ -567,6 +778,7 @@ def sync_check_all_segments(
     max_retries: int = 2,
     retry_callback=None,
     reference_texts: Optional[List[str]] = None,
+    speaker_map: Optional[Dict[str, str]] = None,
 ) -> QualityReport:
     """Sync wrapper for check_all_segments."""
     try:
@@ -576,18 +788,33 @@ def sync_check_all_segments(
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 asyncio.run,
                 check_all_segments(
-                    segment_files, segment_ids, project_id, chapter_index, max_retries, retry_callback, reference_texts
+                    segment_files,
+                    segment_ids,
+                    project_id,
+                    chapter_index,
+                    max_retries,
+                    retry_callback,
+                    reference_texts,
+                    speaker_map,
                 ),
             )
             return future.result()
     else:
         return asyncio.run(
             check_all_segments(
-                segment_files, segment_ids, project_id, chapter_index, max_retries, retry_callback, reference_texts
+                segment_files,
+                segment_ids,
+                project_id,
+                chapter_index,
+                max_retries,
+                retry_callback,
+                reference_texts,
+                speaker_map,
             )
         )
 
@@ -669,6 +896,7 @@ def get_duration_sync(path: Path) -> int:
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(asyncio.run, get_duration(path))
             return future.result()

@@ -1241,3 +1241,100 @@
 **不一致项（红线 #3 真SSOT）**：`docs/EVOLUTION_ROADMAP.md` 反复引用「记入 `docs/PROJECT_STATUS.md`」，但该文件从未存在（git 历史空）。真 SSOT 是 `docs/PROJECT.md`，本条记此。
 
 P1.10 完成。P1 阶段 P1.5~P1.10 全部收尾（覆盖率权威基线 / 测试收集健壮化 / mypy strict / OCR 真或降级 / 路由矩阵 / 断网档验收）。下一步取决于用户（P2 或其他）。
+
+## 日期：2026-08-17（P2 阶段 · 长文一致性 / 合规 / 发音字典 / Pro 一等 / 确定性补缺）
+
+### 完成的工作：P2 普惠合规与确定性收口（P2.13 已完工补记 + P2.11/12/14/15 补缺达 DoD）
+
+> 对应 `docs/EVOLUTION_ROADMAP.md` P2 项。**派代理核证 5 项 P2 实态（不轻信 SSOT 自称，SSOT 末条只停在 P1.10）**：P2.13 代码已完工但未记 SSOT；P2.11/14/15 ⚠️部分缺；P2.12 完全未做（用户中途指令追加纳入）。本条补记 P2.13 + 落 P2.11/12/14/15 四项补缺达 DoD。红线 #1 全程：不假声明执照/确定性/完成态；许可缺失→`null` 诚实降级（非 `True # TODO`）；确定性真引擎字节级未真跑核实就不预设。
+
+**P2.13 长文一致性（补记，代码本会话 §39 已完工）**：
+- 真因链：每章声纹重锚 + profile-lock（`_make_routing_decision` 锚定 `voice_id` 注入 `reference_audio`）+ ECAPA 漂移门进 `quality_report`（`voice_cosine_mean`/`chapter_voice_cosine_means`/`drift_alerts`/`breach_reason`）。
+- DoD 实证：`scripts/verify_p213_ecapa_drift_gate.py` 真跑 ECAPA 三硬约束 EXIT=0；接线测 `test_p213_voice_anchor_wiring.py` 5 passed（主路径接线，非 ECAPA 真值——真值由 verify 脚本互补，红线A 不越界）；双盲 `comm -3` 空。
+- 本会话微调：接线测 fixture 修 CharacterVoiceBinding schema 误植（删 3 个本属 TtsRoutingInput 的字段，pydantic v2 extra='ignore' 静默吞过但 mypy strict call-arg 真抓到）；download_voxcpm2.py L27 `Optional` 未 import NameError 最小修复。
+
+**P2.11 合规补缺（三项全未做 → DoD 达成）**：
+- ① 披露指南 `docs/legal/ai-narration-disclosure.md`（ACX/Findaway/Spotify、喜马拉雅/国内平台 AI 标注框架指引）——**不杜撰条款原文**，平台官方链接留 `待核实` 占位（红线#1：仓库不替平台假声明其条款，由核实过官方公告的维护者回填）。
+- ② TTS 许可白名单 + 启动校验：`tts/license_guard.py` + `config/tts_licenses.yaml`（四引擎全 `commercial_use: null`，**仓库不替任何引擎假声明其商用许可**，杜 P1.9 azure/gcp `True # TODO` 复发）；守门挂 `EngineRegistry.register(active_profile=)` 可选参——商用档禁 `commercial_use=false` 注册（诚实噪止），`null` 降级 `warn_unverified` 不假成功也不误杀；`active_profile=None` 缺省行为同改造前（零回归）。`VoiceInfo`/`LicenseMetadata` 字段加（`commercial_use` 缺失→None 诚实）。
+- ③ 克隆 consent + attestation：前端 `VoiceCloneView` step1 强制授权勾选 + `canUpload` 门控；`cloneVoice` FormData 透传 `consent`；后端 `CloneVoiceRequest.consent` 必填（未勾→422 诚实拒，非假处理成功）；`VoiceSample.attestation_at`/`consent_version` 随声纹持久化存证；i18n zh-CN `consent_label`/`consent_hint`。
+- 双盲实证：`test_tts_engine_coverage`(12 fail)`comm -13` baseline vs chg = **IDENTICAL-0-专属回归**（12 全 pre-existing：`cleanup_all`/`register never awaited` 等源码与测试不同步漂移，与 license_guard 正交）；`test_synthesize_speech_success` RuntimeError 模型缺失单点双盲确 pre-existing。
+
+**P2.12 发音字典（完全未做 → DoD 达成，用户中途追加）**：
+- ① `config/pronunciation_dict.yaml`（仙侠生造人名规则化派生注音，`source` 标 `rule_ns`/`manual`；**不杜撰权威 IPA**）。
+- ② `tts/pronunciation_dict.py` 接入 `synthesize.run()` L557 hash 前注入（cache 键与合成文本幂等一致）：长词优先（短词不吃长词 `帝` 不吃 `帝释天`）、项目级 `<项目目录>/pronunciation_dict.yaml` 覆盖全局、**无条目原样透传不破主路径**（降级非崩）。`test_p212_pronunciation_dict.py` 7 测（透传/替换/长词优先/项目覆盖优先级/全局加载）全过。
+- 不擅自装新依赖（用既有 pyyaml）。
+
+**P2.14 Pro 一等路径（配置齐/脚本缺/README 未主推 → DoD 达成）**：
+- ① `scripts/setup_pro.sh` 一键拉起：GPU/显存检测（≥16GB），**不达标诚实降级 exit 1 不假装成功**（红线#1）；编排 `download_voxcpm2.py`（本会话修 Optional import 前置 bug）；CosyVoice 给 HF `huggingface-cli` 手动指引（免费资源上限不自动拉 GB 权重）；切 `active_profile: pro_studio`。**本机 Apple Silicon 干跑确诚实降级 exit 1**（无可用 CUDA GPU）。
+- ② README「快速开始」补 Pro 显卡用户分叉为推荐路径（指向 `setup_pro.sh` + `pro_studio` 档），通用流保留作无独显默认。
+
+**P2.15 确定性（仅版本号/从零补缺 → DoD 达成）**：
+- ① seed pinning 通道贯通：`TTSProsody.seed`（**port + engine 两版同名类须同加**，因 `tts/__init__` export port 版、kokoro/edge port 用 engine 版——双胞胎是真因链，初版只改 engine 版曾致 `_build_payload` 抛 `unexpected kwarg 'seed'`，复盘加 port 版后贯通）→ `_build_payload` 透传 → `voxcpm2_backend` prosody_dict → VoxCPM2 `generate(seed=)`（实测出口在 `modal_worker.py` 已读 `prosody.get("seed")`，代理 plan 所写 `voxcpm/core.py:201` 路径不存在，真出口在 modal_worker）。**seed 只开通道 ≠ 字节级可达**。
+- ② I/O 快照 `test_determinism_bytelevel.py` 7 测——**断言方向由真跑定（红线#1A 不用未核实假设）**：文本/JSON 层断言字节等（temperature=0 高概率，标注非绝对）；FakePort mock 路径**真跑核实字节级相等**（两次同输入 hash 一致 `2976da01...`）；真 TTS 引擎（VoxCPM2/kokoro/edge）**本机免 GPU + 无真实模型未真跑**，诚实标 `unverified` 边界，**不假设"有 seed 即字节等"就断相等**。
+- ③ release notes 卖点 `docs/RELEASE_NOTES.md` + `docs/legacy/CHANGELOG.md [Unreleased]`：硬卖点只写**真验的文本层 + FakePort 字节级**；真 TTS 引擎诚实标"通道通但本机免 GPU 未真跑核实字节级"。
+- 双盲实证：`test_tts_engine/test_tts_port/test_voice_anchor/test_synthesize_helpers`(7 fail pre-existing Azure/GCP/Edge mock)`comm -13` = **IDENTICAL-0-专属回归**；add seed 字段两版**零回归**（75 passed 含新增 7+6 测）。
+
+**诚实边界记 SSOT（红线#3）**：
+- 全 4 引擎 `commercial_use: null`（未核实，仓库不替引擎假声明）；许可核实须由核官方 license 后回填 `config/tts_licenses.yaml`。
+- 真 TTS 引擎字节级确定性**未真跑核实**，须在带 GPU+模型环境真连跑同输入两遍比 hash 才能定——release notes 卖点已诚实区分（通道通 ≠ 字节级可达）。
+- 披露指南各平台官方条款链接留待核实占位（不杜撰）。
+
+**验证**：black 全 0 退；编译 OK；双盲 `comm -13`/`-3` 三道零专属回归；新增测 P2.12 7 + 确定性 7 + 接线 5 全过；setup_pro.sh 干跑诚实降级 exit 1。
+
+P2 阶段 P2.11/12/13/14/15 全部收尾。下步 #45 覆盖率基线提升至 80%+（诚实口径 `--include=src/audiobook_studio/*`，防 omit 虚高；权威现状 77.60% 差 2.40pp）。
+
+---
+
+### §41 P2.16 覆盖率诚实增益 — 小模块 importlib 隔离真触试探（用户明选"先补小模块 config_loader 115 行试探"）
+
+> 用户在本轮 `AskUserQuestion` 明确选了路径分叉的"先补最小模块 `llm/config_loader.py`（115 stmts / 0%）试探路径可行性"——不盲目追 80%，先用最小模块验证"真触测可达真实增益"路径，再定大模块投入。红线A：禁用 mock 补测骗覆盖率虚高，只真触模块。
+
+**root-cause（双源核实坐实，非猜测）**：`llm/config_loader.py` 此前 0% 覆盖有**双根因**，不是单因：
+1. **测错模块**：既有 `test_config_loader.py`（L15）与 `test_config_loader_isolated.py`（L19-20 importlib 路径）实测的是 `src/audiobook_studio/config/loader.py`（`ConfigLoader` 类）——另一模块。`llm/config_loader.py`（`LLMProvidersConfig` 类）从无对应测。
+2. **conftest 全模块 mock 拦截**（更深一层，单凭补真测也测不到真代码）：`tests/conftest_minimal.py:376-389` 在 import 期就把 `audiobook_studio.llm.config_loader` / `src.audiobook_studio.llm.config_loader` 两个明名整模块替换成 `MockLLMProvidersConfig`（`load()` 返回写死的 `mock-gpt` provider，`ProviderType`/`StageName` 被设为 `MagicMock()`）。所以即使写 `from audiobook_studio.llm.config_loader import X` 的测，拿到的也是 mock 模块——**真代码不执行 → coverage 物理测不到 0%**。这是覆盖率虚高的另一面陷阱：测能过、跑得快，但 `--include` 口径下真文件 0 执行行。
+
+**method（importlib 隔离真触，红线A 坚守）**：新测 `tests/unit/test_llm_config_loader.py`（18 测）用 `importlib.util.spec_from_file_location` 直接加载真实文件路径 `src/audiobook_studio/llm/config_loader.py`，用一个**不被 conftest 拦截的唯一模块名**（`real_llm_config_loader_via_importlib`；conftest_minimal 只 mock 两个明名）。类/方法/枚举全部取自真模块 `m`（非 conftest 注入的 mock 版）。真触覆盖区：枚举 23 provider + 8 stage、`ProviderConfig.get_api_key`/`get_api_key_pool`（真 `os.getenv`，含缺 env 降级 None）、`get_litellm_model_name`（prefix_map 全分支：groq/openai/cerebras-openai/anthropic）、`LLMProvidersConfig.load()`（真写 tmp yaml 加载 + priority 升序排序 + 缺 section 默认 + empty providers）、`get_providers_for_stage`（enabled + stage 双重过滤 + 优先级序）、`get_all_enabled`（排 disabled）、`load(None)` 仓库真 config 回退。
+
+**DoD 实证（真跑数字，非声称）**：
+- `coverage run --include="src/audiobook_studio/llm/config_loader.py"` 针对性口径 → `llm/config_loader.py 115 stmts 0 missing 100.00%`（**从 0% → 100%**，importlib 隔离模式真触真代码全执行，红线A 真触非 mock 达成）。
+- 18/18 测全绿（首版 16 fail 皆因断言处用 conftest 注入的 MagicMock 值即 `ProviderType.GROQ.value == <MagicMock>`；改 importlib 取真模块后全契，断言修一处 `str(ProviderType.GROQ)` 真值为 `"ProviderType.GROQ"` 非 `"groq"`，据真跑改 → `.value` 验 groq）。
+- 双盲零回归：`git stash -u` 干净树 vs 当前树跑同测集（test_llm_config_loader + test_config_loader + test_config_loader_isolated），`^FAILED tests/` 行集 `comm -13` 须空 → **空**（chg 0 fail / baseline 0 fail / 对称差空）。新测不污染既有测。
+
+**诚实边界**：
+- 单模块 100% ≠ 全局达标 80%。`llm/config_loader.py` 仅 115 stmts，全局占比小（全套 115 stmts 时基线 77.60%（8313/10713）→ 增 115 stmts 全覆盖理论上限 ≈ 77.60% + 约 1.07pp ≈ 78.7%，距 80% 仍差约 1.3pp）。
+- importlib 隔离模式**是对 conftest_minimal 全模块 mock 的绕过**——它解除了 mock 对真代码执行的物理拦截，让 coverage 真追踪。这不是造假覆盖率（mock 骗高分），恰恰相反是**反虚高**：conftest 的 mock 才是让真代码被屏蔽的虚高源头之一。
+- 全局诚实口径新数字待全套 `--include="src/audiobook_studio/*"` coverage 跑完回填（见下"全局增益基线"行，后台跑中）。
+
+**全局增益基线（全套 `--include="src/audiobook_studio/*"` 口径，真跑回填）**：§40 权威基线 77.60%（8313/10713）。仅 config_loader 一模块补全后全套口径升至 **78.49%**（covered 8553/missing 2336，+0.89pp）。距 80% 仍差 1.51pp，用户追加授权"补下一模块"→ 进入 §42。
+
+---
+
+### §42 P2.16 覆盖率诚实增益 — team_collaboration 源 bug 解堵 + 全局达标 80%（用户追加授权"补下一模块提升覆盖率至80%+"）
+
+> 用户在本轮明确追加指令"补下一模块，提升覆盖率至 80%+"——扩大投入授权。§41 config_loader 试探路径已坐实"真触测可达真实增益"，本条据此推进至全局达标。红线A：禁用 mock 补测骗覆盖率虚高，只真触模块。
+
+**root-cause（真跑核实坐实，非猜测）**：`collaboration/team_collaboration.py`（plan 列全仓最大单一低覆盖点，354 stmts / 3.97% 覆盖 / 339 行未覆盖）低覆盖有**源 bug 根因**，非"测太浅"：
+- 既有 `test_team_collaboration.py` 16 测写得本就正确（真 `from src.audiobook_studio.collaboration.team_collaboration import` + 真 `CollaborationManager(storage_path=tmp_path)` 实例 + 真调方法），但**全 16 fail**（NameError）→ 0 行真触达 → 3.97%（仅 L1-26 import 行被覆盖到崩点）。
+- **真跑抓 NameError**：`team_collaboration.py:26 NameError: name 'CommentType' is not defined`。根因：`CommentData(TypedDict)`（L21-27）在 `CommentType`（Enum，定义于其后 L30）之前前向引用 `comment_type: CommentType` 注解，**且源文件无 `from __future__ import annotations`** → 注解运行时求值 → `CommentType` 尚未定义 → NameError → 整模块导入即崩 → 整个 `collaboration` 包导入即崩（`__init__.py:4 from .team_collaboration import` 亦崩）。全套 266 failed 含此 16；该 bug 长期潜伏因主测集多不 import collaboration（独立功能模块）。
+- **pre-existing 坐实**：`git show HEAD:src/.../team_collaboration.py` 无 `__future__` + 真跑原始版 NameError 复现 → bug 是已提交版的既存缺陷，**非本会话引入**（我修，未我造）。
+
+**method（最小源修复 + 全真触补测，红线A 坚守）**：
+1. **源修复**（极小，仅注解求值时序）：`team_collaboration.py` 顶部加 `from __future__ import annotations` —— 让所有注解惰性求值（TypedDict 字段注解在 3.12 存为字符串，不强求值 CommentType 前向引用）。真跑探针证可：模块正常加载、`CollaborationManager` 可实例化。**不动任何业务逻辑**，仅修前向引用求值时序。**不擅自改既有格式**（既有源 L515-518 等有非 black 风格，与本任务无关，留不动避免不相关 diff 噪声）。
+2. **刚源修后既有 16 测全 pass + 真覆盖 53.11%**（从 3.97% → 53.11%，+49pp 全因 NameError 解堵让测真触主路径，证实既有测本身写得对，一直被源 bug 挡着）。
+3. **补真触测**（`tests/unit/test_team_collaboration_coverage.py`，19 测）：覆盖既有测未触的 `create_approval_request`（含 persist + 变更历史）、`respond_to_approval` 全分支（invalid_id/invalid_approver/APPROVED 达 required_count/REJECTED 整体拒/NEEDS_CHANGES/PENDING 无响应/多 approver 渐进）、`_check_approval_status` 各计数分支（approved/rejected/needs_changes/pending）、query 三法（`get_task_comments`/`get_approval_requests_for_task`/`get_member_tasks` 含空集）、`get_recent_changes`（倒序 limit 与全集）、`get_collaboration_stats` 全维度（各 TaskStatus/CommentType/ApprovalStatus 值计数含 0）、`_load_data` 持久化往返 + 坏 json 降级、`_save_data` 空存储。**真跑 `main()`**（隔离 cwd 到 tmp_path，免建真实 `./collaboration_demo` 污染仓库）—— main 套壳调用全部业务方法 + ~313 行 logger 语句真触。
+4. 全用真 `CollaborationManager(storage_path=tmp_path)` 实例 + tmp_path 目录真 json 存取，**无 mock 模块行为**（红线A 真触非 mock）。
+
+**DoD 实证（真跑数字，非声称）**：
+- `coverage run --include="src/audiobook_studio/collaboration/team_collaboration.py"` 针对性口径 → `team_collaboration.py 354 stmts 9 missing 97.46%`（**从 3.97% → 97.46%**，剩 9 行——含 `_save_data` except 路径 L243-244、`_check_approval_status` 某 elif L432-433、main 内个别 if 分支 L728/767，非核心业务路径）。
+- 全套诚实口径 `--include="src/audiobook_studio/*"` → **全局 81.53%**（covered 8857/missing 2006，基线 77.60% → +3.93pp，**越过 80% fail-under 阈值，达标**）。`fail_under=80` CoverageError 消除。
+- 既有 16 测 + 新 19 测 = 35 测全绿。
+- 全套 fail 数 266 → 250（减 16 = team_collaboration 16 测 NameError 解堵），剩 250 全为 pre-existing 环境类 fail（torch/numpy2 互操作、Kokoro/ECAPA 模型缺、API 端点等，与本会话改动无关）。
+- 双盲零专属回归：`git stash -u`（含 modified 源 + untracked 新测）干净树 vs 当前树，针对 `test_team_collaboration* + test_config_loader* + test_llm_config_loader` 跑同测集，`^FAILED tests/` 行集 `comm -13` 须空 → **空**。严格排他单文件 stash 验源修复：仅 stash modified `team_collaboration.py`（回 HEAD 原始版）跑既有测 → NameError fail 复现 = **pre-existing 我未引入**；pop 还原 → 16 测 pass = 我净修复。
+- 我相关模块 fail 集（全套 grep `team_collaboration|config_loader|llm_config`）→ **空**（我的改动零引入失败）。
+
+**诚实边界**：
+- 全局 81.53% 包含既有测对其他模块的触达（非我两模块独立贡献）——两目标模块占全套覆盖增量主体（config_loader 0→100% +115 行真触；team_collaboration 3.97→97.46% +339×0.934 行新覆盖），但全套口径下各模块覆盖分布见 coverage.json 全明细，非声称。
+- `team_collaboration.py` 剩 9 行未覆盖（含 `_save_data` exception catch、main 内部个体 if 分支）——非业务核心，诚实标未达 100% 边界，不假宣称满覆盖。
+- 源修复改了主路径 src 文件（加 `__future__`）——**这是修 pre-existing NameError 让 16 测长期 fail 复活 + 整个 collaboration 包可导入**，方向正确（模块从崩变可导入），非"用 mock 凑覆盖率虚高"。提交待用户明示。
+
+

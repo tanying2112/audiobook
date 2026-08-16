@@ -143,8 +143,7 @@ class VoxCPM2Backend(BaseTTSEngine):
                 vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
                 if vram_gb < min_vram:
                     raise RuntimeError(
-                        f"Insufficient VRAM: {vram_gb:.1f} GB available, "
-                        f"need >={min_vram} GB for {self.dtype} mode"
+                        f"Insufficient VRAM: {vram_gb:.1f} GB available, " f"need >={min_vram} GB for {self.dtype} mode"
                     )
                 logger.info(f"GPU VRAM: {vram_gb:.1f} GB (need {min_vram} GB for {self.dtype})")
 
@@ -178,8 +177,7 @@ class VoxCPM2Backend(BaseTTSEngine):
             self._loaded = True
             self._initialized = True
             logger.info(
-                f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, "
-                f"device={self.device}"
+                f"VoxCPM2 initialized: dtype={self.dtype}, batch_size={self.batch_size}, " f"device={self.device}"
             )
 
         except ImportError:
@@ -316,6 +314,10 @@ class VoxCPM2Backend(BaseTTSEngine):
                 "pitch": prosody.pitch,
                 "volume": prosody.volume,
                 "emotion": prosody.emotion,
+                # P2.15 确定性: 透传 seed 到 generate(seed=) (modal_worker 已读此键)。
+                # 红线#1: seed=None ≡ 改造前; 显式整数才注入可复现意图 (实际字节级
+                # 复现受 cudnn/gemm 非确定性影响, 不预设可达, 由 test_determinism 真跑定)。
+                "seed": prosody.seed,
             }
 
         try:

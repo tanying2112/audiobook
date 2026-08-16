@@ -148,8 +148,16 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         if voice_id in _EDGE_TO_KOKORO:
             return _EDGE_TO_KOKORO[voice_id]
         # Already a Kokoro ID? accept as-is.
-        if voice_id in ("zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan", "zf_xiaoxiao"
-                        , "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang"):
+        if voice_id in (
+            "zf_xiaobei",
+            "zf_xiaoni",
+            "zf_xiaoxuan",
+            "zf_xiaoxiao",
+            "zm_yunjian",
+            "zm_yunxi",
+            "zm_yunxia",
+            "zm_yunyang",
+        ):
             return voice_id
         # Unknown — in strict mode honour it (caller explicitly named a voice,
         # e.g. a custom voice ID); the engine owns the honest accept/reject.
@@ -377,11 +385,16 @@ class SynthesizePipeline:
     def _build_payload(self, text: str, voice_id: str, prosody: dict[str, Any]) -> TTSTaskPayload:
         """Build a TTSTaskPayload from synthesis parameters."""
         # Convert prosody dict to TTSProsody
+        # P2.15: 透传 seed (若 prosody_overrides 带 seed 则注入 TTSProsody.seed → backend → generate)。
+        _raw_seed = prosody.get("seed")
+        # 容错: 非整数 → 透传 None (避免非 int 进 generate 链路, 诚实降级)。
+        seed_val = int(_raw_seed) if isinstance(_raw_seed, (int, float)) else None
         tts_prosody = TTSProsody(
             rate=float(prosody.get("rate", 1.0)),
             pitch=float(prosody.get("pitch", 0.0)),
             volume=float(prosody.get("volume", 0.0)),
             emotion=prosody.get("emotion"),
+            seed=seed_val,
         )
 
         # Create voice anchor - the Hermes layer will resolve voice_id to actual profile
@@ -441,7 +454,10 @@ class SynthesizePipeline:
         task_id = f"{segment_id}-{int(time.time() * 1000)}"
         logger.info(
             "Submitting synthesis task %s for segment %s (engine=%s, voice=%s)",
-            task_id, segment_id, actual_engine, voice_id,
+            task_id,
+            segment_id,
+            actual_engine,
+            voice_id,
         )
         accepted = await port.submit(task_id, payload)
         if not accepted:
@@ -534,6 +550,12 @@ class SynthesizePipeline:
         """
         from ..monitoring import record_stage_performance
 
+        # P2.12: 发音字典一次性加载 (项目级覆盖全局); 注音替换无条目时原样透传 (向后兼容)。
+        # 字典加载失败 → 降级 warn 且 registry 为空 → apply 等价原样透传, 主路径不崩。
+        from ..tts.pronunciation_dict import apply_pronunciation_dict, load_pronunciation_dict
+
+        pronunciation_registry = load_pronunciation_dict()
+
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments: list[AudioSegment] = []
@@ -542,6 +564,10 @@ class SynthesizePipeline:
 
         for inp in inputs:
             decision = self._make_routing_decision(inp)
+
+            # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
+            # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
+            inp.text = apply_pronunciation_dict(inp.text, pronunciation_registry)
 
             # Check if regeneration needed (text changed)
             text_hash = self._text_hash(inp.text)
@@ -592,6 +618,34 @@ class SynthesizePipeline:
 
                 synthesis_latency_ms = (time.time() - start_time) * 1000
                 success = True
+
+                # P2.13: 首段注册锚 — 角色在本章首次成功合成, 用本段真实音频作该章
+                # 参考音频 (VoiceAnchor.register_character 拷贝到 anchor 目录持久化)。
+                # §35 profile-lock 依赖此锚: 同章后续段锁 voice_id; §34 漂移门用它做基准
+                # vs 生成音频比对. 键 = chapter_index 顺序号 (与 quality_check 同源, 非
+                # DB chapter_id). 首段即锚保证每章起点一致, 跨段漂移有基准.
+                if success:
+                    try:
+                        from .voice_anchor import get_voice_anchor_manager
+
+                        va = get_voice_anchor_manager()
+                        char_name = inp.paragraph_annotation.speaker_canonical_name
+                        if (
+                            va.config.enabled
+                            and char_name
+                            and not va.has_anchor(char_name, chapter_index=inp.chapter_index)
+                        ):
+                            output_path_obj = Path(output_path)
+                            if output_path_obj.exists():
+                                va.register_character(
+                                    character_name=char_name,
+                                    voice_id=decision.voice_id,
+                                    reference_audio_path=str(output_path_obj),
+                                    chapter_index=inp.chapter_index,
+                                    paragraph_index=inp.paragraph_index,
+                                )
+                    except Exception as e:
+                        logger.debug(f"P2.13 voice anchor register failed for {segment_id}: {e}")
 
                 # Observe TTS synthesis for Langfuse tracing
                 if is_enabled():
@@ -716,6 +770,14 @@ class SynthesizePipeline:
                     logger.error(f"Retry synthesis failed for {seg_id}: {e}")
                     return None
 
+            # P2.13: 透传 segment_id -> speaker_canonical_name 给质量层, 驱动
+            # VoiceAnchor 参考音频注入 + §36 嵌入缓存 + 漂移门 (单层映射, 与
+            # check_all_segments 的 speaker_map 同源, 键用 inp 决定的 segment_id 公式)。
+            speaker_map = {
+                f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}": inp.paragraph_annotation.speaker_canonical_name
+                for inp in inputs
+            }
+
             # Run quality checks with auto-retry
             quality_report: QualityReport = _run_async(
                 check_all_segments(
@@ -725,6 +787,7 @@ class SynthesizePipeline:
                     chapter_index=chapter_index,
                     max_retries=2,
                     retry_callback=retry_callback,
+                    speaker_map=speaker_map,
                 )
             )
 
@@ -1204,22 +1267,44 @@ class SynthesizePipeline:
         emotion_tag = annotation.emotion
         emotion_acoustic = get_emotion_map().get(emotion_tag)
         volume_db = float(emotion_acoustic.volume_db) if emotion_acoustic is not None else 0.0
+
+        # P2.13: profile-lock — 角色在本章已注册声纹锚 (首段成功合成后) 时, 锁定
+        # voice_id 为首段锚的 voice_id, 防同章跨段声纹漂移. 锁是首段决定 (已过
+        # _normalize_voice_id 的 strict pass-through) 的固化, 不改变 P1.9 语义——
+        # 仍是 honour 该角色绑定最早选用, 而非旁路换 ID. 无锚 (首段或 VA 禁用) 时
+        # 保持上面 normalize 后的 voice_id. 同时把参考音频注入 prosody (§34 漂移门
+        # 用 quality_check 真主路径核对生成 vs 锚).
+        ref_audio_for_prosody: Optional[str] = None
+        char_name = annotation.speaker_canonical_name
+        try:
+            from .voice_anchor import get_voice_anchor_manager
+
+            va = get_voice_anchor_manager()
+            if va.config.enabled and char_name and va.has_anchor(char_name, chapter_index=inp.chapter_index):
+                anchor = va.get_anchor(char_name, chapter_index=inp.chapter_index)
+                if anchor:
+                    voice_id = anchor.voice_id
+                    ref_audio_for_prosody = va.get_reference_audio(char_name, chapter_index=inp.chapter_index)
+        except Exception as e:
+            logger.debug(f"P2.13 profile-lock resolve failed for {char_name}: {e}")
+
+        prosody_overrides = {
+            "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
+            "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
+            # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
+            "volume": volume_db,
+            # pass the emotion tag through for engines that support emotion
+            "emotion": emotion_tag,
+        }
+        # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
+        if ref_audio_for_prosody:
+            prosody_overrides["reference_audio"] = ref_audio_for_prosody
+
         return TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice=engine_choice,
             voice_id=voice_id,
-            prosody_overrides={
-                "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
-                "pitch": (
-                    float(annotation.pitch_shift_semitones)
-                    if annotation.pitch_shift_semitones is not None
-                    else 0.0
-                ),
-                # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
-                "volume": volume_db,
-                # pass the emotion tag through for engines that support emotion
-                "emotion": emotion_tag,
-            },
+            prosody_overrides=prosody_overrides,
             fallback_engine=fallback_engine,
             reasoning=reasoning,
             estimated_cost_usd=0.0 if engine_choice == "kokoro" else 0.001,

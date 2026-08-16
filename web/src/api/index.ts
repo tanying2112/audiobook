@@ -483,12 +483,15 @@ export async function cloneVoice(
   language: string = 'zh-CN',
   textContent: string = '',
   onProgress?: (percent: number) => void,
+  consent?: boolean, // P2.11 合规: 样本提供者授权 (后端 422 强校验)
 ): Promise<CloneVoiceResponse> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('speaker_id', speakerId)
   formData.append('language', language)
   formData.append('text_content', textContent)
+  // P2.11 合规: consent 必传, 后端未勾 → 422; 显式转字符串与 multipart Form 一致
+  formData.append('consent', consent ? 'true' : 'false')
 
   const { data } = await api.post('/api/tts/voices/clone', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **P2.11 合规护栏**: `tts/license_guard.py` 引擎商用许可守门 (商用档禁用 `commercial_use=false` 引擎注册, 未核实 `null` 降级 warn 不假声明); `config/tts_licenses.yaml` 引擎许可覆盖 (全 `null` 占位, 由核实过官方 license 的维护者回填, 仓库不替引擎假声明); `VoiceInfo`/`LicenseMetadata`、`EngineRegistry.register` 守门钩子 (`active_profile` 可选参, 缺省零回归)。
+- **P2.11 克隆授权**: 声音克隆前端 `VoiceCloneView` consent 勾选 + `canUpload` 门控; `cloneVoice` FormData 透传 `consent`; 后端 `CloneVoiceRequest.consent` 必填 (未勾 → 422 诚实拒) + `VoiceSample.attestation_at`/`consent_version` 持久化存证。
+- **P2.11 披露指南**: `docs/legal/ai-narration-disclosure.md` (ACX/Findaway/喜马拉雅 AI 标注框架指引, 不杜撰条款原文, 平台官方链接留待核实占位)。
+- **P2.12 发音字典**: `config/pronunciation_dict.yaml` (仙侠生造人名规则化派生注音, `source` 标 rule_ns/manual); `tts/pronunciation_dict.py` (长词优先替换、项目级 `pronunciation_dict.yaml` 覆盖全局、无条目原样透传不破主路径); 接入 `synthesize.run()` 合成前注音 (hash 前注入, cache 与合成文本幂等一致)。
+- **P2.14 Pro 一等路径**: `scripts/setup_pro.sh` 一键拉起 (GPU/显存检测, 不达标诚实降级 exit 1 不假装成功; 编排 `download_voxcpm2.py`; CosyVoice HF 指引; 切 `active_profile: pro_studio`); README 快速开始补 Pro 显卡用户分叉为推荐路径。
+- **P2.15 确定性**: TTSProsody seed pinning 通道贯通 (port+engine 两版同加 `seed` 字段, `_build_payload` 透传 → backend `prosody_dict` → VoxCPM2 `generate(seed=)`); I/O 快照 `tests/unit/test_determinism_bytelevel.py` (文本/JSON 层 ≤0 温度高概率等; FakePort mock 路径真跑字节级等; 真 TTS 引擎诚实标"通道通但本机免 GPU 未真跑核实字节级", 不预设 cudnn/gemm 可达)。
+
+### Changed
+- `TTSEngine.register` 加可选 `active_profile` 参 (license 守门; 缺省行为同改造前)。
+- `synthesize.run()` 合成前先做发音字典注音替换 (无字典条目等价改造前)。
+
 ## [0.2.0] - 2026-06-28
 
 ### Added

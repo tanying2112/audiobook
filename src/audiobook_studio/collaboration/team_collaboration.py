@@ -5,6 +5,11 @@ Audiobook Studio — 团队协作系统
 实现评论/审批/任务状态/变更历史的团队协作功能。
 """
 
+# 注解惰性求值: 修复 CommentData(TypedDict) 在 L21 前向引用尚未定义的
+# CommentType / TaskStatus 等 Enum 注解致 NameError (导入即崩, 既有测全 fail)
+# 的源 bug。仅改注解求值时序, 不改任何业务逻辑。
+from __future__ import annotations
+
 import hashlib
 import json
 import logging

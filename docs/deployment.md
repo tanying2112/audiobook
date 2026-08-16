@@ -439,7 +439,7 @@ Pool API (Redis 队列调度)
         ▼
 ┌───────────────┬───────────────┬───────────────┬───────────────┐
 │  kaggle-01    │  paddle-01    │ modelscope-01 │  modal-01     │
-│  T4×2 (免费)  │  V100 (免费) │  V100 (免费)  │  T4 (按量)   │
+│  T4×2 (免费)  │  V100 (免费) │ T4/V100(免费) │  T4 (按量)   │
 └───────────────┴───────────────┴───────────────┴───────────────┘
         │  RPUSH tts:results (音频上传 R2)
         ▼
@@ -452,26 +452,36 @@ Pool API (Redis 队列调度)
 |--------|------|-----|------|------|---------|
 | kaggle-01 | Kaggle | T4×2 | 免费 | pull | `kaggle/kaggle_setup.py`、`kaggle_voxcpm2_test_fixed.ipynb` |
 | paddle-01 | 百度云 | V100 | 免费 | pull | `paddle/paddle_job_entry.py` |
-| modelscope-01 | 魔搭社区 | V100 | 免费 | pull | `modelscope/modelscope_worker.py` |
+| modelscope-01 | 魔搭社区 | T4/V100 | 免费 | pull | `modelscope/modelscope_worker.py`、`modelscope_voxcpm2_turnkey.ipynb` |
 | modal-01 | Modal | T4 | ~$0.73/h | push | `modal/modal_app.py` |
 | lightning-01 | Lightning | T4 | ~$1.2/h | pull | `lightning/lightning_work.py` |
+| colab-01 | Google Colab | T4 | 免费 | pull | `colab/colab_setup.py`、`colab/colab_worker.py` |
 
 任一 Worker 共用同一套协议：连接 Redis (`tts:tasks` 队列) → 下载并加载 VoxCPM2 到 GPU →
 `BLPOP` 拉取任务 → 合成音频上传 Cloudflare R2 → `RPUSH tts:results` 回写结果。
 
 ### 11.1 配置 ModelScope（魔搭社区免费 GPU）
 
-魔搭社区 https://modelscope.cn 提供带免费单卡 GPU（V100/A100，按当日配额）的 Notebook，
+魔搭社区 https://modelscope.cn 提供带免费单卡 GPU（T4/V100/A100，按当日配额）的 Notebook，
 与 Kaggle/Paddle 节点对等接入算力池，成本 0。
+
+> ⚡ 快捷验证：直接用新增的 `modelscope_voxcpm2_turnkey.ipynb`（对标已成功的 Modal T4 smoke）
+> 在魔搭 GPU 笔记本中一键跑完：注入令牌→下载模型→加载→合成→存 .wav。
 
 **步骤：**
 
 1. 打开 https://modelscope.cn → 「我的Notebook」→ 启动 GPU 实例（镜像建议 py3.10 + CUDA 11.x/12.x）。
-2. 在终端克隆本仓库并进入目录：
+2. （可选但推荐）用访问令牌加速/授权模型下载——令牌由 `os.environ` 注入，**不落库（红线#5）**：
+   ```python
+   import os
+   os.environ["MODELSCOPE_API_TOKEN"] = "<REDACTED_MODELSCOPE_TOKEN>"  # 替换为你的 ms-... 令牌
+   ```
+   令牌在魔搭控制台创建，仅供云端运行会话使用，用后可轮换（rotate）。
+3. 在终端克隆本仓库并进入目录：
    ```bash
    git clone <repo> && cd <repo>/voxcpm2-pool/modelscope
    ```
-3. 注入 Secrets（红线#5：仓库不接受真实凭据）。新建 `.env` 或在 Notebook cell 中用 `os.environ` 注入：
+4. 注入 Secrets（红线#5：仓库不接受真实凭据）。新建 `.env` 或在 Notebook cell 中用 `os.environ` 注入：
    ```bash
    cat > .env <<'EOF'
    REDIS_HOST=casual-sawfish-86152.upstash.io
@@ -527,6 +537,7 @@ cd voxcpm2-pool && ./deploy_all.sh    # 一键部署所有节点 + Pool API + �
 | `voxcpm2-pool/modelscope/deploy_modelscope.sh` | 一键部署脚本 |
 | `voxcpm2-pool/modelscope/requirements.txt` | 依赖清单（幂等补装） |
 | `modelscope_voxcpm2_test.ipynb` | 单机 GPU 烟测 Notebook（对照 `kaggle_voxcpm2_test_fixed.ipynb`） |
+| `modelscope_voxcpm2_turnkey.ipynb` | turnkey 一键验证 Notebook（含令牌下载、T4/V100 合成，对标 Modal smoke） |
 | `voxcpm2-pool/pool/pool_config.yaml` | 算力池节点清单（含 modelscope-01） |
 | `voxcpm2-pool/worker/worker.py` | 供 Modal/Lightning 复用的核心 Worker 逻辑 |
 
@@ -571,3 +582,80 @@ modal run modal_app.py
 | 公网端点 | 无持久 IP | 固定端点 + 自动扩缩 |
 | 常驻 | 需手动保活 | Serverless scale-to-zero |
 | 适用 | 开发 / 免费算力 | 生产 / 突发补位（push） |
+
+### 11.4 实测记录（modelscope-01）
+
+**2026-08-17** 在魔搭社区 PAI DSW 免费 GPU 上实地部署 VoxCPM2 并产出音频，节点 `modelscope-01` 标记 `verified: true`。
+
+| 项 | 值 |
+|----|-----|
+| 实例 | PAI DSW（魔搭免费 GPU） |
+| 分配 GPU | NVIDIA A10, 23.8 GB VRAM |
+| 环境 | conda `voxcpm` (Python 3.10.20) + torch 2.5.1+cu118 + voxcpm 2.0.3 |
+| 模型缓存 | `/mnt/workspace/VoxCPM2` (NAS 持久化, 4.58 GB, 不随重启丢失) |
+| 加载耗时 | 32.5s, `sr=48000` Hz, `dtype=bfloat16` |
+| 产出 | 3 段 wav (英/中/英): 3.84s / 6.88s / 4.16s |
+| 平均 RTF | 0.950 (`optimize=False`，未开 `torch.compile`) |
+| 文件 | `/mnt/workspace/voxcpm2_modelscope_test_*.wav` |
+
+**optimize=True 实测对比（2026-08-17，同 A10）——确认负优化，保持 optimize=False：**
+
+| 配置 | 稳态 RTF | 说明 |
+|------|---------|------|
+| `optimize=False` | **0.784** | ✅ 默认，最优 |
+| `optimize=True` warmup | 0.915（+86s 编译） | torch.compile 一次性开销 |
+| `optimize=True` 稳态 | **0.914** | ✗ 比基线慢 14%（it/s 7.83→6.76） |
+| 加速比 | **0.86x** | `torch.compile` 在 A10+cu118+此模型得不偿失 |
+
+决策：worker/turnkey 默认 `optimize=False`。真正可挖的加速点是 TF32（torch 亲口提示 `TensorFloat32 tensor cores ... available but not enabled` → `torch.set_float32_matmul_precision('high')`），见 `modelscope_benchmark_tf32.py`。
+
+**TF32 实测对比（2026-08-17，同 A10）——TF32 无收益，调速靠降步数：**
+
+| 档 | 配置 | 稳态 RTF | vs 基线 |
+|----|------|---------|--------|
+| A | 默认 highest, steps=10 | 0.790 | 1.00x |
+| B | TF32 high, steps=10 | 0.796 | 0.99x（TF32 无效） |
+| C | TF32 high, steps=8 | 0.698 | 1.13x（增速来自降步数，非 TF32） |
+
+决策：
+- TF32 在 VoxCPM2 无收益（扩散循环非 float32 matmul 主导，bf16 主路径不走 TF32）→ **不开 `set_float32_matmul_precision`，保持默认 highest**。
+- 真正的调速旋钮是 `inference_timesteps`（10→8 实测 1.13x）。worker/turnkey 均支持通过环境变量 `VOXCPM2_INFERENCE_TIMESTEPS` 或任务 `prosody.steps` 调整。质量需试听 `voxcpm2_tf32_C_*.wav` 校验。
+
+**实测踩坑与修复（已沉淀到 `modelscope_deploy_turnkey.py`）：**
+
+1. **Python 3.8 陷阱**：PAI DSW 默认 `/opt/conda/bin/python3` 是 3.8.16，而 `voxcpm 2.x` 要求 ≥3.10。pip 会静默 `No matching distribution`，跑到 `from voxcpm import VoxCPM` 才 `ModuleNotFoundError`。
+   → turnkey 脚本顶部加 `sys.version_info < (3,10)` 硬拦截 + 打印建环境三步指引。
+2. **环境命令**（实测可用，一次成功）：
+   ```bash
+   conda create -y -n voxcpm python=3.10
+   source activate voxcpm
+   pip install -q torch==2.5.1 torchaudio --index-url https://download.pytorch.org/whl/cu118
+   pip install -q voxcpm==2.0.3 modelscope huggingface_hub soundfile requests numpy einops safetensors transformers accelerate
+   python /mnt/workspace/modelscope_deploy_turnkey.py
+   ```
+3. **ModelScope SDK 版本差异**：`snapshot_download` 新版用 `local_dir`、旧版用 `cache_dir`。turnkey 已做三参数兼容降级（不带参也能跑），并 HF 镜像 requests 兜底——实测 ModelScope SDK 在该 DSW 不可用，**HF 镜像兜底是实际生效路径**。
+4. **采样率**：VoxCPM2 真实 `sample_rate=48000`（非早期假设 24000）。worker/turnkey 已从 `model.tts_model.sample_rate` 动态取，fallback 改为 48000。
+5. **config.json**：真实 `dtype=bfloat16`、无 `model_type` 字段。`fix_config()` 只补 `model_type`、**不强改 dtype**（强改 float16 会被官方 BF16 加载路径拒绝）。
+6. **GPU 实配**：本日分配到 A10 23.8GB（优于 T4），`pool_config` 已扩充候选 `[T4,V100,A10,A100]`。
+
+### 11.5 配置 Google Colab（免费 T4 GPU）
+
+Colab 免费 T4（16GB VRAM）接入算力池，与已验证的 `modelscope-01` 完全同构（协议：`BLPOP tts:tasks` → 合成 → 上传 R2 → `RPUSH tts:results`）。
+由 `deploy_colab.sh` 给出分步指引；`colab_worker.py` 已对标 Modelscope worker，同步了 A10 实测结论。
+
+**步骤（在 Colab 浏览器中）：**
+1. `colab.research.google.com` → New Notebook → Runtime → Change runtime type → **T4 GPU**（验证 `!nvidia-smi`）。
+2. Cell 执行 `colab_setup.py` 内容（装 CUDA 依赖 + 挂载 Drive + 注入 Secrets 占位 + 下载模型）。
+3. 最后一个 Cell 执行 `colab_worker.py` 内容（启动 Worker，`BLPOP` 监听 `tts:tasks`）。
+
+**本仓库本轮对齐改动（colab_worker.py）：**
+- 采样率 fallback `24000 → 48000`（对齐 A10 实测；`getattr(model.tts_model, "sample_rate", 48000)` + 源码回退路径同样 48000）。
+- 新增调速环境变量入口 `VOXCPM2_INFERENCE_TIMESTEPS`（默认 10），worker/turnkey/colab 三端统一；
+  任务内仍以 `prosody.steps` 优先覆盖（协议已含）。
+
+**凭据接入（红线#5）：**
+- Colab 通过 Google Drive 持久化模型（`/content/VoxCPM2`）；Upstash Redis / Cloudflare R2 真值需在 Cell 中 `os.environ` 注入，
+  **不落库**。注入方式与 `modelscope_deploy_turnkey.py` / `docs §11.1` 一致。
+
+> ⚠️ Colab 免费 Session 最多 12h（Pro 24h），断开后需重跑 Cell 2-5。
+> 节点 `colab-01` 暂标 `verified: false`，与已验证的 `modelscope-01` 区分——在 Colab 实跑产出音频后可标记 `verified: true`。

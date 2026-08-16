@@ -29,7 +29,7 @@ class VoiceAnchorRecord:
     chapter_index: int
     paragraph_index: int
     similarity_threshold: float = 0.85  # 声音相似度阈值 (cosine similarity, range 0-1)
-    embedding_model: str = "wavlm_large"
+    embedding_model: str = "ecapa_tdnn"  # P2.13: 统一走 ECAPA (speechbrain/spkrec-ecapa-voxceleb)
     created_at: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,7 +50,7 @@ class VoiceAnchorConfig:
     """Voice Anchor 配置."""
 
     enabled: bool = True
-    embedding_model: str = "wavlm_large"
+    embedding_model: str = "ecapa_tdnn"  # P2.13: 统一走 ECAPA (唯一 speaker embedding 体系)
     similarity_threshold: float = 0.85  # 声音相似度阈值 (cosine similarity, range 0-1)
     max_drift_alerts_per_chapter: int = 3
     reference_audio_dir: str = "storage/voice_anchors"
@@ -71,7 +71,10 @@ class VoiceAnchorManager:
 
     def __init__(self, config: Optional[VoiceAnchorConfig] = None):
         self.config = config or VoiceAnchorConfig()
-        self._anchors: Dict[str, VoiceAnchorRecord] = {}  # character_name -> anchor
+        # P2.13: per-chapter 双层 dict — character_name -> {chapter_index -> anchor}.
+        # 同一角色在每章独立布锚 (首段生成时注册), 后续章节命中本章节锚即可,
+        # 跨章节独立监控漂移. 单层 (character -> anchor) 时跨章会互相覆盖.
+        self._anchors: Dict[str, Dict[int, VoiceAnchorRecord]] = {}
         self._drift_alerts: Dict[int, List[Dict[str, Any]]] = {}  # chapter_index -> alerts
         self._reference_audio_dir = Path(self.config.reference_audio_dir)
         self._reference_audio_dir.mkdir(parents=True, exist_ok=True)
@@ -130,18 +133,22 @@ class VoiceAnchorManager:
             created_at=datetime.now().isoformat(),
         )
 
-        self._anchors[character_name] = anchor
+        # P2.13: per-chapter 双层 dict — 同角色每章独立布锚, 不互相覆盖.
+        self._anchors.setdefault(character_name, {})[chapter_index] = anchor
 
         # Copy reference audio to anchor directory for persistence
+        # P2.13: 文件名按章节区分, 避免跨章节参考音频互相覆盖.
         import shutil
 
-        dest_path = self._reference_audio_dir / f"{character_name}_ref.mp3"
+        safe_char = character_name.replace("/", "_")
+        dest_path = self._reference_audio_dir / f"{safe_char}_ch{chapter_index}_ref.mp3"
         try:
             shutil.copy2(reference_audio_path, dest_path)
             anchor.reference_audio_path = str(dest_path)
             logger.info(
-                "Registered voice anchor for '%s': voice=%s, ref=%s",
+                "Registered voice anchor for '%s' (ch%d): voice=%s, ref=%s",
                 character_name,
+                chapter_index,
                 voice_id,
                 dest_path,
             )
@@ -150,17 +157,53 @@ class VoiceAnchorManager:
 
         return anchor
 
-    def get_anchor(self, character_name: str) -> Optional[VoiceAnchorRecord]:
-        """获取角色的声纹锚定记录."""
-        return self._anchors.get(character_name)
+    def _resolve_anchor(
+        self,
+        character_name: str,
+        chapter_index: Optional[int],
+    ) -> Optional[VoiceAnchorRecord]:
+        """按章节解析声纹锚定 (双层 dict 内部辅助).
 
-    def has_anchor(self, character_name: str) -> bool:
-        """检查角色是否已注册声纹锚定."""
-        return character_name in self._anchors
+        chapter_index=None -> 任一章节命中均可 (兼容旧接口/全章统一锁); 否则精确匹配本章节锚,
+        未命中则回退到该角色的任一锚 (跨章容错, 用最早锚作基准监控漂移).
+        """
+        char_anchors = self._anchors.get(character_name)
+        if not char_anchors:
+            return None
+        if chapter_index is None:
+            # 任一章节命中: 优先与传入 chapter_index 最近者. 单测/旧调用无章号时取首个.
+            return next(iter(char_anchors.values()))
+        exact = char_anchors.get(chapter_index)
+        if exact is not None:
+            return exact
+        # 回退: 跨章容错, 取该角色任一已登记的锚作漂移基准.
+        return next(iter(char_anchors.values()))
 
-    def get_reference_audio(self, character_name: str) -> Optional[str]:
-        """获取角色的参考音频路径 (用于后续合成注入)."""
-        anchor = self._anchors.get(character_name)
+    def get_anchor(self, character_name: str, chapter_index: Optional[int] = None) -> Optional[VoiceAnchorRecord]:
+        """获取角色的声纹锚定记录.
+
+        chapter_index: 指定章节锚; None (默认) -> 任一章节命中 (向后兼容旧调用).
+        """
+        return self._resolve_anchor(character_name, chapter_index)
+
+    def has_anchor(self, character_name: str, chapter_index: Optional[int] = None) -> bool:
+        """检查角色是否已注册声纹锚定.
+
+        chapter_index=None -> 该角色在任一章节有锚即 True (向后兼容旧调用).
+        """
+        char_anchors = self._anchors.get(character_name)
+        if not char_anchors:
+            return False
+        if chapter_index is None:
+            return bool(char_anchors)
+        return chapter_index in char_anchors
+
+    def get_reference_audio(self, character_name: str, chapter_index: Optional[int] = None) -> Optional[str]:
+        """获取角色的参考音频路径 (用于后续合成注入).
+
+        chapter_index: 指定章节锚; None (默认) -> 任一章节命中.
+        """
+        anchor = self._resolve_anchor(character_name, chapter_index)
         if anchor and Path(anchor.reference_audio_path).exists():
             return anchor.reference_audio_path
         return None
@@ -184,9 +227,10 @@ class VoiceAnchorManager:
         if not self.config.enabled:
             return None
 
-        anchor = self._anchors.get(character_name)
+        # P2.13: 双层 dict 下按章节解析锚 (本章节优先, 跨章容错回退).
+        anchor = self._resolve_anchor(character_name, chapter_index)
         if not anchor:
-            logger.debug("No anchor for '%s', skipping drift check", character_name)
+            logger.debug("No anchor for '%s' (ch%d), skipping drift check", character_name, chapter_index)
             return None
 
         if not Path(anchor.reference_audio_path).exists():
@@ -273,19 +317,29 @@ class VoiceAnchorManager:
         return self._drift_alerts.get(chapter_index, [])
 
     def get_all_anchors(self) -> Dict[str, VoiceAnchorRecord]:
-        """获取所有已注册的声纹锚定."""
-        return self._anchors.copy()
+        """获取所有已注册的声纹锚定.
+
+        P2.13: 双层 dict 下返回 character_name -> 任一章节锚 (最新注册者),
+        保留单层扁平视图供向后兼容读取 (老接口契约).
+        """
+        flat: Dict[str, VoiceAnchorRecord] = {}
+        for name, chap_anchors in self._anchors.items():
+            if chap_anchors:
+                flat[name] = next(reversed(chap_anchors.values()))
+        return flat
 
     def inject_reference_audio(
         self,
         character_name: str,
         prosody_overrides: Dict[str, Any],
+        chapter_index: Optional[int] = None,
     ) -> Dict[str, Any]:
         """将参考音频注入韵律覆盖参数 (供 TTS 引擎使用).
 
         Args:
             character_name: 角色名称
             prosody_overrides: 现有的韵律覆盖参数
+            chapter_index: 指定章节锚 (P2.13); None (默认) -> 任一章节命中 (向后兼容)
 
         Returns:
             更新后的韵律覆盖参数 (包含 reference_audio)
@@ -293,7 +347,7 @@ class VoiceAnchorManager:
         if not self.config.enabled:
             return prosody_overrides
 
-        ref_audio = self.get_reference_audio(character_name)
+        ref_audio = self.get_reference_audio(character_name, chapter_index=chapter_index)
         if ref_audio:
             prosody_overrides = prosody_overrides or {}
             prosody_overrides["reference_audio"] = ref_audio
@@ -302,11 +356,16 @@ class VoiceAnchorManager:
         return prosody_overrides
 
     def get_summary(self) -> Dict[str, Any]:
-        """获取 Voice Anchor 状态摘要."""
+        """获取 Voice Anchor 状态摘要 (P2.13: 双层 dict 扁平化展示)."""
+        total = sum(len(chap_anchors) for chap_anchors in self._anchors.values())
+        anchors_flat: Dict[str, Any] = {}
+        for name, chap_anchors in self._anchors.items():
+            for ch_idx, anchor in chap_anchors.items():
+                anchors_flat[f"{name}#ch{ch_idx}"] = anchor.to_dict()
         return {
             "enabled": self.config.enabled,
-            "total_anchors": len(self._anchors),
-            "anchors": {name: anchor.to_dict() for name, anchor in self._anchors.items()},
+            "total_anchors": total,
+            "anchors": anchors_flat,
             "drift_alerts": {ch: alerts for ch, alerts in self._drift_alerts.items()},
             "config": {
                 "embedding_model": self.config.embedding_model,

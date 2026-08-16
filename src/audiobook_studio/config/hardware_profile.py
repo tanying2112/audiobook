@@ -219,7 +219,7 @@ class VoiceAnchorProfileConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     enabled: bool = False
-    embedding_model: str = "wavlm_large"
+    embedding_model: str = "ecapa_tdnn"  # P2.13: 统一走 ECAPA (唯一 speaker embedding 体系)
     similarity_threshold: float = 0.85
     max_drift_alerts_per_chapter: int = 3
     mock_mode: bool = False

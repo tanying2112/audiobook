@@ -995,6 +995,8 @@ export default {
     validation_file_required: '请选择音频文件',
     validation_file_format: '仅支持 WAV/MP3 格式',
     validation_file_size: '文件过大，最大 50MB',
+    consent_label: '我确认已获得样本提供者（声音本人）的明确授权，允许用其声音进行克隆与有声书合成。',
+    consent_hint: '必填：未经授权的声音样本不得克隆。授权记录将随声纹存证（attestation），供审计回溯。',
   },
 
   // Translation 翻译配音

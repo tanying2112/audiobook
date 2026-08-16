@@ -232,7 +232,7 @@ profiles:
       asr_enabled: true
       asr_model: "sensevoice_large"
       speaker_similarity_enabled: true
-      speaker_embed_model: "wavlm_large"
+      speaker_embed_model: "ecapa_tdnn"  # P2.13: 统一 ECAPA (唯一 speaker embedding 体系)
       rules_enabled: true
       thresholds:
         dnsmos_min: 3.8
@@ -257,7 +257,7 @@ profiles:
         - "voice_design_generation"
     voice_anchor:
       enabled: true
-      embedding_model: "wavlm_large"
+      embedding_model: "ecapa_tdnn"  # P2.13: 统一 ECAPA (唯一 speaker embedding 体系)
       similarity_threshold: 0.85
       max_drift_alerts_per_chapter: 3
       mock_mode: false

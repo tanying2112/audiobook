@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -500,6 +501,8 @@ class CloneVoiceRequest(BaseModel):
     speaker_id: str = Field(..., description="Speaker/character identifier")
     language: str = Field(default="zh-CN", description="Target language")
     text_content: str = Field(default="", description="Reference text content")
+    # P2.11 合规: 克隆前必须获得样本提供者授权 (红线#1: 不勾 → 422 拒绝, 不假装处理成功)
+    consent: bool = Field(..., description="样本提供者已授权克隆 (必填, 不勾 → 422)")
 
 
 class CloneVoiceResponse(BaseModel):
@@ -520,6 +523,7 @@ async def clone_voice(
     speaker_id: str = Form(..., description="Speaker/character identifier"),
     language: str = Form(default="zh-CN", description="Target language"),
     text_content: str = Form(default="", description="Reference text content"),
+    consent: bool = Form(..., description="样本提供者已授权克隆 (必填, 不勾 → 422)"),
 ):
     """
     Clone a voice from an uploaded audio sample.
@@ -532,6 +536,7 @@ async def clone_voice(
     - Minimum 15 seconds duration
     - SNR >= 20dB for good quality
     - Supported formats: WAV, MP3
+    - **consent=true 样本提供者已授权克隆 (P2.11 合规, 必填)**
 
     Response:
     - success: True if cloning succeeded
@@ -539,6 +544,13 @@ async def clone_voice(
     - quality: Audio quality rating (excellent/good/fair/poor)
     """
     from ..tts.clone import AudioQuality
+
+    # P2.11 合规: 克隆前强制授权核实 (红线#1A: 不勾 → 422 诚实拒, 不假装处理)
+    if not consent:
+        raise HTTPException(
+            status_code=422,
+            detail="声音克隆需样本提供者明确授权 (consent=true)。未经授权的样本不得克隆。",
+        )
 
     # Validate file type
     allowed_types = {"audio/wav", "audio/wave", "audio/x-wav", "audio/mpeg", "audio/mp3"}
@@ -583,7 +595,7 @@ async def clone_voice(
                 detail=f"SNR too low: {snr_db:.1f}dB. Minimum 20dB required.",
             )
 
-        # Create voice sample
+        # Create voice sample with P2.11 attestation (consent 授权版本记入持久化字段)
         sample = VoiceSample(
             id=f"clone_{speaker_id}",
             file_path=tmp_path,
@@ -593,6 +605,8 @@ async def clone_voice(
             text_content=text_content or "Voice clone sample",
             language=language,
             speaker_id=speaker_id,
+            attestation_at=datetime.now().isoformat(),  # P2.11: 授权时间戳
+            consent_version="v1",  # P2.11: 当前授权条款版本
         )
 
         # Add sample (creates voice print)

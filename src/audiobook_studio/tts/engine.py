@@ -15,6 +15,22 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 
 @dataclass
+class LicenseMetadata:
+    """TTS 引擎商用许可元数据 (P2.11).
+
+    红线#1: commercial_use=None = 未核实 (诚实降级 warn, 非假声明);
+    True 仅当官方 license 确允许商用; False 仅当官方明确仅非商用。
+    仓库不替任何引擎假声明 (杜绝 P1.9 "True # TODO" 复发) —— 由核实过官方
+    model card/license 的维护者填 config/tts_licenses.yaml 后传入。
+    """
+
+    commercial_use: Optional[bool] = None  # True=商用OK | False=仅非商用 | None=未核实
+    license_name: Optional[str] = None
+    note: str = ""
+    verified_at: Optional[str] = None
+
+
+@dataclass
 class VoiceInfo:
     """Information about a TTS voice."""
 
@@ -28,6 +44,7 @@ class VoiceInfo:
     supports_prosody: bool = True
     supports_reference_audio: bool = False
     engine: str = ""
+    license_metadata: Optional[LicenseMetadata] = None  # P2.11: 商用许可 (缺失→None 诚实降级)
 
 
 @dataclass
@@ -66,6 +83,10 @@ class TTSProsody:
     pitch: float = 0.0  # Pitch shift in semitones (-12 to +12)
     volume: float = 0.0  # Volume gain in dB (-20 to +20)
     emotion: Optional[str] = None  # Emotional tag (happy, sad, neutral, etc.)
+    # P2.15 确定性: seed pinning 通道 (打通 VoxCPM2 generate(seed=) 出口)。
+    # 红线#1: seed 只是开通道, **不等于**字节级可达 (cudnn/gemm 非确定性可能致不等);
+    # None=未指定 (与改造前等价, 零回归); 仅当显式传整数时透传到 backend.generate。
+    seed: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -361,8 +382,26 @@ class EngineRegistry:
         engine: TTSEngine,
         name: Optional[str] = None,
         set_as_default: bool = False,
+        active_profile: Optional[str] = None,
     ) -> None:
-        """Register an engine instance."""
+        """Register an engine instance.
+
+        P2.11 许可守门: 当传入 active_profile (非商用档触发严格守门) 时,
+        经 license_guard 校验引擎商用许可。被标注 commercial_use=False 的引擎
+        在商用路径被阻断 (诚实噪止, 不假装注册成功);
+        commercial_use=None (未核实) 降级 warn 但放行 (红线#1: 不假声明也不误杀)。
+        active_profile=None (调用方未提供) → 守门不触发, 行为同改造前 (零回归)。
+        """
+        if active_profile is not None:
+            from .license_guard import register_guard
+
+            if not register_guard(name or engine.engine_name, active_profile):
+                logger.warning(
+                    "license_guard 阻断引擎 %s 注册 (商用档 %s 下 commercial_use=False)",
+                    name or engine.engine_name,
+                    active_profile,
+                )
+                return
         async with self._lock:
             engine_name = name or engine.engine_name
             self._engines[engine_name] = engine
