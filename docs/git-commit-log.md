@@ -23,3 +23,4 @@ Auto-generated log of commits affecting schema/prompt/contract files.
 - 2026-08-16 14:01 [086fd46] Your Name: test(P1): 收口游离后端单元测试 — pipeline/auth/api/security/models/schemas/tasks/translation/tts/publish
 - 2026-08-16 14:01 [6255ac6] Your Name: test(web,P0.1): add ParagraphEditor & CharacterManager SOP-correction vitest specs
 - 2026-08-16 14:02 [b9c5e6b] Your Name: feat(voxcpm2): Modal 部署脚本 + endpoint 烟测 + kaggle/modelscope 云验证 notebook + pi compute wrapper
+- 2026-08-16 14:12 [fd09c3f] Your Name: docs(changelog): record today's P1 disposal auto-log + 2 conventional fragments
