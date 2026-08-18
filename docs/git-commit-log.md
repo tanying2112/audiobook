@@ -24,3 +24,4 @@ Auto-generated log of commits affecting schema/prompt/contract files.
 - 2026-08-16 14:01 [6255ac6] Your Name: test(web,P0.1): add ParagraphEditor & CharacterManager SOP-correction vitest specs
 - 2026-08-16 14:02 [b9c5e6b] Your Name: feat(voxcpm2): Modal 部署脚本 + endpoint 烟测 + kaggle/modelscope 云验证 notebook + pi compute wrapper
 - 2026-08-16 14:12 [fd09c3f] Your Name: docs(changelog): record today's P1 disposal auto-log + 2 conventional fragments
+- 2026-08-18 15:55 [a2b66c0] Your Name: feat(web,P3-2): 前端发布页 — Audiobookshelf 推送 + Podcast RSS 生成
