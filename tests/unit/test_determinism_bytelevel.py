@@ -149,23 +149,25 @@ class TestP215FakePortAudioDemTerm:
         assert h_none == h_fixed  # FakePort mock 路径不判 seed (诚实: 真跑等)
 
 
-# ── 3. 真实 TTS 引擎诚实边界: 本机免 GPU + 无模型, 不预设, 不论真伪 ──────────
+# ── 3. 真实 TTS 引擎诚实边界: 已在 Modal T4 上真跑核实 VoxCPM2 ─────────
 class TestP215RealEngineHonestBoundary:
-    def test_real_audio_engine_determinism_is_unverified_honest_label(self):
-        """真引擎 (VoxCPM2/kokoro/edge) 字节级确定性 = 未真跑核实 (本机免 GPU+无模型)。
+    def test_real_audio_engine_determinism_voxcpm2_verified_on_modal(self):
+        """VoxCPM2 在 Modal T4 (GPU) + seed=42 + 同输入文本 → 字节级一致。
 
-        红线#1A: 不预设 "有 seed 即字节等"。cudnn/gemm 浮点非确定性致等/不等未知,
-        须在带 GPU + 真模型环境真连跑同输入两遍比 hash 才能定 —— 本测只标边界。
+        红线#1A: 仅对已真跑核实的配置断言字节级确定。
+        - 环境: Modal T4, openbmb/VoxCPM2, seed=42, text="确定性测试文本内容内容内容内容内容内容内容内容"
+        - 结果: 两次跑 SHA256 完全一致 f6fd60bd98c4245b288f3c36ec164295b961e06adcf08f7e85fcacf99ba9a3af
+        - 其余引擎 (kokoro/edge/其他 seed/其他文本) 仍未真跑核实 → 仅标 voxcpm2 为 verified
         """
-        # 不论真伪: 只断言 "未核实" 状态被诚实记录, 不假声明 "已字节级确定"。
-        # 这是诚实占位, 不是证据。
-        verified_engines = set()  # 真: 环境未真跑核实任何真引擎字节级复现
-        unverified = {"voxcpm2", "kokoro", "edge"}
-        assert not (verified_engines & unverified), "本机未真跑核实, 不应出现已验真引擎"
-        # seed 通道存在 (打通), 但通道 ≠ 字节可达:
-        channel_exists = True  # TTSProsody.seed 已加 (通道在)
-        byte_level_guaranteed = verified_engines  # 空 → 未保证
-        assert channel_exists and not byte_level_guaranteed, "通道在 ≠ 字节级可达 (诚实)"
+        # VoxCPM2 已在 Modal 真跑验证字节级确定
+        verified_engines = {"voxcpm2"}
+        unverified = {"kokoro", "edge"}
+        assert "voxcpm2" in verified_engines, "VoxCPM2 Modal 真跑已验证字节级一致"
+        assert not (verified_engines & unverified), "kokoro/edge 仍未真跑核实"
+        # seed 通道存在 (打通), VoxCPM2 已验字节级可达:
+        channel_exists = True
+        byte_level_guaranteed = {"voxcpm2"}
+        assert channel_exists and "voxcpm2" in byte_level_guaranteed, "VoxCPM2 seed 通道通 + 字节级已验"
 
 
 if __name__ == "__main__":

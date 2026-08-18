@@ -1,211 +1,252 @@
-#!/usr/bin/env python3
 """
-VoxCPM2 Terminal Hardcore Deployment & Smoke Test Engine for Kaggle T4 x2.
-
-This script uses ZERO huggingface_hub library. Instead:
-- Raw HTTP streaming download from hf-mirror.com (immune to Cloudflare blocks)
-- Model Parallel via device_map="auto" across T4 x2
-- Real forward-pass smoke test to verify GPU compute pipeline
+Kaggle Worker for VoxCPM2 TTS
+===================================
+Kaggle 免费 T4 x2 GPU 节点实现
+复用 worker/kaggle_worker.py 的完整实现
 """
 
-import abc
+from __future__ import annotations
+
+import io
 import json
 import os
-import signal
-import subprocess
 import sys
 import time
-import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-# ========================================================
-# 🔐 SSL 验证全局关闭 - 必须在任何 import 之前执行
-# 解决 Kaggle 代理环境下的证书校验失败
-# ========================================================
-os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-# ========================================================
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# =====================================================================
-# 🛡️ CRITICAL PATCHES: Must be executed BEFORE ANY other imports
-# =====================================================================
-
-# 1. PyTorch 2.6+ weights_only=True 兼容性修复
-# 强制 torch.load 默认使用 weights_only=False，兼容旧格式模型文件
-import sys
-import types
-
-import torch
-
-# ⚠️ CRITICAL: Save the REAL original torch.load BEFORE any patching
-# This must be the VERY FIRST thing to avoid recursion issues
-_REAL_ORIGINAL_TORCH_LOAD = torch.load
+from worker_base import BaseWorker
 
 
-# Create patched load function
-def _patched_torch_load(*args, **kwargs):
-    if "weights_only" not in kwargs:
-        kwargs["weights_only"] = False
-    return _REAL_ORIGINAL_TORCH_LOAD(*args, **kwargs)
+class KaggleWorker(BaseWorker):
+    """Kaggle 免费 T4 x2 GPU Worker"""
 
-
-_patched_torch_load._patched_weights_only = True
-
-# Apply patch to torch module
-torch.load = _patched_torch_load
-sys.modules["torch"].load = _patched_torch_load
-
-# Print confirmation
-print(f"[PATCH] torch.load patched: weights_only default = False", flush=True)
-# Verify patch is active
-print(f"[PATCH] Verification: patch active = {torch.load is _patched_torch_load}", flush=True)
-
-# 2. BlockMask 类型提示冲突修复：在 transformers 导入前注入 DummyBlockMask
-# 解决 PyTorch 2.5+ 与 transformers 的 BlockMask | Tensor 类型提示冲突
-print(f"[DEBUG] About to apply BlockMask patch", flush=True)
-import torch
-
-print(f"[DEBUG] torch imported for BlockMask: True", flush=True)
-try:
-    # 1. 确保 torch.nn.attention 存在
-    if not hasattr(torch.nn, "attention"):
-        torch.nn.attention = types.ModuleType("attention")
-        sys.modules["torch.nn.attention"] = torch.nn.attention
-
-    # 2. 确保 flex_attention 模块存在
-    try:
-        import torch.nn.attention.flex_attention as flex_module
-    except ImportError:
-        flex_module = types.ModuleType("flex_attention")
-        torch.nn.attention.flex_attention = flex_module
-        sys.modules["torch.nn.attention.flex_attention"] = flex_module
-
-    # 3. 强行将 BlockMask 绑定为 Dummy 类，防止 Python 将其解析为 Module 导致 Type Hint 报错
-    if not hasattr(flex_module, "BlockMask") or not isinstance(getattr(flex_module, "BlockMask", None), type):
-
-        class DummyBlockMask:
-            pass
-
-        flex_module.BlockMask = DummyBlockMask
-        sys.modules["torch.nn.attention.flex_attention.BlockMask"] = DummyBlockMask
-        print(f"[PATCH] Successfully mocked flex_attention.BlockMask to class type.", flush=True)
-except Exception as patch_err:
-    print(f"[PATCH] Failed to apply BlockMask patch: {patch_err}", flush=True)
-
-
-# 3. VoxCPM 导入钩子：在 voxcpm 被 import 时立即补丁 torch.load
-class _VoxCPMImportHook:
     def __init__(self):
-        self._active = False
+        super().__init__(platform_prefix="kaggle")
 
-    def find_spec(self, name, path, target=None):
-        if not self._active and (name == "voxcpm" or name.startswith("voxcpm.")):
-            from importlib.util import spec_from_loader
-
-            return spec_from_loader(name, self)
-        return None
-
-    def create_module(self, spec):
-        import importlib
-        import sys
-
+    def _init_engine(self) -> Any:
+        """初始化 VoxCPM2 引擎 (Kaggle 环境优化)"""
         import torch
 
-        if self._active:
-            return None
+        _log(f"🔧 [{self.worker_id}] 初始化 Kaggle VoxCPM2 引擎...")
 
-        self._active = True
+        # Kaggle 环境变量 (SSL 修复 + 镜像)
+        os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+        model_path = os.getenv("VOXCPM2_MODEL_PATH", "/mnt/workspace/VoxCPM2")
+
+        # 确保依赖
+        self._ensure_kaggle_deps()
+
+        # 烟雾测试会在 _execute_smoke_test 中验证
+        # 加载模型
+        return self._load_model()
+
+    def _ensure_kaggle_deps(self):
+        """确保 Kaggle 环境依赖"""
+        import importlib.util
+        import subprocess
+
+        deps = {
+            "modelscope": "modelscope",
+            "huggingface_hub": "huggingface_hub",
+            "soundfile": "soundfile",
+            "requests": "requests",
+            "numpy": "numpy",
+            "boto3": "boto3",
+            "redis": "redis",
+        }
+        missing = [
+            pkg
+            for mod, pkg in {
+                "modelscope": "modelscope",
+                "huggingface_hub": "huggingface_hub",
+                "soundfile": "soundfile",
+                "requests": "requests",
+                "numpy": "numpy",
+                "boto3": "boto3",
+                "redis": "redis",
+            }.items()
+            if importlib.util.find_spec(mod) is None
+        ]
+        if missing:
+            import subprocess
+
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir", *missing], check=False)
+
+        if importlib.util.find_spec("voxcpm") is None:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir", "voxcpm==2.0.3"], check=False
+            )
+
+        # Kaggle 特有 patch: torch.load weights_only + BlockMask
+        self._apply_kaggle_patches()
+
+    def _apply_kaggle_patches(self):
+        """Kaggle 特有补丁 (PyTorch 2.5+/2.6+ 兼容)"""
+        import types
+        import torch
+
+        _REAL_TORCH_LOAD = torch.load
+
+        def _patched_load(*a, **kw):
+            if "weights_only" not in kw:
+                kw["weights_only"] = False
+            return _REAL_TORCH_LOAD(*a, **kw)
+
+        _patched_load._patched_weights_only = True
+        torch.load = _patched_load
+        sys.modules["torch"].load = _patched_load
+
+        if not hasattr(torch.nn, "attention"):
+            torch.nn.attention = types.ModuleType("attention")
+            sys.modules["torch.nn.attention"] = torch.nn.attention
         try:
-            # Ensure torch.load is patched using the REAL original
-            if not getattr(torch.load, "_patched_weights_only", False):
-                orig = torch.load.__wrapped__ if hasattr(torch.load, "__wrapped__") else torch.load
+            import torch.nn.attention.flex_attention as f
+        except ImportError:
+            f = types.ModuleType("flex_attention")
+            torch.nn.attention.flex_attention = f
+            sys.modules["torch.nn.attention.flex_attention"] = f
+        if not hasattr(f, "BlockMask") or not isinstance(getattr(f, "BlockMask", None), type):
 
-                def patched(*a, **kw):
-                    if "weights_only" not in kw:
-                        kw["weights_only"] = False
-                    return (
-                        torch.load.__wrapped__(*a, **kw) if hasattr(torch.load, "__wrapped__") else torch.load(*a, **kw)
-                    )
+            class _BlockMask:
+                pass
 
-                patched._patched_weights_only = True
-                torch.load = patched
-                sys.modules["torch"].load = patched
+            f.BlockMask = _BlockMask
+            sys.modules["torch.nn.attention.flex_attention.BlockMask"] = _BlockMask
 
-            # Import the real voxcpm module
-            mod = importlib.import_module(spec.name)
+    def _load_model(self) -> Any:
+        """加载模型 (复用 voxcpm 库)"""
+        import torch
 
-            # Patch voxcpm's torch reference
-            if hasattr(mod, "torch"):
-                mod.torch.load = torch.load
+        model_path = os.getenv("VOXCPM2_MODEL_PATH", "/mnt/workspace/VoxCPM2")
+        _log(f"加载 VoxCPM2 from {model_path} ...")
 
-            # Patch any cached torch.load references
-            for attr_name in dir(mod):
-                try:
-                    obj = getattr(mod, attr_name)
-                    if callable(obj) and getattr(obj, "__module__", "") == "torch" and obj.__name__ == "load":
-                        mod.__dict__[attr_name] = torch.load
-                except Exception:
-                    pass
-
-            return mod
-        finally:
-            self._active = False
-
-    def exec_module(self, module):
-        pass
-
-
-# Install hook BEFORE any imports
-sys.meta_path.insert(0, _VoxCPMImportHook())
-print(f"[PATCH] Installed voxcpm import hook", flush=True)
-
-
-# 🛡️ AGGRESSIVE POST-IMPORT PATCH: If voxcpm is already imported, re-patch it
-# This catches the case where voxcpm was imported during bootstrap (pip install)
-def _patch_all_voxcpm_torch_load():
-    """Force patch ALL voxcpm modules in sys.modules"""
-    import sys
-
-    import torch
-
-    patched_count = 0
-    for name, mod in list(sys.modules.items()):
-        if name == "voxcpm" or name.startswith("voxcpm."):
-            if hasattr(mod, "torch") and hasattr(mod.torch, "load"):
-                if not getattr(mod.torch.load, "_patched_weights_only", False):
-                    mod.torch.load = torch.load
-                    print(f"[PATCH] Patched {name}.torch.load", flush=True)
-            for attr_name in dir(mod):
-                try:
-                    obj = getattr(mod, attr_name)
-                    if callable(obj) and obj.__module__ == "torch" and obj.__name__ == "load":
-                        setattr(mod, attr_name, torch.load)
-                except Exception:
-                    pass
-
-
-if "voxcpm" in sys.modules:
-    import torch
-
-    m = sys.modules["voxcpm"]
-    if hasattr(m, "torch"):
-        m.torch.load = torch.load
-    for aname in dir(m):
         try:
-            obj = getattr(m, aname)
-            if callable(obj) and obj.__module__ == "torch" and obj.__name__ == "load":
-                m.__dict__[aname] = torch.load
-        except Exception:
-            pass
+            from voxcpm import VoxCPM
 
-# ========================================================
-# 🔐 SSL 验证全局关闭 - 必须在任何 import 之前执行
-# 解决 Kaggle 代理环境下的证书校验失败
-# =====================================================================
-import os
+            t0 = time.time()
+            dev = "cuda" if torch.cuda.is_available() else "cpu"
+            model = VoxCPM.from_pretrained(
+                model_path,
+                load_denoiser=False,
+                optimize=False,
+                device=dev,
+            )
+            sr = getattr(model.tts_model, "sample_rate", 48000)
+            _log(f"✅ 官方库加载完成 {time.time()-t0:.1f}s, sr={sr}")
+            if torch.cuda.is_available():
+                mem = torch.cuda.memory_allocated() // 1024 // 1024
+                tot = torch.cuda.get_device_properties(0).total_memory // 1024 // 1024
+                _log(f"显存: {mem}/{tot} MB")
+            return model
+        except Exception as e:
+            _log(f"官方库加载失败 ({e})，回退项目源码...")
+            from voxcpm.model.voxcpm2 import VoxCPM2Model
 
-os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-# =====================================================================
+            m = VoxCPM2Model.from_local(
+                os.getenv("VOXCPM2_MODEL_PATH", "/mnt/workspace/VoxCPM2"),
+                optimize=False,
+            )
+            m.eval()
+            return m
 
-import abc
+    def _execute_smoke_test(self) -> None:
+        """Kaggle 烟雾测试"""
+        import numpy as np
+
+        _log("🧪 烟雾测试...")
+        try:
+            wav = self.engine.generate(
+                text="测试。",
+                cfg_value=2.0,
+                inference_timesteps=5,
+            )
+            wav = np.asarray(wav).astype("float32").reshape(-1)
+            _log(f"✅ 烟雾测试通过: {len(wav)} 采样点")
+        except Exception as e:
+            raise RuntimeError(f"烟雾测试失败: {e}")
+
+    def _synthesize(
+        self,
+        text: str,
+        voice_id: str,
+        prosody: Dict[str, Any],
+        reference_audio: Optional[str],
+    ) -> bytes:
+        """Kaggle 推理 -> 返回 WAV bytes"""
+        import numpy as np
+        import soundfile as sf
+
+        steps = prosody.get("steps", int(os.getenv("VOXCPM2_INFERENCE_TIMESTEPS", "10")))
+        cfg = prosody.get("cfg", 2.0)
+
+        _log(f"🎵 合成: {len(text)} 字符, steps={steps}")
+
+        wav = self.engine.generate(
+            text=text,
+            cfg_value=cfg,
+            inference_timesteps=prosody.get("inference_timesteps", steps),
+        )
+
+        wav = np.asarray(wav).astype("float32").reshape(-1)
+
+        buffer = io.BytesIO()
+        sr = getattr(self.engine.tts_model, "sample_rate", 48000)
+        sf.write(buffer, wav, sr, format="WAV")
+        return buffer.getvalue()
+
+    def _get_platform_gpu_metrics(self) -> Dict[str, int]:
+        """Kaggle GPU 指标"""
+        import torch
+
+        if torch.cuda.is_available():
+            alloc = torch.cuda.memory_allocated() // 1024 // 1024
+            total = torch.cuda.get_device_properties(0).total_memory // 1024 // 1024
+            return {
+                "vram_used_mb": alloc,
+                "vram_total_mb": total,
+                "vram_usage_percent": int(alloc * 100 / total) if total > 0 else 0,
+                "gpu_name": torch.cuda.get_device_name(0),
+                "gpu_count": torch.cuda.device_count(),
+            }
+        return {"error": "no_cuda"}
+
+
+def _log(msg: str, also_print: bool = True):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    if also_print:
+        print(line, flush=True)
+
+
+# Kaggle Notebook 专用运行入口
+def run_kaggle_notebook_cell():
+    """
+    在 Kaggle Notebook 的一个 cell 中运行此函数即可启动 Worker
+    使用方式：
+        exec(open("worker/kaggle_worker.py").read())
+        run_kaggle_notebook_cell()
+    """
+    # 设置环境变量
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+    os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
+    os.environ.setdefault("VOXCPM2_MODEL_PATH", "/mnt/workspace/VoxCPM2")
+    os.environ.setdefault("WORKER_ID", "kaggle-01")
+
+    worker = KaggleWorker()
+    worker.run()
+
+
+if __name__ == "__main__":
+    # 设置默认环境
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+    os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
+    os.environ.setdefault("VOXCPM2_MODEL_PATH", "/mnt/workspace/VoxCPM2")
+    os.environ.setdefault("WORKER_ID", "kaggle-01")
+
+    worker = KaggleWorker()
+    worker.run()

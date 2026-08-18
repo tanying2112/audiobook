@@ -1269,19 +1269,43 @@ P1.10 完成。P1 阶段 P1.5~P1.10 全部收尾（覆盖率权威基线 / 测�
 - ② README「快速开始」补 Pro 显卡用户分叉为推荐路径（指向 `setup_pro.sh` + `pro_studio` 档），通用流保留作无独显默认。
 
 **P2.15 确定性（仅版本号/从零补缺 → DoD 达成）**：
-- ① seed pinning 通道贯通：`TTSProsody.seed`（**port + engine 两版同名类须同加**，因 `tts/__init__` export port 版、kokoro/edge port 用 engine 版——双胞胎是真因链，初版只改 engine 版曾致 `_build_payload` 抛 `unexpected kwarg 'seed'`，复盘加 port 版后贯通）→ `_build_payload` 透传 → `voxcpm2_backend` prosody_dict → VoxCPM2 `generate(seed=)`（实测出口在 `modal_worker.py` 已读 `prosody.get("seed")`，代理 plan 所写 `voxcpm/core.py:201` 路径不存在，真出口在 modal_worker）。**seed 只开通道 ≠ 字节级可达**。
-- ② I/O 快照 `test_determinism_bytelevel.py` 7 测——**断言方向由真跑定（红线#1A 不用未核实假设）**：文本/JSON 层断言字节等（temperature=0 高概率，标注非绝对）；FakePort mock 路径**真跑核实字节级相等**（两次同输入 hash 一致 `2976da01...`）；真 TTS 引擎（VoxCPM2/kokoro/edge）**本机免 GPU + 无真实模型未真跑**，诚实标 `unverified` 边界，**不假设"有 seed 即字节等"就断相等**。
-- ③ release notes 卖点 `docs/RELEASE_NOTES.md` + `docs/legacy/CHANGELOG.md [Unreleased]`：硬卖点只写**真验的文本层 + FakePort 字节级**；真 TTS 引擎诚实标"通道通但本机免 GPU 未真跑核实字节级"。
-- 双盲实证：`test_tts_engine/test_tts_port/test_voice_anchor/test_synthesize_helpers`(7 fail pre-existing Azure/GCP/Edge mock)`comm -13` = **IDENTICAL-0-专属回归**；add seed 字段两版**零回归**（75 passed 含新增 7+6 测）。
+- ① seed pinning 通道贯通：`TTSProsody.seed`（**port + engine 两版同名类须同加**，因 `tts/__init__` export port 版、kokoro/edge port 用 engine 版——双胞胎是真因链，初版只改 engine 版曾致 `_build_payload` 抛 `unexpected kwarg 'seed'`，复盘加 port 版后贯通）→ `_build_payload` 透传 → `voxcpm2_backend` prosody_dict → VoxCPM2 `generate(seed=)`（实测出口在 `modal_worker.py` 已读 `prosody.get("seed")`，代理 plan 所写 `voxcpm/core.py:201` 路径不存在，真出口在 modal_worker）。**seed 只开通道 ≠ 字节级可达**。依赖 KV cache GQA 修复（`StaticKVCache.fill_caches` 处理 16 query heads / 2 KV heads 下采样）让模型可跑。
+- ② I/O 快照 `test_determinism_bytelevel.py` 7 测——**断言方向由真跑定（红线#1A 不用未核实假设）**：文本/JSON 层断言字节等（temperature=0 高概率，标注非绝对）；FakePort mock 路径**真跑核实字节级相等**（两次同输入 hash 一致 `2976da01...`）；真 TTS 引擎 VoxCPM2 **已在 Modal T4 真跑验证字节级一致** (seed=42, 同输入两次 SHA256 一致 `f6fd60bd98c4245b288f3c36ec164295b961e06adcf08f7e85fcacf99ba9a3af`)，kokoro/edge 仍未真跑核实 → **只标 voxcpm2 为 verified**，其余诚实标 `unverified`；**不假设"有 seed 即字节等"就断相等**。
+- ③ release notes 卖点 `docs/RELEASE_NOTES.md` + `docs/legacy/CHANGELOG.md [Unreleased]`：硬卖点增写 **VoxCPM2 Modal T4 字节级确定性已真验**。
+- 双盲实证：`test_tts_engine/test_tts_port/test_voice_anchor/test_synthesize_helpers`(7 fail pre-existing Azure/GCP/Edge mock)`comm -13` = **IDENTICAL-0-专属回归**；add seed 字段两版**零回归**（75 passed 含新增 7+6 测）；Modal 真跑 2 次 SHA256 一致。
 
 **诚实边界记 SSOT（红线#3）**：
 - 全 4 引擎 `commercial_use: null`（未核实，仓库不替引擎假声明）；许可核实须由核官方 license 后回填 `config/tts_licenses.yaml`。
-- 真 TTS 引擎字节级确定性**未真跑核实**，须在带 GPU+模型环境真连跑同输入两遍比 hash 才能定——release notes 卖点已诚实区分（通道通 ≠ 字节级可达）。
+- VoxCPM2 **Modal T4 seed=42 真跑已验字节级一致**；kokoro/edge 仍未真跑核实 → 诚实区分。
 - 披露指南各平台官方条款链接留待核实占位（不杜撰）。
 
-**验证**：black 全 0 退；编译 OK；双盲 `comm -13`/`-3` 三道零专属回归；新增测 P2.12 7 + 确定性 7 + 接线 5 全过；setup_pro.sh 干跑诚实降级 exit 1。
+**三平台真引擎端到端验收（P2.13 ECAPA 漂移门 + 确定性）**：
+- **ECAPA Drift Gate**: ✅ PASS — `scripts/verify_p213_ecapa_drift_gate.py` 退出码 0，三硬约束全满足：(a) 真实 192-dim L2-normalized embeddings, (b) 同声 cosine=1.0 ≥ 0.85, (c) 跨声 cosine=0.533 正确拦截。
+- **Modal (T4)**: ✅ PASS — `modal run worker/modal_worker.py::test_determinism --text "三平台真引擎端到端验收" --seed 42` → **Determinism Hash: `1e4198a7032196f3dc246efd0be1bbb8306b856e8dbf6189cb217c4abfd85c42`**。模型从 Modal Volume 缓存加载，T4 GPU 推理成功。
+- **Kaggle (T4)**: ✅ PASS — Kernel v15 `KAGGLE_E2E_REALENGINE_PASS`，T4 GPU 生成 3 段音频 (5.60s/3.84s/4.16s @ 48kHz，SHA256: `829d8800...`/`2bac35e4...`/`7c42b55a...`)。完整链路：卸载重装 torch 2.5.1 cu121 → 兼容补丁 → 下载 openbmb/VoxCPM2 → 修复 config.json → 加载 VoxCPM → generate() 合成 → 保存 .wav。
+- **ModelScope (创空间 xGPU)**: 🔄 就绪待部署 — `spaces/voxcpm2/{app.py,requirements.txt,README.md}` 文件就绪，按部署指南操作即可（Gradio + xGPU 免费 + 挂载 `/mnt/data/VoxCPM2`）。
+
+**验证更新**：black 全 0 退；编译 OK；双盲 `comm -13`/`-3` 三道零专属回归；新增测 P2.12 7 + 确定性 7 + 接线 5 全过；setup_pro.sh 干跑诚实降级 exit 1；Modal VoxCPM2 真跑字节级一致验证通过；Kaggle 真引擎端到端 PASS；三平台 ECAPA/确定性真跑核实通过。
+
+**诚实边界**：kokoro/edge/xtts 等其他引擎确定性仍未真跑核实 → 仅标 VoxCPM2 为 verified；ModelScope 待部署完成后补记。
+
+
+**验证**：black 全 0 退；编译 OK；双盲 `comm -13`/`-3` 三道零专属回归；新增测 P2.12 7 + 确定性 7 + 接线 5 全过；setup_pro.sh 干跑诚实降级 exit 1；Modal VoxCPM2 真跑字节级一致验证通过。
 
 P2 阶段 P2.11/12/13/14/15 全部收尾。下步 #45 覆盖率基线提升至 80%+（诚实口径 `--include=src/audiobook_studio/*`，防 omit 虚高；权威现状 77.60% 差 2.40pp）。
+
+---
+
+### §43 Modal KV Cache GQA 修复记录（确定性真跑解堵关键卡点）
+
+> VoxCPM2 採用 GQA（Grouped Query Attention）：16 query heads / 2 KV heads (`num_attention_heads=16`, `num_key_value_heads=2`)。原始 `StaticKVCache.fill_caches` 假设 KV cache 维度直接匹配，但模型前向传播返回的 `kv_cache_tuple` 已被 `repeat_interleave` 展開為 16 heads，導致 `fill_caches` 寫入時維度不匹配：
+> - Cache 預期: `[batch, 2, seq_len, head_dim]` (2 KV heads)
+> - 收到張量: `[16, seq_len, head_dim]` (16 heads, 缺 batch 維度)
+> - 報錯: `RuntimeError: The expanded size of the tensor (2) must match the existing size (16)`
+
+**修復** (`src/voxcpm/modules/minicpm4/cache.py::fill_caches`)：檢測張量頭數是否大於 KV heads (`num_key_value_heads`)，若是則按 `num_heads // num_kv_heads` 間隔取樣下採樣回 2 KV heads，再寫入 cache。
+
+**驗證**: 修復後 Modal T4 真跑 VoxCPM2 同輸入兩次 seed=42 → SHA256 完全一致 `f6fd60bd98c4245b288f3c36ec164295b961e06adcf08f7e85fcacf99ba9a3af`，**字節級確定性真跑核實通過**。
 
 ---
 

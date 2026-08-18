@@ -21,10 +21,10 @@ from .base_worker import BaseWorker
 
 
 # ==========================================
-# SSL VERIFICATION BYPASS
+# SSL VERIFICATION BYPASS & HF MIRROR
 # ==========================================
-os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 # ==========================================
 # PyTorch 2.6+ weights_only=True COMPAT FIX
@@ -66,8 +66,70 @@ except Exception:
 
 
 # ==========================================
-# GPU Helpers
+# KAGGLE SECRETS & CONFIG (mirrors colab_setup.py SECRETS pattern)
 # ==========================================
+# ⚠️ 红线#5 合规：本文件密钥已占位化，请在 Notebook/环境中用 os.environ 注入真实值再运行。
+KAGGLE_SECRETS = {
+    # Redis (Upstash) —— 与 Colab/Modal/ModelScope 共用同一队列
+    "REDIS_HOST": "casual-sawfish-86152.upstash.io",
+    "REDIS_PORT": "6379",
+    "REDIS_AUTH": "<REDACTED_UPSTASH_REDIS_PASSWORD>",
+    # Cloudflare R2 —— 合成音频上传
+    "R2_ENDPOINT": "https://<REDACTED_R2_ACCOUNT_ID>.r2.cloudflarestorage.com",
+    "R2_ACCESS_KEY_ID": "<REDACTED_R2_ACCESS_KEY_ID>",
+    "R2_SECRET_ACCESS_KEY": "<REDACTED_R2_SECRET_ACCESS_KEY>",
+    "R2_BUCKET": "audiobook-assets",
+    "R2_PUBLIC_URL": "https://pub-xxx.r2.dev",
+    # Worker 标识
+    "WORKER_ID": "kaggle-t4-01",
+    # 模型仓库
+    "VOXCPM2_HF_REPO": "openbmb/VoxCPM2",
+    "VOXCPM2_MS_REPO": "OpenBMB/VoxCPM2,openbmb/VoxCPM2",
+    # 模型缓存目录
+    "MODEL_CACHE": "/tmp/voxcpm2-model",
+    # 官方推理库版本
+    "VOXCPM2_PIP": "voxcpm==2.0.3",
+    # HF 镜像（兜底下载用）
+    "HF_ENDPOINT": "https://hf-mirror.com",
+    "HF_HUB_DISABLE_SSL_VERIFY": "1",
+}
+
+
+def inject_kaggle_secrets():
+    """将 KAGGLE_SECRETS 写入 os.environ（仅占位的不覆盖已存在的真值）。"""
+    for k, v in KAGGLE_SECRETS.items():
+        if v and not v.startswith("<"):
+            os.environ[k] = v
+            print(f"✅ Set {k}")
+        else:
+            print(f"⏭️  {k} 占位未填，请用 os.environ 注入真值后再启动 worker")
+
+
+def verify_kaggle_env():
+    """检查启动 worker 所需的最小环境变量是否就绪。"""
+    required = ["REDIS_HOST", "REDIS_PORT", "R2_ENDPOINT", "R2_ACCESS_KEY_ID"]
+    missing = [k for k in required if not os.getenv(k) or os.getenv(k, "").startswith("<")]
+    if missing:
+        print(f"❌ 以下密钥未注入真值: {missing}")
+        print("   请先在 Notebook 中执行:")
+        print("   os.environ['REDIS_HOST']='your_real_value'  ...")
+        return False
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            print("⚠️ CUDA 不可用，请在 Kaggle 启用 T4 GPU")
+            return False
+        print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        print(f"⚠️ torch 检查失败: {e}")
+    return True
+
+
+if __name__ == "__main__":
+    # 允许直接运行此文件进行环境检查
+    inject_kaggle_secrets()
+    print("\n=== 环境检查 ===")
+    verify_kaggle_env()
 def get_gpu_memory_used_mb() -> int:
     try:
         if torch.cuda.is_available():
@@ -233,6 +295,12 @@ class KaggleWorker(BaseWorker):
 
 
 def main():
+    # 注入密钥
+    inject_kaggle_secrets()
+    # 环境检查
+    if not verify_kaggle_env():
+        sys.exit(1)
+
     if not torch.cuda.is_available():
         print("ERROR: CUDA not available. This worker requires GPU (T4 x2 on Kaggle).", file=sys.stderr)
         sys.exit(1)

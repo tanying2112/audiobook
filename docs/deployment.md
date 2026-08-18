@@ -659,3 +659,72 @@ Colab 免费 T4（16GB VRAM）接入算力池，与已验证的 `modelscope-01` 
 
 > ⚠️ Colab 免费 Session 最多 12h（Pro 24h），断开后需重跑 Cell 2-5。
 > 节点 `colab-01` 暂标 `verified: false`，与已验证的 `modelscope-01` 区分——在 Colab 实跑产出音频后可标记 `verified: true`。
+
+### 11.5 ModelScope-Agent / MCP 生态扩展（可选）
+
+在 PAI DSW 直跑 Worker 已验证可用的基础上，若需接入魔搭官方的 **Agent 互联 / MCP 广场**，提供两条现成脚手架，均复用已验证的 DSW 环境（模型在 NAS、voxcpm conda env 就绪）。
+
+#### 11.5.1 MCP Server —— 让外部 Agent 通过标准协议调用 VoxCPM2
+
+文件：`voxcpm2-pool/modelscope/modelscope_mcp_tts_server.py`（~174 行，FastAPI + mcp SDK）
+
+暴露工具：`generate_tts(text, voice, steps, cfg)` → 返回 base64 WAV + 元信息
+
+**在 DSW 运行**：
+```bash
+# 1) 装 mcp SDK（在 voxcpm 环境内）
+pip install "mcp[cli]" fastapi uvicorn
+
+# 2) 可选：调速
+export VOXCPM2_INFERENCE_TIMESTEPS=10
+
+# 3) 启动
+python /mnt/workspace/modelscope_mcp_tts_server.py
+# -> 监听 0.0.0.0:8000/mcp (SSE)
+```
+
+**对外暴露**（二选一）：
+- DSW 自带公网 IP + 安全组放行 8000
+- `ngrok http 8000` → 得到 `https://xxx.ngrok-free.app`，填入 ModelScope-Agent `mcp_servers` 配置或 MCP 广场登记
+
+**Agent 调用示例**（JSON-RPC over MCP）：
+```json
+{
+  "tool": "generate_tts",
+  "arguments": {"text": "你好，MCP 互联测试。", "steps": 8}
+}
+```
+
+#### 11.5.2 创空间 Gradio Demo —— 零运维、免费 xGPU 自动冷启动
+
+目录：`spaces/voxcpm2/`（`app.py` + `requirements.txt` + `README.md`）
+
+**部署步骤**：
+1. 魔搭网页 → 创空间 → 新建空间 → 选 **Gradio** / **Python** / **GPU: xGPU(免费)**
+2. 克隆空间仓库，推送三个文件：
+   - `app.py`（Gradio 界面 + 模型加载逻辑，自动兜底下载）
+   - `requirements.txt`
+   - `README.md`（自动生成模型卡片）
+3. **持久化模型权重**（关键，避免冷启动重下 4.58GB）：
+   - 先在魔搭上传 `OpenBMB/VoxCPM2` 为私有数据集/模型
+   - 空间设置 → **挂载数据集/模型** → 选该资源 → 挂载到 `/mnt/data/VoxCPM2`
+   - 代码自动检测 `/mnt/data/VoxCPM2`
+4. 环境变量（空间设置 → 环境变量）：
+   - `VOXCPM2_INFERENCE_TIMESTEPS=10`（默认 10，8 约 1.13x 提速）
+   - `HF_ENDPOINT=https://hf-mirror.com`
+
+**本地调试**：
+```bash
+pip install -r requirements.txt
+python app.py  # http://localhost:7860
+```
+
+**创空间自动给出固定 HTTPS 域名**，即刻可分享/嵌入。
+
+---
+
+> **路径选择提示**：
+> - 只想**自己在 DSW 里跑 Worker、接 Redis 队列** → 已完成，无需额外操作
+> - 想让**别的 Agent / 用户通过标准 MCP 协议调用** → 跑 11.5.1 的 MCP Server
+> - 想**零运维对外发布一个可玩的 Web Demo** → 推 11.5.2 到创空间
+> - 三者**互不冲突、可叠加**，模型权重复用同一份 NAS 缓存
