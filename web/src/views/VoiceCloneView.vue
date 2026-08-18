@@ -432,7 +432,7 @@ function backToUpload() {
 
 function cloneAnother() {
   step.value = 1
-  form.value = { speakerId: '', language: 'zh-CN', textContent: '' }
+  form.value = { speakerId: '', language: 'zh-CN', textContent: '', consentAccepted: false }
   audioFile.value = null
   audioUrl.value = null
   audioDuration.value = null

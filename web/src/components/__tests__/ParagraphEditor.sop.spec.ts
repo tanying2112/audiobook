@@ -49,7 +49,7 @@ function makeParagraph(over: Partial<Paragraph> = {}): Paragraph {
 function mountEditor(paragraph: Paragraph) {
   return mount(ParagraphEditor, {
     props: { paragraph, projectId: 7, chapterId: 3 },
-  } as ComponentMountingOptions<ParagraphEditor>)
+  } as ComponentMountingOptions<typeof ParagraphEditor>)
 }
 
 describe('ParagraphEditor.vue — SOP 纠错投喂 (P0.1)', () => {

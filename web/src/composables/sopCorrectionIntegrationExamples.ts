@@ -1,7 +1,7 @@
 /**
  * SOP Correction Integration Examples（参考示例，非运行集成）
  *
- * ⚠️ 本文件为**纯参考文档**：展示 useSopCorrection 的集成模式，被注释为 `/* … */`，
+ * ⚠️ 本文件为**纯参考文档**：展示 useSopCorrection 的集成模式，示例代码全部以块注释包裹，
  * 不导出任何运行时符号，也**不是** ParagraphEditor.vue / CharacterManager.vue 的引用源。
  * 真实集成已直接落在：
  *   - web/src/components/ParagraphEditor.vue（段落正文翻改 → edited_text 投喂）
