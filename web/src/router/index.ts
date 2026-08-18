@@ -49,6 +49,11 @@ const router = createRouter({
       component: () => import('../views/ExportView.vue'),
     },
     {
+      path: '/projects/:id/publish',
+      name: 'publish',
+      component: () => import('../views/PublishView.vue'),
+    },
+    {
       path: '/projects/:projectId/translation',
       name: 'translation',
       component: () => import('../views/TranslationView.vue'),
