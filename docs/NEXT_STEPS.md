@@ -23,8 +23,8 @@
 
 ## 二、已知缺口(来自实际代码 / CI 核对)
 
-- **G1 挂起测试**:本地跑全套 `tests/unit/` ≥600s 超时,说明至少 1 个测试会挂起(疑似网络 / LLM 等待)。CI `test` 任务有 `--timeout=60` + `timeout-minutes:20`,挂起会**导致 CI 失败**。→ 对应 **A1**。
-- **G2 pre-commit 钩子损坏**:任何提交都失败,导致本次全部用 `--no-verify`。CI `lint` 任务跑 `pre-commit run --all-files`,钩子不过会卡 PR。→ 对应 **A2**。
+- **G1 测试失败(非挂起)**:经核对,**不存在死循环挂起**。此前 ≥600s 超时是本地 bash 截断 5146 个单测的慢速套件;CI `test` 任务用 `--timeout=60` + `-x`,会在**首个失败测试**处立即退出(被误判为"卡住")。真实问题:套件含**大量既有测试失败**(如 `tests/unit/test_upload.py` 29 个失败,涉及路由/夹具/mock 等,与 S3 工作无关)。首个 CI 阻塞 `tests/unit/api/test_auto_run_api.py` 因缺失 `/api` 前缀 404,已修复(现 27 passed)。→ 对应 **A1**。
+- **G2 pre-commit 钩子损坏**:根因是 venv 缺少 `pre_commit` 模块(曾 `ModuleNotFoundError`),导致任何提交 pre-commit 钩子直接报错(故本次用 `--no-verify`);已用 `uv pip install --python .venv/bin/python pre-commit` 修复,`.venv/bin/python -m pre_commit --version` → 4.6.0 可运行。CI `lint` 任务跑 `pre-commit run --all-files`,钩子**全部通过**才是硬门槛(对 269 个 py 文件做 black/flake8/mypy/bandit 全过是一项独立的大改造)。→ 对应 **A2**。
 - **G3 前端未做生产构建**:只验证了 `vue-tsc` + `vitest`,**未跑 `vite build`**;CI 也不构建 web,生产构建错误会被漏掉。→ 对应 **A3**。
 - **G4 付费/云依赖项仅脚手架**:S3.3 的 StableAudio/AudioLDM2、S3.2 完整 CRDT/OT 多实例实时同步、S3.6 多区域生产部署——按免费约束只做了本地可达成部分 + 诚实桩/配置开关,**未完整实现**。→ 对应 **C1–C3**。
 - **G5 当前分支不在 CI 触发范围**:需 PR 才会真正跑 CI。→ 对应 **A6**。
@@ -89,12 +89,12 @@ Phase D 发布准备                  →  D1 → D2
 
 | 任务 | 状态 | 提交 | 备注 |
 |---|---|---|---|
-| A1 挂起测试 | 🔲 待办 | | |
-| A2 pre-commit | 🔲 待办 | | |
+| A1 挂起测试(实为既有失败) | 🟡 部分完成 | `b49b2a0` | G1 非挂起;首阻塞 test_auto_run_api 已修(27 passed);test_upload.py 仍 29 失败(路由/夹具/mock,既有问题,待专项清理);套件含更多既有失败需独立专项 |
+| A2 pre-commit | 🟡 根因已修 | `fdce90b` | venv 缺 pre_commit 模块→已装(4.6.0);钩子"全过"仍需对 269 文件做 lint 大改造(独立专项) |
 | A3 前端构建 | 🔲 待办 | | |
-| A4 env_checker | 🔲 待办 | | |
+| A4 env_checker | ✅ 已完成 | | `env_checker --fail-on-warning` 退出 0(NumPy 警告非致命),无需改动 |
 | A5 文档同步 | 🔲 待办 | | |
-| A6 建 PR | 🔲 待办 | | |
+| A6 建 PR | 🔲 待办 | | 需 PR 到 main 触发 CI |
 | B1 S3.7 真实 | 🔲 待办 | | |
 | B2 S3.1 GEPA | 🔲 待办 | | |
 | B3 S3.3 端到端 | 🔲 待办 | | |
@@ -109,7 +109,8 @@ Phase D 发布准备                  →  D1 → D2
 
 ## 六、风险与开放问题
 
-1. **A1 挂起测试是当前唯一会让 CI 失败的真实技术风险**,优先级最高。
+1. **A1 真实技术风险已澄清:并非"挂起",而是套件含大量既有测试失败 + 首阻塞点为 /api 路径缺失(已修)**。让整套件全绿需专项修复大量既有失败,多数与 S3 无关。
+2. **A2 根因(venv 缺 pre_commit 模块)已修复**;但 "pre-commit run --all-files 全过" 是对 269 文件做 lint/类型/安全的全量改造,属独立大专项。
 2. **A6 建 PR** 需要远程推送权限与 `gh`/网络;若环境受限,退化为「提供 PR 命令 + 本地验证 CI 等价步骤」。
 3. **B1/B2/B4** 依赖本机是否有可用免费 LLM;若无,降级为确定性 mock 并明确标注(不伪造真实收益)。
 4. **C/D** 多为文档/模板,非阻塞,按资源与意愿决定。
