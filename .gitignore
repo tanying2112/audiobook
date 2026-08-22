@@ -211,3 +211,10 @@ storage/books/
 pyproject_mutmut_temp.toml
 .claude/settings.local.json
 data/mock_data/
+
+# Runtime products / artifacts — prevent accidental commit
+storage/books/
+voxcpm2-pool/
+output/*.wav
+output/*.ogg
+output/*.flac
