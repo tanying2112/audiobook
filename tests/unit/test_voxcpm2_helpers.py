@@ -10,6 +10,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+# VoxCPM2 依赖外部可选后端包 `voxcpm`(位于 voxcpm2-pool/, 默认不安装)。
+# 该后端不可用时整体跳过, 避免 ModuleNotFoundError 污染套件。
+pytest.importorskip("voxcpm")
+
 from src.audiobook_studio.tts.voxcpm2_backend import (
     QUANTIZATION_MODES,
     VOXCPM2_VOICES,
