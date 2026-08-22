@@ -40,9 +40,6 @@ mock_transformers.AutoTokenizer = mock_auto_tokenizer
 mock_hf_hub = Mock()
 mock_hf_hub.snapshot_download = Mock()
 
-mock_types = Mock()
-mock_types.ModuleType = type
-
 sys.modules["torch"] = mock_torch
 sys.modules["torch.nn"] = mock_torch.nn
 sys.modules["torch.nn.attention"] = mock_torch.nn.attention
@@ -50,7 +47,6 @@ sys.modules["torch.nn.attention.flex_attention"] = mock_torch.nn.attention.flex_
 sys.modules["torchaudio"] = mock_torchaudio
 sys.modules["transformers"] = mock_transformers
 sys.modules["huggingface_hub"] = mock_hf_hub
-sys.modules["types"] = mock_types
 
 
 from src.audiobook_studio.tts.remote_workers.kaggle_worker import (
