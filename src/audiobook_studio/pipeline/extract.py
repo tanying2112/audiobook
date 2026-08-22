@@ -17,6 +17,7 @@ from ebooklib import epub
 
 from ..llm import LLMRouter, create_router
 from ..monitoring import record_stage_performance
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
@@ -116,13 +117,28 @@ class ExtractPipeline:
             self.router = router
 
     def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from PDF using pdfplumber, fallback to PyMuPDF + pytesseract OCR."""
+        """Extract text from PDF.
+
+        Path order (S2.4 — OCR honesty):
+          1. Embedded text layer via pdfplumber (ALWAYS attempted).
+          2. If pdfplumber fails, fall back to PyMuPDF (fitz) for text layer.
+          3. If the text layer is too thin AND the ``tesseract`` binary +
+             ``pytesseract``/``Pillow`` are genuinely available (``OCR_AVAILABLE``),
+             run real OCR with PyMuPDF + pytesseract.
+          4. Otherwise we degrade HONESTLY to text-layer-only extraction
+             (``has_ocr=False``). We never claim OCR ran when it could not.
+
+        NOTE: the OCR path is opt-in. When tesseract is not installed the
+        pipeline is "text-layer extraction only" — see the module-level
+        ``OCR_AVAILABLE`` gate and the warnings logged at import time.
+        """
         text_parts = []
         page_count = 0
         has_ocr = False
         ocr_pages = 0
 
         # Try pdfplumber first (text layer)
+        pdfplumber_succeeded = False
         try:
             with pdfplumber.open(file_path) as pdf:
                 page_count = len(pdf.pages)
@@ -130,21 +146,31 @@ class ExtractPipeline:
                     page_text = page.extract_text()
                     if page_text:
                         text_parts.append(page_text)
+            pdfplumber_succeeded = True
         except Exception as e:
             logger.warning(f"pdfplumber failed: {e}")
 
         extracted_text = "\n\n".join(text_parts).strip()
 
-        # If text too short, try OCR. Red line #1 (主路径真实性): ``has_ocr`` and
-        # ``ocr_pages`` MUST reflect OCR that actually *ran and produced text*,
-        # not "the OCR branch was entered". The previous form set
-        # ``has_ocr = True`` unconditionally here and counted dict-block text as
-        # OCR pages even when ``OCR_AVAILABLE`` was False -- i.e. claiming OCR on
-        # scanned PDFs that simply returned embedded-text-layer fragments (audit
-        # §5.2 / §七#5). We now: only attempt OCR when it is honestly available;
-        # when it is not, fall through cleanly with has_ocr=False/ocr_pages=0
-        # (the embedded text layer was already extracted by pdfplumber above;
-        # nothing further to do here that would be real OCR).
+        # If pdfplumber failed or got no text, fall back to PyMuPDF (fitz) for text layer
+        # This gives us page count and any embedded text even when OCR is not available
+        if not pdfplumber_succeeded or len(extracted_text) < 100:
+            try:
+                doc = fitz.open(file_path)
+                page_count = len(doc)
+                if not pdfplumber_succeeded:
+                    # Try to extract text from fitz as fallback
+                    for page_num in range(len(doc)):
+                        page = doc[page_num]
+                        page_text = page.get_text()
+                        if page_text:
+                            text_parts.append(page_text)
+                    extracted_text = "\n\n".join(text_parts).strip()
+                doc.close()
+            except Exception as e:
+                logger.warning(f"PyMuPDF fallback failed: {e}")
+
+        # If text still too short, try OCR (only when OCR_AVAILABLE)
         if len(extracted_text) < 100 and OCR_AVAILABLE:
             logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
             # OCR_AVAILABLE is only True when both modules imported; narrow for the
@@ -152,7 +178,6 @@ class ExtractPipeline:
             assert Image is not None and pytesseract is not None
             try:
                 doc = fitz.open(file_path)
-                page_count = len(doc)
                 ocr_text_parts = []
                 for page_num in range(len(doc)):
                     page = doc[page_num]
@@ -264,18 +289,55 @@ class ExtractPipeline:
             return "", 1, False, 0.0
 
     def _detect_language(self, text: str) -> str:
-        """Simple language detection."""
+        """Simple heuristic language detection.
+
+        Supports Chinese (zh), Japanese (ja), French (fr) and English (en)
+        in addition to the previous zh/en split. Uses Unicode script ranges
+        rather than a hard dependency on langdetect/fasttext.
+        """
         # In production: use langdetect or fasttext
-        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
-        total_chars = len([c for c in text if c.isalpha()])
-        if total_chars == 0:
+        if not text:
             return "zh"
-        return "zh" if chinese_chars / total_chars > 0.3 else "en"
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+        # Hiragana + Katakana => Japanese
+        japanese_chars = sum(
+            1 for c in text if ("\u3040" <= c <= "\u309f") or ("\u30a0" <= c <= "\u30ff")
+        )
+        # Latin letters (incl. accented) for French/English detection
+        latin_chars = sum(1 for c in text if ("\u0041" <= c <= "\u007a") or ("\u00c0" <= c <= "\u017f"))
+        total_alpha = len([c for c in text if c.isalpha()])
+        if total_alpha == 0:
+            return "zh"
+        # Japanese: strong hiragana/katakana presence
+        if japanese_chars / total_alpha > 0.05:
+            return "ja"
+        # Chinese: predominantly CJK ideographs
+        if chinese_chars / total_alpha > 0.3:
+            return "zh"
+        # Latin-script: French has many accented characters; default to fr when
+        # a notable fraction of latin chars carry diacritics, else en.
+        accented = sum(1 for c in text if "\u00c0" <= c <= "\u017f")
+        if latin_chars / total_alpha > 0.8 and accented / max(latin_chars, 1) > 0.05:
+            return "fr"
+        return "en"
 
     def run(self, input_data: ExtractionInput) -> ExtractionResult:
         """Execute extraction pipeline."""
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
 
         # MOCK: 待真实实现
         # Mock mode: return simulated result
@@ -371,6 +433,34 @@ class ExtractPipeline:
             model="unknown",
             schema_compliance=None,
         )
+
+        # Emit stage progress (100% complete)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                current=1,
+                total=1,
+                message="Extraction complete",
+            ))
+        except RuntimeError:
+            pass
+
+        # Emit stage exit
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_exit(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                success=True,
+            ))
+        except RuntimeError:
+            pass
 
         return ExtractionResult(
             raw_text=raw_text,

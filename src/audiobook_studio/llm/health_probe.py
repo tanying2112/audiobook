@@ -105,14 +105,19 @@ class HealthProbe:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        # Resolve health-check path: explicit health_path wins; Ollama has no
+        # /models so it falls to /api/tags; otherwise default to /models
+        # (OpenAI-compatible). Anthropic gateways (fcc) set health_path=/health.
+        import os as _os
+        health_path = getattr(provider, "health_path", None) or "/models"
+        if base_url == "http://localhost:11434" or (base_url and "11434" in base_url):
+            if not getattr(provider, "health_path", None):
+                health_path = "/api/tags"
+
         start = time.time()
         try:
             with httpx.Client(timeout=self.timeout_s) as client:
-                # Ollama uses /api/tags endpoint instead of /models
-                if base_url == "http://localhost:11434" or base_url and "11434" in base_url:
-                    resp = client.get(f"{base_url}/api/tags", headers=headers)
-                else:
-                    resp = client.get(f"{base_url}/models", headers=headers)
+                resp = client.get(f"{base_url}{health_path}", headers=headers)
                 latency = (time.time() - start) * 1000
 
                 quota_remaining = None

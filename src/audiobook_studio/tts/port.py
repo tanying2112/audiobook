@@ -86,6 +86,7 @@ class TTSTaskResult:
     speaker_similarity: Optional[float] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)

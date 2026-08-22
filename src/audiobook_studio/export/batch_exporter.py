@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 from ..utils.ffmpeg_probe import get_duration_sync
 from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
+from .mp3 import ChapterInfo, Mp3Metadata, write_id3_tags, export_mp3_chapters
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,11 @@ class ExportFormat(str, Enum):
     """导出格式选项."""
 
     M4B = "m4b"
+    MP3 = "mp3"
     SRT = "srt"
     VTT = "vtt"
     M4B_SRT = "m4b_srt"
+    M4B_MP3 = "m4b_mp3"
     ALL = "all"
 
 
@@ -299,6 +302,58 @@ def export_project(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        # --- MP3 export ---
+        if ExportFormat.MP3 in job.formats or ExportFormat.M4B_MP3 in job.formats or ExportFormat.ALL in job.formats:
+            job.progress = ExportProgress.CONCATENATING
+            logger.info("Building MP3 chapters with ID3v2.4 tags...")
+
+            audio_files = _collect_audio_files(chapter_data_list)
+            segment_markers = _build_segment_markers(chapter_data_list)
+            
+            mp3_metadata = Mp3Metadata(
+                title=project.title or "Untitled Audiobook",
+                artist=project.author or "Unknown",
+                album=project.title or "Untitled Audiobook",
+                year=str(project.created_at.year) if project.created_at else "",
+                genre="Audiobook",
+                disc=1,
+                cover_image=job.cover_image if job.include_cover else None,
+            )
+
+            # Export each chapter as separate MP3 with ID3 tags
+            mp3_output_dir = output_dir / "mp3_chapters"
+            mp3_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            mp3_files = export_mp3_chapters(
+                audio_files=audio_files,
+                chapter_infos=segment_markers,
+                output_dir=mp3_output_dir,
+                metadata=mp3_metadata,
+            )
+
+            job.output_paths["mp3_chapters"] = [str(f) for f in mp3_files]
+
+            # Also create a combined MP3 with chapters
+            if len(mp3_files) > 0:
+                combined_mp3 = output_dir / f"project_{project.id}.mp3"
+                # Concatenate all MP3s
+                concat_list = output_dir / "concat_mp3.txt"
+                with open(concat_list, "w") as f:
+                    for mf in mp3_files:
+                        f.write(f"file '{mf.absolute()}'\n")
+                import subprocess
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                        "-i", str(concat_list), "-c", "copy", str(combined_mp3)
+                    ],
+                    check=True, capture_output=True,
+                )
+                # Write chapters to combined MP3
+                write_chapters_only(combined_mp3, segment_markers)
+                job.output_paths["mp3"] = str(combined_mp3)
+                concat_list.unlink(missing_ok=True)
+
         # --- M4B export ---
         if ExportFormat.M4B in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
             job.progress = ExportProgress.CONCATENATING
@@ -410,7 +465,7 @@ def export_project(
                 job.output_paths["vtt"] = str(vtt_path)
 
         # --- Zip bundle (if ALL or multiple formats) ---
-        if ExportFormat.ALL in job.formats or len(job.formats) > 1:
+        if ExportFormat.ALL in job.formats or len(job.formats) > 1 or ExportFormat.M4B_MP3 in job.formats:
             job.progress = ExportProgress.COMPRESSING
             zip_path = output_dir / f"project_{project.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

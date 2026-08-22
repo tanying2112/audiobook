@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,3 +74,13 @@ class AudioSegment(Base):
         foreign_keys="AudioSegment.paragraph_id",
     )
     quality: Mapped[Optional[Quality]] = relationship("Quality", back_populates="audio_segment", uselist=False)
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM audio_segments WHERE chapter_id=? ORDER BY index
+        Index("ix_audio_segments_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND status=?
+        Index("ix_audio_segments_project_id_status", "project_id", "status"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND chapter_id=? AND is_current=?
+        Index("ix_audio_segments_project_chapter_current", "project_id", "chapter_id", "is_current"),
+    )

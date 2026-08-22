@@ -225,16 +225,10 @@ class TranslateAndDubPipeline:
                             "base_volume": 1.0,
                         }
 
-            # 如果没有找到特定语言的声音，使用默认映射
-            default_voices = {
-                "en-US": "en-US-JennyNeural",
-                "es-ES": "es-ES-ElviraNeural",
-                "ja-JP": "ja-JP-NanamiNeural",
-                "fr-FR": "fr-FR-DeniseNeural",
-                "de-DE": "de-DE-KatjaNeural",
-                "zh-CN": "zh-CN-XiaoyiNeural",
-            }
-            voice_id = default_voices.get(target_language, "en-US-JennyNeural")
+            # 如果没有找到特定语言的声音，使用默认映射（来自集中式语言注册表，S2.3）
+            from ..languages import default_voice_for
+
+            voice_id = default_voice_for(target_language)
 
             return {
                 "voice_id": voice_id,

@@ -68,7 +68,12 @@ async def list_books(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
 @router.get("/{book_id}", response_model=BookOut)
 async def get_book(book_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get a single book by ID."""
-    result = await db.execute(select(LegacyBook).where(LegacyBook.id == book_id))
+    # S2.6 — eager-load paragraphs to avoid lazy N+1 on serialization.
+    result = await db.execute(
+        select(LegacyBook)
+        .where(LegacyBook.id == book_id)
+        .options(selectinload(LegacyBook.paragraphs))
+    )
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")

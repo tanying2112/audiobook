@@ -13,10 +13,13 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from src.audiobook_studio.api.templates import _apply_template_background
 from src.audiobook_studio.database import get_db
+from src.audiobook_studio.api.dependencies import get_async_db
+from src.audiobook_studio.auth.dependencies import get_current_active_user
 
 # Import the FastAPI app
 from src.audiobook_studio.main import app
@@ -29,24 +32,49 @@ client = TestClient(app, raise_server_exceptions=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Auth override - mock current user for all tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def override_auth():
+    """Override get_current_active_user dependency for all tests in this module."""
+    from unittest.mock import MagicMock
+
+    superuser = MagicMock()
+    superuser.id = 1
+    superuser.email = "super@test.com"
+    superuser.is_superuser = True
+    superuser.is_active = True
+    superuser.username = "testuser"
+
+    async def _mock_user():
+        return superuser
+
+    app.dependency_overrides[get_current_active_user] = _mock_user
+    yield
+    app.dependency_overrides.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def mock_db_session():
-    """Mock database session."""
-    return MagicMock(spec=Session)
+def mock_async_db_session():
+    """Mock async database session."""
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture(autouse=True)
-def override_get_db(mock_db_session):
-    """Override get_db dependency for all tests."""
+def override_get_async_db(mock_async_db_session):
+    """Override get_async_db dependency for all tests."""
 
-    def _get_db():
-        yield mock_db_session
+    async def _get_async_db():
+        yield mock_async_db_session
 
-    app.dependency_overrides[get_db] = _get_db
+    app.dependency_overrides[get_async_db] = _get_async_db
     yield
     app.dependency_overrides.clear()
 
@@ -111,35 +139,48 @@ def sample_paragraph():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helper: Create query chain mock
+# Helper: Create query chain mock for AsyncSession
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def setup_query_mock(mock_db_session, return_records=None, return_count=0):
-    """Setup mock query chain for FeedbackRecord queries."""
-    mock_query = MagicMock()
-    mock_db_session.query.return_value = mock_query
+def setup_async_query_mock(mock_async_db_session, return_records=None, return_count=0):
+    """Setup mock query chain for FeedbackRecord queries using AsyncSession."""
+    from unittest.mock import MagicMock
 
-    # filter, order_by, limit all return the same mock_query
-    mock_query.filter.return_value = mock_query
-    mock_query.order_by.return_value = mock_query
-    mock_query.limit.return_value = mock_query
+    mock_result = MagicMock()
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = return_records or []
+    mock_result.scalars.return_value = mock_scalars
 
-    if return_records is not None:
-        mock_query.all.return_value = return_records
-    if return_count is not None:
-        mock_query.count.return_value = return_count
+    # For count query
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = return_count
+    mock_count_result.scalar_one_or_none.return_value = return_count
 
-    return mock_query
+    # The execute() method will be called multiple times - we need to handle both
+    # the main query and the count query
+    call_count = 0
+
+    def execute_side_effect(query):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return mock_result
+        else:
+            return mock_count_result
+
+    mock_async_db_session.execute.side_effect = execute_side_effect
+    return mock_async_db_session
 
 
-def setup_first_query_mock(mock_db_session, return_record=None):
-    """Setup mock query chain for single record (first())."""
-    mock_query = MagicMock()
-    mock_db_session.query.return_value = mock_query
-    mock_query.filter.return_value = mock_query
-    mock_query.first.return_value = return_record
-    return mock_query
+def setup_first_async_query_mock(mock_async_db_session, return_record=None):
+    """Setup mock query chain for single record using AsyncSession."""
+    from unittest.mock import MagicMock
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = return_record
+    mock_async_db_session.execute.return_value = mock_result
+    return mock_async_db_session
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,9 +191,9 @@ def setup_first_query_mock(mock_db_session, return_record=None):
 class TestListTemplates:
     """Tests for GET /api/projects/{project_id}/templates"""
 
-    def test_list_templates_success(self, mock_db_session, sample_feedback_record):
+    def test_list_templates_success(self, mock_async_db_session, sample_feedback_record):
         """Should return list of confirmed templates."""
-        setup_query_mock(mock_db_session, return_records=[sample_feedback_record], return_count=1)
+        setup_async_query_mock(mock_async_db_session, return_records=[sample_feedback_record], return_count=1)
 
         response = client.get("/api/projects/1/templates")
 
@@ -164,9 +205,9 @@ class TestListTemplates:
         assert data["templates"][0]["feedback_id"] == "fb_001"
         assert data["templates"][0]["stage"] == "edit_for_tts"
 
-    def test_list_templates_with_filters(self, mock_db_session):
+    def test_list_templates_with_filters(self, mock_async_db_session):
         """Should apply filters: source, stage, pattern_tag, pending_only."""
-        setup_query_mock(mock_db_session, return_records=[], return_count=0)
+        setup_async_query_mock(mock_async_db_session, return_records=[], return_count=0)
 
         response = client.get(
             "/api/projects/1/templates",
@@ -179,12 +220,12 @@ class TestListTemplates:
         )
 
         assert response.status_code == 200
-        # Verify query was called
-        assert mock_db_session.query.called
+        # Verify query was called (execute for AsyncSession)
+        assert mock_async_db_session.execute.called
 
-    def test_list_templates_empty(self, mock_db_session):
+    def test_list_templates_empty(self, mock_async_db_session):
         """Should return empty list when no templates."""
-        setup_query_mock(mock_db_session, return_records=[], return_count=0)
+        setup_async_query_mock(mock_async_db_session, return_records=[], return_count=0)
 
         response = client.get("/api/projects/1/templates")
 
@@ -202,11 +243,11 @@ class TestListTemplates:
 class TestConfirmTemplate:
     """Tests for POST /api/projects/{project_id}/templates/{template_id}/confirm"""
 
-    def test_confirm_template_success(self, mock_db_session, sample_feedback_record):
+    def test_confirm_template_success(self, mock_async_db_session, sample_feedback_record):
         """Should confirm template (processed=true, promoted=true)."""
         sample_feedback_record.processed = False
         sample_feedback_record.promoted = False
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post(
             "/api/projects/1/templates/1/confirm", json={"action": "confirm", "pattern_tags": ["new_tag"]}
@@ -217,13 +258,13 @@ class TestConfirmTemplate:
         assert data["processed"] is True
         assert data["promoted"] is True
         assert sample_feedback_record.pattern_tags == ["new_tag"]
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_reject_template_success(self, mock_db_session, sample_feedback_record):
+    def test_reject_template_success(self, mock_async_db_session, sample_feedback_record):
         """Should reject template (processed=true, promoted=false)."""
         sample_feedback_record.processed = False
         sample_feedback_record.promoted = False
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post("/api/projects/1/templates/1/confirm", json={"action": "reject"})
 
@@ -231,18 +272,18 @@ class TestConfirmTemplate:
         data = response.json()
         assert data["processed"] is True
         assert data["promoted"] is False
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_confirm_invalid_action(self, mock_db_session):
+    def test_confirm_invalid_action(self, mock_async_db_session):
         """Should return 400 for invalid action."""
-        setup_first_query_mock(mock_db_session, return_record=MagicMock())
+        setup_first_async_query_mock(mock_async_db_session, return_record=MagicMock())
 
         response = client.post("/api/projects/1/templates/1/confirm", json={"action": "invalid"})
         assert response.status_code == 400
 
-    def test_confirm_template_not_found(self, mock_db_session):
+    def test_confirm_template_not_found(self, mock_async_db_session):
         """Should return 404 for non-existent template."""
-        setup_first_query_mock(mock_db_session, return_record=None)
+        setup_first_async_query_mock(mock_async_db_session, return_record=None)
 
         response = client.post("/api/projects/1/templates/999/confirm", json={"action": "confirm"})
         assert response.status_code == 404
@@ -256,9 +297,9 @@ class TestConfirmTemplate:
 class TestApplyTemplate:
     """Tests for POST /api/projects/{project_id}/templates/apply"""
 
-    def test_apply_template_success(self, mock_db_session, sample_feedback_record):
+    def test_apply_template_success(self, mock_async_db_session, sample_feedback_record):
         """Should queue background task and return task_id."""
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post(
             "/api/projects/1/templates/apply",
@@ -271,28 +312,28 @@ class TestApplyTemplate:
         assert data["status"] == "queued"
         assert data["scope"] == "all"
 
-    def test_apply_template_not_confirmed(self, mock_db_session, sample_feedback_record):
+    def test_apply_template_not_confirmed(self, mock_async_db_session, sample_feedback_record):
         """Should return 400 if template not confirmed."""
         sample_feedback_record.processed = True
         sample_feedback_record.promoted = False  # Not promoted
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post("/api/projects/1/templates/apply", json={"template_id": 1, "scope": "all"})
 
         assert response.status_code == 400
         assert "not confirmed" in response.json()["detail"]
 
-    def test_apply_template_not_found(self, mock_db_session):
+    def test_apply_template_not_found(self, mock_async_db_session):
         """Should return 404 for non-existent template."""
-        setup_first_query_mock(mock_db_session, return_record=None)
+        setup_first_async_query_mock(mock_async_db_session, return_record=None)
 
         response = client.post("/api/projects/1/templates/apply", json={"template_id": 999, "scope": "all"})
 
         assert response.status_code == 404
 
-    def test_apply_template_scope_chapter(self, mock_db_session, sample_feedback_record):
+    def test_apply_template_scope_chapter(self, mock_async_db_session, sample_feedback_record):
         """Should work with chapter scope."""
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post(
             "/api/projects/1/templates/apply", json={"template_id": 1, "scope": "chapter", "chapter_ids": [1, 2, 3]}
@@ -302,9 +343,9 @@ class TestApplyTemplate:
         data = response.json()
         assert data["scope"] == "chapter"
 
-    def test_apply_template_scope_pattern(self, mock_db_session, sample_feedback_record):
+    def test_apply_template_scope_pattern(self, mock_async_db_session, sample_feedback_record):
         """Should work with pattern scope."""
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
 
         response = client.post(
             "/api/projects/1/templates/apply",
@@ -324,7 +365,8 @@ class TestApplyTemplate:
 class TestApplyTemplateBackground:
     """Tests for _apply_template_background helper functions."""
 
-    def test_apply_annotation_template(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_apply_annotation_template(self, mock_async_db_session, sample_paragraph):
         """Should apply annotation template to paragraphs."""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
@@ -344,7 +386,7 @@ class TestApplyTemplateBackground:
         }
         template.pattern_tags = ["emotion_too_mild"]
 
-        _apply_annotation_template(mock_db_session, sample_paragraph, template.corrected_output)
+        await _apply_annotation_template(mock_async_db_session, sample_paragraph, template.corrected_output)
 
         # Verify paragraph updated
         assert sample_paragraph.speaker_canonical_name == "Character A"
@@ -355,10 +397,11 @@ class TestApplyTemplateBackground:
         assert sample_paragraph.needs_sfx is True
         assert "door_slam" in sample_paragraph.sfx_tags
         assert sample_paragraph.notes == "Applied via template"
-        mock_db_session.add.assert_called()
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.add.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_apply_edit_template(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_apply_edit_template(self, mock_async_db_session, sample_paragraph):
         """Should apply edit template (create TTSEdit)."""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
@@ -379,17 +422,18 @@ class TestApplyTemplateBackground:
             "prompt_version": "v1",
         }
 
-        _apply_edit_template(mock_db_session, sample_paragraph, template.corrected_output)
+        await _apply_edit_template(mock_async_db_session, sample_paragraph, template.corrected_output)
 
         # Verify TTSEdit created and paragraph updated
         assert sample_paragraph.edited_text == "编辑后的文本"
         assert sample_paragraph.edit_changes_made == ["口语化", "拆分长句"]
         assert sample_paragraph.edit_confidence == 0.9
         assert sample_paragraph.edit_rationale == "更自然"
-        mock_db_session.add.assert_called()
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.add.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_apply_routing_template(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_apply_routing_template(self, mock_async_db_session, sample_paragraph):
         """Should apply routing template (create Routing)."""
         from src.audiobook_studio.api.templates import _apply_routing_template
 
@@ -409,17 +453,18 @@ class TestApplyTemplateBackground:
             "confidence": 0.92,
         }
 
-        _apply_routing_template(mock_db_session, sample_paragraph, template.corrected_output)
+        await _apply_routing_template(mock_async_db_session, sample_paragraph, template.corrected_output)
 
         # Verify Routing created and paragraph updated
         assert sample_paragraph.routing_engine == "edge_tts"
         assert sample_paragraph.routing_voice_id == "zh-CN-XiaoxiaoNeural"
         assert sample_paragraph.routing_prosody_overrides == {"rate": "+10%"}
         assert sample_paragraph.routing_fallback == "kokoro"
-        mock_db_session.add.assert_called()
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.add.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_apply_quality_template(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_apply_quality_template(self, mock_async_db_session, sample_paragraph):
         """Should apply quality template (create Quality record)."""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
@@ -441,20 +486,19 @@ class TestApplyTemplateBackground:
             "issues": [],
         }
 
-        # Mock the query chain for TTSEdit lookup
-        mock_query = MagicMock()
-        mock_db_session.query.return_value = mock_query
-        mock_query.filter.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.first.return_value = tts_edit
+        # Mock the query chain for TTSEdit lookup using AsyncSession
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = tts_edit
+        mock_async_db_session.execute.return_value = mock_result
 
-        _apply_quality_template(mock_db_session, sample_paragraph, template.corrected_output)
+        await _apply_quality_template(mock_async_db_session, sample_paragraph, template.corrected_output)
 
         # Verify Quality created
-        mock_db_session.add.assert_called()
-        mock_db_session.commit.assert_called()
+        mock_async_db_session.add.assert_called()
+        mock_async_db_session.commit.assert_called()
 
-    def test_apply_quality_template_no_tts_edit(self, mock_db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_apply_quality_template_no_tts_edit(self, mock_async_db_session, sample_paragraph):
         """Should skip if no TTSEdit found."""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
@@ -464,14 +508,12 @@ class TestApplyTemplateBackground:
         template.corrected_output = {"overall_score": 0.9}
 
         # Mock the query chain for TTSEdit lookup - return None
-        mock_query = MagicMock()
-        mock_db_session.query.return_value = mock_query
-        mock_query.filter.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.first.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_async_db_session.execute.return_value = mock_result
 
         with patch("src.audiobook_studio.api.templates.logger") as mock_logger:
-            _apply_quality_template(mock_db_session, sample_paragraph, template.corrected_output)
+            await _apply_quality_template(mock_async_db_session, sample_paragraph, template.corrected_output)
             mock_logger.warning.assert_called()
 
 
@@ -484,56 +526,56 @@ class TestRerunDownstreamStages:
     """Tests for _rerun_downstream_stages function."""
 
     @pytest.mark.asyncio
-    async def test_rerun_after_annotation(self, mock_db_session, sample_paragraph):
+    async def test_rerun_after_annotation(self, mock_async_db_session, sample_paragraph):
         """Should re-run edit, routing, synthesize, quality after annotate."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
-            await _rerun_downstream_stages(mock_db_session, 1, "annotate", paragraphs)
+            await _rerun_downstream_stages(mock_async_db_session, 1, "annotate", paragraphs)
 
             # Should trigger downstream stages
             assert mock_run.call_count >= 3  # edit, routing, quality at minimum
             assert mock_run.await_count >= 3
 
     @pytest.mark.asyncio
-    async def test_rerun_after_edit(self, mock_db_session, sample_paragraph):
+    async def test_rerun_after_edit(self, mock_async_db_session, sample_paragraph):
         """Should re-run routing, synthesize, quality after edit."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
-            await _rerun_downstream_stages(mock_db_session, 1, "edit_for_tts", paragraphs)
+            await _rerun_downstream_stages(mock_async_db_session, 1, "edit_for_tts", paragraphs)
 
             # Should trigger routing and quality
             assert mock_run.call_count >= 2
             assert mock_run.await_count >= 2
 
     @pytest.mark.asyncio
-    async def test_rerun_after_routing(self, mock_db_session, sample_paragraph):
+    async def test_rerun_after_routing(self, mock_async_db_session, sample_paragraph):
         """Should re-run quality after routing."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
-            await _rerun_downstream_stages(mock_db_session, 1, "routing", paragraphs)
+            await _rerun_downstream_stages(mock_async_db_session, 1, "routing", paragraphs)
 
             # Should trigger quality
             assert mock_run.call_count >= 1
             assert mock_run.await_count >= 1
 
     @pytest.mark.asyncio
-    async def test_rerun_after_quality(self, mock_db_session, sample_paragraph):
+    async def test_rerun_after_quality(self, mock_async_db_session, sample_paragraph):
         """Should not re-run any stage after quality (final stage)."""
         from src.audiobook_studio.api.templates import _rerun_downstream_stages
 
         paragraphs = [sample_paragraph]
 
         with patch("src.audiobook_studio.pipeline.orchestrator.run_stage", new_callable=AsyncMock) as mock_run:
-            await _rerun_downstream_stages(mock_db_session, 1, "quality", paragraphs)
+            await _rerun_downstream_stages(mock_async_db_session, 1, "quality", paragraphs)
 
             # No downstream stages after quality
             mock_run.assert_not_called()
@@ -547,11 +589,11 @@ class TestRerunDownstreamStages:
 class TestPatternMatching:
     """Tests for pattern tag based paragraph filtering."""
 
-    def test_pattern_emotion_tag(self, mock_db_session, sample_paragraph):
+    def test_pattern_emotion_tag(self, mock_async_db_session, sample_paragraph):
         """Should match paragraphs by emotion tag."""
         sample_paragraph.emotion = "anger"
-        setup_first_query_mock(
-            mock_db_session,
+        setup_first_async_query_mock(
+            mock_async_db_session,
             return_record=MagicMock(
                 spec=FeedbackRecordModel,
                 id=1,
@@ -570,11 +612,11 @@ class TestPatternMatching:
 
         assert response.status_code == 200
 
-    def test_pattern_speaker_tag(self, mock_db_session, sample_paragraph):
+    def test_pattern_speaker_tag(self, mock_async_db_session, sample_paragraph):
         """Should match paragraphs by speaker tag."""
         sample_paragraph.speaker_canonical_name = "Narrator"
-        setup_first_query_mock(
-            mock_db_session,
+        setup_first_async_query_mock(
+            mock_async_db_session,
             return_record=MagicMock(
                 spec=FeedbackRecordModel,
                 id=1,
@@ -593,11 +635,11 @@ class TestPatternMatching:
 
         assert response.status_code == 200
 
-    def test_pattern_dialogue_tag(self, mock_db_session, sample_paragraph):
+    def test_pattern_dialogue_tag(self, mock_async_db_session, sample_paragraph):
         """Should match dialogue paragraphs."""
         sample_paragraph.is_dialogue = True
-        setup_first_query_mock(
-            mock_db_session,
+        setup_first_async_query_mock(
+            mock_async_db_session,
             return_record=MagicMock(
                 spec=FeedbackRecordModel,
                 id=1,
@@ -670,12 +712,12 @@ class TestTemplateApplyProgress:
 class TestTemplateErrorHandling:
     """Tests for error handling in template operations."""
 
-    def test_confirm_template_db_error(self, mock_db_session, sample_feedback_record):
+    def test_confirm_template_db_error(self, mock_async_db_session, sample_feedback_record):
         """Should handle database commit errors."""
         sample_feedback_record.processed = False
         sample_feedback_record.promoted = False
-        setup_first_query_mock(mock_db_session, return_record=sample_feedback_record)
-        mock_db_session.commit.side_effect = Exception("Commit failed")
+        setup_first_async_query_mock(mock_async_db_session, return_record=sample_feedback_record)
+        mock_async_db_session.commit.side_effect = Exception("Commit failed")
 
         response = client.post("/api/projects/1/templates/1/confirm", json={"action": "confirm"})
 
@@ -691,7 +733,7 @@ class TestTemplateErrorHandling:
 class TestTemplateProgressEndpoint:
     """Tests for GET /apply/{task_id}/progress endpoint."""
 
-    def test_progress_endpoint_success(self, mock_db_session):
+    def test_progress_endpoint_success(self, mock_async_db_session):
         """Should return progress for valid task_id."""
         from src.audiobook_studio.api.templates import _apply_template_background
 
@@ -722,7 +764,7 @@ class TestTemplateProgressEndpoint:
         assert data["current_stage"] == "annotate"
         assert data["error"] is None
 
-    def test_progress_endpoint_not_found(self, mock_db_session):
+    def test_progress_endpoint_not_found(self, mock_async_db_session):
         """Should return 404 for unknown task_id."""
         from src.audiobook_studio.api.templates import _apply_template_background
 
@@ -737,7 +779,7 @@ class TestTemplateProgressEndpoint:
         data = response.json()
         assert data["detail"] == "Task not found"
 
-    def test_progress_endpoint_completed(self, mock_db_session):
+    def test_progress_endpoint_completed(self, mock_async_db_session):
         """Should return completed progress."""
         from src.audiobook_studio.api.templates import _apply_template_background
 
@@ -763,7 +805,7 @@ class TestTemplateProgressEndpoint:
         assert data["status"] == "completed"
         assert data["processed"] == data["total"]
 
-    def test_progress_endpoint_failed(self, mock_db_session):
+    def test_progress_endpoint_failed(self, mock_async_db_session):
         """Should return failed progress with error."""
         from src.audiobook_studio.api.templates import _apply_template_background
 

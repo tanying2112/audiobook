@@ -22,6 +22,7 @@ from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
 from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas.quality import FixSuggestion
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
@@ -553,9 +554,51 @@ class QualityCheckPipeline:
         """
         logger.info(f"Quality checking {len(inputs)} segments")
 
+        # Emit stage enter
+        if inputs:
+            annotation = inputs[0][1]
+            project_id = getattr(annotation, 'book_id', 0) or 0
+            chapter_index = getattr(annotation, 'chapter_index', 1)
+            # Default to project_id=1 if not set (for testing)
+            if project_id == 0:
+                project_id = 1
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_enter(
+                    stage="quality",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    total_items=len(inputs),
+                ))
+            except RuntimeError:
+                pass
+
         judgments: List[QualityJudgment] = []
 
-        for audio_path, annotation, routing, reference_text in inputs:
+        for i, (audio_path, annotation, routing, reference_text) in enumerate(inputs):
+            # Emit stage progress
+            annotation = inputs[i][1]
+            project_id = getattr(annotation, 'book_id', 0) or 0
+            chapter_index = getattr(annotation, 'chapter_index', 1)
+            # Default to project_id=1 if not set (for testing)
+            if project_id == 0:
+                project_id = 1
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_progress(
+                    stage="quality",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    current=i + 1,
+                    total=len(inputs),
+                    message=f"Quality checking segment {i + 1}/{len(inputs)}",
+                ))
+            except RuntimeError:
+                pass
+
+            logger.info(f"Checking quality: {audio_path}")
             logger.info(f"Checking quality: {audio_path}")
 
             # Rule-based analysis (runs in both mock and non-mock mode)
@@ -574,8 +617,8 @@ class QualityCheckPipeline:
                 latency_ms=rule_latency_ms,
             )
 
-            # MOCK: 待真实实现
-            # Mock mode: return simulated judgment after rule-based analysis
+            # Mock mode: skip hard quality checks entirely (DNSMOS/ASR/SpeakerSim)
+            # Mock audio has no real acoustic features, so hard metrics would fail
             if self.mock_mode:
                 # Determine if regeneration is needed based on rule-based issues
                 needs_regeneration = len(analysis.issues) > 0
@@ -608,6 +651,7 @@ class QualityCheckPipeline:
                 judgments.append(judgment)
                 continue
 
+            # MOCK: 待真实实现
             # Non-mock mode: run hard quality checks (conditional) + LLM judge
             hard_start_time = time.time()
             hard_result = self._run_hard_quality_checks(
@@ -760,6 +804,26 @@ class QualityCheckPipeline:
                     schema_compliance=False,
                 )
                 raise
+
+        # Emit stage exit (success)
+        if inputs:
+            annotation = inputs[0][1]
+            project_id = getattr(annotation, 'book_id', 0) or 0
+            chapter_index = getattr(annotation, 'chapter_index', 1)
+            # Default to project_id=1 if not set (for testing)
+            if project_id == 0:
+                project_id = 1
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="quality",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    success=True,
+                ))
+            except RuntimeError:
+                pass
 
         return judgments
 

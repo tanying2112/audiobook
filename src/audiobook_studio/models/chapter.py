@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Float, ForeignKey, String, Text
+from sqlalchemy import Float, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,10 +31,16 @@ class Chapter(Base):
     analyzed_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     annotated_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     edited_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    # Segmentation results (P0-3)
+    segment_data: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    segment_strategy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    segment_stats: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    segment_status: Mapped[str] = mapped_column(String, default="pending")
 
     # 处理状态
     status: Mapped[str] = mapped_column(String, default="pending")
     extract_status: Mapped[str] = mapped_column(String, default="pending")
+    segment_status: Mapped[str] = mapped_column(String, default="pending")
     analyze_status: Mapped[str] = mapped_column(String, default="pending")
     annotate_status: Mapped[str] = mapped_column(String, default="pending")
     edit_status: Mapped[str] = mapped_column(String, default="pending")
@@ -58,6 +64,14 @@ class Chapter(Base):
     )
     audio_segments: Mapped[List[AudioSegment]] = relationship(
         "AudioSegment", back_populates="chapter", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM chapters WHERE project_id=? AND status=? ORDER BY index
+        Index("ix_chapters_project_id_status_index", "project_id", "status", "index"),
+        # Common query: SELECT * FROM chapters WHERE project_id=? AND index=?
+        Index("ix_chapters_project_id_index", "project_id", "index"),
     )
 
     # Forbid lazy loading on detail endpoints that should use selectinload explicitly

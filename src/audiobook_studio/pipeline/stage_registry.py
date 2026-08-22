@@ -555,6 +555,7 @@ class EditStage(StageHandler):
 from dataclasses import asdict
 
 from .audio_postprocess import AudioPostProcessor
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 
 
 class AudioPostprocessStage(StageHandler):
@@ -564,9 +565,42 @@ class AudioPostprocessStage(StageHandler):
         # paragraph and chapter are passed from orchestrator context
         para = kwargs.get("paragraph")
         chapter = kwargs.get("chapter")
+        project_id = kwargs.get("project_id")
+        chapter_index = kwargs.get("chapter_index")
+        paragraph_index = kwargs.get("paragraph_index")
 
         if para is None:
             raise ValueError("audio_postprocess requires paragraph_id or paragraph_index")
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
+
+        # Emit stage progress
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                current=1,
+                total=1,
+                message="Applying audio post-processing...",
+            ))
+        except RuntimeError:
+            pass
 
         # Determine next paragraph type for transition pause calculation
         next_para_type = "end"
@@ -590,6 +624,20 @@ class AudioPostprocessStage(StageHandler):
             },
             next_para_type=next_para_type,
         )
+
+        # Emit stage exit (success)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_exit(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                success=True,
+            ))
+        except RuntimeError:
+            pass
 
         # Convert to dict for persistence and downstream stages
         return asdict(segment)
@@ -946,6 +994,7 @@ class SynthesizeStage(StageHandler):
 
 
 from .quality_check import QualityCheckPipeline
+from .segment import SegmentPipeline, SegmentConfig, SegmentStrategy
 
 
 class QualityStage(StageHandler):
@@ -1133,11 +1182,69 @@ def register_stage(name: str) -> Callable[[Type[StageHandler]], Type[StageHandle
     return decorator
 
 
+class SegmentStage(StageHandler):
+    """Segment stage: split extracted text into semantic paragraphs."""
+
+    def __init__(self) -> None:
+        self.pipeline = SegmentPipeline()
+
+    def run(self, **kwargs: Any) -> Any:
+        exclude_keys = {"chapter", "paragraph", "db"}
+        filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
+
+        # Get input text from extract result or chapter
+        text = filtered.get("text")
+        extract_file = filtered.get("extract_file")
+        extraction_result = filtered.get("extraction_result")
+
+        # Run segmentation
+        result = self.pipeline.run(
+            text=text,
+            extract_file=extract_file,
+            extraction_result=extraction_result,
+        )
+        return result
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Segment stage updates chapter with segmentation results
+        if project_id and chapter:
+            from .persistence import write_segment
+
+            # ``write_segment`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            _run_async(write_segment(cast(AsyncSession, db), project_id, chapter, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if project_id and chapter:
+            from .persistence import write_segment
+
+            await write_segment(db, project_id, chapter, result)
+
+
 # ── Auto-register built-in stages ───────────────────────────────────────────
 # Enable easy extension: custom stages just need to inherit StageHandler + decorate
 
 # Built-in stages are registered when this module is imported
 StageRegistry.register("extract", ExtractStage)
+StageRegistry.register("segment", SegmentStage)
 StageRegistry.register("analyze", AnalyzeStage)
 StageRegistry.register("annotate", AnnotateStage)
 StageRegistry.register("edit", EditStage)

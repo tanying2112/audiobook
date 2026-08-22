@@ -270,8 +270,11 @@ class KokoroBackend(BaseTTSEngine):
         # Determine language from voice_id (fallback to 'en' for unknown)
         lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
 
-        # Map language codes for phonemizer (espeak uses 'cmn' for Mandarin, not 'zh')
-        phonemizer_lang = "cmn" if lang == "zh" else lang
+        # Map language codes for phonemizer (espeak-ng):
+        #   - 'zh' -> 'cmn' (espeak uses cmn for Mandarin)
+        #   - 'en' -> 'en-us' (espeak rejects the bare 'en' code; kokoro_onnx
+        #     tokenizer expects a region-specific code like 'en-us'/'en-gb')
+        phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
 
         # Map prosody rate to speed
         speed = prosody.get("rate", 1.0) if prosody else 1.0
@@ -487,7 +490,7 @@ class KokoroBackend(BaseTTSEngine):
         import numpy as np
         
         lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-        phonemizer_lang = "cmn" if lang == "zh" else lang
+        phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
         
         if self.mock_mode or self._kokoro is None:
             # Mock mode: return dummy tokens

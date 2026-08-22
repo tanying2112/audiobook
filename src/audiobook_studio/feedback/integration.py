@@ -59,7 +59,7 @@ def _log_self_iteration_event(event_type: str, data: Dict[str, Any]) -> None:
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = log_dir / "self_iteration_self_iteration.jsonl"
+    log_file = log_dir / "self_iteration.jsonl"
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),

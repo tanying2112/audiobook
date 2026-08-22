@@ -213,8 +213,11 @@ jobs:
   golden-contract:
     name: Golden Dataset & Contract Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: test
+    strategy:
+      matrix:
+        language: ["zh", "en", "ja", "ko"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -240,19 +243,19 @@ jobs:
             -v --tb=short --junit-xml=golden-results.xml
           echo "golden_exit_code=$?" >> $GITHUB_OUTPUT
 
-      - name: Check golden dataset pass rate (≥95%)
+      - name: Check golden dataset pass rate (≥95%) (${{ matrix.language }})
         if: steps.golden.outputs.golden_exit_code == '0'
         run: |
           python -c "
           import xml.etree.ElementTree as ET
-          tree = ET.parse('golden-results.xml')
+          tree = ET.parse('golden-results-${{ matrix.language }}.xml')
           root = tree.getroot()
           failures = int(root.get('failures', 0))
           errors = int(root.get('errors', 0))
           total = int(root.get('tests', 0))
           passed = total - failures - errors
           pass_rate = passed / total if total > 0 else 0
-          print(f'Golden dataset: {passed}/{total} passed ({pass_rate:.1%})')
+          print(f'Golden dataset (${{ matrix.language }}): {passed}/{total} passed ({pass_rate:.1%})')
           if pass_rate < 0.95:
               print(f'❌ Golden dataset pass rate {pass_rate:.1%} < 95%')
               exit(1)

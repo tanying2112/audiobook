@@ -16,7 +16,7 @@ from src.audiobook_studio.auth.dependencies import (
     authenticate_user,
     get_current_active_user,
     get_current_superuser,
-    get_current_user,
+    get_current_user_optional,
     require_permission,
     require_role,
 )
@@ -33,6 +33,7 @@ from src.audiobook_studio.auth.models import (
     UserUpdate,
 )
 from src.audiobook_studio.auth.rbac import RBACManager, get_rbac_manager
+from src.audiobook_studio.config import get_settings
 from src.audiobook_studio.database import get_db
 
 # SQLAlchemy models
@@ -132,9 +133,26 @@ async def refresh_token(
 async def register(
     user_data: UserCreate,
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_superuser),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
-    """Register a new user (admin only)."""
+    """Register a new user.
+
+    Behavior depends on AUTH_REGISTRATION_MODE setting:
+    - "open": Anyone can register (default)
+    - "invite": Requires valid invite code (not implemented yet)
+    - "approval": Requires admin approval after registration (not implemented yet)
+    """
+    settings = get_settings()
+
+    # Check registration mode
+    if settings.AUTH_REGISTRATION_MODE != "open":
+        # For non-open modes, require superuser
+        if current_user is None or not current_user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Registration not allowed in '{settings.AUTH_REGISTRATION_MODE}' mode. Contact administrator."
+            )
+
     rbac = get_rbac_manager(db)
 
     # Check if user already exists

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Project, Chapter, Paragraph, AudioSegment, Character, QualityResult } from '../types'
+import { useAuthStore } from '../stores/auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -8,6 +9,26 @@ const api = axios.create({
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use((config) => {
+  const authStore = useAuthStore()
+  if (authStore.token) {
+    config.headers.Authorization = `Bearer ${authStore.token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const authStore = useAuthStore()
+      authStore.logout()
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
 
 // ── Projects ────────────────────────────────────────────────────────────
 

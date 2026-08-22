@@ -187,7 +187,7 @@ class TestLLMJudge:
         assert isinstance(result.fix_suggestions, list)
 
     def test_cost_tracking_per_stage(self):
-        router = create_router()
+        router = create_router(mock_mode=True)
         messages = [{"role": "user", "content": "test"}]
 
         # Call different stages (use only valid stages)

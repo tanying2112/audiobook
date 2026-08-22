@@ -16,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ..analyzer import ensure_scene_tags_in_output
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisInput, BookAnalysisOutput
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,19 @@ class AnalyzeStructurePipeline:
         """Execute the analysis pipeline."""
         logger.info(f"Starting structure analysis for: {input_data.title_hint or 'untitled'}")
 
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="analyze",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
+
         # Build prompt
         prompt = self._build_prompt(input_data)
 
@@ -104,6 +118,21 @@ class AnalyzeStructurePipeline:
             },
             {"role": "user", "content": prompt},
         ]
+
+        # Emit stage progress
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="analyze",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                current=1,
+                total=1,
+                message="Analyzing book structure...",
+            ))
+        except RuntimeError:
+            pass
 
         # Call LLM
         try:
@@ -128,9 +157,35 @@ class AnalyzeStructurePipeline:
                 f"latency={result.latency_ms}ms"
             )
 
+            # Emit stage exit (success)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="analyze",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data, 'chapter_index', 1),
+                    success=True,
+                ))
+            except RuntimeError:
+                pass
+
             return validated_output
 
         except Exception as e:
+            # Emit stage exit (error)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="analyze",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data, 'chapter_index', 1),
+                    success=False,
+                    error_message=str(e),
+                ))
+            except RuntimeError:
+                pass
             logger.error(f"Structure analysis failed: {e}")
             raise
 

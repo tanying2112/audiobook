@@ -35,6 +35,7 @@ class _TaskState:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     _cancel_requested: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class FakeRemoteTTSPort(RemoteTTSPort):
@@ -182,24 +183,37 @@ class FakeRemoteTTSPort(RemoteTTSPort):
             temp_dir = Path(tempfile.gettempdir()) / "fake_tts_output"
             temp_dir.mkdir(parents=True, exist_ok=True)
             local_path = temp_dir / f"{task_id}.wav"
-            # Create a minimal valid WAV file (silence)
+            # Create a WAV file with a sine wave (440Hz A4) so it has real
+            # acoustic features for DNSMOS/ASR analysis instead of silence.
+            import math
             import struct
             import wave
+
+            sample_rate = 16000
+            duration_sec = max(0.5, len(state.payload.text) * 0.05)  # ~50ms per char, min 500ms
+            num_samples = int(sample_rate * duration_sec)
+            frequency = 440.0  # A4 note
+            amplitude = 0.3 * 32767  # 30% of max int16 to avoid clipping
 
             with wave.open(str(local_path), "wb") as wav_file:
                 wav_file.setnchannels(1)
                 wav_file.setsampwidth(2)
-                wav_file.setframerate(16000)
-                # Write 100ms of silence (1600 samples at 16kHz)
-                silence = struct.pack("<h", 0) * 1600
-                wav_file.writeframes(silence)
+                wav_file.setframerate(sample_rate)
+                frames = []
+                for i in range(num_samples):
+                    # Generate sine wave sample
+                    value = int(amplitude * math.sin(2 * math.pi * frequency * i / sample_rate))
+                    frames.append(struct.pack("<h", value))
+                wav_file.writeframes(b"".join(frames))
             state.audio_path = str(local_path)
-            state.duration_ms = len(state.payload.text) * 50  # ~50ms per char
+            state.duration_ms = int(duration_sec * 1000)
             state.progress = 1.0
             state.dnsmos_score = self._quality_scores.get("dnsmos")
             state.asr_wer = self._quality_scores.get("wer")
             state.speaker_similarity = self._quality_scores.get("speaker_sim")
             state.completed_at = datetime.now(UTC).isoformat()
+            # Add engine metadata so the calling code can identify the actual engine
+            state.metadata = {"engine": "kokoro"}
 
         except Exception as e:
             async with self._lock:
@@ -247,6 +261,7 @@ class FakeRemoteTTSPort(RemoteTTSPort):
                 speaker_similarity=state.speaker_similarity,
                 started_at=state.started_at,
                 completed_at=state.completed_at,
+                metadata=state.metadata,
             )
 
     async def cancel(self, task_id: str) -> bool:

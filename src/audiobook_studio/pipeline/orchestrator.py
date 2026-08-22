@@ -19,7 +19,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..api.websocket import get_pause_event, is_paused, pause_check
+from ..api.websocket import get_pause_event, is_paused, pause_check, PipelineEventType, emit_pipeline_event
+from ..pipeline.progress_emitter import (
+    emit_stage_enter,
+    emit_stage_progress,
+    emit_stage_exit,
+    emit_chapter_complete,
+    emit_paragraph_complete,
+    emit_error,
+    emit_pipeline_completed,
+)
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
@@ -177,6 +186,57 @@ def _default_stage_hook(
 
 # Auto-register default logger hook (can be disabled by clearing _stage_hooks)
 _stage_hooks.append(_default_stage_hook)
+
+# ── WebSocket Progress Emitter Hook ────────────────────────────────────────
+# Emit real-time progress events to WebSocket clients
+async def _websocket_stage_hook(
+    event: str,
+    stage: str,
+    context: Dict[str, Any],
+    result: Any = None,
+    error: Exception | None = None,
+) -> None:
+    """WebSocket progress emitter hook."""
+    project_id = context.get("project_id")
+    chapter_index = context.get("chapter_index")
+    chapter_id = context.get("chapter_id")
+    paragraph_index = context.get("paragraph_index")
+    paragraph_id = context.get("paragraph_id")
+
+    if not project_id:
+        return
+
+    try:
+        if event == "stage_enter":
+            total_items = context.get("kwargs", {}).get("total_items")
+            await emit_stage_enter(
+                stage=stage,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                chapter_id=chapter_id,
+                paragraph_index=paragraph_index,
+                paragraph_id=paragraph_id,
+                total_items=total_items,
+            )
+        elif event == "stage_exit":
+            success = error is None
+            error_message = str(error) if error else None
+            await emit_stage_exit(
+                stage=stage,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                chapter_id=chapter_id,
+                paragraph_index=paragraph_index,
+                success=success,
+                error_message=error_message,
+            )
+    except Exception as e:
+        # Never let hook errors break the pipeline
+        logger.warning(f"WebSocket hook error: {e}")
+
+
+# Register WebSocket hook
+_stage_hooks.append(_websocket_stage_hook)
 
 # ── Telemetry Integration ──────────────────────────────────────────────────
 # Functions to initialize and register the telemetry collector as pipeline hooks
@@ -604,9 +664,50 @@ async def run_pipeline(
             if checkpoint_manager and chapter_index is not None:
                 checkpoint_manager.mark_stage_done(stage, chapter_index, paragraph_index)
 
+        # Emit chapter complete event
+        if project_id and chapter_index is not None:
+            # Count total chapters for progress
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_chapter_complete(
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    chapter_id=chapter_id,
+                    total_chapters=kwargs.get("total_chapters", 1),
+                ))
+            except RuntimeError:
+                pass
+
+        # Emit pipeline completed event
+        if project_id:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_pipeline_completed(
+                    project_id=project_id,
+                    total_chapters=kwargs.get("total_chapters", 1),
+                ))
+            except RuntimeError:
+                pass
+
         _emit_pipeline_end(pipeline_context, results, None)
         return results
     except Exception as e:
+        # Emit pipeline error
+        if project_id:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_error(
+                    project_id=project_id,
+                    stage="pipeline",
+                    error_message=str(e),
+                    chapter_index=chapter_index,
+                    chapter_id=chapter_id,
+                ))
+            except RuntimeError:
+                pass
         _emit_pipeline_end(pipeline_context, None, e)
         raise
 

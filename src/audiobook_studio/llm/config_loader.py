@@ -61,6 +61,10 @@ class ProviderConfig(BaseSettings):
     api_key_pool_env: List[str] = Field(default_factory=list)
     key_rotation_strategy: str = "round_robin"
     base_url: Optional[str] = None
+    # Health-check path. Defaults to "/models" (OpenAI-compatible convention).
+    # Anthropic-protocol gateways (e.g. fcc) expose /health instead of /models,
+    # so set health_path=/health for those to avoid probing a 404 endpoint.
+    health_path: Optional[str] = None
     priority: int = 100
     max_tokens_per_minute: int = 10000
     max_requests_per_minute: int = 60
@@ -194,6 +198,7 @@ class LLMProvidersConfig(BaseSettings):
                     api_key_pool_env=p.get("api_key_pool_env", []),
                     key_rotation_strategy=p.get("key_rotation_strategy", "round_robin"),
                     base_url=p.get("base_url"),
+                    health_path=p.get("health_path"),
                     priority=p.get("priority", 100),
                     max_tokens_per_minute=p.get("max_tokens_per_minute", 10000),
                     max_requests_per_minute=p.get("max_requests_per_minute", 60),

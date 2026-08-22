@@ -30,6 +30,7 @@ from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
 from ..llm import LLMRouter, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
 from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress, emit_paragraph_complete
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from ..security import safe_subprocess_args
 from ..tts import (
@@ -573,11 +574,43 @@ class SynthesizePipeline:
             text_hash = self._text_hash(inp.text)
             segment_id = decision.segment_id
 
+            # Emit stage progress for each paragraph
+            if inputs:
+                project_id = inputs[0].book_id
+                chapter_index = inputs[0].chapter_index
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(emit_stage_progress(
+                        stage="synthesize",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        current=i + 1,
+                        total=len(inputs),
+                        message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
+                    ))
+                except RuntimeError:
+                    pass  # Silently skip if no event loop
+
             if segment_id in self.existing_segments:
                 existing = self.existing_segments[segment_id]
                 if existing.text_hash == text_hash:
                     logger.info(f"Segment {segment_id} unchanged, skipping")
                     segments.append(existing)
+
+                    # Emit paragraph complete for cached segment
+                    if inputs:
+                        project_id = inputs[0].book_id
+                        chapter_index = inputs[0].chapter_index
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(emit_paragraph_complete(
+                                project_id=project_id,
+                                chapter_index=chapter_index,
+                                paragraph_index=inp.paragraph_index,
+                                total_paragraphs=len(inputs),
+                            ))
+                        except RuntimeError:
+                            pass
                     continue
 
             disk_existing = self._load_existing_segment_from_disk(segment_id, text_hash)
@@ -585,6 +618,21 @@ class SynthesizePipeline:
                 self.existing_segments[segment_id] = disk_existing
                 logger.info(f"Segment {segment_id} loaded from disk, skipping")
                 segments.append(disk_existing)
+
+                # Emit paragraph complete for disk-cached segment
+                if inputs:
+                    project_id = inputs[0].book_id
+                    chapter_index = inputs[0].chapter_index
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(emit_paragraph_complete(
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            paragraph_index=inp.paragraph_index,
+                            total_paragraphs=len(inputs),
+                        ))
+                    except RuntimeError:
+                        pass
                 continue
 
             # Synthesize via Port
@@ -723,6 +771,21 @@ class SynthesizePipeline:
             segment_files.append(output_path)
             segment_ids.append(segment_id)
 
+            # Emit paragraph complete for synthesized segment
+            if inputs:
+                project_id = inputs[0].book_id
+                chapter_index = inputs[0].chapter_index
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(emit_paragraph_complete(
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        paragraph_index=inp.paragraph_index,
+                        total_paragraphs=len(inputs),
+                    ))
+                except RuntimeError:
+                    pass
+
         # Quality Gate: Check all segments with auto-retry (max 2 retries)
         if segment_files:
             logger.info(f"Running quality checks on {len(segment_files)} segments...")
@@ -820,6 +883,21 @@ class SynthesizePipeline:
         if len(segments) > 1:
             chapter_output = self.output_dir / f"{inputs[0].book_id}_ch{inputs[0].chapter_index}.mp3"
             self._crossfade_stitch(segments, chapter_output)
+
+        # Emit stage exit for synthesize
+        if inputs:
+            project_id = inputs[0].book_id
+            chapter_index = inputs[0].chapter_index
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="synthesize",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    success=True,
+                ))
+            except RuntimeError:
+                pass
 
         return segments
 
@@ -1341,3 +1419,4 @@ if __name__ == "__main__":  # pragma: no cover
 
     logging.basicConfig(level=logging.INFO)
     logger.info("SynthesizePipeline ready")
+

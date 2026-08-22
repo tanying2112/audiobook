@@ -11,6 +11,7 @@ Provides full CRUD for the HARNESS-aligned entity tree:
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -18,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..auth.dependencies import get_current_active_user
 from ..auth.models import RoleName
@@ -54,8 +56,10 @@ class ProjectOut(BaseModel):
     current_stage: Optional[str] = None
     progress: float
     total_cost_usd: float
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    # ORM returns datetime objects; declaring these as str would make the
+    # response fail validation (ResponseValidationError 500 on list).
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -131,7 +135,20 @@ async def list_projects(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all projects."""
-    result = await db.execute(select(Project).offset(skip).limit(limit))
+    # S2.6 — explicit eager loading of first-level relationships to avoid N+1
+    # lazy loads during serialization. The Project model also defaults these
+    # relationships to lazy="selectin", but being explicit here keeps the API
+    # contract robust even if a model default changes.
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.chapters),
+            selectinload(Project.characters),
+            selectinload(Project.feedback_records),
+        )
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 
@@ -191,7 +208,12 @@ async def list_chapters(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     result = await db.execute(
-        select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index).offset(skip).limit(limit)
+        select(Chapter)
+        .where(Chapter.project_id == project_id)
+        .options(selectinload(Chapter.paragraphs))
+        .order_by(Chapter.index)
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
 

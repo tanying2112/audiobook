@@ -356,8 +356,12 @@ async def _run_single_stage(
                     )
                     continue
 
-                await asyncio.to_thread(
-                    run_stage,
+                # run_stage is an ``async def`` coroutine function; ``to_thread``
+                # would only call it (producing an un-awaited coroutine, see the
+                # "coroutine 'run_stage' was never awaited" warning) so we await it
+                # directly. The stage itself performs its CPU-heavy work via its own
+                # internal executors / awaits, so the event loop is not blocked.
+                await run_stage(
                     stage,
                     db,
                     project_id=project_id,
@@ -422,6 +426,15 @@ async def _run_single_stage(
                         select(Chapter).where(Chapter.id == para.chapter_id)
                     )
                     chapter_row = result.scalar_one_or_none()
+
+                # Skip placeholder rows with no text: annotate/edit/synthesize
+                # stages cannot operate on empty paragraphs (TtsRoutingInput
+                # rejects empty ``text``), and there is nothing to produce.
+                if not (para.text or "").strip() and not (para.edited_text or "").strip():
+                    ch_idx = chapter_row.index if chapter_row is not None else "?"
+                    logger.info("ch%s p%d has empty text, skipping stage '%s'", ch_idx, para.index, stage)
+                    continue
+
                 if chapter_row is not None and checkpoint_mgr.is_stage_done(
                     stage, chapter_row.index, para.index
                 ):
@@ -438,8 +451,9 @@ async def _run_single_stage(
                     )
                     continue
 
-                await asyncio.to_thread(
-                    run_stage,
+                # async coroutine (see note in the chapter-level branch above):
+                # await directly rather than via to_thread.
+                await run_stage(
                     stage,
                     db,
                     project_id=project_id,

@@ -22,8 +22,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       # LLM provider keys optional at runtime; defaults keep env_checker
       # --fail-on-warning self-consistent in CI (non-empty placeholder only).
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-test-key-not-real}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-test-key-not-real}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-devplaceholder12345678901234567890123456789012345678901234}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-ant-api03-devplaceholder1234567890123456789012345678901234567890123456789012345678901234567890123456789012345}
       # Task 6.1 asset-stripping: model cache points at the Docker volume (see Dockerfile).
       - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
     volumes:
@@ -96,6 +96,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-devplaceholder12345678901234567890123456789012345678901234}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-ant-api03-devplaceholder1234567890123456789012345678901234567890123456789012345678901234567890123456789012345}
     volumes:
       - ./output:/app/output
       - ./checkpoints:/app/checkpoints

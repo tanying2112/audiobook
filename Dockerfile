@@ -41,6 +41,10 @@ RUN python -m venv /opt/venv \
 # ---- Stage 2: Runtime --------------------------------------------------------
 FROM python:${PYTHON_VERSION} AS runner
 
+# Re-declare build args for this stage (required in multi-stage builds)
+ARG APP_UID=1000
+ARG APP_GID=1000
+
 # ---- Metadata / Labels (OCI Image Spec) ----
 LABEL org.opencontainers.image.title="Audiobook Studio" \
       org.opencontainers.image.description="Production-grade AI audiobook generation pipeline" \
@@ -76,6 +80,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# ---- Download Kokoro Models at Build Time (for zero-config startup) ----
+# This adds ~110MB to the image but enables true zero-config deployment.
+# The script supports resume and SHA256 verification.
+COPY scripts/download_kokoro_model.py /tmp/download_kokoro_model.py
+RUN mkdir -p /app/models/kokoro-onnx \
+    && python /tmp/download_kokoro_model.py --output-dir /app/models/kokoro-onnx \
+    && chown -R ${APP_UID}:${APP_GID} /app/models
+
 
 WORKDIR /app
 
@@ -116,8 +129,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 EXPOSE 8000
 
 # ---- Entrypoint / Command ----------------------------------------------------
+# Copy entrypoint script
+COPY --chown=${APP_UID}:${APP_GID} entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # tini as PID 1 ensures signals propagate to the Python process (uvicorn/celery).
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
 
 # Default: run FastAPI app (uvicorn via main.py).
 # Override in docker-compose / k8s for workers: `celery -A audiobook_studio.celery_app worker -l info`

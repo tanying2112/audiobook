@@ -24,6 +24,7 @@ from ..schemas import (
     TtsEditOutput,
     TtsRoutingDecision,
 )
+from .segment import SegmentationResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,35 @@ async def write_extract(
     await db.refresh(chapter)
     logger.info("DB write [extract]: Chapter %d (id=%s)", chapter_index, chapter.id)
     return chapter
+
+
+async def write_segment(
+    db: AsyncSession,
+    project_id: int,
+    chapter: Chapter,
+    result: SegmentationResult,
+) -> None:
+    """Update Chapter with segmentation results.
+
+    Stores the segmented paragraphs as JSON in the chapter's segment_data field.
+    """
+    # Convert segments to list of dicts for JSON storage
+    segments_data = []
+    for seg in result.segments:
+        segments_data.append({
+            "index": seg.index,
+            "text": seg.text,
+            "start_char": seg.start_char,
+            "end_char": seg.end_char,
+            "metadata": seg.metadata,
+        })
+
+    chapter.segment_data = segments_data
+    chapter.segment_strategy = result.strategy_used.value
+    chapter.segment_stats = result.stats
+    chapter.segment_status = "completed"
+    await db.commit()
+    logger.info("DB write [segment]: Chapter %d, %d segments", chapter.index, len(result.segments))
 
 
 async def write_analyze(

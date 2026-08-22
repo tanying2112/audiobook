@@ -208,6 +208,13 @@ for mod_name in [
     "boto3",
     "requests",
     "transformers",
+    "typer",
+    "typer._click",
+    "typer._click._compat",
+    "click",
+    "click.core",
+    "click.types",
+    "click._compat",
 ]:
     if mod_name not in sys.modules:
         sys.modules[mod_name] = MagicMock()
@@ -351,11 +358,37 @@ class MockLLMProvidersConfig:
                 provider="openai",
                 model="gpt-3.5-turbo",
                 stages=["extract", "analyze", "annotate", "edit", "route", "judge", "translate"],
+                max_daily_cost_usd=10.0,
             )
         ]
-        self.prompt_compression = MagicMock()
-        self.fallback = MagicMock()
-        self.cost_control = MagicMock()
+        # Provide real PromptCompressionConfig values instead of MagicMock
+        class MockPromptCompression:
+            max_input_tokens = 4000
+            truncate_strategy = "smart"
+            remove_few_shot_when_long = True
+            min_few_shot_examples = 1
+            schema_injection_mode = "minimal"
+
+        class MockFallback:
+            max_retries_per_provider = 2
+            retry_on_rate_limit = True
+            retry_on_timeout = True
+            timeout_seconds = 60
+            exponential_backoff_base = 2.0
+
+        self.prompt_compression = MockPromptCompression()
+        self.fallback = MockFallback()
+        # cost_control needs to have daily_limit_usd as a float for CostTracker.set_global_daily_limit
+        cost_control = MagicMock()
+        cost_control.daily_limit_usd = 10.0
+        self.cost_control = cost_control
+
+        # For hardware profile compatibility
+        class MockHardwareProfile:
+            def get_llm_stage_models(self, stage):
+                return None
+
+        self.hardware_profile = MockHardwareProfile()
 
     def get_providers_for_stage(self, stage):
         stage_str = stage.value if hasattr(stage, "value") else str(stage)
@@ -380,9 +413,21 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
         sys.modules[module_name] = types.ModuleType(module_name)
 
     mock_config_loader = sys.modules[module_name]
+    # Create an iterable StageName enum mock for router.stage_configs iteration
+    from enum import Enum
+    class MockStageName(str, Enum):
+        EXTRACT = 'extract'
+        ANALYZE = 'analyze'
+        ANNOTATE = 'annotate'
+        ANNOTATE_PARAGRAPH = 'annotate_paragraph'
+        EDIT = 'edit'
+        ROUTE = 'route'
+        JUDGE = 'judge'
+        TRANSLATE = 'translate'
+
     mock_config_loader.LLMProvidersConfig = MockLLMProvidersConfig
     mock_config_loader.ProviderType = MagicMock()
-    mock_config_loader.StageName = MagicMock()
+    mock_config_loader.StageName = MockStageName
     mock_config_loader.ProviderConfig = MockProviderConfig
     mock_config_loader.PromptCompressionConfig = MagicMock()
     mock_config_loader.FallbackConfig = MagicMock()

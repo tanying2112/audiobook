@@ -463,31 +463,19 @@ async def get_translate_status(project_id: int, db: AsyncSession = Depends(get_a
 
 @router.get("/translate/languages")
 async def get_supported_languages():
-    """Get list of supported target languages for translation."""
-    return {
-        "languages": [
-            {"code": "en-US", "name": "English (US)", "native_name": "English"},
-            {"code": "es-ES", "name": "Spanish (Spain)", "native_name": "Español"},
-            {"code": "ja-JP", "name": "Japanese", "native_name": "日本語"},
-            {"code": "fr-FR", "name": "French (France)", "native_name": "Français"},
-            {"code": "de-DE", "name": "German (Germany)", "native_name": "Deutsch"},
-            {
-                "code": "zh-CN",
-                "name": "Chinese (Simplified)",
-                "native_name": "简体中文",
-            },
-            {
-                "code": "zh-TW",
-                "name": "Chinese (Traditional)",
-                "native_name": "繁體中文",
-            },
-            {"code": "ko-KR", "name": "Korean", "native_name": "한국어"},
-            {
-                "code": "pt-BR",
-                "name": "Portuguese (Brazil)",
-                "native_name": "Português",
-            },
-            {"code": "it-IT", "name": "Italian (Italy)", "native_name": "Italiano"},
-            {"code": "ru-RU", "name": "Russian", "native_name": "Русский"},
-        ]
-    }
+    """Get list of supported target languages for translation.
+
+    Driven by the centralised language registry (S2.3) so Japanese and
+    French are first-class and stay in sync with TTS voice selection.
+    """
+    from ..languages import SUPPORTED_BCP47_CODES, get_language_info
+
+    languages = [
+        {
+            "code": code,
+            "name": get_language_info(code).display_name,
+            "native_name": get_language_info(code).display_name,
+        }
+        for code in SUPPORTED_BCP47_CODES
+    ]
+    return {"languages": languages}

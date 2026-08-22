@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship, raiseload
 
@@ -112,6 +112,16 @@ class Paragraph(Base):
     )
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
         "FeedbackRecord", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? ORDER BY index
+        Index("ix_paragraphs_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE project_id=? AND status=? ORDER BY index
+        Index("ix_paragraphs_project_id_status_index", "project_id", "status", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? AND status=?
+        Index("ix_paragraphs_chapter_id_status", "chapter_id", "status"),
     )
 
     # Forbid lazy loading on detail endpoints that should use selectinload explicitly

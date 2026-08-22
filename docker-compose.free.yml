@@ -1,0 +1,155 @@
+# docker-compose.free.yml - Zero-cost free tier stack for Audiobook Studio
+# 
+# This stack uses ONLY free/local resources:
+# - Ollama for local LLM inference (no API keys needed)
+# - Kokoro ONNX for local TTS synthesis (no cloud API)
+# - SQLite for database (file-based, no server)
+# - Local filesystem for audio storage
+#
+# Usage:
+#   docker compose -f docker-compose.free.yml up -d
+#   docker compose -f docker-compose.free.yml logs -f
+
+version: "3.9"
+
+services:
+  # Ollama - Local LLM inference (supports llama3, qwen2, mistral, etc.)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: audiobook-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Audiobook Studio API - FastAPI backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: audiobook-api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - MOCK_LLM=false
+      - ENABLE_LOCAL_TTS=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
+      - OUTPUT_DIR=/app/output
+      - MODELS_DIR=/app/models
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Audiobook Studio Worker - Background task processor
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: audiobook-worker
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      - MOCK_LLM=false
+      - ENABLE_LOCAL_TTS=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
+      - OUTPUT_DIR=/app/output
+      - MODELS_DIR=/app/models
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Redis - Message broker for Celery (required for worker)
+  redis:
+    image: redis:7-alpine
+    container_name: audiobook-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Nginx reverse proxy for production
+  # Uncomment for production deployment with SSL termination
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: audiobook-nginx
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - api
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+
+volumes:
+  ollama_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: audiobook-free-network

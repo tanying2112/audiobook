@@ -63,7 +63,19 @@ from .remote_voxcpm2_port import (
     RemoteVoxCPM2PortConfig,
     create_remote_voxcpm2_port,
 )
+from .streaming import (
+    StreamingTTSEngine,
+    StreamingTTSConfig,
+    StreamingTTSResult,
+    create_streaming_tts_engine,
+)
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpm2_backend
+from .zero_shot_clone import (
+    ZeroShotCloneEngine,
+    ZeroShotCloneConfig,
+    ZeroShotCloneResult,
+    create_zero_shot_clone_engine,
+)
 
 __all__ = [
     # Engine abstraction
@@ -77,7 +89,7 @@ __all__ = [
     "register_engine",
     "initialize_all_engines",
     "cleanup_all_engines",
-    # Voice cloning
+    # Voice cloning (legacy)
     "VoiceCloner",
     "VoiceCloningManager",
     "VoiceSample",
@@ -85,11 +97,21 @@ __all__ = [
     "AudioQuality",
     "clone_voice",
     "load_voice_print",
+    # Zero-Shot Voice Cloning (P2-4)
+    "ZeroShotCloneEngine",
+    "ZeroShotCloneConfig",
+    "ZeroShotCloneResult",
+    "create_zero_shot_clone_engine",
     # Backends
     "KokoroBackend",
     "create_kokoro_backend",
     "VoxCPM2Backend",
     "create_voxcpm2_backend",
+    # Streaming TTS (P2-3)
+    "StreamingTTSEngine",
+    "StreamingTTSConfig",
+    "StreamingTTSResult",
+    "create_streaming_tts_engine",
     # Remote VoxCPM2 client (legacy)
     "RemoteVoxCPM2Client",
     "RemoteVoxCPM2Config",
