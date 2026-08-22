@@ -11,6 +11,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+# 把 .env 注入 os.environ: pydantic Settings 只读 .env 到 Settings 对象,
+# 但 LiteLLM / provider key pool 直接读 os.environ (如 OPENAI_API_KEY、
+# KILO_API_KEY)。若不加载, 除 fcc (硬编码 extra_headers) 外所有 provider
+# 都会因 "Missing credentials" 失败。此处一次性加载, uvicorn/celery/脚本均受益。
+from pathlib import Path as _Path
+
+try:
+    from dotenv import load_dotenv as _load_dotenv
+
+    _env_file = _Path(".env")
+    if _env_file.exists():
+        _load_dotenv(_env_file)
+except Exception:  # pragma: no cover - dotenv 可选
+    pass
+
 from ..database import _get_async_database_url
 
 
@@ -61,6 +76,18 @@ class Settings(BaseSettings):
         alias="ALLOWED_HOSTS",
     )
 
+    # Cloud Studio / multi-tenant workspace (S3.6)
+    CLOUD_STUDIO_MODE: bool = Field(default=False, alias="CLOUD_STUDIO_MODE")
+    WORKSPACE_QUOTA_PROJECTS: int = Field(default=10, alias="WORKSPACE_QUOTA_PROJECTS")
+    WORKSPACE_QUOTA_USERS: int = Field(default=50, alias="WORKSPACE_QUOTA_USERS")
+    MULTI_REGION_ENABLED: bool = Field(default=False, alias="MULTI_REGION_ENABLED")
+    REGION_ID: str = Field(default="local", alias="REGION_ID")
+
+    # API rate limiting / quota (S3.6)
+    RATE_LIMIT_ENABLED: bool = Field(default=False, alias="RATE_LIMIT_ENABLED")
+    RATE_LIMIT_PER_USER_PER_MINUTE: int = Field(default=60, alias="RATE_LIMIT_PER_USER_PER_MINUTE")
+    RATE_LIMIT_BURST: int = Field(default=10, alias="RATE_LIMIT_BURST")
+
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
 
@@ -107,6 +134,9 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = Field(default="INFO", alias="LOG_LEVEL")
     LOG_FORMAT: str = Field(default="json", alias="LOG_FORMAT")
+
+    # Auth registration mode: open | invite | approval
+    AUTH_REGISTRATION_MODE: str = Field(default="open", alias="AUTH_REGISTRATION_MODE")
 
     # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")

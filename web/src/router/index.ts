@@ -87,6 +87,11 @@ const router = createRouter({
       component: () => import('../views/MonitoringDashboard.vue'),
     },
     {
+      path: '/model-market',
+      name: 'model-market',
+      component: () => import('../views/ModelMarket.vue'),
+    },
+    {
       path: '/projects/:projectId/dashboard',
       name: 'project-dashboard',
       component: () => import('../views/DashboardView.vue'),

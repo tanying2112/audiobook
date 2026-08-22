@@ -197,6 +197,8 @@ export default {
     analytics: '分析',
     reports: '报告',
     monitoring: '监控',
+    provider_management: '供应商管理',
+    model_market: '模型市场',
     logs: '日志',
     help: '帮助',
     about: '关于',

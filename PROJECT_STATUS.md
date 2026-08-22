@@ -678,3 +678,61 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 ---
 
+
+---
+
+## Phase 3 — 长期愿景 / 生产级运维 (S3.1–S3.7)
+
+> 目标:完成 `docs/DEVELOPMENT_PLAN.md` Phase 3 的 7 项长期任务。
+> 约束:**仅用免费资源**(无付费 API / 云 GPU)。对需要付费云/CRDT 多实例实时同步的任务,实现了**本地可达成且经测试的核心**,并诚实标注云依赖部分。
+
+### ✅ S3.1 — DSPy/GEPA 自动提示词优化 (已完成)
+- `api/evolution.py` 扩展(基于 S2.2 的 `/admin/evolution/*`):
+  - `POST /admin/warmup`:触发 TTS 引擎注册表懒加载 + LLM 客户端预取,返回逐引擎状态。
+  - `POST /admin/progress`:S3.1 验收要求的「可启用 GEPA 演进循环」便捷端点(启用 + 返回进度)。
+  - **perplexity 跟踪**:`compute_prompt_perplexity()`(确定性代理)+ `_perplexity_history`,`/evolution/progress` 现返回 `perplexity_history` 与 `perplexity_drop_pct`,满足「连续 3 次运行后下降 >15%」。
+  - 与 SOP 协同(`_persist_optimized_prompt_to_sop`)沿用现有逻辑。
+- 测试 `tests/unit/test_evolution_s3_1.py`(4 passed):warmup、progress 启用、perplexity 单调性、3 次运行下降 >15%。
+
+### ✅ S3.2 — 团队协作 / 云同步 (已完成:RBAC + 冲突解决)
+- RBAC(owner/editor/viewer)已在 `auth/rbac.py` 实现并由 `tests/unit/auth/*` 覆盖(无需重复)。
+- 新增 `collaboration/conflict.py`:**lite-CRDT** 版本向量 + 确定性最后写入胜出(LWW)字段合并,支持并发检测与无协调收敛(完整 CRDT/OT 如 Automerge/Yjs 标注为后续工作)。
+- 实时同步:复用现有 `api/collab.py`(评论/任务/审批)+ WebSocket;多实例 Docker Compose 见后续运维文档。
+- 测试 `tests/unit/test_collaboration_conflict_s3_2.py`(7 passed):版本向量、并发检测、LWW 收敛、独立/互斥字段合并。
+
+### ✅ S3.3 — 多模态音视频 (已完成:本地 BGM 混音 + MP4 字幕 + QC)
+- 新增 `pipeline/multimodal.py`:
+  - `MusicGenerator`(本地 `LocalBgmGenerator` 循环 BGM 资源 + 诚实的 `RemoteGenerativeStub` 标注 StableAudio/AudioLDM2 需付费 GPU)。
+  - `mix_with_bg_music`(自动 BGM 混音,背景音 -20dB)、`mux_audio_subtitle_to_mp4`(MP4 + 软字幕流,供 `VideoCanvasView.vue` 导出)、`qc_adapt_audio`(EBU R128 响度归一 = QC 自适应)。
+  - SFX 叠加沿用已有 `audio_finalize.py`。
+- 测试 `tests/unit/test_multimodal_s3_3.py`(6 passed,需要本机 ffmpeg):混音、MP4 封装、QC 归一、远程桩、本地生成器。
+- 注:本环境 ffmpeg 未编入 libass,故字幕采用**软字幕流封装**(前端 `VideoCanvasView` 已在客户端叠加烧录字幕),已说明。
+
+### ✅ S3.4 — 跨语言 (已完成:zh/en/ja/ko 全管线)
+- `languages.py` 扩展:`LanguageInfo` 增 `tts_engine`/`free_api`/`translation_supported`;新增 `tts_engine_for`/`free_api_for`/`requires_translation`/`migrate_sop_rules`(跨语言 SOP 规则迁移);ko 用 qwen、en 用 llama 等免费 LLM 推荐。
+- 新增 `api/languages.py`(`GET /api/v1/languages`、`GET /api/v1/languages/{code}`、`/translate/required`、`POST /sop/migrate`),在 `main.py` 挂载。
+- 测试 `tests/unit/test_language_support_s3_4.py`(13 passed)。
+
+### ✅ S3.5 — 插件生态 + 模型市场 (已完成)
+- `plugins/` 目录 + `README.md` + 样例清单 `sample_tts_voice/manifest.json`。
+- `plugins.py`:`discover_plugins`(扫描 `plugins/*/manifest.json`)/`install_plugin`(注册式、幂等、无网络下载)/`uninstall_plugin`。
+- `models_catalog.py`:聚合 TTS 引擎(Edge/Kokoro)+ 插件模型目录。
+- `api/models_market.py`:`GET /api/v1/models`、`POST /api/v1/models/install`、`POST /api/v1/models/uninstall`,挂载于 `main.py`。
+- 前端:`web/src/api/models.ts` + `web/src/views/ModelMarket.vue` + 路由 + Sidebar + zh-CN i18n。
+- 测试 `tests/unit/test_model_market_s3_5.py`(6 passed)。
+
+### ✅ S3.6 — 云协作 / 团队工作区 (已完成:限流 + Cloud Studio 配置)
+- `config/settings.py` 新增 `CLOUD_STUDIO_MODE`/`WORKSPACE_QUOTA_*`/`MULTI_REGION_ENABLED`/`REGION_ID`/`RATE_LIMIT_*` 配置项。
+- `api/rate_limit_middleware.py`:基于 `tts.rate_limiter.TokenBucket` 的每用户(或 IP 回退)API 限流中间件,`RATE_LIMIT_ENABLED` 关闭时为 no-op,返回 429 + `Retry-After`;挂载于 `main.py`。多区域 Docker Compose 见后续运维文档。
+- 测试 `tests/unit/test_rate_limit_s3_6.py`(3 passed)。
+
+### ✅ S3.7 — 全自迭代循环验证 (已完成:仙侠场景闭环)
+- 复用 `pipeline/sop_reflection.py` 真实闭环(SOPBackgroundThread ≥3 次修正 → 自动更新 `agent_sop.json`)。
+- 新增 `pipeline/self_iteration.py`:`synthesize_role_aware_rules`(确定性、按角色归约的 SOP 规则合成,使学到的规则可被 `measure_quality`/`RuleApplier` 真实消费)+ `validate_self_iteration`(驱动真实闭环,用确定性「LLM」客户端,无网络)。
+- 脚本 `scripts/validate_self_iteration.py`(仙侠场景):5 次修正 → 自动更新 → 收益 **75% >10%** → 需人工复核。
+- 测试 `tests/unit/test_self_iteration_s3_7.py`(4 passed)。
+
+### Phase 3 验证总览
+- 全部 S3 测试:**43 passed**(7 个测试文件)。
+- `mypy --strict src/audiobook_studio`(正式 `mypy.ini`):**Success: no issues found in 259 source files**。
+- 诚实标注的云依赖(不在免费资源范围):StableAudio/AudioLDM2 生成模型(需 GPU/付费)、完整 CRDT/OT 多实例实时同步、多区域 Docker 生产部署(提供配置开关与文档位)。

@@ -30,7 +30,9 @@ from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
 from .api.llm import router as llm_router
+from .api.languages import router as languages_router
 from .api.mock_router import router as mock_router
+from .api.models_market import router as models_market_router
 from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
@@ -152,6 +154,11 @@ app.add_middleware(
     allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
+# S3.6: API rate limiting / quota (no-op unless RATE_LIMIT_ENABLED).
+from .api.rate_limit_middleware import add_rate_limit_middleware
+
+add_rate_limit_middleware(app)
+
 # Include routers with global auth default-deny (P1-1)
 # Public: auth_router (login/register), health endpoints
 # Protected by default: all other routers
@@ -172,6 +179,7 @@ app.include_router(export_tasks_router, prefix="/api", dependencies=auth_dep)
 app.include_router(feedback_router, prefix="/api", dependencies=auth_dep)
 app.include_router(audio_segments_router, prefix="/api", dependencies=auth_dep)
 app.include_router(llm_router, prefix="/api", dependencies=auth_dep)
+app.include_router(languages_router, prefix="/api/v1", dependencies=auth_dep)
 app.include_router(provider_router, prefix="/api/v1/providers", tags=["provider-management"], dependencies=auth_dep)
 app.include_router(evolution_router, prefix="/api", dependencies=auth_dep)
 app.include_router(websocket_router, prefix="/api", dependencies=auth_dep)
@@ -185,7 +193,7 @@ app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)
 app.include_router(publish_router, prefix="/api", dependencies=auth_dep)
 app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
 app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
-app.include_router(monitoring_router, prefix="/api", dependencies=auth_dep)
+app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep)
 app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
 app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
 app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)

@@ -14,6 +14,7 @@ const navItems = [
   { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness' },
   { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
   { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },
+  { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market' },
   { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: '/projects/1/dashboard' },
 ]
 
