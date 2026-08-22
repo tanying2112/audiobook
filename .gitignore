@@ -218,3 +218,13 @@ voxcpm2-pool/
 output/*.wav
 output/*.ogg
 output/*.flac
+
+# P3-2: Generated runtime artifacts — NEVER commit.
+# These are produced at runtime (Redis dump, podcast feed, auto changelog,
+# living-docs commit log) and were previously tracked by mistake. Ignore them
+# and `git rm --cached` the already-tracked copies.
+dump.rdb
+feeds/*.rss
+docs/git-commit-log.md
+docs/changelog/auto/
+storage/books/**/reports/
