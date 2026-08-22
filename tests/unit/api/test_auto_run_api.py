@@ -212,7 +212,7 @@ class TestAutoRunStart:
             }
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/start",
+            f"/api/projects/{sample_project}/auto-run/start",
             json=payload
         )
         assert resp.status_code == 200
@@ -238,7 +238,7 @@ class TestAutoRunStart:
             }
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/start",
+            f"/api/projects/{sample_project}/auto-run/start",
             json=payload
         )
         assert resp.status_code == 200
@@ -250,7 +250,7 @@ class TestAutoRunStart:
         """Test starting auto-run with non-existent project."""
         payload = {"config": {}}
         resp = await async_client.post(
-            "/projects/99999/auto-run/start",
+            "/api/projects/99999/auto-run/start",
             json=payload
         )
         assert resp.status_code == 404
@@ -265,7 +265,7 @@ class TestAutoRunStart:
             }
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/start",
+            f"/api/projects/{sample_project}/auto-run/start",
             json=payload
         )
         assert resp.status_code == 422  # Validation error
@@ -278,7 +278,7 @@ class TestAutoRunStatus:
     async def test_get_status_no_active_run(self, async_client: AsyncClient, sample_project: int):
         """Test getting status when no auto-run is active."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/status"
+            f"/api/projects/{sample_project}/auto-run/status"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -292,7 +292,7 @@ class TestAutoRunStatus:
         """Test getting status after starting auto-run."""
         # Start auto-run
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/start",
+            f"/api/projects/{sample_project}/auto-run/start",
             json={"config": {}}
         )
         assert resp.status_code == 200
@@ -300,7 +300,7 @@ class TestAutoRunStatus:
 
         # Get status
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/status"
+            f"/api/projects/{sample_project}/auto-run/status"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -314,7 +314,7 @@ class TestAutoRunPauseResumeCancel:
     async def test_pause_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test pausing when no auto-run is active."""
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/pause"
+            f"/api/projects/{sample_project}/auto-run/pause"
         )
         assert resp.status_code == 400
         assert "cannot pause" in resp.json()["detail"].lower()
@@ -323,7 +323,7 @@ class TestAutoRunPauseResumeCancel:
     async def test_resume_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test resuming when no auto-run is active."""
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/resume"
+            f"/api/projects/{sample_project}/auto-run/resume"
         )
         assert resp.status_code == 400
         assert "cannot resume" in resp.json()["detail"].lower()
@@ -332,7 +332,7 @@ class TestAutoRunPauseResumeCancel:
     async def test_cancel_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test cancelling when no auto-run is active."""
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/cancel"
+            f"/api/projects/{sample_project}/auto-run/cancel"
         )
         assert resp.status_code == 400
         assert "cannot cancel" in resp.json()["detail"].lower()
@@ -345,7 +345,7 @@ class TestAutoRunAutopilot:
     async def test_autopilot_preview(self, async_client: AsyncClient, sample_project: int):
         """Test getting autopilot preview config."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/autopilot/preview"
+            f"/api/projects/{sample_project}/auto-run/autopilot/preview"
         )
         # May return validation error if not enough data
         assert resp.status_code in (200, 422)
@@ -361,7 +361,7 @@ class TestAutoRunAutopilot:
     async def test_start_autopilot(self, async_client: AsyncClient, sample_project: int):
         """Test starting auto-run in autopilot mode."""
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/autopilot",
+            f"/api/projects/{sample_project}/auto-run/autopilot",
             json={}
         )
         # May return validation error if not enough data
@@ -388,7 +388,7 @@ class TestPipelineRunStage:
             "target_difficulty": "B"
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/run-stage",
+            f"/api/projects/{sample_project}/pipeline/run-stage",
             json=payload
         )
         # Stage may be accepted (200/202) or fail if no content
@@ -405,7 +405,7 @@ class TestPipelineRunStage:
             "target_difficulty": "B"
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/run-stage",
+            f"/api/projects/{sample_project}/pipeline/run-stage",
             json=payload
         )
         assert resp.status_code in (200, 202, 500)
@@ -418,7 +418,7 @@ class TestPipelineRunStage:
             "chapter_id": 1,
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/run-stage",
+            f"/api/projects/{sample_project}/pipeline/run-stage",
             json=payload
         )
         assert resp.status_code in (400, 422)
@@ -431,7 +431,7 @@ class TestPipelineRunStage:
             # Missing chapter_id
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/run-stage",
+            f"/api/projects/{sample_project}/pipeline/run-stage",
             json=payload
         )
         # Should fail validation
@@ -451,7 +451,7 @@ class TestPipelineTranslate:
             "author": "Test Author"
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/translate",
+            f"/api/projects/{sample_project}/pipeline/translate",
             json=payload
         )
         assert resp.status_code in (200, 202, 500)
@@ -468,7 +468,7 @@ class TestPipelineTranslate:
             "author": "Test Author"
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/translate",
+            f"/api/projects/{sample_project}/pipeline/translate",
             json=payload
         )
         assert resp.status_code in (200, 202, 500)
@@ -481,7 +481,7 @@ class TestPipelineTranslate:
             "book_title": "Test Book"
         }
         resp = await async_client.post(
-            f"/projects/{sample_project}/pipeline/translate",
+            f"/api/projects/{sample_project}/pipeline/translate",
             json=payload
         )
         # Should validate language code
@@ -491,7 +491,7 @@ class TestPipelineTranslate:
     async def test_get_translate_status(self, async_client: AsyncClient, sample_project: int):
         """Test getting translate pipeline status."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/pipeline/translate/status"
+            f"/api/projects/{sample_project}/pipeline/translate/status"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -504,7 +504,7 @@ class TestPipelineTranslate:
     async def test_get_supported_languages(self, async_client: AsyncClient, sample_project: int):
         """Test getting supported languages."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/pipeline/translate/languages"
+            f"/api/projects/{sample_project}/pipeline/translate/languages"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -524,7 +524,7 @@ class TestIntermediateProducts:
     async def test_get_intermediate_products(self, async_client: AsyncClient, sample_project: int):
         """Test getting intermediate products for a stage."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/intermediate/extract"
+            f"/api/projects/{sample_project}/auto-run/intermediate/extract"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -534,7 +534,7 @@ class TestIntermediateProducts:
     async def test_get_intermediate_invalid_stage(self, async_client: AsyncClient, sample_project: int):
         """Test getting intermediate for invalid stage."""
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/intermediate/invalid_stage"
+            f"/api/projects/{sample_project}/auto-run/intermediate/invalid_stage"
         )
         assert resp.status_code == 400
 
@@ -562,7 +562,7 @@ class TestAutoRunErrorHandling:
         # The test fixture overrides get_current_user, so this will actually succeed
         # In production, missing auth token would return 401
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/status"
+            f"/api/projects/{sample_project}/auto-run/status"
         )
         # With fixture override, this will be 200
         assert resp.status_code == 200
@@ -580,7 +580,7 @@ class TestIntegrationScenarios:
         """Test complete auto-run workflow: start -> status -> pause -> resume -> cancel."""
         # 1. Start auto-run
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/start",
+            f"/api/projects/{sample_project}/auto-run/start",
             json={"config": {}}
         )
         assert resp.status_code == 200
@@ -588,26 +588,26 @@ class TestIntegrationScenarios:
 
         # 2. Check status
         resp = await async_client.get(
-            f"/projects/{sample_project}/auto-run/status"
+            f"/api/projects/{sample_project}/auto-run/status"
         )
         assert resp.status_code == 200
         assert resp.json()["run_id"] == run_id
 
         # 3. Pause - will return 400 if auto-run not yet running (background task)
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/pause"
+            f"/api/projects/{sample_project}/auto-run/pause"
         )
         assert resp.status_code in (200, 400)
 
         # 4. Resume - will return 400 if not paused
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/resume"
+            f"/api/projects/{sample_project}/auto-run/resume"
         )
         assert resp.status_code in (200, 400)
 
         # 5. Cancel - will return 400 if not running
         resp = await async_client.post(
-            f"/projects/{sample_project}/auto-run/cancel"
+            f"/api/projects/{sample_project}/auto-run/cancel"
         )
         assert resp.status_code in (200, 400)
 
@@ -623,7 +623,7 @@ class TestIntegrationScenarios:
                 "target_difficulty": "B"
             }
             resp = await async_client.post(
-                f"/projects/{sample_project}/pipeline/run-stage",
+                f"/api/projects/{sample_project}/pipeline/run-stage",
                 json=payload
             )
             assert resp.status_code in (200, 202, 500)
@@ -643,7 +643,7 @@ class TestIntegrationScenarios:
             "global_style_notes": "Style",
             "story_line_summary": "Story",
         }
-        resp = await async_client.post("/projects/", json=project1_payload)
+        resp = await async_client.post("/api/projects/", json=project1_payload)
         project1_id = resp.json()["id"]
 
         project2_payload = {
@@ -655,19 +655,19 @@ class TestIntegrationScenarios:
             "global_style_notes": "Style",
             "story_line_summary": "Story",
         }
-        resp = await async_client.post("/projects/", json=project2_payload)
+        resp = await async_client.post("/api/projects/", json=project2_payload)
         project2_id = resp.json()["id"]
 
         # Start auto-run in project 1
         resp = await async_client.post(
-            f"/projects/{project1_id}/auto-run/start",
+            f"/api/projects/{project1_id}/auto-run/start",
             json={"config": {}}
         )
         run_id_1 = resp.json()["run_id"]
 
         # Start auto-run in project 2
         resp = await async_client.post(
-            f"/projects/{project2_id}/auto-run/start",
+            f"/api/projects/{project2_id}/auto-run/start",
             json={"config": {}}
         )
         run_id_2 = resp.json()["run_id"]
@@ -676,12 +676,12 @@ class TestIntegrationScenarios:
         assert run_id_1 != run_id_2
 
         # Status for project 1
-        resp = await async_client.get(f"/projects/{project1_id}/auto-run/status")
+        resp = await async_client.get(f"/api/projects/{project1_id}/auto-run/status")
         assert resp.status_code == 200
         assert resp.json()["run_id"] == run_id_1
 
         # Status for project 2
-        resp = await async_client.get(f"/projects/{project2_id}/auto-run/status")
+        resp = await async_client.get(f"/api/projects/{project2_id}/auto-run/status")
         assert resp.status_code == 200
         assert resp.json()["run_id"] == run_id_2
 

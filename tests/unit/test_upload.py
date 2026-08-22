@@ -261,7 +261,7 @@ class TestUploadInit:
     def test_init_upload_success(self, client, mock_project, mock_redis):
         """Test successful upload initialization."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -281,7 +281,7 @@ class TestUploadInit:
     def test_init_upload_invalid_extension(self, client, mock_project, mock_redis):
         """Test upload initialization with invalid file extension."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.exe",
                 "file_size": "1024",
@@ -295,7 +295,7 @@ class TestUploadInit:
     def test_init_upload_invalid_mime_type(self, client, mock_project, mock_redis):
         """Test upload initialization with invalid MIME type."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -309,7 +309,7 @@ class TestUploadInit:
     def test_init_upload_file_too_large(self, client, mock_project, mock_redis):
         """Test upload initialization with file exceeding size limit."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": str(200 * 1024 * 1024),  # 200MB > 100MB default
@@ -322,7 +322,7 @@ class TestUploadInit:
     def test_init_upload_project_not_found(self, client, mock_redis):
         """Test upload initialization with non-existent project."""
         response = client.post(
-            "/projects/999/upload/init",
+            "/api/projects/999/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -348,7 +348,7 @@ class TestUploadInit:
 
         for filename, mime_type in allowed:
             response = client.post(
-                "/projects/1/upload/init",
+                "/api/projects/1/upload/init",
                 data={
                     "filename": filename,
                     "file_size": "1024",
@@ -365,7 +365,7 @@ class TestUploadChunk:
         """Test successful chunk upload."""
         # Initialize upload
         init_response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -393,7 +393,7 @@ class TestUploadChunk:
         # Upload chunk
         chunk_data = b"test chunk data"
         response = client.post(
-            f"/projects/1/upload/{upload_id}/chunk",
+            f"/api/projects/1/upload/{upload_id}/chunk",
             data={
                 "chunk_index": "0",
                 "total_chunks": "1",
@@ -411,7 +411,7 @@ class TestUploadChunk:
         """Test final chunk triggers extraction job."""
         # Initialize
         init_response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "2048",
@@ -439,7 +439,7 @@ class TestUploadChunk:
         # Upload final chunk
         chunk_data = b"final chunk data"
         response = client.post(
-            f"/projects/1/upload/{upload_id}/chunk",
+            f"/api/projects/1/upload/{upload_id}/chunk",
             data={
                 "chunk_index": "1",
                 "total_chunks": "2",
@@ -457,7 +457,7 @@ class TestUploadChunk:
         mock_redis["get_upload_session"].return_value = None
 
         response = client.post(
-            "/projects/1/upload/invalid-session/chunk",
+            "/api/projects/1/upload/invalid-session/chunk",
             data={
                 "chunk_index": "0",
                 "total_chunks": "1",
@@ -485,7 +485,7 @@ class TestUploadChunk:
         }
 
         response = client.post(
-            "/projects/1/upload/some-id/chunk",
+            "/api/projects/1/upload/some-id/chunk",
             data={
                 "chunk_index": "0",
                 "total_chunks": "1",
@@ -514,7 +514,7 @@ class TestUploadChunk:
         }
 
         response = client.post(
-            "/projects/1/upload/some-id/chunk",
+            "/api/projects/1/upload/some-id/chunk",
             data={
                 "chunk_index": "0",
                 "total_chunks": "1",  # Mismatch: session says 2
@@ -544,7 +544,7 @@ class TestSimpleUpload:
 
             test_file = ("test.pdf", b"PDF content", "application/pdf")
             response = client.post(
-                "/projects/1/upload",
+                "/api/projects/1/upload",
                 files={"file": test_file},
             )
 
@@ -560,7 +560,7 @@ class TestSimpleUpload:
         test_file = ("large.pdf", large_content, "application/pdf")
 
         response = client.post(
-            "/projects/1/upload",
+            "/api/projects/1/upload",
             files={"file": test_file},
         )
 
@@ -570,7 +570,7 @@ class TestSimpleUpload:
         """Test simple upload with invalid file type."""
         test_file = ("bad.exe", b"content", "application/octet-stream")
         response = client.post(
-            "/projects/1/upload",
+            "/api/projects/1/upload",
             files={"file": test_file},
         )
 
@@ -580,7 +580,7 @@ class TestSimpleUpload:
         """Test simple upload with non-existent project."""
         test_file = ("test.pdf", b"PDF content", "application/pdf")
         response = client.post(
-            "/projects/999/upload",
+            "/api/projects/999/upload",
             files={"file": test_file},
         )
 
@@ -592,7 +592,7 @@ class TestExtractionJobStatus:
 
     def test_get_extraction_status_success(self, client, mock_project, mock_redis):
         """Test successful extraction status retrieval."""
-        response = client.get("/projects/1/extraction/test-job-id/status")
+        response = client.get("/api/projects/1/extraction/test-job-id/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -604,7 +604,7 @@ class TestExtractionJobStatus:
         """Test extraction status for non-existent job."""
         mock_redis["get_extraction_job"].return_value = None
 
-        response = client.get("/projects/1/extraction/nonexistent/status")
+        response = client.get("/api/projects/1/extraction/nonexistent/status")
 
         assert response.status_code == 404
 
@@ -627,7 +627,7 @@ class TestExtractionJobStatus:
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        response = client.get("/projects/1/extraction/test-job-id/status")
+        response = client.get("/api/projects/1/extraction/test-job-id/status")
 
         assert response.status_code == 400
         assert "mismatch" in response.json()["detail"].lower()
@@ -651,7 +651,7 @@ class TestExtractionJobStatus:
             }
         ]
 
-        response = client.get("/projects/1/extractions")
+        response = client.get("/api/projects/1/extractions")
 
         assert response.status_code == 200
         data = response.json()
@@ -664,7 +664,7 @@ class TestUploadStatus:
 
     def test_get_upload_status_success(self, client, mock_project, mock_redis):
         """Test successful upload status retrieval."""
-        response = client.get("/projects/1/upload/test-upload-id/status")
+        response = client.get("/api/projects/1/upload/test-upload-id/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -677,7 +677,7 @@ class TestUploadStatus:
         """Test upload status for non-existent session."""
         mock_redis["get_upload_session"].return_value = None
 
-        response = client.get("/projects/1/upload/nonexistent/status")
+        response = client.get("/api/projects/1/upload/nonexistent/status")
 
         assert response.status_code == 404
 
@@ -697,7 +697,7 @@ class TestUploadStatus:
             "status": "initialized",
         }
 
-        response = client.get("/projects/1/upload/some-id/status")
+        response = client.get("/api/projects/1/upload/some-id/status")
 
         assert response.status_code == 400
         assert "mismatch" in response.json()["detail"].lower()
@@ -708,7 +708,7 @@ class TestCancelUpload:
 
     def test_cancel_upload_success(self, client, mock_project, mock_redis):
         """Test successful upload cancellation."""
-        response = client.delete("/projects/1/upload/test-upload-id")
+        response = client.delete("/api/projects/1/upload/test-upload-id")
 
         assert response.status_code == 200
         assert "cancelled" in response.json()["message"].lower()
@@ -718,7 +718,7 @@ class TestCancelUpload:
         """Test cancellation of non-existent upload."""
         mock_redis["get_upload_session"].return_value = None
 
-        response = client.delete("/projects/1/upload/nonexistent")
+        response = client.delete("/api/projects/1/upload/nonexistent")
 
         assert response.status_code == 404
 
@@ -738,7 +738,7 @@ class TestCancelUpload:
             "status": "initialized",
         }
 
-        response = client.delete("/projects/1/upload/some-id")
+        response = client.delete("/api/projects/1/upload/some-id")
 
         assert response.status_code == 400
         assert "mismatch" in response.json()["detail"].lower()
@@ -939,7 +939,7 @@ class TestUploadEdgeCases:
     def test_init_upload_missing_filename(self, client, mock_project, mock_redis):
         """Test init upload with missing filename."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "file_size": "1024",
                 "mime_type": "application/pdf",
@@ -951,7 +951,7 @@ class TestUploadEdgeCases:
     def test_init_upload_missing_file_size(self, client, mock_project, mock_redis):
         """Test init upload with missing file_size."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "mime_type": "application/pdf",
@@ -962,7 +962,7 @@ class TestUploadEdgeCases:
     def test_init_upload_missing_mime_type(self, client, mock_project, mock_redis):
         """Test init upload with missing mime_type."""
         response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -973,7 +973,7 @@ class TestUploadEdgeCases:
     def test_upload_chunk_missing_file(self, client, mock_project, mock_redis):
         """Test chunk upload without file."""
         init_response = client.post(
-            "/projects/1/upload/init",
+            "/api/projects/1/upload/init",
             data={
                 "filename": "test.pdf",
                 "file_size": "1024",
@@ -983,7 +983,7 @@ class TestUploadEdgeCases:
         upload_id = init_response.json()["upload_id"]
 
         response = client.post(
-            f"/projects/1/upload/{upload_id}/chunk",
+            f"/api/projects/1/upload/{upload_id}/chunk",
             data={
                 "chunk_index": "0",
                 "total_chunks": "1",
@@ -995,7 +995,7 @@ class TestUploadEdgeCases:
 
     def test_simple_upload_no_file(self, client, mock_project, mock_redis):
         """Test simple upload without file."""
-        response = client.post("/projects/1/upload")
+        response = client.post("/api/projects/1/upload")
         assert response.status_code == 422
 
 

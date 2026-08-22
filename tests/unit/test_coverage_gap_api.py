@@ -193,18 +193,18 @@ class TestExportAPI:
             yield c
 
     def test_list_formats(self, client):
-        r = client.get("/projects/1/export/")
+        r = client.get("/api/projects/1/export/")
         assert r.status_code in (200, 422)
 
     def test_start_export(self, client):
         r = client.post(
-            "/projects/1/export/",
+            "/api/projects/1/export/",
             json={"format": "mp3", "chapter_ids": []},
         )
         assert r.status_code in (200, 202, 400, 404, 422)
 
     def test_get_export_status(self, client):
-        r = client.get("/projects/1/export/status")
+        r = client.get("/api/projects/1/export/status")
         assert r.status_code in (200, 404)
 
 
