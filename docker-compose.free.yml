@@ -43,7 +43,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: production
+      target: runner
     container_name: audiobook-api
     restart: unless-stopped
     depends_on:
@@ -84,7 +84,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: production
+      target: runner
     container_name: audiobook-worker
     restart: unless-stopped
     depends_on:

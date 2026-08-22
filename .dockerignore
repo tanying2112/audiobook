@@ -12,8 +12,6 @@ __pycache__/
 site/
 docs/
 tests/
-scripts/
-*.sh
 node_modules/
 web/dist/
 web/node_modules/
@@ -51,3 +49,9 @@ reports/
 htmlcov/
 dashboards/
 .mypy_cache/
+
+# ==========================================
+# 🚨 KEEP THESE FOR BUILD TIME (Dockerfile COPY)
+# ==========================================
+!scripts/download_kokoro_model.py
+!entrypoint.sh
