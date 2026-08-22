@@ -23,6 +23,7 @@ from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
 from .api.characters import router as characters_router
 from .api.config import router as config_router
+from .api.evolution import router as evolution_router
 from .api.export import export_tasks_router
 from .api.export import router as export_router
 from .api.feedback import router as feedback_router
@@ -34,6 +35,7 @@ from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
+from .api.provider_router import router as provider_router
 from .api.publish import router as publish_router
 from .api.qualities import router as qualities_router
 from .api.routings import router as routings_router
@@ -72,9 +74,10 @@ async def lifespan(app: FastAPI):
     await settings.validate_runtime_dependencies(timeout=settings.HEALTH_CHECK_TIMEOUT)
 
     # P1-4: Use Alembic for DB migrations instead of create_all()
+    import sys
     from subprocess import run
 
-    result = run(["alembic", "upgrade", "head"], capture_output=True, text=True)
+    result = run([sys.executable, "-m", "alembic", "upgrade", "head"], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Alembic migration failed: {result.stderr}")
 
@@ -156,34 +159,36 @@ app.add_middleware(
 auth_dep = [Depends(get_current_active_user)]
 
 app.include_router(auth_router, prefix="/api")  # Public: login/register
-app.include_router(projects_router, dependencies=auth_dep)
-app.include_router(books_router, dependencies=auth_dep)
-app.include_router(characters_router, dependencies=auth_dep)
-app.include_router(config_router, dependencies=auth_dep)
-app.include_router(paragraphs_router, dependencies=auth_dep)
-app.include_router(tts_edits_router, dependencies=auth_dep)
-app.include_router(routings_router, dependencies=auth_dep)
-app.include_router(qualities_router, dependencies=auth_dep)
-app.include_router(export_router, dependencies=auth_dep)
-app.include_router(export_tasks_router, dependencies=auth_dep)
-app.include_router(feedback_router, dependencies=auth_dep)
-app.include_router(audio_segments_router, dependencies=auth_dep)
-app.include_router(llm_router, dependencies=auth_dep)
-app.include_router(websocket_router, dependencies=auth_dep)
-app.include_router(templates_router, dependencies=auth_dep)
-app.include_router(harness_router, dependencies=auth_dep)
-app.include_router(golden_router, dependencies=auth_dep)
-app.include_router(auto_run_router, dependencies=auth_dep)
+app.include_router(projects_router, prefix="/api", dependencies=auth_dep)
+app.include_router(books_router, prefix="/api", dependencies=auth_dep)
+app.include_router(characters_router, prefix="/api", dependencies=auth_dep)
+app.include_router(config_router, prefix="/api", dependencies=auth_dep)
+app.include_router(paragraphs_router, prefix="/api", dependencies=auth_dep)
+app.include_router(tts_edits_router, prefix="/api", dependencies=auth_dep)
+app.include_router(routings_router, prefix="/api", dependencies=auth_dep)
+app.include_router(qualities_router, prefix="/api", dependencies=auth_dep)
+app.include_router(export_router, prefix="/api", dependencies=auth_dep)
+app.include_router(export_tasks_router, prefix="/api", dependencies=auth_dep)
+app.include_router(feedback_router, prefix="/api", dependencies=auth_dep)
+app.include_router(audio_segments_router, prefix="/api", dependencies=auth_dep)
+app.include_router(llm_router, prefix="/api", dependencies=auth_dep)
+app.include_router(provider_router, prefix="/api/v1/providers", tags=["provider-management"], dependencies=auth_dep)
+app.include_router(evolution_router, prefix="/api", dependencies=auth_dep)
+app.include_router(websocket_router, prefix="/api", dependencies=auth_dep)
+app.include_router(templates_router, prefix="/api", dependencies=auth_dep)
+app.include_router(harness_router, prefix="/api", dependencies=auth_dep)
+app.include_router(golden_router, prefix="/api", dependencies=auth_dep)
+app.include_router(auto_run_router, prefix="/api", dependencies=auth_dep)
 if settings.DEBUG or settings.ENVIRONMENT == "development":
-    app.include_router(mock_router, dependencies=auth_dep)
-app.include_router(tts_voices_router, dependencies=auth_dep)
-app.include_router(publish_router, dependencies=auth_dep)
-app.include_router(upload_router)  # Has own per-endpoint project auth
-app.include_router(pipeline_router, dependencies=auth_dep)
+    app.include_router(mock_router, prefix="/api", dependencies=auth_dep)
+app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)
+app.include_router(publish_router, prefix="/api", dependencies=auth_dep)
+app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
+app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
 app.include_router(monitoring_router, prefix="/api", dependencies=auth_dep)
-app.include_router(agent_chat_router, dependencies=auth_dep)
-app.include_router(admin_router, dependencies=auth_dep)
-app.include_router(sop_reflection_router, dependencies=auth_dep)
+app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
+app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
+app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
@@ -205,7 +210,8 @@ def health_live():
 async def health_ready():
     """K8s readiness probe — returns 200 only when all critical dependencies are up.
 
-    Checks: database SELECT 1, Redis ping, Kokoro model file existence, LLM API key format.
+    Checks: database SELECT 1, Redis ping, Kokoro model file existence, LLM API key format,
+    TTS engine health probes (Kokoro warmup, VoxCPM2/Edge connectivity).
     Returns 503 with structured error details if any dependency is not ready.
     """
     import asyncio
@@ -250,7 +256,7 @@ async def health_ready():
     else:
         checks["kokoro_model"] = "not_configured"
 
-    # TTS engine load status (PERF-001)
+    # TTS engine health probes (S1-6: real engine probes)
     try:
         from .di import get_app_container
         from .tts.engine import EngineRegistry
@@ -258,11 +264,33 @@ async def health_ready():
         container = get_app_container()
         registry = container.get(EngineRegistry)
         if registry is not None:
+            # Get basic load status
             checks["tts_engines"] = registry.ready_status
+
+            # Run actual health_check() on each registered engine
+            tts_health: dict[str, Any] = {}
+            for name, engine in registry._engines.items():
+                try:
+                    health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
+                    tts_health[name] = health
+                except asyncio.TimeoutError:
+                    tts_health[name] = {"healthy": False, "error": "health_check timeout"}
+                except Exception as e:
+                    tts_health[name] = {"healthy": False, "error": str(e)}
+
+            checks["tts_engine_health"] = tts_health
+
+            # Determine overall TTS health (at least one engine healthy)
+            tts_healthy = any(h.get("healthy", False) for h in tts_health.values())
+            checks["tts_overall_healthy"] = tts_healthy
         else:
             checks["tts_engines"] = "no_registry"
+            checks["tts_engine_health"] = {}
+            checks["tts_overall_healthy"] = False
     except Exception as e:
         checks["tts_engines"] = f"error: {e}"
+        checks["tts_engine_health"] = {}
+        checks["tts_overall_healthy"] = False
 
     # LLM API key format validation
     try:

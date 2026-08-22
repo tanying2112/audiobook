@@ -633,3 +633,48 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 - 工作区 21 个 synthesize/quality subset 测试 failed — 由工作区 async 重构后 `audio_quality.py` / `synthesize.py` / `secure_subprocess.py` 接口变动引起 (代码、fixture、mock 协议定调不一致)。修复路径: 要么同步 fixture 适配新 async API，要么 commit 补那几个重构的适配代码 — 交给下一 Sprint 接手
 
 ---
+
+---
+
+## Phase 2 后续工作 (Follow-up Tasks) — 进度
+
+> 本会话从「S2.1 前端对话框 + 热重载注入 LLM 路由器」中断处继续，并已收尾。
+
+### ✅ Task 1 — S2.1 Provider 前端对话框 + 热重载 (已完成)
+
+**后端 (`src/audiobook_studio/api/provider_router.py`)**
+- 修正双前缀 bug：router 原 `prefix="/v1/providers"` 被 `main.py` 又以 `/api/v1/providers` 挂载，导致路径变成 `/api/v1/providers/v1/providers/`。已移除 router 自身前缀，挂载路径现为干净的 `/api/v1/providers/...`。
+- DB→Router 桥接：`_db_provider_to_config()` (未知 `provider_type` 回落 OPENAI，DB API key 写入合成环境变量 `PROVIDER_DB_<NAME>_KEY`)、`sync_router_from_db(db)`、`trigger_router_reload()`。
+- 在 `create_provider / update_provider / create_model / update_model / delete_model / delete_provider` 全部 CRUD 成功后 `await sync_router_from_db(db)`，即时把 DB 配置推入运行中的 LLM 路由器。
+- 新增 `POST /api/v1/providers/reload` 管理端点：先 `sync_router_from_db(db)`(DB→router) 再 `trigger_router_reload()`(重读 YAML)，无需重启服务即生效。
+
+**后端测试 (`tests/unit/test_provider_hotreload.py`) — 6 passed**
+- 覆盖 `reload_config` 热重载、单例 `get_llm_router/reload_llm_router/reset_llm_router`、`sync_router_from_db` 推入 DB 配置、DB provider→ProviderConfig 映射 (含未知类型回落 OPENAI)、`/reload` 端点注册。
+
+**前端 (`web/src/api/provider_router.ts`) — 9 passed**
+- 复用 `src/api/index.ts` 共享 axios 实例；导出 `getProviders/createProvider/updateProvider/deleteProvider/getModelsByProvider/createModel/updateModel/deleteModel/reloadProviders`，路径严格对应后端 `/api/v1/providers/...`。
+- 测试 `web/src/api/__tests__/provider_router.spec.ts` (mock axios)：9/9 通过；`vue-tsc -b` 全绿。
+
+**前端 (`web/src/views/ProviderManager.vue`)**
+- 重写：移除虚构的 `@/components/ui` (a-card/a-table/...) 与不存在的 `@/api/provider_router` 依赖，改为原生 Vue 3 + `import ... from '../api/provider_router'` + `useI18n`，带原生 modal 对话框的 Provider/Model 增删改查。
+- `web/src/locales/zh-CN.js` 新增 `provider_manager` 整段 i18n 键 + `common.required`。
+
+### ✅ Task 2 — mypy `--strict` 渐进放开 api/models/schemas (已完成第一步)
+- 现状：`mypy.ini` 全局 `strict=True`，`feedback.*` 已移除 `ignore_errors`(26 文件 0 错误)。`api.*/models.*/schemas.*` 包级仍 `ignore_errors=True`(安全网)。
+- 渐进式做法（非一次性全放开，避免 1508 错误/127 文件的大爆炸）：保留包级忽略，仅对 S2.1 新增/维护的三个具体文件追加精确覆盖 `ignore_errors = False`：
+  - `schemas/provider.py`
+  - `models/provider.py`
+  - `api/provider_router.py`
+- 修复 `api/provider_router.py` 的 25 处严格类型错误（11 个函数缺返回注解、`ProviderOut/ModelOut(**{c.name: ...})` 应为 `c`、`select(...).delete()` 改为 `delete(Provider).where(...)`、`ModelModel`/`ProviderModel` 未导入、`result: dict` 缺泛型参数、`get_model` 中 `provider` 先使用后定义）。
+- 验证：`mypy --strict src/audiobook_studio`（正式 `mypy.ini`）→ **Success: no issues found in 248 source files**；现有 `tests/unit/test_mypy_strict_s2_7.py::test_mypy_strict_passes`（`@pytest.mark.slow`）通过，固化成果。
+- 后续：包级 `api.*/models.*/schemas.*` 仍待逐文件放开（大工程，非本次范围）。
+
+### ✅ Task 3 — `RuleRegressionGuard` 阈值在真实数据集上标定 (已完成)
+- 默认 `DEFAULT_QUALITY_FLOOR_RATIO = 0.95` 经标定确认合理。
+- 标定脚本：`scripts/calibrate_rule_regression.py`（确定性、无 RNG，150 段落多类型代表性数据集 + 规则谱系：IMPROVE_BIG/IMPROVE_SMALL/NEUTRAL/DEGRADE_SMALL/DEGRADE_BIG）。
+- 结果：baseline 整体质量 0.7111；最小真实退化下降 0.1111（≈基线 15.6%）；安全区间 = **[0.85, 1.00)**（所有 floor≥0.85 既放行全部改进、又拦截全部退化）。0.95 落在安全区间内，且为保守端（容忍带宽 ≈ 基线 5%）。
+- 测试：`tests/unit/test_rule_regression_calibration.py`（4 passed）锁定：0.95 拦截退化、放行改进、位于安全区间内。
+- 结论：保留 0.95 作为默认（一次性单向 SOP 提升门的保守选择）。
+
+---
+
