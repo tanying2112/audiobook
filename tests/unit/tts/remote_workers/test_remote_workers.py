@@ -11,43 +11,41 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Mock heavy dependencies BEFORE importing any worker modules
-import sys
-from unittest.mock import MagicMock
+# Mock heavy dependencies ONLY during import of the worker modules, then restore
+# sys.modules so we do not pollute other test files in the same pytest session.
+# (The worker modules cache their imports in their own globals at import time, so
+#  removing them from sys.modules afterwards does not break the already-imported
+#  classes. The 4 worker test files reload their target module per-test with
+#  proper mocks; leaving MagicMocks here would leak into those reloads.)
+_IMPORT_MODULES = [
+    'torch', 'torchaudio', 'torch.cuda', 'torch.cuda.amp', 'torchaudio.functional',
+    'lightning', 'lightning.pytorch', 'modal', 'kaggle',
+    'boto3', 'requests', 'transformers', 'transformers.models',
+    'transformers.models.voxcpm2', 'paddle', 'paddlepaddle',
+    'paddlenlp', 'paddlenlp.transformers', 'paddlenlp.transformers.auto',
+    'paddlenlp.transformers.AutoModelForCausalLM',
+    'paddlenlp.transformers.AutoTokenizer',
+    'paddlenlp.transformers.AutoConfig',
+    'paddlenlp.transformers.AutoModel',
+    'paddle.device', 'paddle.device.cuda',
+    'pytesseract', 'soundfile', 'paddlaudio',
+]
 
-# Create comprehensive mocks for ALL heavy dependencies
-for mod_name in ['torch', 'torchaudio', 'lightning', 'modal', 'kaggle', 'boto3', 'requests', 'transformers', 'paddle', 'paddlenlp', 'paddlenlp.transformers', 'paddlenlp.transformers.auto', 'paddlenlp.transformers.auto.tokenizer', 'paddlenlp.transformers.auto.modeling', 'paddlenlp.transformers.auto.configuration', 'pytesseract', 'soundfile', 'torchaudio', 'paddlaudio']:
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = MagicMock()
-
-for mod_name in ['torch', 'torchaudio', 'lightning.pytorch', 'lightning', 'modal', 'kaggle', 'boto3', 'requests', 'transformers', 'paddle', 'paddlenlp', 'paddlenlp.transformers', 'paddlenlp.transformers.auto', 'paddle', 'paddlepaddle', 'soundfile', 'torchaudio', 'paddlaudio', 'paddlenlp.transformers.AutoModelForCausalLM', 'paddlenlp.transformers.AutoTokenizer', 'paddlenlp.transformers.AutoConfig', 'paddlenlp.transformers.AutoModel', 'paddlenlp.transformers.AutoTokenizer', 'paddlenlp.transformers.AutoModel', 'paddlenlp.transformers.AutoTokenizer', 'paddlenlp.transformers.AutoModel']:
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = MagicMock()
-
-# Add mock for transformers submodules
-sys.modules['transformers'] = MagicMock()
-sys.modules['transformers.models'] = MagicMock()
-sys.modules['transformers.models.voxcpm2'] = MagicMock()
-sys.modules['torch'] = MagicMock()
-sys.modules['torch.cuda'] = MagicMock()
-sys.modules['torch.cuda.amp'] = MagicMock()
-sys.modules['torchaudio'] = MagicMock()
-sys.modules['torchaudio.functional'] = MagicMock()
-sys.modules['paddle'] = MagicMock()
-sys.modules['paddlenlp'] = MagicMock()
-sys.modules['paddlenlp.transformers'] = MagicMock()
-sys.modules['paddlenlp.transformers.AutoModelForCausalLM'] = MagicMock()
-sys.modules['paddlenlp.transformers.AutoTokenizer'] = MagicMock()
-sys.modules['paddle.device'] = MagicMock()
-sys.modules['paddle.device.cuda'] = MagicMock()
-
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+_saved_modules = {}
+for _mod in _IMPORT_MODULES:
+    if _mod not in sys.modules:
+        _saved_modules[_mod] = None  # was absent -> remove after import
+        sys.modules[_mod] = MagicMock()
 
 # Now import the modules after mocking
 from src.audiobook_studio.tts.remote_workers import BaseWorker
 from src.audiobook_studio.tts.remote_workers.baidu_worker import BaiduWorker
 from src.audiobook_studio.tts.remote_workers.kaggle_worker import KaggleWorker
+
+# Restore sys.modules so MagicMocks do not leak into other test files.
+for _mod, _orig in _saved_modules.items():
+    if _orig is None:
+        sys.modules.pop(_mod, None)
 
 
 class TestBaiduWorker:

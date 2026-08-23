@@ -12,13 +12,20 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 
 
+def _identity_decorator(*args, **kwargs):
+    """Decorator factory returning the wrapped function unchanged."""
+    def decorator(func):
+        return func
+    return decorator
+
+
 # Mock heavy dependencies before importing
 mock_torch = Mock()
 mock_torch.cuda.is_available.return_value = True
 mock_torch.cuda.get_device_name.return_value = "T4"
 mock_torch.cuda.get_device_properties.return_value = Mock(total_memory=16 * 1024 * 1024 * 1024)
 mock_torch.cuda.memory_allocated.return_value = 2 * 1024 * 1024 * 1024
-mock_torch.inference_mode = lambda: MagicMock(__enter__=Mock(return_value=None), __exit__=Mock(return_value=None))
+mock_torch.inference_mode = _identity_decorator
 mock_torch.load = Mock()
 
 mock_torchaudio = Mock()
@@ -36,11 +43,18 @@ mock_transformers.AutoTokenizer = mock_auto_tokenizer
 mock_hf_hub = Mock()
 mock_hf_hub.snapshot_download = Mock()
 
-sys.modules["torch"] = mock_torch
-sys.modules["torchaudio"] = mock_torchaudio
-sys.modules["transformers"] = mock_transformers
-sys.modules["huggingface_hub"] = mock_hf_hub
-
+# Mocks required for the WORKER IMPORT to succeed. Temporarily placed in
+# sys.modules, then removed right after import so we do not pollute other test
+# files in the same pytest session. Runtime imports inside the worker are served
+# by the _mock_runtime_deps autouse fixture below.
+_IMPORT_MODULES = {
+    "torch": mock_torch,
+    "torchaudio": mock_torchaudio,
+    "transformers": mock_transformers,
+    "huggingface_hub": mock_hf_hub,
+}
+for _name, _mock in _IMPORT_MODULES.items():
+    sys.modules[_name] = _mock
 
 from src.audiobook_studio.tts.remote_workers.lightning_worker import (
     LightningWorker,
@@ -50,6 +64,57 @@ from src.audiobook_studio.tts.remote_workers.lightning_worker import (
     get_gpu_memory_total_mb,
     main,
 )
+import src.audiobook_studio.tts.remote_workers.lightning_worker as _lightning_worker_mod
+
+for _name in _IMPORT_MODULES:
+    sys.modules.pop(_name, None)
+
+
+_RUNTIME_MODULES = dict(_IMPORT_MODULES)
+_MISSING = object()
+
+
+def _rebind_worker_globals():
+    """Rebind the names imported at module level to the *reloaded* worker module.
+
+    The package ``__init__`` imports every worker at once, so the first worker
+    test file to run binds all workers' module-level ``import torch`` /
+    ``from transformers import ...`` to ITS mocks. Those bindings are cached in
+    ``sys.modules`` and leak into later files. Reloading the targeted worker
+    module re-binds its globals to this file's mocks, and we re-point the test's
+    references so engine/helper calls use the correct mock objects.
+    """
+    global LightningWorker, T4VoxCPM2Engine, get_device_name, get_gpu_memory_used_mb, get_gpu_memory_total_mb, main
+    LightningWorker = _lightning_worker_mod.LightningWorker
+    T4VoxCPM2Engine = _lightning_worker_mod.T4VoxCPM2Engine
+    get_device_name = _lightning_worker_mod.get_device_name
+    get_gpu_memory_used_mb = _lightning_worker_mod.get_gpu_memory_used_mb
+    get_gpu_memory_total_mb = _lightning_worker_mod.get_gpu_memory_total_mb
+    main = _lightning_worker_mod.main
+
+
+@pytest.fixture(autouse=True)
+def _mock_runtime_deps():
+    """Mock heavy deps the worker imports lazily at runtime.
+
+    Restored after each test so other files (e.g. test_edge_tts_engine) see clean
+    sys.modules instead of global MagicMocks.
+    """
+    saved = {}
+    for _name, _mock in _RUNTIME_MODULES.items():
+        saved[_name] = sys.modules.get(_name, _MISSING)
+        sys.modules[_name] = _mock
+    import importlib
+    importlib.reload(_lightning_worker_mod)
+    _rebind_worker_globals()
+    try:
+        yield
+    finally:
+        for _name, _orig in saved.items():
+            if _orig is _MISSING:
+                sys.modules.pop(_name, None)
+            else:
+                sys.modules[_name] = _orig
 
 
 class TestGPUHelpers:
@@ -96,7 +161,7 @@ class TestT4VoxCPM2Engine:
     def mock_model(self):
         """Create a mock model."""
         model = Mock()
-        model.parameters.return_value = iter([Mock(device="cuda")])
+        model.parameters.side_effect = lambda: iter([Mock(device="cuda")])
         model.generate.return_value = Mock()
         model.decode_audio.return_value = Mock()
         model.encode_speaker.return_value = Mock()
@@ -175,16 +240,17 @@ class TestT4VoxCPM2Engine:
 
         mock_buffer = Mock()
         mock_buffer.getvalue.return_value = b"fake_wav_data"
-        with patch("io.BytesIO", return_value=mock_buffer):
-            with patch("torchaudio.save"):
-                with patch("torchaudio.load", return_value=(Mock(), 24000)):
-                    with patch("torchaudio.functional.resample"):
-                        audio_bytes = engine.synthesize(
-                            "Hello", "zh_female_1", {}, "/path/to/reference.wav"
-                        )
+        with patch("os.path.exists", return_value=True):
+            with patch("io.BytesIO", return_value=mock_buffer):
+                with patch("torchaudio.save"):
+                    with patch("torchaudio.load", return_value=(Mock(), 24000)) as mock_load:
+                        with patch("torchaudio.functional.resample"):
+                            audio_bytes = engine.synthesize(
+                                "Hello", "zh_female_1", {}, "/path/to/reference.wav"
+                            )
 
         assert audio_bytes == b"fake_wav_data"
-        mock_torchaudio.load.assert_called()
+        mock_load.assert_called()
         mock_model.encode_speaker.assert_called()
 
     def test_synthesize_reference_audio_resamples(self, mock_model, mock_tokenizer):
@@ -201,15 +267,21 @@ class TestT4VoxCPM2Engine:
 
         mock_buffer = Mock()
         mock_buffer.getvalue.return_value = b"fake_wav_data"
-        with patch("io.BytesIO", return_value=mock_buffer):
-            with patch("torchaudio.save"):
-                with patch("torchaudio.load", return_value=(Mock(), 16000)):  # Different sample rate
-                    with patch("torchaudio.functional.resample") as mock_resample:
+        with patch("os.path.exists", return_value=True):
+            with patch("io.BytesIO", return_value=mock_buffer):
+                with patch("torchaudio.save"):
+                    with patch("torchaudio.load", return_value=(Mock(), 16000)):  # Different sample rate
                         audio_bytes = engine.synthesize(
                             "Hello", "zh_female_1", {}, "/path/to/reference.wav"
                         )
 
-        mock_resample.assert_called()
+        # The worker calls `torchaudio.functional.resample` via its module-level
+        # `torchaudio` reference (= mock_torchaudio). Patching the dotted string
+        # target "torchaudio.functional.resample" resolves `torchaudio.functional`
+        # as a *module* (importlib.import_module), which fails because torchaudio
+        # is a MagicMock, so it produces a different object than the worker uses.
+        # Assert on the exact mock object the worker actually references instead.
+        mock_torchaudio.functional.resample.assert_called()
 
 
 class TestLightningWorker:
@@ -218,21 +290,28 @@ class TestLightningWorker:
     @pytest.fixture
     def worker(self):
         """Create a worker with mocked dependencies."""
-        with patch("src.audiobook_studio.tts.remote_workers.lightning_worker.BaseWorker.__init__", return_value=None):
-            with patch("src.audiobook_studio.tts.remote_workers.lightning_worker.T4VoxCPM2Engine") as mock_engine_class:
-                mock_engine = Mock()
-                mock_engine_class.return_value = mock_engine
+        # Patch the real BaseWorker.__init__ and the engine global the worker's
+        # _init_engine actually references (double-module trap: string-path
+        # patching the wrong module object).
+        with patch.object(LightningWorker.__mro__[1], "__init__", return_value=None):
+            engine_globals = LightningWorker._init_engine.__globals__
+            saved_engine = engine_globals.get("T4VoxCPM2Engine")
+            mock_engine = Mock()
+            engine_globals["T4VoxCPM2Engine"] = Mock(return_value=mock_engine)
+            try:
                 worker = LightningWorker()
                 worker.worker_id = "lightning-test-worker"
                 worker.engine = mock_engine
-                return worker
+                yield worker
+            finally:
+                engine_globals["T4VoxCPM2Engine"] = saved_engine
 
     def test_init_calls_parent_init(self):
         """Test worker init calls parent init with lightning prefix."""
-        with patch("src.audiobook_studio.tts.remote_workers.lightning_worker.BaseWorker.__init__", return_value=None) as mock_super:
-            with patch("src.audiobook_studio.tts.remote_workers.lightning_worker.T4VoxCPM2Engine"):
+        with patch.object(LightningWorker.__mro__[1], "__init__", return_value=None) as mock_super:
+            with patch.dict(LightningWorker._init_engine.__globals__, {"T4VoxCPM2Engine": Mock()}):
                 worker = LightningWorker()
-                mock_super.assert_called_once_with("lightning")
+                mock_super.assert_called_once_with(platform_prefix="lightning")
 
     def test_init_engine_returns_t4_engine(self, worker):
         """Test _init_engine returns T4VoxCPM2Engine instance."""
@@ -270,34 +349,32 @@ class TestLightningWorkerMain:
 
     def test_main_exits_when_no_cuda(self):
         """Test main exits with error when CUDA not available."""
-        mock_torch.cuda.is_available.return_value = False
-
-        with patch("sys.exit") as mock_exit:
-            with patch("sys.stderr.write") as mock_stderr:
+        main_globals = main.__globals__
+        with patch.object(main_globals["torch"].cuda, "is_available", return_value=False):
+            with pytest.raises(SystemExit):
                 main()
-                mock_exit.assert_called_with(1)
 
     def test_main_creates_worker_and_runs(self, mock_model, mock_tokenizer):
         """Test main creates worker and calls run when GPU available."""
-        mock_torch.cuda.is_available.return_value = True
+        main_globals = main.__globals__
         mock_auto_model.from_pretrained.return_value = mock_model
         mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
 
-        with patch("os.path.exists", return_value=True):
-            with patch("src.audiobook_studio.tts.remote_workers.lightning_worker.LightningWorker") as mock_worker_class:
-                mock_worker = Mock()
-                mock_worker_class.return_value = mock_worker
+        mock_worker = Mock()
+        mock_worker_class = Mock(return_value=mock_worker)
+        with patch.dict(main_globals, {"LightningWorker": mock_worker_class}):
+            with patch.object(main_globals["torch"].cuda, "is_available", return_value=True):
+                with patch("os.path.exists", return_value=True):
+                    main()
 
-                main()
-
-                mock_worker_class.assert_called_once()
-                mock_worker.run.assert_called_once()
+        mock_worker_class.assert_called_once()
+        mock_worker.run.assert_called_once()
 
 
 @pytest.fixture
 def mock_model():
     model = Mock()
-    model.parameters.return_value = iter([Mock(device="cuda")])
+    model.parameters.side_effect = lambda: iter([Mock(device="cuda")])
     model.generate.return_value = Mock()
     model.decode_audio.return_value = Mock()
     model.encode_speaker.return_value = Mock()
