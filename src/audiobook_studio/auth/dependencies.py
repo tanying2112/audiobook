@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
@@ -20,9 +20,27 @@ from src.audiobook_studio.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# OAuth2 scheme for token authentication
+# Extension for User model to support cached roles
+class _UserWithCache(User):
+    """User class with dynamic _cached_roles attribute for cached auth."""
+    __allow_unmapped__ = True
+    _cached_roles: List[str]
+
+# OAuth2 scheme for token authentication (required)
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/auth/login",
+    scopes={
+        "admin": "Full system access",
+        "project:read": "Read project data",
+        "project:write": "Write project data",
+        "golden:contribute": "Contribute to golden dataset",
+    },
+)
+
+# OAuth2 scheme for token authentication (optional - returns None if no token)
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/login",
+    auto_error=False,
     scopes={
         "admin": "Full system access",
         "project:read": "Read project data",
@@ -48,7 +66,7 @@ async def _get_redis():
     )
 
 
-async def _get_cached_user(user_id: int) -> Optional[dict]:
+async def _get_cached_user(user_id: int) -> Optional[Dict[str, Any]]:
     """Get user from Redis cache."""
     try:
         redis = await _get_redis()
@@ -57,7 +75,7 @@ async def _get_cached_user(user_id: int) -> Optional[dict]:
         await redis.aclose()
         if cached:
             logger.debug(f"Cache hit for user {user_id}")
-            return json.loads(cached)
+            return json.loads(cached)  # type: ignore[no-any-return]
     except Exception as e:
         logger.warning(f"Failed to get cached user {user_id}: {e}")
     return None
@@ -127,10 +145,10 @@ async def get_current_user(
             roles=roles,
             permissions=permissions,
         )
-    except JWTError:
-        raise credentials_exception
-    except Exception:
-        raise credentials_exception
+    except JWTError as e:
+        raise credentials_exception from e
+    except Exception as e:
+        raise credentials_exception from e
 
     # Try to get user from Redis cache first
     cached_user = await _get_cached_user(user_id)
@@ -149,7 +167,7 @@ async def get_current_user(
                 )
 
         # Create a User object from cached data
-        user = User(
+        user = _UserWithCache(
             id=cached_user["id"],
             email=cached_user["email"],
             username=cached_user["username"],
@@ -200,6 +218,95 @@ async def get_current_superuser(
             detail="Superuser access required",
         )
     return current_user
+
+
+async def get_current_user_optional(
+    security_scopes: SecurityScopes,
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Get current authenticated user from JWT token, or None if no token provided."""
+    if token is None:
+        return None
+
+    # Reuse the same logic as get_current_user but without raising on missing token
+    authenticate_value = f'Bearer scope="{security_scopes.scope_str}"' if security_scopes.scopes else "Bearer"
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": authenticate_value},
+    )
+
+    try:
+        jwt_handler = _get_jwt_handler()
+        payload = jwt_handler.decode_token(token)
+        user_id: int = int(payload.get("sub", 0))
+        username: str = payload.get("username", "")
+        roles: List[str] = payload.get("roles", [])
+        permissions: List[str] = payload.get("permissions", [])
+
+        if user_id == 0:
+            raise credentials_exception
+
+        token_data = TokenData(
+            username=username,
+            user_id=user_id,
+            roles=roles,
+            permissions=permissions,
+        )
+    except JWTError as e:
+        raise credentials_exception from e
+    except Exception as e:
+        raise credentials_exception from e
+
+    # Try to get user from Redis cache first
+    cached_user = await _get_cached_user(user_id)
+    if cached_user:
+        # Verify user is still active
+        if not cached_user.get("is_active", True):
+            raise HTTPException(status_code=400, detail="Inactive user")
+
+        # Check scopes if required
+        for scope in security_scopes.scopes:
+            if scope not in token_data.permissions and (scope != "admin" or "admin" not in token_data.roles):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Not enough permissions. Required: {scope}",
+                    headers={"WWW-Authenticate": authenticate_value},
+                )
+
+        # Create a User object from cached data
+        user = _UserWithCache(
+            id=cached_user["id"],
+            email=cached_user["email"],
+            username=cached_user["username"],
+            full_name=cached_user.get("full_name"),
+            is_active=cached_user.get("is_active", True),
+            is_superuser=cached_user.get("is_superuser", False),
+        )
+        # Attach roles for permission checks
+        user._cached_roles = cached_user.get("roles", [])
+        return user
+
+    # Fallback to database query
+    user = db.query(User).filter(User.id == token_data.user_id).first()
+    if user is None:
+        raise credentials_exception
+
+    # Cache the user for future requests
+    await _cache_user(user)
+
+    # Check scopes if required
+    for scope in security_scopes.scopes:
+        if scope not in token_data.permissions and (scope != "admin" or "admin" not in token_data.roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Not enough permissions. Required: {scope}",
+                headers={"WWW-Authenticate": authenticate_value},
+            )
+
+    return user
 
 
 # Permission-based dependencies

@@ -13,11 +13,22 @@ Usage::
 
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..api.websocket import get_pause_event, is_paused, pause_check
+from ..api.websocket import get_pause_event, is_paused, pause_check, PipelineEventType, emit_pipeline_event
+from ..pipeline.progress_emitter import (
+    emit_stage_enter,
+    emit_stage_progress,
+    emit_stage_exit,
+    emit_chapter_complete,
+    emit_paragraph_complete,
+    emit_error,
+    emit_pipeline_completed,
+)
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
@@ -156,7 +167,7 @@ def _emit_pipeline_end(context: Dict[str, Any], result: Any = None, error: Excep
 def _default_stage_hook(
     event: str,
     stage: str,
-    context: dict,
+    context: Dict[str, Any],
     result: Any = None,
     error: Exception | None = None,
 ) -> None:
@@ -175,6 +186,57 @@ def _default_stage_hook(
 
 # Auto-register default logger hook (can be disabled by clearing _stage_hooks)
 _stage_hooks.append(_default_stage_hook)
+
+# ── WebSocket Progress Emitter Hook ────────────────────────────────────────
+# Emit real-time progress events to WebSocket clients
+async def _websocket_stage_hook(
+    event: str,
+    stage: str,
+    context: Dict[str, Any],
+    result: Any = None,
+    error: Exception | None = None,
+) -> None:
+    """WebSocket progress emitter hook."""
+    project_id = context.get("project_id")
+    chapter_index = context.get("chapter_index")
+    chapter_id = context.get("chapter_id")
+    paragraph_index = context.get("paragraph_index")
+    paragraph_id = context.get("paragraph_id")
+
+    if not project_id:
+        return
+
+    try:
+        if event == "stage_enter":
+            total_items = context.get("kwargs", {}).get("total_items")
+            await emit_stage_enter(
+                stage=stage,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                chapter_id=chapter_id,
+                paragraph_index=paragraph_index,
+                paragraph_id=paragraph_id,
+                total_items=total_items,
+            )
+        elif event == "stage_exit":
+            success = error is None
+            error_message = str(error) if error else None
+            await emit_stage_exit(
+                stage=stage,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                chapter_id=chapter_id,
+                paragraph_index=paragraph_index,
+                success=success,
+                error_message=error_message,
+            )
+    except Exception as e:
+        # Never let hook errors break the pipeline
+        logger.warning(f"WebSocket hook error: {e}")
+
+
+# Register WebSocket hook
+_stage_hooks.append(_websocket_stage_hook)
 
 # ── Telemetry Integration ──────────────────────────────────────────────────
 # Functions to initialize and register the telemetry collector as pipeline hooks
@@ -197,6 +259,11 @@ def init_telemetry(
     if not _TELEMETRY_AVAILABLE:
         logger.debug("Telemetry module not available, skipping initialization")
         return None
+
+    # Shutdown existing telemetry if already initialized
+    if _telemetry_collector:
+        logger.debug("Telemetry already initialized, shutting down existing collector")
+        shutdown_telemetry()
 
     _telemetry_collector = TelemetryCollector(
         project_id=project_id,
@@ -221,20 +288,17 @@ def get_telemetry() -> Optional[TelemetryCollector]:
     return _telemetry_collector
 
 
-def shutdown_telemetry() -> Optional[dict]:
+def shutdown_telemetry() -> Optional[Dict[str, Any]]:
     """Shutdown telemetry and return final summary."""
     global _telemetry_collector
     if _telemetry_collector:
         summary = _telemetry_collector.get_summary()
-        # Unregister hooks
-        if _telemetry_collector.on_pipeline_start in _pipeline_hooks:
-            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_start)
-        if _telemetry_collector.on_pipeline_end in _pipeline_hooks:
-            _pipeline_hooks.remove(_telemetry_collector.on_pipeline_end)
-        if _telemetry_collector.on_stage_enter in _stage_hooks:
-            _stage_hooks.remove(_telemetry_collector.on_stage_enter)
-        if _telemetry_collector.on_stage_exit in _stage_hooks:
-            _stage_hooks.remove(_telemetry_collector.on_stage_exit)
+        # Unregister hooks - use indices to avoid bound method identity issues
+        global _pipeline_hooks, _stage_hooks
+        _pipeline_hooks = [h for h in _pipeline_hooks
+                          if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
+        _stage_hooks = [h for h in _stage_hooks
+                       if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
         _telemetry_collector = None
         return summary
     return None
@@ -245,7 +309,7 @@ def shutdown_telemetry() -> Optional[dict]:
 
 async def run_stage(
     stage: str,
-    db: Session,
+    db: Union[Session, AsyncSession],
     *,
     project_id: Optional[int] = None,
     chapter_index: Optional[int] = None,
@@ -253,7 +317,7 @@ async def run_stage(
     paragraph_index: Optional[int] = None,
     paragraph_id: Optional[int] = None,
     feedback_collector: Optional[FeedbackCollector] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Any:
     """Run a pipeline stage and persist its output to the database.
 
@@ -263,7 +327,7 @@ async def run_stage(
         One of ``"extract"``, ``"analyze"``, ``"annotate"``, ``"edit"``,
         ``"audio_postprocess"``, ``"synthesize"``, ``"quality"``.
     db:
-        SQLAlchemy session for persistence.
+        SQLAlchemy session for persistence (sync or async).
     project_id:
         Required for stages that create/update Project-level records.
     chapter_index:
@@ -284,34 +348,63 @@ async def run_stage(
     -------
     The pipeline stage result (Pydantic model) and writes side effects to DB.
     """
-    # Resolve chapter
-    chapter = None
+    # Resolve chapter. Branch on isinstance directly so mypy narrows the
+    # Union[Session, AsyncSession] — the sync branch's ``db.query(...)`` is
+    # only valid on Session, and AsyncSession lacks it.
+    chapter: Optional[Chapter] = None
     if chapter_id:
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
+        if isinstance(db, AsyncSession):
+            result = await db.execute(select(Chapter).filter(Chapter.id == chapter_id))
+            chapter = result.scalar_one_or_none()
+        else:
+            chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
     elif chapter_index is not None and project_id is not None:
-        chapter = (
-            db.query(Chapter)
-            .filter(
-                Chapter.project_id == project_id,
-                Chapter.index == chapter_index,
+        if isinstance(db, AsyncSession):
+            result = await db.execute(
+                select(Chapter).filter(
+                    Chapter.project_id == project_id,
+                    Chapter.index == chapter_index,
+                )
             )
-            .first()
-        )
+            chapter = result.scalar_one_or_none()
+        else:
+            chapter = (
+                db.query(Chapter)
+                .filter(
+                    Chapter.project_id == project_id,
+                    Chapter.index == chapter_index,
+                )
+                .first()
+            )
 
     # Resolve paragraph
-    para = None
+    para: Optional[Paragraph] = None
     if paragraph_id:
-        para = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+        if isinstance(db, AsyncSession):
+            para_result = await db.execute(select(Paragraph).filter(Paragraph.id == paragraph_id))
+            para = para_result.scalar_one_or_none()
+        else:
+            para = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
     elif paragraph_index is not None and chapter is not None:
-        para = (
-            db.query(Paragraph)
-            .filter(
-                Paragraph.project_id == project_id,
-                Paragraph.chapter_id == chapter.id,
-                Paragraph.index == paragraph_index,
+        if isinstance(db, AsyncSession):
+            para_result = await db.execute(
+                select(Paragraph).filter(
+                    Paragraph.project_id == project_id,
+                    Paragraph.chapter_id == chapter.id,
+                    Paragraph.index == paragraph_index,
+                )
             )
-            .first()
-        )
+            para = para_result.scalar_one_or_none()
+        else:
+            para = (
+                db.query(Paragraph)
+                .filter(
+                    Paragraph.project_id == project_id,
+                    Paragraph.chapter_id == chapter.id,
+                    Paragraph.index == paragraph_index,
+                )
+                .first()
+            )
 
     # Build input snapshot for feedback collection
     input_snapshot = {
@@ -366,8 +459,16 @@ async def run_stage(
         # Run stage logic
         result = handler.run(**context)
 
-        # Persist result to database
-        handler.persist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
+        # Persist result to database (async). The base ``StageHandler`` only
+        # declares the sync ``persist``; the async ``apersist`` is provided by
+        # every concrete stage subclass, so fetch it dynamically and guard for
+        # None rather than asserting the base declares it (base lives in
+        # stage_registry, outside this module's scope).
+        apersist = getattr(handler, "apersist", None)
+        if apersist is not None:
+            await apersist(
+                db, project_id, chapter, para, result, chapter_index, paragraph_index
+            )
 
         # Capture feedback
         if feedback_capture:
@@ -453,7 +554,7 @@ async def run_pipeline(
     paragraph_id: Optional[int] = None,
     feedback_collector: Optional[FeedbackCollector] = None,
     checkpoint_manager: Optional[CheckpointManager] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> List[Any]:
     """Run multiple pipeline stages sequentially with hooks and checkpoint support.
 
@@ -495,8 +596,25 @@ async def run_pipeline(
         "kwargs": _sanitize_kwargs(kwargs),
     }
 
+    # Early exit: if all stages are already completed, don't run anything
+    if checkpoint_manager and chapter_index is not None:
+        all_done = True
+        for stage in stages:
+            if not checkpoint_manager.is_stage_done(stage, chapter_index, paragraph_index):
+                all_done = False
+                break
+        if all_done:
+            if paragraph_index is not None:
+                logger.info(
+                    "All stages already completed for ch%d p%d, skipping pipeline",
+                    chapter_index, paragraph_index,
+                )
+            else:
+                logger.info(f"All stages already completed for ch{chapter_index}, skipping pipeline")
+            return []
+
     _emit_pipeline_start(pipeline_context)
-    results = []
+    results: List[Any] = []
 
     try:
         for stage in stages:
@@ -509,18 +627,23 @@ async def run_pipeline(
                 logger.info(f"Pipeline {project_id} resumed")
             # Checkpoint: skip already completed stages
             if checkpoint_manager and chapter_index is not None:
-                if checkpoint_manager.is_stage_done(stage, chapter_index):
-                    logger.info(
-                        "Checkpoint: skipping stage '%s' for ch%d (already done)",
-                        stage,
-                        chapter_index,
-                    )
+                if checkpoint_manager.is_stage_done(stage, chapter_index, paragraph_index):
+                    if paragraph_index is not None:
+                        logger.info(
+                            "Checkpoint: skipping stage '%s' for ch%d p%d (already done)",
+                            stage, chapter_index, paragraph_index,
+                        )
+                    else:
+                        logger.info(
+                            "Checkpoint: skipping stage '%s' for ch%d (already done)",
+                            stage, chapter_index,
+                        )
                     results.append(None)
                     continue
 
             # Mark stage as started
             if checkpoint_manager and chapter_index is not None:
-                checkpoint_manager.mark_stage_started(stage, chapter_index)
+                checkpoint_manager.mark_stage_started(stage, chapter_index, paragraph_index)
 
             # run_stage is a coroutine; must be awaited or the result is a
             # never-awaited coroutine object rather than the stage output.
@@ -539,11 +662,52 @@ async def run_pipeline(
 
             # Mark stage as completed
             if checkpoint_manager and chapter_index is not None:
-                checkpoint_manager.mark_stage_done(stage, chapter_index)
+                checkpoint_manager.mark_stage_done(stage, chapter_index, paragraph_index)
+
+        # Emit chapter complete event
+        if project_id and chapter_index is not None:
+            # Count total chapters for progress
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_chapter_complete(
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    chapter_id=chapter_id,
+                    total_chapters=kwargs.get("total_chapters", 1),
+                ))
+            except RuntimeError:
+                pass
+
+        # Emit pipeline completed event
+        if project_id:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_pipeline_completed(
+                    project_id=project_id,
+                    total_chapters=kwargs.get("total_chapters", 1),
+                ))
+            except RuntimeError:
+                pass
 
         _emit_pipeline_end(pipeline_context, results, None)
         return results
     except Exception as e:
+        # Emit pipeline error
+        if project_id:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_error(
+                    project_id=project_id,
+                    stage="pipeline",
+                    error_message=str(e),
+                    chapter_index=chapter_index,
+                    chapter_id=chapter_id,
+                ))
+            except RuntimeError:
+                pass
         _emit_pipeline_end(pipeline_context, None, e)
         raise
 

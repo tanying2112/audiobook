@@ -10,6 +10,8 @@ export interface Project {
   author: string
   description?: string
   language?: string
+  /** Book genre — drives SOP reflection rule-bucketing (matches backend Project.genre). */
+  genre?: string
   status?: string
   created_at?: string
   updated_at?: string

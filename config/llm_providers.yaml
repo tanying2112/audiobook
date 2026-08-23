@@ -1,22 +1,61 @@
 # LLM Provider Configuration - 增量扩展模式
 # 新增提供商只需在 providers 下追加，无需改动代码
 # 优先级由 priority 决定，数值越小优先级越高
+#
+# P2-1: use_direct_sdk=true enables native OpenAI/Anthropic SDK (bypasses LiteLLM)
+# This eliminates ~200ms gateway overhead per call.
+# Only works for providers with OpenAI-compatible or Anthropic-compatible APIs.
+#
+# P2-2: use_vllm=true enables vLLM local inference backend with:
+# - KV Cache for reduced memory and faster generation
+# - Chunked Prefill for long context handling
+# - Prefix Caching for repeated prompts
+# - Speculative Decoding for faster generation (optional)
+# This reduces LLM cost by 30-50% compared to standard inference.
 
 providers:
-  # OpenRouter (Qwen3 80B) - 免费，已验证可用
-  - name: openrouter
-    provider: openrouter
-    model: qwen/qwen3-next-80b-a3b-instruct:free
-    api_key_env: OPENROUTER_API_KEY
-    api_key_pool_env:
-      - OPENROUTER_API_KEY_1
-    priority: 5
-    max_tokens_per_minute: 5000
-    max_requests_per_minute: 20
+  # fcc 本地聚合网关 (主路径, launchd 托管 127.0.0.1:8082, key=freecc)
+  # 协议: anthropic /v1/messages (实测不支持 OpenAI /v1/chat/completions)
+  # base_url 不带 /v1 (LiteLLM anthropic provider 会自动补 /v1/messages)
+  # extra_params.extra_headers 注入 Authorization: Bearer (fcc 不获批默认的 x-api-key)
+  # model 选用 no-thinking 变体: 避免 thinking 占满 max_tokens, 保证 JSON 输出
+  # use_direct_sdk: false (Anthropic protocol, not directly compatible with native SDK)
+  - name: local_fcc_gateway
+    provider: anthropic
+    model: opencode/deepseek-v4-flash-free
+    api_key_env: FCC_LOCAL_API_KEY
+    base_url: http://127.0.0.1:8082
+    health_path: /health
+    priority: 1
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 60
+    timeout_seconds: 120
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
+    extra_params:
+      extra_headers:
+        Authorization: Bearer freecc
 
-  # NVIDIA NIM (MiniMax M2.7) - 免费，已验证可用 (openai/ prefix + base_url)
+  # fcc 外网隧道 (降级备份, Cloudflare 中转, 同一服务)
+  # use_direct_sdk: false (Anthropic protocol)
+  - name: fcc_tunnel
+    provider: anthropic
+    model: claude-3-freecc-no-thinking/nvidia_nim/z-ai/glm-5.2
+    api_key_env: FCC_TUNNEL_API_KEY
+    base_url: https://fcc.guwj609.ccwu.cc
+    health_path: /health
+    priority: 2
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 30
+    timeout_seconds: 120
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+    extra_params:
+      extra_headers:
+        Authorization: Bearer freecc
+
+  # NVIDIA NIM (MiniMax M2.7) - 本机直连可达✅, 官方key直连降级
+  # OpenAI-compatible API -> can use direct SDK for lower latency
   - name: nvidia_nemotron
     provider: openai
     model: minimaxai/minimax-m2.7
@@ -24,16 +63,127 @@ providers:
     api_key_pool_env:
       - NVIDIA_API_KEY_1
     base_url: https://integrate.api.nvidia.com/v1
-    priority: 10
+    priority: 3
     max_tokens_per_minute: 4000
     max_requests_per_minute: 20
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
+    extra_params:
+      use_direct_sdk: true
 
-  # OpenCode Zen - 首选的 OpenAI 兼容路由，极速稳定 (当前连接异常，暂禁用)
+  # Kilo (api.kilo.ai, model: tencent/hy3:free 开源中文模型) - 用户 key 已注入, 2026-08 直连可达✅ → 设为主路由
+  # model 必须带 openai/ 前缀: bare "tencent/hy3:free" 会被 litellm 误路由到内置
+  # Tencent provider 而 404 (实测 "openai/tencent/hy3:free" 才走自定义 base 成功)
+  # OpenAI-compatible API -> can use direct SDK for lower latency
+  - name: kilo
+    provider: openai
+    model: openai/tencent/hy3:free
+    api_key_env: KILO_API_KEY
+    base_url: https://api.kilo.ai/api/gateway/v1
+    priority: 0
+    max_tokens_per_minute: 50000
+    max_requests_per_minute: 30
+    timeout_seconds: 120
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+
+  # ============ vLLM Local Inference (P2-2) ============
+  # 本地 vLLM 服务 (需先启动: vllm serve qwen2.5:14b --host 0.0.0.0 --port 8000)
+  # 优势: KV Cache + Chunked Prefill + Prefix Caching + 可选 Speculative Decoding
+  # 成本: $0.00 (本地推理), 延迟低, 支持长上下文
+  - name: vllm_qwen25_14b
+    provider: ollama
+    model: qwen2.5:14b
+    base_url: http://localhost:8000/v1
+    priority: 10
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 200
+    timeout_seconds: 0  # 无超时限制
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false  # 启用前需先运行 vLLM 服务器
+    extra_params:
+      use_vllm: true
+      vllm_config:
+        max_model_len: 32768
+        gpu_memory_utilization: 0.9
+        enable_chunked_prefill: true
+        enable_prefix_caching: true
+        # speculative_model: "qwen2.5:1.5b"  # 可选: 小模型用于推测解码
+        # num_speculative_tokens: 5
+
+  - name: vllm_llama31_8b
+    provider: ollama
+    model: llama3.1:8b
+    base_url: http://localhost:8000/v1
+    priority: 15
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 200
+    timeout_seconds: 0
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false
+    extra_params:
+      use_vllm: true
+      vllm_config:
+        max_model_len: 32768
+        gpu_memory_utilization: 0.9
+        enable_chunked_prefill: true
+        enable_prefix_caching: true
+
+  - name: vllm_qwen25_32b
+    provider: ollama
+    model: qwen2.5:32b
+    base_url: http://localhost:8000/v1
+    priority: 20
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 100
+    timeout_seconds: 0
+    stages: [analyze, judge]  # 大模型用于复杂任务
+    enabled: false
+    extra_params:
+      use_vllm: true
+      vllm_config:
+        max_model_len: 32768
+        gpu_memory_utilization: 0.9
+        enable_chunked_prefill: true
+        enable_prefix_caching: true
+
+  # ============ 其他云提供商 (保持原有配置) ============
+  # Anthropic Claude (历史配置; fcc 网关已代理 Claude, 此直连保留禁用)
+  # Native Anthropic SDK compatible
+  - name: anthropic_claude
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    api_key_env: ANTHROPIC_API_KEY
+    base_url: https://fcc.guwj609.ccwu.cc
+    priority: 5
+    max_tokens_per_minute: 30000
+    max_requests_per_minute: 60
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false
+    extra_params:
+      use_direct_sdk: true
+
+  # OpenRouter (本机直连不通❌, 待 1.5 期前端录入代理后启用)
+  # OpenAI-compatible but needs custom routing
+  - name: openrouter
+    provider: openrouter
+    model: qwen/qwen3-next-80b-a3b-instruct:free
+    api_key_env: OPENROUTER_API_KEY
+    api_key_pool_env:
+      - OPENROUTER_API_KEY_1
+    priority: 10
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: false
+
+  # OpenCode Zen - key 已注入, 但 2026-08 从本机网络不可达 (TLS 被掐断, DNS 到
+  # 198.20.0.159 后 SSL_ERROR_SYSCALL). 保持禁用避免每次请求 30-120s 超时拖慢管道.
+  # 若你在可达网络上, 置 enabled=true 并调高 priority 即可启用.
+  # OpenAI-compatible -> can use direct SDK
   - name: opencode_zen
     provider: openai
-    model: deepseek-v4-flash-free
+    model: opencode_zen/deepseek-v4-flash-free
     api_key_env: OPENCODE_ZEN_API_KEY
     base_url: https://api.opencode-zen.com/v1
     priority: 15
@@ -41,8 +191,11 @@ providers:
     max_requests_per_minute: 100
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # Cerebras - 极速推理 (placeholder key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: cerebras
     provider: cerebras
     model: llama-3.3-70b
@@ -53,8 +206,11 @@ providers:
     max_requests_per_minute: 60
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # 阿里云百炼 - 中文理解最强之一 (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: alibaba_bailian
     provider: alibaba
     model: qwen-max
@@ -65,8 +221,11 @@ providers:
     max_requests_per_minute: 100
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # Gemini - Google 免费额度大 (placeholder key，暂禁用)
+  # NOT OpenAI-compatible, uses LiteLLM only
   - name: gemini_flash
     provider: gemini
     model: gemini-2.0-flash
@@ -81,6 +240,7 @@ providers:
     enabled: false
 
   # 智谱 AI - GLM-4-Flash (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: zhipu_glm
     provider: zhipu
     model: glm-4-flash
@@ -91,8 +251,11 @@ providers:
     max_requests_per_minute: 100
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # 硅基流动 SiliconCloud (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: siliconcloud
     provider: siliconcloud
     model: Qwen/Qwen2.5-72B-Instruct
@@ -103,8 +266,11 @@ providers:
     max_requests_per_minute: 60
     stages: [analyze, judge]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # Mistral AI (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: mistral
     provider: mistral
     model: mistral-small-latest
@@ -115,8 +281,11 @@ providers:
     max_requests_per_minute: 60
     stages: [annotate, edit]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # DeepSeek (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: deepseek
     provider: deepseek
     model: deepseek-chat
@@ -126,8 +295,11 @@ providers:
     max_requests_per_minute: 30
     stages: [annotate, edit, judge]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # 百度千帆 (无key，暂禁用)
+  # NOT OpenAI-compatible
   - name: baidu_qianfan
     provider: baidu_qianfan
     model: ernie-speed-128k
@@ -140,6 +312,7 @@ providers:
     enabled: false
 
   # 火山引擎 (无key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: volcengine
     provider: volcengine
     model: doubao-pro-32k
@@ -150,6 +323,8 @@ providers:
     max_requests_per_minute: 60
     stages: [annotate, edit]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # 腾讯云混元 (API协议不兼容，暂禁用)
   - name: tencent_hunyuan
@@ -164,6 +339,7 @@ providers:
     enabled: false
 
   # HuggingFace (无key，暂禁用)
+  # NOT OpenAI-compatible
   - name: huggingface
     provider: huggingface
     model: Qwen/Qwen2.5-72B-Instruct
@@ -176,9 +352,10 @@ providers:
     enabled: false
 
   # Cloudflare Workers AI (无key，暂禁用)
+  # NOT OpenAI-compatible
   - name: cloudflare_ai
     provider: cloudflare
-    model: "@cf/meta/llama-3.3-70b"
+    model: "@cf/meta/llma-3.3-70b"
     api_key_env: CLOUDFLARE_API_KEY
     base_url: https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run
     priority: 50
@@ -188,6 +365,7 @@ providers:
     enabled: false
 
   # GitHub Models (bad credentials，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: github_models
     provider: github
     model: gpt-4o-mini
@@ -198,8 +376,11 @@ providers:
     max_requests_per_minute: 30
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # Groq 70B (invalid key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: groq_70b
     provider: groq
     model: llama-3.3-70b-versatile
@@ -209,8 +390,11 @@ providers:
     max_requests_per_minute: 20
     stages: [analyze, judge]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # Groq 8B (invalid key，暂禁用)
+  # OpenAI-compatible -> can use direct SDK
   - name: groq_8b
     provider: groq
     model: llama-3.1-8b-instant
@@ -220,8 +404,11 @@ providers:
     max_requests_per_minute: 30
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   # 本地 Ollama (暂不可用，保留配置)
+  # OpenAI-compatible -> can use direct SDK
   - name: ollama_gemma4_e2b
     provider: ollama
     model: gemma4:e2b
@@ -232,6 +419,8 @@ providers:
     timeout_seconds: 0
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   - name: ollama_qwen25_14b
     provider: ollama
@@ -243,6 +432,8 @@ providers:
     timeout_seconds: 0
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
   - name: ollama_llama31_8b
     provider: ollama
@@ -254,6 +445,8 @@ providers:
     timeout_seconds: 0
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: false
+    extra_params:
+      use_direct_sdk: true
 
 # Prompt 压缩策略 - 激进模式以适应 TPM 限制
 prompt_compression:

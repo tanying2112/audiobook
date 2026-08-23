@@ -8,12 +8,13 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional, Union, cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
 from ..schemas import ParagraphAnnotation, TtsEditInput, TtsEditOutput
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,8 @@ class EditForTtsPipeline:
 
     def __init__(
         self,
-        router=None,
-        prompt_dir=None,
+        router: Optional[LLMRouter] = None,
+        prompt_dir: Optional[Union[str, Path]] = None,
         mock_mode: Optional[bool] = None,
     ):
         self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
@@ -47,7 +48,7 @@ class EditForTtsPipeline:
         )
         self.jinja_env.filters["tojson"] = json.dumps
 
-    def _load_few_shot(self, stage):
+    def _load_few_shot(self, stage: str) -> str:
         examples_path = self.prompt_dir / stage / "few_shot.jsonl"
         if not examples_path.exists():
             return "(暂无示例)"
@@ -63,7 +64,7 @@ class EditForTtsPipeline:
             formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
-    def _build_prompt(self, input_data):
+    def _build_prompt(self, input_data: TtsEditInput) -> str:
         template = self.jinja_env.get_template("edit_for_tts/v1.j2")
         schema_json = TtsEditOutput.model_json_schema()
         few_shot = self._load_few_shot("edit_for_tts")
@@ -77,10 +78,24 @@ class EditForTtsPipeline:
             few_shot_examples=few_shot,
         )
 
-    def run(self, input_data):
+    def run(self, input_data: TtsEditInput) -> TtsEditOutput:
         logger.info(
             f"Editing paragraph {input_data.paragraph_annotation.paragraph_index} for TTS (difficulty={input_data.difficulty})"
         )
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="edit",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
+                paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
 
         # Hard rule: difficulty A or forbid_edit -> return original (checked BEFORE mock_mode)
         if input_data.difficulty == "A" or input_data.forbid_edit:
@@ -102,6 +117,22 @@ class EditForTtsPipeline:
                 confidence=0.9,
                 rationale="Mock mode: no LLM call made",
             )
+
+        # Emit stage progress
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="edit",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
+                paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
+                current=1,
+                total=1,
+                message="Editing text for TTS...",
+            ))
+        except RuntimeError:
+            pass
 
         prompt = self._build_prompt(input_data)
         messages = [
@@ -138,8 +169,39 @@ class EditForTtsPipeline:
                 difficulty=input_data.difficulty,
             )
 
-            return result.output
+            # ``router.call`` returns ``Any`` (its signature predates generics);
+            # it was invoked with ``response_model=TtsEditOutput``, so narrow the
+            # already-validated output to the declared return type.
+            # Emit stage exit (success)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="edit",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
+                    success=True,
+                ))
+            except RuntimeError:
+                pass
+
+            return cast(TtsEditOutput, result.output)
         except Exception as e:
+            # Emit stage exit (error)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="edit",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
+                    success=False,
+                    error_message=str(e),
+                ))
+            except RuntimeError:
+                pass
             # Record failed performance
             from ..monitoring import record_stage_performance
 
@@ -160,12 +222,12 @@ class EditForTtsPipeline:
 
 
 def edit_for_tts(
-    paragraph_text,
-    paragraph_annotation,
-    difficulty,
-    forbid_edit=False,
+    paragraph_text: str,
+    paragraph_annotation: ParagraphAnnotation,
+    difficulty: Literal["A", "B", "C", "D"],
+    forbid_edit: bool = False,
     mock_mode: bool = True,
-):
+) -> TtsEditOutput:
     input_data = TtsEditInput(
         paragraph_text=paragraph_text,
         paragraph_annotation=paragraph_annotation,

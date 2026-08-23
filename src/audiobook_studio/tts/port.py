@@ -44,10 +44,16 @@ class TTSVoiceAnchor:
 class TTSProsody:
     """Prosody controls for TTS synthesis."""
 
-    rate: float = 1.0      # Speech rate multiplier (0.5-2.0)
-    pitch: float = 0.0     # Pitch shift in semitones (-12 to +12)
-    volume: float = 0.0    # Volume gain in dB (-20 to +20)
+    rate: float = 1.0  # Speech rate multiplier (0.5-2.0)
+    pitch: float = 0.0  # Pitch shift in semitones (-12 to +12)
+    volume: float = 0.0  # Volume gain in dB (-20 to +20)
     emotion: Optional[str] = None  # Emotional tag
+    # P2.15 确定性: seed pinning 通道 (打通 VoxCPM2 generate(seed=) 出口)。
+    # 注意: 本 port 版 TTSProsody 是生产主路径 (tts/__init__ export, synthesize 用);
+    # engine 版同名类供 kokoro/edge port 内部转换。两版同加 seed 保证通道贯通:
+    # synthesize._build_payload(seed=) → port 版 prosody → backend prosody_dict → generate(seed=)。
+    # 红线#1: seed 只开通道, 不等于字节级可达 (cudnn/gemm 非确定性); None=未指定零回归。
+    seed: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -72,7 +78,7 @@ class TTSTaskResult:
 
     task_id: str
     status: TTSStatus
-    audio_path: Optional[str] = None          # R2 object key or local path
+    audio_path: Optional[str] = None  # R2 object key or local path
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
     dnsmos_score: Optional[float] = None
@@ -80,6 +86,7 @@ class TTSTaskResult:
     speaker_similarity: Optional[float] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)

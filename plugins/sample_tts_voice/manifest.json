@@ -1,0 +1,12 @@
+{
+  "name": "sample_tts_voice",
+  "version": "1.0.0",
+  "type": "tts_voice",
+  "description": "示例插件:为 Kokoro / Edge 引擎补充一组高质量中文与日文音色。",
+  "models": [
+    "kokoro-zh-CN-XiaoyiNeural",
+    "kokoro-ja-JP-NanamiNeural",
+    "edge-zh-CN-YunxiNeural"
+  ],
+  "entry": "plugin.py"
+}

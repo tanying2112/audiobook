@@ -9,7 +9,7 @@ D4 — FastAPI 导出路由 (async SQLAlchemy 2.0)
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -41,7 +41,7 @@ class ExportRequest(BaseModel):
     normalize: bool = True
     max_chars_per_line: Optional[int] = 40
     output_dir: Optional[str] = None
-    mix_config: Optional[dict] = None
+    mix_config: Optional[dict[str, Any]] = None
 
 
 class ExportStatusOut(BaseModel):

@@ -5,6 +5,7 @@ import App from './App.vue'
 import './style.css'
 import { initLocale } from './i18n'
 import { useContextStore } from './stores/context'
+import { useAuthStore } from './stores/auth'
 
 // 初始化国际化
 initLocale()
@@ -13,6 +14,12 @@ const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia)
 app.use(router)
+
+// 初始化认证状态
+const authStore = useAuthStore(pinia)
+if (authStore.token) {
+  authStore.fetchUser()
+}
 
 // 路由切换时自动同步全局上下文 store（供全局助手浮层 / 内联小窗感知当前页面）
 router.afterEach((to) => {

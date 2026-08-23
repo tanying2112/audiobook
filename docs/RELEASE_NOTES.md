@@ -1,5 +1,36 @@
 # Release Notes
 
+## 2026-08-17 — P2 普惠合规与确定性收口
+
+### Highlights
+- **合规护栏上线**: 引擎商用许可守门 + 克隆样本授权存证 + AI 旁白披露指南, 把"普惠"做进合规而非绕过合规。
+- **发音字典**: 仙侠生造人名注音替换, 合成前字典纠正读不对, 项目级可覆盖。
+- **Pro 一等路径**: 一键拉起脚本 + README 主推, 硬件不达标诚实降级不假装成功。
+- **确定性通道贯通 + 诚实边界**: seed pinning 通道打通 VoxCPM2 `generate(seed=)` 出口; 文本/JSON 层与 FakePort mock 路径真跑字节级复现; 真 TTS 引擎诚实标注"通道通但本机免 GPU 未真跑核实"。
+
+### 合规 (P2.11)
+- `tts/license_guard.py` + `config/tts_licenses.yaml`: 商用档 (pro_studio/cloud_hybrid) 禁用 `commercial_use=false` 引擎注册, 未核实 `null` 降级 warn 不假成功也不误杀; 全引擎当前 `null` (仓库不替任何引擎假声明其商用许可, 凭官方 license 核实后回填)。守门挂在 `EngineRegistry.register(active_profile=)` 可选参, 缺省零回归。
+- 声音克隆: 前端 `VoiceCloneView` 强制授权勾选 + `canUpload` 门控 + FormData 透传; 后端 `CloneVoiceRequest.consent` 必填, 未勾 → 422 诚实拒; `VoiceSample.attestation_at`/`consent_version` 随声纹持久化存证。
+- `docs/legal/ai-narration-disclosure.md`: ACX/Findaway/Spotify、喜马拉雅/国内平台的 AI 标注框架指引 (不杜撰条款原文, 官方链接留待核实占位, 提示用户分发前自行核实生效地区最新条款)。
+
+### 发音字典 (P2.12)
+- `config/pronunciation_dict.yaml` + `tts/pronunciation_dict.py`: 生造人名/专有名词合成前注音替换; 长词优先 (短词不吃长词); 项目级 `<项目目录>/pronunciation_dict.yaml` 覆盖全局; 无字典条目原样透传不破主路径; 接入 `synthesize.run()` 在 cache hash 前注入, 保证 cache 与合成文本幂等一致。
+
+### Pro 一等路径 (P2.14)
+- `scripts/setup_pro.sh`: 检测 GPU/显存 (≥16GB), 不达标诚实降级 exit 1 (不假装成功); 编排 `download_voxcpm2.py` 下载; CosyVoice 给 HF 手动指引 (免费资源上限不自动拉 GB 权重); 切 `active_profile: pro_studio`。README「快速开始」补 Pro 显卡用户分叉为推荐路径。
+
+### 确定性 (P2.15)
+- **通道贯通**: `TTSProsody.seed` (port + engine 两版同加) → `_build_payload` 透传 → `voxcpm2_backend` prosody_dict → VoxCPM2 `generate(seed=)`。通道在即注入点在, 便于在带 GPU+模型环境复现实验。
+- **诚实边界 (红线#1)**: `tests/unit/test_determinism_bytelevel.py` 真跑据结果定断言方向——
+  - 文本/JSON 层: 字节级复现 (高概率, temperature=0 路径, 标注非绝对)。
+  - FakePort mock 路径: 真跑核实字节级相等 (mock 非"全引擎字节级可达"证据)。
+  - 真 TTS 引擎 (VoxCPM2/kokoro/edge): 本机免 GPU + 无真实模型, **未真跑核实**, 不预设 cudnn/gemm 字节级可达; 留待带 GPU+模型环境真连跑两遍比 hash 定方向。**不假设"有 seed 即字节等"就断相等。**
+
+### 验证
+- license_guard `comm` 双盲零专属回归 (12 pre-existing 失败等价 baseline vs chg); 发音字典 7 测 + P2.13 接线 5 测 + 确定性 7 测全过; black 全 0 退; setup_pro.sh 干跑 Apple Silicon 触发诚实降级 exit 1。
+
+---
+
 ## 2026-06-28 — v0.2.0 Production Ready Release
 
 ### Highlights

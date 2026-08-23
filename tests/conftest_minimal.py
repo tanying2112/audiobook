@@ -11,6 +11,12 @@ import sys
 from unittest.mock import MagicMock
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Set ALLOWED_HOSTS BEFORE any imports to configure TrustedHostMiddleware correctly
+# This must happen before src.audiobook_studio.main is imported anywhere
+# ═══════════════════════════════════════════════════════════════════════════
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Only mock dspy if it's not available - this is an optional dependency
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -126,7 +132,11 @@ for mod_name in [
     "scipy",
     "structlog",
     "python_json_logger",
-    "apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background", "apscheduler.triggers", "apscheduler.triggers.cron",
+    "apscheduler",
+    "apscheduler.schedulers",
+    "apscheduler.schedulers.background",
+    "apscheduler.triggers",
+    "apscheduler.triggers.cron",
     "redis",
     "redis.asyncio",
     "flower",
@@ -187,15 +197,102 @@ for mod_name in [
     "celery.states",
     "celery.schedules",
     "celery.signals",
+    "boto3",
+    "torch",
+    "torchaudio",
+    "lightning",
+    "lightning.pytorch",
+    "modal",
+    "modal.client",
+    "kaggle",
+    "boto3",
+    "requests",
+    "transformers",
+    "typer",
+    "typer._click",
+    "typer._click._compat",
+    "click",
+    "click.core",
+    "click.types",
+    "click._compat",
 ]:
     if mod_name not in sys.modules:
         sys.modules[mod_name] = MagicMock()
 
 # Set celery states constants
+sys.modules["celery.states"].PENDING = "PENDING"
 sys.modules["celery.states"].FAILURE = "FAILURE"
 sys.modules["celery.states"].RETRY = "RETRY"
 sys.modules["celery.states"].STARTED = "STARTED"
 sys.modules["celery.states"].SUCCESS = "SUCCESS"
+
+# Create a proper Celery mock that returns a task with string id
+class MockAsyncResult:
+    def __init__(self, task_id="test-task-id-12345"):
+        self.id = task_id
+
+# Provide a fake Task class that can be subclassed
+class FakeCeleryTask:
+    """Fake Task class that mimics celery.Task for testing."""
+    def __init__(self):
+        self.request = MagicMock()
+        self.request.id = "test-task-id-12345"
+        self.max_retries = 3
+        self.autoretry_for = ()
+        self.retry_backoff = True
+        self.retry_backoff_max = 300
+        self.retry_jitter = True
+        self.acks_late = True
+        self.reject_on_worker_lost = True
+    
+    def retry(self, exc=None, *args, **kwargs):
+        """Mock retry method."""
+        raise exc
+    
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Mock on_failure callback."""
+        pass
+    
+    def on_retry(self, exc, task_id, args, kwargs, einfo):
+        """Mock on_retry callback."""
+        pass
+    
+    def on_success(self, retval, task_id, args, kwargs):
+        """Mock on_success callback."""
+        pass
+
+class MockCeleryTask:
+    def __init__(self, func):
+        self.func = func
+    def delay(self, *args, **kwargs):
+        return MagicMock(id="test-task-id-12345")
+    def __call__(self, *args, **kwargs):
+        # In mock mode, just call the underlying function with MOCK_LLM=true
+        os.environ["MOCK_LLM"] = "true"
+        return self.func(*args, **kwargs)
+
+mock_celery_app = MagicMock()
+mock_celery_app.AsyncResult.return_value = MockAsyncResult()
+mock_celery_app.delay = MagicMock(return_value=MagicMock(id="test-task-id-12345"))
+mock_celery_app.task = MagicMock(side_effect=lambda *args, **kwargs: lambda f: MockCeleryTask(f))
+
+sys.modules["celery"] = mock_celery_app
+sys.modules["celery"].Celery = MagicMock(return_value=mock_celery_app)
+sys.modules["celery"].current_app = mock_celery_app
+sys.modules["celery"].Task = FakeCeleryTask  # Use proper fake Task class instead of MagicMock
+
+# Also patch celery_app module to use the fake Task
+import types
+mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
+mock_celery_module.celery_app = mock_celery_app
+mock_celery_module.celery_app.Task = FakeCeleryTask
+sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
+
+# Also mock the celery_app module used by the codebase
+import types
+mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
+mock_celery_module.celery_app = mock_celery_app
+sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Environment setup for all tests
@@ -261,11 +358,37 @@ class MockLLMProvidersConfig:
                 provider="openai",
                 model="gpt-3.5-turbo",
                 stages=["extract", "analyze", "annotate", "edit", "route", "judge", "translate"],
+                max_daily_cost_usd=10.0,
             )
         ]
-        self.prompt_compression = MagicMock()
-        self.fallback = MagicMock()
-        self.cost_control = MagicMock()
+        # Provide real PromptCompressionConfig values instead of MagicMock
+        class MockPromptCompression:
+            max_input_tokens = 4000
+            truncate_strategy = "smart"
+            remove_few_shot_when_long = True
+            min_few_shot_examples = 1
+            schema_injection_mode = "minimal"
+
+        class MockFallback:
+            max_retries_per_provider = 2
+            retry_on_rate_limit = True
+            retry_on_timeout = True
+            timeout_seconds = 60
+            exponential_backoff_base = 2.0
+
+        self.prompt_compression = MockPromptCompression()
+        self.fallback = MockFallback()
+        # cost_control needs to have daily_limit_usd as a float for CostTracker.set_global_daily_limit
+        cost_control = MagicMock()
+        cost_control.daily_limit_usd = 10.0
+        self.cost_control = cost_control
+
+        # For hardware profile compatibility
+        class MockHardwareProfile:
+            def get_llm_stage_models(self, stage):
+                return None
+
+        self.hardware_profile = MockHardwareProfile()
 
     def get_providers_for_stage(self, stage):
         stage_str = stage.value if hasattr(stage, "value") else str(stage)
@@ -290,9 +413,21 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
         sys.modules[module_name] = types.ModuleType(module_name)
 
     mock_config_loader = sys.modules[module_name]
+    # Create an iterable StageName enum mock for router.stage_configs iteration
+    from enum import Enum
+    class MockStageName(str, Enum):
+        EXTRACT = 'extract'
+        ANALYZE = 'analyze'
+        ANNOTATE = 'annotate'
+        ANNOTATE_PARAGRAPH = 'annotate_paragraph'
+        EDIT = 'edit'
+        ROUTE = 'route'
+        JUDGE = 'judge'
+        TRANSLATE = 'translate'
+
     mock_config_loader.LLMProvidersConfig = MockLLMProvidersConfig
     mock_config_loader.ProviderType = MagicMock()
-    mock_config_loader.StageName = MagicMock()
+    mock_config_loader.StageName = MockStageName
     mock_config_loader.ProviderConfig = MockProviderConfig
     mock_config_loader.PromptCompressionConfig = MagicMock()
     mock_config_loader.FallbackConfig = MagicMock()

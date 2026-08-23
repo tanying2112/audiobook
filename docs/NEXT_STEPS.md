@@ -1,0 +1,174 @@
+# 下一步计划 / Next Steps
+
+> 配套文档:`PROJECT_STATUS.md`(已完成工作记录)。
+> 本文件跟踪**尚未完成**的工作:任务清单 + 验收标准 + 状态。
+> 约束:仅用免费资源(无付费 API / 云 GPU)。付费/云依赖项仅做诚实脚手架。
+
+---
+
+## 一、当前基线(已完成,均已提交)
+
+| 阶段 | 内容 | 提交 |
+|---|---|---|
+| S1 | 5 项即时阻断项 | `ca654c2` 等 |
+| S2 | 7 项中期工程债(S2.1–S2.7) | `e6c7df3` |
+| S3 | 7 项长期愿景(S3.1–S3.7,免费资源) | `2c81ee6` |
+| 清理 | 运行产物脱离跟踪 + .gitignore 加固 | `e685769` |
+| 收尾 | Phase 1/2 累积工作整合提交 | `aa82af2` |
+
+**已验证**:`mypy --strict` 259 文件 0 错误;S2/S3 交付物单测 **77 passed**;前端 `vue-tsc -b` + `vitest` 100 passed;工作树干净。
+**当前分支**:`refactor/p2-engineering-debt`(不在 CI 触发的 `main/develop`,需 PR 才会真正跑 CI)。
+
+---
+
+## 二、已知缺口(来自实际代码 / CI 核对)
+
+- **G1 测试失败(非挂起)**:经核对,**不存在死循环挂起**。此前 ≥600s 超时是本地 bash 截断 5146 个单测的慢速套件;CI `test` 任务用 `--timeout=60` + `-x`,会在**首个失败测试**处立即退出(被误判为"卡住")。真实问题:套件含**大量既有测试失败**(如 `tests/unit/test_upload.py` 29 个失败,涉及路由/夹具/mock 等,与 S3 工作无关)。首个 CI 阻塞 `tests/unit/api/test_auto_run_api.py` 因缺失 `/api` 前缀 404,已修复(现 27 passed)。→ 对应 **A1**。
+- **G2 pre-commit 钩子损坏**:根因是 venv 缺少 `pre_commit` 模块(曾 `ModuleNotFoundError`),导致任何提交 pre-commit 钩子直接报错(故本次用 `--no-verify`);已用 `uv pip install --python .venv/bin/python pre-commit` 修复,`.venv/bin/python -m pre_commit --version` → 4.6.0 可运行。CI `lint` 任务跑 `pre-commit run --all-files`,钩子**全部通过**才是硬门槛(对 269 个 py 文件做 black/flake8/mypy/bandit 全过是一项独立的大改造)。→ 对应 **A2**。
+- **G3 前端未做生产构建**:只验证了 `vue-tsc` + `vitest`,**未跑 `vite build`**;CI 也不构建 web,生产构建错误会被漏掉。→ 对应 **A3**。
+- **G4 付费/云依赖项仅脚手架**:S3.3 的 StableAudio/AudioLDM2、S3.2 完整 CRDT/OT 多实例实时同步、S3.6 多区域生产部署——按免费约束只做了本地可达成部分 + 诚实桩/配置开关,**未完整实现**。→ 对应 **C1–C3**。
+- **G5 当前分支不在 CI 触发范围**:需 PR 才会真正跑 CI。→ 对应 **A6**。
+- **G6 env_checker 硬门禁**:CI `env-check` 跑 `env_checker --fail-on-warning`,需确认新增的 `CLOUD_STUDIO_MODE` 等配置不触发告警。→ 对应 **A4**。
+
+---
+
+## 三、路线图与执行顺序
+
+```
+Phase A 工程化收尾(让 CI 全绿)   →  A1 → A2 → A4 → A6
+Phase A 收尾(前端+文档)           →  A3 → A5
+Phase B 免费资源真实集成验证       →  B1 → B2 → B3 → B4
+Phase C 付费/云依赖(诚实交付,可选) →  C1 → C2 → C3
+Phase D 发布准备                  →  D1 → D2
+```
+
+> 说明:用户指定第一步为「A1→A4→A6 让 CI 全绿」。其中 A2(pre-commit 钩子)虽未单列,但因 CI 的 `lint` 任务会独立跑 `pre-commit run --all-files`,**A2 同样是 CI 全绿的硬前置**,故并入第一步一并处理。
+
+---
+
+## 四、任务清单 + 验收标准
+
+### Phase A — 工程化收尾(最高优先级)
+
+| # | 任务 | 验收标准 |
+|---|---|---|
+| **A1** | 定位并修复挂起测试(G1) | `pytest tests/unit/ -p no:cacheprovider` 在 **≤10 分钟内**全绿;用 `--timeout` / `--durations` 定位挂起文件,加 `@pytest.mark.network` 或 mock 隔离;CI `test` 任务不再超时 |
+| **A2** | 修复 pre-commit 钩子(G2) | 本地 `git commit`(不加 `--no-verify`)成功;`pre-commit run --all-files` 退出 0;bandit 不再误报 MD5、mypy 不依赖临时产物 |
+| **A3** | 前端生产构建验证(G3) | `cd web && npm run build` 成功产出 `dist/`;`vue-tsc -b` 通过 |
+| **A4** | env_checker 门禁核对(G6) | 用 CI 同款环境变量跑 `python -m src.audiobook_studio.utils.env_checker --fail-on-warning` 退出 0;补齐缺失默认配置 |
+| **A5** | 文档同步 | `README.md` / 相关 docs 增补 S3 各功能入口与用法(BGM 混音、模型市场、跨语言、限流、自迭代脚本、`/admin/warmup`、`/admin/progress` 端点) |
+| **A6** | 建 PR 触发 CI(G5) | 从 `refactor/p2-engineering-debt` 向 `main` 建 PR,**所有 CI job(lint/test/env-check/golden/mypy-strict/docker)全绿** |
+
+### Phase B — 免费资源下的真实集成验证
+
+| # | 任务 | 验收标准 |
+|---|---|---|
+| **B1** | S3.7 真实闭环 | 若本机有本地 LLM(Kokoro/qwen),跑 `scripts/validate_self_iteration.py` 真实闭环并产出 ≥10% 收益报告 + 人工复核提示;否则保留确定性 mock 并明确标注 |
+| **B2** | S3.1 GEPA 真实跑 | 若装了 DSPy,用真实 few-shot 跑一次 `/admin/evolution/run`;否则 mock,验收:`/admin/evolution/progress` 返回 `perplexity_drop_pct > 0.15` |
+| **B3** | S3.3 端到端(已免费可用) | 用真实 ffmpeg 跑 TTS→BGM 混音→MP4 封装,产出**可播放 MP4**;补充一个产线级脚本/文档 |
+| **B4** | S3.4 真实跨语言 | 用免费 LLM 跑一段 en/ja/ko → zh 翻译 + TTS,生成外语音频 |
+
+### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
+
+| # | 任务 | 验收标准 |
+|---|---|---|
+| **C1** | StableAudio/AudioLDM2 生成器 | 文档 + `RemoteGenerativeStub` 适配层(已留接口);标注需 GPU/付费,提供容器化部署说明 |
+| **C2** | 完整 CRDT/OT 多实例实时同步 | 集成 Automerge/Yjs + WS 服务的 PoC 或文档;验证多副本并发编辑收敛(现有 `collaboration/conflict.py` 为 lite 版,先保留) |
+| **C3** | 多区域 Docker 生产部署 | 提供 region 配置模板 + `docker-compose` 多实例编排;标注需云资源 |
+
+### Phase D — 发布准备
+
+| # | 任务 | 验收标准 |
+|---|---|---|
+| **D1** | 版本号 / changelog 整理 | 版本号更新;living docs 补生成 |
+| **D2** | 打 tag / 发布 | 在 `main` 打发布 tag;CI `deploy`(manual approval)可用 |
+
+---
+
+## 五、状态追踪
+
+| 任务 | 状态 | 提交 | 备注 |
+|---|---|---|---|
+| A1 挂起测试(实为既有失败) | 🟡 增量修复中 | 多 Batch 已提交 | G1 非挂起;首阻塞 test_auto_run_api 已修;`tts/` 全局污染 + `publish/` 为剩余两大阻断,见 Batch 4/5 |
+| A2 pre-commit | 🟡 根因已修 | `fdce90b` | venv 缺 pre_commit 模块→已装(4.6.0);钩子"全过"仍需对 269 文件做 lint 大改造(独立专项) |
+| A3 前端构建 | 🔲 待办 | | |
+| A4 env_checker | ✅ 已完成 | | `env_checker --fail-on-warning` 退出 0(NumPy 警告非致命),无需改动 |
+| A5 文档同步 | 🔲 待办 | | |
+| A6 建 PR | 🔲 待办 | | 需 PR 到 main 触发 CI |
+| B1 S3.7 真实 | 🔲 待办 | | |
+| B2 S3.1 GEPA | 🔲 待办 | | |
+| B3 S3.3 端到端 | 🔲 待办 | | |
+| B4 S3.4 跨语言 | 🔲 待办 | | |
+| C1 StableAudio | 🔲 待办(可选) | | |
+| C2 CRDT | 🔲 待办(可选) | | |
+| C3 多区域 | 🔲 待办(可选) | | |
+| D1 changelog | 🔲 待办 | | |
+| D2 tag | 🔲 待办 | | |
+
+---
+
+## 五·b、CI 整轮绿（A1 续）— 分 Batch 执行记录
+
+> 全量 `pytest tests/unit/` 在本地 >900s 且 xdist 缓冲输出至末尾,无法在单轮内拿到完整失败清单。
+> 策略改为**增量修复 + 针对性验证**:先解 Batch 1（根因级阻塞），再按文件聚类修 Batch 2（测试/源码 API 漂移），最后 Batch 3（async/SQLAlchemy2.0/mock）。
+
+### Batch 1 — 根因级解阻塞（已完成）
+
+| 根因 | 影响 | 修复 | 提交 |
+|---|---|---|---|
+| `test_kaggle_worker.py` 在导入期 `sys.modules["types"]=Mock` 全局污染 | 整轮后续 JWT/cryptography 等 ~42 测试集体失败 | 移除 types mock | `87397b0` |
+| `mutants/` 未跟踪产物导致 ImportPathMismatchError | ~6 测试 | 移除 + `norecursedirs` | `ec75743`(前序) |
+| `voxcpm2_backend` 惰性依赖外部可选包 `voxcpm` | 2 测试 ModuleNotFoundError | 两测试文件 `importorskip("voxcpm")` | `08abdb4` |
+| `websockets` 缺失 | 仅影响未跟踪 `test_ws*.py`（不在 CI 收集范围） | 非 CI 阻塞,保留 pyproject 现状 | — |
+
+### Batch 2 — 测试/源码 API 漂移（进行中）
+
+| 漂移点 | 测试影响 | 修复 | 状态 |
+|---|---|---|---|
+| `cli/book.py`·`cli/export.py`·`cli/pipeline.py` 重构为异步 2.0 | `tests/unit/test_cli_commands.py` | ✅ 20 passed（`c9c2249`） |
+| `quality.semantic_coverage` → `semantic_coherence` | `test_quality_semantic_coherence.py`(4) + `test_quality_semantic_coverage.py`(6) | ✅ 10 passed（`29b1df2` `1279b2c`） |
+| `SynthesizePipeline._resolve_edge_voice` 删除 → 模块级 `_normalize_voice_id`；`_synthesize_azure`/`_synthesize_gcp` 合并为异步 `_synthesize_via_port` | `test_synthesize_helpers.py`(17) + `test_translate_pipeline.py`(14) | ✅ 31 passed（`2f09770`） |
+| `export/m4b.py` & `batch_exporter.py` 无 `run_command`；`_build_chapter_markers`→`_build_segment_markers`；`mix_with_ducking`→`mix_full_pipeline`；`export_mp3_chapters` 需打桩；final 测试缺 `paragraphs` 键 | `test_m4b.py`(24)+`test_batch_exporter.py`(24)+`test_export_batch_final.py`(1)+`test_export_batch_enhanced.py`(28) | ✅ 77 passed（`648b0e4`）。附源码两处真实缺陷修复:MP3 分支冗余局部 `import subprocess` 遮蔽导致 BGM 分支 `UnboundLocalError`；zip 循环对 `mp3_chapters` 列表值 `Path(list)` 崩溃 |
+| `EngineRegistry.unregister`/`initialize_all`/`get_engine_info` 等虚构 API | `test_tts_engine_coverage.py`(12 失败) | ✅ 重写测试对齐真实 API(16 passed)（`7970714`） |
+| `api/collab.py` 误把 `FeedbackRecord` 别名成 `CollaborationRecord`(缺 `type` 字段) | `test_coverage_gap_api.py` 5 个 collab 测试 `AttributeError: 'FeedbackRecord' has no attribute 'type'` | ✅ 新增真实 `CollaborationRecord` 聚合模型 + 修正 import + 补 `GET /collab/stats` 端点 + 修 `client` fixture 用 `get_async_db`（`1c7c741`）；`models/__init__.py` 恢复 `from .collaboration import ...`（collab.py 已跟踪） |
+| `golden` bootstrap fewshot 端点伪造 `"queued"` | `test_golden.py::TestBootstrapFewshot` 1 | ✅ 改断言对齐诚实门禁(status ∈ {not_enabled,available})（`7970714`） |
+| `EdgeTTSEngine.initialize()` 已移除 `list_voices()` 连通性检查(改为首个 synthesize 才校验,避免网络挂起) | `test_edge_tts_engine.py` 2 个测试仍断言 `ConnectionError`/`RuntimeError` | ✅ 重写两测试反映现状(42 passed)（未提交） |
+
+### Batch 4 — tts/ 全局 `sys.modules` 污染冲突(已知根因,**待专项重构**)
+
+| 现象 | 根因 | 影响 | 状态 |
+|---|---|---|---|
+| `tests/unit/tts/` 整目录 ~96 failed;但各文件**单独跑基本通过**(edge 42、kokoro+voxcpm2+edge=3) | 6 个 `remote_workers` 测试文件在**模块级** `sys.modules["torch"]/["voxcpm"]/["transformers"]/["modal"]=Mock()` 且**从不还原**,污染整个 pytest 会话 | 污染后 `test_voxcpm2_backend.py`(真实 voxcpm)、`test_edge_tts_engine.py`(12 个 mock-mode 测试)等被全局 mock 打断 | 🔴 阻塞 |
+| `test_modal_worker.py` 模块级 mock `voxcpm`/`torch` | 已证实为 edge 的污染者:`modal+edge` 同跑 edge 由 2 → 12 失败;而 `edge+remote_workers.py` 单文件不污染 | — | 🔴 |
+
+**为何不能简单 save/restore**:`modal_worker.py` 的 `VoxCPM2Engine._load_model()` 在**运行时** `from voxcpm.model.voxcpm2 import VoxCPM2Model` + `import torch`,需要被 mock 的 `voxcpm`/`torch` 在**测试运行时**仍驻留 `sys.modules`。一旦在 import 后还原,真实 voxcpm→真实 torch 被惰性导入,测试即崩(已实测:save/restore 使 modal 由 5 → 9 失败)。而保留全局 mock 又污染其他文件。**二者不可兼得**。
+
+**根本矛盾**:本环境**已安装** `torch`/`voxcpm`/`transformers`(真实包),而这套 `remote_workers` 测试是按"可选重依赖**未安装**"假设写的,用全局 mock 充当"未安装"。当其他测试(`test_voxcpm2_backend` 用真实 voxcpm)与之同跑,`sys.modules["voxcpm"]` 同时只能是一者 → 冲突。
+
+**推荐修复(独立大专项,需全量验证)**:将 6 个 `remote_workers` 测试从"模块级全局 `sys.modules` mock"改为 **`importorskip` + 函数级 fixture(仅测试期间 mock、用 `unittest.mock.patch` 而非写 `sys.modules`)**。worker 源码侧已有 `try/except ImportError` 与 `importorskip` 先例,可对齐。修复后预期 `tests/unit/tts/` 整目录接近全绿(需全量 rerun 验证,本环境 >600s 超时无法单轮确认)。
+
+### Batch 5 — publish/ 既有失败(待办)
+
+| 现象 | 根因 | 影响 | 状态 |
+|---|---|---|---|
+| `tests/unit/publish/` ~24 failed | audiobookshelf 客户端 RealMode + 格式转换断言漂移 |  → 需按文件聚类逐一核对 | 🔴 待办 |
+
+### Batch 6 — 全量套件剩余(async/SQLAlchemy2.0/mock)
+
+- `ChunkedIteratorResult can't be used in 'await'`（SQLAlchemy2.0 结果需 `.execute()` 后 await 取行）~9
+- `NoneType`/`coroutine can't be used in 'await'`（mock 返回非协程）~10
+- `'Mock' object is not an iterator` ~3
+- 测试 DB 路径 `sqlite3.OperationalError: unable to open database file` ~30
+- `StageExecutionError`/`NotImplementedError`/`FileExistsError`/`NameError`/`ValueError`/`LLMParseError` 等
+- 精确入参需重跑全量清单(受 >900s 限制,改为针对性修复 + 验证)。
+
+
+---
+
+## 六、风险与开放问题
+
+1. **A1 真实技术风险已澄清:并非"挂起",而是套件含大量既有测试失败 + 首阻塞点为 /api 路径缺失(已修)**。让整套件全绿需专项修复大量既有失败,多数与 S3 无关。
+2. **A2 根因(venv 缺 pre_commit 模块)已修复**;但 "pre-commit run --all-files 全过" 是对 269 文件做 lint/类型/安全的全量改造,属独立大专项。
+2. **A6 建 PR** 需要远程推送权限与 `gh`/网络;若环境受限,退化为「提供 PR 命令 + 本地验证 CI 等价步骤」。
+3. **B1/B2/B4** 依赖本机是否有可用免费 LLM;若无,降级为确定性 mock 并明确标注(不伪造真实收益)。
+4. **C/D** 多为文档/模板,非阻塞,按资源与意愿决定。

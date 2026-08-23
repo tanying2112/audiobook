@@ -167,6 +167,17 @@ async def handle_client_message(websocket: WebSocket, project_id: int, message: 
     """Handle incoming messages from WebSocket clients."""
     msg_type = message.get("type")
 
+    if msg_type == "ping":
+        # Respond with pong for keepalive
+        await manager.send_to_connection(
+            websocket,
+            {
+                "type": "pong",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return
+
     if msg_type == "pause":
         # Signal pipeline to pause at next checkpoint
         pause_event = manager.pause_events.get(project_id)

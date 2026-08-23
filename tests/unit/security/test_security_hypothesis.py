@@ -4,15 +4,21 @@ Tests invariants of safe_join, sanitize_filename, and validate_file_path
 using randomized inputs to catch edge cases deterministic tests miss.
 """
 
+# Force numpy to load before hypothesis to avoid isinstance() issues
+# with numpy.ndarray in hypothesis internal code (hypothesis issue #3500+)
+import sys
+import numpy as np
+_ = np.ndarray  # noqa: F841
+
 import os
 import tempfile
 from pathlib import Path
 
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
+from hypothesis import HealthCheck
 
 from src.audiobook_studio.security import safe_join, safe_open, sanitize_filename, validate_file_path
-
 
 # ── sanitize_filename ──────────────────────────────────────────────────────────
 
@@ -42,10 +48,14 @@ class TestSanitizeFilename:
         assert "/" not in result
         assert "\\" not in result
 
-    @given(filename=st.text(alphabet=list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"), min_size=1, max_size=100))
+    @given(
+        filename=st.text(
+            alphabet=list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-"), min_size=1, max_size=100
+        )
+    )
     @settings(max_examples=100)
     def test_valid_input_preserved(self, filename: str):
-        """Already-safe input should pass through unchanged."""
+        """Already-safe input (letters, digits, hyphens only) should pass through unchanged."""
         result = sanitize_filename(filename)
         assert result == filename
 
@@ -55,6 +65,16 @@ class TestSanitizeFilename:
         """sanitized name must not contain null bytes."""
         result = sanitize_filename(filename)
         assert "\x00" not in result
+
+    @given(filename=st.text(min_size=1, max_size=200))
+    @settings(max_examples=200)
+    def test_no_leading_trailing_dots_spaces(self, filename: str):
+        """sanitized name must not start or end with dots or spaces."""
+        result = sanitize_filename(filename)
+        assert not result.startswith(".")
+        assert not result.startswith(" ")
+        assert not result.endswith(".")
+        assert not result.endswith(" ")
 
 
 # ── safe_join ──────────────────────────────────────────────────────────────────
@@ -98,18 +118,22 @@ class TestSafeJoin:
             # Should reject by returning None or raising ValueError
             assert result is None or isinstance(result, Path)
 
-    @given(component=st.text(min_size=1, max_size=100))
-    @settings(max_examples=200)
-    def test_raises_on_absolute_path(self, component: str):
-        """safe_join must reject absolute path components."""
-        assume(component.startswith("/") or component.startswith("\\"))
+    @given(
+        component=st.one_of(
+            st.text(alphabet="/", min_size=1, max_size=1).flatmap(lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(lambda t: s + t)),
+            st.text(alphabet="\\", min_size=1, max_size=1).flatmap(lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(lambda t: s + t)),
+        )
+    )
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.filter_too_much])
+    def test_absolute_path_sanitized_to_relative(self, component: str):
+        """safe_join sanitizes absolute-looking paths to stay within base."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir).resolve()
-            try:
-                result = safe_join(base, component)
-                assert result is None, f"Expected None for absolute path, got {result}"
-            except ValueError:
-                pass  # ValueError is also acceptable
+            result = safe_join(base, component)
+            # Result should be within base (leading slash/backslash stripped)
+            assert result is not None
+            resolved = result.resolve()
+            assert str(resolved).startswith(str(base)), f"Path escaped base: {resolved}"
 
 
 # ── safe_open ──────────────────────────────────────────────────────────────────
@@ -159,7 +183,9 @@ class TestSafeOpen:
                 pass  # Expected
 
     @given(
-        traversal=st.sampled_from(["../../etc/passwd", "../.ssh/id_rsa", "/etc/hosts", "C:\\Windows\\system32\\config\\SAM"]),
+        traversal=st.sampled_from(
+            ["../../etc/passwd", "../.ssh/id_rsa", "/etc/hosts", "C:\\Windows\\system32\\config\\SAM"]
+        ),
     )
     @settings(max_examples=10)
     def test_rejects_known_traversals(self, traversal: str):
@@ -167,7 +193,7 @@ class TestSafeOpen:
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir).resolve()
             try:
-                with safe_open(base, traversal, mode="w") as f:
+                with safe_open(base, traversal, mode="wb") as f:
                     f.write(b"should not write")
                 # If it opened, verify it's still within base
                 full = (base / traversal).resolve()

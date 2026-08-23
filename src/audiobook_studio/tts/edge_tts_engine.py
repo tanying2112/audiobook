@@ -4,128 +4,130 @@ Cloud-based TTS using Microsoft Edge's free TTS service via edge_tts package.
 No GPU required, works via HTTP to Microsoft's TTS endpoints.
 """
 
+import asyncio
 import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import edge_tts
 except ImportError:
     edge_tts = None
 
-from .engine import SynthesisResult, TTSEngine, VoiceInfo
+from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
 
-class EdgeTTSEngine(TTSEngine):
-    """Edge-TTS Engine for cloud-based free TTS synthesis."""
+# Edge-TTS voice mapping (subset of available voices)
+EDGE_VOICES: Dict[str, VoiceInfo] = {
+    "zh-CN-XiaoxiaoNeural": VoiceInfo(
+        voice_id="zh-CN-XiaoxiaoNeural",
+        name="Xiaoxiao",
+        language="zh-CN",
+        gender="female",
+        age_range="adult",
+        description="Microsoft Edge Chinese Female - Xiaoxiao",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "zh-CN-YunxiNeural": VoiceInfo(
+        voice_id="zh-CN-YunxiNeural",
+        name="Yunxi",
+        language="zh-CN",
+        gender="male",
+        age_range="adult",
+        description="Microsoft Edge Chinese Male - Yunxi",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "zh-CN-YunjianNeural": VoiceInfo(
+        voice_id="zh-CN-YunjianNeural",
+        name="Yunjian",
+        language="zh-CN",
+        gender="male",
+        age_range="adult",
+        description="Microsoft Edge Chinese Male - Yunjian",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "zh-CN-XiaoyiNeural": VoiceInfo(
+        voice_id="zh-CN-XiaoyiNeural",
+        name="Xiaoyi",
+        language="zh-CN",
+        gender="female",
+        age_range="adult",
+        description="Microsoft Edge Chinese Female - Xiaoyi",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "zh-CN-XiaochenNeural": VoiceInfo(
+        voice_id="zh-CN-XiaochenNeural",
+        name="Xiaochen",
+        language="zh-CN",
+        gender="female",
+        age_range="adult",
+        description="Microsoft Edge Chinese Female - Xiaochen",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "en-US-JennyNeural": VoiceInfo(
+        voice_id="en-US-JennyNeural",
+        name="Jenny",
+        language="en-US",
+        gender="female",
+        age_range="adult",
+        description="Microsoft Edge US English Female - Jenny",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "en-US-GuyNeural": VoiceInfo(
+        voice_id="en-US-GuyNeural",
+        name="Guy",
+        language="en-US",
+        gender="male",
+        age_range="adult",
+        description="Microsoft Edge US English Male - Guy",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "en-US-AriaNeural": VoiceInfo(
+        voice_id="en-US-AriaNeural",
+        name="Aria",
+        language="en-US",
+        gender="female",
+        age_range="adult",
+        description="Microsoft Edge US English Female - Aria",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+    "en-US-DavisNeural": VoiceInfo(
+        voice_id="en-US-DavisNeural",
+        name="Davis",
+        language="en-US",
+        gender="male",
+        age_range="adult",
+        description="Microsoft Edge US English Male - Davis",
+        sample_rate=24000,
+        supports_prosody=True,
+        engine="edge",
+    ),
+}
 
-    # Edge-TTS voice mapping (subset of available voices)
-    EDGE_VOICES: Dict[str, VoiceInfo] = {
-        "zh-CN-XiaoxiaoNeural": VoiceInfo(
-            voice_id="zh-CN-XiaoxiaoNeural",
-            name="Xiaoxiao",
-            language="zh-CN",
-            gender="female",
-            age_range="adult",
-            description="Microsoft Edge Chinese Female - Xiaoxiao",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "zh-CN-YunxiNeural": VoiceInfo(
-            voice_id="zh-CN-YunxiNeural",
-            name="Yunxi",
-            language="zh-CN",
-            gender="male",
-            age_range="adult",
-            description="Microsoft Edge Chinese Male - Yunxi",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "zh-CN-YunjianNeural": VoiceInfo(
-            voice_id="zh-CN-YunjianNeural",
-            name="Yunjian",
-            language="zh-CN",
-            gender="male",
-            age_range="adult",
-            description="Microsoft Edge Chinese Male - Yunjian",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "zh-CN-XiaoyiNeural": VoiceInfo(
-            voice_id="zh-CN-XiaoyiNeural",
-            name="Xiaoyi",
-            language="zh-CN",
-            gender="female",
-            age_range="adult",
-            description="Microsoft Edge Chinese Female - Xiaoyi",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "zh-CN-XiaochenNeural": VoiceInfo(
-            voice_id="zh-CN-XiaochenNeural",
-            name="Xiaochen",
-            language="zh-CN",
-            gender="female",
-            age_range="adult",
-            description="Microsoft Edge Chinese Female - Xiaochen",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "en-US-JennyNeural": VoiceInfo(
-            voice_id="en-US-JennyNeural",
-            name="Jenny",
-            language="en-US",
-            gender="female",
-            age_range="adult",
-            description="Microsoft Edge US English Female - Jenny",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "en-US-GuyNeural": VoiceInfo(
-            voice_id="en-US-GuyNeural",
-            name="Guy",
-            language="en-US",
-            gender="male",
-            age_range="adult",
-            description="Microsoft Edge US English Male - Guy",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "en-US-AriaNeural": VoiceInfo(
-            voice_id="en-US-AriaNeural",
-            name="Aria",
-            language="en-US",
-            gender="female",
-            age_range="adult",
-            description="Microsoft Edge US English Female - Aria",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-        "en-US-DavisNeural": VoiceInfo(
-            voice_id="en-US-DavisNeural",
-            name="Davis",
-            language="en-US",
-            gender="male",
-            age_range="adult",
-            description="Microsoft Edge US English Male - Davis",
-            sample_rate=24000,
-            supports_prosody=True,
-            engine="edge",
-        ),
-    }
+
+class EdgeTTSEngine(BaseTTSEngine):
+    """Edge-TTS Engine for cloud-based free TTS synthesis."""
 
     def __init__(
         self,
@@ -133,26 +135,30 @@ class EdgeTTSEngine(TTSEngine):
         device: str = "cloud",
         sample_rate: int = 24000,
         mock_mode: bool = False,
-        **kwargs,
+        output_dir: str = "./output",
+        max_concurrent: int = 2,
+        **kwargs: Any,
     ):
-        super().__init__(model_path, device, sample_rate, mock_mode=mock_mode, **kwargs)
+        super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
+        self.device = device
+        self.sample_rate = sample_rate
+        self.mock_mode = mock_mode
         self._voices_cache: Optional[List[VoiceInfo]] = None
+        self._loaded = False
+        self._initialized = False
 
     @property
     def engine_name(self) -> str:
         return "edge"
 
     @property
-    def supports_streaming(self) -> bool:
-        return True  # edge_tts supports streaming
-
-    @property
-    def supports_batch(self) -> bool:
-        return False  # Single utterance at a time
+    def is_available(self) -> bool:
+        return self._loaded
 
     async def initialize(self) -> None:
         """Initialize Edge-TTS engine (verify connectivity)."""
         if self.mock_mode:
+            self._loaded = True
             self._initialized = True
             logger.info("EdgeTTSEngine initialized in mock mode")
             return
@@ -162,36 +168,38 @@ class EdgeTTSEngine(TTSEngine):
             raise ImportError("edge_tts package not installed")
 
         try:
-            # Test connectivity by listing voices
-            voices = await edge_tts.list_voices()
-            if not voices:
-                raise RuntimeError("No Edge-TTS voices available (network issue?)")
-
-            logger.info(f"EdgeTTS engine initialized: {len(voices)} voices available")
+            # Skip list_voices() connectivity check — known to hang on some networks.
+            # Edge-TTS availability is verified on first synthesize() call.
+            logger.info("EdgeTTS engine initialized (connectivity check deferred to first synthesis)")
+            self._loaded = True
             self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize EdgeTTS engine: {e}")
             raise
 
-    async def synthesize(
+    async def _synthesize_internal(
         self,
         text: str,
         voice_id: str,
         output_path: Path,
-        prosody: Optional[Dict] = None,
+        prosody: Optional[Dict[str, Any]] = None,
         reference_audio: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> SynthesisResult:
-        """Synthesize text using Edge-TTS."""
+        """Internal synthesis method with original signature."""
         if not self._initialized:
             await self.initialize()
 
-        # Mock mode: create empty audio file
         if self.mock_mode:
             import numpy as np
             import soundfile as sf
 
-            dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
+            # Validate voice - fallback to default if unknown (consistent with real mode)
+            if voice_id not in EDGE_VOICES:
+                logger.warning(f"Voice {voice_id} not in Edge voice map, using default 'zh-CN-XiaoxiaoNeural'")
+                voice_id = "zh-CN-XiaoxiaoNeural"
+
+            dummy_audio = np.zeros(48000, dtype=np.float32)
             sf.write(str(output_path), dummy_audio, self.sample_rate)
             text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
             return SynthesisResult(
@@ -201,11 +209,12 @@ class EdgeTTSEngine(TTSEngine):
                 voice_id=voice_id,
                 text_hash=text_hash,
                 sample_rate=self.sample_rate,
+                metadata={"prosody": prosody},
             )
 
         # Validate voice
-        if voice_id not in self.EDGE_VOICES:
-            available = list(self.EDGE_VOICES.keys())
+        if voice_id not in EDGE_VOICES:
+            available = list(EDGE_VOICES.keys())
             logger.warning(f"Voice {voice_id} not in Edge voice map, using default 'zh-CN-XiaoxiaoNeural'")
             voice_id = "zh-CN-XiaoxiaoNeural"
 
@@ -217,7 +226,7 @@ class EdgeTTSEngine(TTSEngine):
         await communicate.save(str(output_path))
 
         # Calculate duration (approximate)
-        duration_ms = len(text) * 80  # ~80ms per char estimate
+        duration_ms = len(text) * 80
         text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
         return SynthesisResult(
@@ -236,11 +245,9 @@ class EdgeTTSEngine(TTSEngine):
             return text
 
         rate = prosody.get("rate", 1.0)
-        pitch = prosody.get("pitch", 0.0)  # semitones
-        volume = prosody.get("volume", 0.0)  # dB
-        emotion = prosody.get("emotion")
+        pitch = prosody.get("pitch", 0.0)
+        volume = prosody.get("volume", 0.0)
 
-        # Convert to Edge-TTS prosody format
         rate_str = f"{int((rate - 1.0) * 100):+d}%"
         pitch_str = f"{pitch:+.1f}st"
         volume_str = f"{volume:+.1f}dB"
@@ -254,17 +261,134 @@ class EdgeTTSEngine(TTSEngine):
 </speak>"""
         return ssml
 
+    # --- TTSEngine Protocol Implementation ---
+
+    async def synthesize(
+        self,
+        payload: TTSTaskPayload,
+        output_path: Path,
+    ) -> TTSTaskResult:
+        """Synthesize text to speech using TTSTaskPayload."""
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+
+        voice_id = voice_anchor.voice_id
+
+        prosody_dict = None
+        if prosody:
+            prosody_dict = {
+                "rate": prosody.rate,
+                "pitch": prosody.pitch,
+                "volume": prosody.volume,
+                "emotion": prosody.emotion,
+            }
+
+        try:
+            result = await self._synthesize_internal(
+                text=text,
+                voice_id=voice_id,
+                output_path=output_path,
+                prosody=prosody_dict,
+            )
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="DONE",
+                audio_path=result.audio_path,
+                duration_ms=result.duration_ms,
+                engine=result.engine,
+                text_hash=result.text_hash,
+                voice_id=result.voice_id,
+                started_at=None,
+            )
+        except Exception as e:
+            logger.error(f"Synthesis failed: {e}")
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="FAILED",
+                error_message=str(e),
+                engine=self.engine_name,
+            )
+
+    async def submit(self, task_id: str, payload: TTSTaskPayload) -> bool:
+        """Submit a task for async processing."""
+        if task_id in self._tasks:
+            return False
+        self._tasks[task_id] = {"status": "PENDING", "payload": payload}
+        import asyncio
+
+        asyncio.create_task(self._run_task(task_id, payload))
+        return True
+
+    async def _run_task(self, task_id: str, payload: TTSTaskPayload) -> None:
+        """Background task runner."""
+        try:
+            self._tasks[task_id]["status"] = "RUNNING"
+            output_path = self._build_output_path(task_id, payload.voice_anchor.voice_id)
+            result = await self.synthesize(payload, output_path)
+            self._tasks[task_id] = {"status": "DONE", "result": result}
+        except Exception as e:
+            self._tasks[task_id] = {"status": "FAILED", "error": str(e)}
+
+    async def get_status(self, task_id: str) -> TTSTaskStatus:
+        """Poll for task status."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return TTSTaskStatus(
+                task_id=task_id,
+                status="PENDING",
+                error_message=f"Task {task_id} not found",
+            )
+        return TTSTaskStatus(
+            task_id=task_id,
+            status=task["status"],
+            error_message=task.get("error"),
+        )
+
+    async def get_result(self, task_id: str) -> TTSTaskResult:
+        """Get full task result."""
+        task = self._tasks.get(task_id)
+        if not task or "result" not in task:
+            raise KeyError(f"Task {task_id} not found or not ready")
+        return task["result"]
+
+    async def cancel(self, task_id: str) -> bool:
+        """Cancel a pending/running task."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task["status"] in ("DONE", "FAILED"):
+            return False
+        task["status"] = "FAILED"
+        task["error"] = "Cancelled"
+        return True
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Check engine health."""
+        return {
+            "healthy": self._loaded,
+            "engine": self.engine_name,
+            "loaded": self._loaded,
+            "mock_mode": self.mock_mode,
+            "sample_rate": self.sample_rate,
+        }
+
+    async def close(self) -> None:
+        """Clean up resources."""
+        self._loaded = False
+        self._initialized = False
+        self._voices_cache = None
+        logger.info("EdgeTTS engine cleaned up")
+
     def get_voices(self) -> List[VoiceInfo]:
         """Get available Edge-TTS voices."""
         if self._voices_cache is None:
-            self._voices_cache = list(self.EDGE_VOICES.values())
+            self._voices_cache = list(EDGE_VOICES.values())
         return self._voices_cache
 
-    def estimate_duration(self, text: str, voice_id: str, **kwargs) -> int:
+    def estimate_duration(self, text: str, voice_id: str, **kwargs: Any) -> int:
         """Estimate audio duration based on text length."""
-        # Edge-TTS average: ~150 words/min = ~750 chars/min = ~12.5 chars/sec
         if voice_id.startswith("zh"):
-            # Chinese: ~5 chars/sec
             chars_per_sec = 5.0
         else:
             chars_per_sec = 12.5
@@ -272,13 +396,41 @@ class EdgeTTSEngine(TTSEngine):
         est_sec = len(text) / chars_per_sec / speed
         return max(500, int(est_sec * 1000))
 
-    async def cleanup(self) -> None:
-        """Clean up resources (nothing to clean for Edge-TTS)."""
-        self._initialized = False
-        logger.info("EdgeTTS engine cleaned up")
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ):
+        """Stream audio chunks for real-time playback using edge_tts.Communicate.stream()."""
+        if not self._initialized:
+            await self.initialize()
+
+        if self.mock_mode:
+            # Mock: yield empty chunks
+            import numpy as np
+            yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
+            return
+
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+
+        voice_id = voice_anchor.voice_id
+
+        # Validate voice
+        if voice_id not in EDGE_VOICES:
+            voice_id = "zh-CN-XiaoxiaoNeural"
+
+        # Build SSML for prosody control
+        ssml = self._build_ssml(text, voice_id, prosody) if prosody else text
+
+        # Stream audio chunks
+        communicate = edge_tts.Communicate(ssml, voice_id)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                yield chunk["data"]
 
 
-async def create_edge_tts_engine(**kwargs) -> EdgeTTSEngine:
+async def create_edge_tts_engine(**kwargs: Any) -> EdgeTTSEngine:
     """Factory function to create and initialize EdgeTTS engine."""
     engine = EdgeTTSEngine(**kwargs)
     await engine.initialize()

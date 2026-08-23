@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ...llm import LLMRouter
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
 from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
 
@@ -33,16 +34,16 @@ class StructuralCritic(BaseCritic):
 
     def __init__(
         self,
-        router=None,
+        router: Optional[LLMRouter] = None,
         config: Optional[Dict[str, Any]] = None,
-        prompt_dir: Optional[str] = None,
+        prompt_dir: Optional[Path] = None,
     ):
         super().__init__(CriticType.STRUCTURAL, router, config)
 
         # Setup Jinja2 environment
         if prompt_dir is None:
             prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
-        self.prompt_dir = Path(prompt_dir)
+        self.prompt_dir = prompt_dir
 
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompt_dir)),
@@ -86,6 +87,8 @@ class StructuralCritic(BaseCritic):
                 messages=messages,
             )
             critic_result = result.output
+            if not isinstance(critic_result, CriticResult):
+                raise RuntimeError(f"LLM returned {type(critic_result).__name__}, expected CriticResult")
             critic_result.critic_type = CriticType.STRUCTURAL
             logger.info(
                 f"StructuralCritic: verdict={critic_result.verdict.value}, "

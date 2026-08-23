@@ -85,7 +85,9 @@ class UserOut(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
-    created_at: datetime
+    # created_at can be None on freshly-constructed/persisted users at runtime,
+    # so keep it optional rather than a required datetime (was a 500 on /me).
+    created_at: Optional[datetime] = None
     roles: List[str] = []
     project_permissions: List["ProjectPermissionOut"] = []
     model_config = ConfigDict(from_attributes=True)

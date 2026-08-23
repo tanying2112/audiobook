@@ -36,6 +36,7 @@ class ProviderType(str, Enum):
     CLOUDFLARE = "cloudflare"
     GITHUB = "github"
     DUCK2API = "duck2api"
+    VLLM = "vllm"
 
 
 class StageName(str, Enum):
@@ -61,6 +62,10 @@ class ProviderConfig(BaseSettings):
     api_key_pool_env: List[str] = Field(default_factory=list)
     key_rotation_strategy: str = "round_robin"
     base_url: Optional[str] = None
+    # Health-check path. Defaults to "/models" (OpenAI-compatible convention).
+    # Anthropic-protocol gateways (e.g. fcc) expose /health instead of /models,
+    # so set health_path=/health for those to avoid probing a 404 endpoint.
+    health_path: Optional[str] = None
     priority: int = 100
     max_tokens_per_minute: int = 10000
     max_requests_per_minute: int = 60
@@ -113,6 +118,7 @@ class ProviderConfig(BaseSettings):
             ProviderType.CLOUDFLARE: "openai/",
             ProviderType.GITHUB: "openai/",
             ProviderType.DUCK2API: "openai/",
+            ProviderType.VLLM: "openai/",
         }
         prefix = prefix_map.get(self.provider, "")
         return f"{prefix}{self.model}"
@@ -166,11 +172,19 @@ class LLMProvidersConfig(BaseSettings):
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "LLMProvidersConfig":
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file.
+
+        Path resolution priority (避免项目根 / 包内双 yaml 漂移):
+          1. 显式传入的 config_path
+          2. 当前工作目录 (CWD) 下的 config/llm_providers.yaml  ← 项目根运维版本优先
+          3. 本包同目录的下 config/llm_providers.yaml            ← pip install -e 后的 fallback
+        """
         import yaml
 
         if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+            cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
+            pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+            config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
 
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -186,6 +200,7 @@ class LLMProvidersConfig(BaseSettings):
                     api_key_pool_env=p.get("api_key_pool_env", []),
                     key_rotation_strategy=p.get("key_rotation_strategy", "round_robin"),
                     base_url=p.get("base_url"),
+                    health_path=p.get("health_path"),
                     priority=p.get("priority", 100),
                     max_tokens_per_minute=p.get("max_tokens_per_minute", 10000),
                     max_requests_per_minute=p.get("max_requests_per_minute", 60),

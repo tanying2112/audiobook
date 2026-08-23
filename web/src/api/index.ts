@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Project, Chapter, Paragraph, AudioSegment, Character, QualityResult } from '../types'
+import { useAuthStore } from '../stores/auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -8,6 +9,26 @@ const api = axios.create({
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use((config) => {
+  const authStore = useAuthStore()
+  if (authStore.token) {
+    config.headers.Authorization = `Bearer ${authStore.token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const authStore = useAuthStore()
+      authStore.logout()
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
 
 // ── Projects ────────────────────────────────────────────────────────────
 
@@ -483,12 +504,15 @@ export async function cloneVoice(
   language: string = 'zh-CN',
   textContent: string = '',
   onProgress?: (percent: number) => void,
+  consent?: boolean, // P2.11 合规: 样本提供者授权 (后端 422 强校验)
 ): Promise<CloneVoiceResponse> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('speaker_id', speakerId)
   formData.append('language', language)
   formData.append('text_content', textContent)
+  // P2.11 合规: consent 必传, 后端未勾 → 422; 显式转字符串与 multipart Form 一致
+  formData.append('consent', consent ? 'true' : 'false')
 
   const { data } = await api.post('/api/tts/voices/clone', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

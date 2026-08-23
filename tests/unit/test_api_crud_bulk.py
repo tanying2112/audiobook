@@ -1,23 +1,21 @@
 """Bulk CRUD coverage tests for all legacy API endpoints.
 
-Covers: books, paragraphs, tts_edits, routings, qualities (0% → ~100%).
+Covers: books, paragraphs, tts_edits, routings, qualities.
+Uses the shared async DB fixture infrastructure (conftest.py).
 """
-
-import os
-import tempfile
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from src.audiobook_studio.api.books import router as books_router
 from src.audiobook_studio.api.paragraphs import router as paragraphs_router
 from src.audiobook_studio.api.qualities import router as qualities_router
 from src.audiobook_studio.api.routings import router as routings_router
 from src.audiobook_studio.api.tts_edits import router as tts_router
-from src.audiobook_studio.database import Base, get_db
+from src.audiobook_studio.api.dependencies import get_async_db
+
+from tests.conftest import make_async_db_override, setup_auth_overrides
 
 app = FastAPI()
 app.include_router(books_router)
@@ -25,32 +23,20 @@ app.include_router(paragraphs_router)
 app.include_router(tts_router)
 app.include_router(routings_router)
 app.include_router(qualities_router)
+setup_auth_overrides(app)
 
 
 @pytest.fixture()
-def client():
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine)
-    TestSession = sessionmaker(bind=engine)
-
-    def override_get_db():
-        db = TestSession()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
+def client(_async_db_engine):
+    """TestClient with async SQLite backend."""
+    override = make_async_db_override(_async_db_engine)
+    app.dependency_overrides[get_async_db] = override
     with TestClient(app) as c:
         yield c
-    app.dependency_overrides.clear()
-    engine.dispose()
-    os.unlink(tmp.name)
+    app.dependency_overrides.pop(get_async_db, None)
 
 
-# ── Books CRUD ──────────────────────────────────────────────────────────────
+# ── Books CRUD −─────────────────────────────────────────────────────────────
 
 
 class TestBooksCRUD:
@@ -94,7 +80,7 @@ class TestBooksCRUD:
         assert r.status_code == 404
 
 
-# ── Paragraphs CRUD ─────────────────────────────────────────────────────────
+# ── Paragraphs CRUD ──────────────────────────────────────────────────────────
 
 
 class TestParagraphsCRUD:
@@ -136,7 +122,7 @@ class TestParagraphsCRUD:
         assert r.status_code == 204
 
 
-# ── TTSEdit CRUD ────────────────────────────────────────────────────────────
+# ── TTS edit CRUD ────────────────────────────────────────────────────────────
 
 
 class TestTTSEditsCRUD:
@@ -168,7 +154,7 @@ class TestTTSEditsCRUD:
         assert r.status_code == 204
 
 
-# ── Routing CRUD ────────────────────────────────────────────────────────────
+# ── Routing CRUD ─────────────────────────────────────────────────────────────
 
 
 class TestRoutingsCRUD:
@@ -200,7 +186,7 @@ class TestRoutingsCRUD:
         assert r.status_code == 204
 
 
-# ── Quality CRUD ────────────────────────────────────────────────────────────
+# ── Quality CRUD ─────────────────────────────────────────────────────────────
 
 
 class TestQualitiesCRUD:

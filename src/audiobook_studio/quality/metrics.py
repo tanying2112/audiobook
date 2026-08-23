@@ -36,6 +36,20 @@ try:
     import torch
 
     _torch_available = True
+    # 版本桥接 (P2.13 路甲): speechbrain>=1.1 调用 torch.amp.custom_fwd(fwd, device_type=, cast_inputs=),
+    # 该签名在 torch 2.3 才存在 (从 torch.cuda.amp 提升到顶层 torch.amp 并加 device_type 形参).
+    # macos x86_64 + py3.12 pip wheel 上限即 2.2.2, 无 2.3+, 故桥接此 API gap.
+    # torch 2.2 的 torch.cuda.amp.custom_fwd 只收 (fwd, cast_inputs), 忽略 device_type (CPU 无 autocast 需求).
+    try:
+        torch.amp.custom_fwd  # type: ignore[attr-defined]
+    except AttributeError:
+
+        def _amp_custom_fwd(fwd=None, *, cast_inputs=None, device_type=None):  # noqa: ARG001
+            # device_type 在 CPU 推理路径无意义 (无 autocast), 仅 CUDA 才用;
+            # torch 2.2 cuda custom_fwd 不接受 device_type, 故吞掉后转发.
+            return torch.cuda.amp.custom_fwd(fwd, cast_inputs=cast_inputs)  # type: ignore[attr-defined]
+
+        torch.amp.custom_fwd = _amp_custom_fwd  # type: ignore[attr-defined]
 except ImportError:
     pass
 try:
@@ -57,6 +71,27 @@ try:
     _speechbrain_available = True
 except ImportError:
     pass
+
+
+def _tensor_to_float32_l2norm(t: Any) -> np.ndarray:
+    """将 torch tensor 转 float32 ndarray 并 L2 归一化 (余弦相似度所需).
+
+    版本桥接 (P2.13 路甲): torch 2.2.2 针对 numpy 1.x ABI 编译, 当环境装 numpy 2.x
+    时 torch tensor 的 .numpy() 触发 `RuntimeError: Numpy is not available`. 免费资源
+    上限约束下 macos x86_64+py3.12 同时保留 numpy-2 (Kokoro/pandas/scipy 硬依赖
+    numpy>=2) 与 torch-2.2 互操作, 故此处优先走 .numpy() (兼容 path), 失败回退
+    .tolist()->np.array (纯 torch C 实现, 不经 numpy C ABI, numpy-2 下仍可跑).
+    保留 L2 归一化 (cosine similarity 范围 -1..1).
+    """
+    cpu = t.squeeze().cpu()
+    try:
+        emb = cpu.numpy().astype(np.float32)
+    except (RuntimeError, AttributeError):
+        emb = np.array(cpu.tolist(), dtype=np.float32)
+    norm = float(np.linalg.norm(emb)) if emb.size else 0.0
+    if norm > 0:
+        emb = emb / norm
+    return emb
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -216,7 +251,7 @@ class QualityMetric(ABC):
     """质量指标基类."""
 
     @abstractmethod
-    def compute(self, *args, **kwargs) -> Any:
+    def compute(self, *args: Any, **kwargs: Any) -> Any:
         """计算质量指标."""
         pass
 
@@ -247,8 +282,11 @@ class DNSMOSMetric(QualityMetric):
     - 输出: SIG, BAK, OVR 三个分数 (1-5 范围)
     """
 
-    # 官方 DNSMOS 模型下载地址 (Microsoft DNS Challenge)
-    MODEL_URL = "https://github.com/microsoft/DNS-Challenge/raw/main/DNSMOS/DNSMOS.onnx"
+    # 官方 DNSMOS P.835 组合模型 (Microsoft DNS Challenge)。
+    # 输出 3 个维度分 SIG/BAK/OVR，形状 (N,3)，与本类 _compute_dnsmos 读取方式一致。
+    # 原路径 .../raw/main/DNSMOS/DNSMOS.onnx 已 404（仓库重构后该文件移至 DNSMOS/DNSMOS/
+    # 目录并更名 sig_bak_ovr.onnx）。免费 CPU 可跑，模型约 1.1MB。
+    MODEL_URL = "https://github.com/microsoft/DNS-Challenge/raw/master/DNSMOS/DNSMOS/sig_bak_ovr.onnx"
     MODEL_FILENAME = "dnsmos.onnx"
     DEFAULT_SAMPLE_RATE = 16000
     # DNSMOS 官方模型输入长度: 9.01 秒 = 144160 个采样点
@@ -295,11 +333,11 @@ class DNSMOSMetric(QualityMetric):
         else:
             self.model_path = Path(model_path)
 
-        self._session = None
+        self._session: Any = None
         self._initialized = False
 
         # Mock mode 固定返回值 (用于测试和 CI)
-        self._mock_scores = {
+        self._mock_scores: Dict[str, float] = {
             "mos_overall": 4.2,
             "mos_sig": 4.1,
             "mos_bak": 4.3,
@@ -346,7 +384,7 @@ class DNSMOSMetric(QualityMetric):
 
         return False
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 ONNX Runtime 会话."""
         if self._initialized:
             return
@@ -379,6 +417,7 @@ class DNSMOSMetric(QualityMetric):
             logger.info(f"DNSMOS model initialized from {self.model_path}")
 
             # 验证模型输入输出
+            assert self._session is not None  # set by InferenceSession above
             inputs = self._session.get_inputs()
             outputs = self._session.get_outputs()
             logger.debug(f"DNSMOS model inputs: {[i.name for i in inputs]}")
@@ -393,11 +432,38 @@ class DNSMOSMetric(QualityMetric):
     def _preprocess_audio(self, audio_path: Path) -> np.ndarray:
         """预处理音频为 DNSMOS 所需格式 (16kHz 单声道 float32).
 
-        使用 ffmpeg 重采样并转换格式。
+        优先用 soundfile 直接读取（已是 16kHz mono float 则无需 ffmpeg）；
+        仅当格式不符且 ffmpeg 可用时才回退到 ffmpeg 重采样。这让免费 CPU
+        potato 模式在仅装 pip 依赖（soundfile）而系统无 ffmpeg 的机器上也能跑通（红线 #1 主路径真实）。
         """
+        # 路径 1：soundfile 直读（无需 ffmpeg）。需要的话做简单的降混+重采样。
+        try:
+            import soundfile as sf
+
+            audio, sr = sf.read(str(audio_path), dtype="float32", always_2d=False)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)  # 多声道 → 单声道
+            if sr != self.sample_rate:
+                # 若 numpy 线性重采样够用则用之，避免拉起 ffmpeg；否则落到 ffmpeg 分支
+                try:
+                    from scipy.signal import resample_poly
+
+                    from math import gcd
+
+                    g = gcd(int(sr), self.sample_rate)
+                    audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
+                except ImportError:
+                    audio = self._resample_via_ffmpeg(audio_path)  # 落到 ffmpeg
+            return np.asarray(audio, dtype=np.float32)
+        except Exception as e:
+            logger.debug(f"soundfile read failed for {audio_path} ({e}); trying ffmpeg")
+            return self._resample_via_ffmpeg(audio_path)
+
+    def _resample_via_ffmpeg(self, audio_path: Path) -> np.ndarray:
+        """ffmpeg 重采样到 16kHz mono float32 的回退路径。"""
         import asyncio
 
-        async def _resample():
+        async def _resample() -> np.ndarray:
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
                 "-y",
@@ -427,10 +493,9 @@ class DNSMOSMetric(QualityMetric):
     def _prepare_input_frames(self, audio: np.ndarray) -> np.ndarray:
         """准备 DNSMOS 模型输入帧.
 
-        官方 DNSMOS 模型接受形状为 (1, 1, T) 的输入，其中 T 是采样点数。
-        模型内部会处理分帧，但建议输入至少 9.01 秒的音频以获得稳定预测。
-
-        如果音频较短，进行填充；如果较长，取前 9.01 秒（或分段处理并平均）。
+        官方 DNSMOS P.835 组合模型 (sig_bak_ovr.onnx) 接受形状 (N, 144160) 的 rank-2 输入；
+        若加载的模型实际期望别的 rank，按其输入声明的维度数自适应填充，避免硬编码 (1,1,T)。
+        输入至少 9.01 秒以获得稳定预测；不足则零填充，超长则取中间段。
         """
         target_len = self.INPUT_LENGTH_SAMPLES
 
@@ -442,9 +507,18 @@ class DNSMOSMetric(QualityMetric):
             # 太短，零填充
             audio = np.pad(audio, (0, target_len - len(audio)), mode="constant")
 
-        # 添加 batch 和 channel 维度: (1, 1, T)
-        input_tensor = audio.reshape(1, 1, -1).astype(np.float32)
-        return input_tensor
+        audio = audio.astype(np.float32)
+
+        # 按模型实际声明的输入 rank 适配：P.835 组合模型期望 (N, 144160)。
+        try:
+            expected_rank = len(self._session.get_inputs()[0].shape)
+        except Exception:
+            expected_rank = None
+
+        if expected_rank == 2:
+            return audio.reshape(1, -1)  # (1, 144160)
+        # 回退：其它 DNSMOS 变体可能期望 (1, 1, T) 或 (1, T, F)
+        return audio.reshape(1, 1, -1)
 
     def _compute_dnsmos(self, audio: np.ndarray) -> Tuple[float, float, float, float]:
         """计算 DNSMOS 分数.
@@ -603,7 +677,7 @@ class FunASRBackend(ASRBackend):
         self.device = device
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
     def _get_cache_dir(self) -> Path:
@@ -630,7 +704,7 @@ class FunASRBackend(ASRBackend):
         logger.debug(f"FunASR cache directory: {cache_dir}")
         return True
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         if self._initialized:
             return
         if self.mock_mode:
@@ -807,7 +881,7 @@ class WhisperBackend(ASRBackend):
         self.use_faster = use_faster
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
     def _get_cache_dir(self) -> Path:
@@ -823,7 +897,7 @@ class WhisperBackend(ASRBackend):
         logger.debug(f"Whisper cache directory: {cache_dir}")
         return True
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         if self._initialized:
             return
         if self.mock_mode:
@@ -1057,7 +1131,7 @@ class ASRWerMetric(QualityMetric):
         # Levenshtein distance with operation tracking
         n, m = len(ref_tokens), len(hyp_tokens)
         dp = [[0] * (m + 1) for _ in range(n + 1)]
-        ops = [[None] * (m + 1) for _ in range(n + 1)]
+        ops: List[List[Optional[str]]] = [[None] * (m + 1) for _ in range(n + 1)]
 
         for i in range(n + 1):
             dp[i][0] = i
@@ -1243,13 +1317,13 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
         self.device = device
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "speechbrain"
-        self._model = None
+        self._model: Any = None
         self._initialized = False
 
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 SpeechBrain ECAPA-TDNN 模型."""
         if self._initialized:
             return
@@ -1322,13 +1396,9 @@ class ECAPATDNNBackend(SpeakerEmbeddingBackend):
             # 提取嵌入向量
             with torch.no_grad():
                 embedding = self._model.encode_batch(waveform)
-                # embedding shape: (1, 1, 192) -> (192,)
-                embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
-
-            # L2 归一化 (余弦相似度需要)
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding = embedding / norm
+                # embedding shape: (1, 1, 192) -> (192,), L2 归一化
+                # P2.13: _tensor_to_float32_l2norm 兼容 numpy-2/torch-2.2.2 gap (.numpy() -> .tolist() 回退)
+                embedding = _tensor_to_float32_l2norm(embedding)
 
             return SpeakerEmbedding(
                 embedding=embedding,
@@ -1379,14 +1449,14 @@ class WavLMBackend(SpeakerEmbeddingBackend):
         self.device = device
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir or Path.home() / ".cache" / "audiobook_studio" / "models" / "transformers"
-        self._model = None
-        self._feature_extractor = None
+        self._model: Any = None
+        self._feature_extractor: Any = None
         self._initialized = False
 
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化 WavLM 模型."""
         if self._initialized:
             return
@@ -1472,14 +1542,9 @@ class WavLMBackend(SpeakerEmbeddingBackend):
                 outputs = self._model(input_values)
                 # last_hidden_state: (batch, seq_len, hidden_dim)
                 last_hidden = outputs.last_hidden_state
-                # 均值池化: (batch, hidden_dim)
-                embedding = last_hidden.mean(dim=1)
-                embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
-
-            # L2 归一化
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding = embedding / norm
+                # 均值池化: (batch, hidden_dim), L2 归一化
+                # P2.13: _tensor_to_float32_l2norm 兼容 numpy-2/torch-2.2.2 gap
+                embedding = _tensor_to_float32_l2norm(last_hidden.mean(dim=1))
 
             return SpeakerEmbedding(
                 embedding=embedding,
@@ -1547,17 +1612,23 @@ class SpeakerSimilarityMetric(QualityMetric):
         self._reference_embeddings: Dict[str, SpeakerEmbedding] = {}
 
     def _create_backend(self, backend: str, device: str) -> SpeakerEmbeddingBackend:
-        """创建指定的后端实例."""
+        """创建指定的后端实例.
+
+        红线A: 不在依赖缺失时静默退化为 mock_data 伪嵌入。当且仅当调用方
+        显式传 mock_mode=True 时才走伪嵌入; 依赖缺失且未显式 mock 时, 后端
+        以真模型模式构造 (不预加载模型), 首次 extract_embedding -> _initialize
+        抛 RuntimeError (依赖 ImportError), 由 compute 捕获返回 success=False,
+        上游 orchestrator 据此诚实跳过 (而非伪报同一说话人 success=True)。
+        """
         if backend == "ecapa_tdnn":
-            mock_mode = self.mock_mode or not (_speechbrain_available and _torch_available and _torchaudio_available)
-            return ECAPATDNNBackend(device=device, mock_mode=mock_mode, cache_dir=self.cache_dir)
+            # 仅显式 mock_mode 才走伪嵌入; 依赖缺失不禁用诚实降级路径
+            return ECAPATDNNBackend(device=device, mock_mode=self.mock_mode, cache_dir=self.cache_dir)
         elif backend in ("wavlm_large", "wavlm_base_plus", "wavlm_base", "wavlm"):
             model_name = backend if backend != "wavlm" else self.wavlm_model
-            mock_mode = self.mock_mode or not (_torch_available and _torchaudio_available and _transformers_available)
             return WavLMBackend(
                 model_name=model_name,
                 device=device,
-                mock_mode=mock_mode,
+                mock_mode=self.mock_mode,
                 cache_dir=self.cache_dir,
             )
         else:
@@ -1710,7 +1781,7 @@ class QualityCheckSuite:
         self._speaker_sim: Optional[SpeakerSimilarityMetric] = None
         self._initialized = False
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """延迟初始化所有组件.
 
         Each metric is initialized independently — a missing dependency

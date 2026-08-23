@@ -13,10 +13,13 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ..schemas import ParagraphAnnotation, QualityJudgment
 from ..schemas.judge import PairwiseJudgment
+
+if TYPE_CHECKING:
+    from ..llm.router import LLMRouter
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,11 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 
 
-def create_llm_judge_fn(stage: str, judge_model: str = None):
+JudgeFn = Callable[[Dict[str, Any], Dict[str, Any], Dict[str, Any]], Tuple[float, float, str]]
+PairwiseJudgeFn = Callable[..., PairwiseJudgment]
+
+
+def create_llm_judge_fn(stage: str, judge_model: Optional[str] = None) -> JudgeFn:
     """
     Create an LLM-as-a-Judge function for blind evaluation of A/B test samples.
 
@@ -270,6 +277,11 @@ def create_llm_judge_fn(stage: str, judge_model: str = None):
             )
             output = result.output
 
+            # result.output is typed as BaseModel (see LLMCallResult);
+            # narrow to the concrete response_model we requested.
+            if not isinstance(output, JudgeOutput):
+                raise TypeError("LLM judge returned unexpected output type")
+
             # Clamp scores to valid range
             score_a = max(0.0, min(1.0, output.score_a))
             score_b = max(0.0, min(1.0, output.score_b))
@@ -297,8 +309,8 @@ def create_llm_judge_fn(stage: str, judge_model: str = None):
 def create_pairwise_judge_fn(
     stage: str,
     judge_model: Optional[str] = None,
-    router=None,
-):
+    router: Optional["LLMRouter"] = None,
+) -> PairwiseJudgeFn:
     """
     Create an LLM-as-a-Judge function for pairwise A/B comparison.
 
@@ -333,6 +345,11 @@ def create_pairwise_judge_fn(
         """Evaluate two outputs pairwise using LLM judge."""
         reference_text = input_data.get("paragraph_text", input_data.get("text", ""))
 
+        # judge_pairwise expects a ParagraphAnnotation model, not a raw dict.
+        annotation_model: Optional[ParagraphAnnotation] = None
+        if annotation is not None:
+            annotation_model = ParagraphAnnotation(**annotation)
+
         try:
             result = judge.judge_pairwise(
                 segment_id=segment_id,
@@ -340,7 +357,7 @@ def create_pairwise_judge_fn(
                 output_a=output_a,
                 output_b=output_b,
                 reference_text=reference_text,
-                annotation=annotation,
+                annotation=annotation_model,
                 audio_description=audio_description,
             )
             return result
@@ -539,10 +556,10 @@ def _compute_statistical_significance(
 def run_ab_test(
     stage: str,
     samples: List[ABTestSample],
-    judge_fn=None,
+    judge_fn: Optional[Callable[..., Any]] = None,
     significance_level: float = 0.05,
     use_llm_judge: bool = False,
-    judge_model: str = None,
+    judge_model: Optional[str] = None,
 ) -> ABTestReport:
     """执行 A/B 测试.
 
@@ -722,11 +739,11 @@ class PairwiseABTestReport:
 def run_ab_test_pairwise(
     stage: str,
     samples: List[ABTestSample],
-    judge_fn=None,
+    judge_fn: Optional[PairwiseJudgeFn] = None,
     significance_level: float = 0.05,
     use_llm_judge: bool = False,
-    judge_model: str = None,
-    router=None,
+    judge_model: Optional[str] = None,
+    router: Optional["LLMRouter"] = None,
 ) -> PairwiseABTestReport:
     """执行 Pairwise A/B 测试（使用 LLMJudge.judge_pairwise）。
 
@@ -798,8 +815,8 @@ def run_ab_test_pairwise(
         # Accumulate average scores from dimension_scores
         dim_scores = judgment.dimension_scores
         if dim_scores:
-            total_a += sum(s[0] for s in dim_scores.values())
-            total_b += sum(s[1] for s in dim_scores.values())
+            total_a += sum(s.score_a for s in dim_scores.values())
+            total_b += sum(s.score_b for s in dim_scores.values())
         else:
             total_a += 0.5
             total_b += 0.5
@@ -839,7 +856,7 @@ def run_ab_test_pairwise(
     for r in results:
         dim_scores = r.judgment.dimension_scores
         if dim_scores:
-            diff = sum(s[1] - s[0] for s in dim_scores.values()) / len(dim_scores)
+            diff = sum(s.score_b - s.score_a for s in dim_scores.values()) / len(dim_scores)
         else:
             diff = 0.0 if r.judgment.winner == "tie" else (1.0 if r.judgment.winner == "B" else -1.0)
         differences.append(diff)
@@ -963,9 +980,9 @@ def run_ab_test_with_pipeline_rerun(
     golden_examples: List[Dict[str, Any]],
     old_version: int,
     new_version: int,
-    judge_fn=None,
+    judge_fn: Optional[Callable[..., Any]] = None,
     significance_level: float = 0.05,
-    mock_mode: bool = True,
+    mock_mode: bool | None = None,
 ) -> ABTestReport:
     """
     Run A/B test with real pipeline re-run for both versions.
@@ -983,12 +1000,15 @@ def run_ab_test_with_pipeline_rerun(
         new_version: New prompt version number
         judge_fn: Optional custom judge function
         significance_level: Statistical significance level
-        mock_mode: Whether to run pipeline in mock mode
+        mock_mode: Whether to run pipeline in mock mode (None = resolve from
+            SELF_ITERATION_MOCK env, C-01).
 
     Returns:
         ABTestReport with statistical comparison
     """
-    from ..feedback.promotion_gate import _golden_to_pipeline_stage, _run_stage_with_prompt_version
+    from ..feedback.promotion_gate import _golden_to_pipeline_stage, _resolve_mock_mode, _run_stage_with_prompt_version
+
+    mock_mode = _resolve_mock_mode(mock_mode)
 
     pipeline_stage = _golden_to_pipeline_stage(stage)
 

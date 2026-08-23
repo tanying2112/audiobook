@@ -7,12 +7,13 @@ Provides Pydantic-based configuration loading with:
 - Environment variable interpolation (optional)
 """
 
+# type: ignore[redundant-module-resolution]
 import fcntl
 import logging
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -704,12 +705,15 @@ def load_pipeline_config(config_path: str = "./config/pipeline.yaml") -> Dict[st
     return _config_loader.load_pipeline_config(config_path)
 
 
+_EMPTY_DICT: Dict[str, Any] = {}
+
+
 def get_quality_thresholds(
     config_path: str = "./config/pipeline.yaml",
 ) -> Dict[str, Any]:
     """Get quality thresholds from pipeline configuration."""
     config = load_pipeline_config(config_path)
-    return config.get("quality_thresholds", {})
+    return cast(Dict[str, Any], config.get("quality_thresholds", _EMPTY_DICT))
 
 
 def get_constitutional_rules(
@@ -717,7 +721,7 @@ def get_constitutional_rules(
 ) -> Dict[str, Any]:
     """Get constitutional rules from pipeline configuration."""
     config = load_pipeline_config(config_path)
-    return config.get("constitutional_rules", {})
+    return cast(Dict[str, Any], config.get("constitutional_rules", _EMPTY_DICT))
 
 
 def get_difficulty_weights(
@@ -725,13 +729,13 @@ def get_difficulty_weights(
 ) -> Dict[str, Any]:
     """Get difficulty weights from pipeline configuration."""
     config = load_pipeline_config(config_path)
-    return config.get("difficulty_weights", {})
+    return cast(Dict[str, Any], config.get("difficulty_weights", _EMPTY_DICT))
 
 
 def get_voice_mapping(config_path: str = "./config/pipeline.yaml") -> Dict[str, Any]:
     """Get voice mapping from pipeline configuration."""
     config = load_pipeline_config(config_path)
-    return config.get("voice_mapping", {})
+    return cast(Dict[str, Any], config.get("voice_mapping", _EMPTY_DICT))
 
 
 def get_promotion_thresholds(
@@ -739,7 +743,7 @@ def get_promotion_thresholds(
 ) -> Dict[str, Any]:
     """Get promotion thresholds from pipeline configuration."""
     config = load_pipeline_config(config_path)
-    return config.get("promotion_thresholds", {})
+    return cast(Dict[str, Any], config.get("promotion_thresholds", _EMPTY_DICT))
 
 
 def reload_config_if_changed(
@@ -764,6 +768,34 @@ def load_hardware_profile(config_path: str = "./config/hardware_profile.yaml"):
 def get_hardware_profile_instance(config_path: str = "./config/hardware_profile.yaml"):
     """Get hardware profile singleton instance."""
     return load_hardware_profile(config_path)
+
+
+# =============================================================================
+# Settings Singleton with @lru_cache
+# =============================================================================
+
+from functools import lru_cache
+
+from .settings import Settings
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Get or create the global Settings singleton.
+
+    Uses @lru_cache to ensure the Settings instance is created only once.
+    This avoids side-effect imports at module load time.
+    """
+    settings = Settings()  # type: ignore[call-arg]
+    # Validate security settings on first load
+    settings.validate_jwt_secret()
+    settings.validate_cors_security()
+    return settings
+
+
+def reset_settings() -> None:
+    """Reset the global settings instance (useful for testing)."""
+    get_settings.cache_clear()
 
 
 # Backward compatibility defaults (kept for existing code)

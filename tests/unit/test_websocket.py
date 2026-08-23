@@ -61,12 +61,18 @@ class TestConnectionManager:
         # They are cleaned up in broadcast_to_project when empty
 
     def test_disconnect_not_connected(self):
-        """Test disconnecting a WebSocket that wasn't connected."""
+        """Test disconnecting a WebSocket that wasn't connected is a safe no-op."""
         manager = ConnectionManager()
         websocket = AsyncMock(spec=WebSocket)
 
-        # Should not raise
+        # Should not raise — disconnect must be idempotent (uses .pop with default)
         manager.disconnect(websocket)
+
+        # State must remain clean: no orphaned project mapping, no stray connection sets
+        assert websocket not in manager.connection_to_project
+        assert manager.active_connections == {}, (
+            "Disconnecting unknown websocket must not create stray project sets"
+        )
 
     @pytest.mark.asyncio
     async def test_broadcast_to_project(self):

@@ -8,9 +8,10 @@ and persistent job state stored in Redis (primary) with DB fallback.
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from celery import states as celery_states
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..celery_app import celery_app
 from ..database import AsyncSessionLocal
@@ -29,9 +30,9 @@ PUBLISH_JOB_KEY_PREFIX = "publish:job:"
 PUBLISH_JOB_TTL = 86400 * 7  # 7 days TTL
 
 
-async def _get_redis():
+async def _get_redis() -> Any:
     """Get Redis client from connection pool."""
-    from ..config.settings import get_settings
+    from ..config.settings_loader import get_settings
 
     settings = get_settings()
     import redis.asyncio as redis
@@ -46,11 +47,11 @@ async def _get_redis():
 async def _persist_job_state(job_id: str, state: Dict[str, Any]) -> None:
     """Persist job state to Redis with TTL."""
     try:
-        redis = await _get_redis()
+        redis_client = await _get_redis()
         key = f"{PUBLISH_JOB_KEY_PREFIX}{job_id}"
         state["updated_at"] = datetime.now(timezone.utc).isoformat()
-        await redis.setex(key, PUBLISH_JOB_TTL, json.dumps(state))
-        await redis.aclose()
+        await redis_client.setex(key, PUBLISH_JOB_TTL, json.dumps(state))
+        await redis_client.aclose()
     except Exception as e:
         logger.warning(f"Failed to persist job state to Redis: {e}")
         # Could add DB fallback here if needed
@@ -59,22 +60,24 @@ async def _persist_job_state(job_id: str, state: Dict[str, Any]) -> None:
 async def _get_job_state(job_id: str) -> Optional[Dict[str, Any]]:
     """Get job state from Redis."""
     try:
-        redis = await _get_redis()
+        redis_client = await _get_redis()
         key = f"{PUBLISH_JOB_KEY_PREFIX}{job_id}"
-        data = await redis.get(key)
-        await redis.aclose()
+        data = await redis_client.get(key)
+        await redis_client.aclose()
         if data:
-            return json.loads(data)
+            return json.loads(data)  # type: ignore
     except Exception as e:
         logger.warning(f"Failed to get job state from Redis: {e}")
     return None
 
 
-async def _persist_job_state_db(job_id: str, project_id: int, state: Dict[str, Any], db_session=None) -> None:
+async def _persist_job_state_db(
+    job_id: str, project_id: int, state: Dict[str, Any], db_session: Optional[Union[AsyncSessionLocal, AsyncSession]] = None
+) -> None:
     """Persist job state to database as fallback."""
     try:
         if db_session is None:
-            async with AsyncSessionLocal() as db:
+            async with AsyncSessionLocal() as db:  # type: ignore
                 await _persist_job_state_db(job_id, project_id, state, db)
             return
 
@@ -84,29 +87,32 @@ async def _persist_job_state_db(job_id: str, project_id: int, state: Dict[str, A
 
             from ..models.publish import PublishJob
 
-            result = await db_session.execute(select(PublishJob).where(PublishJob.job_id == job_id))
+            result = await db_session.execute(select(PublishJob).where(PublishJob.job_id == job_id))  # type: ignore
             job = result.scalar_one_or_none()
 
             if job:
                 job.status = state.get("status", "pending")
-                job.results = state.get("results", {})
-                job.error = state.get("error")
+                job.result_url = state.get("result_url")
+                job.error_message = state.get("error")
                 job.completed_at = state.get("completed_at")
                 job.updated_at = datetime.now(timezone.utc)
+                if "progress" in state:
+                    job.progress = state["progress"]
             else:
                 job = PublishJob(
                     job_id=job_id,
                     project_id=project_id,
                     status=state.get("status", "pending"),
-                    destinations=state.get("destinations", []),
-                    results=state.get("results", {}),
-                    error=state.get("error"),
+                    target=state.get("destinations", [""])[0] if state.get("destinations") else "",
+                    config_json=json.dumps(state.get("config", {})),
+                    result_url=state.get("result_url"),
+                    error_message=state.get("error"),
                     created_at=state.get("created_at", datetime.now(timezone.utc)),
                     completed_at=state.get("completed_at"),
                 )
-                db_session.add(job)
+                db_session.add(job)  # type: ignore
 
-            await db_session.commit()
+            await db_session.commit()  # type: ignore
         except ImportError:
             # PublishJob model doesn't exist, skip DB persistence
             pass
@@ -119,13 +125,13 @@ async def _persist_job_state_db(job_id: str, project_id: int, state: Dict[str, A
 async def _run_publish_async(
     job_id: str,
     project_id: int,
-    destinations: list[str],
-    audiobookshelf_config: Optional[dict] = None,
-    podcast_config: Optional[dict] = None,
+    destinations: List[str],
+    audiobookshelf_config: Optional[Dict[str, Any]] = None,
+    podcast_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run publish operation asynchronously."""
     # Initialize job state
-    job_state = {
+    job_state: Dict[str, Any] = {
         "job_id": job_id,
         "project_id": project_id,
         "status": "publishing",
@@ -137,7 +143,7 @@ async def _run_publish_async(
     }
     await _persist_job_state(job_id, job_state)
 
-    results = {}
+    results: Dict[str, Any] = {}
     all_success = True
 
     # Import local functions to avoid circular imports
@@ -191,7 +197,7 @@ async def _run_publish_async(
     job_state["status"] = "completed" if all_success else "failed"
     if not all_success:
         errors = [r.get("error") for r in results.values() if r.get("error")]
-        job_state["error"] = "; ".join(errors)
+        job_state["error"] = "; ".join(filter(None, errors))
 
     await _persist_job_state(job_id, job_state)
 
@@ -201,18 +207,18 @@ async def _run_publish_async(
     return job_state
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore
     bind=True,
     name="src.audiobook_studio.tasks.publish_tasks.publish_project_async",
     max_retries=3,
     default_retry_delay=60,
 )
 def publish_project_async(
-    self,
+    self: Any,
     project_id: int,
-    destinations: list[str],
-    audiobookshelf_config: Optional[dict] = None,
-    podcast_config: Optional[dict] = None,
+    destinations: List[str],
+    audiobookshelf_config: Optional[Dict[str, Any]] = None,
+    podcast_config: Optional[Dict[str, Any]] = None,
     job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -270,14 +276,14 @@ def publish_project_async(
         }
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore
     bind=True,
     name="src.audiobook_studio.tasks.publish_tasks.publish_audiobookshelf_async",
     max_retries=3,
     default_retry_delay=60,
 )
 def publish_audiobookshelf_async(
-    self,
+    self: Any,
     project_id: int,
     config: Dict[str, Any],
     job_id: Optional[str] = None,
@@ -300,8 +306,8 @@ def publish_audiobookshelf_async(
     try:
         import asyncio
 
-        async def _run():
-            job_state = {
+        async def _run() -> Dict[str, Any]:
+            job_state: Dict[str, Any] = {
                 "job_id": job_id,
                 "project_id": project_id,
                 "status": "publishing",
@@ -314,7 +320,9 @@ def publish_audiobookshelf_async(
             await _persist_job_state(job_id, job_state)
 
             try:
-                result = await publish_to_audiobookshelf(
+                from ..api.publish import _publish_to_audiobookshelf
+
+                result = await _publish_to_audiobookshelf(
                     project_id=project_id,
                     config=config,
                 )
@@ -367,14 +375,14 @@ def publish_audiobookshelf_async(
         }
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore
     bind=True,
     name="src.audiobook_studio.tasks.publish_tasks.generate_podcast_rss_async",
     max_retries=3,
     default_retry_delay=30,
 )
 def generate_podcast_rss_async(
-    self,
+    self: Any,
     project_id: int,
     config: Dict[str, Any],
     job_id: Optional[str] = None,
@@ -399,8 +407,8 @@ def generate_podcast_rss_async(
 
         from ..publish.podcast import generate_podcast_rss
 
-        async def _run():
-            job_state = {
+        async def _run() -> Dict[str, Any]:
+            job_state: Dict[str, Any] = {
                 "job_id": job_id,
                 "project_id": project_id,
                 "status": "generating",
@@ -464,7 +472,7 @@ def generate_podcast_rss_async(
         }
 
 
-@celery_app.task(name="src.audiobook_studio.tasks.publish_tasks.get_publish_status")
+@celery_app.task(name="src.audiobook_studio.tasks.publish_tasks.get_publish_status")  # type: ignore
 def get_publish_status(job_id: str) -> Dict[str, Any]:
     """
     Get the status of a publish job by job ID.
@@ -479,7 +487,7 @@ def get_publish_status(job_id: str) -> Dict[str, Any]:
     """
     import asyncio
 
-    async def _get_status():
+    async def _get_status() -> Dict[str, Any]:
         # Try Redis first (persisted state)
         state = await _get_job_state(job_id)
         if state:
@@ -508,7 +516,7 @@ def get_publish_status(job_id: str) -> Dict[str, Any]:
     return asyncio.run(_get_status())
 
 
-@celery_app.task(name="src.audiobook_studio.tasks.publish_tasks.get_publish_history")
+@celery_app.task(name="src.audiobook_studio.tasks.publish_tasks.get_publish_history")  # type: ignore
 def get_publish_history(project_id: int) -> Dict[str, Any]:
     """
     Get publish history for a project.
@@ -523,17 +531,17 @@ def get_publish_history(project_id: int) -> Dict[str, Any]:
     """
     import asyncio
 
-    async def _get_history():
+    async def _get_history() -> Dict[str, Any]:
         try:
-            redis = await _get_redis()
+            redis_client = await _get_redis()
             pattern = f"{PUBLISH_JOB_KEY_PREFIX}*"
             keys = []
-            async for key in redis.scan_iter(match=pattern, count=100):
+            async for key in redis_client.scan_iter(match=pattern, count=100):
                 keys.append(key)
 
             history = []
             for key in keys:
-                data = await redis.get(key)
+                data = await redis_client.get(key)
                 if data:
                     job = json.loads(data)
                     if job.get("project_id") == project_id:
@@ -547,7 +555,7 @@ def get_publish_history(project_id: int) -> Dict[str, Any]:
                             }
                         )
 
-            await redis.aclose()
+            await redis_client.aclose()
 
             # Sort by created_at descending
             history.sort(key=lambda x: x.get("created_at", ""), reverse=True)

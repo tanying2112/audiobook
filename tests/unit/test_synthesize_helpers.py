@@ -4,13 +4,15 @@ _load_existing_segment_from_disk, and _persist_segment_metadata."""
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
+from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline, _normalize_voice_id
 
 
 def _make_pipeline(tmp_path: Path, mock_mode: bool = True) -> SynthesizePipeline:
@@ -22,74 +24,76 @@ def _make_pipeline(tmp_path: Path, mock_mode: bool = True) -> SynthesizePipeline
     )
 
 
-class TestSynthesizePipelineAzureMock:
-    """Exercise Azure mock-mode branch."""
+class TestSynthesizeViaPortMock:
+    """Exercise the mock-mode synthesis branch (统一经异步 _synthesize_via_port)."""
 
-    def test_synthesize_azure_mock_creates_file(self, tmp_path: Path):
+    def test_synthesize_mock_creates_file(self, tmp_path: Path):
         pipeline = _make_pipeline(tmp_path)
         out = tmp_path / "azure.mp3"
-        duration = pipeline._synthesize_azure(
-            text="hello world", voice_id="zh-CN-XiaoxiaoNeural", prosody={}, output_path=out
+        duration, engine = asyncio.run(
+            pipeline._synthesize_via_port(
+                text="hello world",
+                voice_id="zh-CN-XiaoxiaoNeural",
+                prosody={},
+                output_path=out,
+                segment_id="seg-azure",
+            )
         )
-        # mock returns 2800ms
-        assert duration == 2800
+        assert isinstance(duration, int) and duration > 0
         assert out.exists()
         assert out.stat().st_size > 0
 
-    def test_synthesize_azure_mock_low_quality_fallback(self, tmp_path: Path):
+    def test_synthesize_mock_low_quality_fallback(self, tmp_path: Path):
         pipeline = _make_pipeline(tmp_path)
         out = tmp_path / "azure-fallback.mp3"
-        # voice_id not in AZURE_VOICE_MAP but starts with Microsoft...:
         full_voice = "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
-        duration = pipeline._synthesize_azure(
-            text="text",
-            voice_id=full_voice,
-            prosody={"rate": "1.2", "pitch": "+2st", "volume": "+10%"},
-            output_path=out,
+        duration, engine = asyncio.run(
+            pipeline._synthesize_via_port(
+                text="text",
+                voice_id=full_voice,
+                prosody={"rate": 1.2, "pitch": 2.0, "volume": 10.0},
+                output_path=out,
+                segment_id="seg-fallback",
+            )
         )
-        assert duration == 2800
-
-
-class TestSynthesizePipelineGCPMock:
-    """Exercise GCP mock-mode branch."""
-
-    def test_synthesize_gcp_mock_creates_file(self, tmp_path: Path):
-        pipeline = _make_pipeline(tmp_path)
-        out = tmp_path / "gcp.mp3"
-        duration = pipeline._synthesize_gcp(
-            text="hello world",
-            voice_id="cmn-CN-Neural2-A",
-            prosody={"rate": 1.0, "pitch": 0.0, "volume": 0.0},
-            output_path=out,
-        )
-        assert duration == 2800
+        assert isinstance(duration, int) and duration > 0
         assert out.exists()
 
 
-class TestSynthesizeEdgeVoiceResolution:
-    """_resolve_edge_voice has multiple branches."""
+class TestSynthesizeGCPMock:
+    """Exercise the mock-mode synthesis branch for a second engine path."""
 
-    def test_full_format_returns_as_is(self, tmp_path: Path):
+    def test_synthesize_mock_creates_file(self, tmp_path: Path):
         pipeline = _make_pipeline(tmp_path)
-        full = "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
-        assert pipeline._resolve_edge_voice(full) == full
+        out = tmp_path / "gcp.mp3"
+        duration, engine = asyncio.run(
+            pipeline._synthesize_via_port(
+                text="hello gcp",
+                voice_id="en-US-Standard-C",
+                prosody={},
+                output_path=out,
+                segment_id="seg-gcp",
+            )
+        )
+        assert isinstance(duration, int) and duration > 0
+        assert out.exists()
+        assert out.stat().st_size > 0
 
-    def test_mapped_short_id(self, tmp_path: Path):
-        pipeline = _make_pipeline(tmp_path)
-        result = pipeline._resolve_edge_voice("zh-CN-XiaoxiaoNeural")
-        assert result == "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
 
-    def test_dynamic_two_dashes(self, tmp_path: Path):
-        pipeline = _make_pipeline(tmp_path)
-        result = pipeline._resolve_edge_voice("zh-CN-CustomVoice")
-        assert "Microsoft Server Speech Text to Speech Voice" in result
-        assert "zh-CN" in result
-        assert "Customvoice" in result or "CustomVoice" in result
+class TestNormalizeVoiceId:
+    """_normalize_voice_id cross-maps Edge/Kokoro voice IDs (替换已删除的 _resolve_edge_voice)."""
 
-    def test_unmappable_passthrough(self, tmp_path: Path):
-        pipeline = _make_pipeline(tmp_path)
-        # No dashes; falls through to passthrough
-        assert pipeline._resolve_edge_voice("unknown_voice") == "unknown_voice"
+    def test_edge_to_kokoro_mapping(self, tmp_path: Path):
+        assert _normalize_voice_id("zh-CN-XiaoxiaoNeural", "kokoro") == "zf_xiaoxiao"
+
+    def test_edge_passthrough_on_edge_engine(self, tmp_path: Path):
+        assert _normalize_voice_id("zh-CN-XiaoxiaoNeural", "edge") == "zh-CN-XiaoxiaoNeural"
+
+    def test_unknown_falls_back_to_narrator(self, tmp_path: Path):
+        assert _normalize_voice_id("unknown_voice", "kokoro") == "zf_xiaoxiao"
+
+    def test_unknown_strict_passthrough(self, tmp_path: Path):
+        assert _normalize_voice_id("unknown_voice", "kokoro", strict=True) == "unknown_voice"
 
 
 class TestPersistentMetadataAndLoad:

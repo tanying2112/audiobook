@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -334,7 +334,7 @@ class CriticEnsembleEvaluator:
 
 
 # 延迟导入避免循环依赖
-def _get_critics():
+def _get_critics() -> Tuple[type, type, type]:
     from .objective_critic import ObjectiveCritic
     from .semantic_critic import SemanticCritic
     from .structural_critic import StructuralCritic

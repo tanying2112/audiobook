@@ -12,6 +12,23 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
+
+
+@dataclass
+class LicenseMetadata:
+    """TTS 引擎商用许可元数据 (P2.11).
+
+    红线#1: commercial_use=None = 未核实 (诚实降级 warn, 非假声明);
+    True 仅当官方 license 确允许商用; False 仅当官方明确仅非商用。
+    仓库不替任何引擎假声明 (杜绝 P1.9 "True # TODO" 复发) —— 由核实过官方
+    model card/license 的维护者填 config/tts_licenses.yaml 后传入。
+    """
+
+    commercial_use: Optional[bool] = None  # True=商用OK | False=仅非商用 | None=未核实
+    license_name: Optional[str] = None
+    note: str = ""
+    verified_at: Optional[str] = None
 
 
 @dataclass
@@ -28,6 +45,7 @@ class VoiceInfo:
     supports_prosody: bool = True
     supports_reference_audio: bool = False
     engine: str = ""
+    license_metadata: Optional[LicenseMetadata] = None  # P2.11: 商用许可 (缺失→None 诚实降级)
 
 
 @dataclass
@@ -62,10 +80,14 @@ class TTSVoiceAnchor:
 class TTSProsody:
     """Prosody controls for TTS synthesis."""
 
-    rate: float = 1.0      # Speech rate multiplier (0.5-2.0)
-    pitch: float = 0.0     # Pitch shift in semitones (-12 to +12)
-    volume: float = 0.0    # Volume gain in dB (-20 to +20)
+    rate: float = 1.0  # Speech rate multiplier (0.5-2.0)
+    pitch: float = 0.0  # Pitch shift in semitones (-12 to +12)
+    volume: float = 0.0  # Volume gain in dB (-20 to +20)
     emotion: Optional[str] = None  # Emotional tag (happy, sad, neutral, etc.)
+    # P2.15 确定性: seed pinning 通道 (打通 VoxCPM2 generate(seed=) 出口)。
+    # 红线#1: seed 只是开通道, **不等于**字节级可达 (cudnn/gemm 非确定性可能致不等);
+    # None=未指定 (与改造前等价, 零回归); 仅当显式传整数时透传到 backend.generate。
+    seed: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +112,7 @@ class TTSTaskResult:
 
     task_id: str
     status: str  # PENDING, RUNNING, DONE, FAILED
-    audio_path: Optional[str] = None          # R2 object key or local path
+    audio_path: Optional[str] = None  # R2 object key or local path
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
     dnsmos_score: Optional[float] = None
@@ -100,6 +122,7 @@ class TTSTaskResult:
     completed_at: Optional[str] = None
     engine: str = "unknown"
     text_hash: Optional[str] = None
+    voice_id: Optional[str] = None
 
 
 @dataclass
@@ -173,6 +196,20 @@ class TTSEngine(Protocol):
 
     async def cancel(self, task_id: str) -> bool:
         """Cancel a pending/running task (async engines)."""
+        ...
+
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ) -> AsyncIterator[bytes]:
+        """Stream audio chunks for real-time playback.
+        
+        Args:
+            payload: Synthesis specification
+            
+        Yields:
+            Audio chunks as bytes (raw PCM or encoded format depending on engine)
+        """
         ...
 
     async def health_check(self) -> dict[str, Any]:
@@ -253,19 +290,31 @@ class BaseTTSEngine:
             **kwargs,
         )
 
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ) -> AsyncIterator[bytes]:
+        """Stream audio chunks for real-time playback.
+        
+        Default implementation raises NotImplementedError.
+        Engines that support streaming should override this method.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support streaming")
+
 
 # ---------------------------------------------------------------------------
 # Tenacity-based retry utilities (replaces CircuitBreaker + RateLimiter classes)
 # ---------------------------------------------------------------------------
 
 from tenacity import (
+    after_log,
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
-    retry_if_exception_type,
-    before_sleep_log,
-    after_log,
 )
+
 
 # Common retry policy for external engines
 def tts_retry_policy(
@@ -317,13 +366,16 @@ def rate_limiter(max_calls: int, period: float = 60.0):
                     window_start = time.time()
                 calls_made += 1
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # Engine Registry (replaces PortFactory + PortContext + Global Port)
 # ---------------------------------------------------------------------------
+
 
 class EngineRegistry:
     """Simple registry for TTS engines with config-driven loading.
@@ -356,8 +408,26 @@ class EngineRegistry:
         engine: TTSEngine,
         name: Optional[str] = None,
         set_as_default: bool = False,
+        active_profile: Optional[str] = None,
     ) -> None:
-        """Register an engine instance."""
+        """Register an engine instance.
+
+        P2.11 许可守门: 当传入 active_profile (非商用档触发严格守门) 时,
+        经 license_guard 校验引擎商用许可。被标注 commercial_use=False 的引擎
+        在商用路径被阻断 (诚实噪止, 不假装注册成功);
+        commercial_use=None (未核实) 降级 warn 但放行 (红线#1: 不假声明也不误杀)。
+        active_profile=None (调用方未提供) → 守门不触发, 行为同改造前 (零回归)。
+        """
+        if active_profile is not None:
+            from .license_guard import register_guard
+
+            if not register_guard(name or engine.engine_name, active_profile):
+                logger.warning(
+                    "license_guard 阻断引擎 %s 注册 (商用档 %s 下 commercial_use=False)",
+                    name or engine.engine_name,
+                    active_profile,
+                )
+                return
         async with self._lock:
             engine_name = name or engine.engine_name
             self._engines[engine_name] = engine
@@ -377,24 +447,25 @@ class EngineRegistry:
             self._config = config
 
         # Import backend factories here to avoid circular imports
-        from .kokoro_backend import create_kokoro_engine
         from .edge_tts_engine import create_edge_tts_engine
+        from .kokoro_backend import create_kokoro_backend
+
         # from .voxcpm2_backend import create_voxcpm2_engine
 
         engine_factories = {
-            "kokoro": create_kokoro_engine,
+            "kokoro": create_kokoro_backend,
             "edge": create_edge_tts_engine,
             # "voxcpm2": create_voxcpm2_engine,
         }
 
-        async with self._lock:
-            for engine_name, engine_config in self._config.items():
-                if engine_name in engine_factories:
-                    factory = engine_factories[engine_name]
-                    engine = factory(**engine_config)
-                    await self.register(engine, engine_name)
-                else:
-                    logger.warning(f"Unknown engine type: {engine_name}")
+        for engine_name, engine_config in self._config.items():
+            if engine_name in engine_factories:
+                factory = engine_factories[engine_name]
+                # Factories are async coroutines (create + initialize the engine)
+                engine = await factory(**engine_config)
+                await self.register(engine, engine_name)  # register acquires self._lock internally
+            else:
+                logger.warning(f"Unknown engine type: {engine_name}")
 
         # PERF-001: Do NOT eagerly initialize engines here.
         # Each engine auto-initializes on first synthesize() call.
@@ -458,6 +529,9 @@ class EngineRegistry:
         await self.close_all()
 
 
+_global_registry: Optional[EngineRegistry] = None
+
+
 def get_engine_registry() -> EngineRegistry:
     """Get global engine registry."""
     global _global_registry
@@ -482,7 +556,18 @@ def get_engine(name: str) -> Optional[TTSEngine]:
 def register_engine(engine: TTSEngine, set_as_default: bool = False) -> None:
     """Register an engine in the global registry."""
     registry = get_engine_registry()
-    registry.register(engine, set_as_default=set_as_default)
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # If we're in an async context, we can't block
+        # Schedule the coroutine to run
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            pool.submit(asyncio.run, registry.register(engine, set_as_default=set_as_default)).result()
+    else:
+        asyncio.run(registry.register(engine, set_as_default=set_as_default))
 
 
 async def initialize_all_engines() -> None:
@@ -496,3 +581,102 @@ async def cleanup_all_engines() -> None:
     """Cleanup all registered engines."""
     registry = get_engine_registry()
     await registry.close_all()
+
+
+# ---------------------------------------------------------------------------
+# S1-6: Real TTS readiness probe
+# ---------------------------------------------------------------------------
+
+#: Canonical engine list surfaced by /health/ready (audit S1-6 return shape).
+TTS_HEALTH_ENGINES: tuple[str, ...] = ("kokoro", "voxcpm2", "edge", "piper")
+
+
+async def probe_tts_engines(
+    timeout: float = 5.0,
+    *,
+    registry: Optional["EngineRegistry"] = None,
+) -> Dict[str, Any]:
+    """Real TTS engine readiness probe (S1-6).
+
+    Returns a normalized per-engine map plus the flattened boolean map the audit
+    requires — ``{"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool}``.
+
+    Probes (each bounded by ``timeout`` and never raising — a failure degrades to
+    ``healthy=False`` instead of propagating):
+
+      - ``kokoro``: local model file present under ``KOKORO_MODEL_PATH``.
+      - ``voxcpm2``: real ``GET {VOXCPM2_ENDPOINT}/health`` when an endpoint is
+        configured (remote pool); otherwise ``not_configured``.
+      - ``edge``: real network reachability probe against the Edge speech host.
+      - ``piper``: not implemented yet (S2-4) -> ``healthy=False``.
+
+    Engines already loaded/registered are consulted via their real
+    ``health_check()`` (e.g. remote VoxCPM2 does a pass-through ``/health`` call)
+    and take precedence over the static probes above.
+
+    Returns:
+        {
+          "engines": {"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool},
+          "details": {name: {"healthy": bool, "detail": {...}}},
+        }
+    """
+    import os
+
+    import httpx
+
+    result: Dict[str, Dict[str, Any]] = {}
+
+    def _set(name: str, healthy: bool, detail: Dict[str, Any]) -> None:
+        result[name] = {"healthy": healthy, "detail": detail}
+
+    # 1) kokoro — model file present (real, fast; avoids loading a heavy model in a health probe).
+    kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
+    require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
+    if not require_local or not kokoro_path:
+        _set("kokoro", False, {"reason": "not_configured"})
+    else:
+        present = Path(kokoro_path).exists()
+        _set("kokoro", present, {"model_present": present, "model_path": kokoro_path})
+
+    # 2) voxcpm2 — real /health probe when an endpoint is configured.
+    v2_endpoint = os.getenv("VOXCPM2_ENDPOINT", "").rstrip("/")
+    if not v2_endpoint:
+        _set("voxcpm2", False, {"reason": "not_configured"})
+    else:
+        probe_timeout = min(timeout, 2.0)
+        try:
+            async with httpx.AsyncClient(timeout=probe_timeout, follow_redirects=True) as client:
+                resp = await client.get(f"{v2_endpoint}/health")
+            _set("voxcpm2", resp.status_code < 500, {"status_code": resp.status_code, "url": f"{v2_endpoint}/health"})
+        except Exception as e:  # noqa: BLE001 — degrade not propagate
+            _set("voxcpm2", False, {"error": str(e)})
+
+    # 3) edge — real network reachability probe. Any HTTP response (even 4xx/5xx)
+    #    proves the host is reachable; only connect/timeout errors mean "down".
+    edge_host = os.getenv("EDGE_TTS_HOST", "https://speech.platform.bing.com")
+    probe_timeout = min(timeout, 2.0)
+    try:
+        async with httpx.AsyncClient(timeout=probe_timeout, follow_redirects=True) as client:
+            resp = await client.get(edge_host)
+        _set("edge", True, {"status_code": resp.status_code, "host": edge_host})
+    except Exception as e:  # noqa: BLE001
+        _set("edge", False, {"error": str(e)})
+
+    # 4) piper — future (S2-4), never falsely happy.
+    _set("piper", False, {"reason": "not_implemented"})
+
+    # Overlay any engines actually loaded/registered: prefer their real health_check()
+    # (e.g. RemoteVoxCPM2Engine does a pass-through GET /health) over static probes.
+    if registry is not None:
+        for name, engine in registry._engines.items():
+            if name not in result:
+                _set(name, False, {"reason": "unknown_engine"})
+            try:
+                health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
+                healthy = bool(health.get("healthy", False))
+                result[name] = {"healthy": healthy, "detail": health}
+            except Exception:  # noqa: BLE001 — degrade not propagate (incl. timeout)
+                _set(name, False, {"error": "health_check timeout or failed"})
+
+    bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}
+    return {"engines": bool_map, "details": result}

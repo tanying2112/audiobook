@@ -1,0 +1,48 @@
+# Minimal Dockerfile for mock mode testing (v0.2 verification)
+FROM python:3.11-slim AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    PATH="/opt/venv/bin:${PATH}" \
+    PYTHONNOUSERSITE=1
+
+# Install only essential runtime deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+WORKDIR /app
+
+# Create virtualenv and install Python deps from requirements file
+COPY requirements.mock.txt .
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.mock.txt
+
+# Copy application source
+COPY --chown=1000:1000 . .
+
+# Create required runtime directories
+RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage /app/models_cache \
+    && chown -R 1000:1000 /app
+
+# Non-root user
+RUN groupadd -g 1000 appgroup \
+    && useradd -m -u 1000 -g 1000 -s /bin/bash appuser
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+# Entrypoint
+COPY --chown=1000:1000 entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
+CMD ["python", "-m", "audiobook_studio.main"]

@@ -277,6 +277,8 @@ class TelemetryCollector(PipelineHooks):
         self._tts_fallback_count = 0
         self._tts_fallback_from: list[str] = []
 
+        self._pipeline_finished = False  # Guard against multiple pipeline_end calls
+
         logger.info(f"TelemetryCollector initialized for project={project_id}, pipeline={self.pipeline_id}")
 
     # ========== PipelineHooks Implementation ==========
@@ -305,6 +307,11 @@ class TelemetryCollector(PipelineHooks):
         if event != "pipeline_end":
             return
         with self._lock:
+            # Guard against duplicate pipeline_end calls
+            if self._pipeline_finished:
+                logger.debug(f"Duplicate pipeline_end ignored for {self.pipeline_id}")
+                return
+            self._pipeline_finished = True
             self.telemetry.ended_at = time.time()
             self.telemetry.duration_ms = (self.telemetry.ended_at - self.telemetry.started_at) * 1000
             self.telemetry.success = error is None

@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -33,12 +33,12 @@ class FeedbackAutoProcessor:
 
     def __init__(
         self,
-        db_session_factory,
+        db_session_factory: Callable[[], Session],
         project_id: int,
         min_feedback_count: int = 10,
         check_interval_seconds: int = 300,  # 5 minutes
         enable_auto_trigger: bool = True,
-    ):
+    ) -> None:
         """
         Initialize the auto processor.
 
@@ -187,7 +187,7 @@ class FeedbackAutoProcessor:
 
 
 def create_auto_processor(
-    db_session_factory,
+    db_session_factory: Callable[[], Session],
     project_id: int,
     min_feedback_count: int = 10,
     check_interval_seconds: int = 300,
@@ -207,7 +207,7 @@ def create_auto_processor(
 
 
 def run_feedback_analysis_cli(
-    db_session_factory,
+    db_session_factory: Callable[[], Session],
     project_id: int,
     limit: int = 500,
 ) -> AggregateAnalysis:

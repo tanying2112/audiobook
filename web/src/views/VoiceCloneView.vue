@@ -68,6 +68,19 @@
 
       <p v-if="errors.file" class="error">{{ errors.file }}</p>
 
+      <!-- P2.11 合规: 克隆前样本提供者授权勾选 (必填, 后端 422 双重校验) -->
+      <div class="form-group consent-group">
+        <label class="consent-label">
+          <input
+            type="checkbox"
+            v-model="form.consentAccepted"
+            class="consent-checkbox"
+          />
+          <span>{{ t('voice_clone.consent_label') }}</span>
+        </label>
+        <p class="hint">{{ t('voice_clone.consent_hint') }}</p>
+      </div>
+
       <div class="actions">
         <button class="btn primary" @click="goToPreview" :disabled="!canUpload">
           {{ t('voice_clone.upload_btn') }}
@@ -211,6 +224,7 @@ const form = ref({
   speakerId: '',
   language: 'zh-CN',
   textContent: '',
+  consentAccepted: false, // P2.11 合规: 克隆前样本提供者授权勾选
 })
 const errors = ref<Record<string, string>>({})
 const audioFile = ref<File | null>(null)
@@ -243,7 +257,8 @@ const waveformRef = ref<HTMLElement | null>(null)
 const { wavesurfer, isPlaying, isReady, load, play, pause, seekTo, skip, cleanup } = useWaveSurfer(waveformRef)
 
 const canUpload = computed(() => {
-  return form.value.speakerId.trim().length > 0 && audioFile.value !== null
+  // P2.11 合规: 必须勾选授权才能进入预览/克隆 (后端 422 双重校验, 不假成功)
+  return form.value.speakerId.trim().length > 0 && audioFile.value !== null && form.value.consentAccepted
 })
 
 const qualityClass = computed(() => {
@@ -347,6 +362,8 @@ async function startCloning() {
       form.value.speakerId,
       form.value.language,
       form.value.textContent,
+      undefined, // onProgress 占位 (consent 前置);
+      form.value.consentAccepted, // P2.11 合规: 传授权给后端校验
     )
     cloneResult.value = result
     step.value = 4
@@ -415,7 +432,7 @@ function backToUpload() {
 
 function cloneAnother() {
   step.value = 1
-  form.value = { speakerId: '', language: 'zh-CN', textContent: '' }
+  form.value = { speakerId: '', language: 'zh-CN', textContent: '', consentAccepted: false }
   audioFile.value = null
   audioUrl.value = null
   audioDuration.value = null

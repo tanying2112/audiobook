@@ -1,10 +1,19 @@
 """Tests for Remote VoxCPM2 TTS Client.
 
 Uses pytest-httpx for mocking HTTP responses and testing retry/circuit breaker behavior.
+
+Requires: pytest-httpx package (not installed in test environment by default)
+Run with: pytest tests/test_remote_voxcpm2.py --e2e
 """
 
 import sys
 from pathlib import Path
+
+import pytest
+
+# Mark all tests in this module as e2e since they require pytest-httpx
+pytestmark = pytest.mark.e2e
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import asyncio

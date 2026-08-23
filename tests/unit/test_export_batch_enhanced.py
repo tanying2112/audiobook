@@ -75,9 +75,9 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers")
     @patch("src.audiobook_studio.export.batch_exporter._build_project_metadata")
-    @patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source")
+    @patch("src.audiobook_studio.export.batch_exporter.build_m4b")
     @patch("src.audiobook_studio.export.batch_exporter.generate_srt")
-    @patch("src.audiobook_studio.export.batch_exporter.run_command")
+    @patch("src.audiobook_studio.export.batch_exporter.subprocess.run")
     def test_export_project_success_m4b_and_srt(
         self, mock_run, mock_gen_srt, mock_build_single, mock_metadata, mock_markers, mock_audio_files, mock_collect
     ):
@@ -136,8 +136,8 @@ class TestExportProject:
     @patch("src.audiobook_studio.export.batch_exporter._collect_audio_files")
     @patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers")
     @patch("src.audiobook_studio.export.batch_exporter._build_project_metadata")
-    @patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source")
-    @patch("src.audiobook_studio.export.batch_exporter.run_command")
+    @patch("src.audiobook_studio.export.batch_exporter.build_m4b")
+    @patch("src.audiobook_studio.export.batch_exporter.subprocess.run")
     def test_export_project_m4b_only(
         self, mock_run, mock_build_single, mock_metadata, mock_markers, mock_audio_files, mock_collect
     ):

@@ -327,11 +327,8 @@ class RBACManager:
         .id, .user_id, .project_id, .role, .created_at, .granted_by.
         """
         from ..models.user import ProjectPermission
-        return (
-            self.db.query(ProjectPermission)
-            .filter(ProjectPermission.user_id == user_id)
-            .all()
-        )
+
+        return self.db.query(ProjectPermission).filter(ProjectPermission.user_id == user_id).all()
 
     def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all projects a user has access to with their roles."""

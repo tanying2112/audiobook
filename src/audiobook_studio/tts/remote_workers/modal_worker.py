@@ -14,6 +14,8 @@ import os
 import sys
 import io
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 import modal
 
 # Ensure src is on path for BaseWorker import
@@ -25,12 +27,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 # Safe torch import for local development
 # ==========================================
 try:
-    import torch
+    import torch  # type: ignore[import-untyped]
 except ImportError:
     class MockTorch:
-        def inference_mode(self, *args, **kwargs):
+        def inference_mode(self, *args: Any, **kwargs: Any) -> Any:
             return lambda func: func
-    torch = MockTorch()
+    torch = MockTorch()  # type: ignore[assignment]
     print("⚠️  Local env missing torch, mock active (cloud deployment unaffected).")
 
 from .base_worker import BaseWorker
@@ -83,22 +85,22 @@ class VoxCPM2Engine:
     # Cache in Modal Volume for persistence across cold starts
     CACHE_DIR = "/models/voxcpm2-cache"
 
-    def __init__(self, model_path: str = None):
-        import torch
+    def __init__(self, model_path: str = None) -> None:
+        import torch  # type: ignore[import-untyped]
         self.model_path = model_path or self.CACHE_DIR
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = None
-        self.tokenizer = None
+        self.model: Any = None
+        self.tokenizer: Any = None
         self._load_model()
 
     def _load_model(self) -> None:
-        import torch
-        from transformers import LlamaTokenizerFast
-        from huggingface_hub import snapshot_download
+        import torch  # type: ignore[import-untyped]
+        from transformers import LlamaTokenizerFast  # type: ignore[import-untyped]
+        from huggingface_hub import snapshot_download  # type: ignore[import-untyped]
         import sys
         sys.path.insert(0, "/src")
 
-        from voxcpm.model.voxcpm2 import VoxCPM2Model
+        from voxcpm.model.voxcpm2 import VoxCPM2Model  # type: ignore[import-untyped]
 
         # Ensure cache directory exists
         os.makedirs(self.CACHE_DIR, exist_ok=True)
@@ -111,6 +113,7 @@ class VoxCPM2Engine:
                 repo_id=self.HF_REPO_ID,
                 local_dir=self.CACHE_DIR,
                 local_dir_use_symlinks=False,
+                force_download=False,
                 resume_download=True,
             )
             print("✅ Model downloaded and cached to Modal Volume!")
@@ -138,8 +141,8 @@ class VoxCPM2Engine:
         self,
         text: str,
         voice_id: str,
-        prosody: dict,
-        reference_audio: str = None,
+        prosody: Dict[str, Any],
+        reference_audio: Optional[str] = None,
     ) -> bytes:
         reference_wav = reference_audio if reference_audio and Path(reference_audio).exists() else ""
 
@@ -160,7 +163,7 @@ class VoxCPM2Engine:
 
         waveform = torch.cat(audio_chunks, dim=-1)
 
-        import soundfile as sf
+        import soundfile as sf  # type: ignore[import-untyped]
         import numpy as np
         buffer = io.BytesIO()
         sample_rate = getattr(self.model, 'sample_rate', 24000)
@@ -171,10 +174,10 @@ class VoxCPM2Engine:
 class ModalWorker(BaseWorker):
     """Modal serverless worker implementation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(platform_prefix="modal")
 
-    def _init_engine(self):
+    def _init_engine(self) -> VoxCPM2Engine:
         return VoxCPM2Engine()
 
     def _execute_smoke_test(self) -> None:
@@ -186,13 +189,13 @@ class ModalWorker(BaseWorker):
         self,
         text: str,
         voice_id: str,
-        prosody: dict,
-        reference_audio: str = None,
+        prosody: Dict[str, Any],
+        reference_audio: Optional[str] = None,
     ) -> bytes:
         return self.engine.synthesize(text, voice_id, prosody, reference_audio)
 
-    def _get_platform_gpu_metrics(self) -> dict:
-        import torch
+    def _get_platform_gpu_metrics(self) -> Dict[str, int]:
+        import torch  # type: ignore[import-untyped]
         return {
             "gpu_mem_used_mb": torch.cuda.memory_allocated() // (1024 * 1024) if torch.cuda.is_available() else 0,
             "gpu_mem_total_mb": torch.cuda.get_device_properties(0).total_memory // (1024 * 1024) if torch.cuda.is_available() else 0,
@@ -229,7 +232,7 @@ def run_modal_consumer() -> None:
 # 4. Local Entrypoint
 # ==========================================
 @app.local_entrypoint()
-def main():
+def main() -> None:
     print("🚀 Deploying to Modal cloud, allocating T4 node...")
     run_modal_consumer.remote()
     print("✅ Dispatched! Check Modal dashboard for logs.")

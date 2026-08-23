@@ -1,4 +1,3 @@
-import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -8,12 +7,9 @@ from pydantic import BaseModel
 
 from src.audiobook_studio.config import get_settings
 
-try:
-    import bcrypt
-    BCRYPT_AVAILABLE = True
-except ImportError:
-    BCRYPT_AVAILABLE = False
-    bcrypt = None
+import bcrypt
+
+BCRYPT_AVAILABLE = True
 
 
 class TokenPayload(BaseModel):
@@ -56,48 +52,30 @@ class JWTHandler:
         return hashed.decode("utf-8")
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash.
+        """Verify a password against its bcrypt hash.
 
-        Supports:
-        - bcrypt (current default)
-        - Legacy SHA-256+salt (sha256$...) for migration
-        - passlib sha256_crypt ($5$...) for migration
+        Only bcrypt is supported (SEC-002). Legacy SHA-256 hashes must be
+        migrated via scripts/migrate_passwords.py before login.
         """
         password_bytes = plain_password.encode("utf-8")
 
-        # Current bcrypt format (no prefix, or $2b$ prefix)
-        if not hashed_password.startswith("sha256$") and not hashed_password.startswith("$5$"):
+        # bcrypt format (starts with $2b$ or similar)
+        if hashed_password.startswith("$2"):
             try:
                 hashed_bytes = hashed_password.encode("utf-8")
                 return bcrypt.checkpw(password_bytes, hashed_bytes)
             except Exception:
                 return False
 
-        # Legacy SHA-256 migration path
-        if hashed_password.startswith("sha256$"):
-            parts = hashed_password.split("$")
-            if len(parts) != 3:
-                return False
-            salt = bytes.fromhex(parts[1])
-            expected = hashlib.sha256(salt + password_bytes).digest()
-            return expected.hex() == parts[2]
-
-        # Legacy passlib sha256_crypt format
-        if hashed_password.startswith("$5$"):
-            try:
-                import passlib.hash
-                return passlib.hash.sha256_crypt.verify(plain_password, hashed_password)  # type: ignore[no-any-return]
-            except Exception:
-                return False
-
+        # Legacy hashes are no longer supported — must be migrated
         return False
 
     def create_access_token(
         self,
         user_id: int,
         username: str,
-        roles: List[str] = None,
-        permissions: List[str] = None,
+        roles: Optional[List[str]] = None,
+        permissions: Optional[List[str]] = None,
         expires_delta: Optional[timedelta] = None,
     ) -> str:
         """Create a new access token."""
@@ -149,8 +127,8 @@ class JWTHandler:
         self,
         user_id: int,
         username: str,
-        roles: List[str] = None,
-        permissions: List[str] = None,
+        roles: Optional[List[str]] = None,
+        permissions: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Create both access and refresh tokens."""
         access_token = self.create_access_token(user_id, username, roles, permissions)
@@ -169,7 +147,7 @@ class JWTHandler:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             return payload  # type: ignore[no-any-return]
         except JWTError as e:
-            raise ValueError(f"Invalid token: {e}")
+            raise ValueError(f"Invalid token: {e}") from e
 
     def verify_token(self, token: str) -> bool:
         """Verify a token is valid."""
@@ -240,19 +218,20 @@ def _get_jwt_handler() -> JWTHandler:
 
 class _LazyJWTProxy:
     """Proxy that lazy-loads the JWTHandler singleton on attribute access."""
+
     def __getattr__(self, name: str) -> Any:
         return getattr(_get_jwt_handler(), name)
 
 
-jwt_handler: Any = _LazyJWTProxy()
+jwt_handler: _LazyJWTProxy = _LazyJWTProxy()
 
 
 # Convenience functions that use lazy initialization
 def create_access_token(
     user_id: int,
     username: str,
-    roles: List[str] = None,
-    permissions: List[str] = None,
+    roles: Optional[List[str]] = None,
+    permissions: Optional[List[str]] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Create an access token."""

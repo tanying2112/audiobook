@@ -1,8 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: () => import('../views/RegisterView.vue'),
+      meta: { public: true },
+    },
     {
       path: '/',
       name: 'projects',
@@ -49,6 +62,11 @@ const router = createRouter({
       component: () => import('../views/ExportView.vue'),
     },
     {
+      path: '/projects/:id/publish',
+      name: 'publish',
+      component: () => import('../views/PublishView.vue'),
+    },
+    {
       path: '/projects/:projectId/translation',
       name: 'translation',
       component: () => import('../views/TranslationView.vue'),
@@ -64,15 +82,14 @@ const router = createRouter({
       component: () => import('../views/AutoRunView.vue'),
     },
     {
-      // ⚠️ 临时验证路由，SSE/内联小窗验证通过后删除（含 SseDemo.vue）
-      path: '/sse-demo',
-      name: 'sse-demo',
-      component: () => import('../views/SseDemo.vue'),
-    },
-    {
       path: '/monitoring',
       name: 'monitoring-dashboard',
       component: () => import('../views/MonitoringDashboard.vue'),
+    },
+    {
+      path: '/model-market',
+      name: 'model-market',
+      component: () => import('../views/ModelMarket.vue'),
     },
     {
       path: '/projects/:projectId/dashboard',
@@ -89,12 +106,19 @@ const router = createRouter({
       name: 'video-canvas',
       component: () => import('../views/VideoCanvasView.vue'),
     },
-    {
-      path: '/projects/:projectId/dashboard',
-      name: 'project-dashboard',
-      component: () => import('../views/DashboardView.vue'),
-    },
   ],
+})
+
+router.beforeEach((to, _from) => {
+  const authStore = useAuthStore()
+  const isPublic = to.matched.some((record) => record.meta.public)
+
+  if (!isPublic && !authStore.isAuthenticated()) {
+    return '/login'
+  } else if (to.path === '/login' && authStore.isAuthenticated()) {
+    return '/'
+  }
+  // Return undefined to continue navigation
 })
 
 export default router

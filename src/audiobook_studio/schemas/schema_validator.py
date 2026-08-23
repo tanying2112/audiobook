@@ -158,9 +158,11 @@ class SchemaValidator:
                 return f"List[{self._type_to_string(args[0])}]" if args else "List"
             elif origin is dict:
                 return "dict"
-            elif origin is Optional:
-                args = type_hint.__args__
-                return self._type_to_string(args[0]) if args else "Any"
+        # Optional[X] / Union[X, None] — unwrap to the non-None member.
+        # (origin is "Optional" never matches at runtime; Optional is typing.Union.)
+        if self._is_optional(type_hint):
+            args = type_hint.__args__
+            return self._type_to_string(args[0] if args else Any)
         return self.PYDANTIC_TYPE_MAP.get(type_hint, str(type_hint))
 
     def _is_optional(self, type_hint: Any) -> bool:

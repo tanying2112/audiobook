@@ -95,6 +95,15 @@ class LLMClientConfig:
     timeout: Optional[int] = 60  # None or 0 = no timeout (for local Ollama)
     mock_data_dir: str = "tests/golden"
     api_base: Optional[str] = None
+    # Explicit API key passed to LiteLLM. Auto-injected by the router from the
+    # provider's key pool (resolved from .env via api_key_env). Needed because
+    # LiteLLM for `provider: openai` reads OPENAI_API_KEY from os.environ, which
+    # may differ from the provider's own env var (e.g. KILO_API_KEY). Prefer this
+    # over relying on ambient env vars when a provider carries a distinct key.
+    api_key: Optional[str] = None
+    # Optional headers passed through to LiteLLM (e.g. fcc gateway needs Authorization: Bearer,
+    # since its /v1/messages endpoint does not accept the default x-api-key header).
+    extra_headers: Optional[Dict[str, str]] = None
     # Langfuse configuration
     langfuse_public_key: Optional[str] = None
     langfuse_secret_key: Optional[str] = None
@@ -240,6 +249,12 @@ class LLMClient:
             call_kwargs = dict(kwargs)
             if self.config.api_base:
                 call_kwargs["api_base"] = self.config.api_base
+            # Explicit api_key (resolved by the router from provider key pool).
+            if self.config.api_key:
+                call_kwargs["api_key"] = self.config.api_key
+            # Inject extra headers (e.g. Authorization: Bearer for fcc gateway)
+            if self.config.extra_headers:
+                call_kwargs["extra_headers"] = self.config.extra_headers
             # Pass timeout to LiteLLM: None or 0 = no timeout (for local Ollama)
             if self.config.timeout is not None and self.config.timeout > 0:
                 call_kwargs["timeout"] = self.config.timeout
@@ -493,6 +508,8 @@ def create_client(
     max_retries: int = 3,
     timeout: Optional[int] = 60,  # None or 0 = no timeout
     api_base: Optional[str] = None,
+    api_key: Optional[str] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
     langfuse_public_key: Optional[str] = None,
     langfuse_secret_key: Optional[str] = None,
     langfuse_host: str = "https://cloud.langfuse.com",
@@ -506,6 +523,8 @@ def create_client(
         max_retries=max_retries,
         timeout=timeout,
         api_base=api_base,
+        api_key=api_key,
+        extra_headers=extra_headers,
         langfuse_public_key=langfuse_public_key,
         langfuse_secret_key=langfuse_secret_key,
         langfuse_host=langfuse_host,

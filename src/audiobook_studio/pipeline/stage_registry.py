@@ -17,11 +17,11 @@ Usage:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, cast
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-
-from .feedback_collector import FeedbackCollector
 
 
 class StageHandler(ABC):
@@ -33,11 +33,11 @@ class StageHandler(ABC):
     - get_result_snapshot(): Extract observable state for logging
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     @abstractmethod
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         """Execute stage logic and return result."""
         pass
 
@@ -57,9 +57,11 @@ class StageHandler(ABC):
     def get_result_snapshot(self, result: Any) -> Dict[str, Any]:
         """Extract result snapshot for feedback/logging. Override for custom serialization."""
         if hasattr(result, "model_dump"):
-            return result.model_dump()
+            # ``model_dump()`` is pydantic v2's typed serializer; mirror its
+            # declared ``dict[str, Any]`` return since mypy sees it as Any.
+            return cast(Dict[str, Any], result.model_dump())
         elif hasattr(result, "__dict__"):
-            return vars(result)
+            return cast(Dict[str, Any], vars(result))
         elif isinstance(result, (list, dict)):
             return dict(result) if isinstance(result, dict) else {"items": list(result)}
         else:
@@ -120,7 +122,7 @@ from .extract import ExtractPipeline
 class ExtractStage(StageHandler):
     """Extract stage: extract paragraphs from chapter text."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         # Filter out orchestrator-internal params only
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
@@ -143,11 +145,18 @@ class ExtractStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        # For extract stage, chapter may not exist yet - write_extract creates it
+        # For extract stage, chapter may not exist yet - write_extract creates it.
+        # ``write_extract`` is ``async`` (persistence.py: "All functions are async
+        # and require an AsyncSession"); the live orchestrator drives persistence
+        # via ``apersist`` below. This sync ``persist`` is retained for the
+        # abstract-base API surface and bridges the async write through the same
+        # ``_run_async`` helper used by the synthesize stage.
         from ..models import Paragraph
         from .persistence import write_extract
 
-        chapter_result = write_extract(db, project_id, chapter_index or 1, result)
+        chapter_result = _run_async(
+            write_extract(cast(AsyncSession, db), project_id, chapter_index or 1, result)
+        )
         result._chapter_id = chapter_result.id
 
         # Create Paragraph records from extracted text (split by double newlines)
@@ -177,6 +186,51 @@ class ExtractStage(StageHandler):
                     db.add(para)
             db.commit()
 
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # For extract stage, chapter may not exist yet - write_extract creates it
+        from sqlalchemy import select
+
+        from ..models import Paragraph
+        from .persistence import write_extract
+
+        chapter_result = await write_extract(db, project_id, chapter_index or 1, result)
+        result._chapter_id = chapter_result.id
+
+        # Create Paragraph records from extracted text (split by double newlines)
+        raw_text = result.raw_text or ""
+        if raw_text:
+            # Split by double newlines, filter empty segments
+            segments = [s.strip() for s in raw_text.split("\n\n") if s.strip()]
+            for idx, seg_text in enumerate(segments, 1):
+                result_q = await db.execute(
+                    select(Paragraph).filter(
+                        Paragraph.project_id == project_id,
+                        Paragraph.chapter_id == chapter_result.id,
+                        Paragraph.index == idx,
+                    )
+                )
+                existing = result_q.scalar_one_or_none()
+                if not existing:
+                    para = Paragraph(
+                        project_id=project_id,
+                        chapter_id=chapter_result.id,
+                        chapter_index=chapter_result.index,
+                        index=idx,
+                        text=seg_text,
+                        status="extracted",
+                    )
+                    db.add(para)
+            await db.commit()
+
 
 from ..schemas.book import BookAnalysisInput
 from .analyze_structure import AnalyzeStructurePipeline
@@ -185,7 +239,7 @@ from .analyze_structure import AnalyzeStructurePipeline
 class AnalyzeStage(StageHandler):
     """Analyze stage: analyze chapter structure."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         # Filter out orchestrator-internal params only
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
@@ -213,7 +267,24 @@ class AnalyzeStage(StageHandler):
         if chapter:
             from .persistence import write_analyze
 
-            write_analyze(db, chapter, result)
+            # ``write_analyze`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            _run_async(write_analyze(cast(AsyncSession, db), chapter, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if chapter:
+            from .persistence import write_analyze
+
+            await write_analyze(db, chapter, result)
 
 
 from .annotate_paragraph import AnnotateParagraphPipeline
@@ -222,13 +293,27 @@ from .annotate_paragraph import AnnotateParagraphPipeline
 class AnnotateStage(StageHandler):
     """Annotate stage: annotate paragraph with prosody metadata."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         para = kwargs.get("paragraph")
         chapter = kwargs.get("chapter")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
 
         paragraph_text = para.text if para else filtered.get("paragraph_text", "")
+
+        # Defensive: skip paragraphs with insufficient text (e.g., extraction artifacts)
+        if len(paragraph_text) < 10:
+            from ..schemas.paragraph import ParagraphAnnotation
+
+            return ParagraphAnnotation(
+                paragraph_index=para.index if para else filtered.get("paragraph_index", 0),
+                speaker_canonical_name="_narrator_",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.0,
+                confidence=0.0,
+                notes="Skipped: paragraph text too short for annotation",
+            )
 
         book_meta = None
         character_voice_map = []
@@ -325,8 +410,47 @@ class AnnotateStage(StageHandler):
         if chapter and paragraph is not None:
             from .persistence import write_annotate
 
-            para_index = getattr(result, "paragraph_index", paragraph_index or 0)
-            para = write_annotate(
+            # Ground truth: caller-provided paragraph_index reflects the real
+            # Paragraph.index in the DB. AnnotateStage.run()'s
+            # ParagraphAnnotation.paragraph_index is LLM-generated and may be 0
+            # or wrong (e.g. deepseek returns 0 for the first paragraph), which
+            # then causes write_annotate to INSERT a bogus idx=0 paragraph with
+            # empty text, derailing downstream synthesize/quality stages.
+            para_index = paragraph_index if paragraph_index is not None else getattr(result, "paragraph_index", 0)
+            # ``write_annotate`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            para = _run_async(
+                write_annotate(
+                    cast(AsyncSession, db),
+                    project_id=project_id,
+                    chapter=chapter,
+                    paragraph_index=para_index,
+                    result=result,
+                )
+            )
+            setattr(result, "_paragraph_id", para.id)
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if chapter and paragraph is not None:
+            from .persistence import write_annotate
+
+            # Ground truth: caller-provided paragraph_index reflects the real
+            # Paragraph.index in the DB. AnnotateStage.run()'s
+            # ParagraphAnnotation.paragraph_index is LLM-generated and may be 0
+            # or wrong (e.g. deepseek returns 0 for the first paragraph), which
+            # then causes write_annotate to INSERT a bogus idx=0 paragraph with
+            # empty text, derailing downstream synthesize/quality stages.
+            para_index = paragraph_index if paragraph_index is not None else getattr(result, "paragraph_index", 0)
+            para = await write_annotate(
                 db,
                 project_id=project_id,
                 chapter=chapter,
@@ -346,7 +470,7 @@ from .edit_for_tts import EditForTtsPipeline
 class EditStage(StageHandler):
     """Edit stage: edit text for TTS optimization."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         para = kwargs.get("paragraph")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
@@ -368,6 +492,20 @@ class EditStage(StageHandler):
                 difficulty="B",
                 needs_sfx=False,
                 sfx_tags=[],
+            )
+
+        # TtsEditInput.paragraph_annotation is non-Optional on the schema; when
+        # no paragraph DB record was resolved, synthesize a minimal default so
+        # the contract stays satisfied (mirrors AnnotateStage's skip-stub).
+        if paragraph_annotation is None:
+            paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=filtered.get("paragraph_index", 0),
+                speaker_canonical_name="_narrator_",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.0,
+                confidence=0.0,
+                notes="Skipped: no paragraph record for edit",
             )
 
         paragraph_text = para.text if para else filtered.get("paragraph_text", "")
@@ -394,24 +532,75 @@ class EditStage(StageHandler):
         if paragraph:
             from .persistence import write_edit
 
-            write_edit(db, paragraph, result)
+            # ``write_edit`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            _run_async(write_edit(cast(AsyncSession, db), paragraph, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if paragraph:
+            from .persistence import write_edit
+
+            await write_edit(db, paragraph, result)
 
 
 from dataclasses import asdict
 
 from .audio_postprocess import AudioPostProcessor
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 
 
 class AudioPostprocessStage(StageHandler):
     """Audio postprocess stage: apply audio processing params."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         # paragraph and chapter are passed from orchestrator context
         para = kwargs.get("paragraph")
         chapter = kwargs.get("chapter")
+        project_id = kwargs.get("project_id")
+        chapter_index = kwargs.get("chapter_index")
+        paragraph_index = kwargs.get("paragraph_index")
 
         if para is None:
             raise ValueError("audio_postprocess requires paragraph_id or paragraph_index")
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
+
+        # Emit stage progress
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                current=1,
+                total=1,
+                message="Applying audio post-processing...",
+            ))
+        except RuntimeError:
+            pass
 
         # Determine next paragraph type for transition pause calculation
         next_para_type = "end"
@@ -436,6 +625,20 @@ class AudioPostprocessStage(StageHandler):
             next_para_type=next_para_type,
         )
 
+        # Emit stage exit (success)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_exit(
+                stage="audio_postprocess",
+                project_id=project_id or 0,
+                chapter_index=chapter_index or 1,
+                paragraph_index=paragraph_index or 1,
+                success=True,
+            ))
+        except RuntimeError:
+            pass
+
         # Convert to dict for persistence and downstream stages
         return asdict(segment)
 
@@ -452,7 +655,24 @@ class AudioPostprocessStage(StageHandler):
         if paragraph:
             from .persistence import write_audio_postprocess
 
-            write_audio_postprocess(db, paragraph, result)
+            # ``write_audio_postprocess`` is async (see persistence.py); live
+            # persistence runs via ``apersist`` below. Sync path bridges.
+            _run_async(write_audio_postprocess(cast(AsyncSession, db), paragraph, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if paragraph:
+            from .persistence import write_audio_postprocess
+
+            await write_audio_postprocess(db, paragraph, result)
 
 
 class ReviewStage(StageHandler):
@@ -470,15 +690,17 @@ class ReviewStage(StageHandler):
     Terminal logs show interception/retry events.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         import os
 
         self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         import json
+        import logging
         import os
 
+        logger = logging.getLogger(__name__)
         chapter = kwargs.get("chapter")
         project_id = kwargs.get("project_id")
 
@@ -605,19 +827,33 @@ class ReviewStage(StageHandler):
         # The judgment is stored on the chapter object
         pass
 
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Review stage doesn't persist individual paragraph records
+        # The judgment is stored on the chapter object
+        pass
+
 
 from unittest.mock import MagicMock
 
 from ..schemas.book import CharacterVoiceBinding
 from ..schemas.paragraph import ParagraphAnnotation
 from ..schemas.tts_routing import TtsRoutingInput
-from .synthesize import SynthesizePipeline
+from .synthesize import SynthesizePipeline, _run_async
 
 
 class SynthesizeStage(StageHandler):
     """Synthesize stage: convert text to audio."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         para = kwargs.get("paragraph")
         chapter = kwargs.get("chapter")
 
@@ -640,8 +876,22 @@ class SynthesizeStage(StageHandler):
                 sfx_tags=para.sfx_tags or [],
             )
 
+        # TtsRoutingInput.paragraph_annotation is non-Optional on the schema;
+        # synthesize a minimal default when no paragraph DB record was resolved
+        # so the contract stays satisfied (mirrors AnnotateStage's skip-stub).
+        if paragraph_annotation is None:
+            paragraph_annotation = ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="_narrator_",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.0,
+                confidence=0.0,
+                notes="Skipped: no paragraph record for synthesis",
+            )
+
         # Build voice_map from chapter's analyzed_json
-        voice_map = []
+        voice_map: list[CharacterVoiceBinding] = []
         if chapter and chapter.analyzed_json:
             import json
 
@@ -701,7 +951,9 @@ class SynthesizeStage(StageHandler):
                     "voice_id": seg.voice_id,
                     "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
-                write_synthesize(db, project_id, chapter, paragraph, seg_dict)
+                # ``write_synthesize`` is async (see persistence.py); live
+                # persistence runs via ``apersist`` below. Sync path bridges.
+                _run_async(write_synthesize(cast(AsyncSession, db), project_id, chapter, paragraph, seg_dict))
 
     def get_result_snapshot(self, result: Any) -> Dict[str, Any]:
         """Serialize AudioSegment list for feedback."""
@@ -717,14 +969,38 @@ class SynthesizeStage(StageHandler):
             ]
         }
 
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if project_id and chapter and paragraph:
+            from .persistence import write_synthesize
+
+            for seg in result:
+                seg_dict = {
+                    "file_path": seg.file_path,
+                    "duration_ms": seg.duration_ms,
+                    "engine": seg.engine,
+                    "voice_id": seg.voice_id,
+                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
+                }
+                await write_synthesize(db, project_id, chapter, paragraph, seg_dict)
+
 
 from .quality_check import QualityCheckPipeline
+from .segment import SegmentPipeline, SegmentConfig, SegmentStrategy
 
 
 class QualityStage(StageHandler):
     """Quality stage: judge synthesis quality."""
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         para = kwargs.get("paragraph")
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
@@ -797,19 +1073,38 @@ class QualityStage(StageHandler):
         if project_id and chapter and paragraph:
             from .persistence import write_quality
 
-            write_quality(db, project_id, chapter, paragraph, result)
+            # ``write_quality`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            _run_async(write_quality(cast(AsyncSession, db), project_id, chapter, paragraph, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if project_id and chapter and paragraph:
+            from .persistence import write_quality
+
+            await write_quality(db, project_id, chapter, paragraph, result)
 
 
-from .review import ReviewerAgent, ReviewerInput, ReviewerJudgment
+from ..schemas.review import ReviewerInput, ReviewerJudgment
+from .review import ReviewerAgent
+from .translate import TranslateAndDubPipeline
 
 
 class TranslateStage(StageHandler):
     """Translate stage: multilingual translation dubbing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.pipeline = TranslateAndDubPipeline()
 
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         exclude_keys = {"chapter", "paragraph", "db"}
         filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
         segments = filtered.get("segments", [])
@@ -847,10 +1142,37 @@ class TranslateStage(StageHandler):
                     "voice_id": seg.voice_id,
                     "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
                 }
-                write_synthesize(db, project_id, chapter, paragraph, seg_dict)
+                # ``write_synthesize`` is async (see persistence.py); live
+                # persistence runs via ``apersist`` below. Sync path bridges.
+                _run_async(write_synthesize(cast(AsyncSession, db), project_id, chapter, paragraph, seg_dict))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Translate stage produces audio segments, similar to synthesize
+        if project_id and chapter and paragraph:
+            from .persistence import write_synthesize
+
+            dubbed_segments, report = result
+            for seg in dubbed_segments:
+                seg_dict = {
+                    "file_path": seg.file_path,
+                    "duration_ms": seg.duration_ms,
+                    "engine": seg.engine,
+                    "voice_id": seg.voice_id,
+                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
+                }
+                await write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
 
-def register_stage(name: str):
+def register_stage(name: str) -> Callable[[Type[StageHandler]], Type[StageHandler]]:
     """Decorator to register a stage handler class."""
 
     def decorator(cls: Type[StageHandler]) -> Type[StageHandler]:
@@ -860,11 +1182,69 @@ def register_stage(name: str):
     return decorator
 
 
+class SegmentStage(StageHandler):
+    """Segment stage: split extracted text into semantic paragraphs."""
+
+    def __init__(self) -> None:
+        self.pipeline = SegmentPipeline()
+
+    def run(self, **kwargs: Any) -> Any:
+        exclude_keys = {"chapter", "paragraph", "db"}
+        filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
+
+        # Get input text from extract result or chapter
+        text = filtered.get("text")
+        extract_file = filtered.get("extract_file")
+        extraction_result = filtered.get("extraction_result")
+
+        # Run segmentation
+        result = self.pipeline.run(
+            text=text,
+            extract_file=extract_file,
+            extraction_result=extraction_result,
+        )
+        return result
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # Segment stage updates chapter with segmentation results
+        if project_id and chapter:
+            from .persistence import write_segment
+
+            # ``write_segment`` is async (see persistence.py); live persistence
+            # runs via ``apersist`` below. Sync path bridges via ``_run_async``.
+            _run_async(write_segment(cast(AsyncSession, db), project_id, chapter, result))
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if project_id and chapter:
+            from .persistence import write_segment
+
+            await write_segment(db, project_id, chapter, result)
+
+
 # ── Auto-register built-in stages ───────────────────────────────────────────
 # Enable easy extension: custom stages just need to inherit StageHandler + decorate
 
 # Built-in stages are registered when this module is imported
 StageRegistry.register("extract", ExtractStage)
+StageRegistry.register("segment", SegmentStage)
 StageRegistry.register("analyze", AnalyzeStage)
 StageRegistry.register("annotate", AnnotateStage)
 StageRegistry.register("edit", EditStage)

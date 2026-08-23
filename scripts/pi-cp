@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# pi-cp: pi compute pool wrapper -- fetches models from endpoint, then launches pi
+# Usage: pi-cp [vps|local] [model_name] [...pi_args]
+#   pi-cp vps --list              # List models from VPS
+#   pi-cp vps claude-3-5-sonnet-20241022 "your prompt"
+#   pi-cp local --list            # List models from local
+#   pi-cp local "your prompt"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$SCRIPT_DIR/pi_compute.py" "$@"

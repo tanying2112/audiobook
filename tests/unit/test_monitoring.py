@@ -1,6 +1,9 @@
 """Tests for monitoring module (standalone monitoring.py)."""
 
-# Import the standalone monitoring.py module using importlib
+# Import the standalone monitoring.py module using importlib.
+# P1.6.3: resolve the path RELATIVE to this file instead of hardcoding the
+# repo's pre-move absolute path ("/Users/guwj/Desktop/AI_Lab/audiobook/..."),
+# which raised FileNotFoundError and aborted the whole unit collection.
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -9,7 +12,7 @@ import pytest
 
 spec = importlib.util.spec_from_file_location(
     "monitoring_standalone",
-    "/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/monitoring.py",
+    str(Path(__file__).resolve().parents[2] / "src" / "audiobook_studio" / "monitoring.py"),
 )
 monitoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitoring)
@@ -789,6 +792,21 @@ class TestAlertModule:
 
         collected = collect_self_iteration_logs(self.logs_dir, 24)
         assert len(collected) == 2
+
+    def test_collect_self_iteration_logs_canonical_filename(self):
+        """The canonical `self_iteration.jsonl` written by
+        integration._log_self_iteration_event must be picked up (S1-5: the old
+        `*_self_iteration.jsonl` glob alone misses it)."""
+        for log_file in list(self.logs_dir.glob("*_self_iteration.jsonl")):
+            log_file.unlink()
+        log_file = self.logs_dir / "self_iteration.jsonl"
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"promoted": True, "feedback_count": 5, "system_health_score": 80}) + "\n")
+            f.write(json.dumps({"promoted": False, "feedback_count": 3, "system_health_score": 70}) + "\n")
+
+        collected = collect_self_iteration_logs(self.logs_dir, 24)
+        assert len(collected) == 2
+        assert all("system_health_score" in r for r in collected)
 
     def test_compute_self_iteration_metrics_empty(self):
         """Test computing self-iteration metrics with no records."""

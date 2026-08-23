@@ -28,7 +28,6 @@ import src.audiobook_studio.models  # noqa: F401
 # Import the API router and dependencies
 from src.audiobook_studio.api.upload import router as upload_router
 from src.audiobook_studio.database import Base
-from src.audiobook_studio.database import get_db as upload_get_db
 
 # Create test app
 test_app = FastAPI()
@@ -64,55 +63,98 @@ test_app.dependency_overrides[real_get_current_active_user] = mock_get_current_a
 test_app.dependency_overrides[real_require_project_permission] = mock_require_project_permission
 
 
-# Test database setup
+# Test database setup — use a shared SQLite file for both sync and async engines
 @pytest.fixture(scope="function")
-def db_engine():
-    """Create a file-based SQLite engine for testing."""
-    import tempfile
+def _test_db_path():
+    """Create a temp SQLite file with all tables pre-created."""
+    import os
 
     from src.audiobook_studio.database import Base
 
-    # Debug: check if models are registered
-    print(f"Tables in metadata before create_all: {list(Base.metadata.tables.keys())}")
-
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
+    db_path = tmp.name
+
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
-
-    # Debug: check tables created
-    from sqlalchemy import inspect
-
-    inspector = inspect(engine)
-    print(f"Tables created: {inspector.get_table_names()}")
-
-    yield engine
     engine.dispose()
-    import os
 
-    os.unlink(tmp.name)
+    yield db_path
+    os.unlink(db_path)
+
+
+def _async_run(coro):
+    """Run an async coroutine from a sync fixture."""
+    import asyncio
+    import concurrent.futures
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 @pytest.fixture(scope="function")
-def db_session(db_engine):
-    """Create a database session for testing."""
-    SessionLocal = sessionmaker(bind=db_engine)
-    session = SessionLocal()
-    yield session
-    session.close()
+def client(_test_db_path):
+    """Create a test client with async database session override."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    _engine = create_async_engine(
+        f"sqlite+aiosqlite:///{_test_db_path}",
+        connect_args={"check_same_thread": False},
+    )
+
+    async def override_get_async_db():
+        factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            yield session
+
+    from src.audiobook_studio.api.dependencies import get_async_db as real_get_async_db
+
+    test_app.dependency_overrides[real_get_async_db] = override_get_async_db
+    with TestClient(test_app) as c:
+        yield c
+    test_app.dependency_overrides.pop(real_get_async_db, None)
+    _async_run(_engine.dispose())
 
 
-@pytest.fixture
-def client(db_session):
-    """Create a test client with database session override."""
+@pytest.fixture(scope="function")
+def mock_project(request):
+    """Create a mock project in the database using async session."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    def override_get_db():
-        yield db_session
+    from src.audiobook_studio.models import Project
 
-    test_app.dependency_overrides[upload_get_db] = override_get_db
-    with TestClient(test_app) as client:
-        yield client
-    test_app.dependency_overrides.pop(upload_get_db, None)
+    db_path = request.getfixturevalue("_test_db_path")
+
+    _engine = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+
+    async def _create_project():
+        factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            project = Project(
+                id=1,
+                title="Test Project",
+                author="Test Author",
+                story_line_summary="Test Description",
+                status="draft",
+                progress=0.0,
+                current_stage="upload",
+            )
+            session.add(project)
+            await session.commit()
+            await session.refresh(project)
+            return project
+
+    project = _async_run(_create_project())
+    _async_run(_engine.dispose())
+    return project
 
 
 # Mock Redis functions
@@ -204,26 +246,6 @@ def mock_redis():
                                                 "list_project_extractions": mock_list_extractions,
                                                 "delete_upload_session": mock_delete_session,
                                             }
-
-
-@pytest.fixture
-def mock_project(db_session):
-    """Create a mock project in the database."""
-    from src.audiobook_studio.models import Project
-
-    project = Project(
-        id=1,
-        title="Test Project",
-        author="Test Author",
-        story_line_summary="Test Description",
-        status="draft",
-        progress=0.0,
-        current_stage="upload",
-    )
-    db_session.add(project)
-    db_session.commit()
-    db_session.refresh(project)
-    return project
 
 
 @pytest.fixture
@@ -733,7 +755,10 @@ class TestValidationHelpers:
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/pdf"
 
-        validate_file(mock_file)  # Should not raise
+        # validate_file returns None on success; the contract is "does not raise"
+        assert validate_file(mock_file) is None
+        # The validator must have inspected both filename and content_type
+        assert mock_file.filename == "test.pdf"
 
     def test_validate_file_valid_epub(self):
         """Test validate_file with valid EPUB."""
@@ -743,7 +768,8 @@ class TestValidationHelpers:
         mock_file.filename = "test.epub"
         mock_file.content_type = "application/epub+zip"
 
-        validate_file(mock_file)  # Should not raise
+        assert validate_file(mock_file) is None
+        assert mock_file.filename == "test.epub"
 
     def test_validate_file_valid_docx(self):
         """Test validate_file with valid DOCX."""
@@ -753,7 +779,8 @@ class TestValidationHelpers:
         mock_file.filename = "test.docx"
         mock_file.content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-        validate_file(mock_file)  # Should not raise
+        assert validate_file(mock_file) is None
+        assert mock_file.filename == "test.docx"
 
     def test_validate_file_valid_txt(self):
         """Test validate_file with valid TXT."""
@@ -763,7 +790,8 @@ class TestValidationHelpers:
         mock_file.filename = "test.txt"
         mock_file.content_type = "text/plain"
 
-        validate_file(mock_file)  # Should not raise
+        assert validate_file(mock_file) is None
+        assert mock_file.filename == "test.txt"
 
     def test_validate_file_no_filename(self):
         """Test validate_file with no filename."""

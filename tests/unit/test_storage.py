@@ -234,9 +234,18 @@ class TestCleanup:
         assert not project_dir(42).exists()
 
     def test_remove_nonexistent_project(self, temp_storage):
-        """Test removing nonexistent project doesn't error."""
+        """Test removing nonexistent project doesn't error and leaves storage intact."""
+        # Removing a never-created project must be a no-op (idempotent), not raise
         remove_project_storage(999)
-        # Should not raise
+        # Confirm the project directory was never created
+        assert not project_dir(999).exists()
+
+        # Verify a *real* project's storage is unaffected by an unrelated remove
+        save_raw_file(42, 1, b"test")
+        saved_dir = project_dir(42)
+        assert saved_dir.exists()
+        remove_project_storage(999)  # remove something else
+        assert saved_dir.exists(), "Unrelated remove must not affect existing project storage"
 
 
 class TestMultipleProjects:

@@ -11,11 +11,14 @@ from .synthesize import SynthesizePipeline
 
 
 class ExtractAgent(AbstractAgent):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__([AgentCapability.TEXT_EXTRACTION])
 
-    def _handle_message(self, message: AgentMessage):
+    def _handle_message(self, message: AgentMessage) -> None:
         try:
+            # Context is acquired via acquire_context() before message processing;
+            # guard narrows Optional[AgentContext] -> AgentContext for this handler.
+            assert self.context is not None
             db = SessionLocal()
             try:
                 task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
@@ -50,13 +53,17 @@ class ExtractAgent(AbstractAgent):
 
 
 class AnalyzeAgent(AbstractAgent):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__([AgentCapability.STRUCTURE_ANALYSIS])
 
-    def _handle_message(self, message: AgentMessage):
+    def _handle_message(self, message: AgentMessage) -> None:
+        assert self.context is not None  # context acquired before processing (see ExtractAgent)
         db = SessionLocal()
         try:
             task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
+            # This agent updates an existing task; a missing record is an error state.
+            if task_record is None:
+                raise RuntimeError(f"TaskRecord not found for task_id={self.context.task_id}")
 
             # Call existing analysis pipeline
             analysis_result = analyze_structure(
@@ -79,14 +86,17 @@ class AnalyzeAgent(AbstractAgent):
 
 
 class SynthesizeAgent(AbstractAgent):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__([AgentCapability.TTS_SYNTHESIS])
         self.pipeline = SynthesizePipeline()
 
-    def _handle_message(self, message: AgentMessage):
+    def _handle_message(self, message: AgentMessage) -> None:
+        assert self.context is not None  # context acquired before processing (see ExtractAgent)
         db = SessionLocal()
         try:
             task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
+            if task_record is None:
+                raise RuntimeError(f"TaskRecord not found for task_id={self.context.task_id}")
 
             # Call existing synthesis pipeline
             synthesis_result = self.pipeline.run(
@@ -110,14 +120,17 @@ class SynthesizeAgent(AbstractAgent):
 
 
 class QualityAgent(AbstractAgent):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__([AgentCapability.QUALITY_CONTROL])
         self.pipeline = QualityCheckPipeline()
 
-    def _handle_message(self, message: AgentMessage):
+    def _handle_message(self, message: AgentMessage) -> None:
+        assert self.context is not None  # context acquired before processing (see ExtractAgent)
         db = SessionLocal()
         try:
             task_record = db.query(TaskRecord).filter_by(id=self.context.task_id).first()
+            if task_record is None:
+                raise RuntimeError(f"TaskRecord not found for task_id={self.context.task_id}")
 
             quality_report = self.pipeline.run(
                 audio_segments=message.content["audio_segments"],

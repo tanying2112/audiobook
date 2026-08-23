@@ -11,6 +11,7 @@ Provides full CRUD for the HARNESS-aligned entity tree:
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -18,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..auth.dependencies import get_current_active_user
 from ..auth.models import RoleName
@@ -54,8 +56,10 @@ class ProjectOut(BaseModel):
     current_stage: Optional[str] = None
     progress: float
     total_cost_usd: float
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    # ORM returns datetime objects; declaring these as str would make the
+    # response fail validation (ResponseValidationError 500 on list).
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -131,7 +135,20 @@ async def list_projects(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all projects."""
-    result = await db.execute(select(Project).offset(skip).limit(limit))
+    # S2.6 — explicit eager loading of first-level relationships to avoid N+1
+    # lazy loads during serialization. The Project model also defaults these
+    # relationships to lazy="selectin", but being explicit here keeps the API
+    # contract robust even if a model default changes.
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.chapters),
+            selectinload(Project.characters),
+            selectinload(Project.feedback_records),
+        )
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 
@@ -193,6 +210,7 @@ async def list_chapters(
     result = await db.execute(
         select(Chapter)
         .where(Chapter.project_id == project_id)
+        .options(selectinload(Chapter.paragraphs))
         .order_by(Chapter.index)
         .offset(skip)
         .limit(limit)
@@ -328,6 +346,12 @@ class QualityReportSegment(BaseModel):
     clipping_detected: bool
     peak_db: float
     rms_db: float
+    # 硬质检三件套 (P0.2) — Optional 以兼容旧 report；None = 未计算/降级跳过
+    mos: Optional[float] = None
+    wer: Optional[float] = None
+    voice_cosine: Optional[float] = None
+    metrics_status: Optional[str] = None
+    needs_manual_review: bool = False
     passed: bool
     issues: List[str]
 
@@ -388,9 +412,9 @@ async def get_quality_report(
             generated_at=data["generated_at"],
         )
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}")
+        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}") from e
     except KeyError as e:
-        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}")
+        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}") from e
 
 
 @router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")

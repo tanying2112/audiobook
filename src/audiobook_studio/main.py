@@ -7,6 +7,7 @@ migrations instead of ``init_db``.
 
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,23 +16,28 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from .api.ab_test_interceptor import ABTestMiddleware
+from .api.admin import router as admin_router
 from .api.agent_chat import router as agent_chat_router
 from .api.audio_segments import router as audio_segments_router
 from .api.auto_run import router as auto_run_router
 from .api.books import router as books_router
 from .api.characters import router as characters_router
 from .api.config import router as config_router
+from .api.evolution import router as evolution_router
 from .api.export import export_tasks_router
 from .api.export import router as export_router
 from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
 from .api.llm import router as llm_router
+from .api.languages import router as languages_router
 from .api.mock_router import router as mock_router
+from .api.models_market import router as models_market_router
 from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
+from .api.provider_router import router as provider_router
 from .api.publish import router as publish_router
 from .api.qualities import router as qualities_router
 from .api.routings import router as routings_router
@@ -39,7 +45,6 @@ from .api.sop_reflection import router as sop_reflection_router
 from .api.templates import router as templates_router
 from .api.tts_edits import router as tts_edits_router
 from .api.tts_voices import router as tts_voices_router
-from .api.admin import router as admin_router
 from .api.upload import router as upload_router
 from .api.websocket import router as websocket_router
 from .auth.dependencies import get_current_active_user
@@ -68,12 +73,13 @@ async def lifespan(app: FastAPI):
     settings.validate_cors_security()
 
     # BP-003: Startup dependency validation — fast-fail on unreachable dependencies
-    await _validate_runtime_dependencies(settings)
+    await settings.validate_runtime_dependencies(timeout=settings.HEALTH_CHECK_TIMEOUT)
 
     # P1-4: Use Alembic for DB migrations instead of create_all()
+    import sys
     from subprocess import run
 
-    result = run(["alembic", "upgrade", "head"], capture_output=True, text=True)
+    result = run([sys.executable, "-m", "alembic", "upgrade", "head"], capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Alembic migration failed: {result.stderr}")
 
@@ -96,61 +102,6 @@ async def lifespan(app: FastAPI):
     shutdown_metrics()
 
 
-async def _validate_runtime_dependencies(settings) -> None:
-    """Validate critical runtime dependencies at startup (BP-003).
-
-    Checks DB connectivity, Redis ping, and model path existence.
-    Fast-fails with clear error messages on first failure.
-    """
-    import asyncio
-    import logging
-
-    logger = logging.getLogger("audiobook_studio.startup")
-    timeout = settings.HEALTH_CHECK_TIMEOUT
-
-    # 1. Database connectivity
-    try:
-        from .database import SessionLocal
-        from sqlalchemy import text
-
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            logger.info("Database connectivity: OK")
-        finally:
-            db.close()
-    except Exception as e:
-        logger.critical(f"DATABASE_URL connect failed: {e}")
-        raise RuntimeError(
-            f"DATABASE_URL connect failed: {e}. "
-            f"Check DATABASE_URL={settings.DATABASE_URL}"
-        ) from e
-
-    # 2. Redis ping (optional — warn only)
-    try:
-        import redis.asyncio as aioredis
-        async with asyncio.timeout(timeout):
-            r = aioredis.from_url(settings.REDIS_URL)
-            await r.ping()
-            await r.aclose()
-            logger.info("Redis connectivity: OK")
-    except Exception as e:
-        logger.warning(f"Redis ping failed (non-fatal): {e}")
-
-    # 3. KOKORO_MODEL_PATH existence (if configured)
-    from pathlib import Path
-
-    kokoro_path = settings.KOKORO_MODEL_PATH
-    if kokoro_path:
-        model_file = Path(kokoro_path)
-        if not model_file.exists():
-            logger.error(f"KOKORO_MODEL_PATH not found: {kokoro_path}")
-            raise RuntimeError(
-                f"KOKORO_MODEL_PATH not found: {kokoro_path}. "
-                f"Download models or set ENABLE_LOCAL_TTS=false to fallback to Edge-TTS."
-            )
-
-
 app = FastAPI(
     title="Audiobook Studio API",
     version="0.1.0",
@@ -160,29 +111,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# Middleware order: Security → CORS → Compression → Normalization → Business
-# 1. TrustedHost (security — reject requests with spoofed Host headers)
-# 2. CORSMiddleware (cross-origin — must wrap all responses)
-# 3. GZipMiddleware (compression — applied after CORS headers are set)
-# 4. ISOTimestampMiddleware (response normalization — last before business logic)
-# 5. ABTestMiddleware (business routing — depends on normalized responses)
-settings = get_settings()
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS,
-)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=settings.CORS_ALLOW_METHODS,
-    allow_headers=settings.CORS_ALLOW_HEADERS,
-)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(ISOTimestampMiddleware)
-app.add_middleware(ABTestMiddleware)
-
-# Instrument with OpenTelemetry
+# Instrument with OpenTelemetry FIRST (so it's outermost for response, innermost for request)
 instrument_app(
     app,
     service_name="audiobook-studio",
@@ -193,6 +122,43 @@ instrument_app(
     exclude_paths=["/health", "/metrics", "/docs", "/openapi.json", "/redoc"],
 )
 
+# Middleware order (added FIRST = innermost for response, LAST = outermost for request):
+# Request flow (outermost to innermost):
+# 1. TrustedHostMiddleware (security — reject requests with spoofed Host headers)
+# 2. CORSMiddleware (cross-origin — must wrap all responses)
+# 3. GZipMiddleware (compression — applied after CORS headers are set)
+# 4. ISOTimestampMiddleware (response normalization — last before business logic)
+# 5. ABTestMiddleware (business routing — depends on normalized responses)
+# 6. ObservabilityMiddleware (observability — added by instrument_app, innermost for request)
+# Response flow (innermost to outermost):
+# 1. ObservabilityMiddleware
+# 2. ABTestMiddleware
+# 3. ISOTimestampMiddleware
+# 4. GZipMiddleware
+# 5. CORSMiddleware (adds CORS headers)
+# 6. TrustedHostMiddleware
+settings = get_settings()
+# Add in REVERSE of request order (so first added = innermost for response = outermost for request)
+app.add_middleware(ABTestMiddleware)
+app.add_middleware(ISOTimestampMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
+)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS,
+)
+
+# S3.6: API rate limiting / quota (no-op unless RATE_LIMIT_ENABLED).
+from .api.rate_limit_middleware import add_rate_limit_middleware
+
+add_rate_limit_middleware(app)
+
 # Include routers with global auth default-deny (P1-1)
 # Public: auth_router (login/register), health endpoints
 # Protected by default: all other routers
@@ -200,37 +166,61 @@ instrument_app(
 auth_dep = [Depends(get_current_active_user)]
 
 app.include_router(auth_router, prefix="/api")  # Public: login/register
-app.include_router(projects_router, dependencies=auth_dep)
-app.include_router(books_router, dependencies=auth_dep)
-app.include_router(characters_router, dependencies=auth_dep)
-app.include_router(config_router, dependencies=auth_dep)
-app.include_router(paragraphs_router, dependencies=auth_dep)
-app.include_router(tts_edits_router, dependencies=auth_dep)
-app.include_router(routings_router, dependencies=auth_dep)
-app.include_router(qualities_router, dependencies=auth_dep)
-app.include_router(export_router, dependencies=auth_dep)
-app.include_router(export_tasks_router, dependencies=auth_dep)
-app.include_router(feedback_router, dependencies=auth_dep)
-app.include_router(audio_segments_router, dependencies=auth_dep)
-app.include_router(llm_router, dependencies=auth_dep)
-app.include_router(websocket_router, dependencies=auth_dep)
-app.include_router(templates_router, dependencies=auth_dep)
-app.include_router(harness_router, dependencies=auth_dep)
-app.include_router(golden_router, dependencies=auth_dep)
-app.include_router(auto_run_router, dependencies=auth_dep)
+app.include_router(projects_router, prefix="/api", dependencies=auth_dep)
+app.include_router(books_router, prefix="/api", dependencies=auth_dep)
+app.include_router(characters_router, prefix="/api", dependencies=auth_dep)
+app.include_router(config_router, prefix="/api", dependencies=auth_dep)
+app.include_router(paragraphs_router, prefix="/api", dependencies=auth_dep)
+app.include_router(tts_edits_router, prefix="/api", dependencies=auth_dep)
+app.include_router(routings_router, prefix="/api", dependencies=auth_dep)
+app.include_router(qualities_router, prefix="/api", dependencies=auth_dep)
+app.include_router(export_router, prefix="/api", dependencies=auth_dep)
+app.include_router(export_tasks_router, prefix="/api", dependencies=auth_dep)
+app.include_router(feedback_router, prefix="/api", dependencies=auth_dep)
+app.include_router(audio_segments_router, prefix="/api", dependencies=auth_dep)
+app.include_router(llm_router, prefix="/api", dependencies=auth_dep)
+app.include_router(languages_router, prefix="/api/v1", dependencies=auth_dep)
+app.include_router(provider_router, prefix="/api/v1/providers", tags=["provider-management"], dependencies=auth_dep)
+app.include_router(evolution_router, prefix="/api", dependencies=auth_dep)
+app.include_router(websocket_router, prefix="/api")  # No auth_dep for WebSocket
+app.include_router(templates_router, prefix="/api", dependencies=auth_dep)
+app.include_router(harness_router, prefix="/api", dependencies=auth_dep)
+app.include_router(golden_router, prefix="/api", dependencies=auth_dep)
+app.include_router(auto_run_router, prefix="/api", dependencies=auth_dep)
 if settings.DEBUG or settings.ENVIRONMENT == "development":
-    app.include_router(mock_router, dependencies=auth_dep)
-app.include_router(tts_voices_router, dependencies=auth_dep)
-app.include_router(publish_router, dependencies=auth_dep)
-app.include_router(upload_router)  # Has own per-endpoint project auth
-app.include_router(pipeline_router, dependencies=auth_dep)
-app.include_router(monitoring_router, prefix="/api", dependencies=auth_dep)
-app.include_router(agent_chat_router, dependencies=auth_dep)
-app.include_router(admin_router, dependencies=auth_dep)
-app.include_router(sop_reflection_router, dependencies=auth_dep)
+    app.include_router(mock_router, prefix="/api", dependencies=auth_dep)
+app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)
+app.include_router(publish_router, prefix="/api", dependencies=auth_dep)
+app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
+app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
+app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep)
+app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
+app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
+app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
+
+# ── WebSocket Route Fix ──────────────────────────────────────────────────────
+# FastAPI's include_router doesn't properly include WebSocket routes with prefix.
+# Manually add websocket routes with combined prefix (/api + /ws = /api/ws).
+from .api.websocket import router as _websocket_router
+from fastapi.routing import APIWebSocketRoute
+
+for _route in _websocket_router.routes:
+    if isinstance(_route, APIWebSocketRoute):
+        _new_path = "/api" + _route.path
+        _new_route = APIWebSocketRoute(
+            path=_new_path,
+            endpoint=_route.endpoint,
+            name=_route.name
+        )
+        app.router.routes.append(_new_route)
+
+# Clean up
+del _websocket_router, _route, _new_path, _new_route, APIWebSocketRoute
+
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
+
 
 @app.get("/health")
 def health_check():
@@ -248,7 +238,8 @@ def health_live():
 async def health_ready():
     """K8s readiness probe — returns 200 only when all critical dependencies are up.
 
-    Checks: database SELECT 1, Redis ping, Kokoro model file existence.
+    Checks: database SELECT 1, Redis ping, Kokoro model file existence, LLM API key format,
+    TTS engine health probes (Kokoro warmup, VoxCPM2/Edge connectivity).
     Returns 503 with structured error details if any dependency is not ready.
     """
     import asyncio
@@ -275,6 +266,7 @@ async def health_ready():
     # Redis check
     try:
         import redis.asyncio as aioredis
+
         async with asyncio.timeout(timeout):
             r = aioredis.from_url(settings.REDIS_URL)
             await r.ping()
@@ -292,28 +284,55 @@ async def health_ready():
     else:
         checks["kokoro_model"] = "not_configured"
 
-    # TTS engine load status (PERF-001)
+    # TTS engine health probes (S1-6: real engine probes)
     try:
         from .di import get_app_container
-        from .tts.engine import EngineRegistry
+        from .tts.engine import EngineRegistry, probe_tts_engines
 
         container = get_app_container()
-        registry = container.get(EngineRegistry)
+        registry = container.get_or_none(EngineRegistry)
         if registry is not None:
-            checks["tts_engines"] = registry.ready_status
+            probe = await asyncio.wait_for(probe_tts_engines(timeout, registry=registry), timeout=timeout)
+            checks["tts_engines"] = probe["engines"]  # {"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool}
+            checks["tts_engine_health"] = probe["details"]
+            checks["tts_overall_healthy"] = any(probe["engines"].values())
         else:
-            checks["tts_engines"] = "no_registry"
+            probe = await asyncio.wait_for(probe_tts_engines(timeout), timeout=timeout)
+            checks["tts_engines"] = probe["engines"]
+            checks["tts_engine_health"] = probe["details"]
+            checks["tts_overall_healthy"] = any(probe["engines"].values())
+    except asyncio.TimeoutError:
+        checks["tts_engines"] = "timeout"
+        checks["tts_engine_health"] = {}
+        checks["tts_overall_healthy"] = False
     except Exception as e:
         checks["tts_engines"] = f"error: {e}"
+        checks["tts_engine_health"] = {}
+        checks["tts_overall_healthy"] = False
 
-    def _is_healthy(v: str | dict | bool) -> bool:
+    # LLM API key format validation
+    try:
+        settings._validate_llm_api_keys()
+        checks["llm_keys"] = "ok"
+    except RuntimeError as e:
+        checks["llm_keys"] = f"error: {e}"
+    except Exception as e:
+        checks["llm_keys"] = f"error: {e}"
+
+    def _is_healthy(v: str | dict[str, Any] | bool) -> bool:
         if isinstance(v, dict):
             return all(_is_healthy(vv) for vv in v.values())
         if isinstance(v, bool):
             return v
         return v == "ok" or v == "not_configured"
 
-    all_ok = _is_healthy(checks.get("database")) and _is_healthy(checks.get("redis"))
+    # Critical dependencies: DB and Redis must be healthy
+    # LLM keys are validated but invalid format only matters if keys are configured
+    db_ok = _is_healthy(checks.get("database"))
+    redis_ok = _is_healthy(checks.get("redis"))
+    llm_ok = _is_healthy(checks.get("llm_keys"))
+
+    all_ok = db_ok and redis_ok and llm_ok
     status_code = 200 if all_ok else 503
     return JSONResponse(
         content={"status": "ready" if all_ok else "not_ready", "checks": checks},
@@ -322,6 +341,7 @@ async def health_ready():
 
 
 # ── Global exception handler (QUAL-003: structured error responses) ────────────
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

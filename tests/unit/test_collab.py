@@ -16,14 +16,11 @@ class TestCollabModels:
             comment_type="comment",
             task_id=1,
             file_path="test.py",
-            line_number=10,
-            parent_id=None,
         )
         assert comment.content == "Test comment"
         assert comment.comment_type == "comment"
         assert comment.task_id == 1
         assert comment.file_path == "test.py"
-        assert comment.line_number == 10
 
     def test_comment_create(self):
         from src.audiobook_studio.api.collab import CommentCreate
@@ -37,48 +34,43 @@ class TestCollabModels:
 
         comment = CommentResponse(
             id=1,
-            author_id="user1",
+            user_id=1,
             content="Response",
             comment_type="comment",
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
         assert comment.id == 1
-        assert comment.author_id == "user1"
-        assert comment.resolved is False
+        assert comment.user_id == 1
+        assert comment.processed is False
 
     def test_task_base(self):
-        from src.audiobook_studio.api.collab import TaskBase
+        from src.audiobook_studio.api.collab import TaskStatusBase
 
-        task = TaskBase(
-            title="Test Task",
-            description="Task description",
-            status="todo",
-            assignee_id="user1",
-            reporter_id="user2",
-            tags=["tag1"],
-            priority=3,
-            project_id="proj1",
+        task = TaskStatusBase(
+            task_id=1,
+            status="in_progress",
+            assignee_id=1,
+            due_date=datetime.now(),
         )
-        assert task.title == "Test Task"
-        assert task.status == "todo"
-        assert task.priority == 3
-        assert task.tags == ["tag1"]
+        assert task.task_id == 1
+        assert task.status == "in_progress"
+        assert task.assignee_id == 1
 
     def test_task_create(self):
-        from src.audiobook_studio.api.collab import TaskCreate
+        from src.audiobook_studio.api.collab import TaskStatusCreate
 
-        task = TaskCreate(title="New Task", description="Description", status="in_progress")
-        assert task.title == "New Task"
-        assert task.status == "in_progress"
+        task = TaskStatusCreate(task_id=2, status="todo")
+        assert task.task_id == 2
+        assert task.status == "todo"
 
     def test_task_response(self):
-        from src.audiobook_studio.api.collab import TaskResponse
+        from src.audiobook_studio.api.collab import TaskStatusResponse
 
-        task = TaskResponse(
+        task = TaskStatusResponse(
             id=1,
-            title="Task",
-            description="Desc",
+            task_id=1,
+            project_id=1,
             status="done",
             created_at=datetime.now(),
             updated_at=datetime.now(),
@@ -87,19 +79,17 @@ class TestCollabModels:
         assert task.status == "done"
 
     def test_approval_request_base(self):
-        from src.audiobook_studio.api.collab import ApprovalRequestBase
+        from src.audiobook_studio.api.collab import ApprovalBase
 
-        approval = ApprovalRequestBase(
-            title="Approval",
-            description="Need approval",
-            approver_ids=["user1", "user2"],
-            task_id=1,
-            artifact_path="/path/to/artifact",
-            required_approvals=2,
+        approval = ApprovalBase(
+            resource_type="chapter",
+            resource_id=1,
+            action="approve",
+            comments="Looks good",
         )
-        assert approval.title == "Approval"
-        assert approval.approver_ids == ["user1", "user2"]
-        assert approval.required_approvals == 2
+        assert approval.resource_type == "chapter"
+        assert approval.resource_id == 1
+        assert approval.action == "approve"
 
 
 if __name__ == "__main__":

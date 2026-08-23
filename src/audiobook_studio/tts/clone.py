@@ -234,6 +234,10 @@ class VoiceSample:
     language: str
     speaker_id: str
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    # P2.11 合规: 克隆样本授权存证 (attestation)。红线#1: 授权时间戳 + 授权条款
+    # 版本随样本持久化, 供后续审计回溯; 缺失=None 表示旧样本 (历史数据, 非假声明)
+    attestation_at: Optional[str] = None
+    consent_version: Optional[str] = None
 
 
 @dataclass

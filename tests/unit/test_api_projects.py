@@ -355,15 +355,15 @@ class TestRegenerateParagraphEndpoint:
         paragraph.audio_segment = MagicMock()
         _setup_execute_result(db, paragraph)
 
-        # Mock the module import since it's in the function
-        with patch("src.audiobook_studio.tasks.tts_tasks") as mock_tts_tasks:
-            mock_tts_tasks.synthesize_paragraph_task.delay.return_value = MagicMock(id="task_123")
+        # Mock the function where it's defined (the source module)
+        with patch("src.audiobook_studio.tasks.tts_tasks.synthesize_paragraph_task") as mock_synthesize_paragraph_task:
+            mock_synthesize_paragraph_task.delay.return_value = MagicMock(id="task_123")
 
             result = await regenerate_paragraph(project_id=1, chapter_id=1, paragraph_id=1, db=db)
 
             assert result["task_id"] == "task_123"
             assert result["status"] == "queued"
-            mock_tts_tasks.synthesize_paragraph_task.delay.assert_called_once()
+            mock_synthesize_paragraph_task.delay.assert_called_once()
 
 
 class TestLegacyRegenerateEndpoint:

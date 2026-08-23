@@ -293,12 +293,20 @@ async def generate_emotion_markup(args: GenerateEmotionMarkupArgs) -> GenerateEm
             reading_time_minutes=60,
         )
         emotion_snapshot = EmotionSnapshot(
-            overall_tone="neutral",
-            tension_level=3,
-            key_relationships=[],
+            chapter=args.chapter_index,
+            dominant_emotion="neutral",
+            intensity=0.5,
         )
-        character_voice_map = []  # Would be loaded from analysis
-        story_line_summary = ""
+        character_voice_map = [
+            CharacterVoiceBinding(
+                canonical_name="_narrator_",
+                aliases=["旁白"],
+                gender="unknown",
+                suggested_voice_id=None,
+                sample_quote="Narrator placeholder — load from analysis",
+            )
+        ]
+        story_line_summary = " " * 100  # Placeholder — would be loaded from analysis
         global_style_notes = ""
 
         # Run annotate pipeline for each paragraph
@@ -373,7 +381,7 @@ async def execute_audio_synthesis(args: ExecuteAudioSynthesisArgs) -> ExecuteAud
             voice_binding = CharacterVoiceBinding(
                 canonical_name=ann.get("speaker_canonical_name", "旁白"),
                 suggested_voice_id="default",
-                sample_quote="",
+                sample_quote=ann.get("text", "placeholder for voice cloning"),
             )
             tts_inputs.append(
                 TtsRoutingInput(

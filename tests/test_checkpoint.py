@@ -38,7 +38,7 @@ class TestCheckpointManager:
         assert self.manager.project_id == 1
         assert self.manager._data["project_id"] == 1
         assert self.manager._data["chapters"] == {}
-        assert self.manager._data["version"] == 2
+        assert self.manager._data["version"] == 3  # ADR-005 upgraded schema to v3
 
     def test_init_existing_checkpoint(self):
         """Test initialization loads existing checkpoint."""

@@ -31,7 +31,7 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class BenchmarkReport:
     hardware: HardwareProfile = field(default_factory=HardwareProfile)
     edge_tts_results: List[TtsBenchmarkResult] = field(default_factory=list)
     voxcpm2_projection: VoxCPM2Projection = field(default_factory=VoxCPM2Projection)
-    summary: Dict = field(default_factory=dict)
+    summary: Dict[str, Any] = field(default_factory=dict)
     recommendations: List[str] = field(default_factory=list)
     acceptance_criteria_met: Dict[str, bool] = field(default_factory=dict)
 
@@ -220,7 +220,7 @@ def detect_hardware() -> HardwareProfile:
         import importlib.util
 
         if importlib.util.find_spec("torch") is not None:
-            import torch  # type: ignore
+            import torch
 
             hw.cuda_available = torch.cuda.is_available()
             hw.mps_available = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
@@ -277,7 +277,7 @@ EDGE_TTS_VOICE = "zh-CN-XiaoyiNeural"
 
 async def _run_edge_tts_async(text: str, output_path: str) -> float:
     """异步调用 Edge-TTS 并返回音频时长（秒）。"""
-    import edge_tts  # type: ignore
+    import edge_tts
 
     communicate = edge_tts.Communicate(text, EDGE_TTS_VOICE)
     audio_bytes = bytearray()
@@ -490,7 +490,7 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
 # ---------------------------------------------------------------------------
 
 
-def build_summary(hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]) -> Dict:
+def build_summary(hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]) -> Dict[str, Any]:
     """生成摘要字典。"""
     edge_tts_rtf = None
     if tts_results:

@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import * as api from '../api'
-import type { Character } from '../types'
+import type { Character, BookGenre } from '../types'
+import { useSopCorrection } from '../composables/useSopCorrection'
 import { useI18n } from '../i18n'
 
 const route = useRoute()
@@ -22,10 +23,37 @@ const formEmotion = ref('neutral')
 const formPitch = ref(0)
 const formSpeed = ref(1.0)
 
+// ── SOP correction capture (P0.1) ─────────────────────────────────────────
+// 角色改名 / 重新绑定声音 = 对"说话人/声纹一致性"的人工纠错，投喂 SOP 反思循环。
+// genre 来自后端 Project.genre；在已知后初始化 composable，避免向空 genre 发送无意义修正。
+const genre = ref<BookGenre>('其他')
+let sendCorrection: ((
+  field: string,
+  originalValue: string,
+  correctedValue: string,
+  paragraphIndex: number,
+  chapterIndex: number,
+  context?: string,
+) => Promise<boolean>) | null = null
+
 onMounted(async () => {
   loading.value = true
   try {
-    characters.value = await api.fetchCharacters(projectId)
+    // 并发：拉角色列表 + 拉项目体裁（用于 SOP 修正 genre 分桶）
+    const [chars, project] = await Promise.all([
+      api.fetchCharacters(projectId),
+      api.fetchProject(projectId),
+    ])
+    characters.value = chars
+    if (project?.genre) genre.value = project.genre as BookGenre
+
+    // genre 已知后初始化 SOP 修正捕获（composable 的 onUnmounted 仍注册在本组件实例上）。
+    sendCorrection = useSopCorrection({
+      projectId,
+      genre: genre.value,
+      autoConnect: true,
+      onFallback: (reason) => console.warn('[SOP CharacterManager] HTTP 回退:', reason),
+    }).sendCorrection
   } finally {
     loading.value = false
   }
@@ -59,6 +87,12 @@ async function saveCharacter() {
   } as any
 
   try {
+    const wasEditing = !!editingChar.value
+    const origName = editingChar.value?.canonical_name ?? ''
+    const origVoice = editingChar.value?.suggested_voice_id ?? ''
+    const newName = payload.canonical_name ?? ''
+    const newVoice = payload.suggested_voice_id ?? ''
+
     if (editingChar.value) {
       const updated = await api.updateCharacter(projectId, editingChar.value.id!, payload)
       const idx = characters.value.findIndex((c) => c.id === updated.id)
@@ -68,9 +102,34 @@ async function saveCharacter() {
       characters.value.push(created)
     }
     showEditor.value = false
+
+    // ✅ 投喂 SOP 纠错（先入库后入队，入队失败静默降级，不阻塞保存）。
+    // 角色改名 → speaker_error；声音重绑 → voice_binding / suggested_voice_id。
+    if (wasEditing) {
+      if (origName && origName !== newName) {
+        feedSop('speaker_canonical_name', origName, newName, `CharacterManager: 角色改名 "${origName}"→"${newName}"`)
+      }
+      if (origVoice !== newVoice) {
+        feedSop(
+          'suggested_voice_id',
+          origVoice,
+          newVoice,
+          `CharacterManager: 角色 "${newName || origName}" 声音绑定变更`,
+        )
+      }
+    }
   } catch (e: any) {
     alert(t('character_manager.save_failed') + (e.message || e))
   }
+}
+
+/** 非阻塞投喂 SOP 修正；网络/WS 失败不影响保存结果（useSopCorrection 已自带防抖+回退）。 */
+function feedSop(field: string, originalValue: string, correctedValue: string, context: string) {
+  if (!sendCorrection) return // genre 尚未解析，静默跳过（保存本身不受影响）
+  // 角色级修正：chapter_index / paragraph_index 不适用，用 0 占位（契约允许，后端 1-based 仅语义提示）。
+  void sendCorrection(field, originalValue, correctedValue, 0, 0, context).catch((e) => {
+    console.warn('[SOP CharacterManager] 投喂失败（静默降级）:', e?.message || e)
+  })
 }
 
 async function removeCharacter(id: number) {

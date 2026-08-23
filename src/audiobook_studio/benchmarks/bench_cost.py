@@ -15,7 +15,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -70,8 +70,9 @@ def load_baseline(baseline_path: Optional[str]) -> Optional[Dict[str, float]]:
 
     try:
         with open(baseline_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("cost_usd", {})
+            data: Dict[str, Any] = json.load(f)
+            cost_data = data.get("cost_usd", {})
+            return cost_data if isinstance(cost_data, dict) else None
     except Exception as e:
         print(f"警告: 无法加载基准文件 {baseline_path}: {e}", file=sys.stderr)
         return None
@@ -159,7 +160,7 @@ def measure_stage_cost(stage: str, mock: bool = False) -> float:
     return statistics.mean(costs)
 
 
-def _get_test_data_for_stage(stage: str) -> Dict:
+def _get_test_data_for_stage(stage: str) -> Dict[str, Any]:
     """为特定阶段获取测试数据。（与bench_latency.py共享）"""
     if stage == "extract":
         return {"file_path": "dummy.txt", "mime_type": "text/plain"}
@@ -226,7 +227,7 @@ def _get_test_data_for_stage(stage: str) -> Dict:
 
 def evaluate_performance(
     current: Dict[str, float], baseline: Optional[Dict[str, float]], threshold: float
-) -> Tuple[bool, List[Dict]]:
+) -> Tuple[bool, List[Dict[str, Any]]]:
     """评估成本是否在可接受范围内。
 
     返回:

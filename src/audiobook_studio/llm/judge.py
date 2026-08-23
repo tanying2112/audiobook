@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..schemas import AudioPostProcessParams, FixSuggestion, PairwiseJudgment, ParagraphAnnotation, QualityJudgment
-from ..schemas.judge import PairwiseJudgment
+from ..schemas.quality import FixSuggestion, QualityJudgment
+from ..schemas import AudioPostProcessParams, PairwiseJudgment, ParagraphAnnotation
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,7 @@ class LLMJudge:
                     FixSuggestion(
                         suggestion_type="prosody_correction",
                         target_text="",
+                        current_value="",
                         suggested_value="",
                         rationale=f"Judge error: {str(e)}",
                         confidence=0.9,

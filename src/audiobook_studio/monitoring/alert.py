@@ -137,8 +137,11 @@ def collect_self_iteration_logs(logs_dir: Path, hours: int) -> List[Dict[str, An
     if not logs_dir.exists():
         return records
 
-    # Look for self-iteration specific log files
-    for log_file in sorted(logs_dir.glob("*_self_iteration.jsonl")):
+    # Look for self-iteration specific log files.
+    # Canonical file is `self_iteration.jsonl` (integration._log_self_iteration_event);
+    # keep the legacy `*_self_iteration.jsonl` glob so pre-existing logs are still read.
+    log_files = sorted(set(logs_dir.glob("self_iteration.jsonl")) | set(logs_dir.glob("*_self_iteration.jsonl")))
+    for log_file in log_files:
         try:
             with open(log_file, "r", encoding="utf-8") as f:
                 for line in f:

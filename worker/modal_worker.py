@@ -7,6 +7,26 @@ Hermes-AgentMesh Core Architecture Integration:
 - Polls Upstash Redis queue "tts:tasks" → synthesizes on T4 → pushes audio to Cloudflare R2
 - Downloads model from Hugging Face Hub at runtime, caches to Modal Volume for fast cold start
 - Requires Modal Secret "audiobook-config" with: REDIS_HOST, REDIS_PORT, REDIS_AUTH, R2_*, WORKER_ID, VOXCPM2_HF_REPO (optional)
+
+# ==========================================
+# Modal SECRETS (configured via `modal secret create audiobook-config`)
+# ==========================================
+# ⚠️ 红线#5 合规：本文件密钥已占位化，Modal Secret 在 Dashboard 配置，不回填明文到代码。
+# Modal Secret 名称: audiobook-config
+# 必需字段:
+#   REDIS_HOST=casual-sawfish-86152.upstash.io
+#   REDIS_PORT=6379
+#   REDIS_AUTH=<REDACTED_UPSTASH_REDIS_PASSWORD>
+#   R2_ENDPOINT=https://<REDACTED_R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+#   R2_ACCESS_KEY_ID=<REDACTED_R2_ACCESS_KEY_ID>
+#   R2_SECRET_ACCESS_KEY=<REDACTED_R2_SECRET_ACCESS_KEY>
+#   R2_BUCKET=audiobook-assets
+#   R2_PUBLIC_URL=https://pub-xxx.r2.dev
+#   WORKER_ID=modal-t4-01
+#   VOXCPM2_HF_REPO=openbmb/VoxCPM2
+#
+# 创建命令:
+# modal secret create audiobook-config REDIS_HOST=... REDIS_PORT=... REDIS_AUTH=... ...
 """
 
 import io
@@ -62,6 +82,7 @@ worker_image = (
         "pydantic",
         "tqdm",
         "huggingface_hub",  # NEW: for runtime model download
+            "speechbrain==1.1.0",
     )
     .add_local_dir(str(PROJECT_ROOT / "src"), remote_path="/src")
 )
@@ -243,6 +264,211 @@ def main():
     print("🚀 Deploying to Modal cloud, allocating T4 node...")
     run_modal_consumer.remote()
     print("✅ Dispatched! Check Modal dashboard for logs.")
+
+
+# ==========================================
+# Determinism test entrypoint (runs REMOTE on Modal GPU)
+# Usage: modal run worker/modal_worker.py::test_determinism --text "..." --seed 42
+# Returns audio bytes hash for byte-level determinism verification
+# ==========================================
+@app.function(
+    image=worker_image,
+    volumes={"/models": model_vol},
+    gpu="T4",
+    timeout=300,
+)
+def test_determinism(text: str = "确定性测试文本", seed: int = 42, voice_id: str = "zh_female_1") -> str:
+    import hashlib
+    engine = VoxCPM2Engine()
+    audio = engine.synthesize(
+        text=text,
+        voice_id=voice_id,
+        prosody={"seed": seed},
+    )
+    h = hashlib.sha256(audio).hexdigest()
+    print(f"DETERMINISM_HASH:{h}")
+    print(f"BYTES:{len(audio)}")
+    return h
+
+
+# ==========================================
+# 5. ECAPA Validation Function (runs on Modal T4 GPU)
+# ==========================================
+@app.function(
+    image=worker_image,
+    volumes={"/models": model_vol},
+    gpu="T4",
+    timeout=1800,
+    secrets=[modal.Secret.from_name("audiobook-config")],
+)
+def run_ecapa_validation():
+    """Run ECAPA speaker verification on all successful audio samples."""
+    import json
+    import os
+    import redis
+    import torch
+    import torchaudio
+    import tempfile
+    import hashlib
+    import requests
+    from speechbrain.inference import SpeakerRecognition
+    from urllib3.util.retry import Retry
+    from requests.adapters import HTTPAdapter
+
+    # Redis connection
+    r = redis.Redis(
+        host=os.getenv("REDIS_HOST", "casual-sawfish-86152.upstash.io"),
+        port=6379,
+        password=os.getenv("REDIS_AUTH", ""),
+        ssl=True,
+        decode_responses=True
+    )
+
+    print("=== ECAPA Validation Started ===")
+
+    # Get successful results
+    results = []
+    for raw in redis.Redis(
+        host="casual-sawfish-86152.upstash.io",
+        port=6379,
+        password=os.getenv("REDIS_AUTH", ""),
+        ssl=True,
+        decode_responses=True
+    ).lrange('tts:results', 0, -1):
+        try:
+            result = json.loads(raw)
+            if result.get('status') == 'success' and result.get('url'):
+                results.append(result)
+        except:
+            pass
+
+    print(f"Found {len(results)} successful audio tasks")
+
+    if not results:
+        return {"status": "no_results", "message": "No successful tasks found"}
+
+    # Initialize ECAPA
+    print("Initializing ECAPA...")
+    from speechbrain.inference import SpeakerRecognition
+    verification = SpeakerRecognition.from_hparams(
+        source='speechbrain/spkrec-ecapa-voxceleb',
+        savedir='/tmp/ecapa',
+        run_opts={'device': 'cuda'}
+    )
+
+    # Download audio files
+    import requests
+    import tempfile
+
+    session = requests.Session()
+    from urllib3.util.retry import Retry
+    from requests.adapters import HTTPAdapter
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+    session.mount('https://', HTTPAdapter(max_retries=3))
+
+    def download_audio(url):
+        resp = requests.get(url, timeout=60)
+        resp.raise_for_status()
+        tmp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+        tmp.write(resp.content)
+        tmp.close()
+        return tmp.name
+
+    audio_files = {}
+    for r_audio in results:
+        url = r_audio['url']
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=60)
+                resp.raise_for_status()
+                tmp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+                tmp.write(resp.content)
+                tmp.close()
+                audio_files[r_audio['id']] = {'path': tmp.name, 'info': r_audio}
+                print(f"Downloaded {r_audio['id']}")
+                break
+            except Exception as e:
+                if attempt == 2:
+                    print(f"Failed to download {r_audio['id']}: {e}")
+                time.sleep(2)
+
+    print(f"Downloaded {len(audio_files)} audio files")
+
+    # Initialize ECAPA
+    from speechbrain.inference import SpeakerRecognition
+    verification = SpeakerRecognition.from_hparams(
+        source='speechbrain/spkrec-ecapa-voxceleb',
+        savedir='/tmp/ecapa',
+        run_opts={'device': 'cuda'}
+    )
+
+    # Pairwise comparison
+    audio_items = list(audio_files.items())
+    results_detail = []
+
+    for i, (id_a, a) in enumerate(audio_items):
+        for id_b, b in list(audio_files.items())[i+1:]:
+            try:
+                score, prediction = verification.verify_files(a['path'], b['path'])
+                same = "同人" if prediction else "异人"
+                score_val = float(score)
+                result = {
+                    "id_a": id_a,
+                    "id_b": id_b,
+                    "score": float(score),
+                    "same_speaker": bool(prediction),
+                    "same_label": "同人" if prediction else "异人"
+                }
+                results_detail.append(result)
+                print(f'Pair {id_a[:8]} vs {id_b[:8]}: score={score_val:.4f} ({"同人" if prediction else "异人"})')
+            except Exception as e:
+                print(f'Pair 对比失败: {e}')
+
+    # Cleanup
+    import os
+    for _, info in audio_files.items():
+        try:
+            os.unlink(info['path'])
+        except:
+            pass
+
+    # Summary
+    same_count = sum(1 for r in results_detail if r['same_speaker'])
+    diff_count = len(results_detail) - same_count
+    avg_score = sum(r['score'] for r in results_detail) / len(results_detail) if results_detail else 0
+
+    summary = {
+        "total_pairs": len(results_detail),
+        "same_speaker_pairs": same_count,
+        "diff_speaker_pairs": diff_count,
+        "average_score": avg_score,
+        "details": results_detail
+    }
+
+    print(f"\n=== ECAPA 验收摘要 ===")
+    print(f"总对比对数: {summary['total_pairs']}")
+    print(f"同声对数: {summary['same_speaker_pairs']}")
+    print(f"跨声对数: {summary['diff_speaker_pairs']}")
+    print(f"平均相似度: {summary['average_score']:.4f}")
+
+    return {"status": "success", "summary": summary, "details": results_detail}
+
+# 6. Local Entrypoints
+# ==========================================
+
+@app.local_entrypoint()
+def deploy_worker():
+    """Deploy the T4 worker consumer."""
+    print("🚀 Deploying to Modal cloud, allocating T4 node...")
+    run_modal_consumer.remote()
+    print("✅ Dispatched! Check Modal dashboard for logs.")
+
+
+@app.local_entrypoint()
+def run_ecapa_validation_entrypoint():
+    """Run ECAPA validation on Modal GPU."""
+    result = run_ecapa_validation.remote()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

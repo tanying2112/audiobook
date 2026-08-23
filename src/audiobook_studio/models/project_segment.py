@@ -7,14 +7,15 @@ Used for OCR results and content rating classification.
 from __future__ import annotations
 
 import enum
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import DateTime, Enum as SQLEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .project import Project
@@ -72,6 +73,10 @@ class ProjectSegment(Base):
 
     # Language detection
     detected_language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="segments")

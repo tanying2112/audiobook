@@ -5,17 +5,21 @@ the translate stage for multilingual dubbing.
 """
 
 import asyncio
+import concurrent.futures
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
-from ..database import create_async_session
+from ..database import create_async_session, get_sync_engine_url
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.checkpoint import CheckpointManager
 from ..pipeline.orchestrator import run_stage
@@ -305,6 +309,13 @@ async def run_pipeline_stage(
             detail=f"Invalid stage: {request.stage}. Valid stages: {valid_stages}",
         )
 
+    # Validate chapter_id for stages that require it
+    if request.stage in ("extract", "analyze") and not request.chapter_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"chapter_id is required for stage '{request.stage}'",
+        )
+
     # For translate stage, delegate to specialized handler
     if request.stage == "translate":
         if not request.target_language:
@@ -329,11 +340,34 @@ async def run_pipeline_stage(
             progress=0.0,
         )
 
-    # For other stages, use existing run_stage logic
-    # This would be implemented similarly to auto_run.py
-    raise HTTPException(
-        status_code=501,
-        detail=f"Stage '{request.stage}' execution not yet implemented via this endpoint. Use /auto-run for full pipeline.",
+    # For other stages, run via orchestrator.run_stage in thread pool with sync session
+    import asyncio
+    from sqlalchemy.orm import Session
+    from sqlalchemy import create_engine
+    from ..database import get_sync_engine_url
+
+    # Create a sync engine for the thread pool
+    sync_engine = create_engine(get_sync_engine_url(), pool_pre_ping=True)
+    SyncSession = sessionmaker(bind=sync_engine, class_=Session, expire_on_commit=False)
+
+    try:
+        result = await asyncio.to_thread(
+            run_stage,
+            request.stage,
+            SyncSession(),  # Sync session for the thread
+            project_id=project_id,
+            chapter_id=request.chapter_id if request.chapter_id else None,
+            target_difficulty=request.target_difficulty,
+        )
+    finally:
+        sync_engine.dispose()
+
+    return StageRunResponse(
+        stage=request.stage,
+        status="completed",
+        message=f"Stage {request.stage} completed",
+        progress=1.0,
+        result={"status": "ok"},
     )
 
 
@@ -429,31 +463,19 @@ async def get_translate_status(project_id: int, db: AsyncSession = Depends(get_a
 
 @router.get("/translate/languages")
 async def get_supported_languages():
-    """Get list of supported target languages for translation."""
-    return {
-        "languages": [
-            {"code": "en-US", "name": "English (US)", "native_name": "English"},
-            {"code": "es-ES", "name": "Spanish (Spain)", "native_name": "Español"},
-            {"code": "ja-JP", "name": "Japanese", "native_name": "日本語"},
-            {"code": "fr-FR", "name": "French (France)", "native_name": "Français"},
-            {"code": "de-DE", "name": "German (Germany)", "native_name": "Deutsch"},
-            {
-                "code": "zh-CN",
-                "name": "Chinese (Simplified)",
-                "native_name": "简体中文",
-            },
-            {
-                "code": "zh-TW",
-                "name": "Chinese (Traditional)",
-                "native_name": "繁體中文",
-            },
-            {"code": "ko-KR", "name": "Korean", "native_name": "한국어"},
-            {
-                "code": "pt-BR",
-                "name": "Portuguese (Brazil)",
-                "native_name": "Português",
-            },
-            {"code": "it-IT", "name": "Italian (Italy)", "native_name": "Italiano"},
-            {"code": "ru-RU", "name": "Russian", "native_name": "Русский"},
-        ]
-    }
+    """Get list of supported target languages for translation.
+
+    Driven by the centralised language registry (S2.3) so Japanese and
+    French are first-class and stay in sync with TTS voice selection.
+    """
+    from ..languages import SUPPORTED_BCP47_CODES, get_language_info
+
+    languages = [
+        {
+            "code": code,
+            "name": get_language_info(code).display_name,
+            "native_name": get_language_info(code).display_name,
+        }
+        for code in SUPPORTED_BCP47_CODES
+    ]
+    return {"languages": languages}

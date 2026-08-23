@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .book import Project
@@ -28,6 +29,10 @@ class Character(Base):
     age_range: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     suggested_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     sample_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="characters")

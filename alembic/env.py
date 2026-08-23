@@ -22,7 +22,21 @@ if PROJECT_ROOT not in sys.path:
 from alembic import context
 
 # Import the Base metadata from the project
-from src.audiobook_studio.database import DATABASE_URL, Base  # noqa: E402
+from src.audiobook_studio.database import Base  # noqa: E402
+
+
+def _get_sync_database_url() -> str:
+    """Convert async DATABASE_URL to sync version for alembic."""
+    url = os.getenv("DATABASE_URL", "sqlite:///./data/audiobook.db")
+    # Convert async drivers to sync
+    if url.startswith("sqlite+aiosqlite:///"):
+        return url.replace("sqlite+aiosqlite:///", "sqlite:///")
+    elif url.startswith("sqlite+aiosqlite://"):
+        return url.replace("sqlite+aiosqlite://", "sqlite://")
+    elif url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://")
+    return url
+
 
 config = context.config
 
@@ -31,8 +45,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the sqlalchemy.url programmatically, allowing the env var to win.
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", DATABASE_URL))
+# Set the sqlalchemy.url to sync version for alembic
+config.set_main_option("sqlalchemy.url", _get_sync_database_url())
 
 # add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata

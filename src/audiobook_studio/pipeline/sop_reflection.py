@@ -18,13 +18,14 @@ import logging
 import threading
 import time
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field as dc_field
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from src.audiobook_studio.schemas import BookMeta
+from src.audiobook_studio.schemas.paragraph import ParagraphAnnotationInput
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class UserCorrection:
     original_value: Any
     corrected_value: Any
     genre: str
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: Dict[str, Any] = dc_field(default_factory=dict)
     """Additional context: speaker, is_dialogue, text_preview, etc."""
 
 
@@ -170,7 +171,8 @@ class SOPConfig:
     def _normalize_genre(self, genre: str) -> str:
         """Normalize genre name to config key."""
         genre_lower = genre.strip().lower()
-        for key, config in self._config.get("genres", {}).items():
+        genres: Dict[str, Any] = self._config.get("genres", {})
+        for key, config in genres.items():
             if key.lower() == genre_lower:
                 return key
             if genre_lower in [a.lower() for a in config.get("aliases", [])]:
@@ -178,7 +180,14 @@ class SOPConfig:
         return "default"
 
     def update_genre_rules(self, genre: str, new_rules: Dict[str, Any], confidence: float, reasoning: str) -> bool:
-        """Merge new rules into genre config."""
+        """Merge new rules into genre config.
+
+        P0.3 不变式（防 reward-hacking）：此处合并到的学习规则**生效到生产候选前**必须经
+        ``audiobook_studio.feedback.constitution`` 创作宪法 + 留出集双裁判 + ≥0.25 效应量
+        的晋升门严格裁决（``evaluate_promotion_anti_hack``）。本方法只把规则写进
+        ``agent_sop.json``；一个让"逐字朗读 / 可懂 / 不破音"任一硬规则被违反的规则，会在
+        晋升门被宪法**先于打分**拒绝，因此进化循环无法绕过硬规则把退化悄悄晋升上生产。
+        """
         with self._lock:
             genre_key = self._normalize_genre(genre)
             if genre_key not in self._config.get("genres", {}):
@@ -237,23 +246,23 @@ class SOPConfig:
 
     def is_learning_enabled(self) -> bool:
         """Check if learning is enabled."""
-        return self.get_global_settings().get("learning_enabled", True)
+        return cast(bool, self.get_global_settings().get("learning_enabled", True))
 
     def get_min_corrections_for_update(self) -> int:
         """Get minimum corrections needed before triggering reflection."""
-        return self.get_global_settings().get("min_corrections_for_update", 3)
+        return cast(int, self.get_global_settings().get("min_corrections_for_update", 3))
 
     def get_confidence_threshold(self) -> float:
         """Get confidence threshold for applying learned rules."""
-        return self.get_global_settings().get("confidence_threshold", 0.65)
+        return cast(float, self.get_global_settings().get("confidence_threshold", 0.65))
 
     def get_reflection_model(self) -> str:
         """Get LLM model for reflection."""
-        return self.get_global_settings().get("reflection_model", "gpt-4o-mini")
+        return cast(str, self.get_global_settings().get("reflection_model", "gpt-4o-mini"))
 
     def get_reflection_temperature(self) -> float:
         """Get LLM temperature for reflection."""
-        return self.get_global_settings().get("reflection_temperature", 0.3)
+        return cast(float, self.get_global_settings().get("reflection_temperature", 0.3))
 
     def list_genres(self) -> List[str]:
         """List all configured genres."""
@@ -304,7 +313,7 @@ class CorrectionCollector:
 
     def get_batch(self, max_size: int = 100, timeout: float = 1.0) -> List[UserCorrection]:
         """Get a batch of corrections from the queue."""
-        batch = []
+        batch: List[UserCorrection] = []
         deadline = time.time() + timeout
         while len(batch) < max_size:
             remaining = deadline - time.time()
@@ -498,7 +507,7 @@ class GenreDetector:
                 scores[genre] = score
 
         if scores:
-            return max(scores, key=scores.get)
+            return max(scores, key=lambda k: scores[k])
         return "default"
 
     def detect_from_chapter_analysis(self, analyzed_json: Dict[str, Any]) -> str:
@@ -532,7 +541,7 @@ class GenreDetector:
 class ReflectionEngine:
     """LLM-powered reflection to synthesize rules from user corrections."""
 
-    def __init__(self, sop_config: SOPConfig, llm_client: Optional[Callable] = None):
+    def __init__(self, sop_config: SOPConfig, llm_client: Optional[Callable[[str], str]] = None):
         self.sop_config = sop_config
         self.llm_client = llm_client
         self._reflection_prompt = self._build_reflection_prompt()
@@ -598,7 +607,7 @@ class ReflectionEngine:
         correction_summary = []
         for field, corrs in by_field.items():
             # Find most common correction patterns
-            patterns = {}
+            patterns: Dict[str, int] = {}
             for c in corrs:
                 key = f"{c.original_value} -> {c.corrected_value}"
                 patterns[key] = patterns.get(key, 0) + 1
@@ -637,10 +646,10 @@ class ReflectionEngine:
             return self._heuristic_reflection(genre, correction_summary, current_rules)
 
     def _heuristic_reflection(
-        self, genre: str, correction_summary: List[Dict], current_rules: Dict[str, Any]
+        self, genre: str, correction_summary: List[Dict[str, Any]], current_rules: Dict[str, Any]
     ) -> ReflectionResult:
         """Heuristic reflection without LLM."""
-        proposed = {}
+        proposed: Dict[str, Any] = {}
         total_corrections = sum(c["count"] for c in correction_summary)
         significant_patterns = 0
 
@@ -703,16 +712,14 @@ class RuleApplier:
         self.sop_config = sop_config
 
     def apply_to_annotation_input(
-        self, input_data: "ParagraphAnnotationInput", genre: str
-    ) -> "ParagraphAnnotationInput":
+        self, input_data: ParagraphAnnotationInput, genre: str
+    ) -> ParagraphAnnotationInput:
         """Enhance annotation input with learned genre rules."""
         rules = self.sop_config.get_genre_rules(genre)
         if not rules:
             return input_data
 
         # Create a copy to modify
-        from src.audiobook_studio.schemas.paragraph import ParagraphAnnotationInput
-
         enhanced = input_data.model_copy(deep=True)
 
         # Apply emotion defaults for context
@@ -948,7 +955,7 @@ def get_correction_collector() -> CorrectionCollector:
     return _correction_collector
 
 
-def get_reflection_engine(llm_client: Optional[Callable] = None) -> ReflectionEngine:
+def get_reflection_engine(llm_client: Optional[Callable[[str], str]] = None) -> ReflectionEngine:
     global _reflection_engine
     if _reflection_engine is None:
         _reflection_engine = ReflectionEngine(get_sop_config(), llm_client)
@@ -970,7 +977,7 @@ def get_rule_applier() -> RuleApplier:
 
 
 def start_sop_background_thread(
-    check_interval: float = 30.0, llm_client: Optional[Callable] = None
+    check_interval: float = 30.0, llm_client: Optional[Callable[[str], str]] = None
 ) -> SOPBackgroundThread:
     """Start the SOP background reflection thread."""
     global _background_thread

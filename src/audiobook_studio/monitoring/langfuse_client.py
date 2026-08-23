@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Global Langfuse client instance
 _langfuse_client: Optional[Any] = None
 _enabled: bool = False
+_langfuse_available: bool = False
 
 
 def init_langfuse(
@@ -36,7 +37,7 @@ def init_langfuse(
     Returns:
         True if initialization succeeded, False otherwise
     """
-    global _langfuse_client, _enabled
+    global _langfuse_client, _enabled, _langfuse_available
 
     if not enabled:
         logger.info("Langfuse tracing disabled")
@@ -73,6 +74,7 @@ def init_langfuse(
             tracing_enabled=True,
         )
         _enabled = True
+        _langfuse_available = True
         logger.info(f"Langfuse initialized: {host}")
 
         # Register flush on exit
@@ -81,10 +83,12 @@ def init_langfuse(
     except ImportError:
         logger.warning("langfuse package not installed, tracing disabled")
         _enabled = False
+        _langfuse_available = False
         return False
     except Exception as e:
         logger.error(f"Failed to initialize Langfuse: {e}")
         _enabled = False
+        _langfuse_available = False
         return False
 
 
@@ -206,9 +210,6 @@ def span(
         raise
     finally:
         try:
-            if output_data is not None:
-                obs.update(output=output_data)
-            # The context manager exit will call end() automatically
             cm.__exit__(None, None, None)
         except Exception:
             pass
@@ -216,46 +217,37 @@ def span(
 
 
 def observe_llm_call(
-    stage: str,
     model: str,
-    provider: str,
+    prompt: str,
+    response: str,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
     cost_usd: float = 0.0,
-    latency_ms: float = 0.0,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Record an LLM call observation.
 
     Args:
-        stage: Pipeline stage (extract, analyze, annotate, edit, synthesize, quality)
         model: Model name
-        provider: Provider name
-        prompt_tokens: Input tokens
-        completion_tokens: Output tokens
-        total_tokens: Total tokens
-        cost_usd: Estimated cost
-        latency_ms: Call latency
+        prompt: Input prompt
+        response: Model response
+        prompt_tokens: Prompt tokens used
+        completion_tokens: Completion tokens used
+        total_tokens: Total tokens used
+        cost_usd: Estimated cost in USD
         metadata: Additional metadata
     """
     if not is_enabled():
         return
 
     cm = _langfuse_client.start_as_current_observation(
-        name=f"llm.{stage}",
+        name="llm.call",
         as_type="generation",
         model=model,
-        metadata={
-            "stage": stage,
-            "provider": provider,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "cost_usd": cost_usd,
-            "latency_ms": latency_ms,
-            **(metadata or {}),
-        },
+        input=prompt,
+        output=response,
+        metadata=metadata or {},
         usage_details=(
             {
                 "prompt_tokens": prompt_tokens,
@@ -365,15 +357,16 @@ def trace_function(
     stage: Optional[str] = None,
     metadata_extractor: Optional[Callable[..., Any]] = None,
 ):
-    """Decorator to trace a function call using Langfuse v4 @observe.
+    """Decorator to trace a function call using Langfuse.
+
+    This is fully lazy - langfuse is only imported when the decorated
+    function is actually called, not at decoration time.
 
     Usage:
         @trace_function("llm.analyze", stage="analyze")
         def analyze_chapter(text):
             ...
     """
-    from langfuse import observe as langfuse_observe
-
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -388,23 +381,35 @@ def trace_function(
             if stage:
                 meta["stage"] = stage
 
-            if not is_enabled():
+            if not is_enabled() or not _langfuse_available:
                 return func(*args, **kwargs)
 
-            # Use Langfuse v4 @observe decorator approach
-            @langfuse_observe(name=trace_name, as_type="span")
-            def traced_func():
+            # Manual span creation (lazy - no decorator at import time)
+            try:
+                from langfuse import Langfuse
+                # Use the existing client to create a span
                 start = datetime.now()
+                span_obj = _langfuse_client.start_as_current_observation(
+                    name=trace_name,
+                    as_type="span",
+                    metadata=meta,
+                )
+                span_obs = span_obj.__enter__()
                 try:
                     result = func(*args, **kwargs)
+                    span_obs.update(output=result)
                     return result
                 except Exception as e:
+                    span_obs.update(level="ERROR", status_message=str(e))
                     raise
                 finally:
                     latency_ms = (datetime.now() - start).total_seconds() * 1000
                     meta["latency_ms"] = latency_ms
-
-            return traced_func()
+                    span_obj.__exit__(None, None, None)
+                    _langfuse_client.flush()
+            except ImportError:
+                # langfuse not available, run without tracing
+                return func(*args, **kwargs)
 
         return wrapper
 

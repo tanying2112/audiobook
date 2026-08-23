@@ -31,31 +31,28 @@ from .chapter import Chapter
 from .character import Character
 
 # ---------------------------------------------------------------------------
-# TECH-DEBT: 协作模块导入暂时移除 (feature/sprint-l-infrastructure 分支)
+# 协作模块: collaboration.py 现已并入主干(已被 git 跟踪), 恢复导入以注册所有
+# 协作表(含新增的 CollaborationRecord 聚合表)到 Base.metadata。
+# 恢复条件已满足(见原 TECH-DEBT 注释: collaboration.py 合并进主干后恢复)。
 # ---------------------------------------------------------------------------
-# 原始代码于此处执行:
-#     from .collaboration import (
-#         ApprovalRequest, ApprovalResponse, ChangeRecord, Comment, Task, TeamMember,
-#     )
-# 并在 __all__ 中导出上述 6 个符号。
-#
-# 移除原因: 干净主干 HEAD(ff4ee0b) 并未提交 src/audiobook_studio/models/collaboration.py
-# ——该文件当前仅为未跟踪的工作区文件,属于 feat/collab-module 分支的工作产物。
-# 此悬空导入会使 `import audiobook_studio.models` 抛出 ModuleNotFoundError,
-# 进而阻断 tests/unit/utils/ 下所有测试的收集(env_checker / secure_subprocess 等)。
-# 这是 Agent B 为完成"加固后方基建"任务所做的最小解锁修复,刻意不触碰 tts/ 与 pipeline/。
-#
-# 恢复条件(交由协作模块负责人执行):
-#   当 collaboration.py 通过 feat/collab-module 正式合并进主干后,
-#   请在此处恢复上述 from .collaboration import (...) 语句,
-#   并在下方 __all__ 中补回对应符号:
-#     "TeamMember", "Comment", "Task",
-#     "ApprovalRequest", "ApprovalResponse", "ChangeRecord"
-#
-# 追踪: 见项目记忆 collab-feature-completion。
-# ---------------------------------------------------------------------------
+from .collaboration import (
+    ApprovalRequest,
+    ApprovalResponse,
+    ChangeRecord,
+    CollaborationRecord,
+    Comment,
+    Task,
+    TeamMember,
+)
 from .emotion_snapshot import EmotionSnapshot
 from .feedback_record import FeedbackRecord
+from .legacy import (
+    LegacyBook,
+    LegacyParagraph,
+    LegacyTTSEdit,
+    LegacyRouting,
+    LegacyQuality,
+)
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
 from .project_segment import ProjectSegment
@@ -86,4 +83,16 @@ __all__ = [
     "ProjectSegment",
     "PublishHistory",
     "PublishJob",
+    "LegacyBook",
+    "LegacyParagraph",
+    "LegacyTTSEdit",
+    "LegacyRouting",
+    "LegacyQuality",
+    "TeamMember",
+    "Comment",
+    "Task",
+    "ApprovalRequest",
+    "ApprovalResponse",
+    "ChangeRecord",
+    "CollaborationRecord",
 ]

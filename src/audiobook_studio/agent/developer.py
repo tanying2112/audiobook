@@ -178,7 +178,7 @@ class DeveloperAgent:
         if self.mock_mode:
             return {"status": "mock", "reannotated": paragraph_indices}
 
-        from ..pipeline.annotate import annotate_chapter
+        from ..pipeline.annotate import annotate_chapter  # type: ignore[import-untyped]
         from ..storage import get_db_session
 
         db = get_db_session()

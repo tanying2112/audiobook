@@ -25,6 +25,12 @@ pymupdf>=1.23.0
 ebooklib>=0.18
 python-docx>=1.1.0
 pillow>=10.0.0
+# OCR for scanned-image / image-only PDFs (P1.8). pytesseract is a thin wrapper
+# around the system `tesseract` binary — install the binary too (apt-get install
+# tesseract-ocr tesseract-ocr-chi-sim / brew install tesseract tesseract-lang).
+# extract.py gates OCR on BOTH the import AND the binary (red line #1), so a
+# missing pyproject pin alone is not enough; see the Dockerfile RUN line.
+pytesseract>=0.3.10
 
 # TTS
 edge-tts>=6.1.0
@@ -33,6 +39,18 @@ edge-tts>=6.1.0
 numpy>=1.26.0,<3.0
 soundfile>=0.12.0
 ffmpeg-python>=0.2.0
+
+# 硬质检三件套 (P0.2) — 免费CPU门禁 (DNSMOS + ASR WER + Speaker Sim)
+# 缺失依赖 → 对应指标在 quality/metrics.py / audio_quality.py 诚实跳过(降级)，
+# 绝不充当通过。免费资源为上限：均为开源/离线/CPU 可跑。
+onnxruntime>=1.17.0               # DNSMOS 语音质量 MOS（无参考音频，免费门槛）
+faster-whisper>=1.0.0             # ASR WER 字错误率（int8 CPU 模型，可懂度硬关）
+# SpeechMOS / UTMOS 自然度 MOS（路线图推荐；较重，默认注释，按需启用）
+# speechmos>=1.0.0
+# 声纹一致性（Speaker Similarity, ECAPA-TDNN / WavLM）；需 torch (~800MB)，免费但重，
+# 默认注释以守"免费资源为上限"，缺失时该指标诚实降级跳过。
+# torch>=2.2.0
+# speechbrain>=1.0.0
 
 # Monitoring
 langfuse>=2.0.0,<3.0

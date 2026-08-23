@@ -4,12 +4,16 @@ Celery tasks for batch export operations.
 Provides async export execution with progress tracking via Celery states.
 """
 
+import asyncio
 import logging
-import uuid
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
-from celery import states as celery_states
+from celery import Task, states as celery_states
+from celery import Celery as CeleryApp
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from celery import Task as CeleryTask
 
 PENDING = celery_states.PENDING
 STARTED = celery_states.STARTED
@@ -17,51 +21,79 @@ SUCCESS = celery_states.SUCCESS
 FAILURE = celery_states.FAILURE
 RETRY = celery_states.RETRY
 
-from ..celery_app import celery_app
-from ..export import ExportFormat, ExportJob, ExportProgress, export_project
-from ..export.batch_exporter import (
-    _build_chapter_markers,
-    _build_project_metadata,
-    _build_subtitle_entries,
-    _collect_audio_files,
-    _collect_chapter_data,
-)
-from ..export.m4b import ChapterMarker, M4bMetadata, build_m4b
-from ..export.srt import SubtitleConfig, SubtitleEntry, generate_srt
-from ..models import AudioSegment, Chapter, Paragraph, Project
-from ..utils.gc_manager import cleanup_after_export
+from ..celery_app import celery_app  # noqa: E402
+from ..database import AsyncSessionLocal  # noqa: E402
+from ..export import ExportFormat, ExportJob, ExportProgress, export_project  # noqa: E402
+from ..export.audio_ducking import MixConfig  # noqa: E402
+from ..export.srt import SubtitleConfig  # noqa: E402
+from ..utils.gc_manager import cleanup_after_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
-async def _run_export_async(project_id: int, job: ExportJob, db_session=None) -> ExportJob:
+def _typed_task(
+    *args: Any, **kwargs: Any
+) -> Callable[[Callable[..., Dict[str, Any]]], Callable[..., Dict[str, Any]]]:
+    """Type-safe wrapper for celery_app.task decorator."""
+    return celery_app.task(*args, **kwargs)  # type: ignore
+
+
+async def _run_export_async(
+    project_id: int, job: ExportJob, db_session: Union[AsyncSessionLocal, None] = None
+) -> ExportJob:
     """Run export asynchronously against the real 3-arg ``export_project``.
 
     ``export_project(project_id, session, job)`` writes progress onto the job
     object itself (batch_exporter.py:254) and has **no** progress-callback
     parameter. Sprint L's ``progress_callback`` plumbing called it with a
-    phantom 4th arg → ``TypeError`` on every task → retry×3 → FAILURE.
+    phantom 4th arg -> ``TypeError`` on every task -> retry×3 -> FAILURE.
     ``db_session`` is kept (defaulting to ``None``) as the Celery task-context
-    injection point — the caller ``export_project_async`` is ``bind=True`` and
-    passes ``self`` — so progress reporting can be re-added without touching
+    injection point -- the caller ``export_project_async`` is ``bind=True`` and
+    passes ``self`` -- so progress reporting can be re-added without touching
     the call site.
     """
-    from ..database import AsyncSessionLocal
-
     if db_session is None:
-        async with AsyncSessionLocal() as db:
-            return await export_project(project_id, db, job)
+        async with AsyncSessionLocal() as db:  # type: ignore
+            return await export_project(project_id, db, job)  # type: ignore
     else:
-        return await export_project(project_id, db_session, job)
+        return await export_project(project_id, db_session, job)  # type: ignore
 
 
-@celery_app.task(
+def _get_task_result_dict(
+    task: Union[Task, "CeleryTask"],
+    task_id: str,
+    project_id: int,
+    status: str,
+    output_paths: Optional[Dict[str, str]] = None,
+    error: Optional[str] = None,
+    **extras: Any,
+) -> Dict[str, Any]:
+    """Build a standard task result dictionary."""
+    result: Dict[str, Any] = {
+        "task_id": task_id,
+        "status": status,
+        "project_id": project_id,
+    }
+    if output_paths is not None:
+        result["output_paths"] = output_paths
+    if error is not None:
+        result["error"] = error
+    result.update(extras)
+    return result
+
+
+@_typed_task(
     bind=True,
     name="src.audiobook_studio.tasks.export_tasks.export_project_async",
     max_retries=3,
     default_retry_delay=60,
 )
-def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_session_factory=None) -> Dict[str, Any]:
+def export_project_async(
+    self: "CeleryTask",
+    project_id: int,
+    job_config: Dict[str, Any],
+    db_session_factory: Optional[Callable[[], AsyncSessionLocal]] = None,
+) -> Dict[str, Any]:
     """
     Async task to export a full project.
 
@@ -78,7 +110,7 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
 
     try:
         # Parse job config
-        formats = set()
+        formats: set[ExportFormat] = set()
         for f in job_config.get("formats", ["m4b_srt"]):
             try:
                 formats.add(ExportFormat(f.lower()))
@@ -86,19 +118,15 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
                 logger.warning(f"Unknown format {f}, skipping")
 
         # Build subtitle config
-        subtitle_config = None
+        subtitle_config: Optional[SubtitleConfig] = None
         if job_config.get("max_chars_per_line"):
-            from ..export.srt import SubtitleConfig
-
             subtitle_config = SubtitleConfig(
                 max_chars_per_line=job_config["max_chars_per_line"],
             )
 
         # Build mix config
-        mix_config = None
+        mix_config: Optional[MixConfig] = None
         if job_config.get("mix_config"):
-            from ..export.audio_ducking import MixConfig
-
             mix_config = MixConfig(**job_config["mix_config"])
 
         job = ExportJob(
@@ -115,18 +143,17 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
         )
 
         # Run export with progress tracking
-        import asyncio
-
         result_job = asyncio.run(_run_export_async(project_id, job))
 
         # Build response
-        response = {
-            "task_id": task_id,
-            "status": result_job.progress.value,
-            "output_paths": result_job.output_paths,
-            "error": result_job.error,
-            "project_id": project_id,
-        }
+        response = _get_task_result_dict(
+            self,
+            task_id,
+            project_id,
+            result_job.progress.value,
+            output_paths=result_job.output_paths,
+            error=result_job.error,
+        )
 
         logger.info(f"[{task_id}] Export completed: {result_job.progress.value}")
 
@@ -149,21 +176,21 @@ def export_project_async(self, project_id: int, job_config: Dict[str, Any], db_s
         # Retry on transient errors
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "error": str(e),
-            "project_id": project_id,
-        }
+        return _get_task_result_dict(self, task_id, project_id, "failed", error=str(e))
 
 
-@celery_app.task(
+@_typed_task(
     bind=True,
     name="src.audiobook_studio.tasks.export_tasks.export_chapter_async",
     max_retries=3,
     default_retry_delay=30,
 )
-def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Optional[str] = None) -> Dict[str, Any]:
+def export_chapter_async(
+    self: "CeleryTask",
+    project_id: int,
+    chapter_id: int,
+    output_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Async task to export a single chapter.
 
@@ -179,31 +206,27 @@ def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Opt
     logger.info(f"[{task_id}] Starting chapter export for project {project_id}, chapter {chapter_id}")
 
     try:
-        from ..database import AsyncSessionLocal
         from ..export.batch_exporter import export_chapter
 
-        async def _run():
-            async with AsyncSessionLocal() as db:
-                return await export_chapter(project_id, chapter_id, db, output_dir)
-
-        import asyncio
+        async def _run() -> Optional[str]:
+            async with AsyncSessionLocal() as db:  # type: ignore
+                return await export_chapter(project_id, chapter_id, db, output_dir)  # type: ignore
 
         result_path = asyncio.run(_run())
 
         if result_path:
-            response = {
-                "task_id": task_id,
-                "status": "complete",
-                "output_path": result_path,
-                "error": None,
-            }
+            response = _get_task_result_dict(
+                self, task_id, project_id, "complete", output_path=result_path
+            )
         else:
-            response = {
-                "task_id": task_id,
-                "status": "failed",
-                "error": "Chapter not found or has no audio segments",
-                "output_path": None,
-            }
+            response = _get_task_result_dict(
+                self,
+                task_id,
+                project_id,
+                "failed",
+                error="Chapter not found or has no audio segments",
+                output_path=None,
+            )
 
         logger.info(f"[{task_id}] Chapter export completed: {response['status']}")
         return response
@@ -212,15 +235,10 @@ def export_chapter_async(self, project_id: int, chapter_id: int, output_dir: Opt
         logger.exception(f"[{task_id}] Chapter export failed: {e}")
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "error": str(e),
-            "output_path": None,
-        }
+        return _get_task_result_dict(self, task_id, project_id, "failed", error=str(e), output_path=None)
 
 
-@celery_app.task(name="src.audiobook_studio.tasks.export_tasks.get_export_status")
+@celery_app.task(name="src.audiobook_studio.tasks.export_tasks.get_export_status")  # type: ignore
 def get_export_status(task_id: str) -> Dict[str, Any]:
     """
     Get the status of an export task by Celery task ID.
@@ -231,16 +249,18 @@ def get_export_status(task_id: str) -> Dict[str, Any]:
     Returns:
         Dict with task_id, state, info (progress meta)
     """
-    result = celery_app.AsyncResult(task_id)
+    from celery.result import AsyncResult
 
-    response = {
+    result: AsyncResult = celery_app.AsyncResult(task_id)
+
+    response: Dict[str, Any] = {
         "task_id": task_id,
         "state": result.state,
         "info": result.info or {},
     }
 
     # Map Celery states to our export progress
-    state_map = {
+    state_map: Dict[str, str] = {
         PENDING: "pending",
         STARTED: "processing",
         SUCCESS: "complete",

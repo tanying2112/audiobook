@@ -1,7 +1,7 @@
 """Feedback API endpoints — 人工反馈收集与管理."""
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -18,9 +18,9 @@ class FeedbackCreate(BaseModel):
     book_id: str = Field(..., description="书籍 ID")
     paragraph_index: Optional[int] = None
     chapter_index: Optional[int] = None
-    input_snapshot: dict = Field(..., description="输入数据快照")
-    llm_output: dict = Field(..., description="LLM 输出")
-    corrected_output: dict = Field(..., description="修正后的期望输出")
+    input_snapshot: dict[str, Any] = Field(..., description="输入数据快照")
+    llm_output: dict[str, Any] = Field(..., description="LLM 输出")
+    corrected_output: dict[str, Any] = Field(..., description="修正后的期望输出")
     rationale: str = Field(..., min_length=10, description="修改理由")
 
 
@@ -48,7 +48,7 @@ class FeedbackListResponse(BaseModel):
 
 
 # In-memory storage (replace with DB in production)
-_feedback_store: List[dict] = []
+_feedback_store: List[dict[str, Any]] = []
 
 
 @router.post("/", response_model=FeedbackResponse)
@@ -90,9 +90,68 @@ async def create_feedback(feedback: FeedbackCreate):
         "pattern_tags": pattern_tags,
         "contract_version": 1,
     }
+    # ① 先入库（feedback 存储）
     _feedback_store.append(fb)
 
+    # ② 后入队：投喂 SOP 反思循环写库同时入队 collector（P0.1）。
+    # 入队失败仅记录日志，绝不影响 feedback 响应（静默降级）。
+    _feed_sop_collector_feedback(feedback, pattern_tags)
+
     return FeedbackResponse(**fb)
+
+
+def _feed_sop_collector_feedback(feedback: FeedbackCreate, pattern_tags: list[str]) -> None:
+    """把一条人工反馈映射为 SOP 纠错并投喂 CorrectionCollector。
+
+    非阻塞：collector 不可用、project_id 不可解析、或入队失败时仅记录日志，
+    绝不抛出（feedback 响应不受影响）。映射规则：
+      - field ← pattern_tags 推断（emotion_mismatch→emotion，speaker_error→speaker_canonical_name，
+        wrong_speed→speech_rate，wrong_pitch→pitch_shift_semitones，否则 fallback 'output'）
+      - project_id ← int(book_id)（非整数则跳过投喂）
+      - chapter_index/paragraph_index ← feedback 可选字段（默认 0）
+      - original_value ← llm_output，corrected_value ← corrected_output
+      - genre ← 'default'（对应 genre-agnostic 桶；真实 genre 由前端 WS/HTTP 路径带）
+    """
+    try:
+        # book_id 未必是数字（历史兼容为 str），仅数字时投喂
+        try:
+            project_id = int(feedback.book_id)
+        except (TypeError, ValueError):
+            return
+
+        tag_to_field = {
+            "emotion_mismatch": "emotion",
+            "speaker_error": "speaker_canonical_name",
+            "wrong_speed": "speech_rate",
+            "wrong_pitch": "pitch_shift_semitones",
+        }
+        field = next(
+            (tag_to_field[tag] for tag in pattern_tags if tag in tag_to_field),
+            "output",
+        )
+
+        # 采集器期望完整 dict；缺失字段用契约默认值补齐
+        correction_dict = {
+            "project_id": project_id,
+            "chapter_index": feedback.chapter_index if feedback.chapter_index is not None else 0,
+            "paragraph_index": feedback.paragraph_index if feedback.paragraph_index is not None else 0,
+            "field": field,
+            "original_value": feedback.llm_output,
+            "corrected_value": feedback.corrected_output,
+            "genre": "default",
+            "context": {"stage": feedback.stage, "source": feedback.source, "rationale": feedback.rationale},
+        }
+
+        from ..pipeline.sop_reflection import get_correction_collector
+
+        collector = get_correction_collector()
+        collector.add_correction_dict(correction_dict)
+    except Exception as exc:  # noqa: BLE001 — 入队失败绝不影响 feedback 主流程
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "feedback→SOP collector 投喂失败（静默降级，不影响反馈入库）: %s", exc
+        )
 
 
 @router.get("/", response_model=FeedbackListResponse)

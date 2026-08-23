@@ -864,20 +864,22 @@ class TestJobEndpoints:
         """Test getting a job for wrong project."""
         from fastapi import HTTPException
 
-        from src.audiobook_studio.api.publish import get_publish_job
+        from src.audiobook_studio.api.publish import get_publish_job, _publish_jobs_fallback
 
+        # Use unique job_id to avoid Redis collision from previous test runs
+        unique_job_id = "test_job_wrong_project_unique"
         job_data = {
-            "job_id": "test_job_1",
+            "job_id": unique_job_id,
             "project_id": 2,  # Different project
             "status": "completed",
             "destinations": ["audiobookshelf"],
             "results": {},
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        _publish_jobs["test_job_1"] = job_data
+        _publish_jobs_fallback[unique_job_id] = job_data
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_publish_job(project_id=1, job_id="test_job_1")
+            await get_publish_job(project_id=1, job_id=unique_job_id)
 
         assert exc_info.value.status_code == 400
 

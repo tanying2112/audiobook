@@ -5,7 +5,12 @@ rather than creating new pools per call.  Config is driven by Settings.
 """
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from redis.asyncio import ConnectionPool, Redis
+    from redis import ConnectionPool as SyncConnectionPool
+    from redis import Redis as SyncRedis
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +50,9 @@ def reset_redis_pool() -> None:
     """Close and reset the singleton pool (useful for testing)."""
     global _pool
     if _pool is not None:
-        _pool.disconnect()
+        import asyncio
+
+        asyncio.run(_pool.disconnect())
         _pool = None
         logger.debug("Redis pool closed and reset")
 
@@ -58,7 +65,7 @@ async def get_redis() -> "Redis":
     return Redis(connection_pool=pool)
 
 
-def get_sync_redis() -> "Redis":
+def get_sync_redis() -> "SyncRedis":
     """Return a sync Redis client (for Celery / sync workers) backed by a sync pool."""
     from redis import ConnectionPool as SyncConnectionPool
     from redis import Redis as SyncRedis

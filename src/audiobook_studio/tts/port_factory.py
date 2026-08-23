@@ -6,13 +6,17 @@ Replaces the old PortFactory with a unified engine registry.
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from .engine import EngineRegistry, get_engine_registry, set_engine_registry
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
-from .port import RemoteTTSPort, TTSTaskPayload
+from .port import RemoteTTSPort, TTSStatus, TTSTaskPayload
+
+logger = logging.getLogger(__name__)
 
 # Global registry (lazy initialization)
 _global_registry: Optional[EngineRegistry] = None
@@ -38,27 +42,33 @@ def create_engine(
         New TTSEngine instance.
     """
     from .edge_tts_engine import create_edge_tts_engine
-    from .kokoro_backend import create_kokoro_engine
+    from .kokoro_backend import create_kokoro_backend
     from .remote_voxcpm2_port import create_remote_voxcpm2_port
 
     impl = engine_type.lower()
 
-    # Check for mock mode
+    # Check for mock mode (only for engines that support it)
     mock_mode = os.environ.get("MOCK_TTS", "false").lower() == "true"
     if mock_mode:
         kwargs.setdefault("mock_mode", True)
 
     if impl == "fake":
+        # FakeRemoteTTSPort doesn't use mock_mode parameter
+        kwargs.pop("mock_mode", None)
         return FakeRemoteTTSPort(**kwargs)
     elif impl == "mock":
+        # MockRemoteTTSPort doesn't use mock_mode parameter
+        kwargs.pop("mock_mode", None)
         return MockRemoteTTSPort(**kwargs)
     elif impl == "voxcpm2":
         return create_remote_voxcpm2_port(**kwargs)
     elif impl == "auto":
         # Auto-detect based on environment
         if os.environ.get("MOCK_LLM", "false").lower() == "true":
+            kwargs.pop("mock_mode", None)
             return FakeRemoteTTSPort(**kwargs)
         elif os.environ.get("TEST_MODE", "false").lower() == "true":
+            kwargs.pop("mock_mode", None)
             return FakeRemoteTTSPort(**kwargs)
         elif os.environ.get("VOXCPM2_ENDPOINT"):
             return create_remote_voxcpm2_port(**kwargs)
@@ -68,8 +78,26 @@ def create_engine(
                 return create_kokoro_port(**kwargs)
             else:
                 return create_edge_tts_port(**kwargs)
+    elif impl == "kokoro":
+        return create_kokoro_port(**kwargs)
+    elif impl == "edge":
+        return create_edge_tts_port(**kwargs)
     else:
         raise ValueError(f"Unknown engine type: {engine_type}")
+
+
+def create_kokoro_port(**kwargs):
+    """Create a Kokoro TTS port (engine wrapper)."""
+    from .kokoro_port import create_kokoro_port as _create_kokoro_port
+
+    return _create_kokoro_port(**kwargs)
+
+
+def create_edge_tts_port(**kwargs):
+    """Create an Edge TTS port (engine wrapper)."""
+    from .edge_tts_port import create_edge_tts_port as _create_edge_tts_port
+
+    return _create_edge_tts_port(**kwargs)
 
 
 async def create_configured_registry(
@@ -151,7 +179,7 @@ async def get_default_engine(
     reg = registry or get_engine_registry()
     if reg.get_default() is None:
         # Initialize from env if not already done
-        await reg.initialize()
+        await reg.initialize(_build_config_from_env())
     return reg.get_default()
 
 
@@ -182,14 +210,35 @@ async def get_port() -> RemoteTTSPort:
 
         async def _run_synthesis(self, task_id: str, payload: TTSTaskPayload):
             try:
-                output_path = Path(self.engine.output_dir) / f"{task_id}.mp3"
+                output_path = Path(self.engine.output_dir) / f"{task_id}.wav"
                 result = await self.engine.synthesize(payload, output_path)
+                # Engine ``synthesize`` catches internal errors and returns a
+                # TTSTaskResult with status=FAILED rather than raising. Honour
+                # that signal so the scheduler (and synthesize.py poller) sees
+                # the real outcome instead of a DONE-with-empty-path phantom.
+                if result.status == TTSStatus.FAILED:
+                    self._tasks[task_id] = {
+                        "status": "FAILED",
+                        "error": result.error_message or "Synthesis failed",
+                    }
+                    return
+                # Prefer the engine's audio_path (may point to the wav it wrote);
+                # fall back to our expected output_path if the engine left it blank.
+                audio_path = result.audio_path or str(output_path)
+                if not Path(audio_path).exists():
+                    # Engine reported success but the file isn't where we
+                    # expected: surface this as a real failure, not DONE.
+                    self._tasks[task_id] = {
+                        "status": "FAILED",
+                        "error": f"Audio file not found at {audio_path}",
+                    }
+                    return
                 self._tasks[task_id] = {
                     "status": "DONE",
                     "result": TTSTaskResult(
                         task_id=task_id,
-                        status="DONE",
-                        audio_path=result.audio_path,
+                        status=TTSStatus.DONE,
+                        audio_path=audio_path,
                         duration_ms=result.duration_ms,
                     ),
                 }
@@ -202,10 +251,10 @@ async def get_port() -> RemoteTTSPort:
         async def get_status(self, task_id: str) -> TTSTaskStatus:
             task = self._tasks.get(task_id)
             if not task:
-                return TTSTaskStatus(task_id=task_id, status="PENDING", error_message="Not found")
+                return TTSTaskStatus(task_id=task_id, status=TTSStatus.PENDING, error_message="Not found")
             return TTSTaskStatus(
                 task_id=task_id,
-                status=task.get("status", "PENDING"),
+                status=TTSStatus(task.get("status", "PENDING")),
                 progress=task.get("progress"),
                 error_message=task.get("error"),
             )
@@ -231,7 +280,7 @@ async def get_port() -> RemoteTTSPort:
         async def close(self):
             await self.engine.close()
 
-    engine = await get_default_engine(registry)
+    engine = await get_default_engine()
     return EnginePortAdapter(engine)
 
 

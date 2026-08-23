@@ -1,0 +1,35 @@
+# Audiobook Studio — 发音字典 (P2.12)
+#
+# 合成前按本字典对文本做注音替换/annot 注入, 解决仙侠生造人名/专有名词读不对的问题。
+# 红线#1 (诚实): 不杜撰权威 IPA。生造词按规则化注音派生 (拼音/常见读法),
+# source 标注派生方式; 仅人工核验过的条目标 manual。
+#
+# 条目结构:
+#   <词>: phoneme   # 发音替换正文 (拼音/同音字提示/SSML phoneme 注释, 引擎按其读)
+#     (可选) <词>:
+#       phoneme: ...
+#       source: rule_ns | manual | heuristic
+#
+# 加载优先级 (synthesize 接入点): 项目级字典 > 全局本文件。
+# 项目级: <项目目录>/pronunciation_dict.yaml 可覆盖/补充全局条目 (load 时合并, 项目赢)。
+# 无字典条目的词 → 原样透传 (向后兼容, 不破主路径)。
+
+# ── 仙侠 / 玄幻常见生造人名 (规则化派生注音, source=rule_ns) ──────────────────
+entries:
+  # 注: 以下为示例占位结构 (规则化派生), 实际使用请按作品人工核验后标 manual。
+  仙尊:
+    phoneme: "xiān zūn"
+    source: rule_ns
+  帝释天:
+    phoneme: "dì shì tiān"
+    source: rule_ns
+  混沌钟:
+    phoneme: "hùn dùn zhōng"
+    source: rule_ns
+  九转玄功:
+    phoneme: "jiǔ zhuǎn xuán gōng"
+    source: rule_ns
+  # ── 人工核验示例 (manual) ──
+  道友:
+    phoneme: "dào yǒu"
+    source: manual

@@ -34,7 +34,7 @@ class SemanticCoherenceChecker:
         """加载质量阈值配置."""
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
+                config: Dict[str, Any] = yaml.safe_load(f) or {}
             logger.info(f"✅ 已加载质量阈值配置: {self.config_path}")
             return config
         except FileNotFoundError:
@@ -53,7 +53,7 @@ class SemanticCoherenceChecker:
             }
         }
 
-    def _init_models(self):
+    def _init_models(self) -> None:
         """初始化Sentence-BERT模型."""
         try:
             # 尝试导入sentence-transformers
@@ -142,7 +142,7 @@ class SemanticCoherenceChecker:
 
             # 翻译质量得分是所有段落的平均 similarity
             if translation_scores:
-                translation_quality = np.mean(translation_scores)
+                translation_quality: Optional[float] = float(np.mean(translation_scores))
             else:
                 translation_quality = 1.0
         else:
@@ -348,7 +348,7 @@ class SemanticCoherenceChecker:
         return min(1.0, score)
 
 
-def main():
+def main() -> None:
     """主函数 - 演示语义连贯性检查器."""
     logger.info("=== Audiobook Studio 语义连贯性检查器演示 ===\n")
 

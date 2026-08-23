@@ -23,7 +23,7 @@ class TestVoiceAnchorConfig:
         """Test default configuration values."""
         config = VoiceAnchorConfig()
         assert config.enabled is True
-        assert config.embedding_model == "wavlm_large"
+        assert config.embedding_model == "ecapa_tdnn"  # P2.13: 统一走 ECAPA
         assert config.similarity_threshold == 0.85
         assert config.max_drift_alerts_per_chapter == 3
         assert config.reference_audio_dir == "storage/voice_anchors"
@@ -320,8 +320,9 @@ class TestVoiceAnchorManager:
             summary = self.manager.get_summary()
             assert summary["enabled"] is True
             assert summary["total_anchors"] == 1
-            assert "narrator" in summary["anchors"]
-            assert summary["anchors"]["narrator"]["voice_id"] == "zf_xiaoxiao"
+            # P2.13: 双层 dict 扁平化键为 "{character}#ch{chapter}"
+            assert "narrator#ch1" in summary["anchors"]
+            assert summary["anchors"]["narrator#ch1"]["voice_id"] == "zf_xiaoxiao"
         finally:
             Path(ref_path).unlink(missing_ok=True)
 

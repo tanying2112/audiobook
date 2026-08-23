@@ -8,7 +8,7 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .book import Project

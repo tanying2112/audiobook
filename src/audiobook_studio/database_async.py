@@ -5,7 +5,7 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 """
 
 import os
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -16,11 +16,11 @@ from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     """SQLAlchemy 2.0 DeclarativeBase with common helpers."""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize model instance to a plain dict (JSON-safe)."""
         from datetime import datetime
 
-        result = {}
+        result: dict[str, Any] = {}
         for col in self.__table__.columns:
             val = getattr(self, col.name)
             if isinstance(val, datetime):
@@ -29,7 +29,7 @@ class Base(DeclarativeBase):
         return result
 
     def __repr__(self) -> str:
-        pk = [c.name for c in self.__table__.primary_key.columns]
+        pk = [c.name for c in self.__table__.primary_key]
         pk_vals = {k: getattr(self, k) for k in pk}
         return f"<{self.__class__.__name__}({pk_vals})>"
 
@@ -109,7 +109,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 class AsyncSessionLocal:
     """Async context manager for database sessions (legacy compatibility)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._session: Optional[AsyncSession] = None
 
     async def __aenter__(self) -> AsyncSession:
@@ -117,7 +117,7 @@ class AsyncSessionLocal:
         self._session = factory()
         return self._session
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         if self._session:
             if exc_type:
                 await self._session.rollback()

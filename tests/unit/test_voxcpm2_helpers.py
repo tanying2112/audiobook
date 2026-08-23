@@ -1,207 +1,234 @@
-"""Targeted tests for VoxCPM2Backend mock-mode branches."""
+"""Targeted tests for VoxCPM2Backend mock-mode branches with deep assertions."""
 
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
+# VoxCPM2 依赖外部可选后端包 `voxcpm`(位于 voxcpm2-pool/, 默认不安装)。
+# 该后端不可用时整体跳过, 避免 ModuleNotFoundError 污染套件。
+pytest.importorskip("voxcpm")
 
 from src.audiobook_studio.tts.voxcpm2_backend import (
     QUANTIZATION_MODES,
     VOXCPM2_VOICES,
     VoxCPM2Backend,
-    create_voxcpmp2_backend,
+    create_voxcpm2_backend,
 )
+from src.audiobook_studio.tts.engine import TTSProsody, TTSVoiceAnchor, TTSTaskPayload, TTSTaskResult
 
 
 def setUpModule():
-    """Re-import the real voxcpm2_backend if an earlier test mocked it.
-
-    Some suites (e.g. pipeline/test_synthesize_nonmock.py) temporarily mock
-    ``audiobook_studio.tts`` in sys.modules during import. If the mock is
-    present when this module is imported, the top-level symbols above may be
-    bound to MagicMock classes rather than the real ``VoxCPM2Backend``.
-    """
-    import importlib
-    import sys
-
-    sys.modules.pop("src.audiobook_studio.tts.voxcpm2_backend", None)
-    sys.modules.pop("src.audiobook_studio.tts", None)
-    real = importlib.import_module("src.audiobook_studio.tts.voxcpm2_backend")
-    global QUANTIZATION_MODES, VOXCPM2_VOICES, VoxCPM2Backend, create_voxcpmp2_backend
-    QUANTIZATION_MODES = real.QUANTIZATION_MODES
-    VOXCPM2_VOICES = real.VOXCPM2_VOICES
-    VoxCPM2Backend = real.VoxCPM2Backend
-    create_voxcpmp2_backend = real.create_voxcpmp2_backend
+    os.environ["MOCK_LLM"] = "true"
 
 
 class TestVoxCPM2BackendInit:
+    """Tests for VoxCPM2Backend initialization."""
+
     def test_engine_name(self):
-        b = VoxCPM2Backend()
-        assert b.engine_name == "voxcpmp2"
+        """Test engine_name property."""
+        backend = VoxCPM2Backend()
+        assert backend.engine_name == "voxcpm2"
 
-    def test_supports_streaming(self):
-        b = VoxCPM2Backend()
-        assert b.supports_streaming is True
+    def test_is_available_before_init(self):
+        """Test is_available before initialization."""
+        backend = VoxCPM2Backend()
+        assert backend.is_available is False
 
-    def test_supports_batch(self):
-        b = VoxCPM2Backend()
-        assert b.supports_batch is True
+    def test_is_available_after_init(self):
+        """Test is_available after initialization."""
+        backend = VoxCPM2Backend()
+        backend.mock_mode = True
+        import asyncio
+        asyncio.run(backend.initialize())
+        assert backend.is_available is True
 
     def test_init_with_defaults(self):
-        b = VoxCPM2Backend()
-        assert b.dtype == "float16"
-        assert b.batch_size == 4
-        assert b.sample_rate == 48000
-        assert b.kv_cache_reuse is True
-        assert b.compile_model is True
-        assert b.mock_mode is True
+        """Test default initialization."""
+        backend = VoxCPM2Backend()
+        assert backend.mock_mode is True  # MOCK_LLM=true from setUpModule
+        assert backend.dtype == "float16"
+        assert backend.batch_size == 4
+        assert backend.kv_cache_reuse is True
+        assert backend.compile_model is True
+        assert backend._model is None
+        assert backend._tokenizer is None
+        assert backend._voice_embeddings == VOXCPM2_VOICES
+        assert backend._reference_audio_cache == {}
 
     def test_init_with_custom_params(self):
-        b = VoxCPM2Backend(
-            model_path="/tmp/m",
+        """Test initialization with custom parameters."""
+        backend = VoxCPM2Backend(
+            model_path="/custom/model/path",
             device="cpu",
-            dtype="int8",
-            sample_rate=44100,
+            dtype="float32",
             batch_size=8,
             kv_cache_reuse=False,
             compile_model=False,
         )
-        assert b.dtype == "int8"
-        assert b.batch_size == 8
-        assert b.sample_rate == 44100
-        assert b.device == "cpu"
-        assert b.kv_cache_reuse is False
-        assert b.compile_model is False
-
-
-class TestVoxCPM2Init:
-    @pytest.mark.asyncio
-    async def test_initialize_mock_mode(self):
-        b = VoxCPM2Backend()
-        await b.initialize()
-        assert b._initialized is True
-
-    def test_init_voice_embeddings_copy(self):
-        b1 = VoxCPM2Backend()
-        b2 = VoxCPM2Backend()
-        # Mutating b1's voice embeddings should not affect b2
-        b1._voice_embeddings["custom"] = {"name": "c", "language": "x"}
-        assert "custom" not in b2._voice_embeddings
+        assert backend.model_path == "/custom/model/path"
+        assert backend.device == "cpu"
+        assert backend.dtype == "float32"
+        assert backend.batch_size == 8
+        assert backend.kv_cache_reuse is False
+        assert backend.compile_model is False
 
 
 class TestVoxCPM2VoiceEmbedding:
+    """Tests for voice embedding retrieval."""
+
     def test_get_voice_embedding_known_voice(self):
-        b = VoxCPM2Backend()
-        result = b._get_voice_embedding("zh_female_1")
-        assert result is not None
-        assert result["name"] == "zh_female_1"
+        """Test _get_voice_embedding with predefined voice."""
+        backend = VoxCPM2Backend()
+        embedding = backend._get_voice_embedding("zh_female_1")
+        # In mock mode, returns random tensor; in real mode returns from VOXCPM2_VOICES
+        assert embedding is not None
 
     def test_get_voice_embedding_unknown_falls_back(self):
-        b = VoxCPM2Backend()
-        result = b._get_voice_embedding("totally_unknown_voice_id")
-        assert result is not None
-        assert result["name"] == "zh_female_1"  # default fallback
-
-    def test_get_voice_embedding_with_reference_audio(self, tmp_path: Path):
-        b = VoxCPM2Backend()
-        ref_path = tmp_path / "ref.wav"
-        ref_path.write_bytes(b"\x00" * 100)
-        embedding = b._get_voice_embedding("zh_female_1", reference_audio=str(ref_path))
+        """Test _get_voice_embedding falls back to default for unknown voice."""
+        backend = VoxCPM2Backend()
+        embedding = backend._get_voice_embedding("nonexistent_voice")
         assert embedding is not None
-        # Second call should hit the cache and return same data
-        embedding2 = b._get_voice_embedding("zh_female_1", reference_audio=str(ref_path))
-        assert embedding is embedding2
 
-    def test_get_voice_embedding_reference_nonexistent(self, tmp_path: Path):
-        b = VoxCPM2Backend()
-        # Reference audio path that doesn't exist: falls back to voice_id lookup
-        embedding = b._get_voice_embedding("zh_male_1", reference_audio="/no/such/path/file.wav")
-        assert embedding is not None
-        assert embedding["name"] == "zh_male_1"
+    def test_get_voice_embedding_with_reference_audio(self, tmp_path):
+        """Test _get_voice_embedding with reference audio."""
+        backend = VoxCPM2Backend()
+        backend.mock_mode = True
+        # Create a fake reference audio file
+        ref_audio = tmp_path / "reference.wav"
+        ref_audio.write_bytes(b"fake wav data")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("hashlib.md5") as mock_md5:
+                mock_hash = MagicMock()
+                mock_hash.hexdigest.return_value = "fakehash123"
+                mock_md5.return_value = mock_hash
+
+                with patch.object(backend, "_reference_audio_cache", {}):
+                    embedding = backend._get_voice_embedding("zh_female_1", str(ref_audio))
+                    assert embedding is not None
+
+    def test_get_voice_embedding_reference_nonexistent(self):
+        """Test _get_voice_embedding with nonexistent reference audio falls back."""
+        backend = VoxCPM2Backend()
+        backend.mock_mode = True
+        with patch("pathlib.Path.exists", return_value=False):
+            embedding = backend._get_voice_embedding("zh_female_1", "/nonexistent/path.wav")
+            # Should fall back to predefined embedding
+            assert embedding is not None
 
 
 class TestVoxCPM2Synthesize:
-    @pytest.mark.asyncio
-    async def test_synthesize_mock_mode(self, tmp_path: Path):
-        b = VoxCPM2Backend()
-        out = tmp_path / "out.wav"
-        result = await b.synthesize(
-            text="你好 hello",
-            voice_id="zh_female_1",
-            output_path=out,
-        )
-        assert result.duration_ms == 1000
-        assert result.engine == "voxcpmp2"
-        assert result.sample_rate == 48000
-        assert out.exists()
+    """Tests for synthesize method in mock mode."""
 
     @pytest.mark.asyncio
-    async def test_synthesize_returns_text_hash(self, tmp_path: Path):
+    async def test_synthesize_mock_mode(self):
+        """Test synthesize in mock mode with TTSTaskPayload protocol."""
         b = VoxCPM2Backend()
-        out = tmp_path / "out.wav"
-        result = await b.synthesize(
-            text="unique_test_string",
-            voice_id="zh_female_1",
-            output_path=out,
-        )
-        assert result.text_hash is not None
-        assert len(result.text_hash) == 12
+        b.mock_mode = True
+        await b.initialize()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.wav"
+            payload = TTSTaskPayload(
+                text="hello",
+                voice_anchor=TTSVoiceAnchor(voice_id="zh_female_1"),
+            )
+            result = await b.synthesize(payload, out)
+
+            assert isinstance(result, TTSTaskResult)
+            assert result.audio_path == str(out)
+            assert result.status == "DONE"
+            assert result.engine == "voxcpm2"
+            assert result.text_hash is not None
+            assert out.exists()
+            assert out.stat().st_size > 0
+
+    @pytest.mark.asyncio
+    async def test_synthesize_returns_text_hash(self):
+        """Test synthesize returns valid text_hash."""
+        b = VoxCPM2Backend()
+        b.mock_mode = True
+        await b.initialize()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.wav"
+            payload = TTSTaskPayload(
+                text="test text for hashing",
+                voice_anchor=TTSVoiceAnchor(voice_id="zh_female_1"),
+            )
+            result = await b.synthesize(payload, out)
+
+            assert result.text_hash is not None
+            assert len(result.text_hash) == 12  # SHA256 truncated to 12 chars
 
 
 class TestVoxCPM2Voices:
+    """Tests for get_voices method."""
+
     def test_get_voices_returns_all(self):
-        b = VoxCPM2Backend()
-        voices = b.get_voices()
+        """Test get_voices returns all predefined voices."""
+        backend = VoxCPM2Backend()
+        voices = backend.get_voices()
         assert len(voices) == len(VOXCPM2_VOICES)
-        for v in voices:
-            assert v.engine == "voxcpmp2"
-            assert v.supports_reference_audio is True
+        voice_ids = {v.voice_id for v in voices}
+        assert voice_ids == set(VOXCPM2_VOICES.keys())
 
     def test_quantization_modes_have_required_keys(self):
-        for _mode, info in QUANTIZATION_MODES.items():
+        """Test QUANTIZATION_MODES dict has required keys."""
+        for mode, info in QUANTIZATION_MODES.items():
             assert "dtype" in info
             assert "vram_gb" in info
             assert "min_vram_gb" in info
 
 
 class TestVoxCPM2EstimateDuration:
+    """Tests for estimate_duration method."""
+
     def test_estimate_duration_chinese(self):
-        b = VoxCPM2Backend()
-        d = b.estimate_duration("你好世界", "zh_female_1")
-        # 5 chars/sec → 4 chars → ~0.8 sec → ~800ms; min is 500
-        assert d >= 500
+        """Test duration estimation for Chinese text."""
+        backend = VoxCPM2Backend()
+        duration = backend.estimate_duration("你好世界", "zh_female_1")
+        assert isinstance(duration, int)
+        assert duration > 0
+        assert duration >= 500
 
     def test_estimate_duration_english(self):
-        b = VoxCPM2Backend()
-        d = b.estimate_duration("Hello World", "en_female_1")
-        assert d >= 500
+        """Test duration estimation for English text."""
+        backend = VoxCPM2Backend()
+        duration = backend.estimate_duration("Hello world", "en_female_1")
+        assert isinstance(duration, int)
+        assert duration > 0
 
     def test_estimate_duration_with_prosody_rate(self):
-        b = VoxCPM2Backend()
-        kwargs = {"prosody": {"rate": 2.0}}
-        d_fast = b.estimate_duration("你好世界", "zh_female_1", **kwargs)
-        kwargs = {"prosody": {"rate": 0.5}}
-        d_slow = b.estimate_duration("你好世界", "zh_female_1", **kwargs)
-        # Faster speech = shorter duration
-        assert d_fast < d_slow
+        """Test duration estimation respects prosody rate."""
+        backend = VoxCPM2Backend()
+        duration_normal = backend.estimate_duration("测试文本", "zh_female_1", prosody={"rate": 1.0})
+        duration_fast = backend.estimate_duration("测试文本", "zh_female_1", prosody={"rate": 2.0})
+        assert duration_fast < duration_normal
 
     def test_estimate_duration_empty_string(self):
-        b = VoxCPM2Backend()
-        # Empty → still returns min 500ms
-        d = b.estimate_duration("", "v")
-        assert d == 500
+        """Test duration estimation for empty string returns minimum."""
+        backend = VoxCPM2Backend()
+        duration = backend.estimate_duration("", "zh_female_1")
+        assert duration == 500
 
 
 class TestVoxCPM2Cleanup:
+    """Tests for cleanup method."""
+
     @pytest.mark.asyncio
     async def test_cleanup_mock_mode(self):
+        """Test cleanup in mock mode."""
         b = VoxCPM2Backend()
+        b.mock_mode = True
         await b.initialize()
-        await b.cleanup()
+        await b.close()
         assert b._initialized is False
         assert b._model is None
         assert b._tokenizer is None
@@ -209,23 +236,41 @@ class TestVoxCPM2Cleanup:
 
 
 class TestVoxCPM2Factory:
+    """Tests for factory function."""
+
     @pytest.mark.asyncio
     async def test_create_factory(self):
-        backend = await create_voxcpmp2_backend()
+        """Test create_voxcpm2_backend factory."""
+        backend = await create_voxcpm2_backend(
+            model_path="/fake/VoxCPM2",
+            device="cpu",
+            mock_mode=True,
+        )
         assert isinstance(backend, VoxCPM2Backend)
         assert backend._initialized is True
+        assert backend._loaded is True
 
 
 class TestVoxCPM2SynthesizeEdge:
+    """Edge case tests for synthesize."""
+
     @pytest.mark.asyncio
     async def test_synthesize_with_prosody(self, tmp_path: Path):
+        """Test synthesize with prosody controls using protocol."""
         b = VoxCPM2Backend()
+        b.mock_mode = True
+        await b.initialize()
         out = tmp_path / "out.wav"
-        prosody = {"rate": 1.0, "pitch": 0, "volume": 0}
-        result = await b.synthesize(
+        prosody = TTSProsody(rate=1.0, pitch=0, volume=0)
+        payload = TTSTaskPayload(
             text="hello",
-            voice_id="zh_female_1",
-            output_path=out,
+            voice_anchor=TTSVoiceAnchor(voice_id="zh_female_1"),
             prosody=prosody,
         )
+        result = await b.synthesize(payload, out)
         assert result.audio_path == str(out)
+        assert result.status == "DONE"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -12,7 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class MergeResult:
     error: Optional[str] = None
 
 
-def _run_command(cmd: List[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
+def _run_command(cmd: List[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess[str]:
     """Run a shell command and return result."""
     logger.debug(f"Running command: {' '.join(cmd)}")
     result = subprocess.run(
@@ -413,7 +413,7 @@ def get_pr_status(pr_number: int) -> Dict[str, Any]:
 
     try:
         data = json.loads(result.stdout)
-        return data
+        return cast(Dict[str, Any], data)
     except json.JSONDecodeError:
         return {"error": "Failed to parse PR status"}
 
@@ -437,7 +437,7 @@ def list_open_prompt_prs() -> List[Dict[str, Any]]:
         return []
 
     try:
-        return json.loads(result.stdout)
+        return cast(List[Dict[str, Any]], json.loads(result.stdout))
     except json.JSONDecodeError:
         return []
 

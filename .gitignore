@@ -79,6 +79,9 @@ coverage.xml
 
 # Logs (保留目录结构，忽略内容)
 logs/*.log
+# 自迭代运行时 JSONL（canonical 由 feedback/integration.py 写入，非人工维护）
+logs/self_iteration.jsonl
+logs/self_iteration_self_iteration.jsonl
 !logs/.gitkeep
 
 # Secrets
@@ -194,6 +197,37 @@ src/master/
 src/voxcpm/
 src/dashboard/
 
+# P1.6.1: mutmut scratch worktree — mutmut copies the whole project tree into
+# mutants/ (src/, tests/, pyproject.toml, .mypy_cache/, .meta files, storage/).
+# It is 100% regenerable from `mutmut run` and must NEVER enter version control.
+# Seen untracked in audit 2026-08-14 (docs/AUDIT_REPORT_2026-08-14.md §5.4).
+mutants/
+
 # Misc temp
 i
 storage/books/
+
+# P1 untracked-residue hygiene — audit 2026-08-16 (copied-tree leftover partials + scratch)
+# Canonical inputs/fixtures live under input/ and data/golden/ — these below are NOT tracked.
+*.aria2
+.voices-*.bin.*
+pyproject_mutmut_temp.toml
+.claude/settings.local.json
+data/mock_data/
+
+# Runtime products / artifacts — prevent accidental commit
+storage/books/
+voxcpm2-pool/
+output/*.wav
+output/*.ogg
+output/*.flac
+
+# P3-2: Generated runtime artifacts — NEVER commit.
+# These are produced at runtime (Redis dump, podcast feed, auto changelog,
+# living-docs commit log) and were previously tracked by mistake. Ignore them
+# and `git rm --cached` the already-tracked copies.
+dump.rdb
+feeds/*.rss
+docs/git-commit-log.md
+docs/changelog/auto/
+storage/books/**/reports/

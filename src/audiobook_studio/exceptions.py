@@ -6,12 +6,12 @@
 from enum import IntEnum
 from typing import Any, Dict, List, Optional
 
-
 # ── Numeric error code enums (QUAL-003) ──────────────────────────────────────
 
 
 class ExtractionErrorCode(IntEnum):
     """Error codes for document extraction / parsing failures."""
+
     FILE_NOT_FOUND = 1001
     UNSUPPORTED_FORMAT = 1002
     OCR_FAILED = 1003
@@ -22,6 +22,7 @@ class ExtractionErrorCode(IntEnum):
 
 class TTSErrorCode(IntEnum):
     """Error codes for TTS synthesis failures."""
+
     MODEL_LOAD_FAILED = 2001
     SYNTHESIS_FAILED = 2002
     AUDIO_EXPORT_FAILED = 2003
@@ -31,6 +32,7 @@ class TTSErrorCode(IntEnum):
 
 class ExportErrorCode(IntEnum):
     """Error codes for audio export / publishing failures."""
+
     M4B_CONVERSION_FAILED = 3001
     FFMPEG_TIMEOUT = 3002
     OUTPUT_DIR_FULL = 3003

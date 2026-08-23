@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 from tqdm import tqdm
@@ -18,33 +18,37 @@ logger = logging.getLogger(__name__)
 # Cache directory following XDG Base Directory Specification
 CACHE_DIR = Path(os.environ.get("AUDIOBOOK_STUDIO_MODEL_CACHE", "~/.cache/audiobook_studio/models")).expanduser()
 
-# Hardcoded asset configuration for Kokoro-ONNX v0.19
-# Official release from hexgrad/Kokoro-82M on Hugging Face
-KOKORO_ASSETS: Dict[str, Dict] = {
+# Hardcoded asset configuration for Kokoro-ONNX.
+# Primary + fallback both point at thewh1teagle/kokoro-onnx GitHub release
+# "model-files" (tag model-files), which hosts kokoro-v0_19.onnx + voices.bin.
+# NOTE: the older hexgrad/Kokoro-82M HF `/resolve/main/*` paths and the GitHub
+# `v0.19` tag both now return 404 — verified 2026-08. Do not revert without
+# re-checking.
+KOKORO_ASSETS: dict[str, dict[str, Any]] = {
     "kokoro-v0_19.onnx": {
-        "url": "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v0_19.onnx",
+        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx",
         "size_mb": 308,
         "sha256": "c4c8a8b8f8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8",
         "description": "Kokoro-ONNX model weights (v0.19, ~82M params)",
     },
     "voices.bin": {
-        "url": "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices.bin",
+        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin",
         "size_mb": 56,
         "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
         "description": "Kokoro voice embeddings",
     },
 }
 
-# Fallback: GitHub releases from thewh1teagle/kokoro-onnx
-KOKORO_FALLBACK_ASSETS: Dict[str, Dict] = {
+# Fallback: GitHub releases from thewh1teagle/kokoro-onnx (same "model-files" tag)
+KOKORO_FALLBACK_ASSETS: dict[str, dict[str, Any]] = {
     "kokoro-v0_19.onnx": {
-        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.19/kokoro-v0_19.onnx",
+        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx",
         "size_mb": 308,
         "sha256": "c4c8a8b8f8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8c8f4b8e5d4a8",
         "description": "Kokoro-ONNX model weights (v0.19, fallback)",
     },
     "voices.bin": {
-        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.19/voices.bin",
+        "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin",
         "size_mb": 56,
         "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
         "description": "Kokoro voice embeddings (fallback)",
@@ -133,12 +137,12 @@ def download_file(
     return False, f"Max retries exceeded after {MAX_RETRIES} attempts"
 
 
-def verify_asset_files(cache_dir: Path, assets_spec: Dict) -> Tuple[bool, list]:
+def verify_asset_files(cache_dir: Path, assets_spec: dict[str, dict[str, Any]]) -> tuple[bool, list[str]]:
     """
     Verify all required asset files exist and have valid checksums.
     Returns: (all_valid, list_of_issues)
     """
-    issues = []
+    issues: list[str] = []
 
     for filename, spec in assets_spec.items():
         filepath = cache_dir / filename
@@ -167,7 +171,7 @@ def verify_asset_files(cache_dir: Path, assets_spec: Dict) -> Tuple[bool, list]:
 
 def download_assets(
     cache_dir: Path,
-    assets_spec: Dict,
+    assets_spec: dict[str, dict[str, Any]],
     max_workers: int = 1,
     force: bool = False,
 ) -> bool:

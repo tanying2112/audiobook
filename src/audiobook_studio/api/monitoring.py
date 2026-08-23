@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -145,17 +145,18 @@ async def list_projects_with_metrics(db: AsyncSession = Depends(get_async_db)):
     return {"projects": sorted(result_list, key=lambda x: x["last_updated"], reverse=True)}
 
 
-def _load_metrics(path: Path) -> dict:
+def _load_metrics(path: Path) -> dict[str, Any]:
     """Load and parse metrics JSON file."""
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data: dict[str, Any] = json.load(f)
+            return data
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Corrupted metrics file: {path.name}")
+        raise HTTPException(status_code=500, detail=f"Corrupted metrics file: {path.name}") from e
     except Exception as e:
         logger.error(f"Failed to read metrics from {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to read metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read metrics: {e}") from e
 
 
 # WebSocket for real-time metrics updates (optional enhancement)

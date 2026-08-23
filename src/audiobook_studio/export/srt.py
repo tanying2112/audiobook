@@ -9,7 +9,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +181,8 @@ def generate_srt(
 
 
 def build_subtitle_entries_from_paragraphs(
-    paragraphs: List[dict],
-    audio_segments: List[dict],
+    paragraphs: List[Dict[str, Any]],
+    audio_segments: List[Dict[str, Any]],
 ) -> List[SubtitleEntry]:
     """从段落和音频片段构建字幕条目.
 

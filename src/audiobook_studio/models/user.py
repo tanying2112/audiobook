@@ -3,13 +3,22 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional, Set
 
-from sqlalchemy import Boolean, Column, DateTime
+from sqlalchemy import JSON, Boolean, Column, DateTime
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, Integer, String, Table, Text
-from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
+
+
+def utc_now() -> datetime:
+    """Return current UTC time as timezone-naive datetime for DB compatibility.
+
+    Database columns use TIMESTAMP WITHOUT TIME ZONE, so we must store
+    timezone-naive UTC datetimes.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 if TYPE_CHECKING:
     from .book import Project
@@ -44,11 +53,10 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    password_migrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=user_roles, back_populates="users")
@@ -98,7 +106,7 @@ class Role(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     users: Mapped[List["User"]] = relationship("User", secondary=user_roles, back_populates="roles")
@@ -115,7 +123,7 @@ class Permission(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=role_permissions, back_populates="permissions")
@@ -140,7 +148,7 @@ class ProjectPermission(Base):
         ),
         nullable=False,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     granted_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Relationships

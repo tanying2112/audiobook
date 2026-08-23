@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, raiseload
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -96,22 +96,37 @@ class Paragraph(Base):
     content_rating: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # Relationships
-    project: Mapped[Project] = relationship("Project", back_populates="paragraphs")
-    chapter: Mapped[Chapter] = relationship("Chapter", back_populates="paragraphs")
+    project: Mapped[Project] = relationship("Project", back_populates="paragraphs", lazy="selectin")
+    chapter: Mapped[Chapter] = relationship("Chapter", back_populates="paragraphs", lazy="selectin")
     audio_segment: Mapped[Optional[AudioSegment]] = relationship(
         "AudioSegment",
         back_populates="paragraph",
         uselist=False,
         foreign_keys="AudioSegment.paragraph_id",
+        lazy="selectin",
     )
-    tts_edits: Mapped[List[TTSEdit]] = relationship("TTSEdit", back_populates="paragraph", cascade="all, delete-orphan")
-    routings: Mapped[List[Routing]] = relationship("Routing", back_populates="paragraph", cascade="all, delete-orphan")
+    tts_edits: Mapped[List[TTSEdit]] = relationship("TTSEdit", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin")
+    routings: Mapped[List[Routing]] = relationship("Routing", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin")
     quality_records: Mapped[List[Quality]] = relationship(
-        "Quality", back_populates="paragraph", cascade="all, delete-orphan"
+        "Quality", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
-        "FeedbackRecord", back_populates="paragraph", cascade="all, delete-orphan"
+        "FeedbackRecord", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? ORDER BY index
+        Index("ix_paragraphs_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE project_id=? AND status=? ORDER BY index
+        Index("ix_paragraphs_project_id_status_index", "project_id", "status", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? AND status=?
+        Index("ix_paragraphs_chapter_id_status", "chapter_id", "status"),
+    )
+
+    # Forbid lazy loading on detail endpoints that should use selectinload explicitly
+    from sqlalchemy.orm import raiseload
+    __raised_load_attrs__ = (raiseload("*"),)
 
     def to_schema(self):
         from ..schemas.paragraph import Paragraph as ParagraphSchema

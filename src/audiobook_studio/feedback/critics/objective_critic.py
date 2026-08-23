@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ...llm import LLMRouter
 from ...quality.metrics import ASRWerMetric, DNSMOSMetric, QualityCheckSuite, SpeakerSimilarityMetric
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
 from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
@@ -36,7 +37,7 @@ class ObjectiveCritic(BaseCritic):
 
     def __init__(
         self,
-        router=None,
+        router: Optional[LLMRouter] = None,
         config: Optional[Dict[str, Any]] = None,
         prompt_dir: Optional[Path] = None,
     ):
@@ -174,7 +175,7 @@ class ObjectiveCritic(BaseCritic):
 
         return metrics
 
-    def _evaluate_metrics(self, metrics: Dict[str, float]) -> tuple:
+    def _evaluate_metrics(self, metrics: Dict[str, float]) -> tuple[float, Dict[str, float], List[str], str]:
         """根据指标评估得分."""
         dnsmos = metrics.get("dnsmos", 3.5)
         wer = metrics.get("wer", 0.1)
@@ -186,7 +187,7 @@ class ObjectiveCritic(BaseCritic):
             "speaker_similarity": speaker_sim,
         }
 
-        tags = []
+        tags: List[str] = []
 
         # Normalize DNSMOS to 0-1 (1-5 scale)
         dnsmos_norm = max(0.0, min(1.0, (dnsmos - 1.0) / 4.0))
@@ -260,7 +261,7 @@ class ObjectiveCritic(BaseCritic):
             "wer": 0.02,
             "speaker_similarity": 0.92,
         }
-        tags = []
+        tags: List[str] = []
 
         return CriticResult(
             critic_type=CriticType.OBJECTIVE,

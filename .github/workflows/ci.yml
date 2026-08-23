@@ -54,6 +54,16 @@ jobs:
         run: |
           mypy src/ --strict --ignore-missing-imports || true
 
+      # P0.3.7 元门禁：护住 reward-hacking 的尺度文件（裁判 prompt / 评估集 / 指标定义 / 宪法 / 留出集契约）
+      # 这些文件对进化循环只读。CI 比对本 Sprint 改动是否触碰只读尺度——触及则**标记需人工复核**
+      # （exit 3 → 步骤标 warning 但不 fail，避免误阻人工正当宪法修订）；clean 则直通。
+      - name: Meta-guard — verify reward-hacking scale files untouched by auto-loop
+        run: |
+          python scripts/verify_p03_meta_guard.py && echo "meta-guard clean"
+        continue-on-error: true
+        env:
+          P03_META_BASE_SHA: origin/${{ github.base_ref || 'main' }}
+
   # ---------------------------------------------------------------------------
   # SECRET LEAK SCAN (P0-1 hardening — see docs/AUDIT_REPORT_v3.md & docs/RUNBOOK_rotate_credentials.md)
   # ---------------------------------------------------------------------------
@@ -203,8 +213,11 @@ jobs:
   golden-contract:
     name: Golden Dataset & Contract Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: test
+    strategy:
+      matrix:
+        language: ["zh", "en", "ja", "ko"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -230,19 +243,19 @@ jobs:
             -v --tb=short --junit-xml=golden-results.xml
           echo "golden_exit_code=$?" >> $GITHUB_OUTPUT
 
-      - name: Check golden dataset pass rate (≥95%)
+      - name: Check golden dataset pass rate (≥95%) (${{ matrix.language }})
         if: steps.golden.outputs.golden_exit_code == '0'
         run: |
           python -c "
           import xml.etree.ElementTree as ET
-          tree = ET.parse('golden-results.xml')
+          tree = ET.parse('golden-results-${{ matrix.language }}.xml')
           root = tree.getroot()
           failures = int(root.get('failures', 0))
           errors = int(root.get('errors', 0))
           total = int(root.get('tests', 0))
           passed = total - failures - errors
           pass_rate = passed / total if total > 0 else 0
-          print(f'Golden dataset: {passed}/{total} passed ({pass_rate:.1%})')
+          print(f'Golden dataset (${{ matrix.language }}): {passed}/{total} passed ({pass_rate:.1%})')
           if pass_rate < 0.95:
               print(f'❌ Golden dataset pass rate {pass_rate:.1%} < 95%')
               exit(1)
@@ -265,13 +278,72 @@ jobs:
           python -m pytest tests/contract/contract_check.py -v --tb=short
 
   # ---------------------------------------------------------------------------
+  # MUTATION TESTING (TEST-003)
+  # ---------------------------------------------------------------------------
+  mutation-test:
+    name: Mutation Testing (mutmut)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install mutmut
+
+      - name: Run mutation testing
+        run: |
+          mutmut run --paths-to-mutate=src/audiobook_studio --tests-dir=tests/unit --runner="pytest -x --tb=short -m 'not integration and not e2e'"
+          mutmut results --threshold=80
+
+  # ---------------------------------------------------------------------------
+  # MYPY STRICT TYPE CHECK (QUAL-004)
+  # ---------------------------------------------------------------------------
+  mypy-strict:
+    name: Mypy Strict Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install mypy types-requests types-pyyaml types-python-dateutil
+
+      - name: Run mypy strict (must pass with 0 errors)
+        run: |
+          mypy --strict src/audiobook_studio
+
+  # ---------------------------------------------------------------------------
   # DOCKER BUILD (Multi-stage, uses updated Dockerfile)
   # ---------------------------------------------------------------------------
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [env-check, golden-contract]
+    needs: [env-check, golden-contract, mutation-test, mypy-strict]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository

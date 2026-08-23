@@ -197,6 +197,12 @@ const totalTokens = computed(() => {
   return Object.values(metrics.value.cost_accounting.providers).reduce((sum: number, p: any) => sum + (p.prompt_tokens || 0) + (p.completion_tokens || 0), 0)
 })
 
+const costPerAudioMinute = computed(() => {
+  const sec = totalAudioSec.value
+  if (sec <= 0) return 0
+  return costTotal.value / (sec / 60)
+})
+
 const providerBreakdown = computed(() => {
   if (!metrics.value?.cost_accounting?.providers) return []
   return Object.entries(metrics.value.cost_accounting.providers)
@@ -260,6 +266,31 @@ function formatCost(n: number): string { return `$${n.toFixed(4)}` }
 function formatRmb(n: number): string { return `¥${(n * 7.2).toFixed(2)}` }
 
 function refetch(): void { fetchMetrics(); fetchHistory() }
+
+function exportCSV(): void {
+  if (!metrics.value) return
+  const rows: string[] = []
+  // Header
+  rows.push('Provider,Model,PromptTokens,CompletionTokens,TotalTokens,CostUSD,CostRMB,Calls,AvgLatencyMs,SuccessRate')
+  for (const p of providerBreakdown.value) {
+    rows.push([
+      p.provider, p.model, p.prompt_tokens, p.completion_tokens,
+      p.total_tokens, p.cost_usd.toFixed(6), (p.cost_usd * 7.2).toFixed(4),
+      p.call_count, p.avg_latency_ms.toFixed(0), (p.success_rate * 100).toFixed(1) + '%'
+    ].join(','))
+  }
+  // Stage latencies
+  rows.push('')
+  rows.push('Stage,DurationMs,Success')
+  for (const s of latencyStages.value) {
+    rows.push([s.name, s.duration, s.success ? 'OK' : 'FAIL'].join(','))
+  }
+  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `metrics_project_${selectedProjectId.value}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
@@ -274,6 +305,9 @@ function refetch(): void { fetchMetrics(); fetchHistory() }
         </select>
         <button @click="refetch" :disabled="loading" class="btn btn-primary">
           {{ loading ? t('dashboard.refreshing') : t('dashboard.refresh') }}
+        </button>
+        <button @click="exportCSV" :disabled="!metrics" class="btn btn-secondary">
+          📊 CSV
         </button>
       </div>
     </header>
@@ -304,6 +338,11 @@ function refetch(): void { fetchMetrics(); fetchHistory() }
           <span class="kpi-label">{{ t('dashboard.rtf') }}</span>
           <span class="kpi-value">{{ rtfValue.toFixed(2) }}</span>
           <span class="kpi-sub">{{ rtfValue < 1 ? '⚡ 实时' : rtfValue < 1.5 ? '⚠️ 接近实时' : '🐢 慢' }}</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">{{ t('dashboard.cost_per_audio_min') }}</span>
+          <span class="kpi-value">{{ formatCost(costPerAudioMinute) }}</span>
+          <span class="kpi-sub">/min</span>
         </div>
         <div class="kpi-card">
           <span class="kpi-label">{{ t('dashboard.synthesis_rate') }}</span>
@@ -443,6 +482,8 @@ function refetch(): void { fetchMetrics(); fetchHistory() }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-primary { background: var(--vp-c-brand, #42b883); color: white; }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+.btn-secondary { background: var(--vp-c-bg, #fff); color: var(--vp-c-text-1, #333); border: 1px solid var(--vp-c-divider, #e8e8e8); }
+.btn-secondary:hover:not(:disabled) { background: var(--vp-c-bg-soft, #fafafa); }
 .error-banner { padding: 12px 16px; background: #fef2f2; color: #dc2626; border-radius: 8px; margin-bottom: 16px; }
 .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; text-align: center; }
 .spinner { width: 40px; height: 40px; border: 3px solid var(--vp-c-divider, #e8e8e8); border-top-color: var(--vp-c-brand, #42b883); border-radius: 50%; animation: spin 1s linear infinite; }

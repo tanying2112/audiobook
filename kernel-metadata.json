@@ -1,0 +1,14 @@
+{
+  "id": "yingtan2112/voxcpm2-e2e-test-t4",
+  "title": "VoxCPM2 E2E RealEngine Test T4",
+  "code_file": "kaggle_voxcpm2_e2e_realengine.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}

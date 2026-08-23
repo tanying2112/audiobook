@@ -42,8 +42,10 @@ class LLMFeedbackAnalyzer:
 
         # Setup Jinja2 environment (same pattern as other pipelines)
         if prompt_dir is None:
-            prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
-        self.prompt_dir = Path(prompt_dir)
+            resolved_dir: Path = Path(__file__).parent.parent.parent.parent / "prompts"
+        else:
+            resolved_dir = Path(prompt_dir)
+        self.prompt_dir = resolved_dir
 
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompt_dir)),
@@ -105,6 +107,13 @@ class LLMFeedbackAnalyzer:
                 messages=messages,
             )
             analysis = result.output
+            # LLMRouter.call 返回 Any（router.py 内部缓存/降级），此处对结果做真实
+            # isinstance 窄化——保证落库的 analysis 确为声明的 schema 类型，否则降级报错
+            if not isinstance(analysis, FeedbackAnalysis):
+                raise TypeError(
+                    f"LLM 返回类型不符 schema：期望 FeedbackAnalysis，"
+                    f"实际 {type(analysis).__name__} — 降级到关键词匹配"
+                )
             logger.info(
                 f"LLM 语义分析完成: stage={stage}, "
                 f"tags={analysis.pattern_tags}, "

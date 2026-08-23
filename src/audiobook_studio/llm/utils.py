@@ -58,7 +58,7 @@ def validate_and_parse_llm_response(
                 f"LLM returned invalid JSON: {e}",
                 raw_response=raw_response,
                 stage=stage,
-            )
+            ) from e
 
     # Ensure it's a dict
     if not isinstance(raw_response, dict):

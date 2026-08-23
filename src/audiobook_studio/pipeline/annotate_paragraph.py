@@ -8,12 +8,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional, Union, cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
 from ..schemas import BookAnalysisOutput, ParagraphAnnotation, ParagraphAnnotationInput
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .sop_reflection import get_genre_detector, get_rule_applier
 
 logger = logging.getLogger(__name__)
@@ -24,8 +26,8 @@ class AnnotateParagraphPipeline:
 
     def __init__(
         self,
-        router=None,
-        prompt_dir=None,
+        router: Optional[LLMRouter] = None,
+        prompt_dir: Optional[Union[str, Path]] = None,
         mock_mode: Optional[bool] = None,
     ):
         self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
@@ -48,7 +50,7 @@ class AnnotateParagraphPipeline:
         )
         self.jinja_env.filters["tojson"] = json.dumps
 
-    def _load_few_shot(self, stage):
+    def _load_few_shot(self, stage: str) -> str:
         examples_path = self.prompt_dir / stage / "few_shot.jsonl"
         if not examples_path.exists():
             return "(暂无示例)"
@@ -64,7 +66,7 @@ class AnnotateParagraphPipeline:
             formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
-    def _build_prompt(self, input_data):
+    def _build_prompt(self, input_data: ParagraphAnnotationInput) -> str:
         template = self.jinja_env.get_template("annotate_paragraph/v1.j2")
         schema_json = ParagraphAnnotation.model_json_schema()
         few_shot = self._load_few_shot("annotate_paragraph")
@@ -82,8 +84,22 @@ class AnnotateParagraphPipeline:
             few_shot_examples=few_shot,
         )
 
-    def run(self, input_data):
+    def run(self, input_data: ParagraphAnnotationInput) -> ParagraphAnnotation:
         logger.info(f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})")
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="annotate",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                paragraph_index=getattr(input_data, 'paragraph_index', 1),
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
 
         # Module 4.2: Apply learned SOP rules for this genre
         try:
@@ -115,6 +131,22 @@ class AnnotateParagraphPipeline:
                 sfx_tags=[],
                 notes="Mock annotation for testing",
             )
+
+        # Emit stage progress
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="annotate",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                paragraph_index=getattr(input_data, 'paragraph_index', 1),
+                current=1,
+                total=1,
+                message="Annotating paragraph...",
+            ))
+        except RuntimeError:
+            pass
 
         prompt = self._build_prompt(input_data)
         messages = [
@@ -158,8 +190,39 @@ class AnnotateParagraphPipeline:
                 schema_compliance=result.schema_compliance,
             )
 
-            return result.output
+            # ``router.call`` returns ``Any`` (its signature predates generics);
+            # it was invoked with ``response_model=ParagraphAnnotation``, so narrow
+            # the already-validated output to the declared return type.
+            # Emit stage exit (success)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="annotate",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data, 'chapter_index', 1),
+                    paragraph_index=getattr(input_data, 'paragraph_index', 1),
+                    success=True,
+                ))
+            except RuntimeError:
+                pass
+
+            return cast(ParagraphAnnotation, result.output)
         except Exception as e:
+            # Emit stage exit (error)
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(emit_stage_exit(
+                    stage="annotate",
+                    project_id=getattr(input_data, 'project_id', 0) or 0,
+                    chapter_index=getattr(input_data, 'chapter_index', 1),
+                    paragraph_index=getattr(input_data, 'paragraph_index', 1),
+                    success=False,
+                    error_message=str(e),
+                ))
+            except RuntimeError:
+                pass
             # Record failed performance
             from ..monitoring import record_stage_performance
 
@@ -186,16 +249,16 @@ class AnnotateParagraphPipeline:
 
 
 def annotate_paragraph(
-    paragraph_text,
-    paragraph_index,
-    chapter_index,
-    book_meta,
-    character_voice_map,
-    emotion_snapshot,
-    story_line_summary,
-    global_style_notes,
+    paragraph_text: str,
+    paragraph_index: int,
+    chapter_index: int,
+    book_meta: BookMeta,
+    character_voice_map: list[CharacterVoiceBinding],
+    emotion_snapshot: EmotionSnapshot,
+    story_line_summary: str,
+    global_style_notes: str,
     mock_mode: bool = True,
-):
+) -> ParagraphAnnotation:
     input_data = ParagraphAnnotationInput(
         paragraph_text=paragraph_text,
         paragraph_index=paragraph_index,

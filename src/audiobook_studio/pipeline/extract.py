@@ -8,7 +8,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Literal, Optional
 
 import fitz  # pymupdf
 import pdfplumber
@@ -17,19 +17,87 @@ from ebooklib import epub
 
 from ..llm import LLMRouter, create_router
 from ..monitoring import record_stage_performance
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas import ExtractionInput, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
-# Optional OCR dependencies
-try:
-    import pytesseract
-    from PIL import Image
+# MIME types accepted by ExtractionInput.mime_type. Kept in sync with the
+# Literal in schemas/extraction.py (ExtractionInput.mime_type); widening to a
+# bare ``str`` would let unsupported values through silently.
+ExtractMimeType = Literal[
+    "application/pdf",
+    "application/epub+zip",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/bmp",
+    "image/webp",
+]
 
-    OCR_AVAILABLE = True
+# Optional OCR dependencies.
+#
+# Red line #1 (主路径真实性): ``OCR_AVAILABLE`` MUST reflect whether OCR can
+# ACTUALLY run end-to-end, not merely whether the ``pytesseract`` Python module
+# imports. ``pytesseract`` is only a thin wrapper around the ``tesseract``
+# SYSTEM BINARY — the import succeeds even when the binary is absent, so the
+# previous form (``OCR_AVAILABLE = True`` on import success) let the pipeline
+# enter the OCR branch, call ``pytesseract.image_to_string`` -- which raises
+# ``TesseractNotFoundError`` -- then silently swallowed the error at line ~101
+# and fell back to the embedded text layer as if OCR had been attempted, i.e.
+# *fake-success* on scanned/image-only PDFs (audit §5.2 / §七#5).
+#
+# The fix: require BOTH the Python module import AND a resolvable ``tesseract``
+# binary on PATH (``shutil.which``); only then claim OCR is available. When the
+# binary is missing, honest-disable OCR and log a clear, actionable message so
+# callers know scanned-image extraction is degraded to embedded-text-layer
+# only -- never masquerade. (tesseract is free / Apache-2.0; install via
+# ``apt-get install tesseract-ocr tesseract-ocr-chi-sim`` on Debian/Ubuntu,
+# ``brew install tesseract tesseract-lang`` on macOS; also add to the
+# Dockerfile RUN line and requirements.in -- see P1.8.)
+import shutil
+
+# Module-level imports of the optional deps. Bound under the SAME names the
+# call sites use (``pytesseract``, ``Image``) so the OCR branch is unchanged when
+# OCR is genuinely available. ``OCR_AVAILABLE`` gates those call sites.
+pytesseract = None  # type: Optional[Any]
+Image = None  # type: Optional[Any]
+_ocr_imports_ok = False
+
+try:
+    import pytesseract  # noqa: F811
+    from PIL import Image  # noqa: F811
+
+    _ocr_imports_ok = True
 except ImportError:
+    _ocr_imports_ok = False
+
+# Resolve the ``tesseract`` binary, honoring an explicit override
+# (``TESSERACT_CMD`` env) the same way the pytesseract wrapper does.
+_TESSERACT_BIN = os.environ.get("TESSERACT_CMD") or shutil.which("tesseract")
+
+if _ocr_imports_ok and _TESSERACT_BIN:
+    OCR_AVAILABLE = True
+else:
     OCR_AVAILABLE = False
-    logger.warning("OCR dependencies (pytesseract, Pillow) not available. Image OCR disabled.")
+    if not _ocr_imports_ok:
+        logger.warning(
+            "OCR disabled: pytesseract/Pillow Python modules not installed "
+            "(pip install pytesseract pillow). Scanned-image/PDF OCR "
+            "unavailable; only embedded-text-layer extraction runs."
+        )
+    elif not _TESSERACT_BIN:
+        logger.warning(
+            "OCR disabled: the `tesseract` system binary was not found on PATH "
+            "(pytesseract is only a wrapper). Install tesseract + chi_sim "
+            "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
+            "brew install tesseract tesseract-lang) to enable scanned-image "
+            "OCR. Until then, scanned/image-only inputs degrade honestly to "
+            "empty/best-effort embedded-text-layer text——NOT fake-success."
+        )
 
 
 class ExtractPipeline:
@@ -49,13 +117,28 @@ class ExtractPipeline:
             self.router = router
 
     def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from PDF using pdfplumber, fallback to PyMuPDF + pytesseract OCR."""
+        """Extract text from PDF.
+
+        Path order (S2.4 — OCR honesty):
+          1. Embedded text layer via pdfplumber (ALWAYS attempted).
+          2. If pdfplumber fails, fall back to PyMuPDF (fitz) for text layer.
+          3. If the text layer is too thin AND the ``tesseract`` binary +
+             ``pytesseract``/``Pillow`` are genuinely available (``OCR_AVAILABLE``),
+             run real OCR with PyMuPDF + pytesseract.
+          4. Otherwise we degrade HONESTLY to text-layer-only extraction
+             (``has_ocr=False``). We never claim OCR ran when it could not.
+
+        NOTE: the OCR path is opt-in. When tesseract is not installed the
+        pipeline is "text-layer extraction only" — see the module-level
+        ``OCR_AVAILABLE`` gate and the warnings logged at import time.
+        """
         text_parts = []
         page_count = 0
         has_ocr = False
         ocr_pages = 0
 
         # Try pdfplumber first (text layer)
+        pdfplumber_succeeded = False
         try:
             with pdfplumber.open(file_path) as pdf:
                 page_count = len(pdf.pages)
@@ -63,42 +146,67 @@ class ExtractPipeline:
                     page_text = page.extract_text()
                     if page_text:
                         text_parts.append(page_text)
+            pdfplumber_succeeded = True
         except Exception as e:
             logger.warning(f"pdfplumber failed: {e}")
 
         extracted_text = "\n\n".join(text_parts).strip()
 
-        # If text too short, try PyMuPDF OCR with pytesseract
-        if len(extracted_text) < 100:
-            logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
-            has_ocr = True
+        # If pdfplumber failed or got no text, fall back to PyMuPDF (fitz) for text layer
+        # This gives us page count and any embedded text even when OCR is not available
+        if not pdfplumber_succeeded or len(extracted_text) < 100:
             try:
                 doc = fitz.open(file_path)
                 page_count = len(doc)
+                if not pdfplumber_succeeded:
+                    # Try to extract text from fitz as fallback
+                    for page_num in range(len(doc)):
+                        page = doc[page_num]
+                        page_text = page.get_text()
+                        if page_text:
+                            text_parts.append(page_text)
+                    extracted_text = "\n\n".join(text_parts).strip()
+                doc.close()
+            except Exception as e:
+                logger.warning(f"PyMuPDF fallback failed: {e}")
+
+        # If text still too short, try OCR (only when OCR_AVAILABLE)
+        if len(extracted_text) < 100 and OCR_AVAILABLE:
+            logger.info("Text layer insufficient, attempting OCR with PyMuPDF + pytesseract")
+            # OCR_AVAILABLE is only True when both modules imported; narrow for the
+            # type checker so the call sites below are not flagged union-attr.
+            assert Image is not None and pytesseract is not None
+            try:
+                doc = fitz.open(file_path)
                 ocr_text_parts = []
                 for page_num in range(len(doc)):
                     page = doc[page_num]
                     # Render page to image and OCR it
-                    if OCR_AVAILABLE:
-                        pix = page.get_pixmap(dpi=200)
-                        from PIL import Image
+                    pix = page.get_pixmap(dpi=200)
 
-                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                        # Use pytesseract for OCR
-                        page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
-                    else:
-                        # Fallback: try to get text blocks without OCR
-                        blocks = page.get_text("dict")["blocks"]
-                        page_text = "\n".join([b.get("text", "") for b in blocks if b.get("text", "").strip()])
+                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    # Use pytesseract for OCR
+                    page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
 
                     if page_text.strip():
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
                 if ocr_text_parts:
                     extracted_text = "\n\n".join(ocr_text_parts).strip()
+                    # OCR genuinely contributed content -- only now assert has_ocr.
+                    has_ocr = True
                 doc.close()
             except Exception as e:
                 logger.error(f"PyMuPDF OCR failed: {e}")
+        elif len(extracted_text) < 100 and not OCR_AVAILABLE:
+            # Honest degradation: text layer is thin AND OCR cannot run in this
+            # environment. We do NOT fabricate OCR; leave has_ocr=False so the
+            # downstream report reflects "embedded-text-layer only".
+            logger.info(
+                "Text layer insufficient and OCR unavailable (tesseract binary "
+                "or pytesseract missing) -- returning embedded-text-layer text "
+                "only; has_ocr stays False (no fake OCR claim)."
+            )
 
         ocr_ratio = ocr_pages / page_count if page_count > 0 else 0.0
         return extracted_text, page_count, has_ocr, ocr_ratio
@@ -148,9 +256,23 @@ class ExtractPipeline:
             return text.strip(), 1, False, 0.0
 
     def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from image using OCR (requires pytesseract + Pillow)."""
+        """Extract text from image using OCR (requires pytesseract + Pillow + tesseract binary)."""
         if not OCR_AVAILABLE:
-            raise ValueError("Image OCR not available. Install pytesseract and Pillow: pip install pytesseract pillow")
+            # Red line #1: honest failure, not fake-success. A scanned image has
+            # NO embedded text layer to fall back to, so returning ("", False)
+            # would be masquerading-as-success. Raise so the caller can decide
+            # how to surface it.
+            raise ValueError(
+                "Image OCR not available. Install the pytesseract Python module "
+                "(pip install pytesseract pillow) AND the tesseract system binary "
+                "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
+                "brew install tesseract tesseract-lang). extract.py reports OCR "
+                "available only when BOTH are present."
+            )
+
+        # OCR_AVAILABLE is True => both modules imported; narrow for the type
+        # checker so the call sites below are not flagged union-attr.
+        assert Image is not None and pytesseract is not None
 
         try:
             image = Image.open(file_path)
@@ -167,18 +289,55 @@ class ExtractPipeline:
             return "", 1, False, 0.0
 
     def _detect_language(self, text: str) -> str:
-        """Simple language detection."""
+        """Simple heuristic language detection.
+
+        Supports Chinese (zh), Japanese (ja), French (fr) and English (en)
+        in addition to the previous zh/en split. Uses Unicode script ranges
+        rather than a hard dependency on langdetect/fasttext.
+        """
         # In production: use langdetect or fasttext
-        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
-        total_chars = len([c for c in text if c.isalpha()])
-        if total_chars == 0:
+        if not text:
             return "zh"
-        return "zh" if chinese_chars / total_chars > 0.3 else "en"
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+        # Hiragana + Katakana => Japanese
+        japanese_chars = sum(
+            1 for c in text if ("\u3040" <= c <= "\u309f") or ("\u30a0" <= c <= "\u30ff")
+        )
+        # Latin letters (incl. accented) for French/English detection
+        latin_chars = sum(1 for c in text if ("\u0041" <= c <= "\u007a") or ("\u00c0" <= c <= "\u017f"))
+        total_alpha = len([c for c in text if c.isalpha()])
+        if total_alpha == 0:
+            return "zh"
+        # Japanese: strong hiragana/katakana presence
+        if japanese_chars / total_alpha > 0.05:
+            return "ja"
+        # Chinese: predominantly CJK ideographs
+        if chinese_chars / total_alpha > 0.3:
+            return "zh"
+        # Latin-script: French has many accented characters; default to fr when
+        # a notable fraction of latin chars carry diacritics, else en.
+        accented = sum(1 for c in text if "\u00c0" <= c <= "\u017f")
+        if latin_chars / total_alpha > 0.8 and accented / max(latin_chars, 1) > 0.05:
+            return "fr"
+        return "en"
 
     def run(self, input_data: ExtractionInput) -> ExtractionResult:
         """Execute extraction pipeline."""
         start_time = time.time()
         logger.info(f"Starting extraction: {input_data.file_path}")
+
+        # Emit stage enter
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_enter(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                total_items=1,
+            ))
+        except RuntimeError:
+            pass
 
         # MOCK: 待真实实现
         # Mock mode: return simulated result
@@ -275,6 +434,34 @@ class ExtractPipeline:
             schema_compliance=None,
         )
 
+        # Emit stage progress (100% complete)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_progress(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                current=1,
+                total=1,
+                message="Extraction complete",
+            ))
+        except RuntimeError:
+            pass
+
+        # Emit stage exit
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(emit_stage_exit(
+                stage="extract",
+                project_id=getattr(input_data, 'project_id', 0) or 0,
+                chapter_index=getattr(input_data, 'chapter_index', 1),
+                success=True,
+            ))
+        except RuntimeError:
+            pass
+
         return ExtractionResult(
             raw_text=raw_text,
             language=language,
@@ -287,7 +474,7 @@ class ExtractPipeline:
 
 def extract_text(
     file_path: str,
-    mime_type: str,
+    mime_type: ExtractMimeType,
     detect_language: bool = True,
     mock_mode: Optional[bool] = None,
 ) -> ExtractionResult:
@@ -303,6 +490,7 @@ def extract_text(
 
 if __name__ == "__main__":  # pragma: no cover
     import sys
+    from typing import cast
 
     logging.basicConfig(level=logging.INFO)
 
@@ -310,7 +498,10 @@ if __name__ == "__main__":  # pragma: no cover
         logger.info("Usage: python extract.py <file_path> <mime_type>")
         sys.exit(1)
 
-    result = extract_text(sys.argv[1], sys.argv[2])
+    # ``sys.argv[2]`` is runtime ``str`` from the shell; we cannot statically
+    # prove it is one of the accepted MIME literals, so cast the CLI boundary
+    # value (ExtractionInput will still validate it).
+    result = extract_text(sys.argv[1], cast(ExtractMimeType, sys.argv[2]))
     logger.info(f"Language: {result.language}")
     logger.info(f"Pages: {result.page_count}")
     logger.info(f"OCR: {result.has_ocr} ({result.ocr_page_ratio:.1%})")

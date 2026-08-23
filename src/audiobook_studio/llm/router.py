@@ -43,6 +43,7 @@ from ..schemas import (
 from .circuit_breaker import CircuitBreaker
 from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
+from .direct_client import DirectProviderClient, DirectProviderClientConfig, DirectProviderType, create_direct_client
 from .health_probe import HealthProbe, HealthStatus
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
@@ -305,6 +306,7 @@ class LLMRouter:
         self.quota_registry = quota_registry or container.get(QuotaRegistry)
 
         # Load provider config
+        self._config_path = config_path
         self.config = LLMProvidersConfig.load(config_path)
 
         # Hardware profile integration for stage-specific model routing
@@ -331,6 +333,9 @@ class LLMRouter:
         # Free tier tracking (legacy, kept for backward compatibility)
         self._free_quota_success: Dict[str, int] = defaultdict(int)
         self._free_quota_fail: Dict[str, int] = defaultdict(int)
+
+        # Direct provider clients cache (for providers with use_direct_sdk=True)
+        self.direct_clients = {}
 
         # Initialize components for each provider
         for provider in self.config.get_all_enabled():
@@ -367,7 +372,60 @@ class LLMRouter:
         # Initialize Langfuse lazy attributes
         self._langfuse_enabled_cached = False
 
-        # Start health probe
+        # Build per-provider runtime state (clients, limiters, circuit
+        # breakers, key pool, health probe). Extracted so it can be re-run on
+        # hot-reload without re-creating the router (see reload_config).
+        self._rebuild_provider_runtime()
+
+    def _rebuild_provider_runtime(self) -> None:
+        """(Re)build all per-provider runtime components from ``self.config``.
+
+        Safe to call repeatedly: clears and recreates clients, rate limiters,
+        circuit breakers, key-pool registrations, cost limits and the health
+        probe. Used by :meth:`reload_config` to apply provider changes made at
+        runtime (e.g. via the dynamic provider-management API) without a restart.
+        """
+        # Reset runtime state
+        self.clients.clear()
+        self.rate_limiters.clear()
+        self.circuit_breakers.clear()
+        self.direct_clients.clear()
+        # Fresh key-pool manager (clears all registered provider pools).
+        self.key_pool = KeyPoolManager()
+
+        # Initialize components for each provider
+        for provider in self.config.get_all_enabled():
+            self.rate_limiters[provider.name] = ProviderRateLimiter(
+                max_tpm=provider.max_tokens_per_minute,
+                max_rpm=provider.max_requests_per_minute,
+            )
+            self.circuit_breakers[provider.name] = CircuitBreaker(
+                provider_name=provider.name,
+                failure_threshold=3,
+                recovery_timeout_s=120.0,
+            )
+
+            # Register key pool
+            self.key_pool.register(
+                provider_name=provider.name,
+                primary_key_env=provider.api_key_env or "",
+                pool_key_envs=provider.api_key_pool_env,
+                strategy=provider.key_rotation_strategy,
+            )
+
+            # Load daily limits from config
+            self.cost_tracker.set_daily_limit(provider.name, provider.max_daily_cost_usd)
+
+        # Set global daily cost limit from config
+        # Default $10/day, configurable via cost_control.daily_limit_usd in YAML
+        try:
+            cost_control = getattr(self.config, "cost_control", None)
+            if cost_control and hasattr(cost_control, "daily_limit_usd"):
+                self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
+        except Exception:
+            pass  # Use default if config doesn't have cost_control
+
+        # (Re)start health probe
         enabled_providers = self.config.get_all_enabled()
         if enabled_providers:
             self.health_probe = HealthProbe(
@@ -379,6 +437,40 @@ class LLMRouter:
                 self.health_probe.start()
             except Exception:
                 logger.warning("Failed to start health probe")
+
+    def reload_config(self, config_path: Optional[str] = None) -> None:
+        """Hot-reload provider configuration without restarting the router.
+
+        Re-reads ``LLMProvidersConfig`` (YAML by default, or ``config_path`` if
+        given) and rebuilds all per-provider runtime state via
+        :meth:`_rebuild_provider_runtime`. Provider changes made through the
+        dynamic provider-management API therefore take effect on the next
+        routing decision with no process restart.
+        """
+        if config_path is not None:
+            self._config_path = config_path
+        self.config = LLMProvidersConfig.load(self._config_path)
+        self._rebuild_provider_runtime()
+        logger.info(
+            "[LLM Router] Hot-reloaded config: %d provider(s) enabled",
+            len(self.config.get_all_enabled()),
+        )
+
+    def apply_provider_configs(self, providers: List[ProviderConfig]) -> None:
+        """Push externally-managed provider configs into the live router.
+
+        Replaces the active provider list with ``providers`` (typically built
+        from the DB-backed dynamic provider table by the admin API) and rebuilds
+        per-provider runtime state. This is the bridge that makes changes made
+        through the provider-management UI take effect without a restart.
+        """
+        # Sort by priority (lower number = higher priority), matching load().
+        self.config.providers = sorted(providers, key=lambda p: p.priority)
+        self._rebuild_provider_runtime()
+        logger.info(
+            "[LLM Router] Applied %d provider config(s) from external source",
+            len(self.config.providers),
+        )
 
     def _init_langfuse(self):
         """Lazy initialization of Langfuse."""
@@ -424,7 +516,9 @@ class LLMRouter:
             self.clients[key] = create_client(
                 provider.get_litellm_model_name(),
                 api_base=provider.base_url,
+                api_key=pool_key or None,
                 timeout=provider.timeout_seconds or None,  # 0 or None = no timeout
+                extra_headers=provider.extra_params.get("extra_headers") if provider.extra_params else None,
                 langfuse_public_key=self.langfuse_public_key,
                 langfuse_secret_key=self.langfuse_secret_key,
                 langfuse_host=self.langfuse_host,
@@ -432,7 +526,46 @@ class LLMRouter:
             )
         return self.clients[key]
 
-    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list:
+    def get_direct_client(self, provider: ProviderConfig):
+        """Get or create a direct provider client (bypasses LiteLLM)."""
+        # Check if provider is configured for direct SDK
+        if not provider.extra_params.get("use_direct_sdk", False):
+            return None
+
+        key = provider.name
+        if key not in self.direct_clients:
+            # Map ProviderType to DirectProviderType
+            provider_type_map = {
+                ProviderType.OPENAI: DirectProviderType.OPENAI,
+                ProviderType.ANTHROPIC: DirectProviderType.ANTHROPIC,
+                # VLLM uses OpenAI-compatible API
+                ProviderType.VLLM: DirectProviderType.OPENAI,
+            }
+            direct_type = provider_type_map.get(provider.provider)
+            if not direct_type:
+                logger.warning(f"Provider {provider.name} type {provider.provider} not supported for direct SDK")
+                return None
+
+            # Get API key from key pool
+            pool_key = self.key_pool.get_key(provider.name)
+            api_key = pool_key or provider.get_api_key()
+
+            direct_config = DirectProviderClientConfig(
+                provider=direct_type,
+                model=provider.model,
+                temperature=0.1,
+                max_tokens=4000,
+                timeout=provider.timeout_seconds or 60,
+                api_base=provider.base_url,
+                api_key=api_key,
+                extra_headers=provider.extra_params.get("extra_headers") if provider.extra_params else None,
+            )
+            self.direct_clients[key] = create_direct_client(direct_config)
+            logger.info(f"Created direct client for provider: {provider.name} ({direct_type.value})")
+
+        return self.direct_clients[key]
+
+    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list[dict[str, str]]:
         """Build messages with explicit JSON output requirement."""
         system_content = (
             f"你是专业的有声书{stage.value}专家。"
@@ -622,7 +755,13 @@ class LLMRouter:
             return result
 
     @_lazy_trace_function(stage="llm")
-    def call(self, stage: str, response_model, messages: list, **kwargs):
+    def call(
+        self,
+        stage: str,
+        response_model: type,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> Any:
         stage_enum = StageName(stage)
 
         # Get providers from config
@@ -687,7 +826,11 @@ class LLMRouter:
                 last_provider = provider
                 continue
 
-            client = self.get_client(provider)
+            # Try direct client first (bypasses LiteLLM for lower latency)
+            direct_client = self.get_direct_client(provider)
+            client = direct_client if direct_client else self.get_client(provider)
+            use_direct = direct_client is not None
+
             max_retries = 0 if self.mock_mode else 2
             retry_delay = 1.0
 
@@ -709,7 +852,7 @@ class LLMRouter:
                     # Defensive JSON parsing validation
                     # The raw_response should be validated before Pydantic validation
                     if hasattr(result, "raw_response") and result.raw_response is not None:
-                        from .client import validate_and_parse_llm_response
+                        from .utils import validate_and_parse_llm_response
 
                         try:
                             validate_and_parse_llm_response(result.raw_response, response_model, stage)
@@ -757,8 +900,9 @@ class LLMRouter:
                         except Exception as e:
                             logger.debug(f"Langfuse observe failed: {e}")
 
+                    mode = "direct" if use_direct else "litellm"
                     logger.info(
-                        f"LLM call [{stage}] provider={provider.name} "
+                        f"LLM call [{stage}] provider={provider.name} mode={mode} "
                         f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
                         f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
                         f"schema_ok={result.schema_compliance}"
@@ -912,6 +1056,17 @@ class LLMRouter:
                 root_cause="prompt 缺少对话归属推断的明确规则",
                 confidence=0.85,
             )
+        elif response_model == PairwiseJudgment:
+            mock_output = PairwiseJudgment(
+                segment_id=kwargs.get("segment_id", "mock_segment"),
+                winner="tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning="Mock pairwise judgment for testing",
+                judge_model="mock-model",
+                judge_prompt_version="mock_v1",
+            )
         else:
             # For any other response model, try to create a default instance
             try:
@@ -932,7 +1087,7 @@ class LLMRouter:
             raw_response=None,
         )
 
-    def get_free_tier_health(self) -> dict:
+    def get_free_tier_health(self) -> dict[str, Any]:
         """Expose free tier health status for Promotion Gate and monitoring."""
         enabled = self.config.get_all_enabled()
         free_providers = [p for p in enabled if p.max_daily_cost_usd == 0]
@@ -982,7 +1137,7 @@ class LLMRouter:
             },
         }
 
-    def get_quota_status(self, provider_name: str = None) -> dict:
+    def get_quota_status(self, provider_name: str | None = None) -> dict[str, Any]:
         """Get quota registry status for all or a specific provider."""
         if provider_name:
             return self.quota_registry.get_quota_status(provider_name)
@@ -1038,3 +1193,51 @@ def create_router(
         quota_registry=quota_registry,
         mock_mode=mock_mode,
     )
+
+
+# ── Module-level singleton (S2.1 hot-reload target) ─────────────────────────
+#
+# A single router instance is shared across the app. The dynamic
+# provider-management API mutates the DB provider table and then calls
+# :func:`reload_llm_router` to push those changes into the live router without
+# restarting the process.
+
+_ROUTER_INSTANCE: Optional["LLMRouter"] = None
+_ROUTER_LOCK = threading.Lock()
+
+
+def get_llm_router(config_path: Optional[str] = None) -> "LLMRouter":
+    """Return the process-wide :class:`LLMRouter` singleton (lazily created)."""
+    global _ROUTER_INSTANCE
+    if _ROUTER_INSTANCE is None:
+        with _ROUTER_LOCK:
+            if _ROUTER_INSTANCE is None:
+                _ROUTER_INSTANCE = create_router(config_path)
+    return _ROUTER_INSTANCE
+
+
+def reload_llm_router(config_path: Optional[str] = None) -> "LLMRouter":
+    """Hot-reload the singleton router from its config source.
+
+    Creates the singleton if it does not yet exist, otherwise calls
+    :meth:`LLMRouter.reload_config` in place. Safe to call after any provider
+    DB mutation; failures are logged but never raised (the DB write already
+    succeeded by the time this is invoked).
+    """
+    global _ROUTER_INSTANCE
+    with _ROUTER_LOCK:
+        if _ROUTER_INSTANCE is None:
+            _ROUTER_INSTANCE = create_router(config_path)
+        else:
+            try:
+                _ROUTER_INSTANCE.reload_config(config_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("[LLM Router] reload failed (ignored): %s", exc)
+    return _ROUTER_INSTANCE
+
+
+def reset_llm_router() -> None:
+    """Drop the cached singleton (used by tests / app shutdown)."""
+    global _ROUTER_INSTANCE
+    with _ROUTER_LOCK:
+        _ROUTER_INSTANCE = None

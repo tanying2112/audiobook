@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .book import Project
@@ -52,7 +52,7 @@ class AudioSegment(Base):
     parent_segment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("audio_segments.id"), nullable=True)
 
     # 排序索引
-    index: Mapped[int] = mapped_column(Integer, default=0)
+    index: Mapped[int] = mapped_column("index", Integer, default=0)
 
     # 质检关联
     quality_id: Mapped[Optional[int]] = mapped_column(ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True)
@@ -61,8 +61,8 @@ class AudioSegment(Base):
     status: Mapped[str] = mapped_column(String, default="pending")
 
     # 时间戳
-    created_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="audio_segments")
@@ -74,3 +74,13 @@ class AudioSegment(Base):
         foreign_keys="AudioSegment.paragraph_id",
     )
     quality: Mapped[Optional[Quality]] = relationship("Quality", back_populates="audio_segment", uselist=False)
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM audio_segments WHERE chapter_id=? ORDER BY index
+        Index("ix_audio_segments_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND status=?
+        Index("ix_audio_segments_project_id_status", "project_id", "status"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND chapter_id=? AND is_current=?
+        Index("ix_audio_segments_project_chapter_current", "project_id", "chapter_id", "is_current"),
+    )

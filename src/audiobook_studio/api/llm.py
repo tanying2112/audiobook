@@ -286,7 +286,7 @@ Difficulty: {request.difficulty or 'Unknown'}
 
     except Exception as e:
         logger.error(f"Chat edit failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/chat-annotate")
@@ -369,7 +369,7 @@ Current annotation: {json.dumps(request.current_annotation) if request.current_a
 
     except Exception as e:
         logger.error(f"Chat annotate failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/batch-annotate")
@@ -388,7 +388,7 @@ async def batch_annotate(request: BatchAnnotateRequest):
         )
     except Exception as e:
         logger.error(f"Batch annotate failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/assistant")
@@ -448,4 +448,4 @@ Current context: {json.dumps(request.context) if request.context else 'None'}
 
     except Exception as e:
         logger.error(f"Assistant failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

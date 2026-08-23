@@ -125,8 +125,8 @@ class AudioFinalizer:
         scene_tags: Optional[List[str]] = None,
     ) -> AudioFinalizeResult:
         """Real mode: actual ffmpeg processing."""
-        warnings = []
-        errors = []
+        warnings: List[str] = []
+        errors: List[str] = []
 
         # Validate input
         if not input_path.exists():
@@ -260,7 +260,8 @@ class AudioFinalizer:
             result = asyncio.run(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
-                errors.append(f"ffmpeg failed: {result.stderr}")
+                stderr_str = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else str(result.stderr)
+                errors.append(f"ffmpeg failed: {stderr_str}")
                 # Fallback: copy input to output
                 import shutil
 
@@ -402,7 +403,7 @@ class AudioFinalizer:
                 logger.info(f"Embedded metadata into {audio_path.name}")
                 return True
             else:
-                logger.warning(f"Failed to embed metadata: {result.stderr}")
+                logger.warning(f"Failed to embed metadata: {result.stderr.decode('utf-8', errors='replace') if isinstance(result.stderr, bytes) else str(result.stderr)}")
                 if temp_path.exists():
                     temp_path.unlink()
                 return False
@@ -412,7 +413,7 @@ class AudioFinalizer:
                 temp_path.unlink()
             return False
 
-    def _measure_loudness(self, audio_path: Path) -> tuple:
+    def _measure_loudness(self, audio_path: Path) -> tuple[float, float, float, float]:
         """Measure EBU R128 loudness using ffmpeg."""
         if not audio_path.exists():
             return 0.0, 0.0, 0.0, 0.0
@@ -433,7 +434,7 @@ class AudioFinalizer:
             cmd = safe_subprocess_args(cmd)
             # Run under global semaphore with timeout
             result = asyncio.run(run_ffmpeg(cmd, timeout=60))
-            stderr = result.stderr
+            stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else str(result.stderr)
 
             # Parse ebur128 output
             # Look for: I: -20.0 LUFS, LRA: 7.0 LU, Peak: -2.0 dBFS, Threshold: -40.0 LUFS

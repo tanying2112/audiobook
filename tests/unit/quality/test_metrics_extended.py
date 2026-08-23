@@ -25,9 +25,6 @@ from src.audiobook_studio.quality.metrics import (
 # Add the src directory to the path
 
 
-
-
-
 class TestDNSMOSMetric(unittest.TestCase):
     def setUp(self):
         # Create metric with mocked model path that doesn't exist
