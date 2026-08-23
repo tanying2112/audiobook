@@ -125,11 +125,11 @@ Phase D 发布准备                  →  D1 → D2
 
 | 漂移点 | 测试影响 | 修复 | 状态 |
 |---|---|---|---|
-| `cli/book.py`·`cli/export.py`·`cli/pipeline.py` 重构为异步 2.0（`AsyncSessionLocal`+`select/execute`），测试仍 patch 旧 `SessionLocal` 且用同步 `query()` 风格 + 直接调用 async 命令 | `tests/unit/test_cli_commands.py` 全部受影响 | 改写 12 处测试:`AsyncSessionLocal`+`AsyncMock`+`asyncio.run`+移除 `Project`/`Chapter` Mock patch+修正 `cleanup_after_export`/`export_project` patch 目标 | ✅ 全文件 20 passed（`c9c2249`） |
-| `export/m4b.py` & `batch_exporter.py` 无 `run_command` | ~22 | 待办 | 🔲 |
-| `SynthesizePipeline._resolve_edge_voice` 缺失 | 5 | 待办 | 🔲 |
+| `cli/book.py`·`cli/export.py`·`cli/pipeline.py` 重构为异步 2.0 | `tests/unit/test_cli_commands.py` | ✅ 20 passed（`c9c2249`） |
+| `quality.semantic_coverage` → `semantic_coherence` | `test_quality_semantic_coherence.py`(4) + `test_quality_semantic_coverage.py`(6) | ✅ 10 passed（`29b1df2` `1279b2c`） |
+| `SynthesizePipeline._resolve_edge_voice` 删除 → 模块级 `_normalize_voice_id`；`_synthesize_azure`/`_synthesize_gcp` 合并为异步 `_synthesize_via_port` | `test_synthesize_helpers.py`(17) + `test_translate_pipeline.py`(14) | ✅ 31 passed（`2f09770`） |
+| `export/m4b.py` & `batch_exporter.py` 无 `run_command`；`_build_chapter_markers`→`_build_segment_markers`；`mix_with_ducking`→`mix_full_pipeline`；`export_mp3_chapters` 需打桩；final 测试缺 `paragraphs` 键 | `test_m4b.py`(24)+`test_batch_exporter.py`(24)+`test_export_batch_final.py`(1)+`test_export_batch_enhanced.py`(28) | ✅ 77 passed（`648b0e4`）。附源码两处真实缺陷修复:MP3 分支冗余局部 `import subprocess` 遮蔽导致 BGM 分支 `UnboundLocalError`；zip 循环对 `mp3_chapters` 列表值 `Path(list)` 崩溃 |
 | `FeedbackRecord.type` 缺失 | 3 | 待办 | 🔲 |
-| `quality.semantic_coverage` → `semantic_coherence` | 3 | 待办 | 🔲 |
 | `EngineRegistry.unregister` → `register` | 3 | 待办 | 🔲 |
 | 其余 AttributeError/TypeError/AssertionError（按文件聚类） | 若干 | 待办 | 🔲 |
 

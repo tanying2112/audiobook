@@ -370,14 +370,21 @@ class TestBootstrapFewshot:
     """Tests for bootstrap few-shot endpoint."""
 
     def test_bootstrap_fewshot(self, client, golden_temp_dir):
-        """Test triggering few-shot optimization."""
+        """Test triggering few-shot optimization.
+
+        The DSPy-backed optimiser is an *optional, experimental* feature gated on the
+        (undeclared) ``dspy`` dependency. The endpoint honestly reports its status as
+        ``not_enabled`` when dspy is absent, or ``available`` when present -- it no longer
+        fabricates a ``queued`` status (docs/AUDIT_REPORT_2026-08-14.md §4.4).
+        """
         response = client.post(
             "/golden/bootstrap-fewshot",
             params={"stage": "extract", "max_samples": 5, "optimization_target": "diversity"},
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "queued"
+        assert data["status"] in ("not_enabled", "available")
+        assert data["dspy_available"] is (data["status"] == "available")
         assert data["stage"] == "extract"
         assert data["max_samples"] == 5
         assert data["optimization_target"] == "diversity"
