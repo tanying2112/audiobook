@@ -407,7 +407,7 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.srt.generate_srt"),
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
@@ -469,7 +469,7 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.batch_exporter.generate_srt") as mock_gen_srt,
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
@@ -639,7 +639,7 @@ class TestExportErrorHandling:
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_collect_audio,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
