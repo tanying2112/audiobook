@@ -97,14 +97,15 @@ def test_export_project_success_m4b_only():
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio_files,
             patch("src.audiobook_studio.export.batch_exporter._build_chapter_markers") as mock_markers,
             patch("src.audiobook_studio.export.batch_exporter._build_project_metadata") as mock_metadata,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b_single_source") as mock_build_m4b_single,
-            patch("src.audiobook_studio.export.batch_exporter.run_command") as mock_subprocess,
+            patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b_single,
+            patch("src.audiobook_studio.export.batch_exporter.subprocess.run") as mock_subprocess,
             patch("src.audiobook_studio.export.batch_exporter.logger"),
         ):
 
             mock_chapter_data = {
                 "chapter": mock_chapter,
                 "audio_segments": [MagicMock(file_path=str(temp_audio), id=1)],
+                "paragraphs": [],
                 "chapter_data": {},
             }
             mock_collect.return_value = mock_chapter_data

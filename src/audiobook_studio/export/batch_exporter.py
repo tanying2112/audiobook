@@ -341,7 +341,6 @@ def export_project(
                 with open(concat_list, "w") as f:
                     for mf in mp3_files:
                         f.write(f"file '{mf.absolute()}'\n")
-                import subprocess
                 subprocess.run(
                     [
                         "ffmpeg", "-y", "-f", "concat", "-safe", "0",
@@ -469,10 +468,17 @@ def export_project(
             job.progress = ExportProgress.COMPRESSING
             zip_path = output_dir / f"project_{project.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for path_str in job.output_paths.values():
-                    p = Path(path_str)
-                    if p.exists():
-                        zf.write(p, arcname=p.name)
+                for path_val in job.output_paths.values():
+                    # 某些键(如 mp3_chapters)的值为路径列表, 需逐个加入压缩包
+                    if isinstance(path_val, list):
+                        for p_str in path_val:
+                            p = Path(p_str)
+                            if p.exists():
+                                zf.write(p, arcname=p.name)
+                    else:
+                        p = Path(path_val)
+                        if p.exists():
+                            zf.write(p, arcname=p.name)
             job.output_paths["zip"] = str(zip_path)
 
         job.progress = ExportProgress.COMPLETE
