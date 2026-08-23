@@ -1,0 +1,102 @@
+# docker-compose.mock.yml - Mock mode for v0.2 verification (no external deps)
+version: "3.9"
+
+services:
+  # Audiobook Studio API - FastAPI backend (Mock mode)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: audiobook-api-mock
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MOCK_LLM=true
+      - MOCK_TTS=true
+      - ENABLE_LOCAL_TTS=false
+      - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
+      - OUTPUT_DIR=/app/output
+      - MODELS_DIR=/app/models
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - OTEL_CONSOLE_EXPORTER=false
+      - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Audiobook Studio Worker - Background task processor (Mock mode)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: audiobook-worker-mock
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      - MOCK_LLM=true
+      - MOCK_TTS=true
+      - ENABLE_LOCAL_TTS=false
+      - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
+      - OUTPUT_DIR=/app/output
+      - MODELS_DIR=/app/models
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Redis - Message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: audiobook-redis-mock
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: audiobook-mock-network

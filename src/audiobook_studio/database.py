@@ -21,6 +21,178 @@ from .orm_base import Base
 logger = logging.getLogger(__name__)
 
 
+def _get_sync_database_url() -> str:
+    """Convert async DATABASE_URL to sync version for sync engine and alembic."""
+    url = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}",
+    )
+    # Convert async drivers to sync
+    if url.startswith("sqlite+aiosqlite:///"):
+        return url.replace("sqlite+aiosqlite:///", "sqlite:///")
+    elif url.startswith("sqlite+aiosqlite://"):
+        return url.replace("sqlite+aiosqlite://", "sqlite://")
+    elif url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://")
+    return url
+
+
+# Resolve database URL
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    f"sqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}",
+)
+
+# Sync engine URL (converts sqlite+aiosqlite:// to sqlite:// for sync engine)
+SYNC_DATABASE_URL = _get_sync_database_url()
+
+# check_same_thread required for SQLite in multithreaded FastAPI
+engine = create_engine(
+    SYNC_DATABASE_URL,
+    connect_args=({"check_same_thread": False} if SYNC_DATABASE_URL.startswith("sqlite") else {}),
+    echo=False,
+    pool_pre_ping=True,  # 连接池健康检查
+)
+
+# Session factory (2.0 style)
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    SyncSessionFactory = sessionmaker[Session]
+else:
+    SyncSessionFactory = sessionmaker
+
+SessionLocal: SyncSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+
+
+def get_db() -> AsyncGenerator[Any, None]:
+    """Generator function that yields database sessions (sync)"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ── Async Engine & Session Factory (new, recommended) ───
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from sqlalchemy.orm import Session, sessionmaker
+
+    AsyncSessionFactory = async_sessionmaker[AsyncSession]
+else:
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+    from sqlalchemy.orm import Session, sessionmaker
+
+    AsyncSessionFactory = async_sessionmaker
+
+_async_engine: Optional[AsyncEngine] = None
+_async_session_factory: Optional[AsyncSessionFactory] = None
+
+
+def _get_async_database_url() -> str:
+    """Convert sync DATABASE_URL to async version."""
+    url = DATABASE_URL
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///")
+    elif url.startswith("sqlite://"):
+        return url.replace("sqlite://", "sqlite+aiosqlite://")
+    elif url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://")
+    elif url.startswith("postgresql+psycopg2://"):
+        return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+    return url
+
+
+def get_sync_engine_url() -> str:
+    """Get the sync database URL for sync engine creation."""
+    return DATABASE_URL
+
+
+def _install_slow_query_logger(engine: "AsyncEngine") -> None:
+    """Install a threshold-based slow-query logger on the sync engine.
+
+    S2.6 — configurable slow-query alerting. The threshold is read from the
+    ``SLOW_QUERY_MS`` env var (default 1000ms). Set ``SLOW_QUERY_MS=0`` to
+    disable. In local dev this surfaces N+1 / missing-index hotspots without
+    failing requests.
+    """
+    import time
+
+    threshold_ms = float(os.getenv("SLOW_QUERY_MS", "1000"))
+    if threshold_ms <= 0:
+        return
+
+    from sqlalchemy import event
+
+    sync_engine = engine.sync_engine
+
+    @event.listens_for(sync_engine, "before_cursor_execute")
+    def _before(statement, parameters, context, cursor, *args):  # noqa: ANN001
+        # Some SQLAlchemy versions pass context as string, not ExecutionContext
+        if hasattr(context, "__dict__"):
+            context._slow_q_start = time.perf_counter()  # type: ignore[attr-defined]
+
+    @event.listens_for(sync_engine, "after_cursor_execute")
+    def _after(statement, parameters, context, cursor, *args):  # noqa: ANN001
+        # Some SQLAlchemy versions pass context as string, not ExecutionContext
+        if not hasattr(context, "__dict__"):
+            return
+        start = getattr(context, "_slow_q_start", None)
+        if start is None:
+            return
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        if elapsed_ms >= threshold_ms:
+            logger.warning(
+                "[SLOW-QUERY] %.1fms (threshold=%.0fms) — %s",
+                elapsed_ms,
+                threshold_ms,
+                " ".join(str(statement).split())[:300],
+            )
+
+
+def get_async_engine() -> AsyncEngine:
+    """Get or create the async SQLAlchemy engine."""
+    global _async_engine
+    if _async_engine is None:
+        _async_engine = create_async_engine(
+            _get_async_database_url(),
+            echo=os.getenv("SQL_ECHO", "false").lower() == "true",
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+        _install_slow_query_logger(_async_engine)
+    return _async_engine
+
+
+def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Get or create the async session factory."""
+    global _async_session_factory
+    if _async_session_factory is None:
+        _async_session_factory = async_sessionmaker(
+            get_async_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _async_session_factory
+
+
+async def init_async_db() -> None:
+    """Initialize database tables (async version)."""
+    engine = get_async_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def drop_async_db() -> None:
+    """Drop all database tables (async version, DESTRUCTIVE!)."""
+    engine = get_async_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
 # ── Read Replica Configuration & Routing (P2-5) ───
 
 class DatabaseConfig:
@@ -214,161 +386,6 @@ async def get_routed_session(config: DatabaseConfig) -> AsyncGenerator[RoutedSes
         raise
     finally:
         await session.close()
-
-
-# ── Sync Engine & Session Factory (legacy, for backward compatibility) ───
-
-# Resolve database URL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}",
-)
-
-# check_same_thread required for SQLite in multithreaded FastAPI
-engine = create_engine(
-    DATABASE_URL,
-    connect_args=({"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}),
-    echo=False,
-    pool_pre_ping=True,  # 连接池健康检查
-)
-
-# Session factory (2.0 style)
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
-
-    SyncSessionFactory = sessionmaker[Session]
-else:
-    SyncSessionFactory = sessionmaker
-
-SessionLocal: SyncSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
-
-
-def get_db() -> AsyncGenerator[Any, None]:
-    """Generator function that yields database sessions (sync)"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# ── Async Engine & Session Factory (new, recommended) ───
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-    from sqlalchemy.orm import Session, sessionmaker
-
-    AsyncSessionFactory = async_sessionmaker[AsyncSession]
-else:
-    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-    from sqlalchemy.orm import Session, sessionmaker
-
-    AsyncSessionFactory = async_sessionmaker
-
-_async_engine: Optional[AsyncEngine] = None
-_async_session_factory: Optional[AsyncSessionFactory] = None
-
-
-def _get_async_database_url() -> str:
-    """Convert sync DATABASE_URL to async version."""
-    url = DATABASE_URL
-    if url.startswith("sqlite:///"):
-        return url.replace("sqlite:///", "sqlite+aiosqlite:///")
-    elif url.startswith("sqlite://"):
-        return url.replace("sqlite://", "sqlite+aiosqlite://")
-    elif url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://")
-    elif url.startswith("postgresql+psycopg2://"):
-        return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
-    return url
-
-
-def get_sync_engine_url() -> str:
-    """Get the sync database URL for sync engine creation."""
-    return DATABASE_URL
-
-
-def _install_slow_query_logger(engine: "AsyncEngine") -> None:
-    """Install a threshold-based slow-query logger on the sync engine.
-
-    S2.6 — configurable slow-query alerting. The threshold is read from the
-    ``SLOW_QUERY_MS`` env var (default 1000ms). Set ``SLOW_QUERY_MS=0`` to
-    disable. In local dev this surfaces N+1 / missing-index hotspots without
-    failing requests.
-    """
-    import time
-
-    threshold_ms = float(os.getenv("SLOW_QUERY_MS", "1000"))
-    if threshold_ms <= 0:
-        return
-
-    from sqlalchemy import event
-
-    sync_engine = engine.sync_engine
-
-    @event.listens_for(sync_engine, "before_cursor_execute")
-    def _before(statement, parameters, context, cursor, *args):  # noqa: ANN001
-        # Some SQLAlchemy versions pass context as string, not ExecutionContext
-        if hasattr(context, "__dict__"):
-            context._slow_q_start = time.perf_counter()  # type: ignore[attr-defined]
-
-    @event.listens_for(sync_engine, "after_cursor_execute")
-    def _after(statement, parameters, context, cursor, *args):  # noqa: ANN001
-        # Some SQLAlchemy versions pass context as string, not ExecutionContext
-        if not hasattr(context, "__dict__"):
-            return
-        start = getattr(context, "_slow_q_start", None)
-        if start is None:
-            return
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        if elapsed_ms >= threshold_ms:
-            logger.warning(
-                "[SLOW-QUERY] %.1fms (threshold=%.0fms) — %s",
-                elapsed_ms,
-                threshold_ms,
-                " ".join(str(statement).split())[:300],
-            )
-
-
-def get_async_engine() -> AsyncEngine:
-    """Get or create the async SQLAlchemy engine."""
-    global _async_engine
-    if _async_engine is None:
-        _async_engine = create_async_engine(
-            _get_async_database_url(),
-            echo=os.getenv("SQL_ECHO", "false").lower() == "true",
-            pool_pre_ping=True,
-            pool_recycle=3600,
-        )
-        _install_slow_query_logger(_async_engine)
-    return _async_engine
-
-
-def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
-    """Get or create the async session factory."""
-    global _async_session_factory
-    if _async_session_factory is None:
-        _async_session_factory = async_sessionmaker(
-            get_async_engine(),
-            class_=AsyncSession,
-            expire_on_commit=False,
-            autoflush=False,
-        )
-    return _async_session_factory
-
-
-async def init_async_db() -> None:
-    """Initialize database tables (async version)."""
-    engine = get_async_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def drop_async_db() -> None:
-    """Drop all database tables (async version, DESTRUCTIVE!)."""
-    engine = get_async_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
 
 # Global routed engine instance (lazy initialization)

@@ -38,12 +38,12 @@ class TestFeedbackCollector:
         """capture_stage returns disabled StageCapture when enable=False."""
         collector = FeedbackCollector(project_id=1, enable=False)
         capture = collector.capture_stage("annotate")
-        assert capture._disabled is True
+        assert capture._is_disabled is True
 
     def test_capture_stage_enabled(self):
         """capture_stage returns active StageCapture when enabled."""
         capture = self.collector.capture_stage("annotate", chapter_index=1, paragraph_index=5)
-        assert capture._disabled is False
+        assert capture._is_disabled is False
         assert capture.stage == "annotate"
         assert capture.chapter_index == 1
         assert capture.paragraph_index == 5
@@ -67,7 +67,7 @@ class TestFeedbackCollector:
     def test_save_feedback_disabled(self):
         """save_feedback returns /dev/null for disabled collector."""
         collector = FeedbackCollector(project_id=1, enable=False)
-        capture = StageCapture._disabled()
+        capture = StageCapture._create_disabled()
         result = collector.save_feedback(capture)
         assert str(result) == "/dev/null"
 
@@ -193,15 +193,15 @@ class TestStageCapture:
 
     def test_disabled_properties(self):
         """Disabled capture has correct defaults."""
-        cap = StageCapture._disabled()
-        assert cap._disabled is True
+        cap = StageCapture._create_disabled()
+        assert cap._is_disabled is True
         assert cap.feedback_id == "disabled"
         assert cap.stage == "disabled"
         assert cap.project_id == 0
 
     def test_set_source_valid(self):
         """set_source accepts valid values."""
-        cap = StageCapture._disabled()
+        cap = StageCapture._create_disabled()
         cap.set_source("human_edit")
         assert cap.source == "human_edit"
         cap.set_source("quality_judge")
@@ -211,20 +211,20 @@ class TestStageCapture:
 
     def test_set_source_invalid_falls_back(self, caplog):
         """set_source with invalid value defaults to human_edit."""
-        cap = StageCapture._disabled()
+        cap = StageCapture._create_disabled()
         cap.set_source("bad_source")
         assert "Unknown feedback source" in caplog.text
         assert cap.source == "human_edit"
 
     def test_set_input_snapshot(self):
         """set_input_snapshot updates the snapshot dict."""
-        cap = StageCapture._disabled()
+        cap = StageCapture._create_disabled()
         cap.set_input_snapshot({"new": "data"})
         assert cap.input_snapshot == {"new": "data"}
 
     def test_set_diff_summary_and_tags(self):
         """set_diff_summary and set_pattern_tags work."""
-        cap = StageCapture._disabled()
+        cap = StageCapture._create_disabled()
         cap.set_diff_summary("Summary")
         cap.set_pattern_tags(["t1", "t2"])
         assert cap.diff_summary == "Summary"

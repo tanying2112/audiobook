@@ -982,7 +982,7 @@ def run_ab_test_with_pipeline_rerun(
     new_version: int,
     judge_fn: Optional[Callable[..., Any]] = None,
     significance_level: float = 0.05,
-    mock_mode: bool = True,
+    mock_mode: bool | None = None,
 ) -> ABTestReport:
     """
     Run A/B test with real pipeline re-run for both versions.
@@ -1000,12 +1000,15 @@ def run_ab_test_with_pipeline_rerun(
         new_version: New prompt version number
         judge_fn: Optional custom judge function
         significance_level: Statistical significance level
-        mock_mode: Whether to run pipeline in mock mode
+        mock_mode: Whether to run pipeline in mock mode (None = resolve from
+            SELF_ITERATION_MOCK env, C-01).
 
     Returns:
         ABTestReport with statistical comparison
     """
-    from ..feedback.promotion_gate import _golden_to_pipeline_stage, _run_stage_with_prompt_version
+    from ..feedback.promotion_gate import _golden_to_pipeline_stage, _resolve_mock_mode, _run_stage_with_prompt_version
+
+    mock_mode = _resolve_mock_mode(mock_mode)
 
     pipeline_stage = _golden_to_pipeline_stage(stage)
 

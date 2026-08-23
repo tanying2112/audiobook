@@ -180,8 +180,8 @@ class TestQualityCheckPipeline:
         assert isinstance(results, list)
         assert len(results) == 1
         assert isinstance(results[0], QualityJudgment)
-        # Mock segment_id uses "mock_seg" prefix
-        assert results[0].segment_id.startswith("mock_")
+        # Mock mode uses the actual segment_id from routing decision
+        assert results[0].segment_id == routing.segment_id
         assert 0.0 <= results[0].overall_score <= 1.0
         assert 0.0 <= results[0].speaker_clarity <= 1.0
         assert 0.0 <= results[0].emotion_match <= 1.0
@@ -206,9 +206,9 @@ class TestQualityCheckPipeline:
         results = self.pipeline.run(inputs)
 
         assert len(results) == 3
-        for result in results:
-            # Mock segment_id uses "mock_seg" prefix
-            assert result.segment_id.startswith("mock_seg")
+        for i, result in enumerate(results):
+            # Mock mode uses the actual segment_id from routing decision
+            assert result.segment_id == routings[i].segment_id
 
     def test_run_real_mode_calls_judge(self):
         """Test run() in real mode calls LLM judge."""

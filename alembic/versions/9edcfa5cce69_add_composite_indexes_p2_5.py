@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.execute("UPDATE chapters SET segment_status = 'pending' WHERE segment_status IS NULL")
     
     # Now we can safely alter the column to NOT NULL
-    op.alter_column('chapters', 'segment_status',
+    # Use batch_alter_table for SQLite compatibility (handles ALTER COLUMN via table rebuild)
+    with op.batch_alter_table('chapters') as batch_op:
+        batch_op.alter_column('segment_status',
                existing_type=sa.VARCHAR(length=50),
                nullable=False)
     
@@ -79,7 +81,8 @@ def downgrade() -> None:
     op.drop_index('ix_chapters_project_id_status_index', table_name='chapters')
     op.drop_index('ix_chapters_project_id_index', table_name='chapters')
     
-    op.alter_column('chapters', 'segment_status',
+    with op.batch_alter_table('chapters') as batch_op:
+        batch_op.alter_column('segment_status',
                existing_type=sa.VARCHAR(length=50),
                nullable=True)
     # ### end Alembic commands ###

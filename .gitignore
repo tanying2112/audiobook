@@ -79,6 +79,9 @@ coverage.xml
 
 # Logs (保留目录结构，忽略内容)
 logs/*.log
+# 自迭代运行时 JSONL（canonical 由 feedback/integration.py 写入，非人工维护）
+logs/self_iteration.jsonl
+logs/self_iteration_self_iteration.jsonl
 !logs/.gitkeep
 
 # Secrets

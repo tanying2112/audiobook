@@ -1,0 +1,45 @@
+# Audiobook Studio v0.2 Zero-Config Free
+# Uses pre-built base image with system dependencies
+
+FROM audiobook-base:latest AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    PATH="/opt/venv/bin:${PATH}" \
+    PYTHONNOUSERSITE=1 \
+    MOCK_LLM=true \
+    MOCK_TTS=true \
+    ENABLE_LOCAL_TTS=false \
+    OTEL_CONSOLE_EXPORTER=false
+
+WORKDIR /app
+
+# Create virtualenv and install Python deps from requirements file
+COPY requirements.free.txt .
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.free.txt
+
+# Copy application source
+COPY --chown=1000:1000 . .
+
+# Create required runtime directories
+RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage /app/models_cache \
+    && chown -R 1000:1000 /app
+
+# Non-root user (already exists in base)
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+# Entrypoint
+COPY --chown=1000:1000 entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
+CMD ["python", "-m", "audiobook_studio.main"]

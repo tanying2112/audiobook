@@ -242,7 +242,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
                 segment_id="seg_001",
             )
             self.assertGreater(duration, 0)
-            self.assertEqual(engine, "hermes")  # Default engine from fake port
+            self.assertEqual(engine, "kokoro")  # Default engine from fake port
 
         asyncio.run(run_test())
 

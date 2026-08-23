@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -36,6 +37,7 @@ from src.audiobook_studio.tts.engine import (
     TTSTaskResult,
     TTSTaskStatus,
     TTSVoiceAnchor,
+    probe_tts_engines,
 )
 
 
@@ -784,6 +786,108 @@ class TestFactoryFunctions:
         )
         assert isinstance(backend, VoxCPM2Backend)
         assert backend._loaded is True
+
+
+class TestProbeTtsEngines:
+    """S1-6: real TTS readiness probe normalized to {kokoro, voxcpm2, edge, piper}."""
+
+    @staticmethod
+    def _fake_client(status_code: int = 200, error: BaseException | None = None) -> MagicMock:
+        """Build an httpx.AsyncClient(context-manager) stand-in for the probe."""
+        client = MagicMock()
+        client.get = AsyncMock(side_effect=error) if error else AsyncMock(return_value=SimpleNamespace(status_code=status_code))
+        ctx = MagicMock()
+        ctx.__aenter__.return_value = client
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    @staticmethod
+    def _patch_httpx(monkeypatch, status_code: int = 200, error: BaseException | None = None) -> None:
+        from unittest.mock import patch as _patch
+
+        fake = TestProbeTtsEngines._fake_client(status_code, error)
+        # probe_tts_engines does `import httpx; httpx.AsyncClient(...)` locally,
+        # so patch the module-level `httpx.AsyncClient` attribute.
+        monkeypatch.setattr("httpx.AsyncClient", Mock(return_value=fake))
+
+    def test_probe_shape_and_defaults(self, monkeypatch):
+        """Canonical shape present; kokoro/voxcpm2 false when unconfigured, piper false."""
+        self._patch_httpx(monkeypatch)
+        monkeypatch.delenv("KOKORO_MODEL_PATH", raising=False)
+        monkeypatch.delenv("VOXCPM2_ENDPOINT", raising=False)
+        monkeypatch.delenv("ENABLE_LOCAL_TTS", raising=False)
+
+        result = asyncio.run(probe_tts_engines(timeout=1.0))
+        assert result["engines"]["piper"] is False
+        assert result["engines"]["kokoro"] is False
+        assert result["engines"]["voxcpm2"] is False
+        assert set(result["engines"]) == {"kokoro", "voxcpm2", "edge", "piper"}
+        assert set(result["details"]) == {"kokoro", "voxcpm2", "edge", "piper"}
+
+    def test_kokoro_model_present(self, monkeypatch, tmp_path):
+        """Kokoro reports healthy when the model file exists."""
+        self._patch_httpx(monkeypatch, status_code=200)
+        model = tmp_path / "kokoro.pth"
+        model.write_bytes(b"model")
+        monkeypatch.delenv("VOXCPM2_ENDPOINT", raising=False)
+        monkeypatch.setenv("KOKORO_MODEL_PATH", str(model))
+
+        result = asyncio.run(probe_tts_engines(timeout=1.0))
+        assert result["engines"]["kokoro"] is True
+        assert result["details"]["kokoro"]["detail"]["model_present"] is True
+
+    def test_voxcpm2_reachable(self, monkeypatch):
+        """VoxCPM2 reports healthy when /health returns < 500."""
+        self._patch_httpx(monkeypatch, status_code=200)
+        monkeypatch.delenv("KOKORO_MODEL_PATH", raising=False)
+        monkeypatch.setenv("VOXCPM2_ENDPOINT", "https://voxcpm2.example.com")
+
+        result = asyncio.run(probe_tts_engines(timeout=2.0))
+        assert result["engines"]["voxcpm2"] is True
+        assert result["details"]["voxcpm2"]["detail"]["url"] == "https://voxcpm2.example.com/health"
+
+    def test_voxcpm2_unreachable_degrades(self, monkeypatch):
+        """VoxCPM2 probe never raises; degrades to healthy=False on connection error."""
+        import httpx as httpx_mod
+
+        self._patch_httpx(monkeypatch, error=httpx_mod.ConnectError("boom"))
+        monkeypatch.delenv("KOKORO_MODEL_PATH", raising=False)
+        monkeypatch.setenv("VOXCPM2_ENDPOINT", "https://voxcpm2.example.com")
+
+        result = asyncio.run(probe_tts_engines(timeout=2.0))
+        assert result["engines"]["voxcpm2"] is False
+        assert "error" in result["details"]["voxcpm2"]["detail"]
+
+    def test_registry_overlay_uses_real_health_check(self, monkeypatch):
+        """A registered/loaded engine's health_check() overrides the static probe.
+
+        Even with no VOXCPM2_ENDPOINT configured (static probe -> not_configured),
+        a registered engine reporting healthy=True must win."""
+        self._patch_httpx(monkeypatch, status_code=200)
+        monkeypatch.delenv("KOKORO_MODEL_PATH", raising=False)
+        monkeypatch.delenv("VOXCPM2_ENDPOINT", raising=False)
+
+        registry = EngineRegistry()
+        engine = Mock()
+        engine.engine_name = "voxcpm2"
+        engine.health_check = AsyncMock(return_value={"healthy": True, "engine": "voxcpm2"})
+        registry._engines["voxcpm2"] = engine
+
+        result = asyncio.run(probe_tts_engines(timeout=1.0, registry=registry))
+        assert result["engines"]["voxcpm2"] is True
+        assert result["details"]["voxcpm2"]["detail"]["engine"] == "voxcpm2"
+
+    def test_probe_does_not_raise_even_when_everything_fails(self, monkeypatch):
+        """probe_tts_engines returns a map even when all probes error."""
+        import httpx as httpx_mod
+
+        self._patch_httpx(monkeypatch, error=httpx_mod.ConnectError("down"))
+        monkeypatch.delenv("KOKORO_MODEL_PATH", raising=False)
+        monkeypatch.setenv("VOXCPM2_ENDPOINT", "https://voxcpm2.example.com")
+
+        result = asyncio.run(probe_tts_engines(timeout=1.0))
+        assert isinstance(result["engines"], dict)
+        assert any(v is False for v in result["engines"].values())
 
 
 if __name__ == "__main__":

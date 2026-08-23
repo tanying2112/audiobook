@@ -182,7 +182,7 @@ app.include_router(llm_router, prefix="/api", dependencies=auth_dep)
 app.include_router(languages_router, prefix="/api/v1", dependencies=auth_dep)
 app.include_router(provider_router, prefix="/api/v1/providers", tags=["provider-management"], dependencies=auth_dep)
 app.include_router(evolution_router, prefix="/api", dependencies=auth_dep)
-app.include_router(websocket_router, prefix="/api", dependencies=auth_dep)
+app.include_router(websocket_router, prefix="/api")  # No auth_dep for WebSocket
 app.include_router(templates_router, prefix="/api", dependencies=auth_dep)
 app.include_router(harness_router, prefix="/api", dependencies=auth_dep)
 app.include_router(golden_router, prefix="/api", dependencies=auth_dep)
@@ -197,6 +197,26 @@ app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep
 app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
 app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
 app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
+
+# ── WebSocket Route Fix ──────────────────────────────────────────────────────
+# FastAPI's include_router doesn't properly include WebSocket routes with prefix.
+# Manually add websocket routes with combined prefix (/api + /ws = /api/ws).
+from .api.websocket import router as _websocket_router
+from fastapi.routing import APIWebSocketRoute
+
+for _route in _websocket_router.routes:
+    if isinstance(_route, APIWebSocketRoute):
+        _new_path = "/api" + _route.path
+        _new_route = APIWebSocketRoute(
+            path=_new_path,
+            endpoint=_route.endpoint,
+            name=_route.name
+        )
+        app.router.routes.append(_new_route)
+
+# Clean up
+del _websocket_router, _route, _new_path, _new_route, APIWebSocketRoute
+
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
@@ -267,34 +287,24 @@ async def health_ready():
     # TTS engine health probes (S1-6: real engine probes)
     try:
         from .di import get_app_container
-        from .tts.engine import EngineRegistry
+        from .tts.engine import EngineRegistry, probe_tts_engines
 
         container = get_app_container()
-        registry = container.get(EngineRegistry)
+        registry = container.get_or_none(EngineRegistry)
         if registry is not None:
-            # Get basic load status
-            checks["tts_engines"] = registry.ready_status
-
-            # Run actual health_check() on each registered engine
-            tts_health: dict[str, Any] = {}
-            for name, engine in registry._engines.items():
-                try:
-                    health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
-                    tts_health[name] = health
-                except asyncio.TimeoutError:
-                    tts_health[name] = {"healthy": False, "error": "health_check timeout"}
-                except Exception as e:
-                    tts_health[name] = {"healthy": False, "error": str(e)}
-
-            checks["tts_engine_health"] = tts_health
-
-            # Determine overall TTS health (at least one engine healthy)
-            tts_healthy = any(h.get("healthy", False) for h in tts_health.values())
-            checks["tts_overall_healthy"] = tts_healthy
+            probe = await asyncio.wait_for(probe_tts_engines(timeout, registry=registry), timeout=timeout)
+            checks["tts_engines"] = probe["engines"]  # {"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool}
+            checks["tts_engine_health"] = probe["details"]
+            checks["tts_overall_healthy"] = any(probe["engines"].values())
         else:
-            checks["tts_engines"] = "no_registry"
-            checks["tts_engine_health"] = {}
-            checks["tts_overall_healthy"] = False
+            probe = await asyncio.wait_for(probe_tts_engines(timeout), timeout=timeout)
+            checks["tts_engines"] = probe["engines"]
+            checks["tts_engine_health"] = probe["details"]
+            checks["tts_overall_healthy"] = any(probe["engines"].values())
+    except asyncio.TimeoutError:
+        checks["tts_engines"] = "timeout"
+        checks["tts_engine_health"] = {}
+        checks["tts_overall_healthy"] = False
     except Exception as e:
         checks["tts_engines"] = f"error: {e}"
         checks["tts_engine_health"] = {}

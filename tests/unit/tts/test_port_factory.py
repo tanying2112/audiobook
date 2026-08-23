@@ -170,7 +170,7 @@ class TestEngineRegistry:
         mock_edge = Mock(spec=TTSEngine)
         mock_edge.engine_name = "edge"
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_engine", return_value=mock_kokoro) as mock_kokoro_factory:
+        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro) as mock_kokoro_factory:
             with patch("src.audiobook_studio.tts.edge_tts_engine.create_edge_tts_engine", return_value=mock_edge) as mock_edge_factory:
                 await registry.initialize(config)
 
@@ -195,7 +195,7 @@ class TestEngineRegistry:
         mock_kokoro = Mock(spec=TTSEngine)
         mock_kokoro.engine_name = "kokoro"
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_engine", return_value=mock_kokoro):
+        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro):
             await registry.initialize(config)
 
         # Factory called but engine's initialize() NOT called

@@ -396,6 +396,39 @@ class EdgeTTSEngine(BaseTTSEngine):
         est_sec = len(text) / chars_per_sec / speed
         return max(500, int(est_sec * 1000))
 
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ):
+        """Stream audio chunks for real-time playback using edge_tts.Communicate.stream()."""
+        if not self._initialized:
+            await self.initialize()
+
+        if self.mock_mode:
+            # Mock: yield empty chunks
+            import numpy as np
+            yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
+            return
+
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+
+        voice_id = voice_anchor.voice_id
+
+        # Validate voice
+        if voice_id not in EDGE_VOICES:
+            voice_id = "zh-CN-XiaoxiaoNeural"
+
+        # Build SSML for prosody control
+        ssml = self._build_ssml(text, voice_id, prosody) if prosody else text
+
+        # Stream audio chunks
+        communicate = edge_tts.Communicate(ssml, voice_id)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                yield chunk["data"]
+
 
 async def create_edge_tts_engine(**kwargs: Any) -> EdgeTTSEngine:
     """Factory function to create and initialize EdgeTTS engine."""

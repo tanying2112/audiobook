@@ -36,6 +36,7 @@ class ProviderType(str, Enum):
     CLOUDFLARE = "cloudflare"
     GITHUB = "github"
     DUCK2API = "duck2api"
+    VLLM = "vllm"
 
 
 class StageName(str, Enum):
@@ -117,6 +118,7 @@ class ProviderConfig(BaseSettings):
             ProviderType.CLOUDFLARE: "openai/",
             ProviderType.GITHUB: "openai/",
             ProviderType.DUCK2API: "openai/",
+            ProviderType.VLLM: "openai/",
         }
         prefix = prefix_map.get(self.provider, "")
         return f"{prefix}{self.model}"

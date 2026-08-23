@@ -12,6 +12,7 @@ import pytest
 from src.audiobook_studio.publish.audiobookshelf_integration import (
     AudiobookFile,
     AudiobookMetadata,
+    AudiobookshelfAPIClient,
     AudiobookshelfConfig,
     AudiobookshelfIntegrator,
 )
@@ -345,7 +346,9 @@ class TestAudiobookshelfIntegrator:
     async def test_prepare_audiobook_unsupported_format_no_convert(self, integrator, metadata, audio_file):
         integrator.config.auto_convert = False
         audio_file.format = "wav"
-        audio_file.file_path = Path(str(audio_file.file_path).replace(".m4b", ".wav"))
+        wav_path = Path(str(audio_file.file_path).replace(".m4b", ".wav"))
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         valid, message, upload_data = await integrator.prepare_audiobook(metadata, audio_file)
         assert valid is False
         assert "不支持的格式" in message
@@ -355,7 +358,9 @@ class TestAudiobookshelfIntegrator:
     async def test_prepare_audiobook_unsupported_format_with_convert(self, integrator, metadata, audio_file):
         integrator.config.auto_convert = True
         audio_file.format = "wav"
-        audio_file.file_path = Path(str(audio_file.file_path).replace(".m4b", ".wav"))
+        wav_path = Path(str(audio_file.file_path).replace(".m4b", ".wav"))
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         valid, message, upload_data = await integrator.prepare_audiobook(metadata, audio_file)
         assert valid is False
         assert "自动转换功能待实现" in message
@@ -495,13 +500,13 @@ class TestAudiobookshelfIntegrator:
     async def test_get_library_status_online(self, integrator):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"mediaCount": 10, "duration": 7200000}
+        mock_response.json.return_value = {"mediaCount": 10, "duration": 7200}
         integrator.client.get = AsyncMock(return_value=mock_response)
 
         result = await integrator.get_library_status()
         assert result["library_id"] == "test_library"
         assert result["total_books"] == 10
-        assert result["total_duration_hours"] == 2.0  # 7200000 / 3600
+        assert result["total_duration_hours"] == 2.0  # 7200s / 3600 = 2h
         assert result["status"] == "online"
         assert "last_updated" in result
 
@@ -530,8 +535,10 @@ class TestAudiobookshelfIntegrator:
 
         result = await integrator.publish_to_audiobookshelf(metadata, audio_file)
         assert result[0] is False
-        assert "发布过程中出现网络错误" in result[1]
-        assert result[2] is None
+        assert "发布失败" in result[1]
+        assert "获取库信息失败" in result[1]
+        assert result[2] is not None
+        assert result[2]["success"] is False
 
 
 class TestAudiobookshelfAPIClientStub:

@@ -311,12 +311,27 @@ def _aggregate_quality_score(metrics: Dict[str, float], stage_type: str) -> floa
 
 # ── Stage-specific prompt version runners ──────────────────────────────────────
 
+#: 自我迭代 Harness mock 开关 (C-01)。true → canary/promotion-gate/A-B 以 mock_mode
+#: 空跑 (默认, 行为不变); false → 真实调用 LLM 产出新 prompt 版本。
+SELF_ITERATION_MOCK_ENV = "SELF_ITERATION_MOCK"
+
+
+def _self_iteration_mock_enabled() -> bool:
+    return os.getenv(SELF_ITERATION_MOCK_ENV, "true").lower() not in ("false", "0", "no")
+
+
+def _resolve_mock_mode(explicit: Optional[bool]) -> bool:
+    """Resolve a mock_mode from an explicit arg, else from SELF_ITERATION_MOCK env."""
+    if explicit is not None:
+        return explicit
+    return _self_iteration_mock_enabled()
+
 
 def _run_stage_with_prompt_version(
     pipeline_stage: str,
     version: int,
     input_data: Any,
-    mock_mode: bool = True,
+    mock_mode: Optional[bool] = None,
 ) -> Any:
     """Run a specific pipeline stage with a specific prompt version.
 
@@ -327,8 +342,11 @@ def _run_stage_with_prompt_version(
         pipeline_stage: Short pipeline stage name (edit, annotate, analyze, etc.)
         version: Prompt version number
         input_data: Input data for the pipeline (dict or model object)
-        mock_mode: Whether to run in mock mode
+        mock_mode: Whether to run in mock mode (None = resolve from
+            SELF_ITERATION_MOCK env, C-01).
     """
+    mock_mode = _resolve_mock_mode(mock_mode)
+
     # Convert dict input to appropriate model if needed
     if isinstance(input_data, dict):
         input_data = _convert_input_to_model(pipeline_stage, input_data)
@@ -653,7 +671,7 @@ def check_golden_dataset(
 
         try:
             # Run pipeline with new prompt version
-            actual_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
+            actual_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data)
 
             # Convert to dict if needed for comparison
             if hasattr(actual_output, "model_dump"):
@@ -754,12 +772,12 @@ def check_quality_improvement(
 
         try:
             # Run with old version
-            old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=True)
+            old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data)
             if hasattr(old_output, "model_dump"):
                 old_output = old_output.model_dump()
 
             # Run with new version
-            new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
+            new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data)
             if hasattr(new_output, "model_dump"):
                 new_output = new_output.model_dump()
 

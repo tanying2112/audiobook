@@ -365,13 +365,13 @@ class SelfIterationLoop:
                 expected_output = example["expected_output"]
 
                 try:
-                    # Run with NEW prompt version
-                    new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data, mock_mode=True)
+                    # Run with NEW prompt version (mock_mode=None → SELF_ITERATION_MOCK env, C-01)
+                    new_output = _run_stage_with_prompt_version(pipeline_stage, new_version, input_data)
                     if hasattr(new_output, "model_dump"):
                         new_output = new_output.model_dump()
 
                     # Run with OLD prompt version (baseline)
-                    old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data, mock_mode=True)
+                    old_output = _run_stage_with_prompt_version(pipeline_stage, old_version, input_data)
                     if hasattr(old_output, "model_dump"):
                         old_output = old_output.model_dump()
 

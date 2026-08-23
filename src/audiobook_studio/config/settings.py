@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     # Health check
     HEALTH_CHECK_TIMEOUT: float = Field(default=5.0, alias="HEALTH_CHECK_TIMEOUT")
 
+    # 自我迭代 Harness 是否以 mock_mode 空跑 (C-01)。
+    # 默认 true 保持既有行为; CI/生产设 false 走真实 LLM 进化链路。
+    SELF_ITERATION_MOCK: bool = Field(default=True, alias="SELF_ITERATION_MOCK")
+
     # ffmpeg concurrency control
     FFMPEG_CONCURRENCY: int = Field(default=0, alias="FFMPEG_CONCURRENCY")  # 0=auto(cpu_count-1)
 

@@ -71,8 +71,12 @@ from .streaming import (
 )
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpm2_backend
 from .zero_shot_clone import (
-    ZeroShotCloneEngine,
+    BaseZeroShotCloneEngine,
+    CosyVoiceCloneEngine,
+    OpenVoiceV2Engine,
+    XTTSv2Engine,
     ZeroShotCloneConfig,
+    ZeroShotCloneEngine,
     ZeroShotCloneResult,
     create_zero_shot_clone_engine,
 )
@@ -98,9 +102,13 @@ __all__ = [
     "clone_voice",
     "load_voice_print",
     # Zero-Shot Voice Cloning (P2-4)
-    "ZeroShotCloneEngine",
     "ZeroShotCloneConfig",
     "ZeroShotCloneResult",
+    "BaseZeroShotCloneEngine",
+    "XTTSv2Engine",
+    "OpenVoiceV2Engine",
+    "CosyVoiceCloneEngine",
+    "ZeroShotCloneEngine",
     "create_zero_shot_clone_engine",
     # Backends
     "KokoroBackend",

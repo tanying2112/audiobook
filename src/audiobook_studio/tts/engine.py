@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
 
 
 @dataclass
@@ -197,6 +198,20 @@ class TTSEngine(Protocol):
         """Cancel a pending/running task (async engines)."""
         ...
 
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ) -> AsyncIterator[bytes]:
+        """Stream audio chunks for real-time playback.
+        
+        Args:
+            payload: Synthesis specification
+            
+        Yields:
+            Audio chunks as bytes (raw PCM or encoded format depending on engine)
+        """
+        ...
+
     async def health_check(self) -> dict[str, Any]:
         """Check engine health and return status info."""
         ...
@@ -274,6 +289,17 @@ class BaseTTSEngine:
             text_hash=text_hash,
             **kwargs,
         )
+
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ) -> AsyncIterator[bytes]:
+        """Stream audio chunks for real-time playback.
+        
+        Default implementation raises NotImplementedError.
+        Engines that support streaming should override this method.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support streaming")
 
 
 # ---------------------------------------------------------------------------
@@ -555,3 +581,102 @@ async def cleanup_all_engines() -> None:
     """Cleanup all registered engines."""
     registry = get_engine_registry()
     await registry.close_all()
+
+
+# ---------------------------------------------------------------------------
+# S1-6: Real TTS readiness probe
+# ---------------------------------------------------------------------------
+
+#: Canonical engine list surfaced by /health/ready (audit S1-6 return shape).
+TTS_HEALTH_ENGINES: tuple[str, ...] = ("kokoro", "voxcpm2", "edge", "piper")
+
+
+async def probe_tts_engines(
+    timeout: float = 5.0,
+    *,
+    registry: Optional["EngineRegistry"] = None,
+) -> Dict[str, Any]:
+    """Real TTS engine readiness probe (S1-6).
+
+    Returns a normalized per-engine map plus the flattened boolean map the audit
+    requires — ``{"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool}``.
+
+    Probes (each bounded by ``timeout`` and never raising — a failure degrades to
+    ``healthy=False`` instead of propagating):
+
+      - ``kokoro``: local model file present under ``KOKORO_MODEL_PATH``.
+      - ``voxcpm2``: real ``GET {VOXCPM2_ENDPOINT}/health`` when an endpoint is
+        configured (remote pool); otherwise ``not_configured``.
+      - ``edge``: real network reachability probe against the Edge speech host.
+      - ``piper``: not implemented yet (S2-4) -> ``healthy=False``.
+
+    Engines already loaded/registered are consulted via their real
+    ``health_check()`` (e.g. remote VoxCPM2 does a pass-through ``/health`` call)
+    and take precedence over the static probes above.
+
+    Returns:
+        {
+          "engines": {"kokoro": bool, "voxcpm2": bool, "edge": bool, "piper": bool},
+          "details": {name: {"healthy": bool, "detail": {...}}},
+        }
+    """
+    import os
+
+    import httpx
+
+    result: Dict[str, Dict[str, Any]] = {}
+
+    def _set(name: str, healthy: bool, detail: Dict[str, Any]) -> None:
+        result[name] = {"healthy": healthy, "detail": detail}
+
+    # 1) kokoro — model file present (real, fast; avoids loading a heavy model in a health probe).
+    kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
+    require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
+    if not require_local or not kokoro_path:
+        _set("kokoro", False, {"reason": "not_configured"})
+    else:
+        present = Path(kokoro_path).exists()
+        _set("kokoro", present, {"model_present": present, "model_path": kokoro_path})
+
+    # 2) voxcpm2 — real /health probe when an endpoint is configured.
+    v2_endpoint = os.getenv("VOXCPM2_ENDPOINT", "").rstrip("/")
+    if not v2_endpoint:
+        _set("voxcpm2", False, {"reason": "not_configured"})
+    else:
+        probe_timeout = min(timeout, 2.0)
+        try:
+            async with httpx.AsyncClient(timeout=probe_timeout, follow_redirects=True) as client:
+                resp = await client.get(f"{v2_endpoint}/health")
+            _set("voxcpm2", resp.status_code < 500, {"status_code": resp.status_code, "url": f"{v2_endpoint}/health"})
+        except Exception as e:  # noqa: BLE001 — degrade not propagate
+            _set("voxcpm2", False, {"error": str(e)})
+
+    # 3) edge — real network reachability probe. Any HTTP response (even 4xx/5xx)
+    #    proves the host is reachable; only connect/timeout errors mean "down".
+    edge_host = os.getenv("EDGE_TTS_HOST", "https://speech.platform.bing.com")
+    probe_timeout = min(timeout, 2.0)
+    try:
+        async with httpx.AsyncClient(timeout=probe_timeout, follow_redirects=True) as client:
+            resp = await client.get(edge_host)
+        _set("edge", True, {"status_code": resp.status_code, "host": edge_host})
+    except Exception as e:  # noqa: BLE001
+        _set("edge", False, {"error": str(e)})
+
+    # 4) piper — future (S2-4), never falsely happy.
+    _set("piper", False, {"reason": "not_implemented"})
+
+    # Overlay any engines actually loaded/registered: prefer their real health_check()
+    # (e.g. RemoteVoxCPM2Engine does a pass-through GET /health) over static probes.
+    if registry is not None:
+        for name, engine in registry._engines.items():
+            if name not in result:
+                _set(name, False, {"reason": "unknown_engine"})
+            try:
+                health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
+                healthy = bool(health.get("healthy", False))
+                result[name] = {"healthy": healthy, "detail": health}
+            except Exception:  # noqa: BLE001 — degrade not propagate (incl. timeout)
+                _set(name, False, {"error": "health_check timeout or failed"})
+
+    bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}
+    return {"engines": bool_map, "details": result}

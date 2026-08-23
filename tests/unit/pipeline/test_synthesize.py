@@ -242,15 +242,46 @@ class TestSynthesizePipelineRun:
 
     def test_run_different_text_regenerates(self, synthesize_pipeline, tts_routing_inputs):
         """Test that changed text triggers regeneration."""
-        # First run
-        result1 = synthesize_pipeline.run(tts_routing_inputs)
+        from src.audiobook_studio.audio_quality import QualityReport, SegmentQualityResult
 
-        # Modify text in inputs
-        for inp in tts_routing_inputs:
-            inp.text = inp.text + " modified"
+        def _fake_quality_report(
+            segment_files, segment_ids, project_id, chapter_index,
+            max_retries, retry_callback, speaker_map, **kwargs,
+        ):
+            # Build a passing report without invoking the network/model-heavy
+            # DNSMOS/ASR/SpeakerSim metrics — keeps this unit test fast & CI-robust.
+            results = [
+                SegmentQualityResult(
+                    segment_id=sid, file_path=str(fp), duration_ms=1000, passed=True
+                )
+                for sid, fp in zip(segment_ids, segment_files)
+            ]
+            return QualityReport(
+                project_id=project_id,
+                chapter_index=chapter_index,
+                total_segments=len(results),
+                passed_segments=len(results),
+                failed_segments=0,
+                segment_results=results,
+                overall_passed=True,
+                generated_at="2024-01-01T00:00:00",
+            )
 
-        # Second run should regenerate
-        result2 = synthesize_pipeline.run(tts_routing_inputs)
+        # Mock the quality gate (DNSMOS ONNX model) so the test does not depend on
+        # network/model downloads. Regeneration is driven by text_hash, not quality.
+        with patch(
+            "src.audiobook_studio.pipeline.synthesize.check_all_segments",
+            new=AsyncMock(side_effect=_fake_quality_report),
+        ):
+            # First run
+            result1 = synthesize_pipeline.run(tts_routing_inputs)
+
+            # Modify text in inputs
+            for inp in tts_routing_inputs:
+                inp.text = inp.text + " modified"
+
+            # Second run should regenerate
+            result2 = synthesize_pipeline.run(tts_routing_inputs)
 
         # File paths should be different (new files created)
         # Actually with mock port, it might reuse - check that synthesis was attempted
@@ -525,9 +556,10 @@ class TestSynthesizePipelineRoutingDecision:
         assert decision.engine_choice == "kokoro"
 
     def test_routing_decision_voice_id_from_character_map(self, synthesize_pipeline, tts_routing_inputs):
-        """Test voice_id is extracted from character_voice_map."""
+        """Test voice_id is extracted from character_voice_map and normalized for engine."""
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
-        assert decision.voice_id == "zh-CN-XiaoxiaoNeural"
+        # Edge voice ID is mapped to Kokoro equivalent since engine_choice is kokoro
+        assert decision.voice_id == "zf_xiaoxiao"
 
 
 class TestSynthesizePipelineErrorHandling:
@@ -580,13 +612,13 @@ class TestSynthesizePipelineAsyncPort:
         fake_audio = synthesize_pipeline.output_dir / "fake_output.wav"
         fake_audio.write_bytes(b"RIFF" + b"\x00" * 1000)  # Minimal WAV header
 
-        # Create a mock result with engine attribute
+        # Create a mock result with metadata containing engine
         mock_result = MagicMock(spec=TTSTaskResult)
         mock_result.task_id = "test"
         mock_result.status = TTSStatus.DONE
         mock_result.audio_path = str(fake_audio)
         mock_result.duration_ms = 1000
-        mock_result.engine = "kokoro"
+        mock_result.metadata = {"engine": "kokoro"}
 
         port.get_result.return_value = mock_result
 

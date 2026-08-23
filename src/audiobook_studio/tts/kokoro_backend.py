@@ -549,6 +549,77 @@ class KokoroBackend(BaseTTSEngine):
         return max(500, int(est_sec * 1000))
 
 
+
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ):
+        """Stream audio chunks for real-time playback.
+        
+        Kokoro generates full audio first, then yields in chunks.
+        This is pseudo-streaming (not true incremental generation).
+        """
+        if not self._loaded:
+            await self.initialize()
+
+        if self.mock_mode:
+            import numpy as np
+            yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
+            return
+
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+
+        voice_id = voice_anchor.voice_id
+        reference_audio = voice_anchor.reference_audio_path
+        embedding = payload.metadata.get("embedding") if payload.metadata else None
+
+        prosody_dict = None
+        if prosody:
+            prosody_dict = {
+                "rate": prosody.rate,
+                "pitch": prosody.pitch,
+                "volume": prosody.volume,
+                "emotion": prosody.emotion,
+            }
+
+        # Generate full audio first (Kokoro doesn't support incremental generation)
+        import tempfile
+        import soundfile as sf
+        import numpy as np
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        
+        try:
+            result = await self._synthesize_internal(
+                text=text,
+                voice_id=voice_id,
+                output_path=tmp_path,
+                prosody=prosody_dict,
+                reference_audio=reference_audio,
+                embedding=embedding,
+            )
+            
+            # Read the generated audio and yield in chunks
+            audio_data, sr = sf.read(result.audio_path)
+            if audio_data.ndim > 1:
+                audio_data = audio_data.mean(axis=1)  # Convert to mono
+            
+            # Convert to int16
+            audio_int16 = (audio_data * 32767).astype(np.int16)
+            
+            # Yield in ~100ms chunks (2400 samples at 24kHz)
+            chunk_size = int(sr * 0.1)  # 100ms chunks
+            for i in range(0, len(audio_int16), chunk_size):
+                chunk = audio_int16[i:i+chunk_size]
+                yield chunk.tobytes()
+                
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
 async def create_kokoro_backend(
     model_path: Optional[str] = None,
     voices_path: Optional[str] = None,

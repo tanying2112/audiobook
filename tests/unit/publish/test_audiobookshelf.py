@@ -488,8 +488,11 @@ class TestAudiobookshelfPublisher:
         assert "文件大小不匹配" in message
         assert upload_data is None
 
-    def test_prepare_audiobook_unsupported_format_no_convert(self, publisher, metadata, audio_file):
+    def test_prepare_audiobook_unsupported_format_no_convert(self, publisher, metadata, audio_file, tmp_path):
         publisher.config.auto_convert = False
+        wav_path = tmp_path / "test.wav"
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         audio_file.format = "wav"
         valid, message, upload_data = publisher._prepare_audiobook(metadata, audio_file)
         assert valid is False
@@ -497,8 +500,11 @@ class TestAudiobookshelfPublisher:
         assert "wav" in message
         assert upload_data is None
 
-    def test_prepare_audiobook_unsupported_format_with_convert(self, publisher, metadata, audio_file):
+    def test_prepare_audiobook_unsupported_format_with_convert(self, publisher, metadata, audio_file, tmp_path):
         publisher.config.auto_convert = True
+        wav_path = tmp_path / "test.wav"
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         audio_file.format = "wav"
         valid, message, upload_data = publisher._prepare_audiobook(metadata, audio_file)
         assert valid is False
@@ -559,7 +565,10 @@ class TestAudiobookshelfPublisher:
         assert "标题不能为空" in message
         assert response is None
 
-    def test_publish_audiobook_invalid_format(self, publisher, metadata, audio_file):
+    def test_publish_audiobook_invalid_format(self, publisher, metadata, audio_file, tmp_path):
+        wav_path = tmp_path / "test.wav"
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         audio_file.format = "wav"
         publisher.config.auto_convert = False
         success, message, response = publisher.publish_audiobook(metadata, audio_file)
@@ -567,7 +576,10 @@ class TestAudiobookshelfPublisher:
         assert "不支持的格式" in message
         assert response is None
 
-    def test_publish_audiobook_format_convert_not_implemented(self, publisher, metadata, audio_file):
+    def test_publish_audiobook_format_convert_not_implemented(self, publisher, metadata, audio_file, tmp_path):
+        wav_path = tmp_path / "test.wav"
+        wav_path.write_bytes(b"fake audio content")
+        audio_file.file_path = wav_path
         audio_file.format = "wav"
         publisher.config.auto_convert = True
         success, message, response = publisher.publish_audiobook(metadata, audio_file)
@@ -588,7 +600,7 @@ class TestAudiobookshelfPublisherRealMode:
         )
 
     @pytest.fixture
-    def publisher(self, config):
+    def publisher(self, config, mock_client):
         with patch.dict(os.environ, {"MOCK_LLM": "false"}):
             return AudiobookshelfPublisher(config)
 
@@ -627,7 +639,9 @@ class TestAudiobookshelfPublisherRealMode:
         with patch("src.audiobook_studio.publish.audiobookshelf.httpx.Client") as mock:
             client_instance = MagicMock()
             mock.return_value = client_instance
-            yield client_instance
+            # The real API call polls with time.sleep(3); skip it in unit tests.
+            with patch("time.sleep"):
+                yield client_instance
 
     def test_real_api_call_library_not_found(self, publisher, metadata, audio_file, mock_client):
         mock_response = MagicMock()
@@ -915,13 +929,13 @@ class TestAudiobookshelfPublisherRealMode:
     def test_get_library_status_online(self, publisher, mock_client):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"mediaCount": 10, "duration": 7200000}
+        mock_response.json.return_value = {"mediaCount": 10, "duration": 7200}
         mock_client.get.return_value = mock_response
 
         result = publisher.get_library_status()
         assert result["library_id"] == "test_library"
         assert result["total_books"] == 10
-        assert result["total_duration_hours"] == 2.0  # 7200000 / 3600
+        assert result["total_duration_hours"] == 2.0  # 7200s / 3600 = 2h
         assert result["status"] == "online"
         assert "last_updated" in result
         assert "error" not in result
