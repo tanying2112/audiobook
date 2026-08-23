@@ -284,3 +284,29 @@ class ChangeRecord(Base):
     related_change: Mapped[Optional["ChangeRecord"]] = relationship(
         "ChangeRecord", remote_side=[id], backref="followup_changes"
     )
+
+
+class CollaborationRecord(Base):
+    """Generic collaboration record (aggregated audit/comment table).
+
+    collab.py historically relied on a single polymorphic table keyed by ``type``
+    (``"task_status"`` / ``"approval"`` / ``"change_history"`` / comment types).
+    This model restores that contract so the /collab router can query and persist
+    records without coupling to the normalised TeamMember/Comment/Task models.
+    """
+
+    __tablename__ = "collaboration_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    task_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    project_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    processed: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )

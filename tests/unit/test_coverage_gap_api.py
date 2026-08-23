@@ -91,29 +91,40 @@ class TestConfigAPI:
 class TestCollabAPI:
     @pytest.fixture()
     def client(self):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
         from src.audiobook_studio.api.collab import router
+        from src.audiobook_studio.api.dependencies import get_async_db
+
+        # collab endpoints depend on get_async_db; ensure collaboration tables
+        # (incl. the new CollaborationRecord aggregate) are registered on
+        # Base.metadata before DDL is applied.
+        import src.audiobook_studio.models.collaboration  # noqa: F401
 
         app = FastAPI()
         app.include_router(router)
 
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tmp.close()
-        engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
-        Base.metadata.create_all(bind=engine)
-        TestSession = sessionmaker(bind=engine)
+        sync_engine = create_engine(
+            f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
+        )
+        async_engine = create_async_engine(
+            f"sqlite+aiosqlite:///{tmp.name}", connect_args={"check_same_thread": False}
+        )
+        Base.metadata.create_all(bind=sync_engine)
+        TestSession = async_sessionmaker(bind=async_engine, expire_on_commit=False)
 
-        def override():
-            db = TestSession()
-            try:
+        async def override():
+            async with TestSession() as db:
                 yield db
-            finally:
-                db.close()
 
-        app.dependency_overrides[get_db] = override
+        app.dependency_overrides[get_async_db] = override
         with TestClient(app) as c:
             yield c
         app.dependency_overrides.clear()
-        engine.dispose()
+        sync_engine.dispose()
+        async_engine.dispose()
         os.unlink(tmp.name)
 
     def test_get_collaboration_stats(self, client):
@@ -193,18 +204,18 @@ class TestExportAPI:
             yield c
 
     def test_list_formats(self, client):
-        r = client.get("/api/projects/1/export/")
+        r = client.get("/projects/1/export/")
         assert r.status_code in (200, 422)
 
     def test_start_export(self, client):
         r = client.post(
-            "/api/projects/1/export/",
+            "/projects/1/export/",
             json={"format": "mp3", "chapter_ids": []},
         )
         assert r.status_code in (200, 202, 400, 404, 422)
 
     def test_get_export_status(self, client):
-        r = client.get("/api/projects/1/export/status")
+        r = client.get("/projects/1/export/status")
         assert r.status_code in (200, 404)
 
 

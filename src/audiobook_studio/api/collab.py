@@ -11,8 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.feedback_record import FeedbackRecord as CollaborationRecord
-from ..schemas.feedback import FeedbackRecord as CollaborationRecordSchema
+from ..models.collaboration import CollaborationRecord
 from .dependencies import get_async_db
 
 router = APIRouter(prefix="/collab", tags=["collaboration"])
@@ -57,6 +56,30 @@ class CommentListResponse(BaseModel):
 
 
 # ── API Endpoints ────────────────────────────────────────────────────────────
+
+
+@router.get("/stats")
+async def get_collaboration_stats(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return aggregate collaboration statistics.
+
+    Counts the polymorphic ``CollaborationRecord`` rows by their ``type`` so the
+    UI can show how many comments/tasks/approvals/change-history entries exist.
+    """
+    query = select(CollaborationRecord)
+    if project_id is not None:
+        query = query.where(CollaborationRecord.project_id == project_id)
+    result = await db.execute(query)
+    records = result.scalars().all()
+    return {
+        "total": len(records),
+        "tasks": sum(1 for r in records if r.type == "task_status"),
+        "approvals": sum(1 for r in records if r.type == "approval"),
+        "change_history": sum(1 for r in records if r.type == "change_history"),
+        "processed": sum(1 for r in records if r.processed),
+    }
 
 
 @router.get("/comments", response_model=CommentListResponse)
