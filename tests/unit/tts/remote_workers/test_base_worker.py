@@ -15,9 +15,53 @@ from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-# Mock boto3 and redis before importing base_worker
-with patch.dict(sys.modules, {"boto3": Mock(), "redis": Mock()}):
+# Mock boto3 and redis before importing base_worker.
+# NOTE: a bare Mock() has no ``__spec__``; ``instructor`` (imported transitively
+# by the app) calls ``importlib.util.find_spec("boto3")`` which raises
+# ``ValueError: boto3.__spec__ is not set`` for a spec-less mock. That aborts the
+# app import and rolls ``sqlalchemy.orm.base`` out of sys.modules while leaving
+# SQLAlchemy's ``inspection._registries['object']`` populated, which then triggers
+# ``AssertionError: Type <class 'object'> is already registered`` on the next app
+# import. Giving the mocks a real ModuleSpec avoids the cascade.
+import importlib.util as _ilu
+import types as _types
+
+
+def _make_module_mock(name: str):
+    mock = MagicMock()
+    mock.__spec__ = _ilu.spec_from_loader(name, loader=None)
+    mock.__name__ = name
+    return mock
+
+
+_boto3_mock = _make_module_mock("boto3")
+_boto3_mock.exceptions.Boto3Error = Exception
+_redis_mock = _make_module_mock("redis")
+_redis_mock.RedisError = Exception
+
+with patch.dict(
+    sys.modules,
+    {"boto3": _boto3_mock, "redis": _redis_mock},
+):
+    _before_import = set(sys.modules)
     from src.audiobook_studio.tts.remote_workers.base_worker import BaseWorker, R2Uploader
+    # ``patch.dict`` restores ``sys.modules`` on exit and EVICTS every module that
+    # was imported during the block (the app package, SQLAlchemy, instructor, ...)
+    # because they were not present beforehand. If they are evicted, the next app
+    # import (e.g. the ``disable_langfuse`` autouse fixture) re-imports
+    # ``sqlalchemy.orm.base``, which re-runs ``@inspection._inspects(object)`` and
+    # blows up with ``AssertionError: Type <class 'object'> is already registered``
+    # (the previous registration in ``sqlalchemy.inspection._registries`` survives).
+    # Re-add the imported modules so the app + SQLAlchemy stay cached.
+    _imported_modules = {
+        k: sys.modules[k]
+        for k in set(sys.modules) - _before_import
+        if k not in ("boto3", "redis")
+    }
+
+# ``patch.dict`` has now exited (restoring the real boto3/redis state); re-add
+# the captured modules so they remain importable/cached for the rest of the session.
+sys.modules.update(_imported_modules)
 
 
 class TestR2Uploader:
@@ -25,7 +69,7 @@ class TestR2Uploader:
 
     def test_init_requires_boto3(self):
         """Test R2Uploader raises RuntimeError when boto3 unavailable."""
-        with patch.dict(sys.modules, {"boto3": None}):
+        with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3", None):
             with pytest.raises(RuntimeError, match="boto3 unavailable"):
                 R2Uploader(
                     endpoint_url="https://test.r2.cloudflarestorage.com",
@@ -40,7 +84,7 @@ class TestR2Uploader:
         mock_s3 = Mock()
         mock_boto3.client.return_value = mock_s3
 
-        with patch.dict(sys.modules, {"boto3": mock_boto3}):
+        with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3", mock_boto3):
             uploader = R2Uploader(
                 endpoint_url="https://test.r2.cloudflarestorage.com",
                 access_key_id="test_key",
@@ -67,7 +111,7 @@ class TestR2Uploader:
         mock_s3 = Mock()
         mock_boto3.client.return_value = mock_s3
 
-        with patch.dict(sys.modules, {"boto3": mock_boto3}):
+        with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3", mock_boto3):
             uploader = R2Uploader(
                 endpoint_url="https://test.r2.cloudflarestorage.com",
                 access_key_id="test_key",
@@ -83,7 +127,7 @@ class TestR2Uploader:
         mock_s3 = Mock()
         mock_boto3.client.return_value = mock_s3
 
-        with patch.dict(sys.modules, {"boto3": mock_boto3}):
+        with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3", mock_boto3):
             uploader = R2Uploader(
                 endpoint_url="https://test.r2.cloudflarestorage.com",
                 access_key_id="test_key",
@@ -110,7 +154,7 @@ class TestR2Uploader:
         mock_s3 = Mock()
         mock_boto3.client.return_value = mock_s3
 
-        with patch.dict(sys.modules, {"boto3": mock_boto3}):
+        with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3", mock_boto3):
             uploader = R2Uploader(
                 endpoint_url="https://test.r2.cloudflarestorage.com",
                 access_key_id="test_key",
@@ -184,8 +228,10 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3") as mock_boto3:
                     mock_boto3.client.return_value = Mock()
+                    mock_boto3.exceptions.Boto3Error = Exception
 
                     worker = ConcreteWorker("test")
                     assert worker.worker_id == "test-worker-123"
@@ -213,8 +259,10 @@ class TestBaseWorkerInitialization:
             with patch("signal.signal") as mock_signal:
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                     mock_redis_module.Redis.return_value = Mock()
+                    mock_redis_module.RedisError = Exception
                     with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3") as mock_boto3:
                         mock_boto3.client.return_value = Mock()
+                        mock_boto3.exceptions.Boto3Error = Exception
 
                         worker = ConcreteWorker("test")
                         assert mock_signal.call_count == 2
@@ -226,6 +274,7 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader") as mock_r2:
                     worker = ConcreteWorker("test")
                     mock_r2.assert_called_once()
@@ -235,6 +284,7 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     with patch.object(ConcreteWorker, "_init_engine", return_value=Mock()) as mock_init:
                         with patch.object(ConcreteWorker, "_execute_smoke_test") as mock_smoke:
@@ -253,6 +303,7 @@ class TestBaseWorkerHeartbeat:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     worker = ConcreteWorker("test")
                     worker.redis = mock_redis
@@ -306,6 +357,7 @@ class TestBaseWorkerNetworkCallRetry:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     return ConcreteWorker("test")
 
@@ -388,6 +440,7 @@ class TestBaseWorkerTaskProcessing:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_component = Mock()
                 mock_redis_module.Redis.return_value = mock_redis_component
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader") as mock_r2_class:
                     mock_r2 = Mock()
                     mock_r2.upload.return_value = "https://r2.example.com/tts/task123.wav"
@@ -433,7 +486,7 @@ class TestBaseWorkerTaskProcessing:
 
     def test_process_task_synthesis_failure(self, worker):
         """Test handling of synthesis failure."""
-        worker.engine.synthesize.side_effect = RuntimeError("GPU OOM")
+        worker._synthesize = Mock(side_effect=RuntimeError("GPU OOM"))
 
         task = {"id": "task-fail", "text": "Fail", "voice_id": "zh_female_1", "prosody": {}}
 
@@ -464,6 +517,10 @@ class TestBaseWorkerRunLoop:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
+                mock_redis_module.RedisError = Exception
+                # ``run()`` only terminates on idle timeout when ``llen("tts:tasks") == 0``,
+                # so default the mocked queue length to empty for the run-loop tests.
+                mock_redis.llen.return_value = 0
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     worker = ConcreteWorker("test")
                     worker.redis = mock_redis
@@ -563,6 +620,7 @@ class TestBaseWorkerShutdown:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     return ConcreteWorker("test")
 
@@ -608,6 +666,7 @@ class TestBaseWorkerIdleTimeout:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
+                mock_redis_module.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     worker = ConcreteWorker("test")
                     worker.redis = mock_redis
@@ -637,6 +696,18 @@ class TestBaseWorkerIdleTimeout:
         worker.running = True
         worker.max_empty_polls = 2
 
+        # ``run()`` only exits on idle timeout when ``llen("tts:tasks") == 0``; with a
+        # non-empty queue it keeps looping. Simulate a shutdown signal arriving after
+        # enough empty polls to exercise (but not fire) the idle-timeout branch.
+        _polls = {"n": 0}
+
+        def _blpop(*args, **kwargs):
+            _polls["n"] += 1
+            if _polls["n"] > worker.max_empty_polls:
+                worker.running = False
+            return None
+
+        worker.redis.blpop.side_effect = _blpop
         with patch("time.sleep"):
             worker.run()
 
