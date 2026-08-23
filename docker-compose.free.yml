@@ -60,6 +60,16 @@ services:
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      # v0.4 Streaming TTS endpoints (enable when services are running)
+      - COSYVOICE_STREAM_ENDPOINT=http://cosyvoice-stream:5000
+      - SEED_TTS_STREAM_ENDPOINT=http://seed-tts-stream:5001
+      - MELOTTS_STREAM_ENDPOINT=http://melotts-stream:5002
+      # v0.4 Zero-shot cloning endpoints (enable when services are running)
+      - XTTS_V2_ENDPOINT=http://xtts-v2:5010
+      - OPENVOICE_V2_ENDPOINT=http://openvoice-v2:5011
+      - COSYVOICE_CLONE_ENDPOINT=http://cosyvoice-clone:5012
+      # v0.4 VoxCPM2 remote endpoint (for GPU cloud workers)
+      - VOXCPM2_ENDPOINT=http://voxcpm2-remote:8080
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -98,6 +108,16 @@ services:
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      # v0.4 Streaming TTS endpoints (enable when services are running)
+      - COSYVOICE_STREAM_ENDPOINT=http://cosyvoice-stream:5000
+      - SEED_TTS_STREAM_ENDPOINT=http://seed-tts-stream:5001
+      - MELOTTS_STREAM_ENDPOINT=http://melotts-stream:5002
+      # v0.4 Zero-shot cloning endpoints (enable when services are running)
+      - XTTS_V2_ENDPOINT=http://xtts-v2:5010
+      - OPENVOICE_V2_ENDPOINT=http://openvoice-v2:5011
+      - COSYVOICE_CLONE_ENDPOINT=http://cosyvoice-clone:5012
+      # v0.4 VoxCPM2 remote endpoint (for GPU cloud workers)
+      - VOXCPM2_ENDPOINT=http://voxcpm2-remote:8080
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:

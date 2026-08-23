@@ -1,8 +1,15 @@
 """Unit tests for observability tracing to boost coverage."""
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from src.audiobook_studio.observability import tracing
+
+# These tests mock the optional ``opentelemetry.instrumentation`` extras. The
+# app imports them lazily (graceful degradation), but the patches below require
+# the modules to be importable. Skip when the extras aren't installed (e.g. a
+# minimal dev environment) — CI installs them and runs the tests normally.
+pytest.importorskip("opentelemetry.instrumentation")
 
 
 def _mock_instrumentations():

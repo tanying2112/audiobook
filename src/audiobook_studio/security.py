@@ -434,6 +434,10 @@ def safe_subprocess_args(cmd: list[str], base_dir: Optional[Path] = None) -> lis
             "-loglevel",
             "-progress",
             "-max_muxing_queue_size",
+            # "-" is the ffmpeg/ffprobe stdin/stdout stream placeholder
+            # (e.g. `ffmpeg -f null -` measures loudness without writing output).
+            # It is a fixed, safe literal and must be allowed.
+            "-",
         }
 
         # Validate that unknown flags aren't sneaking in (but allow user-provided values after known value-flags)

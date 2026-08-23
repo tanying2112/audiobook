@@ -110,18 +110,24 @@ class TestP215FakePortAudioDemTerm:
         assert h1 == h2, f"FakePort 同输入应字节级相等 (真跑): {h1} vs {h2}"
 
     def test_fakeport_diff_input_diff_byte(self):
-        """不同输入 → FakePort 音频字节不同 (区分输入, 否则等同无视输入)。"""
+        """不同输入(不同长度) → FakePort 音频字节不同 (区分输入, 对应 docstring 红线)。
+
+        源 FakeRemoteTTSPort._process_task 生成 sine-wave WAV, 其 duration 与
+        len(text) 成正比 (max(0.5, len(text)*0.05)); 故不同长度文本 → 不同字节数 →
+        不同 sha256。本测用两条不同长度文本核实 FakePort 对输入敏感 (非固定 silence)。
+        （若日后 FakePort 改为固定 silence, 此断言需回退为 h1 == h2。）
+        """
         port = FakeRemoteTTSPort()
 
         async def go():
-            h1 = await _fakeport_audio_hash(port, "p215-diff-a", "文本甲甲甲甲甲甲甲甲甲甲甲甲")
-            h2 = await _fakeport_audio_hash(port, "p215-diff-b", "完全不同的文本内容了序列")
+            h1 = await _fakeport_audio_hash(port, "p215-diff-a", "甲" * 50)
+            h2 = await _fakeport_audio_hash(port, "p215-diff-b", "乙" * 30)
             return h1, h2
 
         h1, h2 = _run(go())
-        # 真跑结果: FakePort 内容固定 silence (与文本无关), 故 hash 仍等 → 诚实标注。
-        # 边界: FakePort 不区分输入 (说明 mock 路径只验"确定性"非"输入敏感")。
-        assert h1 == h2  # 真跑核实: 固定 silence, 同 hash; 红线#1: 实事求是标等
+        # 真跑结果: FakePort 按文本长度生成 sine-wave (时长 ∝ 长度), 故不同长度
+        # 输入 → 不同字节 → 不同 hash。与 docstring "不同输入→字节不同" 一致。
+        assert h1 != h2, f"FakePort 不同长度输入应产生不同字节 (输入敏感): {h1} vs {h2}"
 
     def test_fakeport_seed_channel_deterministic_run(self):
         """传 seed 经 TTSProsody → payload → FakePort synthesize 不影响 mock 确定性。"""

@@ -1,0 +1,169 @@
+# docker-compose.v04.yml - v0.4 Multi-lingual Clone Services
+# 
+# This file extends docker-compose.free.yml with v0.4 TTS services.
+# These services are OPTIONAL and can be deployed to Modal (recommended for free GPU)
+# or run locally if you have GPU.
+#
+# Usage:
+#   docker compose -f docker-compose.free.yml -f docker-compose.v04.yml up -d
+#
+# For Modal deployment (recommended - free T4 GPU):
+#   python scripts/deploy_v04_modal.py --all
+#   Then update docker-compose.free.yml with the Modal endpoints
+
+version: "3.9"
+
+services:
+  # =========================================================================
+  # V0.4 STREAMING TTS SERVICES (Optional - Deploy to Modal for free GPU)
+  # =========================================================================
+  
+  # CosyVoice Streaming TTS - Chinese/English, high quality, low latency
+  # Deploy to Modal: modal deploy modal_cosyvoice_stream_server.py
+  cosyvoice-stream:
+    image: modal/cosyvoice-stream:latest  # Placeholder - deploy to Modal instead
+    container_name: audiobook-cosyvoice-stream
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Note: Actual deployment should use Modal for free T4 GPU
+    # This service definition is for local GPU testing only
+
+  # Seed-TTS Streaming TTS - ByteDance, zero-shot cloning, cross-lingual
+  # Deploy to Modal: modal deploy modal_seed_tts_stream_server.py
+  seed-tts-stream:
+    image: modal/seed-tts-stream:latest
+    container_name: audiobook-seed-tts-stream
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # MeloTTS Streaming TTS - Multi-language (ZH/EN/JP/KR/ES/FR), fast
+  # Deploy to Modal: modal deploy modal_melotts_stream_server.py
+  melotts-stream:
+    image: modal/melotts-stream:latest
+    container_name: audiobook-melotts-stream
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =========================================================================
+  # V0.4 ZERO-SHOT CLONING SERVICES (Optional - Deploy to Modal for free GPU)
+  # =========================================================================
+
+  # XTTS-v2 Zero-Shot Clone - Coqui, 17 languages, Apache 2.0
+  # Deploy to Modal: modal deploy modal_xtts_v2_server.py
+  xtts-v2:
+    image: modal/xtts-v2:latest
+    container_name: audiobook-xtts-v2
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # OpenVoice V2 Zero-Shot Clone - MyShell, fast, tone color cloning
+  # Deploy to Modal: modal deploy modal_openvoice_v2_server.py
+  openvoice-v2:
+    image: modal/openvoice-v2:latest
+    container_name: audiobook-openvoice-v2
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # CosyVoice Zero-Shot Clone - FunAudioLLM, Chinese/English, streaming
+  # Deploy to Modal: modal deploy modal_cosyvoice_clone_server.py
+  cosyvoice-clone:
+    image: modal/cosyvoice-clone:latest
+    container_name: audiobook-cosyvoice-clone
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =========================================================================
+  # VOXCPM2 REMOTE SERVER (Deploy to Modal for free GPU)
+  # =========================================================================
+  
+  # VoxCPM2 Remote TTS - Modal serverless T4
+  # Deploy to Modal: modal deploy modal_voxcpm2_server.py
+  voxcpm2-remote:
+    image: modal/voxcpm2-server:latest
+    container_name: audiobook-voxcpm2-remote
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  default:
+    name: audiobook-v04-network
+    external: true  # Uses audiobook-free-network from docker-compose.free.yml

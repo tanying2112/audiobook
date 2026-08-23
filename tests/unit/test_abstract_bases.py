@@ -109,17 +109,19 @@ def test_stage_handler_get_result_snapshot_has_default_implementation():
     test_cases = [
         ("string_result", dict),  # string -> dict
         (42, dict),  # int -> dict
-        ({"key": "value"}, dict),  # dict -> dict (same object)
-        ([1, 2, 3], list),  # list -> list (same object)
-        ({"nested": {"data": "value"}}, dict),  # dict -> dict (same object)
+        ({"key": "value"}, dict),  # dict -> dict (same content)
+        ([1, 2, 3], dict),  # list -> {"items": [...]} dict
+        ({"nested": {"data": "value"}}, dict),  # dict -> dict (same content)
     ]
 
     for test_case, expected_type in test_cases:
         result = stage.get_result_snapshot(test_case)
         assert isinstance(result, expected_type)
-        # For dict and list, check that it's the same object
-        if isinstance(test_case, (dict, list)):
+        # For dict/list, check that it matches the documented snapshot shape
+        if isinstance(test_case, dict):
             assert result == test_case
+        elif isinstance(test_case, list):
+            assert result == {"items": list(test_case)}
 
 
 def test_stage_handler_get_result_snapshot_with_model_dump():
@@ -165,7 +167,8 @@ def test_stage_handler_get_result_snapshot_with_list():
     result = [1, 2, 3]
     snapshot = stage.get_result_snapshot(result)
 
-    assert snapshot == result  # Should return the list as-is
+    # Lists are wrapped in a {"items": [...]} dict for consistent serialization
+    assert snapshot == {"items": [1, 2, 3]}
 
 
 def test_stage_handler_get_result_snapshot_fallback():

@@ -1,26 +1,35 @@
 #!/usr/bin/env python3
 """
-Modal deployment for VoxCPM2 TTS inference service.
+Modal HTTP Server for VoxCPM2 TTS - Exposes REST API for Audiobook Studio.
 
-Deploys a FastAPI app on Modal GPU (T4 by default) exposing:
-- POST /v1/tts - Synthesize speech with VoxCPM2
+Deploys a FastAPI app on Modal GPU (T4) exposing:
+- POST /synthesize - Submit TTS task
+- GET /status/{task_id} - Check task status  
+- GET /result/{task_id} - Get result with audio URL
+- POST /cancel/{task_id} - Cancel task
 - GET /health - Health check
-- GET /status/{task_id} - Task status
-- GET /result/{task_id} - Task result with audio URL
+
+This implements the API contract expected by remote_voxcpm2_port.py
 
 Usage:
-    modal deploy modal_voxcpm2_deploy.py
+    modal deploy modal_voxcpm2_server.py
     # Or for development:
-    modal serve modal_voxcpm2_deploy.py
+    modal serve modal_voxcpm2_server.py
 
 Prerequisites:
-    modal secret create voxcpm2-secrets HF_TOKEN=<your_hf_token>
+    modal secret create audiobook-config HF_TOKEN=<your_hf_token>
+    modal secret create audiobook-config REDIS_HOST=... REDIS_PORT=... REDIS_AUTH=... R2_*=...
 """
 from __future__ import annotations
 
 import os
 import uuid
+import time
+import threading
 from pathlib import Path
+from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from enum import Enum
 
 import modal
 
@@ -28,10 +37,9 @@ import modal
 # Modal App Configuration
 # =============================================================================
 
-app = modal.App("voxcpm2-inference")
+app = modal.App("voxcpm2-tts-server")
 
 # GPU: T4 is cost-effective and widely available across providers
-# Can be overridden via env var: MODAL_GPU=T4|V100|A10G|H100
 GPU_TYPE = os.getenv("MODAL_GPU", "T4").upper()
 
 # Model weights cached in Modal volume (persists across container restarts)
@@ -39,13 +47,13 @@ MODEL_VOLUME = modal.Volume.from_name("voxcpm2-model-weights", create_if_missing
 MODEL_DIR = Path("/models")
 
 # Secrets: HF token for ModelScope download (via huggingface_hub)
-# Create via: modal secret create voxcpm2-secrets HF_TOKEN=xxx
-SECRETS = [modal.Secret.from_name("voxcpm2-secrets")]
+# Create via: modal secret create audiobook-config HF_TOKEN=xxx REDIS_HOST=xxx ...
+SECRETS = [modal.Secret.from_name("audiobook-config")]
 
 # Container image with all dependencies
 IMAGE = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git", "ffmpeg", "libsndfile1")
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install("ffmpeg", "libsndfile1", "git")
     .pip_install(
         "torch==2.3.0",
         "torchaudio==2.3.0",
@@ -69,58 +77,19 @@ IMAGE = (
 )
 
 # =============================================================================
-# Modal Function: Download Model Weights (runs once at deploy time)
+# Data Models (matching remote_voxcpm2_port.py contract)
 # =============================================================================
 
 
-@app.function(
-    image=IMAGE,
-    volumes={str(MODEL_DIR): MODEL_VOLUME},
-    secrets=SECRETS,
-    timeout=600,
-)
-def download_model_weights():
-    """Download VoxCPM2 weights from ModelScope to Modal volume."""
-    import subprocess
-    import sys
-
-    target_dir = Path("/models/FunAudioLLM/VoxCPM2")
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    # Check if already downloaded
-    if (target_dir / "config.json").exists():
-        print(f"Model already exists at {target_dir}")
-        return str(target_dir)
-
-    print("Downloading VoxCPM2 from ModelScope (FunAudioLLM/VoxCPM2)...")
-    hf_token = os.environ.get("HF_TOKEN", "")
-    if hf_token:
-        subprocess.run(["huggingface-cli", "login", "--token", hf_token], check=False)
-
-    # Use modelscope to download (HF repo is a placeholder)
-    cmd = [
-        sys.executable,
-        "-m",
-        "modelscope.hub.snapshot_download",
-        "--repo-id",
-        "FunAudioLLM/VoxCPM2",
-        "--local-dir",
-        str(target_dir),
-    ]
-    if hf_token:
-        cmd.extend(["--token", hf_token])
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Download failed: {result.stderr}")
-        raise RuntimeError(f"ModelScope download failed: {result.stderr}")
-
-    print(f"Model downloaded to {target_dir}")
-    return str(target_dir)
+class TaskStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    DONE = "DONE"
+    FAILED = "FAILED"
 
 
 # =============================================================================
-# VoxCPM2 Service Class (Internal - called via FastAPI)
+# Modal Class: VoxCPM2 HTTP Server
 # =============================================================================
 
 
@@ -129,13 +98,14 @@ def download_model_weights():
     gpu=GPU_TYPE,
     secrets=SECRETS,
     volumes={str(MODEL_DIR): MODEL_VOLUME},
-    scaledown_window=60,  # Keep warm for 60s after last request
-    min_containers=0,  # Scale to zero when idle
-    max_containers=3,  # Max concurrent containers
+    scaledown_window=300,  # Keep warm for 5 min after last request
+    min_containers=0,  # Scale to zero when idle (free tier friendly)
+    max_containers=2,  # Max concurrent containers
     timeout=300,
+    concurrency_limit=10,
 )
-class VoxCPM2Service:
-    """VoxCPM2 TTS inference service."""
+class VoxCPM2Server:
+    """VoxCPM2 TTS HTTP Server."""
 
     def __enter__(self):
         """Initialize model on container start (cold start)."""
@@ -154,8 +124,9 @@ class VoxCPM2Service:
         )
         print("VoxCPM2 loaded successfully")
 
-        # In-memory task store (MVP; replace with Redis for production)
+        # In-memory task store
         self._tasks: dict[str, dict] = {}
+        self._lock = threading.Lock()
 
     def _make_task_id(self) -> str:
         return f"voxcpm2-{uuid.uuid4().hex[:12]}"
@@ -165,16 +136,16 @@ class VoxCPM2Service:
         """Health check endpoint."""
         import torch
 
+        with self._lock:
+            pending = sum(1 for t in self._tasks.values() if t["status"] == TaskStatus.PENDING)
+            running = sum(1 for t in self._tasks.values() if t["status"] == TaskStatus.RUNNING)
+
         return {
             "healthy": True,
             "model_loaded": hasattr(self, "model"),
             "device": "cuda" if torch.cuda.is_available() else "cpu",
-            "pending_count": sum(
-                1 for t in self._tasks.values() if t["status"] == "PENDING"
-            ),
-            "running_count": sum(
-                1 for t in self._tasks.values() if t["status"] == "RUNNING"
-            ),
+            "pending_count": pending,
+            "running_count": running,
             "version": "1.0.0",
         }
 
@@ -191,7 +162,7 @@ class VoxCPM2Service:
             "speaker_name": "optional name",
             "language": "zh",
             "reference_audio_path": "optional path to reference audio",
-            "prosody": {"rate": 1.0, "pitch": 0, "volume": 1.0, "emotion": "neutral"},
+            "prosody": {"rate": 1.0, "pitch": 0, "volume": 1.0, "emotion": "neutral", "cfg_value": 2.0, "inference_timesteps": 10},
             "metadata": {}
         }
 
@@ -210,33 +181,48 @@ class VoxCPM2Service:
         task_id = request.get("task_id") or self._make_task_id()
 
         # Create task record
-        self._tasks[task_id] = {
-            "status": "PENDING",
-            "request": request,
-            "progress": 0.0,
-            "result": None,
-            "error": None,
-        }
+        with self._lock:
+            if task_id in self._tasks:
+                return {"error": "Task already exists"}, 409
 
-        # Run synchronously for MVP; Phase 2: use modal.background_task for async
+            self._tasks[task_id] = {
+                "status": TaskStatus.PENDING,
+                "request": request,
+                "progress": 0.0,
+                "result": None,
+                "error": None,
+                "started_at": time.time(),
+            }
+
+        # Run synchronously for MVP; can be made async with modal.background_task
         try:
-            self._tasks[task_id]["status"] = "RUNNING"
-            self._tasks[task_id]["progress"] = 0.1
+            with self._lock:
+                self._tasks[task_id]["status"] = TaskStatus.RUNNING
+                self._tasks[task_id]["progress"] = 0.1
 
             import torchaudio
             import torch
 
-            self._tasks[task_id]["progress"] = 0.3
+            with self._lock:
+                self._tasks[task_id]["progress"] = 0.3
+
+            prosody = request.get("prosody", {})
+            cfg_value = prosody.get("cfg_value", 2.0)
+            inference_timesteps = prosody.get("inference_timesteps", 10)
+
+            with self._lock:
+                self._tasks[task_id]["progress"] = 0.5
 
             # Call FunASR generate method for VoxCPM2
             with torch.no_grad():
                 result = self.model.generate(
                     input=text,
-                    # VoxCPM2 specific params (may vary by version):
+                    # VoxCPM2 specific params:
                     # prompt_speech_16k=...,  # for voice cloning if reference_audio provided
                 )
 
-            self._tasks[task_id]["progress"] = 0.7
+            with self._lock:
+                self._tasks[task_id]["progress"] = 0.7
 
             # Extract audio tensor
             if isinstance(result, dict):
@@ -254,40 +240,45 @@ class VoxCPM2Service:
                 audio = audio.unsqueeze(0)
             audio = audio.cpu()
 
-            self._tasks[task_id]["progress"] = 0.9
+            with self._lock:
+                self._tasks[task_id]["progress"] = 0.9
 
             # Save to temp file
             sample_rate = 24000  # VoxCPM2 default
             output_path = f"/tmp/{task_id}.wav"
             torchaudio.save(output_path, audio, sample_rate)
 
-            self._tasks[task_id]["progress"] = 1.0
-            self._tasks[task_id]["status"] = "DONE"
-            self._tasks[task_id]["result"] = {
-                "audio_path": output_path,
-                "duration_ms": int(audio.shape[1] / sample_rate * 1000),
-                "sample_rate": sample_rate,
-            }
+            with self._lock:
+                self._tasks[task_id]["progress"] = 1.0
+                self._tasks[task_id]["status"] = TaskStatus.DONE
+                self._tasks[task_id]["result"] = {
+                    "audio_path": output_path,
+                    "duration_ms": int(audio.shape[1] / sample_rate * 1000),
+                    "sample_rate": sample_rate,
+                }
+                self._tasks[task_id]["completed_at"] = time.time()
 
         except Exception as e:
-            self._tasks[task_id]["status"] = "FAILED"
-            self._tasks[task_id]["error"] = str(e)
-            print(f"Inference error for task {task_id}: {e}")
+            with self._lock:
+                self._tasks[task_id]["status"] = TaskStatus.FAILED
+                self._tasks[task_id]["error"] = str(e)
+                print(f"Inference error for task {task_id}: {e}")
+
+        with self._lock:
+            task = self._tasks[task_id]
 
         return {
             "task_id": task_id,
-            "status": self._tasks[task_id]["status"],
-            "message": (
-                "Task submitted"
-                if self._tasks[task_id]["status"] == "PENDING"
-                else "Task completed"
-            ),
+            "status": task["status"],
+            "message": "Task submitted" if task["status"] == TaskStatus.PENDING else "Task completed",
         }
 
     @modal.method()
     def status(self, task_id: str):
         """Get task status."""
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
+
         if not task:
             return {"error": "Task not found"}, 404
 
@@ -301,14 +292,16 @@ class VoxCPM2Service:
     @modal.method()
     def result(self, task_id: str):
         """Get task result with audio URL."""
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
+
         if not task:
             return {"error": "Task not found"}, 404
 
-        if task["status"] not in ("DONE", "FAILED"):
+        if task["status"] not in (TaskStatus.DONE, TaskStatus.FAILED):
             return {"error": f"Task not complete (status: {task['status']})"}, 400
 
-        if task["status"] == "FAILED":
+        if task["status"] == TaskStatus.FAILED:
             return {
                 "task_id": task_id,
                 "status": "FAILED",
@@ -327,6 +320,20 @@ class VoxCPM2Service:
             "duration_ms": result["duration_ms"],
             "sample_rate": result["sample_rate"],
         }
+
+    @modal.method()
+    def cancel(self, task_id: str):
+        """Request cancellation of a pending/running task."""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return {"task_id": task_id, "cancelled": False, "message": "Not found"}
+            if task["status"] in (TaskStatus.DONE, TaskStatus.FAILED):
+                return {"task_id": task_id, "cancelled": False, "message": "Already terminal"}
+            task["status"] = TaskStatus.FAILED
+            task["error"] = "Cancelled"
+
+        return {"task_id": task_id, "cancelled": True, "message": "Cancellation requested"}
 
 
 # =============================================================================
@@ -355,13 +362,13 @@ def fastapi_app():
         metadata: Optional[dict] = None
 
     # Get service instance
-    service = VoxCPM2Service()
+    service = VoxCPM2Server()
 
     @fastapi_app.get("/health")
     async def health():
         return service.health.remote()
 
-    @fastapi_app.post("/v1/tts")
+    @fastapi_app.post("/synthesize")
     async def synthesize(request: TTSRequest):
         req_dict = request.model_dump(exclude_none=True)
         result = service.synthesize.remote(req_dict)
@@ -386,6 +393,11 @@ def fastapi_app():
                 raise HTTPException(status_code=500, detail=result[0].get("error", "No result"))
         return result
 
+    @fastapi_app.post("/cancel/{task_id}")
+    async def cancel_task(task_id: str):
+        result = service.cancel.remote(task_id)
+        return result
+
     return fastapi_app
 
 
@@ -395,5 +407,5 @@ def fastapi_app():
 
 if __name__ == "__main__":
     print("This script is meant to be deployed via Modal:")
-    print("  modal deploy modal_voxcpm2_deploy.py")
-    print("  modal serve modal_voxcpm2_deploy.py  # for dev")
+    print("  modal deploy modal_voxcpm2_server.py")
+    print("  modal serve modal_voxcpm2_server.py  # for dev")

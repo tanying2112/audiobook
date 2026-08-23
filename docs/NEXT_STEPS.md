@@ -147,20 +147,37 @@ Phase D 发布准备                  →  D1 → D2
 
 **推荐修复(独立大专项,需全量验证)**:将 6 个 `remote_workers` 测试从"模块级全局 `sys.modules` mock"改为 **`importorskip` + 函数级 fixture(仅测试期间 mock、用 `unittest.mock.patch` 而非写 `sys.modules`)**。worker 源码侧已有 `try/except ImportError` 与 `importorskip` 先例,可对齐。修复后预期 `tests/unit/tts/` 整目录接近全绿(需全量 rerun 验证,本环境 >600s 超时无法单轮确认)。
 
-### Batch 5 — publish/ 既有失败(待办)
+### Batch 5 — publish/ 既有失败（已完成）
 
 | 现象 | 根因 | 影响 | 状态 |
 |---|---|---|---|
-| `tests/unit/publish/` ~24 failed | audiobookshelf 客户端 RealMode + 格式转换断言漂移 |  → 需按文件聚类逐一核对 | 🔴 待办 |
+| `tests/unit/publish/` ~24 failed | audiobookshelf 客户端 RealMode + 格式转换断言漂移 |  → 需按文件聚类逐一核对 | ✅ 已完成（99 passed，未提交，与 Batch 6 合并评估） |
 
-### Batch 6 — 全量套件剩余(async/SQLAlchemy2.0/mock)
+### Batch 6 — 全量套件剩余(async/SQLAlchemy2.0/mock) —— 已完成根因级修复
 
-- `ChunkedIteratorResult can't be used in 'await'`（SQLAlchemy2.0 结果需 `.execute()` 后 await 取行）~9
-- `NoneType`/`coroutine can't be used in 'await'`（mock 返回非协程）~10
-- `'Mock' object is not an iterator` ~3
+**已完成的根因级修复（未提交，待评估）**：
+
+| 根因 | 影响 | 修复 |
+|---|---|---|
+| `persistence.py` 仅支持 AsyncSession（`await db.commit()` 等 21 处），但 `run_stage` 文档承诺 sync/async 且测试传 SYNC `db_session` | orchestrator/write_v2/harness 等 ~74 测试 `ChunkedIteratorResult can't be used in 'await'` | 加 `_commit/_refresh/_flush/_execute` 同步/异步分支 helper（async 路径不变，additive） |
+| `stage_registry.py` `ExtractStage.apersist` 直接 `await db.execute`/`await db.commit` 于 sync db | orchestrator extract 阶段 | 同样按 `isinstance(db, AsyncSession)` 分支 |
+| `orchestrator.py` `_write_*` 别名是 `= write_extract`(async) 直接别名，测试期望同步返回 | `TestWriteExtract` 等 `'coroutine' object has no attribute 'id'` | 改为经 `_run_async` 的同步 wrapper（对齐 `StageRegistry.persist`） |
+| `tts/__init__.py` 重构后残留 stale import（`ZeroShotCloneBackend` 等已不存在） | 整个 `src.audiobook_studio` 导入链 ImportError → 全量套件无法收集 | 对齐 `zero_shot_clone.py` 真实符号（**真实源码缺陷修复**） |
+| `test_base_worker.py` 模块级 `patch.dict` 退出删除 `sqlalchemy`/`src.audiobook_studio` → `disable_langfuse` 重导入 sqlalchemy 重复注册 | 该文件收集/setup 失败 | capture-and-re-add 模块级 boto3/redis mock；`NetworkCallRetry` 3 测试补 `mock_redis.llen.return_value=0` | ✅ 提交 `f175414` 36 passed |
+| `test_synthesize.py::test_run_different_text_regenerates` 真实 DNSMOS ONNX 推理 ~39s 超时 | 质量门真实模型下载/推理 | patch `check_all_segments` 返回真实 QualityReport+通过（意图：text_hash 变化触发再生） | ✅ 28 passed |
+| `test_main.py` `init_db` 已被移除（lifespan 改 Alembic+`init_rbac`） | 2 测试 AttributeError | 重写为断言 `init_rbac` 被调用一次（mock `get_settings`/`subprocess.run`/`init_rbac`） | ✅ 3 passed |
+| `test_tracing_coverage.py` `opentelemetry.instrumentation` 在本环境未安装（源码惰性 try/except 已优雅降级） | 5 测试 AttributeError | 模块级 `pytest.importorskip("opentelemetry.instrumentation")`（CI 装了会跑，本环境跳过） | ✅ 1 skipped |
+| `test_kokoro_backend.py::test_init_missing_onnxruntime_raises` `patch.dict(sys.modules, {…}, clear=True)` 清空整个 sys.modules 破坏 Python 导入缓存 | 1 测试 `module 'sys' has no attribute 'maxsize'` | 去掉 `clear=True`+drop 缓存 `kokoro_onnx` 让其重导入干净触发 `ImportError` | ✅ 37 passed |
+| `test_clone.py::test_synthesize_speech_success` 期望已删除的 `MOCK模式合成` 回退（commit 40f589b 有意移除 mock 回退） | 1 测试 RuntimeError | 重写：置 `_model_ready=True` + mock `_do_synthesize` 验证成功路径 | ✅ 24 passed |
+
+**剩余集群（待针对性修复，需重跑全量清单确认）**：
+
+- `asyncio.CancelledError`（FastAPI TestClient 同步客户端调异步端点 + pytest-asyncio 门户交互）~13
+- `module 'sys' has no attribute 'maxsize'`（前序测试 `clear=True` 污染 sys.modules 在全量运行时触发）— 已修 kokoro 单例，需全量确认是否另有污染者
 - 测试 DB 路径 `sqlite3.OperationalError: unable to open database file` ~30
+- `test_upload.py` ~29（路由/夹具/mock 漂移）
 - `StageExecutionError`/`NotImplementedError`/`FileExistsError`/`NameError`/`ValueError`/`LLMParseError` 等
-- 精确入参需重跑全量清单(受 >900s 限制,改为针对性修复 + 验证)。
+- 精确入参需重跑全量清单（受 >900s 限制，改为针对性修复 + 验证）。
 
 
 ---

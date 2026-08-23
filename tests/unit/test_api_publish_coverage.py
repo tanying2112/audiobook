@@ -394,6 +394,7 @@ class TestGeneratePodcastRss:
 
         mock_index_col = MagicMock()
         mock_index_col.__clause_element__ = lambda self: mock_index_col
+        _orig_index = type(AudioSegment).__dict__.get("index")
         type(AudioSegment).index = PropertyMock(return_value=mock_index_col)
         try:
             with patch("src.audiobook_studio.database.AsyncSessionLocal") as mock_session:
@@ -401,10 +402,15 @@ class TestGeneratePodcastRss:
                 with patch.dict("os.environ", {"APP_PUBLIC_URL": "http://localhost:8000"}):
                     result = await _generate_podcast_rss(project_id=5, config={})
         finally:
-            try:
-                del AudioSegment.index
-            except AttributeError:
-                pass
+            # Restore original mapped attribute (SQLAlchemy 2.x forbids `del`
+            # on mapped attributes, which raises NotImplementedError).
+            if _orig_index is not None:
+                type(AudioSegment).index = _orig_index
+            else:
+                try:
+                    del type(AudioSegment).index
+                except (AttributeError, NotImplementedError):
+                    pass
 
         assert result["success"] is True
         assert result["episode_count"] == 2
@@ -473,14 +479,20 @@ class TestGetPodcastRssFeed:
             with patch.dict("os.environ", {"APP_PUBLIC_URL": "http://localhost:8000"}):
                 mock_index_col = MagicMock()
                 mock_index_col.__clause_element__ = lambda self: mock_index_col
+                _orig_index = type(AudioSegment).__dict__.get("index")
                 type(AudioSegment).index = PropertyMock(return_value=mock_index_col)
                 try:
                     return asyncio.run(get_podcast_rss_feed(project_id=5, db=mock_db, **kwargs))
                 finally:
-                    try:
-                        del AudioSegment.index
-                    except AttributeError:
-                        pass
+                    # Restore original mapped attribute (SQLAlchemy 2.x forbids
+                    # `del` on mapped attributes, which raises NotImplementedError).
+                    if _orig_index is not None:
+                        type(AudioSegment).index = _orig_index
+                    else:
+                        try:
+                            del type(AudioSegment).index
+                        except (AttributeError, NotImplementedError):
+                            pass
 
     def test_feed_with_all_config_params(self):
         """Test feed with all optional query params provided."""
