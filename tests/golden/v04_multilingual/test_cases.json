@@ -1,0 +1,163 @@
+{
+  "version": "0.4",
+  "description": "v0.4 Multi-lingual Zero-Shot Clone Golden Dataset",
+  "target_mos": 4.0,
+  "test_cases": [
+    {
+      "id": "zh_en_cross_lingual_001",
+      "description": "Chinese reference -> English synthesis (cross-lingual)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "reference_language": "zh",
+      "target_text": "Hello, this is a test of cross-lingual voice cloning from Chinese to English.",
+      "target_language": "en",
+      "expected_speaker_similarity": 0.85,
+      "engines": ["xtts_v2", "openvoice_v2", "cosyvoice_clone"]
+    },
+    {
+      "id": "en_zh_cross_lingual_002",
+      "description": "English reference -> Chinese synthesis (cross-lingual)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_en_male_001.wav",
+      "reference_language": "en",
+      "target_text": "你好，这是从英语到中文的跨语言音色克隆测试。",
+      "target_language": "zh",
+      "expected_speaker_similarity": 0.85,
+      "engines": ["xtts_v2", "openvoice_v2", "cosyvoice_clone"]
+    },
+    {
+      "id": "zh_ja_cross_lingual_003",
+      "description": "Chinese reference -> Japanese synthesis (XTTS-v2/OpenVoice only)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "reference_language": "zh",
+      "target_text": "こんにちは、これは中国語から日本語へのクロスリンガル音声クローンのテストです。",
+      "target_language": "ja",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2"]
+    },
+    {
+      "id": "zh_ko_cross_lingual_004",
+      "description": "Chinese reference -> Korean synthesis (XTTS-v2/OpenVoice only)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_male_001.wav",
+      "reference_language": "zh",
+      "target_text": "안녕하세요, 이것은 중국어에서 한국어로의 크로스링구얼 음성 클론 테스트입니다.",
+      "target_language": "ko",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2"]
+    },
+    {
+      "id": "zh_fr_cross_lingual_005",
+      "description": "Chinese reference -> French synthesis (XTTS-v2/OpenVoice only)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "reference_language": "zh",
+      "target_text": "Bonjour, ceci est un test de clonage de voix interlangues du chinois vers le français.",
+      "target_language": "fr",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2"]
+    },
+    {
+      "id": "zh_de_cross_lingual_006",
+      "description": "Chinese reference -> German synthesis (XTTS-v2/OpenVoice only)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_male_001.wav",
+      "reference_language": "zh",
+      "target_text": "Hallo, dies ist ein Test des sprachübergreifenden Voice Cloning von Chinesisch nach Deutsch.",
+      "target_language": "de",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2"]
+    },
+    {
+      "id": "zh_es_cross_lingual_007",
+      "description": "Chinese reference -> Spanish synthesis (XTTS-v2/OpenVoice only)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "reference_language": "zh",
+      "target_text": "Hola, esta es una prueba de clonación de voz entre idiomas del chino al español.",
+      "target_language": "es",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2"]
+    },
+    {
+      "id": "streaming_zh_001",
+      "description": "Streaming TTS Chinese - first chunk latency test",
+      "text": "这是一个流式合成测试，验证首包延迟是否小于300毫秒。",
+      "language": "zh",
+      "max_first_chunk_latency_ms": 300,
+      "engines": ["cosyvoice_stream", "seed_tts_stream", "melotts_stream"]
+    },
+    {
+      "id": "streaming_en_002",
+      "description": "Streaming TTS English - first chunk latency test",
+      "text": "This is a streaming synthesis test to verify first chunk latency is under 300ms.",
+      "language": "en",
+      "max_first_chunk_latency_ms": 300,
+      "engines": ["cosyvoice_stream", "seed_tts_stream", "melotts_stream"]
+    },
+    {
+      "id": "streaming_ja_003",
+      "description": "Streaming TTS Japanese (MeloTTS only)",
+      "text": "これはストリーミング合成のテストです。",
+      "language": "ja",
+      "max_first_chunk_latency_ms": 500,
+      "engines": ["melotts_stream"]
+    },
+    {
+      "id": "streaming_ko_004",
+      "description": "Streaming TTS Korean (MeloTTS only)",
+      "text": "이것은 스트리밍 합성 테스트입니다.",
+      "language": "ko",
+      "max_first_chunk_latency_ms": 500,
+      "engines": ["melotts_stream"]
+    },
+    {
+      "id": "voxcpm2_zh_001",
+      "description": "VoxCPM2 Chinese synthesis quality",
+      "text": "这是一个 VoxCPM2 中文语音合成质量测试，验证语音自然度和清晰度。",
+      "language": "zh",
+      "voice_id": "zh_female_1",
+      "expected_rtf": 0.1,
+      "engines": ["voxcpm2"]
+    },
+    {
+      "id": "voxcpm2_en_002",
+      "description": "VoxCPM2 English synthesis quality",
+      "text": "This is a VoxCPM2 English speech synthesis quality test.",
+      "language": "en",
+      "voice_id": "en_female_1",
+      "expected_rtf": 0.1,
+      "engines": ["voxcpm2"]
+    },
+    {
+      "id": "zero_shot_3s_ref_001",
+      "description": "Zero-shot clone with 3-second reference (minimum viable)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_3s.wav",
+      "reference_duration_sec": 3,
+      "target_text": "三秒参考音频进行零样本克隆测试。",
+      "target_language": "zh",
+      "expected_speaker_similarity": 0.75,
+      "engines": ["xtts_v2", "openvoice_v2", "cosyvoice_clone"]
+    },
+    {
+      "id": "zero_shot_10s_ref_002",
+      "description": "Zero-shot clone with 10-second reference (recommended)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_male_10s.wav",
+      "reference_duration_sec": 10,
+      "target_text": "十秒参考音频进行零样本克隆测试，预期相似度更高。",
+      "target_language": "zh",
+      "expected_speaker_similarity": 0.85,
+      "engines": ["xtts_v2", "openvoice_v2", "cosyvoice_clone"]
+    },
+    {
+      "id": "long_text_clone_001",
+      "description": "Long text zero-shot clone (100+ chars)",
+      "reference_audio": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "target_text": "这是一个长文本零样本克隆测试。在这个测试中，我们将验证模型在处理较长文本时能否保持音色一致性、语调自然度以及语速稳定性。长文本合成是有声书制作中的核心场景，要求模型能够在几分钟的语音生成过程中始终保持参考音频的音色特征，不出现音色漂移、音调突变或语速异常等问题。",
+      "target_language": "zh",
+      "expected_speaker_similarity": 0.80,
+      "engines": ["xtts_v2", "openvoice_v2", "cosyvoice_clone"]
+    }
+  ],
+  "acceptance_criteria": {
+    "cross_lingual_similarity_min": 0.80,
+    "mono_lingual_similarity_min": 0.85,
+    "streaming_first_chunk_latency_max_ms": 300,
+    "voxcpm2_rtf_max": 0.15,
+    "all_engines_health_check": true
+  }
+}

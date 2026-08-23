@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import modal
+from pydantic import BaseModel
+from typing import Optional
 
 # =============================================================================
 # Modal App Configuration
@@ -39,7 +41,7 @@ MODEL_DIR = Path("/models")
 SECRETS = [modal.Secret.from_name("audiobook-config")]
 
 IMAGE = (
-    modal.Image.debian_slim(python_version="3.12")
+    modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg", "libsndfile1", "git")
     .pip_install(
         "torch==2.3.0",
@@ -61,6 +63,16 @@ IMAGE = (
 )
 
 
+# Request models (at module level for FastAPI type resolution)
+class StreamRequest(BaseModel):
+        text: str
+        voice_id: Optional[str] = "default"
+        speed: float = 1.0
+        sample_rate: int = 24000
+        chunk_size_ms: int = 100
+        reference_audio: Optional[str] = None  # base64 for voice cloning
+
+
 @app.cls(
     image=IMAGE,
     gpu=GPU_TYPE,
@@ -70,10 +82,17 @@ IMAGE = (
     min_containers=0,
     max_containers=2,
     timeout=300,
-    concurrency_limit=10,
 )
 class SeedTTSStreamServer:
     """Seed-TTS Streaming TTS Server."""
+
+    # Class-level attributes for lazy initialization
+    _lock = None
+
+    def _ensure_initialized(self):
+        if self._lock is None:
+            import threading
+            self._lock = threading.Lock()
 
     def __enter__(self):
         """Initialize Seed-TTS model on container start."""
@@ -97,6 +116,7 @@ class SeedTTSStreamServer:
     @modal.method()
     def synthesize_stream(self, request: dict):
         """Streaming synthesis with optional reference audio for voice cloning."""
+        self._ensure_initialized()
         # Placeholder - actual implementation depends on Seed-TTS API
         text = request.get("text", "").strip()
         if not text:
@@ -131,27 +151,23 @@ class SeedTTSStreamServer:
         return results
 
 
-@modal.fastapi_endpoint()
+@app.function(image=IMAGE)
+@modal.asgi_app()
 def fastapi_app():
     from fastapi import FastAPI, HTTPException, StreamingResponse
-    from pydantic import BaseModel
-    from typing import Optional
 
     fastapi_app = FastAPI(title="Seed-TTS Stream API", version="1.0.0")
-
-    class StreamRequest(BaseModel):
-        text: str
-        voice_id: Optional[str] = "default"
-        speed: float = 1.0
-        sample_rate: int = 24000
-        chunk_size_ms: int = 100
-        reference_audio: Optional[str] = None  # base64 for voice cloning
 
     service = SeedTTSStreamServer()
 
     @fastapi_app.get("/health")
     async def health():
-        return service.health.remote()
+        import torch
+        return {
+            "healthy": True,
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "version": "1.0.0",
+        }
 
     @fastapi_app.post("/tts/stream")
     async def synthesize_stream(request: StreamRequest):

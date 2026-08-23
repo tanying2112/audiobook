@@ -5,7 +5,6 @@ Modal HTTP Server for XTTS-v2 Zero-Shot Voice Cloning.
 Exposes REST API for Audiobook Studio zero-shot clone engines:
 - POST /clone - Clone voice from reference audio
 - POST /clone/stream - Streaming clone (if supported)
-- GET /health - Health check
 
 Usage:
     modal deploy modal_xtts_v2_server.py
@@ -25,6 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import modal
+from pydantic import BaseModel
+from typing import Optional
 
 # =============================================================================
 # Modal App Configuration
@@ -40,12 +41,12 @@ MODEL_DIR = Path("/models")
 SECRETS = [modal.Secret.from_name("audiobook-config")]
 
 IMAGE = (
-    modal.Image.debian_slim(python_version="3.12")
+    modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg", "libsndfile1")
     .pip_install(
         "torch==2.3.0",
         "torchaudio==2.3.0",
-        "TTS==0.22.0",  # Coqui TTS with XTTS-v2
+        "TTS==0.21.1",  # Coqui TTS with XTTS-v2
         "fastapi==0.110.0",
         "uvicorn==0.29.0",
         "pydantic==2.7.0",
@@ -62,6 +63,15 @@ SUPPORTED_LANGUAGES = {
 }
 
 
+# Request models (at module level for FastAPI type resolution)
+class CloneRequest(BaseModel):
+    text: str
+    reference_audio: str  # base64
+    language: str = "zh"
+    speed: float = 1.0
+    sample_rate: int = 24000
+
+
 @app.cls(
     image=IMAGE,
     gpu=GPU_TYPE,
@@ -71,10 +81,17 @@ SUPPORTED_LANGUAGES = {
     min_containers=0,
     max_containers=2,
     timeout=300,
-    concurrency_limit=10,
 )
 class XTTSv2Server:
     """XTTS-v2 Zero-Shot Voice Cloning Server."""
+
+    # Class-level attributes for lazy initialization
+    _lock = None
+
+    def _ensure_initialized(self):
+        if self._lock is None:
+            import threading
+            self._lock = threading.Lock()
 
     def __enter__(self):
         """Initialize XTTS-v2 model on container start."""
@@ -127,6 +144,7 @@ class XTTSv2Server:
             "latency_ms": 1500
         }
         """
+        self._ensure_initialized()
         text = request.get("text", "").strip()
         if not text:
             return {"error": "text is required"}, 400
@@ -195,6 +213,7 @@ class XTTSv2Server:
     @modal.method()
     def clone_stream(self, request: dict):
         """Stream cloning - returns chunks (not fully implemented, falls back to regular clone)."""
+        self._ensure_initialized()
         # For now, just call regular clone and return as single chunk
         result = self.clone(request)
         if isinstance(result, tuple):
@@ -216,27 +235,24 @@ class XTTSv2Server:
 # =============================================================================
 
 
-@modal.fastapi_endpoint()
+@app.function(image=IMAGE)
+@modal.asgi_app()
 def fastapi_app():
     """ASGI app for Modal deployment."""
     from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel
-    from typing import Optional
 
     fastapi_app = FastAPI(title="XTTS-v2 Clone API", version="1.0.0")
-
-    class CloneRequest(BaseModel):
-        text: str
-        reference_audio: str  # base64
-        language: str = "zh"
-        speed: float = 1.0
-        sample_rate: int = 24000
 
     service = XTTSv2Server()
 
     @fastapi_app.get("/health")
     async def health():
-        return service.health.remote()
+        import torch
+        return {
+            "healthy": True,
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "version": "1.0.0",
+        }
 
     @fastapi_app.post("/clone")
     async def clone(request: CloneRequest):

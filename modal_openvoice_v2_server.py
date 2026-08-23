@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import modal
+from pydantic import BaseModel
+from typing import Optional
 
 # =============================================================================
 # Modal App Configuration
@@ -41,7 +43,7 @@ MODEL_DIR = Path("/models")
 SECRETS = [modal.Secret.from_name("audiobook-config")]
 
 IMAGE = (
-    modal.Image.debian_slim(python_version="3.12")
+    modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg", "libsndfile1", "git")
     .pip_install(
         "torch==2.3.0",
@@ -64,6 +66,14 @@ IMAGE = (
 SUPPORTED_LANGUAGES = {"en", "zh", "ja", "ko", "fr", "de", "es", "it", "pt", "ru"}
 
 
+# Request models (at module level for FastAPI type resolution)
+class CloneRequest(BaseModel):
+        text: str
+        reference_audio: str  # base64
+        language: str = "zh"
+        speed: float = 1.0
+
+
 @app.cls(
     image=IMAGE,
     gpu=GPU_TYPE,
@@ -73,10 +83,17 @@ SUPPORTED_LANGUAGES = {"en", "zh", "ja", "ko", "fr", "de", "es", "it", "pt", "ru
     min_containers=0,
     max_containers=2,
     timeout=300,
-    concurrency_limit=10,
 )
 class OpenVoiceV2Server:
     """OpenVoice V2 Zero-Shot Voice Cloning Server."""
+
+    # Class-level attributes for lazy initialization
+    _lock = None
+
+    def _ensure_initialized(self):
+        if self._lock is None:
+            import threading
+            self._lock = threading.Lock()
 
     def __enter__(self):
         """Initialize OpenVoice V2 model on container start."""
@@ -101,6 +118,7 @@ class OpenVoiceV2Server:
     @modal.method()
     def clone(self, request: dict):
         """Clone voice from reference audio."""
+        self._ensure_initialized()
         text = request.get("text", "").strip()
         if not text:
             return {"error": "text is required"}, 400
@@ -164,6 +182,7 @@ class OpenVoiceV2Server:
     @modal.method()
     def clone_stream(self, request: dict):
         """Stream cloning."""
+        self._ensure_initialized()
         result = self.clone(request)
         if isinstance(result, tuple):
             return result
@@ -177,25 +196,23 @@ class OpenVoiceV2Server:
         }]
 
 
-@modal.fastapi_endpoint()
+@app.function(image=IMAGE)
+@modal.asgi_app()
 def fastapi_app():
     from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel
-    from typing import Optional
 
     fastapi_app = FastAPI(title="OpenVoice V2 Clone API", version="1.0.0")
-
-    class CloneRequest(BaseModel):
-        text: str
-        reference_audio: str  # base64
-        language: str = "zh"
-        speed: float = 1.0
 
     service = OpenVoiceV2Server()
 
     @fastapi_app.get("/health")
     async def health():
-        return service.health.remote()
+        import torch
+        return {
+            "healthy": True,
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "version": "1.0.0",
+        }
 
     @fastapi_app.post("/clone")
     async def clone(request: CloneRequest):

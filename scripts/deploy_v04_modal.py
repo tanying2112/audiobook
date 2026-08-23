@@ -67,7 +67,12 @@ SERVICES = {
 def check_modal_installed() -> bool:
     """Check if modal CLI is installed."""
     try:
-        subprocess.run(["modal", "--version"], capture_output=True, check=True)
+        # Use venv python -m modal
+        result = subprocess.run(
+            [sys.executable, "-m", "modal", "--version"],
+            capture_output=True,
+            check=True
+        )
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
@@ -76,7 +81,11 @@ def check_modal_installed() -> bool:
 def check_modal_auth() -> bool:
     """Check if modal is authenticated."""
     try:
-        result = subprocess.run(["modal", "token", "show"], capture_output=True, text=True)
+        result = subprocess.run(
+            [sys.executable, "-m", "modal", "token", "info"],
+            capture_output=True,
+            text=True
+        )
         return result.returncode == 0
     except Exception:
         return False
@@ -102,7 +111,7 @@ def deploy_service(service_key: str, dry_run: bool = False) -> bool:
     try:
         # Change to project root and deploy
         result = subprocess.run(
-            ["modal", "deploy", service["file"]],
+            [sys.executable, "-m", "modal", "deploy", service["file"]],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
