@@ -47,7 +47,7 @@ class TestSemanticCoherenceChecker:
         # Check that the SentenceTransformer was called to create the model
         mock_sentence_transformers.SentenceTransformer.assert_called_once_with("paraphrase-multilingual-MiniLM-L12-v2")
         # Check that the model was set on the instance
-        assert checker.model == mock_st_instance
+        assert checker.semantic_model == mock_st_instance
 
     @patch("audiobook_studio.quality.semantic_coherence.Path")
     @patch("audiobook_studio.quality.semantic_coherence.yaml")
