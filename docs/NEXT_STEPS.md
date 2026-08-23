@@ -107,6 +107,45 @@ Phase D 发布准备                  →  D1 → D2
 
 ---
 
+## 五·b、CI 整轮绿（A1 续）— 分 Batch 执行记录
+
+> 全量 `pytest tests/unit/` 在本地 >900s 且 xdist 缓冲输出至末尾,无法在单轮内拿到完整失败清单。
+> 策略改为**增量修复 + 针对性验证**:先解 Batch 1（根因级阻塞），再按文件聚类修 Batch 2（测试/源码 API 漂移），最后 Batch 3（async/SQLAlchemy2.0/mock）。
+
+### Batch 1 — 根因级解阻塞（已完成）
+
+| 根因 | 影响 | 修复 | 提交 |
+|---|---|---|---|
+| `test_kaggle_worker.py` 在导入期 `sys.modules["types"]=Mock` 全局污染 | 整轮后续 JWT/cryptography 等 ~42 测试集体失败 | 移除 types mock | `87397b0` |
+| `mutants/` 未跟踪产物导致 ImportPathMismatchError | ~6 测试 | 移除 + `norecursedirs` | `ec75743`(前序) |
+| `voxcpm2_backend` 惰性依赖外部可选包 `voxcpm` | 2 测试 ModuleNotFoundError | 两测试文件 `importorskip("voxcpm")` | `08abdb4` |
+| `websockets` 缺失 | 仅影响未跟踪 `test_ws*.py`（不在 CI 收集范围） | 非 CI 阻塞,保留 pyproject 现状 | — |
+
+### Batch 2 — 测试/源码 API 漂移（进行中）
+
+| 漂移点 | 测试影响 | 修复 | 状态 |
+|---|---|---|---|
+| `cli/book.py`·`cli/export.py`·`cli/pipeline.py` 重构为异步 2.0（`AsyncSessionLocal`+`select/execute`），测试仍 patch 旧 `SessionLocal` 且用同步 `query()` 风格 + 直接调用 async 命令 | `tests/unit/test_cli_commands.py` 全部受影响 | 改写 12 处测试:`AsyncSessionLocal`+`AsyncMock`+`asyncio.run`+移除 `Project`/`Chapter` Mock patch+修正 `cleanup_after_export`/`export_project` patch 目标 | ✅ 全文件 20 passed（`c9c2249`） |
+| `export/m4b.py` & `batch_exporter.py` 无 `run_command` | ~22 | 待办 | 🔲 |
+| `SynthesizePipeline._resolve_edge_voice` 缺失 | 5 | 待办 | 🔲 |
+| `FeedbackRecord.type` 缺失 | 3 | 待办 | 🔲 |
+| `quality.semantic_coverage` → `semantic_coherence` | 3 | 待办 | 🔲 |
+| `EngineRegistry.unregister` → `register` | 3 | 待办 | 🔲 |
+| 其余 AttributeError/TypeError/AssertionError（按文件聚类） | 若干 | 待办 | 🔲 |
+
+### Batch 3 — async/SQLAlchemy2.0/mock（待办）
+
+- `ChunkedIteratorResult can't be used in 'await'`（SQLAlchemy2.0 结果需 `.execute()` 后 await 取行）~9
+- `NoneType`/`coroutine can't be used in 'await'`（mock 返回非协程）~10
+- `'Mock' object is not an iterator` ~3
+- 测试 DB 路径 `sqlite3.OperationalError: unable to open database file` ~30
+- `StageExecutionError`/`NotImplementedError`/`FileExistsError`/`NameError`/`ValueError`/`LLMParseError` 等
+
+> 精确入参需重跑全量清单（受 >900s 限制，改为针对性修复 + 验证）。
+
+
+---
+
 ## 六、风险与开放问题
 
 1. **A1 真实技术风险已澄清:并非"挂起",而是套件含大量既有测试失败 + 首阻塞点为 /api 路径缺失(已修)**。让整套件全绿需专项修复大量既有失败,多数与 S3 无关。
