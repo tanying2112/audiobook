@@ -89,7 +89,7 @@ Phase D 发布准备                  →  D1 → D2
 
 | 任务 | 状态 | 提交 | 备注 |
 |---|---|---|---|
-| A1 挂起测试(实为既有失败) | 🟡 部分完成 | `b49b2a0` | G1 非挂起;首阻塞 test_auto_run_api 已修(27 passed);test_upload.py 仍 29 失败(路由/夹具/mock,既有问题,待专项清理);套件含更多既有失败需独立专项 |
+| A1 挂起测试(实为既有失败) | 🟡 增量修复中 | 多 Batch 已提交 | G1 非挂起;首阻塞 test_auto_run_api 已修;`tts/` 全局污染 + `publish/` 为剩余两大阻断,见 Batch 4/5 |
 | A2 pre-commit | 🟡 根因已修 | `fdce90b` | venv 缺 pre_commit 模块→已装(4.6.0);钩子"全过"仍需对 269 文件做 lint 大改造(独立专项) |
 | A3 前端构建 | 🔲 待办 | | |
 | A4 env_checker | ✅ 已完成 | | `env_checker --fail-on-warning` 退出 0(NumPy 警告非致命),无需改动 |
@@ -129,19 +129,38 @@ Phase D 发布准备                  →  D1 → D2
 | `quality.semantic_coverage` → `semantic_coherence` | `test_quality_semantic_coherence.py`(4) + `test_quality_semantic_coverage.py`(6) | ✅ 10 passed（`29b1df2` `1279b2c`） |
 | `SynthesizePipeline._resolve_edge_voice` 删除 → 模块级 `_normalize_voice_id`；`_synthesize_azure`/`_synthesize_gcp` 合并为异步 `_synthesize_via_port` | `test_synthesize_helpers.py`(17) + `test_translate_pipeline.py`(14) | ✅ 31 passed（`2f09770`） |
 | `export/m4b.py` & `batch_exporter.py` 无 `run_command`；`_build_chapter_markers`→`_build_segment_markers`；`mix_with_ducking`→`mix_full_pipeline`；`export_mp3_chapters` 需打桩；final 测试缺 `paragraphs` 键 | `test_m4b.py`(24)+`test_batch_exporter.py`(24)+`test_export_batch_final.py`(1)+`test_export_batch_enhanced.py`(28) | ✅ 77 passed（`648b0e4`）。附源码两处真实缺陷修复:MP3 分支冗余局部 `import subprocess` 遮蔽导致 BGM 分支 `UnboundLocalError`；zip 循环对 `mp3_chapters` 列表值 `Path(list)` 崩溃 |
-| `FeedbackRecord.type` 缺失 | 3 | 待办 | 🔲 |
-| `EngineRegistry.unregister` → `register` | 3 | 待办 | 🔲 |
-| 其余 AttributeError/TypeError/AssertionError（按文件聚类） | 若干 | 待办 | 🔲 |
+| `EngineRegistry.unregister`/`initialize_all`/`get_engine_info` 等虚构 API | `test_tts_engine_coverage.py`(12 失败) | ✅ 重写测试对齐真实 API(16 passed)（`7970714`） |
+| `api/collab.py` 误把 `FeedbackRecord` 别名成 `CollaborationRecord`(缺 `type` 字段) | `test_coverage_gap_api.py` 5 个 collab 测试 `AttributeError: 'FeedbackRecord' has no attribute 'type'` | ✅ 新增真实 `CollaborationRecord` 聚合模型 + 修正 import + 补 `GET /collab/stats` 端点 + 修 `client` fixture 用 `get_async_db`（`1c7c741`）；`models/__init__.py` 恢复 `from .collaboration import ...`（collab.py 已跟踪） |
+| `golden` bootstrap fewshot 端点伪造 `"queued"` | `test_golden.py::TestBootstrapFewshot` 1 | ✅ 改断言对齐诚实门禁(status ∈ {not_enabled,available})（`7970714`） |
+| `EdgeTTSEngine.initialize()` 已移除 `list_voices()` 连通性检查(改为首个 synthesize 才校验,避免网络挂起) | `test_edge_tts_engine.py` 2 个测试仍断言 `ConnectionError`/`RuntimeError` | ✅ 重写两测试反映现状(42 passed)（未提交） |
 
-### Batch 3 — async/SQLAlchemy2.0/mock（待办）
+### Batch 4 — tts/ 全局 `sys.modules` 污染冲突(已知根因,**待专项重构**)
+
+| 现象 | 根因 | 影响 | 状态 |
+|---|---|---|---|
+| `tests/unit/tts/` 整目录 ~96 failed;但各文件**单独跑基本通过**(edge 42、kokoro+voxcpm2+edge=3) | 6 个 `remote_workers` 测试文件在**模块级** `sys.modules["torch"]/["voxcpm"]/["transformers"]/["modal"]=Mock()` 且**从不还原**,污染整个 pytest 会话 | 污染后 `test_voxcpm2_backend.py`(真实 voxcpm)、`test_edge_tts_engine.py`(12 个 mock-mode 测试)等被全局 mock 打断 | 🔴 阻塞 |
+| `test_modal_worker.py` 模块级 mock `voxcpm`/`torch` | 已证实为 edge 的污染者:`modal+edge` 同跑 edge 由 2 → 12 失败;而 `edge+remote_workers.py` 单文件不污染 | — | 🔴 |
+
+**为何不能简单 save/restore**:`modal_worker.py` 的 `VoxCPM2Engine._load_model()` 在**运行时** `from voxcpm.model.voxcpm2 import VoxCPM2Model` + `import torch`,需要被 mock 的 `voxcpm`/`torch` 在**测试运行时**仍驻留 `sys.modules`。一旦在 import 后还原,真实 voxcpm→真实 torch 被惰性导入,测试即崩(已实测:save/restore 使 modal 由 5 → 9 失败)。而保留全局 mock 又污染其他文件。**二者不可兼得**。
+
+**根本矛盾**:本环境**已安装** `torch`/`voxcpm`/`transformers`(真实包),而这套 `remote_workers` 测试是按"可选重依赖**未安装**"假设写的,用全局 mock 充当"未安装"。当其他测试(`test_voxcpm2_backend` 用真实 voxcpm)与之同跑,`sys.modules["voxcpm"]` 同时只能是一者 → 冲突。
+
+**推荐修复(独立大专项,需全量验证)**:将 6 个 `remote_workers` 测试从"模块级全局 `sys.modules` mock"改为 **`importorskip` + 函数级 fixture(仅测试期间 mock、用 `unittest.mock.patch` 而非写 `sys.modules`)**。worker 源码侧已有 `try/except ImportError` 与 `importorskip` 先例,可对齐。修复后预期 `tests/unit/tts/` 整目录接近全绿(需全量 rerun 验证,本环境 >600s 超时无法单轮确认)。
+
+### Batch 5 — publish/ 既有失败(待办)
+
+| 现象 | 根因 | 影响 | 状态 |
+|---|---|---|---|
+| `tests/unit/publish/` ~24 failed | audiobookshelf 客户端 RealMode + 格式转换断言漂移 |  → 需按文件聚类逐一核对 | 🔴 待办 |
+
+### Batch 6 — 全量套件剩余(async/SQLAlchemy2.0/mock)
 
 - `ChunkedIteratorResult can't be used in 'await'`（SQLAlchemy2.0 结果需 `.execute()` 后 await 取行）~9
 - `NoneType`/`coroutine can't be used in 'await'`（mock 返回非协程）~10
 - `'Mock' object is not an iterator` ~3
 - 测试 DB 路径 `sqlite3.OperationalError: unable to open database file` ~30
 - `StageExecutionError`/`NotImplementedError`/`FileExistsError`/`NameError`/`ValueError`/`LLMParseError` 等
-
-> 精确入参需重跑全量清单（受 >900s 限制，改为针对性修复 + 验证）。
+- 精确入参需重跑全量清单(受 >900s 限制,改为针对性修复 + 验证)。
 
 
 ---

@@ -106,28 +106,38 @@ class TestEdgeTTSEngineInitialization:
                 await engine.initialize()
 
     @pytest.mark.asyncio
-    async def test_initialize_network_failure_raises(self):
-        """Test initialization fails when list_voices fails."""
+    async def test_initialize_defers_connectivity_check(self):
+        """Test initialization succeeds without a blocking list_voices() call.
+
+        The source deliberately defers the Edge-TTS connectivity check to the
+        first synthesize() call (list_voices() is known to hang on some networks),
+        so initialize() must NOT raise on a list_voices() failure.
+        """
         engine = EdgeTTSEngine(mock_mode=False)
 
         mock_edge_tts = Mock()
         mock_edge_tts.list_voices = AsyncMock(side_effect=ConnectionError("Network error"))
 
         with patch("src.audiobook_studio.tts.edge_tts_engine.edge_tts", mock_edge_tts):
-            with pytest.raises(ConnectionError, match="Network error"):
-                await engine.initialize()
+            # No ConnectionError should propagate from list_voices() during init.
+            await engine.initialize()
+            assert engine._initialized is True
 
     @pytest.mark.asyncio
-    async def test_initialize_empty_voices_raises(self):
-        """Test initialization fails when no voices returned."""
+    async def test_initialize_succeeds_without_voice_validation(self):
+        """Test initialization succeeds even when no voices would be returned.
+
+        Voice availability is no longer validated at initialize() time, so an
+        empty list_voices() result must not raise RuntimeError.
+        """
         engine = EdgeTTSEngine(mock_mode=False)
 
         mock_edge_tts = Mock()
         mock_edge_tts.list_voices = AsyncMock(return_value=[])
 
         with patch("src.audiobook_studio.tts.edge_tts_engine.edge_tts", mock_edge_tts):
-            with pytest.raises(RuntimeError, match="No Edge-TTS voices available"):
-                await engine.initialize()
+            await engine.initialize()
+            assert engine._initialized is True
 
 
 class TestEdgeTTSEngineSynthesis:
