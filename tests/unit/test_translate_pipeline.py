@@ -101,13 +101,13 @@ class TestSynthesizePipeline:
         p = SynthesizePipeline(output_dir="/tmp/test_synth")
         assert p is not None
 
-    def test_resolve_edge_voice(self):
-        from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+    def test_normalize_voice_id(self):
+        from src.audiobook_studio.pipeline.synthesize import _normalize_voice_id
 
-        p = SynthesizePipeline(output_dir="/tmp/test_synth")
-        result = p._resolve_edge_voice("zh-CN-XiaoxiaoNeural")
+        result = _normalize_voice_id("zh-CN-XiaoxiaoNeural", "kokoro")
         assert isinstance(result, str)
         assert len(result) > 0
+        assert result == "zf_xiaoxiao"
 
     def test_text_hash(self):
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
