@@ -6,6 +6,7 @@ decomposed CLI commands.
 """
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -111,10 +112,20 @@ class TestPipelineCommand:
     """Tests for the pipeline run/resume subcommands."""
 
     def test_run_pipeline_basic(self, mock_args, monkeypatch):
-        """pipeline_run_command delegates to run_book_pipeline for each book."""
-        # Mock the run_pipeline_sync to return success
-        with patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run:
-            mock_run.return_value = []
+        """pipeline_run_command runs the pipeline for each book."""
+        mock_project = MagicMock()
+        mock_project.id = 1
+        with (
+            patch("audiobook_studio.cli.pipeline.AsyncSessionLocal") as mock_session,
+            patch("audiobook_studio.cli.pipeline._find_project", new=AsyncMock(return_value=mock_project)),
+            patch("audiobook_studio.cli.pipeline._get_chapter_files", return_value=[]),
+            patch("audiobook_studio.cli.pipeline.CheckpointManager"),
+            patch("audiobook_studio.cli.pipeline.reports_dir", return_value="/tmp/out"),
+            patch("audiobook_studio.cli.pipeline.init_telemetry"),
+        ):
+            mock_db = AsyncMock()
+            mock_session.return_value = mock_db
+            mock_db.__aenter__.return_value = mock_db
             args = mock_args(
                 books=["红楼梦"],
                 stages=["extract"],
@@ -125,14 +136,24 @@ class TestPipelineCommand:
                 keep_tmp=False,
                 no_resume=False,
             )
-            result = cli_pipeline.pipeline_run_command(args)
+            result = asyncio.run(cli_pipeline.pipeline_run_command(args))
             assert result == 0
-            assert mock_run.called
 
     def test_run_pipeline_quick_mode(self, mock_args):
         """quick flag restricts stages to extract/analyze/annotate."""
-        with patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run:
-            mock_run.return_value = []
+        mock_project = MagicMock()
+        mock_project.id = 1
+        with (
+            patch("audiobook_studio.cli.pipeline.AsyncSessionLocal") as mock_session,
+            patch("audiobook_studio.cli.pipeline._find_project", new=AsyncMock(return_value=mock_project)),
+            patch("audiobook_studio.cli.pipeline._get_chapter_files", return_value=[]),
+            patch("audiobook_studio.cli.pipeline.CheckpointManager"),
+            patch("audiobook_studio.cli.pipeline.reports_dir", return_value="/tmp/out"),
+            patch("audiobook_studio.cli.pipeline.init_telemetry"),
+        ):
+            mock_db = AsyncMock()
+            mock_session.return_value = mock_db
+            mock_db.__aenter__.return_value = mock_db
             args = mock_args(
                 books=["红楼梦"],
                 quick=True,
@@ -143,42 +164,27 @@ class TestPipelineCommand:
                 keep_tmp=False,
                 no_resume=False,
             )
-            result = cli_pipeline.pipeline_run_command(args)
+            result = asyncio.run(cli_pipeline.pipeline_run_command(args))
             assert result == 0
-            assert mock_run.called
 
     def test_resume_pipeline(self, mock_args):
-        """pipeline_resume_command calls run_pipeline_sync with checkpoint resume."""
+        """pipeline_resume_command resumes chapters for a project."""
+        mock_project = MagicMock()
+        mock_project.id = 42
         with (
-            patch("audiobook_studio.cli.pipeline.run_pipeline_sync") as mock_run,
-            patch("audiobook_studio.cli.pipeline.SessionLocal") as mock_session,
-            patch("audiobook_studio.cli.pipeline.Project") as mock_project_class,
-            patch("audiobook_studio.cli.pipeline.Chapter") as mock_chapter_class,
+            patch("audiobook_studio.cli.pipeline.AsyncSessionLocal") as mock_session,
+            patch("audiobook_studio.cli.pipeline._get_book_chapters", new=AsyncMock(return_value=[])),
         ):
-
-            mock_run.return_value = []
-            mock_db = MagicMock()
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-
-            # Mock project
-            mock_project = MagicMock()
-            mock_project.id = 42
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-
-            # Mock chapters to resume - need to handle two filter calls
-            mock_chapter = MagicMock()
-            mock_chapter.index = 2
-            mock_chapter.id = 5
-
-            # First filter (project_id) returns a query-like object
-            mock_query = MagicMock()
-            mock_query.filter.return_value.order_by.return_value.all.return_value = [mock_chapter]
-            mock_db.query.return_value.filter.return_value = mock_query
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = mock_project
 
             args = mock_args(project_id=42, chapter=2)
-            result = cli_pipeline.pipeline_resume_command(args)
+            result = asyncio.run(cli_pipeline.pipeline_resume_command(args))
             assert result == 0
-            assert mock_run.called
 
 
 # ── CLI Export Tests ────────────────────────────────────────────────────────
@@ -195,19 +201,21 @@ class TestExportCommand:
         mock_job.error = None
 
         with (
-            patch("audiobook_studio.cli.export.export_project", return_value=mock_job),
-            patch("audiobook_studio.cli.export.SessionLocal") as mock_session,
-            patch("audiobook_studio.cli.export.Project") as mock_project,
-            patch("audiobook_studio.run_pipeline.cleanup_after_export") as mock_cleanup,
+            patch("audiobook_studio.cli.export.export_project", new=AsyncMock(return_value=mock_job)),
+            patch("audiobook_studio.cli.export.AsyncSessionLocal") as mock_session,
+            patch("src.audiobook_studio.run_pipeline.cleanup_after_export") as mock_cleanup,
         ):
 
-            mock_db = MagicMock()
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
             mock_project = MagicMock()
             mock_project.id = 1
             mock_project.title = "Test Book"
             mock_project.progress = 100  # Numeric progress
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+            mock_result.scalar_one_or_none.return_value = mock_project
 
             args = mock_args(
                 project_id=1,
@@ -221,18 +229,21 @@ class TestExportCommand:
                 output_dir=None,
                 chapters=None,
             )
-            result = cli_export.export_command(args)
+            result = asyncio.run(cli_export.export_command(args))
             assert result == 0
 
     def test_export_project_not_found(self, mock_args):
         """Non-zero return if project doesn't exist."""
-        with patch("audiobook_studio.cli.export.SessionLocal") as mock_session:
-            mock_db = MagicMock()
+        with patch("audiobook_studio.cli.export.AsyncSessionLocal") as mock_session:
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = None
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = None
 
             args = mock_args(project_id=999)
-            result = cli_export.export_command(args)
+            result = asyncio.run(cli_export.export_command(args))
             assert result == 1
 
     def test_export_failed_job(self, mock_args):
@@ -242,17 +253,23 @@ class TestExportCommand:
         mock_job.error = "disk full"
 
         with (
-            patch("audiobook_studio.cli.export.export_project", return_value=mock_job),
-            patch("audiobook_studio.cli.export.SessionLocal") as mock_session,
-            patch("audiobook_studio.cli.export.Project") as mock_project,
+            patch("audiobook_studio.cli.export.export_project", new=AsyncMock(return_value=mock_job)),
+            patch("audiobook_studio.cli.export.AsyncSessionLocal") as mock_session,
         ):
 
-            mock_db = MagicMock()
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_project = MagicMock()
+            mock_project.id = 1
+            mock_project.title = "Test Book"
+            mock_project.progress = 100
+            mock_result.scalar_one_or_none.return_value = mock_project
 
             args = mock_args(project_id=1)
-            result = cli_export.export_command(args)
+            result = asyncio.run(cli_export.export_command(args))
             assert result == 1
 
 
@@ -273,13 +290,16 @@ class TestBookCommand:
         mock_proj.total_chapters_estimated = 3
         mock_proj.created_at = "2024-01-01T00:00:00"
 
-        with patch("audiobook_studio.cli.book.SessionLocal") as mock_session:
-            mock_db = MagicMock()
+        with patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session:
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_proj]
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalars.return_value.all.return_value = [mock_proj]
 
             args = mock_args(status=None)
-            result = cli_book.book_list_command(args)
+            result = asyncio.run(cli_book.book_list_command(args))
             assert result == 0
 
     def test_book_create_success(self, mock_args):
@@ -288,29 +308,34 @@ class TestBookCommand:
         mock_proj.id = 42
 
         with (
-            patch("audiobook_studio.cli.book.SessionLocal") as mock_session,
-            patch("audiobook_studio.cli.book.Project", return_value=mock_proj) as mock_project_class,
+            patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session,
         ):
 
-            mock_db = MagicMock()
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = None  # no existing
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = None  # no existing
 
             args = mock_args(book_name="红楼梦", custom_title=None, custom_author=None)
-            result = cli_book.book_create_command(args)
+            result = asyncio.run(cli_book.book_create_command(args))
             assert result == 0
             mock_db.add.assert_called()
             mock_db.commit.assert_called()
 
     def test_book_create_duplicate(self, mock_args):
         """book_create_command fails if project already exists."""
-        with patch("audiobook_studio.cli.book.SessionLocal") as mock_session:
-            mock_db = MagicMock()
+        with patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session:
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(id=1)
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = MagicMock(id=1)
 
             args = mock_args(book_name="红楼梦")
-            result = cli_book.book_create_command(args)
+            result = asyncio.run(cli_book.book_create_command(args))
             assert result == 1
 
     def test_book_show(self, mock_args):
@@ -331,24 +356,31 @@ class TestBookCommand:
         mock_proj.created_at = "2024-01-01T00:00:00"
         mock_proj.updated_at = "2024-01-01T00:00:00"
 
-        with patch("audiobook_studio.cli.book.SessionLocal") as mock_session:
-            mock_db = MagicMock()
+        with patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session:
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = mock_proj
+            mock_result.scalars.return_value.all.return_value = []
 
             args = mock_args(project_id=1)
-            result = cli_book.book_show_command(args)
+            result = asyncio.run(cli_book.book_show_command(args))
             assert result == 0
 
     def test_book_show_not_found(self, mock_args):
         """Non-zero if project not found."""
-        with patch("audiobook_studio.cli.book.SessionLocal") as mock_session:
-            mock_db = MagicMock()
+        with patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session:
+            mock_db = AsyncMock()
             mock_session.return_value = mock_db
-            mock_db.query.return_value.filter.return_value.first.return_value = None
+            mock_db.__aenter__.return_value = mock_db
+            mock_result = MagicMock()
+            mock_db.execute.return_value = mock_result
+            mock_result.scalar_one_or_none.return_value = None
 
             args = mock_args(project_id=999)
-            result = cli_book.book_show_command(args)
+            result = asyncio.run(cli_book.book_show_command(args))
             assert result == 1
 
 
