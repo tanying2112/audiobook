@@ -133,8 +133,13 @@ if "src.audiobook_studio.llm.config_loader" not in sys.modules:
 
 config_loader_mock = sys.modules["src.audiobook_studio.llm.config_loader"]
 config_loader_mock.LLMProvidersConfig = cm.MockLLMProvidersConfig
-config_loader_mock.ProviderType = MagicMock()
-config_loader_mock.StageName = MagicMock()
+# NOTE: Do NOT reassign ProviderType/StageName to a *new* MagicMock here.
+# conftest_minimal already injected a shared MagicMock for ProviderType and a
+# MockStageName for StageName onto this placeholder module. Reassigning them to
+# fresh MagicMock instances breaks identity with the same names already bound
+# into router.ProviderType / router.StageName (value-imported at import time),
+# which makes router.get_direct_client()'s provider_type_map.get() silently
+# miss and return None for every later test. Keep the shared injected objects.
 config_loader_mock.ProviderConfig = cm.MockProviderConfig
 config_loader_mock.PromptCompressionConfig = MagicMock()
 config_loader_mock.FallbackConfig = MagicMock()
