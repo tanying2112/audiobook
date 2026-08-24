@@ -295,9 +295,9 @@ def shutdown_telemetry() -> Optional[Dict[str, Any]]:
         summary = _telemetry_collector.get_summary()
         # Unregister hooks - use indices to avoid bound method identity issues
         global _pipeline_hooks, _stage_hooks
-        _pipeline_hooks = [h for h in _pipeline_hooks
+        _pipeline_hooks[:] = [h for h in _pipeline_hooks
                           if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
-        _stage_hooks = [h for h in _stage_hooks
+        _stage_hooks[:] = [h for h in _stage_hooks
                        if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
         _telemetry_collector = None
         return summary
