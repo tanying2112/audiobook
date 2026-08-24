@@ -18,6 +18,40 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 - ☁️ **云端白嫖模式 (Cloud-Hybrid, 默认)**：轻量级本地。依赖 `QuotaRegistry` 调度的免费大模型 API 轮换池 + 本地 `Kokoro-82M` 极速合成。
 - 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2` 实现零样本声纹锁定克隆。默认的自我迭代演进通过 **SOP 反思 + 晋升门禁** 路径实现（见 `feedback/sop_reflection.py` + `promotion_gate.py`）；**DSPy 深度演进循环**(GEPA / BootstrapFewShot)为可选实验性路径，需单独安装未声明的 `dspy` 依赖后才可启用，默认未启用。
 
+## S3 长期愿景功能详解（入口与用法）
+
+> 以下为 S3 阶段（长期愿景）交付的能力入口与基本用法。所有能力均基于**免费资源**实现（本地模型 / 免费 API 轮换池 / 诚实脚手架）。
+
+### 跨语言声纹克隆（Multilingual Voice Clone）
+- **语言注册表**：`src/audiobook_studio/languages.py` — 集中管理管线可端到端处理的语言及其 TTS 音色、提示词引导。
+- **声纹克隆**：`src/audiobook_studio/tts/clone.py` 的 `VoiceCloner.clone_voice()` / `extract_voice_features()` / `VoicePrint`，支持零样本声纹锁定与跨语言复用。
+- 默认走本地 `Kokoro-82M` 真合成；专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「三档变速架构 → 专业显卡模式」）。
+
+### BGM 混音（背景音乐 Ducking）
+- **实现**：`src/audiobook_studio/export/audio_ducking.py`（`MixConfig`）+ 导出管线自动 ducking。
+- **用法**：导出 CLI 支持 `--bg-music <path>` 与 `--bg-volume <dB>` 参数，导出时对人声做 ducking 混音。
+
+### 模型市场（Model Market）
+- **REST**：`GET /models`（列出可用/已装模型）、`POST /models/install`、`POST /models/uninstall`（见 `src/audiobook_studio/api/models_market.py`，路由前缀 `/models`）。
+- **前端**：`web/src/views/ModelMarket.vue` 可视化安装/卸载与状态查看。
+
+### 接口限流（Rate Limiting，S3.6）
+- **实现**：`src/audiobook_studio/api/rate_limit_middleware.py` 的令牌桶中间件，对全部非豁免请求生效；复用 `tts/rate_limiter.py` 的 `TokenBucket`，可接 Redis 做分布式限流，保护 Cloud Studio 免费配额。
+
+### 自我迭代演进（Self-Iteration，S3.1 / S3.7）
+- **脚本入口**：`scripts/run_self_iteration.py`（运行演进）、`scripts/validate_self_iteration.py`（校验）。
+- **核心**：`src/audiobook_studio/pipeline/self_iteration.py` + `src/audiobook_studio/feedback/`（SOP 反思 `sop_reflection.py`、晋升门禁 `promotion_gate.py`）。
+- **演进 API**（GEPA / BootstrapFewShot 为可选实验路径）：
+  - `POST /evolution/enable` — 启用 / 停用演进循环
+  - `POST /evolution/run` — 运行 BootstrapFewShot 优化
+  - `GET  /evolution/progress` — 查询演进进度
+  - `POST /progress` — 启用 GEPA 演进循环（S3.1）
+
+### 管理与预热端点（Admin / Warmup）
+- `POST /admin/warmup` — 预热引擎与 LLM 客户端（`src/audiobook_studio/api/admin.py`）。
+- `POST /evolution/warmup` — 预热引擎 / LLM 客户端（S3.1）。
+- `GET  /apply/{task_id}/progress` — 查询模板应用进度（`src/audiobook_studio/api/templates.py`）。
+
 ## 快速开始 (Quick Start)
 
 > 🚀 **有 NVIDIA/AMD 独显（≥16GB VRAM）的专业用户？推荐走 Pro 一等路径**：

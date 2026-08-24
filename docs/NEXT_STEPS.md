@@ -16,8 +16,9 @@
 | 清理 | 运行产物脱离跟踪 + .gitignore 加固 | `e685769` |
 | 收尾 | Phase 1/2 累积工作整合提交 | `aa82af2` |
 
-**已验证**:`mypy --strict` 259 文件 0 错误;S2/S3 交付物单测 **77 passed**;前端 `vue-tsc -b` + `vitest` 100 passed;工作树干净。
-**当前分支**:`refactor/p2-engineering-debt`(不在 CI 触发的 `main/develop`,需 PR 才会真正跑 CI)。
+**已验证**:单元套件 **5055 passed / 0 failed**（CI `test` job 同款 faithful 命令全绿，`MOCK_LLM=true`）；前端 `npm run build`(`vue-tsc -b && vite build`)通过产出 `dist/`；`mypy --strict` 0 错误。工作树干净。
+**状态更新（本分支）**:A1（单元套件全绿 5055 passed）、A3（前端 `vite build` 通过）已完成；A5 文档同步进行中；A6 准备向 `main` 开 PR。Phase A 范围为单测 CI 全绿；golden / mutation / mypy-strict / docker 等重量级 CI job 超出 Phase A 范围。
+**当前分支**:`feat/v0.4-multilingual-clone`（不在 CI 触发的 `main/develop`，需 PR 才会真正跑 CI）。
 
 ---
 
