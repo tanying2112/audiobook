@@ -15,6 +15,9 @@ v0.4 新增引擎:
 - Streaming: cosyvoice_stream, seed_tts_stream, melotts_stream
 - Zero-shot Clone: xtts_v2, openvoice_v2, cosyvoice_clone
 - VoxCPM2: voxcpm2 (远程 GPU 推理)
+
+v0.5 新增:
+- rag_context: RAG 检索上下文，用于韵律/声音一致性
 """
 
 from typing import Annotated, Literal, Optional
@@ -81,6 +84,8 @@ class TtsRoutingInput(BaseModel):
     # v0.4 新增
     enable_streaming: bool = Field(default=False, description="启用流式合成 (实时预览)")
     enable_cloning: bool = Field(default=False, description="启用零样本克隆 (需 sample_quote)")
+    # v0.5 新增: RAG 检索上下文 (用于韵律/声音一致性)
+    rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 
