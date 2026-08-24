@@ -631,6 +631,8 @@ async def get_apply_progress(
 
     Returns progress from in-memory tracking.
     """
+    if not hasattr(_apply_template_background, "progress"):
+        _apply_template_background.progress = {}
     progress = _apply_template_background.progress.get(task_id)
     if not progress:
         raise HTTPException(status_code=404, detail="Task not found")

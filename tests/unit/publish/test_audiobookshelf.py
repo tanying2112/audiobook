@@ -28,6 +28,16 @@ from src.audiobook_studio.publish.audiobookshelf import (
     AudiobookshelfPublisher,
 )
 
+# Restore the real modules so we do not pollute ``sys.modules`` for the rest
+# of the test session. ``requests`` is a hard dependency that is always
+# installed; leaving a bare MagicMock in ``sys.modules`` breaks unrelated tests
+# (e.g. download-retry logic that relies on ``requests.exceptions.HTTPError``).
+for _name, _orig in _ORIGINAL_MODULES.items():
+    if _orig is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _orig
+
 
 class TestAudiobookMetadata:
     """Tests for AudiobookMetadata dataclass."""

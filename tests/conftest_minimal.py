@@ -216,7 +216,25 @@ for mod_name in [
     "click.types",
     "click._compat",
 ]:
-    if mod_name not in sys.modules:
+    # Modules that are genuinely installed must NOT be shadowed by a bare
+    # MagicMock: doing so breaks code that accesses attributes on the real
+    # module (e.g. ``requests.exceptions.HTTPError``) and pollutes
+    # globally-imported modules such as ``base_worker`` across the whole
+    # session. These are hard dependencies that are always present, so we
+    # leave the real modules in place. Everything else keeps the original
+    # behaviour of being mocked only if it has not yet been imported (which
+    # covers genuinely-optional dependencies). "typer" pulls in "click" at
+    # runtime, so "typer._click" and friends are also skipped here.
+    # ``requests`` is a hard dependency that is always installed, so it must
+    # never be shadowed by a bare MagicMock (otherwise ``requests.exceptions
+    # .HTTPError`` is not a real exception and download-retry tests break).
+    # ``transformers`` is intentionally NOT whitelisted: it is an optional
+    # dependency and mocking it as a bare MagicMock actually *helps* (its real
+    # import triggers a torch-availability check that crashes against the
+    # mocked ``torch`` module). Everything else keeps the original behaviour
+    # of being mocked only if it has not yet been imported.
+    _INSTALLED_OK = {"requests"}
+    if mod_name not in sys.modules and mod_name not in _INSTALLED_OK:
         sys.modules[mod_name] = MagicMock()
 
 # Set celery states constants

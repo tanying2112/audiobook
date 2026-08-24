@@ -63,6 +63,22 @@ with patch.dict(
 # the captured modules so they remain importable/cached for the rest of the session.
 sys.modules.update(_imported_modules)
 
+# ``base_worker`` may already be cached from an earlier app import that happened
+# while ``conftest_minimal`` had injected *bare* ``MagicMock`` placeholders for
+# ``boto3``/``redis`` (these optional deps are not installed in CI). In that case
+# ``base_worker.boto3``/``base_worker.redis`` are unusable bare mocks lacking
+# ``.exceptions.Boto3Error`` / ``.RedisError``. Pin them to the proper mocks so
+# the retry ``except (redis.RedisError, boto3.exceptions.Boto3Error)`` clause
+# works regardless of import order / global pollution.
+for _bw_name in (
+    "src.audiobook_studio.tts.remote_workers.base_worker",
+    "audiobook_studio.tts.remote_workers.base_worker",
+):
+    _bw_mod = sys.modules.get(_bw_name)
+    if _bw_mod is not None:
+        _bw_mod.boto3 = _boto3_mock
+        _bw_mod.redis = _redis_mock
+
 
 class TestR2Uploader:
     """Tests for R2Uploader class."""
