@@ -33,6 +33,12 @@ class TestSemanticCoherenceChecker:
         # Mock the file open to raise FileNotFoundError
         mock_yaml.safe_load.side_effect = FileNotFoundError()
 
+        # The sentence_transformers mock is module-global and shared across the
+        # whole session, so its call count accumulates from every
+        # SemanticCoherenceChecker() instantiation elsewhere. Reset it (keeping
+        # the return_value) so we assert only this construction's single call.
+        mock_sentence_transformers.SentenceTransformer.reset_mock(return_value=False)
+
         # Create the checker
         checker = SemanticCoherenceChecker("dummy/path.yaml")
 
