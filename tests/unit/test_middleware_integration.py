@@ -1,8 +1,8 @@
 """Integration tests for middleware chain order and behavior.
 
 Tests that middleware execute in the correct order:
-Request (outermost→innermost): TrustedHost → CORS → GZip → ISOTimestamp → ABTest → Observability
-Response (innermost→outermost): Observability → ABTest → ISOTimestamp → GZip → CORS → TrustedHost
+Request (outermost→innermost): RateLimit → TrustedHost → CORS → GZip → ISOTimestamp → ABTest → Observability
+Response (innermost→outermost): Observability → ABTest → ISOTimestamp → GZip → CORS → TrustedHost → RateLimit
 """
 
 from __future__ import annotations
@@ -169,13 +169,15 @@ class TestMiddlewareOrder:
         middleware_classes = [mw.cls.__name__ for mw in app.user_middleware]
 
         # Actual order in user_middleware (index 0 = outermost for request):
-        # 0: TrustedHostMiddleware (security - reject bad hosts first)
-        # 1: CORSMiddleware (cross-origin - must wrap all responses)
-        # 2: GZipMiddleware (compression - applied after CORS headers)
-        # 3: ISOTimestampMiddleware (response normalization)
-        # 4: ABTestMiddleware (business routing)
-        # 5: ObservabilityMiddleware (tracing - innermost for request)
+        # 0: RateLimitMiddleware (S3.6 API quota — reject over-budget clients first)
+        # 1: TrustedHostMiddleware (security - reject bad hosts)
+        # 2: CORSMiddleware (cross-origin - must wrap all responses)
+        # 3: GZipMiddleware (compression - applied after CORS headers)
+        # 4: ISOTimestampMiddleware (response normalization)
+        # 5: ABTestMiddleware (business routing)
+        # 6: ObservabilityMiddleware (tracing - innermost for request)
         expected_order = [
+            "RateLimitMiddleware",
             "TrustedHostMiddleware",
             "CORSMiddleware",
             "GZipMiddleware",
