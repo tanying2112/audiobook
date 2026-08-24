@@ -1,7 +1,7 @@
 """Tests for pipeline/orchestrator.py — _write_* functions."""
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,6 +27,17 @@ from src.audiobook_studio.schemas import (
 @pytest.fixture
 def mock_db():
     db = MagicMock()
+    # Async-capable session surface used by the production write_* helpers.
+    db.execute = AsyncMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.flush = AsyncMock()
+    db.add = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    result.scalars.return_value.first.return_value = None
+    db.execute.return_value = result
+
     chapter = MagicMock()
     chapter.id = 1
     chapter.index = 1
@@ -39,36 +50,40 @@ def mock_db():
     para.chapter_id = 1
     para.edited_text = ""
 
-    db.query.return_value.filter.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
     return db, chapter, para
 
 
 class TestWriteExtract:
-    def test_new_chapter(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_new_chapter(self, mock_db):
         db, _, _ = mock_db
         result = ExtractionResult(raw_text="hello", language="zh", page_count=1)
-        _write_extract(db, project_id=1, chapter_index=1, result=result)
+        await _write_extract(db, project_id=1, chapter_index=1, result=result)
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_existing_by_index(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_existing_by_index(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.side_effect = [chapter]
+        db.execute.return_value.scalar_one_or_none.return_value = chapter
         result = ExtractionResult(raw_text="text", language="en", page_count=1)
-        _write_extract(db, project_id=1, chapter_index=1, result=result)
+        await _write_extract(db, project_id=1, chapter_index=1, result=result)
         db.add.assert_not_called()
 
-    def test_existing_by_id(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_existing_by_id(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.return_value = chapter
+        db.execute.return_value.scalar_one_or_none.return_value = chapter
         result = ExtractionResult(raw_text="by id", language="en", page_count=1)
-        _write_extract(db, project_id=1, chapter_index=1, result=result, chapter_id=5)
+        await _write_extract(db, project_id=1, chapter_index=1, result=result, chapter_id=5)
         db.add.assert_not_called()
 
 
 class TestWriteAnalyze:
-    def test_write(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_write(self, mock_db):
         db, chapter, _ = mock_db
         result = BookAnalysisOutput(
             book_meta={
@@ -88,15 +103,16 @@ class TestWriteAnalyze:
             story_line_summary="A" * 100,
             global_style_notes="n",
         )
-        _write_analyze(db, chapter, result)
+        await _write_analyze(db, chapter, result)
         db.commit.assert_called()
         assert chapter.analyze_status == "completed"
 
 
 class TestWriteAnnotate:
-    def test_new_paragraph(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_new_paragraph(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.return_value = None
+        db.execute.return_value.scalar_one_or_none.return_value = None
         result = ParagraphAnnotation(
             paragraph_index=1,
             speaker_canonical_name="Alice",
@@ -105,13 +121,15 @@ class TestWriteAnnotate:
             emotion_intensity=0.8,
             confidence=0.9,
         )
-        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
+        await _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_existing_paragraph(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_existing_paragraph(self, mock_db):
         db, chapter, para = mock_db
-        db.query.return_value.filter.return_value.first.return_value = para
+        db.execute.return_value.scalar_one_or_none.return_value = para
         result = ParagraphAnnotation(
             paragraph_index=1,
             speaker_canonical_name="Bob",
@@ -120,12 +138,13 @@ class TestWriteAnnotate:
             emotion_intensity=0.5,
             confidence=0.7,
         )
-        _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
+        await _write_annotate(db, project_id=1, chapter=chapter, paragraph_index=1, result=result)
         db.commit.assert_called()
 
 
 class TestWriteEdit:
-    def test_with_changes(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_with_changes(self, mock_db):
         db, _, para = mock_db
         result = TtsEditOutput(
             edited_text="edited",
@@ -136,12 +155,14 @@ class TestWriteEdit:
             difficulty="A",
             forbid_edit=False,
         )
-        _write_edit(db, para, result)
+        await _write_edit(db, para, result)
         db.add.assert_called()
         db.commit.assert_called()
         assert para.status == "edited"
 
-    def test_no_changes(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_no_changes(self, mock_db):
         db, _, para = mock_db
         result = TtsEditOutput(
             edited_text="no change",
@@ -152,12 +173,13 @@ class TestWriteEdit:
             difficulty="B",
             forbid_edit=False,
         )
-        _write_edit(db, para, result)
+        await _write_edit(db, para, result)
         assert para.status == "edited"
 
 
 class TestWriteSynthesize:
-    def test_write(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_write(self, mock_db):
         db, chapter, para = mock_db
         seg = {
             "file_path": "/tmp/a.mp3",
@@ -167,18 +189,19 @@ class TestWriteSynthesize:
             "engine": "kokoro",
             "voice_id": "v1",
         }
-        _write_synthesize(db, project_id=1, chapter=chapter, para=para, segment_info=seg)
+        await _write_synthesize(db, project_id=1, chapter=chapter, para=para, segment_info=seg)
         db.add.assert_called()
         db.commit.assert_called()
         assert para.status == "synthesized"
 
 
 class TestWriteQuality:
-    def test_with_existing_tts_edit(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_with_existing_tts_edit(self, mock_db):
         db, chapter, para = mock_db
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
+        db.execute.return_value.scalar_one_or_none.return_value = mock_tts_edit
         result = QualityJudgment(
             segment_id="seg1",
             speaker_clarity=0.9,
@@ -189,24 +212,16 @@ class TestWriteQuality:
             issues=[],
             needs_regeneration=False,
         )
-        _write_quality(db, project_id=1, chapter=chapter, para=para, result=result)
+        await _write_quality(db, project_id=1, chapter=chapter, para=para, result=result)
         assert para.status == "quality_checked"
 
-    def test_no_tts_edit_creates_dummy(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_no_tts_edit_creates_dummy(self, mock_db):
         db, chapter, para = mock_db
-        from src.audiobook_studio.models.tts_edit import TTSEdit as TTSEditModel
-
-        mock_tts_edit_query = MagicMock()
-        mock_tts_edit_query.order_by.return_value.first.return_value = None
-
-        def query_side_effect(model):
-            if model is TTSEditModel:
-                return mock_tts_edit_query
-            chain = MagicMock()
-            chain.filter.return_value.first.return_value = None
-            return chain
-
-        db.query.side_effect = query_side_effect
+        # No existing TTSEdit: scalar_one_or_none() returns None, so write_quality
+        # synthesizes a dummy TTSEdit before persisting the Quality record.
+        db.execute.return_value.scalar_one_or_none.return_value = None
         result = QualityJudgment(
             segment_id="seg2",
             speaker_clarity=0.8,
@@ -217,12 +232,13 @@ class TestWriteQuality:
             issues=[],
             needs_regeneration=True,
         )
-        _write_quality(db, project_id=1, chapter=chapter, para=para, result=result)
+        await _write_quality(db, project_id=1, chapter=chapter, para=para, result=result)
         assert para.status == "quality_checked"
 
 
 class TestWriteAudioPostprocess:
-    def test_write(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_write(self, mock_db):
         db, _, para = mock_db
         params = AudioPostProcessParams(
             speech_rate=1.2,
@@ -230,15 +246,17 @@ class TestWriteAudioPostprocess:
             needs_sfx=True,
             sfx_tags=["wind"],
         )
-        _write_audio_postprocess(db, para, params)
+        await _write_audio_postprocess(db, para, params)
         db.commit.assert_called()
         assert para.status == "audio_processed"
         assert para.speech_rate == 1.2
         assert para.needs_sfx is True
 
-    def test_defaults(self, mock_db):
+    @pytest.mark.asyncio
+
+    async def test_defaults(self, mock_db):
         db, _, para = mock_db
         params = AudioPostProcessParams()
-        _write_audio_postprocess(db, para, params)
+        await _write_audio_postprocess(db, para, params)
         assert para.needs_sfx is False
         assert para.speech_rate == 1.0
