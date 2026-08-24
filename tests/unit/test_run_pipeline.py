@@ -225,15 +225,25 @@ class TestModuleConstants:
         ]
 
     def test_book_config_keys(self, rp):
-        assert set(rp.BOOK_CONFIG.keys()) == {"红楼梦", "三国演义"}
+        # Source of truth: run_pipeline.BOOK_CONFIG ships the two Chinese
+        # classics plus multilingual samples (Carnival/en, test_story/zh).
+        assert set(rp.BOOK_CONFIG.keys()) == {
+            "红楼梦",
+            "三国演义",
+            "Carnival",
+            "test_story",
+        }
 
     def test_book_config_fields(self, rp):
         for _name, cfg in rp.BOOK_CONFIG.items():
             assert cfg["title"]
             assert cfg["author"]
-            assert cfg["language"] == "zh"
-            assert cfg["num_mock_chapters"] == 3
-            assert cfg["difficulty"] == "C"
+            # Multilingual support: language is a non-empty code (zh, en, ...)
+            assert isinstance(cfg["language"], str) and cfg["language"]
+            # Each book ships at least one mock chapter
+            assert isinstance(cfg["num_mock_chapters"], int) and cfg["num_mock_chapters"] >= 1
+            # difficulty is a grade tier (A/B/C)
+            assert cfg["difficulty"] in ("A", "B", "C")
 
     def test_mock_data_dir_exists(self, rp):
         assert rp.MOCK_DATA_DIR.exists()
@@ -246,12 +256,14 @@ class TestModuleConstants:
 class TestInitializeDatabase:
     def test_full_seed_walk(self, rp):
         """init_db called once, SessionLocal returns a mock that sees existing
-        Project records for both books → no new projects inserted."""
+        Project records for every BOOK_CONFIG entry → no new projects inserted."""
         mock_session = MagicMock()
-        # First query: Project exists for both books
+        # Project exists for all four books (红楼梦, 三国演义, Carnival, test_story)
         mock_session.query.return_value.filter.return_value.first.side_effect = [
             MagicMock(id=1),
             MagicMock(id=2),
+            MagicMock(id=3),
+            MagicMock(id=4),
         ]
         # Use fixture mocks via rp._mock_* attributes
         rp._mock_session_local.return_value = mock_session
@@ -263,10 +275,12 @@ class TestInitializeDatabase:
 
     def test_seed_creates_missing_project(self, rp):
         mock_session = MagicMock()
-        # First book: no existing; second book: existing
+        # First book (红楼梦): no existing -> created; the other three exist
         mock_session.query.return_value.filter.return_value.first.side_effect = [
             None,
             MagicMock(id=1),
+            MagicMock(id=2),
+            MagicMock(id=3),
         ]
         # When project created, db.add then commit then refresh
         rp._mock_session_local.return_value = mock_session
