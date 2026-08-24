@@ -11,16 +11,20 @@ import numpy as np
 import pytest
 
 # VoxCPM2 依赖外部可选后端包 `voxcpm`(位于 voxcpm2-pool/, 默认不安装)。
-# 该后端不可用时整体跳过, 避免 ModuleNotFoundError 污染套件。
-pytest.importorskip("voxcpm")
-
-from src.audiobook_studio.tts.voxcpm2_backend import (
-    QUANTIZATION_MODES,
-    VOXCPM2_VOICES,
-    VoxCPM2Backend,
-    create_voxcpm2_backend,
-)
-from src.audiobook_studio.tts.engine import TTSProsody, TTSVoiceAnchor, TTSTaskPayload, TTSTaskResult
+# 该后端不可用时整体跳过, 避免 ModuleNotFoundError/ImportError 污染套件。
+# 注意: 部分环境里 voxcpm 半安装(如缺 einops, 或 huggingface_hub 与全局 httpx mock 冲突)
+# 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
+try:
+    import voxcpm  # noqa: F401
+    from src.audiobook_studio.tts.voxcpm2_backend import (
+        QUANTIZATION_MODES,
+        VOXCPM2_VOICES,
+        VoxCPM2Backend,
+        create_voxcpm2_backend,
+    )
+    from src.audiobook_studio.tts.engine import TTSProsody, TTSVoiceAnchor, TTSTaskPayload, TTSTaskResult
+except Exception:  # noqa: BLE001 - 可选后端缺失/半安装时统一跳过
+    pytest.skip("voxcpm optional backend not available", allow_module_level=True)
 
 
 def setUpModule():

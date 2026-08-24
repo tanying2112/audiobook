@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import select
 
 from src.audiobook_studio.pipeline.orchestrator import (
     _write_analyze,
@@ -24,6 +25,13 @@ from src.audiobook_studio.schemas import (
 )
 
 
+def _make_execute_mock(return_chapter=None):
+    """Create a mock for db.execute(select(...))."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = return_chapter
+    return MagicMock(return_value=mock_result)
+
+
 @pytest.fixture
 def mock_db():
     db = MagicMock()
@@ -39,8 +47,14 @@ def mock_db():
     para.chapter_id = 1
     para.edited_text = ""
 
+    # Legacy query() chain (for backward compat)
     db.query.return_value.filter.return_value.first.return_value = None
     db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+    # New execute(select()) chain - default returns None (no existing chapter)
+    db.execute.side_effect = None
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    db.execute.return_value = mock_result
     return db, chapter, para
 
 
@@ -54,14 +68,20 @@ class TestWriteExtract:
 
     def test_existing_by_index(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.side_effect = [chapter]
+        # Override execute to return existing chapter
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = chapter
+        db.execute.return_value = mock_result
         result = ExtractionResult(raw_text="text", language="en", page_count=1)
         _write_extract(db, project_id=1, chapter_index=1, result=result)
         db.add.assert_not_called()
 
     def test_existing_by_id(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.return_value = chapter
+        # Override execute to return existing chapter
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = chapter
+        db.execute.return_value = mock_result
         result = ExtractionResult(raw_text="by id", language="en", page_count=1)
         _write_extract(db, project_id=1, chapter_index=1, result=result, chapter_id=5)
         db.add.assert_not_called()

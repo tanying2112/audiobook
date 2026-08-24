@@ -170,7 +170,8 @@ class TestBreachFlipsPassed:
         if sr0.mos is not None:
             # 真跑出 MOS：坏样本应低分；若低于默认阈值(3.5)，硬门禁应翻转为不通过
             if sr0.mos < 3.5:
-                assert sr0.overall_passed is False or any(
+                # 越界应翻转为不通过：段级判定用 sr0.passed（overall_passed 属聚合 QualityReport）
+                assert sr0.passed is False or any(
                     "硬质检门禁" in i or "DNSMOS" in i for i in sr0.issues
                 ), (f"breach not reflected: mos={sr0.mos}, issues={sr0.issues}")
             # 无论是否越界，mos 已成功计算即满足 DoD"指标真实生效"

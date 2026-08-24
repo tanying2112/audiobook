@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,53 @@ logger = logging.getLogger(__name__)
 # Global registry (lazy initialization)
 _global_registry: Optional[EngineRegistry] = None
 _registry_lock = os.threading.Lock() if hasattr(os, "threading") else None
+
+
+# Config classes for new v0.4 engines (mirroring the ones in streaming.py and zero_shot_clone.py)
+# These are duplicated here to avoid circular imports
+@dataclass
+class StreamingTTSConfig:
+    engine: str
+    host: str = "localhost"
+    port: int = 5000
+    sample_rate: int = 24000
+    chunk_size_ms: int = 100
+    voice_id: str = "default"
+    speed: float = 1.0
+    timeout: int = 30
+    extra_params: dict = field(default_factory=dict)
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def mock_mode(self) -> bool:
+        return os.getenv("MOCK_TTS", "false").lower() == "true"
+
+    @property
+    def chunk_samples(self) -> int:
+        return int(self.sample_rate * self.chunk_size_ms / 1000)
+
+
+@dataclass
+class ZeroShotCloneConfig:
+    engine: str
+    host: str = "localhost"
+    port: int = 5010
+    sample_rate: int = 24000
+    language: str = "auto"
+    speed: float = 1.0
+    timeout: int = 60
+    extra_params: dict = field(default_factory=dict)
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def mock_mode(self) -> bool:
+        return os.getenv("MOCK_TTS", "false").lower() == "true"
 
 
 def _get_lock():
@@ -36,6 +84,8 @@ def create_engine(
 
     Args:
         engine_type: One of "auto", "kokoro", "edge", "voxcpm2", "fake", "mock".
+        Also supports v0.4 engines: "cosyvoice_stream", "seed_tts_stream", "melotts_stream",
+        "xtts_v2", "openvoice_v2", "cosyvoice_clone".
         **kwargs: Arguments passed to the engine constructor.
 
     Returns:
@@ -61,8 +111,18 @@ def create_engine(
         kwargs.pop("mock_mode", None)
         return MockRemoteTTSPort(**kwargs)
     elif impl == "voxcpm2":
+        # voxcpm2 remote port does not support mock_mode parameter
+        kwargs.pop("mock_mode", None)
         return create_remote_voxcpm2_port(**kwargs)
     elif impl == "auto":
+        # Check for v0.4 streaming engines
+        if impl in ("cosyvoice_stream", "seed_tts_stream", "melotts_stream"):
+            kwargs["engine"] = impl
+            return create_streaming_tts_engine(**kwargs)
+        # Check for v0.4 zero-shot clone engines
+        if impl in ("xtts_v2", "openvoice_v2", "cosyvoice_clone"):
+            kwargs["engine"] = impl
+            return create_zero_shot_clone_engine(**kwargs)
         # Auto-detect based on environment
         if os.environ.get("MOCK_LLM", "false").lower() == "true":
             kwargs.pop("mock_mode", None)
@@ -71,6 +131,7 @@ def create_engine(
             kwargs.pop("mock_mode", None)
             return FakeRemoteTTSPort(**kwargs)
         elif os.environ.get("VOXCPM2_ENDPOINT"):
+            # Note: voxcpm2 is handled above in explicit check
             return create_remote_voxcpm2_port(**kwargs)
         else:
             enable_local = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
@@ -82,6 +143,24 @@ def create_engine(
         return create_kokoro_port(**kwargs)
     elif impl == "edge":
         return create_edge_tts_port(**kwargs)
+    elif impl == "cosyvoice_stream":
+        kwargs["engine"] = impl
+        return create_streaming_tts_engine(**kwargs)
+    elif impl == "seed_tts_stream":
+        kwargs["engine"] = impl
+        return create_streaming_tts_engine(**kwargs)
+    elif impl == "melotts_stream":
+        kwargs["engine"] = impl
+        return create_streaming_tts_engine(**kwargs)
+    elif impl == "xtts_v2":
+        kwargs["engine"] = impl
+        return create_zero_shot_clone_engine(**kwargs)
+    elif impl == "openvoice_v2":
+        kwargs["engine"] = impl
+        return create_zero_shot_clone_engine(**kwargs)
+    elif impl == "cosyvoice_clone":
+        kwargs["engine"] = impl
+        return create_zero_shot_clone_engine(**kwargs)
     else:
         raise ValueError(f"Unknown engine type: {engine_type}")
 
@@ -98,6 +177,26 @@ def create_edge_tts_port(**kwargs):
     from .edge_tts_port import create_edge_tts_port as _create_edge_tts_port
 
     return _create_edge_tts_port(**kwargs)
+
+
+def create_streaming_tts_engine(**kwargs) -> "StreamingTTSEngine":
+    """Create a Streaming TTS engine instance."""
+    from .streaming import StreamingTTSConfig, create_streaming_tts_engine as _create_streaming_tts_engine
+
+    # Build config from kwargs (remove mock_mode as it's a property, not a field)
+    kwargs.pop("mock_mode", None)
+    config = StreamingTTSConfig(**kwargs)
+    return _create_streaming_tts_engine(config)
+
+
+def create_zero_shot_clone_engine(**kwargs) -> "ZeroShotCloneEngine":
+    """Create a Zero-Shot Voice Cloning engine instance."""
+    from .zero_shot_clone import ZeroShotCloneConfig, create_zero_shot_clone_engine as _create_zero_shot_clone_engine
+
+    # Build config from kwargs (remove mock_mode as it's a property, not a field)
+    kwargs.pop("mock_mode", None)
+    config = ZeroShotCloneConfig(**kwargs)
+    return _create_zero_shot_clone_engine(config)
 
 
 async def create_configured_registry(
@@ -153,6 +252,40 @@ def _build_config_from_env() -> dict:
             "endpoint": os.environ["VOXCPM2_ENDPOINT"],
             "timeout_sec": int(os.environ.get("VOXCPM2_TIMEOUT_SEC", "60")),
         }
+
+    # Streaming TTS configs (v0.4)
+    streaming_engines = {
+        "cosyvoice_stream": ("COSYVOICE_STREAM_ENDPOINT", 5000),
+        "seed_tts_stream": ("SEED_TTS_STREAM_ENDPOINT", 5001),
+        "melotts_stream": ("MELOTTS_STREAM_ENDPOINT", 5002),
+    }
+    for engine_name, (env_var, default_port) in streaming_engines.items():
+        endpoint = os.environ.get(env_var)
+        if endpoint:
+            host = endpoint.replace("http://", "").replace("https://", "").split(":")[0]
+            port = int(endpoint.split(":")[-1]) if ":" in endpoint else default_port
+            config[engine_name] = {
+                "host": host,
+                "port": port,
+                "sample_rate": 24000,
+            }
+
+    # Zero-shot clone configs (v0.4)
+    clone_engines = {
+        "xtts_v2": ("XTTS_V2_ENDPOINT", 5010),
+        "openvoice_v2": ("OPENVOICE_V2_ENDPOINT", 5011),
+        "cosyvoice_clone": ("COSYVOICE_CLONE_ENDPOINT", 5012),
+    }
+    for engine_name, (env_var, default_port) in clone_engines.items():
+        endpoint = os.environ.get(env_var)
+        if endpoint:
+            host = endpoint.replace("http://", "").replace("https://", "").split(":")[0]
+            port = int(endpoint.split(":")[-1]) if ":" in endpoint else default_port
+            config[engine_name] = {
+                "host": host,
+                "port": port,
+                "sample_rate": 24000,
+            }
 
     return config
 

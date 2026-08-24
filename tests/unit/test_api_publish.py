@@ -680,15 +680,20 @@ class TestGeneratePodcastRss:
         mock_result2.scalars.return_value.all.return_value = mock_segments
         mock_db.execute.side_effect = [mock_result1, mock_result2]
 
+        # NOTE: 必须设置 ``AudioSegment.index`` (类属性) 而非 ``type(AudioSegment).index``。
+        # ``type(AudioSegment)`` 是声明式元类 (DeclarativeMeta)，在其上设置属性会通过
+        # 元类 MRO 污染 *所有* 声明式模型 (Chapter/AudioSegment/...) 的 ``index`` 访问，
+        # 导致后续测试用例 (如 test_db_optimization) 编译 SQL 时 ``Chapter.index`` 变成 MagicMock。
+        _original_index = AudioSegment.index
         mock_index_col = MagicMock()
         mock_index_col.__clause_element__ = lambda self: mock_index_col
-        type(AudioSegment).index = PropertyMock(return_value=mock_index_col)
+        AudioSegment.index = mock_index_col
         try:
             with patch("src.audiobook_studio.database.AsyncSessionLocal") as mock_session:
                 mock_session.return_value.__aenter__.return_value = mock_db
                 result = await _generate_podcast_rss(project_id=5, config={})
         finally:
-            pass  # Can't delete mapped attribute, just let it leak for test
+            AudioSegment.index = _original_index
 
         assert result["episode_count"] == 3
         assert result["success"] is True

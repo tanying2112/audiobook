@@ -60,6 +60,16 @@ services:
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      # v0.4 Streaming TTS endpoints (Modal GPU endpoints)
+      - COSYVOICE_STREAM_ENDPOINT=https://tanying2112--cosyvoice-stream-server-fastapi-app.modal.run
+      - SEED_TTS_STREAM_ENDPOINT=https://tanying2112--seed-tts-stream-server-fastapi-app.modal.run
+      - MELOTTS_STREAM_ENDPOINT=https://tanying2112--melotts-stream-server-fastapi-app.modal.run
+      # v0.4 Zero-shot cloning endpoints (Modal GPU endpoints)
+      - XTTS_V2_ENDPOINT=https://tanying2112--xtts-v2-clone-server-fastapi-app.modal.run
+      - OPENVOICE_V2_ENDPOINT=https://tanying2112--openvoice-v2-clone-server-fastapi-app.modal.run
+      - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
+      # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
+      - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -98,6 +108,16 @@ services:
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      # v0.4 Streaming TTS endpoints (Modal GPU endpoints)
+      - COSYVOICE_STREAM_ENDPOINT=https://tanying2112--cosyvoice-stream-server-fastapi-app.modal.run
+      - SEED_TTS_STREAM_ENDPOINT=https://tanying2112--seed-tts-stream-server-fastapi-app.modal.run
+      - MELOTTS_STREAM_ENDPOINT=https://tanying2112--melotts-stream-server-fastapi-app.modal.run
+      # v0.4 Zero-shot cloning endpoints (Modal GPU endpoints)
+      - XTTS_V2_ENDPOINT=https://tanying2112--xtts-v2-clone-server-fastapi-app.modal.run
+      - OPENVOICE_V2_ENDPOINT=https://tanying2112--openvoice-v2-clone-server-fastapi-app.modal.run
+      - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
+      # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
+      - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:

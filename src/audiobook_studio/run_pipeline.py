@@ -284,18 +284,27 @@ _interrupted = False
 
 
 def _signal_handler(signum, frame):
-    """Handle SIGINT (Ctrl+C) and SIGTERM gracefully."""
+    """Handle SIGINT (Ctrl+C) and SIGTERM gracefully.
+
+    仅在真正运行流水线 CLI 时（持有检查点管理器）才调用 sys.exit 退出；
+    被作为库导入（测试 / 嵌入其它进程）时只记录中断标记，交由上层
+    （pytest-timeout、pytest 运行器、父进程的默认处理等）决定如何继续，
+    避免全局 sys.exit 在测试过程中意外终止整个测试进程。
+    """
     global _interrupted
     _interrupted = True
-    logger.warning(f"Received signal {signum}, saving checkpoint before exit...")
     if _current_checkpoint_manager:
+        logger.warning(f"Received signal {signum}, saving checkpoint before exit...")
         try:
             _current_checkpoint_manager._flush()
             logger.info("Checkpoint saved. You can resume on next run.")
         except Exception as e:
             logger.error(f"Failed to save checkpoint on interrupt: {e}")
-    print("\n⚠️  已保存进度检查点，下次运行可从断点继续。")
-    sys.exit(130)  # Standard exit code for SIGINT
+        print("\n⚠️  已保存进度检查点，下次运行可从断点继续。")
+        sys.exit(130)  # Standard exit code for SIGINT
+    else:
+        # 库/测试上下文：不退出，仅记录，让上层处理信号。
+        logger.debug(f"Received signal {signum} in library/test context; ignoring for process exit.")
 
 
 # Install signal handlers

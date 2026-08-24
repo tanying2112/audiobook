@@ -111,7 +111,16 @@ class TestKokoroBackendInitialization:
         """Test initialization fails when onnxruntime not installed."""
         backend = KokoroBackend(mock_mode=False)
 
-        with patch.dict("sys.modules", {"onnxruntime": None}, clear=True):
+        import sys as _sys
+
+        # Simulate onnxruntime being absent. Do NOT use clear=True on sys.modules
+        # — that wipes the entire import cache and corrupts CPython internals
+        # (e.g. collections._sys.maxsize), crashing unrelated imports.
+        # Instead, mask onnxruntime as None and drop the cached kokoro_onnx
+        # module so it is re-imported and its own `import onnxruntime` fails
+        # cleanly with ImportError.
+        _sys.modules.pop("kokoro_onnx", None)
+        with patch.dict("sys.modules", {"onnxruntime": None}):
             with pytest.raises(ImportError, match="onnxruntime"):
                 await backend.initialize()
 

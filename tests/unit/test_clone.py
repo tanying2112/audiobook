@@ -1,7 +1,7 @@
 """Tests for TTS voice cloning module."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -316,7 +316,14 @@ class TestVoiceCloningEngine:
         assert path is None
 
     def test_synthesize_speech_success(self, engine):
-        """Test successful speech synthesis."""
+        """Test successful speech synthesis (model-ready success path).
+
+        The committed source (commit 40f589b) removed the mock-fallback that
+        previously returned a ``MOCK模式合成`` result when the Kokoro model was
+        absent. Synthesis now requires a ready model and a working Kokoro call,
+        so we stub those two pieces and assert the success path still returns a
+        produced output path.
+        """
         # Create a good quality voice print
         vp = VoicePrint(
             speaker_id="good_speaker",
@@ -330,9 +337,13 @@ class TestVoiceCloningEngine:
         )
         engine.voice_prints["good_speaker"] = vp
 
-        success, msg, path = engine.synthesize_speech("Test text", "good_speaker")
+        # Simulate a ready model and stub the actual Kokoro synthesis call so the
+        # test exercises the success path without the real ONNX model / deps.
+        engine._model_ready = True
+        with patch.object(engine, "_do_synthesize", new=AsyncMock()):
+            success, msg, path = engine.synthesize_speech("Test text", "good_speaker")
         assert success is True
-        assert "MOCK模式合成" in msg
+        assert "语音合成成功" in msg
         assert path is not None
 
     def test_get_voice_info_exists(self, engine):

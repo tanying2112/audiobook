@@ -173,7 +173,7 @@ class TestBuildSubtitleEntriesExtended:
                         order=1,
                         text="Line",
                         original_text=None,
-                        character_name="Alice",
+                        speaker_canonical_name="Alice",
                     ),
                 ],
                 "audio_segments": [
@@ -200,7 +200,7 @@ class TestBuildSubtitleEntriesExtended:
                         order=1,
                         text="Line",
                         original_text=None,
-                        character_name=None,
+                        speaker_canonical_name=None,
                     ),
                 ],
                 "audio_segments": [
@@ -227,7 +227,7 @@ class TestBuildSubtitleEntriesExtended:
                         order=1,
                         text="Line",
                         original_text=None,
-                        character_name="Narrator",
+                        speaker_canonical_name="Narrator",
                     ),
                 ],
                 "audio_segments": [
@@ -328,7 +328,7 @@ class TestExportProjectExtended:
                     with patch("src.audiobook_studio.export.batch_exporter" "._build_project_metadata") as mock_meta:
                         mock_meta.return_value = MagicMock()
                         with patch("src.audiobook_studio.export.batch_exporter" ".build_m4b"):
-                            with patch("src.audiobook_studio.export.batch_exporter" ".mix_with_ducking"):
+                            with patch("src.audiobook_studio.export.batch_exporter" ".mix_full_pipeline"):
                                 with patch("subprocess.run"):
                                     job = ExportJob(
                                         project_id=1,

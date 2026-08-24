@@ -389,6 +389,10 @@ class TestExportProjectSuccess:
         mock_chapter.index = 1
         mock_chapter.title = "Chapter 1"
 
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+
         mock_project = MagicMock()
         mock_project.id = 1
         mock_project.slug = "test-book"
@@ -407,7 +411,7 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.srt.generate_srt"),
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
@@ -423,6 +427,7 @@ class TestExportProjectSuccess:
 
                     mock_collect.return_value = {
                         "chapter": mock_chapter,
+                        "paragraphs": [mock_paragraph],
                         "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
                         "chapter_data": {},
                     }
@@ -469,7 +474,7 @@ class TestExportProjectSuccess:
             patch("src.audiobook_studio.export.batch_exporter.generate_srt") as mock_gen_srt,
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
@@ -639,7 +644,7 @@ class TestExportErrorHandling:
             patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_collect_audio,
             patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024})()),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
             # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
             def mock_subprocess_run(*args, **kwargs):
@@ -651,6 +656,7 @@ class TestExportErrorHandling:
 
                 mock_collect.return_value = {
                     "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
+                    "paragraphs": [MagicMock(id=1, index=1, text="x", sfx_tags=[])],
                     "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
                     "chapter_data": {},
                 }

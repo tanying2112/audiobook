@@ -122,7 +122,8 @@ class TestDataClasses:
         assert embedding.sample_rate == 16000
 
         d = embedding.to_dict()
-        assert d["embedding"] == [0.1, 0.2, 0.3]
+        # Use np.testing for float32 precision issues
+        np.testing.assert_allclose(d["embedding"], [0.1, 0.2, 0.3], rtol=1e-5)
         assert d["model_name"] == "test_model"
         assert d["sample_rate"] == 16000
         assert d["dim"] == 3

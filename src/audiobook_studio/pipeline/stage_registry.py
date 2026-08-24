@@ -17,11 +17,23 @@ Usage:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Type, cast
+from typing import Any, Callable, Dict, List, Optional, Type, cast, Union
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
+# Import pipeline classes
+from .analyze_structure import AnalyzeStructurePipeline
+from .annotate_paragraph import AnnotateParagraphPipeline
+from .edit_for_tts import EditForTtsPipeline
+from .audio_postprocess import AudioPostProcessor
+from .synthesize import SynthesizePipeline
+from .quality_check import QualityCheckPipeline
+from .extract import ExtractPipeline
+
+# Import schema classes used in stage handlers
+from ..schemas.book import BookAnalysisInput
 
 
 class StageHandler(ABC):
@@ -188,7 +200,7 @@ class ExtractStage(StageHandler):
 
     async def apersist(
         self,
-        db: AsyncSession,
+        db: Union[Session, AsyncSession],
         project_id: int,
         chapter: Optional[Any],
         paragraph: Optional[Any],
@@ -198,9 +210,11 @@ class ExtractStage(StageHandler):
     ) -> None:
         # For extract stage, chapter may not exist yet - write_extract creates it
         from sqlalchemy import select
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from sqlalchemy.orm import Session
 
         from ..models import Paragraph
-        from .persistence import write_extract
+        from .persistence import write_extract, _aexecute, _acommit
 
         chapter_result = await write_extract(db, project_id, chapter_index or 1, result)
         result._chapter_id = chapter_result.id
@@ -211,7 +225,8 @@ class ExtractStage(StageHandler):
             # Split by double newlines, filter empty segments
             segments = [s.strip() for s in raw_text.split("\n\n") if s.strip()]
             for idx, seg_text in enumerate(segments, 1):
-                result_q = await db.execute(
+                result_q = await _aexecute(
+                    db,
                     select(Paragraph).filter(
                         Paragraph.project_id == project_id,
                         Paragraph.chapter_id == chapter_result.id,
@@ -229,12 +244,7 @@ class ExtractStage(StageHandler):
                         status="extracted",
                     )
                     db.add(para)
-            await db.commit()
-
-
-from ..schemas.book import BookAnalysisInput
-from .analyze_structure import AnalyzeStructurePipeline
-
+            await _acommit(db)
 
 class AnalyzeStage(StageHandler):
     """Analyze stage: analyze chapter structure."""

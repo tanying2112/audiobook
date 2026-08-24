@@ -14,6 +14,11 @@ if 'celery' in sys.modules:
     del sys.modules['celery']
 import celery  # noqa: F401 - ensure real celery is loaded
 
+# Also purge cached export_tasks so it re-imports with real celery
+for mod in list(sys.modules):
+    if mod.startswith('src.audiobook_studio.tasks'):
+        del sys.modules[mod]
+
 # Set TEST_MODE before any imports to use fake services
 os.environ["TEST_MODE"] = "true"
 os.environ["MOCK_TTS"] = "true"
