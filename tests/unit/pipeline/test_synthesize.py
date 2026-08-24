@@ -524,17 +524,17 @@ class TestSynthesizePipelineQualityGate:
 class TestSynthesizePipelineRoutingDecision:
     """Tests for routing decision logic."""
 
-    def test_routing_decision_local_tts_enabled(self, synthesize_pipeline, tts_routing_inputs):
+    def test_routing_decision_local_tts_enabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test routing decision when local TTS is enabled."""
-        os.environ["ENABLE_LOCAL_TTS"] = "true"
+        monkeypatch.setenv("ENABLE_LOCAL_TTS", "true")
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
 
         assert decision.engine_choice == "kokoro"
         assert decision.fallback_engine == "edge"
 
-    def test_routing_decision_local_tts_disabled(self, synthesize_pipeline, tts_routing_inputs):
+    def test_routing_decision_local_tts_disabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test routing decision when local TTS is disabled."""
-        os.environ["ENABLE_LOCAL_TTS"] = "false"
+        monkeypatch.setenv("ENABLE_LOCAL_TTS", "false")
         # Create input without prefer_local override so env var takes effect
         inp = tts_routing_inputs[0]
         inp = TtsRoutingInput(
@@ -546,9 +546,9 @@ class TestSynthesizePipelineRoutingDecision:
         assert decision.engine_choice == "edge"
         assert decision.fallback_engine == "kokoro"
 
-    def test_routing_decision_prefer_local_override(self, synthesize_pipeline, tts_routing_inputs):
+    def test_routing_decision_prefer_local_override(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test prefer_local parameter overrides env var."""
-        os.environ["ENABLE_LOCAL_TTS"] = "false"
+        monkeypatch.setenv("ENABLE_LOCAL_TTS", "false")
         inp = tts_routing_inputs[0]
         inp.prefer_local = True
         decision = synthesize_pipeline._make_routing_decision(inp)
