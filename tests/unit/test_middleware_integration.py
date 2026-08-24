@@ -8,6 +8,7 @@ Response (innermost→outermost): Observability → ABTest → ISOTimestamp → 
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 
@@ -16,7 +17,15 @@ from fastapi import APIRouter, Response
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+# Set ALLOWED_HOSTS BEFORE importing app to configure TrustedHostMiddleware correctly
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
+
+# Import app AFTER setting env var
 from src.audiobook_studio.main import app
+
+# Reset settings cache to pick up the ALLOWED_HOSTS env var
+from src.audiobook_studio.config.settings_loader import reset_settings
+reset_settings()
 
 
 # Define test models at module level to avoid forward reference issues
@@ -169,13 +178,15 @@ class TestMiddlewareOrder:
         middleware_classes = [mw.cls.__name__ for mw in app.user_middleware]
 
         # Actual order in user_middleware (index 0 = outermost for request):
-        # 0: TrustedHostMiddleware (security - reject bad hosts first)
-        # 1: CORSMiddleware (cross-origin - must wrap all responses)
-        # 2: GZipMiddleware (compression - applied after CORS headers)
-        # 3: ISOTimestampMiddleware (response normalization)
-        # 4: ABTestMiddleware (business routing)
-        # 5: ObservabilityMiddleware (tracing - innermost for request)
+        # 0: RateLimitMiddleware (S3.6 API rate limiting/quota - outermost gate)
+        # 1: TrustedHostMiddleware (security - reject bad hosts first)
+        # 2: CORSMiddleware (cross-origin - must wrap all responses)
+        # 3: GZipMiddleware (compression - applied after CORS headers)
+        # 4: ISOTimestampMiddleware (response normalization)
+        # 5: ABTestMiddleware (business routing)
+        # 6: ObservabilityMiddleware (tracing - innermost for request)
         expected_order = [
+            "RateLimitMiddleware",
             "TrustedHostMiddleware",
             "CORSMiddleware",
             "GZipMiddleware",

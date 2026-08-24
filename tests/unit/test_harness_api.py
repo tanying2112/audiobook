@@ -1,51 +1,96 @@
 """Tests for api/harness.py — HARNESS dashboard endpoints (320 lines, 34.7% coverage)."""
 
+import asyncio
 import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 # Import all models to register them with Base.metadata
 from src.audiobook_studio import models  # noqa: F401
+from src.audiobook_studio.api.dependencies import get_async_db
 from src.audiobook_studio.database import Base, get_db
 
 
+class _TestEngine:
+    """Sync-disposable handle around an async engine.
+
+    The harness endpoints depend on the async ``get_async_db``; the underlying
+    engine is async, so its ``dispose()`` is a coroutine. Tests call
+    ``engine.dispose()`` synchronously, so wrap it in a sync method that runs
+    the coroutine to completion.
+    """
+
+    def __init__(self, async_engine: AsyncEngine) -> None:
+        self._engine = async_engine
+
+    def dispose(self) -> None:
+        try:
+            asyncio.run(self._engine.dispose())
+        except Exception:  # pragma: no cover - best-effort cleanup
+            pass
+
+
 def _make_client():
-    """Build test client with in-memory SQLite DB."""
-    from src.audiobook_studio import models  # noqa: F401 - import to register models with Base
-    from src.audiobook_studio.api.harness import router
+    """Build test client with a real on-disk SQLite DB.
+
+    The HARNESS endpoints depend on the ASYNC ``get_async_db`` dependency (not
+    the legacy sync ``get_db``). The source caches ``DATABASE_URL`` at import
+    time and the async engine reads that cached value, so setting the
+    ``DATABASE_URL`` env var late (after import) has no effect on the async
+    engine. We therefore override the ``get_async_db`` FastAPI dependency to
+    point at a test async engine bound to a throwaway ``.db`` file.
+
+    Additionally, the self-iteration loop factory (used only when a
+    ``project_id`` is supplied) reads ``DATABASE_URL`` at *call* time via a
+    sync engine, so we point ``DATABASE_URL`` at the same test DB. And the
+    source caches ``SelfIterationLoop`` instances in a module-global dict keyed
+    by project_id — we clear it per client so a stale loop from a previously
+    deleted test DB is never reused.
+    """
+    from src.audiobook_studio import models  # noqa: F401 - register models with Base
+    from src.audiobook_studio.api.harness import _iteration_loops, router
 
     app = FastAPI()
     app.include_router(router)
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    test_db_url = f"sqlite:///{tmp.name}"
-    engine = create_engine(test_db_url, connect_args={"check_same_thread": False})
+    db_path = tmp.name
 
-    # Set DATABASE_URL so that _get_db_session_factory uses our test database
-    os.environ["DATABASE_URL"] = test_db_url
+    # Point the source's sync self-iteration-loop factory at the test DB.
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
 
-    Base.metadata.create_all(bind=engine)
-    TestSession = sessionmaker(bind=engine)
+    # Async engine (absolute path -> 4 slashes after the scheme) for the API.
+    async_url = f"sqlite+aiosqlite:///{db_path}"
+    async_engine = create_async_engine(async_url, connect_args={"check_same_thread": False})
 
-    def override():
-        db = TestSession()
-        try:
+    async def _init_schema() -> None:
+        async with async_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_init_schema())
+
+    TestAsyncSession = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def override_async_db():
+        async with TestAsyncSession() as db:
             yield db
-        finally:
-            db.close()
 
-    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_async_db] = override_async_db
+    # (Legacy sync get_db is unused by the HARNESS endpoints, but kept harmless.)
+
+    # Avoid stale SelfIterationLoop reuse across tests (module-global cache).
+    _iteration_loops.clear()
+
     client = TestClient(app)
-    return client, engine, tmp.name
+    return client, _TestEngine(async_engine), db_path
 
 
 class TestHarnessStatus:
