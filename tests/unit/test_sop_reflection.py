@@ -25,6 +25,13 @@ from src.audiobook_studio.pipeline.sop_reflection import (
 )
 
 
+# SOPConfig.DEFAULT_CONFIG_PATH is cwd-relative ("config/agent_sop.json"), so any
+# test that changes the working directory would make SOPConfig() silently fall
+# back to the hardcoded minimal _default_config() (which only has "default").
+# Load the real repo config via an absolute path to stay cwd-independent.
+REPO_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_sop.json"
+
+
 class TestSOPConfig:
     """Tests for SOPConfig."""
 
@@ -63,7 +70,7 @@ class TestSOPConfig:
 
     def test_get_genre_rules(self):
         """Test getting rules for a genre."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         rules = config.get_genre_rules("玄幻")
         assert "emotion_defaults" in rules
         assert "speech_rate" in rules
@@ -72,13 +79,13 @@ class TestSOPConfig:
 
     def test_get_genre_rules_fallback(self):
         """Test fallback to default for unknown genre."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         rules = config.get_genre_rules("未知类型")
         assert "emotion_defaults" in rules  # Should get default rules
 
     def test_normalize_genre(self):
         """Test genre normalization."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         assert config._normalize_genre("玄幻") == "玄幻"
         assert config._normalize_genre("仙侠") == "玄幻"  # alias
         assert config._normalize_genre("未知") == "default"
@@ -109,7 +116,7 @@ class TestSOPConfig:
 
     def test_global_settings(self):
         """Test global settings access."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         assert config.is_learning_enabled() is True
         assert config.get_min_corrections_for_update() == 3
         assert config.get_confidence_threshold() == 0.65
@@ -248,7 +255,7 @@ class TestReflectionEngine:
 
     def test_reflect_no_corrections(self):
         """Test reflection with no corrections."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         engine = ReflectionEngine(config)
         result = engine.reflect("玄幻", [])
         assert result.confidence == 0.0
@@ -256,7 +263,7 @@ class TestReflectionEngine:
 
     def test_reflect_insufficient_corrections(self):
         """Test reflection with insufficient corrections."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         engine = ReflectionEngine(config)
         corrections = [
             UserCorrection(
@@ -286,7 +293,7 @@ class TestReflectionEngine:
 
     def test_reflect_sufficient_corrections(self):
         """Test reflection with sufficient corrections."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         engine = ReflectionEngine(config)
         corrections = []
         # 4 emotion corrections
@@ -325,7 +332,7 @@ class TestReflectionEngine:
 
     def test_reflect_pitch_shift(self):
         """Test reflection detecting pitch shift pattern."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         engine = ReflectionEngine(config)
         corrections = []
         for i in range(3):
@@ -359,7 +366,7 @@ class TestRuleApplier:
             ParagraphAnnotationInput,
         )
 
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         applier = RuleApplier(config)
 
         book_meta = BookMeta(
@@ -399,7 +406,7 @@ class TestRuleApplier:
 
     def test_apply_to_audio_postprocess(self):
         """Test applying rules to audio post-process."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         applier = RuleApplier(config)
 
         # Use "combat" which exists in 玄幻 speech_rate rules
@@ -420,7 +427,7 @@ class TestSOPBackgroundThread:
 
     def test_start_stop(self):
         """Test starting and stopping background thread."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         collector = CorrectionCollector()
         engine = ReflectionEngine(config)
 
@@ -433,7 +440,7 @@ class TestSOPBackgroundThread:
 
     def test_start_twice(self):
         """Test starting thread twice doesn't create duplicate."""
-        config = SOPConfig()
+        config = SOPConfig(REPO_CONFIG_PATH)
         collector = CorrectionCollector()
         engine = ReflectionEngine(config)
 
