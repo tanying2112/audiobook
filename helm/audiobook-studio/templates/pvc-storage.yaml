@@ -1,0 +1,16 @@
+{{- if .Values.persistence.storage.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-storage
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: "{{ .Values.persistence.storage.storageClass }}"
+  resources:
+    requests:
+      storage: {{ .Values.persistence.storage.size }}
+{{- end }}

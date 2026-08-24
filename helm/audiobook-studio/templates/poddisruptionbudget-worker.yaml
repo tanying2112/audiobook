@@ -1,0 +1,15 @@
+{{- if and .Values.worker.enabled .Values.podDisruptionBudget.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-worker
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: worker
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "audiobook-studio.selectorLabels" . | nindent 6 }}
+      component: worker
+{{- end }}
