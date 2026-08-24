@@ -312,7 +312,10 @@ def create_prompt_upgrade_pr(
         return PRResult(success=False, error=str(e))
 
     # Create branch
-    branch_name = _create_pr_branch(base_branch, stage, version)
+    try:
+        branch_name = _create_pr_branch(base_branch, stage, version)
+    except RuntimeError as e:
+        return PRResult(success=False, error=str(e))
 
     # Commit changes
     if not _commit_prompt_changes(stage, version):
