@@ -36,6 +36,12 @@ def init_metrics(
     """
     global _meter_provider
 
+    # Idempotent: reuse a previously-initialised provider so that repeated
+    # lazy meter lookups (one per request path) never re-register readers or
+    # rebuild the provider.
+    if _meter_provider is not None:
+        return _meter_provider
+
     resource = Resource.create(
         {
             SERVICE_NAME: service_name,
@@ -44,18 +50,35 @@ def init_metrics(
         }
     )
 
-    # Set up Prometheus reader (exposes /metrics endpoint)
-    prometheus_reader = PrometheusMetricReader(
-        prefix="audiobook",
-    )
+    try:
+        # Set up Prometheus reader (exposes /metrics endpoint)
+        prometheus_reader = PrometheusMetricReader(
+            prefix="audiobook",
+        )
 
-    # Create meter provider
-    _meter_provider = MeterProvider(
-        resource=resource,
-        metric_readers=[prometheus_reader],
-    )
+        # Create meter provider
+        _meter_provider = MeterProvider(
+            resource=resource,
+            metric_readers=[prometheus_reader],
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Defensive fallback: when OpenTelemetry is partially mocked (e.g. a
+        # test leaves ``PrometheusMetricReader`` as a MagicMock on this module),
+        # the real ``MeterProvider`` constructor raises because a MagicMock's
+        # ``_meter_provider`` attribute is truthy ("already registered in other
+        # MeterProvider instance"). Build a no-op provider so metric creation
+        # never crashes downstream.
+        logger.warning(
+            "OpenTelemetry Prometheus reader unavailable (%s); using no-op "
+            "MeterProvider",
+            exc,
+        )
+        _meter_provider = MeterProvider(resource=resource)
 
-    metrics.set_meter_provider(_meter_provider)
+    try:
+        metrics.set_meter_provider(_meter_provider)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not set global meter provider: %s", exc)
 
     logger.info(f"OpenTelemetry metrics initialized for {service_name} v{service_version}")
     logger.info(f"Prometheus metrics available at :{prometheus_port}/metrics")
