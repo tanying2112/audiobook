@@ -226,10 +226,11 @@ async def get_queue_size():
 
 
 # ── WebSocket Endpoint for Real-time Corrections ─────────────────────────────
+# P0.1 Fix: Frontend expects /api/sop/corrections/ws/{projectId} but we had /corrections/ws
+# Match frontend: ws://host/api/sop/corrections/ws/{projectId}
 
-
-@router.websocket("/corrections/ws")
-async def sop_corrections_websocket(websocket: WebSocket):
+@router.websocket("/corrections/ws/{project_id}")
+async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
     """
     WebSocket endpoint for real-time user corrections from frontend.
 
@@ -264,6 +265,8 @@ async def sop_corrections_websocket(websocket: WebSocket):
             message = json.loads(data)
 
             if message.get("type") == "correction":
+                # Ensure project_id matches path param
+                message["project_id"] = project_id
                 result = await handle_user_correction_websocket(message)
                 await websocket.send_text(
                     json.dumps(
@@ -285,10 +288,11 @@ async def sop_corrections_websocket(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        logger.info("SOP corrections WebSocket disconnected")
+        logger.info(f"SOP corrections WebSocket disconnected for project {project_id}")
     except Exception as e:
-        logger.error(f"SOP corrections WebSocket error: {e}")
+        logger.error(f"SOP corrections WebSocket error for project {project_id}: {e}")
         try:
             await websocket.send_text(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False))
         except Exception:
             pass
+
