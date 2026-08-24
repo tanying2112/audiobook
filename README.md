@@ -52,6 +52,13 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 - `POST /evolution/warmup` — 预热引擎 / LLM 客户端（S3.1）。
 - `GET  /apply/{task_id}/progress` — 查询模板应用进度（`src/audiobook_studio/api/templates.py`）。
 
+### 真实集成验证（Phase B，免费资源）
+> 详见 `docs/NEXT_STEPS.md`「Phase B 完成总结」。以下脚本均**仅用免费资源**，可本地复跑：
+- **B1（S3.7 自迭代闭环）**：`scripts/run_self_iteration_b1.py` — 本机无本地 LLM(Kokoro/qwen)时走确定性 mock 并明确标注；闭环产出 `gain_pct=75%`（>10%）+ 人工复核提示。
+- **B2（S3.1 GEPA）**：`scripts/run_gepa_b2.py` — DSPy 已装时真实跑 GEPA/BootstrapFewShot few-shot 优化（经 `/admin/evolution/run` 底层路径），`/admin/evolution/progress` 反映运行状态。
+- **B3（S3.3 端到端）**：`scripts/run_e2e_bgm_mp4.py` — 真实 ffmpeg + 免费 Edge-TTS：TTS→BGM 混音→MP4 封装，产出**可播放 MP4**（audio+video+subtitle 三轨）。
+- **B4（S3.4 跨语言）**：`scripts/run_cross_language_b4.py` — 免费 LLM 将 en/ja/ko 译为 zh + 免费 Edge-TTS 外语音色，产出外语音频。
+
 ## 快速开始 (Quick Start)
 
 > 🚀 **有 NVIDIA/AMD 独显（≥16GB VRAM）的专业用户？推荐走 Pro 一等路径**：

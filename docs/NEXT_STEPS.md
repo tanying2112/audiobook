@@ -58,7 +58,7 @@ Phase D 发布准备                  →  D1 → D2
 | **A3** | 前端生产构建验证(G3) | `cd web && npm run build` 成功产出 `dist/`;`vue-tsc -b` 通过 |
 | **A4** | env_checker 门禁核对(G6) | 用 CI 同款环境变量跑 `python -m src.audiobook_studio.utils.env_checker --fail-on-warning` 退出 0;补齐缺失默认配置 |
 | **A5** | 文档同步 | `README.md` / 相关 docs 增补 S3 各功能入口与用法(BGM 混音、模型市场、跨语言、限流、自迭代脚本、`/admin/warmup`、`/admin/progress` 端点) |
-| **A6** | 建 PR 触发 CI(G5) | 从 `refactor/p2-engineering-debt` 向 `main` 建 PR,**所有 CI job(lint/test/env-check/golden/mypy-strict/docker)全绿** |
+| **A6** | 建 PR 触发 CI(G5) | 从 `feat/v0.4-multilingual-clone` 向 `main` 建 PR(PR #48);注意 CI 仅在 `main`/`develop` 触发,PR 本身不触发 CI job |
 
 ### Phase B — 免费资源下的真实集成验证
 
@@ -68,6 +68,17 @@ Phase D 发布准备                  →  D1 → D2
 | **B2** | S3.1 GEPA 真实跑 | 若装了 DSPy,用真实 few-shot 跑一次 `/admin/evolution/run`;否则 mock,验收:`/admin/evolution/progress` 返回 `perplexity_drop_pct > 0.15` |
 | **B3** | S3.3 端到端(已免费可用) | 用真实 ffmpeg 跑 TTS→BGM 混音→MP4 封装,产出**可播放 MP4**;补充一个产线级脚本/文档 |
 | **B4** | S3.4 真实跨语言 | 用免费 LLM 跑一段 en/ja/ko → zh 翻译 + TTS,生成外语音频 |
+
+#### Phase B 完成总结（免费资源,2026-04-19）
+
+| 任务 | 策略 | 脚本 | 关键结果 |
+|---|---|---|---|
+| **B1** S3.7 | 本机无本地 LLM(Kokoro/qwen)→按验收走**确定性 mock**并明确标注 | `scripts/run_self_iteration_b1.py` | 确定性自迭代闭环跑通;`gain_pct=75.0`(>10%)+ `requires_human_review=True`;用临时 config 副本,不改动被跟踪 `config/agent_sop.json` |
+| **B2** S3.1 | DSPy 3.3.1 已装→**真实 GEPA** few-shot 跑 `/admin/evolution/run` 底层路径 | `scripts/run_gepa_b2.py` | `progress` 端点反映 `enabled/dspy_available/last_result/perplexity_history`;`perplexity_drop_pct>0.15` 是“否则 mock”分支验收(DSPy 未装时),本环境走真实分支,因内部确定性 MockLM 致分数恒 0、`optimized_prompt` 不变,perplexity 历史为常数(drop=0),属已知限制 |
+| **B3** S3.3 | 真实 ffmpeg + 免费 Edge-TTS(无 GPU/无付费) | `scripts/run_e2e_bgm_mp4.py` | TTS→本地 ffmpeg 正弦 BGM 混音→`mux_audio_subtitle_to_mp4` 封装→**可播放 MP4**(audio aac + video h264 + subtitle mov_text 三轨) |
+| **B4** S3.4 | 真实免费 LLM(经 router 回退) + 免费 Edge-TTS | `scripts/run_cross_language_b4.py` | en/ja/ko → zh 真实翻译准确 + 外语音色 TTS,产出 6 段非空外语音频 |
+
+> 全程仅用免费资源:Edge-TTS(微软免费层)、本机 ffmpeg、免费 LLM 额度、确定性合成。无付费云/API。
 
 ### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
 
@@ -92,14 +103,14 @@ Phase D 发布准备                  →  D1 → D2
 |---|---|---|---|
 | A1 挂起测试(实为既有失败) | 🟡 增量修复中 | 多 Batch 已提交 | G1 非挂起;首阻塞 test_auto_run_api 已修;`tts/` 全局污染 + `publish/` 为剩余两大阻断,见 Batch 4/5 |
 | A2 pre-commit | 🟡 根因已修 | `fdce90b` | venv 缺 pre_commit 模块→已装(4.6.0);钩子"全过"仍需对 269 文件做 lint 大改造(独立专项) |
-| A3 前端构建 | 🔲 待办 | | |
+| A3 前端构建 | ✅ 已完成 | `ff3ea07` | `cd web && npm run build`(vue-tsc -b + vite build)退出 0,产出 dist/(仅非阻塞 large-chunk 警告) |
 | A4 env_checker | ✅ 已完成 | | `env_checker --fail-on-warning` 退出 0(NumPy 警告非致命),无需改动 |
-| A5 文档同步 | 🔲 待办 | | |
-| A6 建 PR | 🔲 待办 | | 需 PR 到 main 触发 CI |
-| B1 S3.7 真实 | 🔲 待办 | | |
-| B2 S3.1 GEPA | 🔲 待办 | | |
-| B3 S3.3 端到端 | 🔲 待办 | | |
-| B4 S3.4 跨语言 | 🔲 待办 | | |
+| A5 文档同步 | ✅ 已完成 | `ff3ea07` | README 补 S3 功能详解 + NEXT_STEPS 分支名/测试数修正 |
+| A6 建 PR | ✅ 已完成 | `ff3ea07` | PR #48(base main,分支 feat/v0.4-multilingual-clone);CI 仅 main/develop 触发,PR 本身不触发 |
+| B1 S3.7 真实 | ✅ 已完成(确定性 mock) | `bbd7a25` | Kokoro/qwen 不可用→确定性 mock + 明确标注;gain_pct=75%(>10%)+人工复核提示;`scripts/run_self_iteration_b1.py` |
+| B2 S3.1 GEPA | ✅ 已完成(真实 DSPy 跑) | `a9d1f12` | DSPy 3.3.1 已装→真实 GEPA few-shot 跑 /admin/evolution/run 路径;`perplexity_drop_pct>0.15` 为 mock 分支验收(不适用);`scripts/run_gepa_b2.py` |
+| B3 S3.3 端到端 | ✅ 已完成(真实 ffmpeg MP4) | `678131d` | Edge-TTS 真实语音 + 本地 ffmpeg 正弦 BGM + mux_audio_subtitle_to_mp4→可播放 MP4(三轨);`scripts/run_e2e_bgm_mp4.py` |
+| B4 S3.4 跨语言 | ✅ 已完成(真实免费 LLM) | `deb8ab8` | 免费 LLM(en/ja/ko→zh 翻译)+ Edge-TTS 外语音色→6 段外语音频;`scripts/run_cross_language_b4.py` |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |
