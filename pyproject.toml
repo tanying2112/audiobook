@@ -142,35 +142,34 @@ omit = [
     "src/audiobook_studio/llm/llm_client.py",
     "src/audiobook_studio/llm/auto_registry.py",
     "src/audiobook_studio/llm/prompt_registry.py",
-    # CLI and config - integration level
-    "src/audiobook_studio/cli/main.py",
-    "src/audiobook_studio/cli/pipeline.py",
-    "src/audiobook_studio/cli/book.py",
-    "src/audiobook_studio/cli/export.py",
-    "src/audiobook_studio/cli/init_db.py",
-    "src/audiobook_studio/cli/mock_data.py",
+    # CLI and config - integration level (some tested - removed from omit)
+    # "src/audiobook_studio/cli/main.py",
+    # "src/audiobook_studio/cli/pipeline.py",
+    # "src/audiobook_studio/cli/book.py",
+    # "src/audiobook_studio/cli/export.py",
+    # "src/audiobook_studio/cli/init_db.py",
+    # "src/audiobook_studio/cli/mock_data.py",
     "src/audiobook_studio/database_async.py",
     "src/audiobook_studio/config/settings.py",
     "src/audiobook_studio/config/settings_loader.py",
-    "src/audiobook_studio/config/hardware_profile.py",
-    "src/audiobook_studio/config/acoustic_mapping.py",
-    # Auth - requires external OAuth
-    "src/audiobook_studio/auth/rbac.py",
-    "src/audiobook_studio/auth/dependencies.py",
-    "src/audiobook_studio/auth/jwt_handler.py",
-    "src/audiobook_studio/auth/router.py",
-    "src/audiobook_studio/auth/models.py",
-    # API modules - integration tests
-    "src/audiobook_studio/api/admin.py",
-    "src/audiobook_studio/api/characters.py",
-    "src/audiobook_studio/api/monitoring.py",
-    "src/audiobook_studio/api/pipeline.py",
-    "src/audiobook_studio/api/languages.py",
-    "src/audiobook_studio/api/sop_reflection.py",
-    "src/audiobook_studio/api/provider_router.py",
+    # "src/audiobook_studio/config/hardware_profile.py",
+    # "src/audiobook_studio/config/acoustic_mapping.py",
+    # Auth - requires external OAuth (some tested - removed from omit)
+    # "src/audiobook_studio/auth/rbac.py",
+    # "src/audiobook_studio/auth/dependencies.py",
+    # "src/audiobook_studio/auth/jwt_handler.py",
+    # "src/audiobook_studio/auth/router.py",
+    # "src/audiobook_studio/auth/models.py",
+    # API modules - integration tests (some tested - removed from omit)
+    # "src/audiobook_studio/api/admin.py",
+    # "src/audiobook_studio/api/characters.py",
+    # "src/audiobook_studio/api/monitoring.py",
+    # "src/audiobook_studio/api/pipeline.py",
+    # "src/audiobook_studio/api/languages.py",
+    # "src/audiobook_studio/api/sop_reflection.py",
+    # "src/audiobook_studio/api/provider_router.py",
     # Schemas not directly testable
     "src/audiobook_studio/schemas/legacy.py",
-    "src/audiobook_studio/schemas/schema_validator.py",
     # Export integration
     "src/audiobook_studio/export/mp3.py",
     "src/audiobook_studio/export/pool.py",
@@ -186,7 +185,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 40
+fail_under = 60
+branch = true
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
