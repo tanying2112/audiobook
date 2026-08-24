@@ -114,6 +114,13 @@ class TestDatabaseModule:
                     # Should have our model tables
                     assert len(tables) > 0
 
+            # Restore the database module to its original (real) state. The
+            # importlib.reload above re-baked DATABASE_URL/engine/SessionLocal from
+            # the temporary env var; reloading once more (now that patch.dict has
+            # restored the real env) prevents leaking the temporary DB path to
+            # later tests in the session.
+            importlib.reload(db_module)
+
 
 class TestInitDb:
     """Tests for init_db function."""
