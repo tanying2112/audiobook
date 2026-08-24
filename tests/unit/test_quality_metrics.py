@@ -122,7 +122,8 @@ class TestDataClasses:
         assert embedding.sample_rate == 16000
 
         d = embedding.to_dict()
-        assert d["embedding"] == [0.1, 0.2, 0.3]
+        # to_dict() widens float32 -> Python float, so compare with tolerance
+        assert d["embedding"] == pytest.approx([0.1, 0.2, 0.3], abs=1e-6)
         assert d["model_name"] == "test_model"
         assert d["sample_rate"] == 16000
         assert d["dim"] == 3
