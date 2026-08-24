@@ -296,8 +296,110 @@ class AnalyzeStage(StageHandler):
 
             await write_analyze(db, chapter, result)
 
+            # v0.5 RAG: Populate vector store with character profiles, style guides, etc.
+            if _RAG_AVAILABLE and result:
+                try:
+                    from ..rag import get_vector_store
+                    from ..rag.models import (
+                        CharacterProfile, WorldBuildingDoc, StyleGuide, 
+                        PlotSummary, ProperNouns, DocumentType
+                    )
+                    import json
+
+                    # Extract data from analysis result
+                    if hasattr(result, 'model_dump'):
+                        analysis_data = result.model_dump()
+                    elif isinstance(result, dict):
+                        analysis_data = result
+                    else:
+                        analysis_data = {}
+
+                    vector_store = get_vector_store()
+
+                    # 1. Populate Character Profiles from character_voice_map
+                    char_voice_map = analysis_data.get("character_voice_map", [])
+                    for char_data in char_voice_map:
+                        if char_data.get("canonical_name") and char_data["canonical_name"] != "_narrator_":
+                            profile = CharacterProfile(
+                                project_id=project_id,
+                                canonical_name=char_data["canonical_name"],
+                                aliases=char_data.get("aliases", []),
+                                pronouns={"subject": "他", "object": "他", "possessive": "他的"},  # Default, could be enhanced
+                                gender=char_data.get("gender"),
+                                age=char_data.get("age_range"),
+                                voice_description=char_data.get("voice_description"),
+                                suggested_voice_id=char_data.get("suggested_voice_id"),
+                                personality_traits=[],
+                                speech_patterns=[],
+                                emotional_baseline="neutral",
+                                relationships={},
+                                role=char_data.get("role", "supporting"),
+                                first_appearance_chapter=chapter_index,
+                                confidence=0.8,
+                                source_chapters=[chapter_index] if chapter_index else [],
+                            )
+                            vector_store.add_character_profile(profile)
+
+                    # 2. Populate Style Guide from global_style_notes
+                    global_style = analysis_data.get("global_style_notes", "")
+                    if global_style and global_style != "保持自然叙述风格。":
+                        style_guide = StyleGuide(
+                            project_id=project_id,
+                            name="auto_extracted",
+                            narrative_voice=analysis_data.get("book_meta", {}).get("narrative_voice", "third-person"),
+                            tone="auto",
+                            pacing="auto",
+                            perspective_rules=[],
+                            dialogue_rules=[],
+                            description_rules=[],
+                            forbidden_patterns=[],
+                            required_patterns=[],
+                            genre=analysis_data.get("book_meta", {}).get("genre"),
+                            source_chapters=[chapter_index] if chapter_index else [],
+                        )
+                        vector_store.add_style_guide(style_guide)
+
+                    # 3. Populate Plot Summary
+                    story_summary = analysis_data.get("story_line_summary", "")
+                    if story_summary and len(story_summary) > 50:
+                        plot_summary = PlotSummary(
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            summary=story_summary,
+                            key_events=analysis_data.get("key_events", []),
+                            characters_involved=[c["canonical_name"] for c in char_voice_map if c.get("canonical_name") != "_narrator_"],
+                        )
+                        vector_store.add_plot_summary(plot_summary)
+
+                    # 4. Populate Proper Nouns (extract from character names, places, etc.)
+                    # This would ideally use NER, but for now we'll add character names as proper nouns
+                    for char_data in char_voice_map:
+                        name = char_data.get("canonical_name")
+                        if name and name != "_narrator_":
+                            noun = ProperNouns(
+                                project_id=project_id,
+                                category="character",
+                                canonical_form=name,
+                                variants=char_data.get("aliases", []),
+                                definition=f"角色: {char_data.get('role', 'supporting')}",
+                                first_appearance_chapter=chapter_index,
+                            )
+                            vector_store.add_proper_nouns(noun)
+
+                    logger.info(f"RAG database populated for project {project_id}, chapter {chapter_index}")
+                except Exception as e:
+                    logger.warning(f"RAG population failed in AnalyzeStage: {e}")
+
 
 from .annotate_paragraph import AnnotateParagraphPipeline
+
+# v0.5 RAG integration
+try:
+    from ..rag import get_retriever, init_retriever_from_settings
+    from ..config.settings import get_settings
+    _RAG_AVAILABLE = True
+except ImportError:
+    _RAG_AVAILABLE = False
 
 
 class AnnotateStage(StageHandler):
@@ -404,6 +506,27 @@ class AnnotateStage(StageHandler):
             global_style_notes=global_style_notes,
             contract_version=filtered.get("contract_version", 2),
         )
+
+        # v0.5 RAG: Retrieve context for this paragraph
+        if _RAG_AVAILABLE:
+            try:
+                project_id = kwargs.get("project_id")
+                if project_id:
+                    # Initialize retriever if needed
+                    retriever = get_retriever()
+                    # Use paragraph text as query for retrieval
+                    rag_context = retriever.retrieve_for_paragraph(
+                        paragraph_text=paragraph_text,
+                        project_id=project_id,
+                        chapter_index=chapter.index if chapter else filtered.get("chapter_index", 1),
+                        paragraph_index=para.index if para else filtered.get("paragraph_index", 0),
+                    )
+                    # Attach RAG context to input_data
+                    input_data.rag_context = rag_context.to_prompt_context()
+                    logger.debug(f"RAG context attached for paragraph {input_data.paragraph_index}: {len(rag_context.to_prompt_context())} chars")
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed for annotate stage: {e}")
+
         pipeline = AnnotateParagraphPipeline()
         return pipeline.run(input_data)
 
@@ -937,6 +1060,24 @@ class SynthesizeStage(StageHandler):
             prefer_local=False,
             contract_version=1,
         )
+
+        # v0.5 RAG: Retrieve context for this paragraph (for prosody/voice consistency)
+        if _RAG_AVAILABLE:
+            try:
+                project_id = kwargs.get("project_id")
+                if project_id:
+                    retriever = get_retriever()
+                    rag_context = retriever.retrieve_for_paragraph(
+                        paragraph_text=text,
+                        project_id=project_id,
+                        chapter_index=chapter.index if chapter else 1,
+                        paragraph_index=para.index if para else 0,
+                    )
+                    input_data.rag_context = rag_context.to_prompt_context()
+                    logger.debug(f"RAG context attached for synthesis paragraph {input_data.paragraph_index}: {len(rag_context.to_prompt_context())} chars")
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed for synthesize stage: {e}")
+
         pipeline = SynthesizePipeline()
         return pipeline.run([input_data])
 

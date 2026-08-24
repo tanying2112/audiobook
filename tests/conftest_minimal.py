@@ -115,7 +115,7 @@ if not DSPY_AVAILABLE:
 # Mock heavy optional dependencies that trigger import chains
 # ═══════════════════════════════════════════════════════════════════════════
 
-for mod_name in [
+MOCK_MODULES = [
     "fitz",
     "pymupdf",
     "pdfplumber",
@@ -139,6 +139,11 @@ for mod_name in [
     "apscheduler.triggers.cron",
     "redis",
     "redis.asyncio",
+    "chromadb",
+    "chromadb.config",
+    "chromadb.utils",
+    "chromadb.utils.embedding_functions",
+    "rank_bm25",
     "flower",
     "deepeval",
     "promptfoo",
@@ -197,7 +202,7 @@ for mod_name in [
     "celery.states",
     "celery.schedules",
     "celery.signals",
-    "boto3",
+    "boto3",  # mock WITH a real __spec__ - instructor calls find_spec("boto3")
     "torch",
     "torchaudio",
     "lightning",
@@ -205,7 +210,6 @@ for mod_name in [
     "modal",
     "modal.client",
     "kaggle",
-    "boto3",
     "requests",
     "transformers",
     "typer",
@@ -215,9 +219,70 @@ for mod_name in [
     "click.core",
     "click.types",
     "click._compat",
-]:
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = MagicMock()
+]
+
+import importlib.util as _ilu
+
+# Only mock modules that are genuinely unavailable (not importable). Installed
+# dependencies must stay REAL so tests exercising their real behaviour (Jinja2
+# template rendering, real Redis clients, OpenTelemetry metric readers, ...) are
+# deterministic instead of flapping on import order before this conftest runs.
+# A small allow-list forces mocking for heavy/optional packages the suite
+# intentionally stubs out (Celery, boto3, torch, ...).
+_ALWAYS_MOCK_ROOTS = {
+    "celery", "boto3", "torch", "torchaudio",
+    "lightning", "lightning.pytorch", "modal", "modal.client",
+    "kaggle", "transformers",
+}
+
+
+def _should_mock(mod_name: str) -> bool:
+    if mod_name in sys.modules:
+        return False
+    if mod_name.split(".")[0] in _ALWAYS_MOCK_ROOTS:
+        return True
+    try:
+        return _ilu.find_spec(mod_name) is None
+    except Exception:  # pragma: no cover - defensive
+        return True
+
+
+def _make_module_mock(name: str):
+    """Build a ``MagicMock`` that masquerades as a real module.
+
+    A bare ``MagicMock()`` has no ``__spec__``; some real dependencies
+    (e.g. ``instructor``, imported transitively by the app) call
+    ``importlib.util.find_spec("boto3")`` on import, which raises
+    ``ValueError: boto3.__spec__ is not set`` for a spec-less mock. Giving the
+    mock a real ``ModuleSpec`` (plus ``__name__``) lets ``find_spec`` succeed
+    and keeps the app importable, instead of aborting the import and cascading
+    into ``AssertionError: Type <class 'object'> is already registered``.
+    """
+    mock = MagicMock()
+    mock.__spec__ = _ilu.spec_from_loader(name, loader=None)
+    mock.__name__ = name
+    return mock
+
+
+for mod_name in MOCK_MODULES:
+    if _should_mock(mod_name):
+        sys.modules[mod_name] = _make_module_mock(mod_name)
+
+# Link submodule mocks onto their parent mock object so that a source's
+# `import pkg.sub as sub` and `unittest.mock.patch("pkg.sub.attr")` resolve to
+# the SAME object. Without this, `import pkg.sub` (plain import) binds to the
+# parent mock's *child* attribute (`sys.modules["pkg"].sub`), while patch() uses
+# importlib.import_module("pkg.sub") which returns the standalone
+# `sys.modules["pkg.sub"]` mock - two different MagicMocks, so patches miss.
+for mod_name in MOCK_MODULES:
+    if "." in mod_name and mod_name in sys.modules:
+        parent, _, child = mod_name.rpartition(".")
+        parent_mod = sys.modules.get(parent)
+        if parent_mod is not None:
+            try:
+                setattr(parent_mod, child, sys.modules[mod_name])
+            except Exception:  # pragma: no cover - defensive
+                pass
 
 # Set celery states constants
 sys.modules["celery.states"].PENDING = "PENDING"

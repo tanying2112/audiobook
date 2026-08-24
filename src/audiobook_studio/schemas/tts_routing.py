@@ -18,6 +18,7 @@ v0.4 新增引擎:
 """
 
 from typing import Annotated, Literal, Optional
+from ..rag.models import RAGContext
 
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated as AnnotatedExt
@@ -83,6 +84,11 @@ class TtsRoutingInput(BaseModel):
     enable_cloning: bool = Field(default=False, description="启用零样本克隆 (需 sample_quote)")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
+    # v0.5 RAG 增强: 可选的检索增强上下文
+    rag_context: Optional[str] = Field(
+        default=None,
+        description="RAG 检索到的上下文文本 (角色档案、世界设定、风格指南等)，用于提升路由决策和韵律生成一致性"
+    )
 
 class TtsRoutingDecision(BaseModel):
     """环节⑤输出：TTS 路由决策."""
@@ -103,6 +109,11 @@ class TtsRoutingDecision(BaseModel):
     reference_audio_path: Optional[str] = Field(default=None, description="克隆参考音频路径")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
+    # v0.5 RAG 增强: 可选的检索增强上下文
+    rag_context: Optional[str] = Field(
+        default=None,
+        description="RAG 检索到的上下文文本 (角色档案、世界设定、风格指南等)，用于提升路由决策和韵律生成一致性"
+    )
     model_config = {"from_attributes": True, "extra": "forbid"}
 
 

@@ -50,7 +50,7 @@ services:
       ollama:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - MOCK_LLM=false
       - ENABLE_LOCAL_TTS=true
@@ -70,6 +70,15 @@ services:
       - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
       # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
       - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
+      # v0.5 RAG - ChromaDB
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8001
+      - CHROMADB_COLLECTION_PREFIX=audiobook
+      - CHROMADB_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - CHROMADB_PERSIST_DIRECTORY=/app/data/chromadb
+      - ENABLE_RAG=true
+      - RAG_TOP_K=5
+      - RAG_HYBRID_SEARCH_ALPHA=0.5
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -118,6 +127,15 @@ services:
       - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
       # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
       - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
+      # v0.5 RAG - ChromaDB
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8001
+      - CHROMADB_COLLECTION_PREFIX=audiobook
+      - CHROMADB_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - CHROMADB_PERSIST_DIRECTORY=/app/data/chromadb
+      - ENABLE_RAG=true
+      - RAG_TOP_K=5
+      - RAG_HYBRID_SEARCH_ALPHA=0.5
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
@@ -149,6 +167,33 @@ services:
       timeout: 5s
       retries: 3
 
+  # ChromaDB - Vector database for RAG (v0.5)
+  chromadb:
+    image: chromadb/chroma:0.4.22
+    container_name: audiobook-chromadb
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ANONYMIZED_TELEMETRY=False
+      - ALLOW_RESET=True
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # Optional: Nginx reverse proxy for production
   # Uncomment for production deployment with SSL termination
   # nginx:
@@ -168,6 +213,8 @@ volumes:
   ollama_data:
     driver: local
   redis_data:
+    driver: local
+  chromadb_data:
     driver: local
 
 networks:
