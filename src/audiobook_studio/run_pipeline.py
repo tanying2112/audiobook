@@ -64,6 +64,7 @@ init_telemetry = None
 orchestrator_run_pipeline = None
 shutdown_telemetry = None
 cleanup_after_export = None
+export_project = None
 
 
 # ── Module-level __getattr__ for backward compatibility with test patches ──────
@@ -87,6 +88,8 @@ def __getattr__(name: str):
         return shutdown_telemetry or _get_orchestrator_functions()[2]
     if name == "cleanup_after_export":
         return cleanup_after_export or _get_cleanup_after_export()
+    if name == "export_project":
+        return export_project or _get_export_project()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -183,10 +186,12 @@ def _get_export_classes():
 
 
 def _get_export_project():
-    """Lazy import of export_project function."""
-    from src.audiobook_studio.export.batch_exporter import export_project
+    """Lazy import of export_project function, respecting test patches."""
+    if export_project is not None:
+        return export_project
+    from src.audiobook_studio.export.batch_exporter import export_project as _ep
 
-    return export_project
+    return _ep
 
 
 # ── 日志配置 ──────────────────────────────────────────────────────────────────
@@ -686,8 +691,10 @@ def run_book_pipeline(
 
         if has_incomplete:
             # Check if running in non-interactive mode (CI/CD)
-            import sys
-
+            # NOTE: use the module-level `sys` (imported at top of the file).
+            # A local `import sys` here would shadow the module global for the
+            # whole function and, being conditional, leave `sys` unbound on the
+            # non-interactive (non-TTY) exception paths -> UnboundLocalError.
             if sys.stdin.isatty():
                 print("⚠️  发现未完成进度，是否从检查点继续？(Y/n): ", end="")
                 try:
