@@ -10,10 +10,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 # Import all models to register them with Base.metadata
 from src.audiobook_studio import models  # noqa: F401
+from src.audiobook_studio.api.dependencies import get_async_db
 from src.audiobook_studio.database import Base, get_db
 
 
@@ -43,7 +45,25 @@ def _make_client():
         finally:
             db.close()
 
+    # Async endpoints depend on get_async_db, which otherwise resolves to the
+    # process-global cached async engine (built once from DATABASE_URL at import
+    # time and shared across the entire test session). Override it with a
+    # session bound to THIS test's database so the test no longer depends on
+    # global engine state left behind by other test modules in the run.
+    async_engine = create_async_engine(
+        test_db_url.replace("sqlite:///", "sqlite+aiosqlite:///"),
+        connect_args={"check_same_thread": False},
+    )
+    TestAsyncSession = async_sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async def override_get_async_db():
+        async with TestAsyncSession() as session:
+            yield session
+
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_async_db] = override_get_async_db
     client = TestClient(app)
     return client, engine, tmp.name
 
