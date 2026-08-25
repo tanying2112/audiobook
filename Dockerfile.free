@@ -28,7 +28,9 @@ COPY --chown=1000:1000 . .
 RUN mkdir -p /app/output /app/checkpoints /app/logs /app/data /app/storage /app/models_cache \
     && chown -R 1000:1000 /app
 
-# Non-root user (already exists in base)
+# Non-root user (created here; the base image ships only system deps)
+RUN groupadd -g 1000 appgroup \
+    && useradd -m -u 1000 -g 1000 -s /bin/bash appuser
 USER appuser
 
 # Health check

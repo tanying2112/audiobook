@@ -1,75 +1,54 @@
 # docker-compose.free.yml - Zero-cost free tier stack for Audiobook Studio
-# 
-# This stack uses ONLY free/local resources:
-# - Ollama for local LLM inference (no API keys needed)
-# - Kokoro ONNX for local TTS synthesis (no cloud API)
+#
+# This stack uses ONLY free/local resources and runs fully offline-capable in
+# mock mode (no API keys, no external model downloads):
+# - Mock LLM + Mock TTS (no API keys needed)
 # - SQLite for database (file-based, no server)
 # - Local filesystem for audio storage
+# - Redis for the Celery broker (local image)
+#
+# Why Dockerfile.free (and not the main Dockerfile):
+#   The main Dockerfile downloads Kokoro TTS weights from huggingface at BUILD
+#   time. In restricted/offline environments that download is unavailable, so
+#   the build fails. Dockerfile.free is built FROM the pre-built
+#   audiobook-base:latest image and installs requirements.free.txt, running in
+#   mock mode with no model download.
+#
+# Why no Ollama service here:
+#   Pulling ollama/ollama is a large external image and is unnecessary for the
+#   mock-mode free stack (which needs no local LLM weights). To enable a local
+#   LLM, pull ollama/ollama, set MOCK_LLM=false, and add the ollama service
+#   back (with api.depends_on ollama: condition: service_healthy).
 #
 # Usage:
 #   docker compose -f docker-compose.free.yml up -d
 #   docker compose -f docker-compose.free.yml logs -f
 
-version: "3.9"
-
 services:
-  # Ollama - Local LLM inference (supports llama3, qwen2, mistral, etc.)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: audiobook-ollama
-    restart: unless-stopped
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_ORIGINS=*
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  # Audiobook Studio API - FastAPI backend
+  # Audiobook Studio API - FastAPI backend (free / mock mode)
   api:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runner
+      dockerfile: Dockerfile.free
     container_name: audiobook-api
     restart: unless-stopped
     depends_on:
-      ollama:
+      redis:
         condition: service_healthy
     ports:
       - "8000:8000"
     environment:
-      - MOCK_LLM=false
-      - ENABLE_LOCAL_TTS=true
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - MOCK_LLM=true
+      - MOCK_TTS=true
+      - ENABLE_LOCAL_TTS=false
       - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
       - OUTPUT_DIR=/app/output
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
-      # v0.4 Streaming TTS endpoints (Modal GPU endpoints)
-      - COSYVOICE_STREAM_ENDPOINT=https://tanying2112--cosyvoice-stream-server-fastapi-app.modal.run
-      - SEED_TTS_STREAM_ENDPOINT=https://tanying2112--seed-tts-stream-server-fastapi-app.modal.run
-      - MELOTTS_STREAM_ENDPOINT=https://tanying2112--melotts-stream-server-fastapi-app.modal.run
-      # v0.4 Zero-shot cloning endpoints (Modal GPU endpoints)
-      - XTTS_V2_ENDPOINT=https://tanying2112--xtts-v2-clone-server-fastapi-app.modal.run
-      - OPENVOICE_V2_ENDPOINT=https://tanying2112--openvoice-v2-clone-server-fastapi-app.modal.run
-      - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
-      # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
-      - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
+      - OTEL_CONSOLE_EXPORTER=false
+      - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -93,33 +72,25 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runner
+      dockerfile: Dockerfile.free
     container_name: audiobook-worker
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      - MOCK_LLM=false
-      - ENABLE_LOCAL_TTS=true
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - MOCK_LLM=true
+      - MOCK_TTS=true
+      - ENABLE_LOCAL_TTS=false
       - DATABASE_URL=sqlite+aiosqlite:///./data/audiobook.db
       - OUTPUT_DIR=/app/output
       - MODELS_DIR=/app/models
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
-      # v0.4 Streaming TTS endpoints (Modal GPU endpoints)
-      - COSYVOICE_STREAM_ENDPOINT=https://tanying2112--cosyvoice-stream-server-fastapi-app.modal.run
-      - SEED_TTS_STREAM_ENDPOINT=https://tanying2112--seed-tts-stream-server-fastapi-app.modal.run
-      - MELOTTS_STREAM_ENDPOINT=https://tanying2112--melotts-stream-server-fastapi-app.modal.run
-      # v0.4 Zero-shot cloning endpoints (Modal GPU endpoints)
-      - XTTS_V2_ENDPOINT=https://tanying2112--xtts-v2-clone-server-fastapi-app.modal.run
-      - OPENVOICE_V2_ENDPOINT=https://tanying2112--openvoice-v2-clone-server-fastapi-app.modal.run
-      - COSYVOICE_CLONE_ENDPOINT=https://tanying2112--cosyvoice-clone-server-fastapi-app.modal.run
-      # v0.4 VoxCPM2 remote endpoint (Modal GPU endpoint)
-      - VOXCPM2_ENDPOINT=https://tanying2112--voxcpm2-tts-server-fastapi-app.modal.run
+      - OTEL_CONSOLE_EXPORTER=false
+      - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -149,24 +120,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # Optional: Nginx reverse proxy for production
-  # Uncomment for production deployment with SSL termination
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: audiobook-nginx
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - api
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./certs:/etc/nginx/certs:ro
-
 volumes:
-  ollama_data:
-    driver: local
   redis_data:
     driver: local
 
