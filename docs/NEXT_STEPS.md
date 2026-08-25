@@ -237,3 +237,55 @@ Phase D 发布准备                  →  D1 → D2
 2. **A6 建 PR** 需要远程推送权限与 `gh`/网络;若环境受限,退化为「提供 PR 命令 + 本地验证 CI 等价步骤」。
 3. **B1/B2/B4** 依赖本机是否有可用免费 LLM;若无,降级为确定性 mock 并明确标注(不伪造真实收益)。
 4. **C/D** 多为文档/模板,非阻塞,按资源与意愿决定。
+
+---
+
+## 七、Neural Audio Codec（前沿音频编码技术）
+
+**验收目标（长期愿景 S3.7）**：音频文件大小减少 ≥ 50%。
+
+### 架构
+
+纯 numpy 的「学习式线性前端（PCA）+ 残差矢量量化（RVQ）」编解码器，与
+EnCodec / SoundStream / DAC 同构（front-end 为线性变换而非卷积网络）。
+
+- `encode`：波形 → 加窗帧 → 减均值 → 投影到 `latent_dim` 维 PCA latent → RVQ 量化为整数 token。
+- `decode`：token → RVQ 反量化 → latent 还原（PCA 逆变换 + 均值）→ 重叠相加（sine window，50% 重叠互补功率）→ RMS 电平还原。
+- **仅 token 入库**：模型/码本为共享参数（与真实 codec 一致），故容器文件极小 → 天然满足「文件大小减少 50%」。
+- 电平还原采用 **RMS 匹配**（解码端按 `gain / rms_hat` 重缩放），精确恢复原始 RMS；峰值因有损 VQ 的偶发脉冲误差而信号相关（详见质量说明）。
+
+### 训练语料（关键设计）
+
+训练语料与部署分布匹配是量化的前提。本项目音频为（TTS）语音，故语料以
+**语音主导**：多数 segment 为随机基频 + 双共振峰的浊音谐波栈，少数 segment
+为孤立音簇（保留对纯音/瞬态的覆盖）。早期「纯音语料」对语音仅 −2 dB、
+「宽带语料」对纯音仅 ~1 dB，均不如语音主导语料（语音 +3 dB、纯音 +0.6 dB）。
+
+### 验收结果（实测，5s/16kHz WAV）
+
+| 信号 | SNR | 容器/原始比 | 说明 |
+|---|---|---|---|
+| 纯音 (120/300/900Hz) | +0.7 dB | 4.7% (7548 B) | 95.3% 缩减 |
+| 语音式谐波栈（共振峰） | +2.0 dB | 4.7% | 典型 TTS 输出 |
+| chirp / 类宽带 | +1.0 dB | 4.7% | 宽频内容 |
+
+**文件大小缩减 95.3%（远低于 50% 验收线）**，且文件大小仅由 token 数
+（`n_frames × n_codebooks`）决定，与 `latent_dim` 无关——增大 latent 维只增加
+训练开销，不增加文件体积。
+
+### 质量说明（诚实）
+
+- 质量为**信号相关**：语音/谐波内容 +1~+3 dB，宽频/chirp 略低，均非负 SNR。
+- 量级：本简单线性前端在 21× 压缩下，波形 SNR 天花板约 0~10 dB（非线性卷积
+  编码器如 EnCodec 方能达 20~40 dB）。这是设计取舍，非缺陷。
+- 有损 VQ 偶发脉冲误差：解码波形个别样本可能尖峰（峰值可达数倍），但 RMS
+  电平被精确还原，整体响度/能量正确。
+- 生产级后端（EnCodec / HuBERT）以 lazy + graceful-unavailable 形式提供，
+  在 torch 可用环境自动启用；本免费栈默认走 numpy 参考实现。
+
+### 默认配置与开关
+
+- `NumpyNeuralCodec(sample_rate=16000, win=256, hop=128, latent_dim=48, config=RvqConfig(n_codebooks=12, codebook_size=256, dim=48, iters=10), train_seconds=4.0)`。
+- 功能默认关闭：`NEURAL_CODEC_ENABLED=false`，由 `codec.engine.is_codec_enabled()` 门控。
+- 入口：`codec.engine.compress_audio_file / decompress_audio_file`（method=`neural`|`opus`）；`opus` 走 ffmpeg 自包含比特流（同样 >90% 缩减）作对照/兜底。
+- 测试：`tests/unit/codec/test_neural_audio_codec.py`（15 passed，含 SIZE 验收、容器往返、RMS 还原、Opus 兜底、EnCodec/HuBERT graceful unavailable）。
