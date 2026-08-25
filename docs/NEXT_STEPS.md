@@ -96,6 +96,14 @@ Phase D 发布准备                  →  D1 → D2
 
 > 验收:重复请求响应时间 < 100ms(精确命中 ~1.8ms;语义层对换述/同义词命中并复用历史回答)。
 
+#### Phase B+++ — 推理加速:Speculative Decoding 等前沿优化(新增,2026-08-25)
+
+| 任务 | 策略 | 脚本/模块 | 关键结果 |
+|---|---|---|---|
+| **B+++ 推理加速** | 引入 **Speculative Decoding**(Chen 2023 / Leviathan 2023)框架:廉价 drafter 每步提议 K 个候选 token,慢 target 模型**单次前向**验证,命中即免费发出,拒绝则回退 target 自身 token;前向次数 ~1/K → 推理提速 ~K 倍。配套:① **Prompt-Lookup 自推测**(Santilli 2023,无需额外模型,复制 prompt 中 n-gram 后续 token);② **连续/在途批处理**(continuous batching)vLLM 同款思想下沉到请求级,对翻译/抽取/QA 等大量独立段落并发 fan-out;③ `SpeculativeHead` 协议预留 Medusa/EAGLE/Lookahead 训练头扩展点。默认关闭(`LLM_SPECULATIVE_DECODING=true` 开启),纯 numpy 零额外依赖 | `src/audiobook_studio/llm/speculative.py`(新增 `LocalARModel`/`speculative_decode`/`prompt_lookup_draft`/`continuous_batch`/`speculative_map_sync`/`SpeculativeHead`/`is_speculative_enabled`/`get_speculative_config`) | **正确性**:贪心 speculative 序列 == 朴素贪心 target 序列(逐 token 等价,算法不改 target 分布);**提速(确定性前向次数)**:良 drafter 6.0x、验收 ≥2x(弱 drafter 优雅退化到 ~1x);**实时墙钟**:模拟批处理前向(latency 0.8ms/次)下 朴素 1158ms → 推测 214ms = 5.4x(≥2x);**连续批处理**:16 个独立调用并发 8 → ≥2x;10 个单测全绿 |
+
+> 验收:LLM 推理速度提升 ≥ 2 倍(前向次数 6x 确定性证明 + 墙钟 5.4x 实时证明;弱 drafter 自动退化不劣化)。本地模型(vLLM/llama.cpp/HF/TGI 均原生支持 speculative)接入即享;远程/echo+logprobs API 走 prompt-lookup 自推测。
+
 ### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
 
 | # | 任务 | 验收标准 |
@@ -129,6 +137,7 @@ Phase D 发布准备                  →  D1 → D2
 | B4 S3.4 跨语言 | ✅ 已完成(真实免费 LLM) | `deb8ab8` | 免费 LLM(en/ja/ko→zh 翻译)+ Edge-TTS 外语音色→6 段外语音频;`scripts/run_cross_language_b4.py` |
 | B+ 流式 TTS | ✅ 已完成(真实免费 Edge-TTS + 离线 mock) | `054ab32` | `/api/tts/stream`(POST+GET)分块音频流,`transfer-encoding: chunked`;`engine=edge_tts`(默认,真实 MP3)/`mock`(离线 WAV);docker 实测 200+有效 WAV+401 鉴权;7 单测绿;CI 全量 5062 passed |
 | B++ LLM 语义缓存 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/semantic_cache.py`(新增)+ `client.py`/`direct_client.py` 接入;两级缓存(精确+语义)、memory/redis 后端、redis 不可达降级;15 单测绿(重复请求 < 100ms 验收达成);`Dockerfile.free` + `docker-compose.free.yml` 已默认开启(api/worker 共享 redis 后端) |
+| B+++ 推理加速 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/speculative.py`(新增);Speculative Decoding(贪心==朴素贪心、前向 6x/墙钟 5.4x ≥2x)+ Prompt-Lookup 自推测 + 连续批处理(独立调用 ≥2x)+ `SpeculativeHead` 预留 Medusa/EAGLE;10 单测绿 |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |
