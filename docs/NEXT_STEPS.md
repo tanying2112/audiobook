@@ -128,7 +128,7 @@ Phase D 发布准备                  →  D1 → D2
 | B3 S3.3 端到端 | ✅ 已完成(真实 ffmpeg MP4) | `678131d` | Edge-TTS 真实语音 + 本地 ffmpeg 正弦 BGM + mux_audio_subtitle_to_mp4→可播放 MP4(三轨);`scripts/run_e2e_bgm_mp4.py` |
 | B4 S3.4 跨语言 | ✅ 已完成(真实免费 LLM) | `deb8ab8` | 免费 LLM(en/ja/ko→zh 翻译)+ Edge-TTS 外语音色→6 段外语音频;`scripts/run_cross_language_b4.py` |
 | B+ 流式 TTS | ✅ 已完成(真实免费 Edge-TTS + 离线 mock) | `054ab32` | `/api/tts/stream`(POST+GET)分块音频流,`transfer-encoding: chunked`;`engine=edge_tts`(默认,真实 MP3)/`mock`(离线 WAV);docker 实测 200+有效 WAV+401 鉴权;7 单测绿;CI 全量 5062 passed |
-| B++ LLM 语义缓存 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/semantic_cache.py`(新增)+ `client.py`/`direct_client.py` 接入;两级缓存(精确+语义)、memory/redis 后端、redis 不可达降级;15 单测绿(重复请求 < 100ms 验收达成) |
+| B++ LLM 语义缓存 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/semantic_cache.py`(新增)+ `client.py`/`direct_client.py` 接入;两级缓存(精确+语义)、memory/redis 后端、redis 不可达降级;15 单测绿(重复请求 < 100ms 验收达成);`Dockerfile.free` + `docker-compose.free.yml` 已默认开启(api/worker 共享 redis 后端) |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |

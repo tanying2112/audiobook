@@ -48,6 +48,10 @@ services:
       - PYTHONUNBUFFERED=1
       - OTEL_CONSOLE_EXPORTER=false
       - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
+      # LLM semantic cache ON by default in the free stack; shared Redis so
+      # api + worker hit the same cache (falls back to in-memory if Redis down).
+      - LLM_SEMANTIC_CACHE_ENABLED=true
+      - LLM_SEMANTIC_CACHE_BACKEND=redis
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data
@@ -90,6 +94,9 @@ services:
       - JWT_SECRET_KEY=mock-secret-key-for-testing-only-must-be-at-least-43-chars-long
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # LLM semantic cache ON by default in the free stack; shared Redis.
+      - LLM_SEMANTIC_CACHE_ENABLED=true
+      - LLM_SEMANTIC_CACHE_BACKEND=redis
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data
