@@ -363,11 +363,23 @@ def test_extract_stage_run(patch_pipelines) -> None:
     assert res.raw_text == "Para one.\n\nPara two."
 
 
-def test_extract_stage_persist(patch_pipelines) -> None:
-    # ExtractStage.persist is a thin sync bridge (body is pass); exercise the
-    # guarded ``if chapter`` branch on a working handler (AnalyzeStage).
-    handler = AnalyzeStage()
-    handler.persist(db=MagicMock(), project_id=1, chapter=FakeChapter(), paragraph=None, result=MagicMock())
+def test_extract_stage_persist(patch_pipelines, patch_persistence) -> None:
+    # ExtractStage.persist was previously broken (referenced an undefined
+    # ``chapter_result`` and raised NameError). It now bridges to apersist via
+    # a reentrancy-safe run_sync, so the real persist logic executes offline.
+    db = AsyncMock()
+    db.execute.return_value.scalar_one_or_none.return_value = None
+    handler = ExtractStage()
+    handler.persist(
+        db=db,
+        project_id=1,
+        chapter=FakeChapter(),
+        paragraph=None,
+        result=FakeExtractResult(),
+    )
+    # FakeExtractResult has two paragraphs split by blank lines -> two Paragraph
+    # records attempted; commit called at least once.
+    assert db.commit.await_count >= 1
 
 
 def test_extract_stage_apersist(patch_pipelines, patch_persistence) -> None:
@@ -711,6 +723,37 @@ def test_review_stage_blocked(patch_pipelines, monkeypatch) -> None:
     )
     assert res.overall_passed is False
     assert res.blocking_issues == 1
+
+
+def test_review_stage_no_analyzed_json_fallback(patch_pipelines, monkeypatch) -> None:
+    # Regression: ReviewStage.run must not raise UnboundLocalError when the
+    # chapter has no analyzed_json. The CharacterVoiceBinding import was moved
+    # to the top of the method so the default-narrator fallback works.
+    monkeypatch.setenv("MOCK_LLM", "true")
+
+    class FakePara:
+        index = 1
+        text = "A paragraph."
+        speaker_canonical_name = "_narrator_"
+        is_dialogue = False
+        emotion = "neutral"
+        emotion_intensity = 0.5
+        speech_rate = 1.0
+        pitch_shift_semitones = 0
+        needs_sfx = False
+        sfx_tags = []
+        pause_before_ms = 300
+        pause_after_ms = 500
+        confidence = 0.9
+
+    chapter = MagicMock()
+    chapter.index = 1
+    chapter.paragraphs = [FakePara()]
+    chapter.analyzed_json = None  # no voice_map source -> default narrator fallback
+    res = asyncio.get_event_loop().run_until_complete(
+        ReviewStage().run(chapter=chapter, project_id=1)
+    )
+    assert res.overall_passed is True
 
 
 def test_review_stage_persist_noop() -> None:
