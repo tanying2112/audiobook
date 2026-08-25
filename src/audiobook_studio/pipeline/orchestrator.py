@@ -16,6 +16,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from sqlalchemy import select
+import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,6 +90,10 @@ logger = logging.getLogger(__name__)
 _stage_hooks: List[Callable[..., None]] = []
 _pipeline_hooks: List[Callable[..., None]] = []
 
+# Async hook registries (for async hooks that need to be awaited)
+_async_stage_hooks: List[Callable[..., Any]] = []
+_async_pipeline_hooks: List[Callable[..., Any]] = []
+
 
 def register_stage_hook(hook: Callable[..., None]) -> None:
     """Register a stage lifecycle hook.
@@ -107,6 +112,23 @@ def register_stage_hook(hook: Callable[..., None]) -> None:
         logger.debug("Registered stage hook: %s", hook)
 
 
+def register_async_stage_hook(hook: Callable[..., Any]) -> None:
+    """Register an async stage lifecycle hook.
+
+    Hook signature (async):
+        hook(event: str, stage: str, context: dict, result: Any = None, error: Exception = None)
+
+    Events:
+        - "stage_enter": Before stage execution
+        - "stage_exit": After stage execution (success or error)
+
+    Hooks are scheduled as fire-and-forget tasks. Exceptions are caught and logged only.
+    """
+    if hook not in _async_stage_hooks:
+        _async_stage_hooks.append(hook)
+        logger.debug("Registered async stage hook: %s", hook)
+
+
 def register_pipeline_hook(hook: Callable[..., None]) -> None:
     """Register a pipeline-level lifecycle hook.
 
@@ -120,6 +142,23 @@ def register_pipeline_hook(hook: Callable[..., None]) -> None:
     if hook not in _pipeline_hooks:
         _pipeline_hooks.append(hook)
         logger.debug("Registered pipeline hook: %s", hook)
+
+
+def register_async_pipeline_hook(hook: Callable[..., Any]) -> None:
+    """Register an async pipeline-level lifecycle hook.
+
+    Hook signature (async):
+        hook(event: str, context: dict, result: Any = None, error: Exception = None)
+
+    Events:
+        - "pipeline_start": Before entire pipeline
+        - "pipeline_end": After entire pipeline
+
+    Hooks are scheduled as fire-and-forget tasks. Exceptions are caught and logged only.
+    """
+    if hook not in _async_pipeline_hooks:
+        _async_pipeline_hooks.append(hook)
+        logger.debug("Registered async pipeline hook: %s", hook)
 
 
 def _emit_stage_enter(stage: str, context: Dict[str, Any]) -> None:
@@ -161,6 +200,51 @@ def _emit_pipeline_end(context: Dict[str, Any], result: Any = None, error: Excep
             h("pipeline_end", context, result, error)
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("Pipeline hook error (end): %s", e)
+
+
+async def _emit_async_stage_enter(stage: str, context: Dict[str, Any]) -> None:
+    """Fire async stage-enter hooks (non-blocking, scheduled as tasks)."""
+    for h in _async_stage_hooks:
+        try:
+            asyncio.create_task(h("stage_enter", stage, context, None, None))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Async stage hook error (enter): %s", e)
+
+
+async def _emit_async_stage_exit(
+    stage: str,
+    context: Dict[str, Any],
+    result: Any = None,
+    error: Exception | None = None,
+) -> None:
+    """Fire async stage-exit hooks (non-blocking, scheduled as tasks)."""
+    for h in _async_stage_hooks:
+        try:
+            asyncio.create_task(h("stage_exit", stage, context, result, error))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Async stage hook error (exit): %s", e)
+
+
+async def _emit_async_pipeline_start(context: Dict[str, Any]) -> None:
+    """Fire async pipeline-start hooks (non-blocking, scheduled as tasks)."""
+    for h in _async_pipeline_hooks:
+        try:
+            asyncio.create_task(h("pipeline_start", context, None, None))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Async pipeline hook error (start): %s", e)
+
+
+async def _emit_async_pipeline_end(
+    context: Dict[str, Any],
+    result: Any = None,
+    error: Exception | None = None,
+) -> None:
+    """Fire async pipeline-end hooks (non-blocking, scheduled as tasks)."""
+    for h in _async_pipeline_hooks:
+        try:
+            asyncio.create_task(h("pipeline_end", context, result, error))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Async pipeline hook error (end): %s", e)
 
 
 # Placeholder logger.info hooks for observability (can be overridden by external registration)
@@ -235,8 +319,8 @@ async def _websocket_stage_hook(
         logger.warning(f"WebSocket hook error: {e}")
 
 
-# Register WebSocket hook
-_stage_hooks.append(_websocket_stage_hook)
+# Register WebSocket hook - async version
+_async_stage_hooks.append(_websocket_stage_hook)
 
 # ── Telemetry Integration ──────────────────────────────────────────────────
 # Functions to initialize and register the telemetry collector as pipeline hooks
@@ -295,10 +379,15 @@ def shutdown_telemetry() -> Optional[Dict[str, Any]]:
         summary = _telemetry_collector.get_summary()
         # Unregister hooks - use indices to avoid bound method identity issues
         global _pipeline_hooks, _stage_hooks
+        global _async_pipeline_hooks, _async_stage_hooks
         _pipeline_hooks[:] = [h for h in _pipeline_hooks
                           if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
         _stage_hooks[:] = [h for h in _stage_hooks
                        if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
+        _async_pipeline_hooks[:] = [h for h in _async_pipeline_hooks
+                                if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
+        _async_stage_hooks[:] = [h for h in _async_stage_hooks
+                            if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
         _telemetry_collector = None
         return summary
     return None
@@ -457,7 +546,7 @@ async def run_stage(
             context["raw_text"] = chapter.raw_text or ""
 
         # Run stage logic
-        result = handler.run(**context)
+        result = await handler.run(**context)
 
         # Persist result to database (async). The base ``StageHandler`` only
         # declares the sync ``persist``; the async ``apersist`` is provided by
@@ -478,6 +567,7 @@ async def run_stage(
                 feedback_capture.set_source("quality_judge")
 
         _emit_stage_exit(stage, input_snapshot, result, None)
+        await _emit_async_stage_exit(stage, input_snapshot, result, None)
         return result
 
     except ValueError as e:
@@ -500,6 +590,7 @@ async def run_stage(
         if feedback_capture:
             feedback_capture.set_llm_output({"error": str(e)})
         _emit_stage_exit(stage, input_snapshot, None, wrapped)
+        await _emit_async_stage_exit(stage, input_snapshot, None, wrapped)
         raise wrapped
 
     except AudiobookError as e:
@@ -518,6 +609,7 @@ async def run_stage(
         if feedback_capture:
             feedback_capture.set_llm_output({"error": e.to_dict()})
         _emit_stage_exit(stage, input_snapshot, None, e)
+        await _emit_async_stage_exit(stage, input_snapshot, None, e)
         raise
 
     except Exception as e:
@@ -540,6 +632,7 @@ async def run_stage(
         if feedback_capture:
             feedback_capture.set_llm_output({"error": str(e)})
         _emit_stage_exit(stage, input_snapshot, None, wrapped)
+        await _emit_async_stage_exit(stage, input_snapshot, None, wrapped)
         raise wrapped
 
 
@@ -614,6 +707,7 @@ async def run_pipeline(
             return []
 
     _emit_pipeline_start(pipeline_context)
+    await _emit_async_pipeline_start(pipeline_context)
     results: List[Any] = []
 
     try:
@@ -692,6 +786,7 @@ async def run_pipeline(
                 pass
 
         _emit_pipeline_end(pipeline_context, results, None)
+        await _emit_async_pipeline_end(pipeline_context, results, None)
         return results
     except Exception as e:
         # Emit pipeline error
@@ -709,6 +804,7 @@ async def run_pipeline(
             except RuntimeError:
                 pass
         _emit_pipeline_end(pipeline_context, None, e)
+        await _emit_async_pipeline_end(pipeline_context, None, e)
         raise
 
 

@@ -75,9 +75,10 @@ def test_normalize_prompt_collapses_whitespace_and_case():
 # ---------------------------------------------------------------------------
 
 
-def test_disabled_when_env_unset():
+def test_disabled_when_env_unset(monkeypatch):
     # Ensure the singleton resolves to None when the env flag is off.
-    assert os.environ.get("LLM_SEMANTIC_CACHE_ENABLED") != "true"
+    monkeypatch.delenv("LLM_SEMANTIC_CACHE_ENABLED", raising=False)
+    reset_semantic_cache()
     assert get_semantic_cache() is None
     # Helpers are safe no-ops with a None cache.
     assert cached_llm_lookup(None, prompt="x", response_model=_M, model="m", temperature=0.1, max_tokens=10) is None

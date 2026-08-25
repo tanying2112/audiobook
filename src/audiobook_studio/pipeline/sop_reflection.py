@@ -335,7 +335,7 @@ class CorrectionCollector:
             if c.genre != genre:
                 try:
                     self._queue.put_nowait(c)
-                except Exception:
+                except queue.Full:
                     pass
         return genre_corrections[:max_size]
 
@@ -873,7 +873,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except queue.Full:
                         pass
                 continue
 
@@ -884,7 +884,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except queue.Full:
                         pass
                 continue
 
@@ -912,7 +912,7 @@ class SOPBackgroundThread:
                     for c in corrections:
                         try:
                             self.collector._queue.put_nowait(c)
-                        except Exception:
+                        except queue.Full:
                             pass
             else:
                 logger.info(
@@ -924,7 +924,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except queue.Full:
                         pass
 
             self._last_reflection[genre] = now

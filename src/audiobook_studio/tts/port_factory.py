@@ -13,16 +13,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .engine import EngineRegistry, get_engine_registry, set_engine_registry
+from .engine import EngineRegistry
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .port import RemoteTTSPort, TTSStatus, TTSTaskPayload
 
 logger = logging.getLogger(__name__)
-
-# Global registry (lazy initialization)
-_global_registry: Optional[EngineRegistry] = None
-_registry_lock = os.threading.Lock() if hasattr(os, "threading") else None
-
 
 # Config classes for new v0.4 engines (mirroring the ones in streaming.py and zero_shot_clone.py)
 # These are duplicated here to avoid circular imports
@@ -290,26 +285,14 @@ def _build_config_from_env() -> dict:
     return config
 
 
-def get_engine_registry() -> EngineRegistry:
-    """Get the global engine registry (lazy initialization)."""
-    global _global_registry
-    if _global_registry is None:
-        lock = _get_lock()
-        if lock:
-            with lock:
-                if _global_registry is None:
-                    _global_registry = EngineRegistry()
-        else:
-            if _global_registry is None:
-                _global_registry = EngineRegistry()
-    return _global_registry
-
-
 async def get_default_engine(
     registry: Optional[EngineRegistry] = None,
 ) -> "TTSEngine":
     """Get the default TTS engine from the registry."""
-    reg = registry or get_engine_registry()
+    reg = registry
+    if reg is None:
+        from ..di import get_app_container
+        reg = get_app_container().get(EngineRegistry)
     if reg.get_default() is None:
         # Initialize from env if not already done
         await reg.initialize(_build_config_from_env())
@@ -323,6 +306,7 @@ async def get_port() -> RemoteTTSPort:
     This wraps the default engine in a RemoteTTSPort adapter.
     """
     from .port import RemoteTTSPort, TTSTaskResult, TTSTaskStatus
+    from ..di import get_app_container
 
     class EnginePortAdapter:
         """Adapter to make TTSEngine look like RemoteTTSPort."""
@@ -413,6 +397,7 @@ async def get_port() -> RemoteTTSPort:
         async def close(self):
             await self.engine.close()
 
+    # Get engine from DI container
     engine = await get_default_engine()
     return EnginePortAdapter(engine)
 

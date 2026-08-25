@@ -125,7 +125,7 @@ class HardwareSpecs:
                 if "CUDA Version" in line:
                     info["cuda_version"] = line.split("CUDA Version:")[1].split()[0]
                     break
-        except Exception:
+        except subprocess.SubprocessError:
             pass
         return info
 

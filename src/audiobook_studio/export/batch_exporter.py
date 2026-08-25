@@ -132,7 +132,7 @@ def _build_chapter_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMa
                 if alt_path.exists():
                     try:
                         chapter_duration_ms += get_duration_sync(alt_path)
-                    except Exception:
+                    except (RuntimeError, OSError):
                         chapter_duration_ms += seg.duration_ms or 3000
                 else:
                     chapter_duration_ms += seg.duration_ms or 3000
@@ -163,14 +163,14 @@ def _build_segment_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMa
             if path.exists():
                 try:
                     duration = get_duration_sync(path)
-                except Exception:
+                except (RuntimeError, OSError):
                     duration = seg.duration_ms or 3000
             else:
                 alt_path = path.with_suffix(".wav" if path.suffix == ".mp3" else ".mp3")
                 if alt_path.exists():
                     try:
                         duration = get_duration_sync(alt_path)
-                    except Exception:
+                    except (RuntimeError, OSError):
                         duration = seg.duration_ms or 3000
                 else:
                     duration = seg.duration_ms or 3000

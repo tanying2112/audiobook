@@ -4,6 +4,7 @@ Supports PDF, EPUB, DOCX, TXT, and image formats (PNG, JPG, TIFF, BMP, WebP) wit
 Outputs ExtractionResult with raw_text, language, page stats, OCR info.
 """
 
+import io
 import logging
 import os
 import time
@@ -18,7 +19,7 @@ from ebooklib import epub
 from ..llm import LLMRouter, create_router
 from ..monitoring import record_stage_performance
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
-from ..schemas import ExtractionInput, ExtractionResult
+from ..schemas import ExtractionInput, ExtractionResult, VisualElement
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,45 @@ class ExtractPipeline:
         else:
             self.router = router
 
-    def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float]:
+        # 多模态视觉客户端 (Task 4) — 懒加载，无视觉提供方时 understand_image 返回 None。
+        self._vision_client = None
+        self._vision_checked = False
+
+    # ── 多模态视觉理解 (Task 4) ──────────────────────────────────────────────
+    def _get_vision_client(self):
+        """懒加载并缓存 MultimodalVisionClient（尊重 self.mock_mode）。"""
+        if not self._vision_checked:
+            self._vision_checked = True
+            from .vision import MultimodalVisionClient
+
+            self._vision_client = MultimodalVisionClient(mock_mode=self.mock_mode)
+        return self._vision_client
+
+    def _understand_image_bytes(self, image_bytes: bytes, media_type: Optional[str] = None):
+        """对一张图像做多模态理解；无视觉提供方/失败时返回 None（诚实降级）。"""
+        client = self._get_vision_client()
+        try:
+            return client.understand_image(image_bytes, media_type=media_type)
+        except Exception as e:  # noqa: BLE001 — 视觉失败不影响文本提取主流程
+            logger.warning(f"Vision understanding failed (degraded): {e}")
+            return None
+
+    @staticmethod
+    def _merge_visual_into_text(raw_text: str, elements: list[VisualElement]) -> str:
+        """把视觉元素并入 raw_text，供下游章节拆分/分段/分析可见。
+
+        有 caption/extracted_text 的图以 [插图: ...] 块标记追加，避免与正文混读。
+        """
+        if not elements:
+            return raw_text
+        parts = [raw_text] if raw_text else []
+        for el in elements:
+            block = f"\n[插图: {el.caption}]\n{el.extracted_text}".strip()
+            if block:
+                parts.append(block)
+        return "\n\n".join(p for p in parts if p)
+
+    def _extract_pdf(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
         """Extract text from PDF.
 
         Path order (S2.4 — OCR honesty):
@@ -208,10 +247,43 @@ class ExtractPipeline:
                 "only; has_ocr stays False (no fake OCR claim)."
             )
 
-        ocr_ratio = ocr_pages / page_count if page_count > 0 else 0.0
-        return extracted_text, page_count, has_ocr, ocr_ratio
+        # Task 4 多模态视觉：对每页内嵌图像做理解（图文混排核心）。
+        # 只处理 PDF 内真正嵌入的位图（插图/图表/扫描图），渲染后交 VLM，
+        # 把 caption+图内文字并入 raw_text；视觉不可用/无内嵌图则保持原文本层结果。
+        visual_elements: list[VisualElement] = []
+        try:
+            doc = fitz.open(file_path)
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                try:
+                    images = page.get_images(full=True)
+                except RuntimeError:
+                    images = []
+                for img_ref in images:
+                    try:
+                        xref = img_ref[0]
+                        pix = fitz.Pixmap(doc, xref)
+                        # 灰度需先转 RGB 再编码，否则单通道 PNG 无法直接喂 VLM
+                        if pix.n < 5:
+                            pix = fitz.Pixmap(fitz.csRGB, pix)
+                        png_bytes = pix.tobytes("png")
+                        pix = None
+                        el = self._understand_image_bytes(png_bytes, media_type="image/png")
+                        if el is not None:
+                            visual_elements.append(el)
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug(f"PDF page {page_num} image vision failed: {e}")
+            doc.close()
+        except Exception as e:  # noqa: BLE001 — 视觉不阻塞提取
+            logger.warning(f"PDF embedded-image vision pass failed (degraded): {e}")
 
-    def _extract_epub(self, file_path: str) -> tuple[str, int, bool, float]:
+        if visual_elements:
+            extracted_text = self._merge_visual_into_text(extracted_text, visual_elements)
+
+        ocr_ratio = ocr_pages / page_count if page_count > 0 else 0.0
+        return extracted_text, page_count, has_ocr, ocr_ratio, visual_elements
+
+    def _extract_epub(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
         """Extract text from EPUB."""
         text_parts = []
         # Common EPUB document media types
@@ -230,9 +302,9 @@ class ExtractPipeline:
                     text_parts.append(soup.get_text())
         except Exception as e:
             logger.error(f"EPUB extraction failed: {e}")
-        return "\n\n".join(text_parts).strip(), len(text_parts), False, 0.0
+        return "\n\n".join(text_parts).strip(), len(text_parts), False, 0.0, []
 
-    def _extract_docx(self, file_path: str) -> tuple[str, int, bool, float]:
+    def _extract_docx(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
         """Extract text from DOCX."""
         text_parts = []
         try:
@@ -242,32 +314,49 @@ class ExtractPipeline:
                     text_parts.append(para.text)
         except Exception as e:
             logger.error(f"DOCX extraction failed: {e}")
-        return "\n\n".join(text_parts).strip(), len(text_parts), False, 0.0
+        return "\n\n".join(text_parts).strip(), len(text_parts), False, 0.0, []
 
-    def _extract_txt(self, file_path: str) -> tuple[str, int, bool, float]:
+    def _extract_txt(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
         """Extract text from plain text file."""
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 text = f.read()
-            return text.strip(), 1, False, 0.0
+            return text.strip(), 1, False, 0.0, []
         except UnicodeDecodeError:
             with open(file_path, "r", encoding="gbk") as f:
                 text = f.read()
-            return text.strip(), 1, False, 0.0
+            return text.strip(), 1, False, 0.0, []
 
-    def _extract_image(self, file_path: str) -> tuple[str, int, bool, float]:
-        """Extract text from image using OCR (requires pytesseract + Pillow + tesseract binary)."""
+    def _extract_image(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
+        """Extract from a single image.
+
+        多模态视觉 (Task 4) 优先：转写图内文字 + 描述图的内容/性质。视觉不可用时
+        诚实降级到 OCR（若可用），再否则抛错（同原 Red line #1 语义，不假装成功）。
+        """
+        with open(file_path, "rb") as f:
+            image_bytes = f.read()
+
+        # Task 4: VLM 理解优先
+        el = self._understand_image_bytes(image_bytes)
+        if el is not None:
+            text = (el.extracted_text or "").strip()
+            # 仅视觉理解（非 OCR）；图内转写文字 + 描述一并作为结果文本。
+            parts = [p for p in (text, (el.caption or "")) if p]
+            raw = "\n".join(parts).strip()
+            return raw, 1, False, 0.0, [el]
+
+        # 视觉不可用 → 降级 OCR
         if not OCR_AVAILABLE:
             # Red line #1: honest failure, not fake-success. A scanned image has
             # NO embedded text layer to fall back to, so returning ("", False)
             # would be masquerading-as-success. Raise so the caller can decide
             # how to surface it.
             raise ValueError(
-                "Image OCR not available. Install the pytesseract Python module "
+                "Image understanding unavailable: no vision provider reachable AND "
+                "OCR not available. Install the pytesseract Python module "
                 "(pip install pytesseract pillow) AND the tesseract system binary "
                 "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
-                "brew install tesseract tesseract-lang). extract.py reports OCR "
-                "available only when BOTH are present."
+                "brew install tesseract tesseract-lang) to enable OCR fallback."
             )
 
         # OCR_AVAILABLE is True => both modules imported; narrow for the type
@@ -275,7 +364,7 @@ class ExtractPipeline:
         assert Image is not None and pytesseract is not None
 
         try:
-            image = Image.open(file_path)
+            image = Image.open(io.BytesIO(image_bytes))
             # Convert to RGB if needed (for RGBA images)
             if image.mode != "RGB":
                 image = image.convert("RGB")
@@ -283,10 +372,10 @@ class ExtractPipeline:
             # Use pytesseract for OCR
             text = pytesseract.image_to_string(image, lang="chi_sim+eng")
 
-            return text.strip(), 1, True, 1.0
+            return text.strip(), 1, True, 1.0, []
         except Exception as e:
             logger.error(f"Image OCR failed: {e}")
-            return "", 1, False, 0.0
+            return "", 1, False, 0.0, []
 
     def _detect_language(self, text: str) -> str:
         """Simple heuristic language detection.
@@ -371,15 +460,17 @@ class ExtractPipeline:
         mime_type = input_data.mime_type
         warnings = []
 
-        # Route to appropriate extractor
+        # Route to appropriate extractor. 每个 extractor 返回
+        # (raw_text, page_count, has_ocr, ocr_ratio, visual_elements)。
+        visual_elements: list[VisualElement] = []
         if mime_type == "application/pdf":
-            raw_text, page_count, has_ocr, ocr_ratio = self._extract_pdf(file_path)
+            raw_text, page_count, has_ocr, ocr_ratio, visual_elements = self._extract_pdf(file_path)
         elif mime_type == "application/epub+zip":
-            raw_text, page_count, has_ocr, ocr_ratio = self._extract_epub(file_path)
+            raw_text, page_count, has_ocr, ocr_ratio, visual_elements = self._extract_epub(file_path)
         elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            raw_text, page_count, has_ocr, ocr_ratio = self._extract_docx(file_path)
+            raw_text, page_count, has_ocr, ocr_ratio, visual_elements = self._extract_docx(file_path)
         elif mime_type == "text/plain":
-            raw_text, page_count, has_ocr, ocr_ratio = self._extract_txt(file_path)
+            raw_text, page_count, has_ocr, ocr_ratio, visual_elements = self._extract_txt(file_path)
         elif mime_type in (
             "image/png",
             "image/jpeg",
@@ -388,9 +479,11 @@ class ExtractPipeline:
             "image/bmp",
             "image/webp",
         ):
-            raw_text, page_count, has_ocr, ocr_ratio = self._extract_image(file_path)
+            raw_text, page_count, has_ocr, ocr_ratio, visual_elements = self._extract_image(file_path)
         else:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
+
+        multimodal_used = bool(visual_elements)
 
         if not raw_text or len(raw_text) < 50:
             warnings.append("Extracted text too short, may need manual review")
@@ -469,6 +562,8 @@ class ExtractPipeline:
             has_ocr=has_ocr,
             ocr_page_ratio=ocr_ratio,
             warnings=warnings,
+            visual_descriptions=visual_elements,
+            multimodal_used=multimodal_used,
         )
 
 

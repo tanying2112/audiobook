@@ -150,13 +150,13 @@ def detect_hardware() -> HardwareProfile:
             timeout=5,
         )
         hw.cpu_model = result.stdout.strip() if result.returncode == 0 else platform.processor()
-    except Exception:
+    except subprocess.SubprocessError:
         hw.cpu_model = platform.processor()
 
     try:
         result = subprocess.run(["sysctl", "-n", "hw.ncpu"], capture_output=True, text=True, timeout=5)
         hw.cpu_cores = int(result.stdout.strip()) if result.returncode == 0 else 4
-    except Exception:
+    except subprocess.SubprocessError:
         hw.cpu_cores = 4
 
     # RAM - try multiple methods for cross-platform compatibility
@@ -168,7 +168,7 @@ def detect_hardware() -> HardwareProfile:
         if result.returncode == 0 and result.stdout.strip():
             hw.ram_gb = round(int(result.stdout.strip()) / 1e9, 1)
             ram_detected = True
-    except Exception:
+    except subprocess.SubprocessError:
         pass
 
     # Method 2: /proc/meminfo (Linux)
@@ -181,7 +181,7 @@ def detect_hardware() -> HardwareProfile:
                         hw.ram_gb = round(kb / 1e6, 1)
                         ram_detected = True
                         break
-        except Exception:
+        except OSError:
             pass
 
     # Method 3: Fallback - use a reasonable default for test environments
@@ -212,7 +212,7 @@ def detect_hardware() -> HardwareProfile:
                     hw.gpu_vram_gb = val if unit == "GB" else round(val / 1024, 1)
             if "Metal" in line and "Support:" in line:
                 hw.metal_support = True
-    except Exception:
+    except subprocess.SubprocessError:
         pass
 
     # CUDA / MPS
@@ -224,7 +224,7 @@ def detect_hardware() -> HardwareProfile:
 
             hw.cuda_available = torch.cuda.is_available()
             hw.mps_available = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
-    except Exception:
+    except (ImportError, AttributeError):
         pass
 
     # 评估是否满足 VoxCPM2 运行要求
@@ -305,7 +305,7 @@ async def _run_edge_tts_async(text: str, output_path: str) -> float:
             timeout=10,
         )
         return float(result.stdout.strip()) if result.returncode == 0 else len(text) / 5.0
-    except Exception:
+    except subprocess.SubprocessError:
         # 粗略估算：中文平均 5 字/秒
         return len(text) / 5.0
 
@@ -363,7 +363,7 @@ def benchmark_edge_tts(skip: bool = False) -> List[TtsBenchmarkResult]:
             finally:
                 try:
                     Path(tmp_path).unlink(missing_ok=True)
-                except Exception:
+                except OSError:
                     pass
 
         if rtf_list:

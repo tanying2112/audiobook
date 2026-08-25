@@ -196,7 +196,7 @@ class TestSimpleConcat:
         ]
         out = tmp_path / "concat.mp3"
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            duration = pipeline._simple_concat(segs, out)
+            duration = asyncio.run(pipeline._simple_concat(segs, out))
         # Fallback returns sum of segment durations
         assert duration == 500 + 700
 

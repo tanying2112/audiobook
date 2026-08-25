@@ -512,7 +512,7 @@ class DNSMOSMetric(QualityMetric):
         # 按模型实际声明的输入 rank 适配：P.835 组合模型期望 (N, 144160)。
         try:
             expected_rank = len(self._session.get_inputs()[0].shape)
-        except Exception:
+        except (IndexError, AttributeError):
             expected_rank = None
 
         if expected_rank == 2:
@@ -1905,7 +1905,7 @@ class QualityCheckSuite:
             return False
         try:
             return self._speaker_sim.register_reference(speaker_id, audio_path)
-        except Exception:
+        except RuntimeError:
             return False
 
 

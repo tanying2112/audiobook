@@ -496,7 +496,7 @@ class DirectProviderClient:
             # Try to create default instance
             try:
                 mock_output = response_model()
-            except Exception:
+            except TypeError:
                 mock_output = None
 
         return LLMCallResult(

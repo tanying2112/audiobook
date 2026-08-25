@@ -20,13 +20,6 @@ from src.audiobook_studio.tts import (
     TTSEngine,
     VoiceInfo,
     VoxCPM2Backend,
-    cleanup_all_engines,
-    create_kokoro_backend,
-    create_voxcpm2_backend,
-    get_engine,
-    get_engine_registry,
-    initialize_all_engines,
-    register_engine,
 )
 from src.audiobook_studio.tts.engine import (
     TTSProsody,
@@ -38,7 +31,13 @@ from src.audiobook_studio.tts.engine import (
     TTSTaskStatus,
     TTSVoiceAnchor,
     probe_tts_engines,
+    cleanup_all_engines,
+    initialize_all_engines,
 )
+from src.audiobook_studio.di import get_app_container
+from src.audiobook_studio.tts.engine import EngineRegistry
+from src.audiobook_studio.tts.kokoro_backend import create_kokoro_backend
+from src.audiobook_studio.tts.voxcpm2_backend import create_voxcpm2_backend
 
 
 class TestVoiceInfo:
@@ -265,37 +264,32 @@ class TestGlobalRegistry:
 
     @pytest.mark.asyncio
     async def test_get_engine_registry(self):
-        """Test getting registry from DI container."""
-        registry = get_engine_registry()
+        registry = get_app_container().get(EngineRegistry)
         assert isinstance(registry, EngineRegistry)
 
     @pytest.mark.asyncio
     async def test_register_engine_global(self):
-        """Test registering engine via DI container shim."""
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "global_test"
 
-        # Use the synchronous register_engine function (it doesn't await)
-        register_engine(mock_engine)
+        registry = get_app_container().get(EngineRegistry)
+        await registry.register(mock_engine)
 
-        retrieved = get_engine("global_test")
+        retrieved = registry.get("global_test")
         assert retrieved == mock_engine
 
     @pytest.mark.asyncio
     async def test_get_engine_global(self):
-        """Test getting engine from DI container shim."""
         mock_engine = Mock(spec=TTSEngine)
-        mock_engine.engine_name = "global_test2"
+        mock_engine.engine_name = "global_get"
+        registry = get_app_container().get(EngineRegistry)
+        await registry.register(mock_engine)
 
-        register_engine(mock_engine)
-
-        retrieved = get_engine("global_test2")
+        retrieved = registry.get("global_get")
         assert retrieved == mock_engine
 
         # Non-existent
-        assert get_engine("nonexistent") is None
-
-
+        assert registry.get("nonexistent") is None
 class TestKokoroBackend:
     """Test KokoroBackend class with deep assertions."""
 

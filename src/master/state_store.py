@@ -371,7 +371,7 @@ class HermesStateStore:
                             task = TTSTask.from_hash(json.loads(raw))
                             if task.state == state:
                                 tasks.append(task)
-                        except Exception:
+                        except json.JSONDecodeError:
                             pass
             if cursor == 0:
                 break
@@ -511,7 +511,7 @@ class HermesStateStore:
                         try:
                             task = TTSTask.from_hash(json.loads(raw))
                             counts[task.state.value] += 1
-                        except Exception:
+                        except json.JSONDecodeError:
                             pass
             if cursor == 0:
                 break

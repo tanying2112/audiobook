@@ -63,7 +63,7 @@ def apply_safety_filters(response: BaseModel) -> BaseModel:
                         cleaned = pattern.sub("[FILTERED]", value)
                         try:
                             setattr(response, field, cleaned)
-                        except Exception:
+                        except (AttributeError, ValueError):
                             # Some models may be frozen
                             pass
                         break

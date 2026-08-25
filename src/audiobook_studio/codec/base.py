@@ -41,7 +41,7 @@ class CodecResult:
     frame_rate: float
     original_length: int
     gain: float = 1.0  # RMS of the original signal, used to restore level
-    meta: dict = field(default_factory=dict)
+    meta: dict[str, object] = field(default_factory=dict)
 
     @property
     def n_frames(self) -> int:

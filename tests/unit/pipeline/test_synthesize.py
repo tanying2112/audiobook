@@ -186,14 +186,16 @@ class TestSynthesizePipelineInitialization:
 class TestSynthesizePipelineRun:
     """Tests for the run() method."""
 
-    def test_run_empty_inputs(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_run_empty_inputs(self, synthesize_pipeline):
         """Test run with empty input list."""
-        result = synthesize_pipeline.run([])
+        result = await synthesize_pipeline.run([])
         assert result == []
 
-    def test_run_with_mock_port(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_run_with_mock_port(self, synthesize_pipeline, tts_routing_inputs):
         """Test run with mock port produces segments."""
-        result = synthesize_pipeline.run(tts_routing_inputs)
+        result = await synthesize_pipeline.run(tts_routing_inputs)
 
         assert len(result) == len(tts_routing_inputs)
         for seg in result:
@@ -204,13 +206,14 @@ class TestSynthesizePipelineRun:
             assert seg.voice_id is not None
             assert seg.text_hash is not None
 
-    def test_run_incremental_regeneration(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_run_incremental_regeneration(self, synthesize_pipeline, tts_routing_inputs):
         """Test that unchanged segments are skipped (incremental regeneration)."""
         # First run
-        result1 = synthesize_pipeline.run(tts_routing_inputs)
+        result1 = await synthesize_pipeline.run(tts_routing_inputs)
 
         # Second run with same inputs - should skip
-        result2 = synthesize_pipeline.run(tts_routing_inputs)
+        result2 = await synthesize_pipeline.run(tts_routing_inputs)
 
         # Both should return same segments (from cache)
         assert len(result1) == len(result2)
@@ -219,10 +222,11 @@ class TestSynthesizePipelineRun:
             assert s1.file_path == s2.file_path
             assert s1.text_hash == s2.text_hash
 
-    def test_run_loads_from_disk(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_run_loads_from_disk(self, synthesize_pipeline, tts_routing_inputs):
         """Test loading segments from persisted metadata."""
         # First run to create metadata
-        synthesize_pipeline.run(tts_routing_inputs)
+        await synthesize_pipeline.run(tts_routing_inputs)
 
         # Create new pipeline with same output dir
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
@@ -235,12 +239,13 @@ class TestSynthesizePipelineRun:
         new_pipeline._port = FakeRemoteTTSPort()
 
         # Should load from disk
-        result = new_pipeline.run(tts_routing_inputs)
+        result = await new_pipeline.run(tts_routing_inputs)
         assert len(result) == len(tts_routing_inputs)
         for seg in result:
             assert seg.file_path is not None
 
-    def test_run_different_text_regenerates(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_run_different_text_regenerates(self, synthesize_pipeline, tts_routing_inputs):
         """Test that changed text triggers regeneration."""
         from src.audiobook_studio.audio_quality import QualityReport, SegmentQualityResult
 
@@ -274,14 +279,14 @@ class TestSynthesizePipelineRun:
             new=AsyncMock(side_effect=_fake_quality_report),
         ):
             # First run
-            result1 = synthesize_pipeline.run(tts_routing_inputs)
+            result1 = await synthesize_pipeline.run(tts_routing_inputs)
 
             # Modify text in inputs
             for inp in tts_routing_inputs:
                 inp.text = inp.text + " modified"
 
             # Second run should regenerate
-            result2 = synthesize_pipeline.run(tts_routing_inputs)
+            result2 = await synthesize_pipeline.run(tts_routing_inputs)
 
         # File paths should be different (new files created)
         # Actually with mock port, it might reuse - check that synthesis was attempted
@@ -291,7 +296,8 @@ class TestSynthesizePipelineRun:
 class TestSynthesizePipelineCrossfadeStitch:
     """Tests for crossfade stitching."""
 
-    def test_crossfade_stitch_multiple_segments(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_crossfade_stitch_multiple_segments(self, synthesize_pipeline):
         """Test stitching multiple segments with crossfade."""
         from src.audiobook_studio.pipeline.synthesize import AudioSegment
 
@@ -311,12 +317,13 @@ class TestSynthesizePipelineCrossfadeStitch:
             segments.append(seg)
 
         output_path = synthesize_pipeline.output_dir / "stitched.mp3"
-        duration = synthesize_pipeline._crossfade_stitch(segments, output_path)
+        duration = await synthesize_pipeline._crossfade_stitch(segments, output_path)
 
         # With mock ffmpeg, returns sum of durations
         assert duration == sum(s.duration_ms for s in segments)
 
-    def test_crossfade_stitch_single_segment(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_crossfade_stitch_single_segment(self, synthesize_pipeline):
         """Test stitching single segment (just copies)."""
         from src.audiobook_studio.pipeline.synthesize import AudioSegment
 
@@ -332,18 +339,20 @@ class TestSynthesizePipelineCrossfadeStitch:
         )
 
         output_path = synthesize_pipeline.output_dir / "output.mp3"
-        duration = synthesize_pipeline._crossfade_stitch([seg], output_path)
+        duration = await synthesize_pipeline._crossfade_stitch([seg], output_path)
 
         assert duration == 1000
         assert output_path.exists()
 
-    def test_crossfade_stitch_empty_segments(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_crossfade_stitch_empty_segments(self, synthesize_pipeline):
         """Test stitching empty list returns 0."""
         output_path = synthesize_pipeline.output_dir / "empty.mp3"
-        duration = synthesize_pipeline._crossfade_stitch([], output_path)
+        duration = await synthesize_pipeline._crossfade_stitch([], output_path)
         assert duration == 0
 
-    def test_crossfade_stitch_invalid_files(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_crossfade_stitch_invalid_files(self, synthesize_pipeline):
         """Test stitching with missing files falls back to simple concat."""
         from src.audiobook_studio.pipeline.synthesize import AudioSegment
 
@@ -366,7 +375,7 @@ class TestSynthesizePipelineCrossfadeStitch:
             ),
         ]
         output_path = synthesize_pipeline.output_dir / "invalid.mp3"
-        duration = synthesize_pipeline._crossfade_stitch(segments, output_path)
+        duration = await synthesize_pipeline._crossfade_stitch(segments, output_path)
         # Falls back to simple concat which also fails silently
         assert duration >= 0
 
@@ -440,7 +449,8 @@ class TestSynthesizePipelinePersistence:
 class TestSynthesizePipelineQualityGate:
     """Tests for quality gate with auto-retry."""
 
-    def test_quality_check_invoked(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_quality_check_invoked(self, synthesize_pipeline, tts_routing_inputs):
         """Test that quality check is invoked after synthesis."""
         with patch("src.audiobook_studio.pipeline.synthesize.check_all_segments") as mock_check:
             from src.audiobook_studio.audio_quality import QualityReport, SegmentQualityResult
@@ -466,14 +476,15 @@ class TestSynthesizePipelineQualityGate:
             )
             mock_check.return_value = mock_report
 
-            synthesize_pipeline.run(tts_routing_inputs)
+            await synthesize_pipeline.run(tts_routing_inputs)
 
             mock_check.assert_called_once()
             # Verify retry callback was provided
             call_args = mock_check.call_args
             assert "retry_callback" in call_args.kwargs
 
-    def test_retry_callback_regenerates_segment(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_retry_callback_regenerates_segment(self, synthesize_pipeline, tts_routing_inputs):
         """Test that retry callback regenerates failed segment."""
         from src.audiobook_studio.audio_quality import QualityReport, SegmentQualityResult
 
@@ -517,14 +528,15 @@ class TestSynthesizePipelineQualityGate:
             )
             mock_check.side_effect = [mock_report_fail, mock_report_pass]
 
-            result = synthesize_pipeline.run([tts_routing_inputs[0]])
+            result = await synthesize_pipeline.run([tts_routing_inputs[0]])
             assert len(result) == 1
 
 
 class TestSynthesizePipelineRoutingDecision:
     """Tests for routing decision logic."""
 
-    def test_routing_decision_local_tts_enabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_routing_decision_local_tts_enabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test routing decision when local TTS is enabled."""
         monkeypatch.setenv("ENABLE_LOCAL_TTS", "true")
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
@@ -532,7 +544,8 @@ class TestSynthesizePipelineRoutingDecision:
         assert decision.engine_choice == "kokoro"
         assert decision.fallback_engine == "edge"
 
-    def test_routing_decision_local_tts_disabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_routing_decision_local_tts_disabled(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test routing decision when local TTS is disabled."""
         monkeypatch.setenv("ENABLE_LOCAL_TTS", "false")
         # Create input without prefer_local override so env var takes effect
@@ -546,7 +559,8 @@ class TestSynthesizePipelineRoutingDecision:
         assert decision.engine_choice == "edge"
         assert decision.fallback_engine == "kokoro"
 
-    def test_routing_decision_prefer_local_override(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_routing_decision_prefer_local_override(self, synthesize_pipeline, tts_routing_inputs, monkeypatch):
         """Test prefer_local parameter overrides env var."""
         monkeypatch.setenv("ENABLE_LOCAL_TTS", "false")
         inp = tts_routing_inputs[0]
@@ -555,7 +569,8 @@ class TestSynthesizePipelineRoutingDecision:
 
         assert decision.engine_choice == "kokoro"
 
-    def test_routing_decision_voice_id_from_character_map(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_routing_decision_voice_id_from_character_map(self, synthesize_pipeline, tts_routing_inputs):
         """Test voice_id is extracted from character_voice_map and normalized for engine."""
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
         # Edge voice ID is mapped to Kokoro equivalent since engine_choice is kokoro
@@ -565,11 +580,12 @@ class TestSynthesizePipelineRoutingDecision:
 class TestSynthesizePipelineErrorHandling:
     """Tests for error handling."""
 
-    def test_synthesis_failure_raises(self, synthesize_pipeline, tts_routing_inputs):
+    @pytest.mark.asyncio
+    async def test_synthesis_failure_raises(self, synthesize_pipeline, tts_routing_inputs):
         """Test that synthesis failure raises exception."""
         with patch.object(synthesize_pipeline, "_synthesize_via_port", side_effect=RuntimeError("Synthesis failed")):
             with pytest.raises(RuntimeError, match="Synthesis failed"):
-                synthesize_pipeline.run([tts_routing_inputs[0]])
+                await synthesize_pipeline.run([tts_routing_inputs[0]])
 
     def test_close_releases_port(self, synthesize_pipeline):
         """Test that close() releases port resources."""
@@ -655,7 +671,8 @@ class TestSynthesizePipelineAsyncPort:
 class TestSynthesizePipelineSimpleConcat:
     """Tests for simple concatenation fallback."""
 
-    def test_simple_concat_fallback(self, synthesize_pipeline):
+    @pytest.mark.asyncio
+    async def test_simple_concat_fallback(self, synthesize_pipeline):
         """Test simple concat when ffmpeg fails."""
         from src.audiobook_studio.pipeline.synthesize import AudioSegment
 
@@ -666,7 +683,7 @@ class TestSynthesizePipelineSimpleConcat:
 
         output_path = synthesize_pipeline.output_dir / "concat.mp3"
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            duration = synthesize_pipeline._simple_concat(segments, output_path)
+            duration = await synthesize_pipeline._simple_concat(segments, output_path)
 
         assert duration == 1200  # sum of durations
 

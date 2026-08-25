@@ -6,6 +6,7 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 
 import os
 import random
+from sqlalchemy.exc import SQLAlchemyError
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
 from contextlib import asynccontextmanager
@@ -381,7 +382,7 @@ async def get_routed_session(config: DatabaseConfig) -> AsyncGenerator[RoutedSes
     try:
         yield session
         await session.commit()
-    except Exception:
+    except SQLAlchemyError:
         await session.rollback()
         raise
     finally:
@@ -460,7 +461,7 @@ async def get_routed_session() -> AsyncGenerator[RoutedSession, None]:
     try:
         yield session
         await session.commit()
-    except Exception:
+    except SQLAlchemyError:
         await session.rollback()
         raise
     finally:
@@ -482,7 +483,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             try:
                 yield session
                 await session.commit()
-            except Exception:
+            except SQLAlchemyError:
                 await session.rollback()
                 raise
             finally:

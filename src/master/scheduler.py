@@ -180,7 +180,7 @@ class HermesScheduler:
         # Queue depth from Redis
         try:
             queue_depth = self.redis.llen("tts:tasks")
-        except Exception:
+        except redis.exceptions.RedisError:
             queue_depth = -1
 
         return {

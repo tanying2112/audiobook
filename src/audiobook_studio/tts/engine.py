@@ -529,66 +529,29 @@ class EngineRegistry:
         await self.close_all()
 
 
-_global_registry: Optional[EngineRegistry] = None
-
-
-def get_engine_registry() -> EngineRegistry:
-    """Get global engine registry."""
-    global _global_registry
-    if _global_registry is None:
-        _global_registry = EngineRegistry()
-    return _global_registry
-
-
-def set_engine_registry(registry: EngineRegistry) -> EngineRegistry:
-    """Set global engine registry."""
-    global _global_registry
-    _global_registry = registry
-    return _global_registry
-
-
-def get_engine(name: str) -> Optional[TTSEngine]:
-    """Get an engine by name from the global registry."""
-    registry = get_engine_registry()
-    return registry.get(name)
-
-
-def register_engine(engine: TTSEngine, set_as_default: bool = False) -> None:
-    """Register an engine in the global registry."""
-    registry = get_engine_registry()
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        # If we're in an async context, we can't block
-        # Schedule the coroutine to run
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            pool.submit(asyncio.run, registry.register(engine, set_as_default=set_as_default)).result()
-    else:
-        asyncio.run(registry.register(engine, set_as_default=set_as_default))
-
-
-async def initialize_all_engines() -> None:
-    """Initialize all registered engines."""
-    registry = get_engine_registry()
-    for engine in registry._engines.values():
-        await engine.initialize()
-
-
-async def cleanup_all_engines() -> None:
-    """Cleanup all registered engines."""
-    registry = get_engine_registry()
-    await registry.close_all()
-
-
 # ---------------------------------------------------------------------------
 # S1-6: Real TTS readiness probe
 # ---------------------------------------------------------------------------
 
 #: Canonical engine list surfaced by /health/ready (audit S1-6 return shape).
 TTS_HEALTH_ENGINES: tuple[str, ...] = ("kokoro", "voxcpm2", "edge", "piper")
+
+
+async def cleanup_all_engines(registry: Optional["EngineRegistry"] = None) -> None:
+    """Cleanup all registered engines from the given registry or the default one."""
+    if registry is None:
+        from ..di import get_app_container
+        registry = get_app_container().get(EngineRegistry)
+    await registry.close_all()
+
+
+async def initialize_all_engines(registry: Optional["EngineRegistry"] = None) -> None:
+    """Initialize all registered engines from the given registry or the default one."""
+    if registry is None:
+        from ..di import get_app_container
+        registry = get_app_container().get(EngineRegistry)
+    for engine in registry._engines.values():
+        await engine.initialize()
 
 
 async def probe_tts_engines(
@@ -675,7 +638,7 @@ async def probe_tts_engines(
                 health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
                 healthy = bool(health.get("healthy", False))
                 result[name] = {"healthy": healthy, "detail": health}
-            except Exception:  # noqa: BLE001 — degrade not propagate (incl. timeout)
+            except (asyncio.TimeoutError, RuntimeError, OSError):  # noqa: BLE001 — degrade not propagate (incl. timeout)
                 _set(name, False, {"error": "health_check timeout or failed"})
 
     bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}

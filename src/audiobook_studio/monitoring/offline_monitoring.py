@@ -108,7 +108,7 @@ class OfflineMonitor:
                             synced_count += 1
                         else:
                             remaining_lines.append(line)
-                    except Exception:
+                    except json.JSONDecodeError:
                         # 如果解析失败，保留该行以防数据丢失
                         remaining_lines.append(line)
 

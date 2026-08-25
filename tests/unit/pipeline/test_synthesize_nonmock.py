@@ -166,10 +166,10 @@ class DummyObserve:
 sys.modules["langfuse.decorators"].observe = DummyObserve()
 
 
-class TestSynthesizePipelineNonMock(unittest.TestCase):
+class TestSynthesizePipelineNonMock(unittest.IsolatedAsyncioTestCase):
     """Test SynthesizePipeline with FakeRemoteTTSPort (non-mock mode)."""
 
-    def setUp(self):
+    async def asyncSetUp(self):
         self.temp_dir = tempfile.mkdtemp()
         # Create a fake port with fast synthesis delay for tests
         self.fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
@@ -179,22 +179,12 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
             port=self.fake_port,
         )
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         import shutil
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         # Clean up fake port background tasks
-        # Use the event loop properly
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule close in the running loop
-                asyncio.create_task(self.fake_port.close())
-            else:
-                loop.run_until_complete(self.fake_port.close())
-        except RuntimeError:
-            # No event loop, create one
-            asyncio.run(self.fake_port.close())
+        await self.fake_port.close()
 
     def _create_mock_tts_input(
         self,
@@ -228,75 +218,63 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
             paragraph_index=paragraph_index,
         )
 
-    def test_pipeline_initialization(self):
+    async def test_pipeline_initialization(self):
         """Test pipeline initializes correctly with fake port."""
         self.assertIsInstance(self.pipeline, SynthesizePipeline)
         self.assertFalse(self.pipeline.mock_mode)
         self.assertIsNotNone(self.pipeline._port)
         self.assertIsInstance(self.pipeline._port, FakeRemoteTTSPort)
 
-    def test_synthesize_via_port_success(self):
+    async def test_synthesize_via_port_success(self):
         """Test _synthesize_via_port succeeds with fake port."""
+        duration, engine = await self.pipeline._synthesize_via_port(
+            text="Hello world",
+            voice_id="test_voice",
+            prosody={},
+            output_path=Path(self.temp_dir) / "test.wav",
+            segment_id="seg_001",
+        )
+        self.assertGreater(duration, 0)
+        self.assertEqual(engine, "kokoro")  # Default engine from fake port
 
-        async def run_test():
-            duration, engine = await self.pipeline._synthesize_via_port(
-                text="Hello world",
-                voice_id="test_voice",
-                prosody={},
-                output_path=Path(self.temp_dir) / "test.wav",
-                segment_id="seg_001",
-            )
-            self.assertGreater(duration, 0)
-            self.assertEqual(engine, "kokoro")  # Default engine from fake port
-
-        asyncio.run(run_test())
-
-    def test_synthesize_via_port_creates_audio_file(self):
+    async def test_synthesize_via_port_creates_audio_file(self):
         """Test that synthesis creates an audio file at output path."""
+        output_path = Path(self.temp_dir) / "test_output.wav"
+        await self.pipeline._synthesize_via_port(
+            text="Test audio generation",
+            voice_id="test_voice",
+            prosody={},
+            output_path=output_path,
+            segment_id="seg_002",
+        )
+        self.assertTrue(output_path.exists())
+        self.assertGreater(output_path.stat().st_size, 0)
 
-        async def run_test():
-            output_path = Path(self.temp_dir) / "test_output.wav"
-            await self.pipeline._synthesize_via_port(
-                text="Test audio generation",
-                voice_id="test_voice",
-                prosody={},
-                output_path=output_path,
-                segment_id="seg_002",
-            )
-            self.assertTrue(output_path.exists())
-            self.assertGreater(output_path.stat().st_size, 0)
-
-        asyncio.run(run_test())
-
-    def test_synthesize_via_port_respects_prosody(self):
+    async def test_synthesize_via_port_respects_prosody(self):
         """Test that prosody parameters are included in payload."""
+        prosody = {"rate": 1.2, "pitch": 0.5, "volume": -0.2, "emotion": "happy"}
+        await self.pipeline._synthesize_via_port(
+            text="Test with prosody",
+            voice_id="test_voice",
+            prosody=prosody,
+            output_path=Path(self.temp_dir) / "prosody.wav",
+            segment_id="seg_003",
+        )
+        # Check the task was submitted with correct prosody
+        # Task ID format: seg_003-<timestamp>
+        for task_id, state in self.fake_port._tasks.items():
+            if task_id.startswith("seg_003-"):
+                self.assertEqual(state.payload.prosody.rate, 1.2)
+                self.assertEqual(state.payload.prosody.pitch, 0.5)
+                self.assertEqual(state.payload.prosody.volume, -0.2)
+                self.assertEqual(state.payload.prosody.emotion, "happy")
+                return
+        self.fail("Task not found in fake port")
 
-        async def run_test():
-            prosody = {"rate": 1.2, "pitch": 0.5, "volume": -0.2, "emotion": "happy"}
-            await self.pipeline._synthesize_via_port(
-                text="Test with prosody",
-                voice_id="test_voice",
-                prosody=prosody,
-                output_path=Path(self.temp_dir) / "prosody.wav",
-                segment_id="seg_003",
-            )
-            # Check the task was submitted with correct prosody
-            # Task ID format: seg_003-<timestamp>
-            for task_id, state in self.fake_port._tasks.items():
-                if task_id.startswith("seg_003-"):
-                    self.assertEqual(state.payload.prosody.rate, 1.2)
-                    self.assertEqual(state.payload.prosody.pitch, 0.5)
-                    self.assertEqual(state.payload.prosody.volume, -0.2)
-                    self.assertEqual(state.payload.prosody.emotion, "happy")
-                    return
-            self.fail("Task not found in fake port")
-
-        asyncio.run(run_test())
-
-    def test_run_single_segment(self):
+    async def test_run_single_segment(self):
         """Test run() with a single segment."""
         inputs = [self._create_mock_tts_input(text="Hello world", paragraph_index=1)]
-        segments = self.pipeline.run(inputs)
+        segments = await self.pipeline.run(inputs)
 
         self.assertEqual(len(segments), 1)
         self.assertIsInstance(segments[0], AudioSegment)
@@ -304,44 +282,44 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
         self.assertTrue(Path(segments[0].file_path).exists())
         self.assertGreater(segments[0].duration_ms, 0)
 
-    def test_run_multiple_segments(self):
+    async def test_run_multiple_segments(self):
         """Test run() with multiple segments."""
         inputs = [
             self._create_mock_tts_input(text="First paragraph", paragraph_index=1),
             self._create_mock_tts_input(text="Second paragraph", paragraph_index=2),
             self._create_mock_tts_input(text="Third paragraph", paragraph_index=3),
         ]
-        segments = self.pipeline.run(inputs)
+        segments = await self.pipeline.run(inputs)
 
         self.assertEqual(len(segments), 3)
         for i, seg in enumerate(segments):
             self.assertEqual(seg.segment_id, f"test_book_ch1_p{i+1}")
             self.assertTrue(Path(seg.file_path).exists())
 
-    def test_run_skips_unchanged_segments(self):
+    async def test_run_skips_unchanged_segments(self):
         """Test that unchanged segments are skipped on re-run."""
         inputs = [self._create_mock_tts_input(text="Same text", paragraph_index=1)]
 
         # First run
-        segments1 = self.pipeline.run(inputs)
+        segments1 = await self.pipeline.run(inputs)
         self.assertEqual(len(segments1), 1)
 
         # Second run with same text - should skip
-        segments2 = self.pipeline.run(inputs)
+        segments2 = await self.pipeline.run(inputs)
         self.assertEqual(len(segments2), 1)
         # Should be the same segment object (from cache)
         self.assertEqual(segments2[0].file_path, segments1[0].file_path)
 
-    def test_run_regenerates_changed_segments(self):
+    async def test_run_regenerates_changed_segments(self):
         """Test that changed segments are regenerated (content changes, path stays same)."""
         inputs1 = [self._create_mock_tts_input(text="Original text", paragraph_index=1)]
-        segments1 = self.pipeline.run(inputs1)
+        segments1 = await self.pipeline.run(inputs1)
         original_path = segments1[0].file_path
         original_hash = segments1[0].text_hash
 
         # Change the text
         inputs2 = [self._create_mock_tts_input(text="Modified text", paragraph_index=1)]
-        segments2 = self.pipeline.run(inputs2)
+        segments2 = await self.pipeline.run(inputs2)
 
         # Path stays the same (segment_id unchanged), but content hash changes
         self.assertEqual(segments2[0].file_path, original_path)
@@ -349,7 +327,7 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
         # File should have been overwritten with new content
         self.assertTrue(Path(original_path).exists())
 
-    def test_synthesize_with_failure_rate(self):
+    async def test_synthesize_with_failure_rate(self):
         """Test synthesis handles failures from port."""
         # Create a port with 100% failure rate
         failing_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=1.0)
@@ -362,12 +340,12 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
         inputs = [self._create_mock_tts_input(text="Will fail", paragraph_index=1)]
 
         with self.assertRaises(RuntimeError) as ctx:
-            pipeline.run(inputs)
+            await pipeline.run(inputs)
         self.assertIn("Synthesis failed", str(ctx.exception))
 
-        asyncio.run(failing_port.close())
+        await failing_port.close()
 
-    def test_synthesize_with_custom_failure_mode(self):
+    async def test_synthesize_with_custom_failure_mode(self):
         """Test synthesis with custom failure mode function."""
 
         def fail_on_long_text(payload: TTSTaskPayload) -> bool:
@@ -382,17 +360,17 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
         # Short text should succeed
         inputs_short = [self._create_mock_tts_input(text="Short", paragraph_index=1)]
-        segments_short = pipeline.run(inputs_short)
+        segments_short = await pipeline.run(inputs_short)
         self.assertEqual(len(segments_short), 1)
 
         # Long text should fail
         inputs_long = [self._create_mock_tts_input(text="This text is very long indeed", paragraph_index=1)]
         with self.assertRaises(RuntimeError):
-            pipeline.run(inputs_long)
+            await pipeline.run(inputs_long)
 
-        asyncio.run(failing_port.close())
+        await failing_port.close()
 
-    def test_quality_check_integration(self):
+    async def test_quality_check_integration(self):
         """Test that quality check runs after synthesis."""
         # Use a port with good quality scores
         quality_port = FakeRemoteTTSPort(
@@ -407,16 +385,16 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
         )
 
         inputs = [self._create_mock_tts_input(text="Quality test", paragraph_index=1)]
-        segments = pipeline.run(inputs)
+        segments = await pipeline.run(inputs)
 
         self.assertEqual(len(segments), 1)
         # Quality report should be generated
         report_path = Path(self.temp_dir) / "quality_report.json"
         self.assertTrue(report_path.exists())
 
-        asyncio.run(quality_port.close())
+        await quality_port.close()
 
-    def test_quality_check_failure_triggers_retry(self):
+    async def test_quality_check_failure_triggers_retry(self):
         """Test that quality failures trigger retry via callback."""
         # Port with poor quality scores that will fail quality check
         poor_quality_port = FakeRemoteTTSPort(
@@ -432,65 +410,57 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
 
         inputs = [self._create_mock_tts_input(text="Poor quality test", paragraph_index=1)]
         # Should still return segments (retries happen internally)
-        segments = pipeline.run(inputs)
+        segments = await pipeline.run(inputs)
         self.assertEqual(len(segments), 1)
 
-        asyncio.run(poor_quality_port.close())
+        await poor_quality_port.close()
 
-    def test_synthesize_via_port_cancellation(self):
+    async def test_synthesize_via_port_cancellation(self):
         """Test that cancellation works during synthesis."""
+        # Start synthesis
+        task_id = "cancel_test"
+        payload = TTSTaskPayload(
+            text="Long text to synthesize",
+            voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
+            prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
+        )
+        await self.fake_port.submit(task_id, payload)
 
-        async def run_test():
-            # Start synthesis
-            task_id = "cancel_test"
-            payload = TTSTaskPayload(
-                text="Long text to synthesize",
-                voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
-                prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
-            )
-            await self.fake_port.submit(task_id, payload)
+        # Immediately cancel
+        cancelled = await self.fake_port.cancel(task_id)
+        self.assertTrue(cancelled)
 
-            # Immediately cancel
-            cancelled = await self.fake_port.cancel(task_id)
-            self.assertTrue(cancelled)
+        # Wait a bit and check status
+        await asyncio.sleep(0.05)
+        status = await self.fake_port.get_status(task_id)
+        self.assertEqual(status.status, TTSStatus.FAILED)
+        self.assertIn("Cancelled", status.error_message or "")
 
-            # Wait a bit and check status
-            await asyncio.sleep(0.05)
-            status = await self.fake_port.get_status(task_id)
-            self.assertEqual(status.status, TTSStatus.FAILED)
-            self.assertIn("Cancelled", status.error_message or "")
-
-        asyncio.run(run_test())
-
-    def test_port_health_check(self):
+    async def test_port_health_check(self):
         """Test port health check returns expected stats."""
+        health = await self.fake_port.health_check()
+        self.assertTrue(health["healthy"])
+        self.assertEqual(health["pending_count"], 0)
+        self.assertEqual(health["running_count"], 0)
+        self.assertEqual(health["done_count"], 0)
+        self.assertEqual(health["failed_count"], 0)
 
-        async def run_test():
-            health = await self.fake_port.health_check()
-            self.assertTrue(health["healthy"])
-            self.assertEqual(health["pending_count"], 0)
-            self.assertEqual(health["running_count"], 0)
-            self.assertEqual(health["done_count"], 0)
-            self.assertEqual(health["failed_count"], 0)
+        # Submit a task
+        payload = TTSTaskPayload(
+            text="Health check test",
+            voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
+            prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
+        )
+        await self.fake_port.submit("health_test", payload)
 
-            # Submit a task
-            payload = TTSTaskPayload(
-                text="Health check test",
-                voice_anchor=TTSVoiceAnchor(voice_id="test", speaker_name=None, language="zh-CN"),
-                prosody=TTSProsody(rate=1.0, pitch=0.0, volume=0.0),
-            )
-            await self.fake_port.submit("health_test", payload)
+        # Check health again
+        health = await self.fake_port.health_check()
+        self.assertEqual(health["pending_count"] + health["running_count"], 1)
 
-            # Check health again
-            health = await self.fake_port.health_check()
-            self.assertEqual(health["pending_count"] + health["running_count"], 1)
-
-        asyncio.run(run_test())
-
-    def test_persist_and_load_segment_metadata(self):
+    async def test_persist_and_load_segment_metadata(self):
         """Test that segment metadata is persisted and loaded correctly."""
         inputs = [self._create_mock_tts_input(text="Persist test", paragraph_index=1)]
-        segments = self.pipeline.run(inputs)
+        segments = await self.pipeline.run(inputs)
 
         self.assertEqual(len(segments), 1)
         segment = segments[0]
@@ -506,71 +476,63 @@ class TestSynthesizePipelineNonMock(unittest.TestCase):
         )
 
         # Run with same inputs - should load from disk
-        segments2 = new_pipeline.run(inputs)
+        segments2 = await new_pipeline.run(inputs)
         self.assertEqual(len(segments2), 1)
         self.assertEqual(segments2[0].file_path, original_path)
         self.assertEqual(segments2[0].text_hash, original_hash)
 
-        asyncio.run(new_port.close())
+        await new_port.close()
 
-    def test_crossfade_stitching_multiple_segments(self):
+    async def test_crossfade_stitching_multiple_segments(self):
         """Test that crossfade stitching is attempted for multiple segments."""
         inputs = [
             self._create_mock_tts_input(text="First segment", paragraph_index=1),
             self._create_mock_tts_input(text="Second segment", paragraph_index=2),
         ]
-        segments = self.pipeline.run(inputs)
+        segments = await self.pipeline.run(inputs)
 
         self.assertEqual(len(segments), 2)
         # Chapter output should exist (stitched) - may fail if ffmpeg not available
         for seg in segments:
             self.assertTrue(Path(seg.file_path).exists())
 
-    def test_synthesize_via_port_empty_text_raises(self):
+    async def test_synthesize_via_port_empty_text_raises(self):
         """Test that empty text raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            await self.pipeline._synthesize_via_port(
+                text="",  # Empty text
+                voice_id="test_voice",
+                prosody={},
+                output_path=Path(self.temp_dir) / "empty.wav",
+                segment_id="seg_empty",
+            )
+        self.assertIn("non-empty", str(ctx.exception))
 
-        async def run_test():
-            with self.assertRaises(ValueError) as ctx:
-                await self.pipeline._synthesize_via_port(
-                    text="",  # Empty text
-                    voice_id="test_voice",
-                    prosody={},
-                    output_path=Path(self.temp_dir) / "empty.wav",
-                    segment_id="seg_empty",
-                )
-            self.assertIn("non-empty", str(ctx.exception))
-
-        asyncio.run(run_test())
-
-    def test_pipeline_with_different_voices(self):
+    async def test_pipeline_with_different_voices(self):
         """Test pipeline handles different voices per segment."""
         inputs = [
             self._create_mock_tts_input(text="Narrator speaks", character="narrator", paragraph_index=1),
             self._create_mock_tts_input(text="Character speaks", character="hero", paragraph_index=2),
         ]
-        segments = self.pipeline.run(inputs)
+        segments = await self.pipeline.run(inputs)
 
         self.assertEqual(len(segments), 2)
         self.assertEqual(segments[0].voice_id, "test_voice")
         self.assertEqual(segments[1].voice_id, "test_voice")  # Same binding in test
 
-    def test_synthesize_via_port_duration_calculation(self):
+    async def test_synthesize_via_port_duration_calculation(self):
         """Test that duration is calculated from audio file."""
-
-        async def run_test():
-            output_path = Path(self.temp_dir) / "duration_test.wav"
-            duration, engine = await self.pipeline._synthesize_via_port(
-                text="A" * 100,  # 100 chars
-                voice_id="test_voice",
-                prosody={},
-                output_path=output_path,
-                segment_id="seg_duration",
-            )
-            # Duration should be proportional to text length (~50ms per char in fake port)
-            expected_approx = 100 * 50
-            self.assertAlmostEqual(duration, expected_approx, delta=1000)
-
-        asyncio.run(run_test())
+        output_path = Path(self.temp_dir) / "duration_test.wav"
+        duration, engine = await self.pipeline._synthesize_via_port(
+            text="A" * 100,  # 100 chars
+            voice_id="test_voice",
+            prosody={},
+            output_path=output_path,
+            segment_id="seg_duration",
+        )
+        # Duration should be proportional to text length (~50ms per char in fake port)
+        expected_approx = 100 * 50
+        self.assertAlmostEqual(duration, expected_approx, delta=1000)
 
 
 def tearDownModule():

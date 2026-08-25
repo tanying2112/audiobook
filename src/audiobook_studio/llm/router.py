@@ -72,7 +72,7 @@ def _lazy_trace_function(stage: str):
                 from ..monitoring.langfuse_client import trace_function
 
                 return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
-            except Exception:
+            except ImportError:
                 # If langfuse not available or any error, run without tracing
                 return func(*args, **kwargs)
 
@@ -366,7 +366,7 @@ class LLMRouter:
             cost_control = getattr(self.config, "cost_control", None)
             if cost_control and hasattr(cost_control, "daily_limit_usd"):
                 self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
-        except Exception:
+        except AttributeError:
             pass  # Use default if config doesn't have cost_control
 
         # Initialize Langfuse lazy attributes
@@ -422,7 +422,7 @@ class LLMRouter:
             cost_control = getattr(self.config, "cost_control", None)
             if cost_control and hasattr(cost_control, "daily_limit_usd"):
                 self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
-        except Exception:
+        except AttributeError:
             pass  # Use default if config doesn't have cost_control
 
         # (Re)start health probe
@@ -435,7 +435,7 @@ class LLMRouter:
             )
             try:
                 self.health_probe.start()
-            except Exception:
+            except (RuntimeError, OSError):
                 logger.warning("Failed to start health probe")
 
     def reload_config(self, config_path: Optional[str] = None) -> None:
@@ -496,7 +496,7 @@ class LLMRouter:
                 from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
 
                 self._langfuse_enabled_cached = langfuse_is_enabled()
-            except Exception:
+            except ImportError:
                 self._langfuse_enabled_cached = False
         return self._langfuse_enabled_cached
 
@@ -1071,7 +1071,7 @@ class LLMRouter:
             # For any other response model, try to create a default instance
             try:
                 mock_output = response_model()
-            except Exception:
+            except TypeError:
                 # If we can't create an instance, return None to indicate failure
                 return None
 

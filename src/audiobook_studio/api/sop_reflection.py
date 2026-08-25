@@ -293,6 +293,6 @@ async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
         logger.error(f"SOP corrections WebSocket error for project {project_id}: {e}")
         try:
             await websocket.send_text(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False))
-        except Exception:
+        except RuntimeError:
             pass
 

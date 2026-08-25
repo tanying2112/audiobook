@@ -118,14 +118,16 @@ class NumpyNeuralCodec(NeuralAudioCodec):
                     sig = sig + w * np.sin(2 * np.pi * f * tloc)
                 sig = sig + 0.05 * r.standard_normal(n)
             out[start:stop] = sig
-        return out / (np.max(np.abs(out)) + 1e-9)
+        out = out / (np.max(np.abs(out)) + 1e-9)
+        return out  # type: ignore[no-any-return]
 
     def _frame(self, x: np.ndarray) -> np.ndarray:
         w = sine_window(self.win)
         x = reflect_pad(x, self.win, self.hop)
         nf = 1 + (len(x) - self.win) // self.hop
         idx = np.arange(self.win)[None, :] + self.hop * np.arange(nf)[:, None]
-        return (x[idx] * w).astype(np.float64)
+        result = (x[idx] * w).astype(np.float64)
+        return result  # type: ignore[no-any-return]
 
     def _train(self, seconds: float, seed: int) -> None:
         corpus = self._synthetic_corpus(self.sample_rate, seconds, seed)
@@ -201,17 +203,16 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         gain = getattr(result, "gain", 1.0)
         return out * (gain / rms_hat)
 
-    def available(self) -> bool:
+    @classmethod
+    def available(cls) -> bool:
         return True
 
-    @property
-    def name(self) -> str:
-        return "numpy-rvq-pca"
+    name: str = "numpy-rvq-pca"
 
     # ------------------------------------------------------------------ #
     # file helpers
     # ------------------------------------------------------------------ #
-    def compress_file(self, wav_path: str, container_path: str) -> dict:
+    def compress_file(self, wav_path: str, container_path: str) -> dict[str, object]:
         import soundfile as sf
 
         audio, sr = sf.read(wav_path, dtype="float32", always_2d=False)

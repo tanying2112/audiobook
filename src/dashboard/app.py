@@ -123,7 +123,7 @@ def get_queue_depth(redis_client: redis.Redis) -> int:
     """Get pending task queue depth."""
     try:
         return redis_client.llen("tts:tasks")
-    except Exception:
+    except redis.exceptions.RedisError:
         return -1
 
 
@@ -131,7 +131,7 @@ def get_results_count(redis_client: redis.Redis) -> int:
     """Get completed results count."""
     try:
         return redis_client.llen("tts:results")
-    except Exception:
+    except redis.exceptions.RedisError:
         return -1
 
 
@@ -152,7 +152,7 @@ def get_task_states(redis_client: redis.Redis, limit: int = 200) -> Dict[str, in
                         state = data.get("state", "UNKNOWN")
                         if state in states:
                             states[state] += 1
-                    except Exception:
+                    except json.JSONDecodeError:
                         pass
             scanned += len(keys)
 
@@ -469,7 +469,7 @@ def render_task_queue_preview(redis_client: redis.Redis):
                             "Worker": td.get("worker_id", "unassigned"),
                         }
                     )
-            except Exception:
+            except (json.JSONDecodeError, redis.exceptions.RedisError):
                 pass
 
         if rows:

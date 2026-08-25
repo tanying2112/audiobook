@@ -507,7 +507,7 @@ class KokoroBackend(BaseTTSEngine):
             tokens = np.array([[1] * len(text)], dtype=np.int64)
             lengths = np.array([len(text)], dtype=np.int64)
             return tokens, lengths
-        except Exception:
+        except (AttributeError, RuntimeError):
             # Fallback
             tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
             lengths = np.array([5], dtype=np.int64)

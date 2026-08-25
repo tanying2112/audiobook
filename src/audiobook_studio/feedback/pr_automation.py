@@ -462,7 +462,7 @@ def close_stale_prompt_prs(days: int = 7) -> int:
                 if age_days > days:
                     _run_command(["gh", "pr", "close", str(pr["number"]), "--comment", "Auto-closed: stale PR"])
                     closed_count += 1
-            except Exception:
+            except ValueError:
                 pass
 
     return closed_count

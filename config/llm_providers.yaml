@@ -54,11 +54,12 @@ providers:
       extra_headers:
         Authorization: Bearer freecc
 
-  # NVIDIA NIM (MiniMax M2.7) - 本机直连可达✅, 官方key直连降级
+  # NVIDIA NIM - 本机直连可达✅, 官方key直连降级
   # OpenAI-compatible API -> can use direct SDK for lower latency
+  # 注意: 原 minimaxai/minimax-m2.7 已于 2026-08 前后 EOL(HTTP 410), 实测 meta/llama-3.1-8b-instruct 可用。
   - name: nvidia_nemotron
     provider: openai
-    model: minimaxai/minimax-m2.7
+    model: meta/llama-3.1-8b-instruct
     api_key_env: NVIDIA_API_KEY
     api_key_pool_env:
       - NVIDIA_API_KEY_1
@@ -71,13 +72,34 @@ providers:
     extra_params:
       use_direct_sdk: true
 
+  # NVIDIA NIM 视觉提供方 (Task 4 多模态图文解析)
+  # 实测 meta/llama-3.2-11b-vision-instruct 免费且支持图像理解(CJK 转写+描述)。
+  # extra_params.vision=true 标记: 视觉专用客户端(MultimodalVisionClient)据此识别,
+  # 不走 LLMRouter(router 会重建 messages 丢弃图像块)。
+  - name: nvidia_vision
+    provider: openai
+    model: meta/llama-3.2-11b-vision-instruct
+    api_key_env: NVIDIA_API_KEY
+    base_url: https://integrate.api.nvidia.com/v1
+    priority: 4
+    max_tokens_per_minute: 6000
+    max_requests_per_minute: 20
+    timeout_seconds: 90
+    stages: [extract]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+      vision: true
+
   # Kilo (api.kilo.ai, model: tencent/hy3:free 开源中文模型) - 用户 key 已注入, 2026-08 直连可达✅ → 设为主路由
-  # model 必须带 openai/ 前缀: bare "tencent/hy3:free" 会被 litellm 误路由到内置
-  # Tencent provider 而 404 (实测 "openai/tencent/hy3:free" 才走自定义 base 成功)
+  # 网关真实模型 id 为 bare "tencent/hy3:free"; 带 openai/ 前缀会被原样发往网关
+  # 导致 404。provider 为 openai (OpenAI 兼容网关) 时本就不加前缀, 故 model 必须
+  # 写裸 id。切勿改成 provider: tencent —— 那会让 get_litellm_model_name() 重新
+  # 拼接出 openai/tencent/hy3:free 而再次 404。
   # OpenAI-compatible API -> can use direct SDK for lower latency
   - name: kilo
     provider: openai
-    model: openai/tencent/hy3:free
+    model: tencent/hy3:free
     api_key_env: KILO_API_KEY
     base_url: https://api.kilo.ai/api/gateway/v1
     priority: 0

@@ -2,6 +2,7 @@
 
 Provides Role-Based Access Control with project-level permissions.
 """
+from sqlalchemy.exc import SQLAlchemyError
 
 from typing import Any, Dict, List, Optional, Set
 
@@ -351,7 +352,7 @@ def get_rbac_manager(db: Session = None) -> RBACManager:
         db = SessionLocal()
         try:
             return RBACManager(db)
-        except Exception:
+        except SQLAlchemyError:
             db.close()
             raise
     return RBACManager(db)

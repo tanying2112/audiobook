@@ -36,7 +36,7 @@ class OpusCompressor:
     def available(cls) -> bool:
         return shutil.which("ffmpeg") is not None
 
-    def compress_file(self, wav_path: str, opus_path: str) -> dict:
+    def compress_file(self, wav_path: str, opus_path: str) -> dict[str, object]:
         cmd = [
             self.ffmpeg,
             "-y",
@@ -67,14 +67,14 @@ class OpusCompressor:
             raise CodecBackendUnavailable(f"ffmpeg failed: {proc.stderr[-500:]}")
 
 
-def benchmark_opus(wav_path: str, bitrate: str = "16k") -> dict:
+def benchmark_opus(wav_path: str, bitrate: str = "16k") -> dict[str, object]:
     """Convenience: compress a WAV with Opus and report the size ratio."""
     if not OpusCompressor.available():
         raise CodecBackendUnavailable("ffmpeg not found on PATH")
     comp = OpusCompressor(bitrate=bitrate)
     out = wav_path + ".opus"
     try:
-        stats = comp.compress_file(wav_path, out)
+        stats: dict[str, object] = comp.compress_file(wav_path, out)
     finally:
         if os.path.exists(out):
             os.remove(out)

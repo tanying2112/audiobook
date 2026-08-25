@@ -75,7 +75,7 @@ def _trim_audio_silence_vad(
         _, (start, end) = librosa.effects.trim(
             y, top_db=top_db, ref=np.max, frame_length=frame_length, hop_length=hop_length
         )
-    except Exception:
+    except RuntimeError:
         start, end = 0, n
 
     # Find the last frame with continuous energy, trim the long pseudo-silence at the end (low energy background noise, etc.)

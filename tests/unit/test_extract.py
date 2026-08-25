@@ -176,7 +176,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test.pdf"
         test_file.write_bytes(b"%PDF-1.4 dummy")
 
-        text, pages, has_ocr, ocr_ratio = self.pipeline._extract_pdf(str(test_file))
+        text, pages, has_ocr, ocr_ratio, _vis = self.pipeline._extract_pdf(str(test_file))
 
         assert "测试页面内容" in text
         assert pages == 2
@@ -217,7 +217,7 @@ class TestExtractPipelineRealLogic:
             test_file = Path(self.temp_dir) / "test.pdf"
             test_file.write_bytes(b"%PDF-1.4 dummy")
 
-            text, pages, has_ocr, ocr_ratio = self.pipeline._extract_pdf(str(test_file))
+            text, pages, has_ocr, ocr_ratio, _vis = self.pipeline._extract_pdf(str(test_file))
 
             assert "OCR identified content" in text
             assert pages == 1
@@ -248,7 +248,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test.epub"
         test_file.write_bytes(b"dummy")
 
-        text, count, has_ocr, ocr_ratio = self.pipeline._extract_epub(str(test_file))
+        text, count, has_ocr, ocr_ratio, _vis = self.pipeline._extract_epub(str(test_file))
 
         assert "EPUB content" in text
         assert count == 1
@@ -270,7 +270,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test.docx"
         test_file.write_bytes(b"dummy")
 
-        text, count, has_ocr, ocr_ratio = self.pipeline._extract_docx(str(test_file))
+        text, count, has_ocr, ocr_ratio, _vis = self.pipeline._extract_docx(str(test_file))
 
         assert "DOCX paragraph content" in text
         assert count == 2
@@ -280,7 +280,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test.txt"
         test_file.write_text("Text file content\nSecond line", encoding="utf-8")
 
-        text, pages, has_ocr, ocr_ratio = self.pipeline._extract_txt(str(test_file))
+        text, pages, has_ocr, ocr_ratio, _vis = self.pipeline._extract_txt(str(test_file))
 
         assert "Text file content" in text
         assert pages == 1
@@ -290,7 +290,7 @@ class TestExtractPipelineRealLogic:
         test_file = Path(self.temp_dir) / "test_gbk.txt"
         test_file.write_bytes("Chinese content".encode("gbk"))
 
-        text, pages, has_ocr, ocr_ratio = self.pipeline._extract_txt(str(test_file))
+        text, pages, has_ocr, ocr_ratio, _vis = self.pipeline._extract_txt(str(test_file))
 
         assert "Chinese content" in text
         assert pages == 1

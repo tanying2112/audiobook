@@ -141,7 +141,7 @@ class FederatedServer:
             if self.secagg is None:
                 self.bootstrap_keys(clients)
             results = [c.build_update(self.key_order) for c in clients]
-            masked = [r.masked for r in results]
+            masked = [r.masked for r in results if r.masked is not None]
             assert self.secagg is not None
             summed = self.secagg.server_aggregate(masked)
             avg = dequantize(summed, self.config.scale) / max(len(results), 1)

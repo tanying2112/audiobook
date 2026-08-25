@@ -365,7 +365,7 @@ def get_free_tier_health() -> FreeTierHealth:
                 memory_gb = memory_bytes / (1024**3)
             else:
                 memory_gb = 2.0  # conservative default
-        except Exception:
+        except subprocess.SubprocessError:
             memory_gb = 2.0
         mem_score = min(memory_gb / 4, 1.0) * 30
 
@@ -379,7 +379,7 @@ def get_free_tier_health() -> FreeTierHealth:
         disk_score = min(disk_free_gb / 10, 1.0) * 20  # max 20 points
         if disk_free_gb < 2:
             warnings.append(f"磁盘空间不足: {disk_free_gb:.1f} GB")
-    except Exception:
+    except OSError:
         disk_score = 10
 
     # Uptime
@@ -401,7 +401,7 @@ def get_free_tier_health() -> FreeTierHealth:
             with open("/proc/uptime") as f:
                 uptime_secs = float(f.read().split()[0])
                 uptime_hours = uptime_secs / 3600
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         pass
 
     uptime_score = min(uptime_hours / 24, 1.0) * 20  # max 20 points (first 24h)

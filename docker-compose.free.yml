@@ -53,6 +53,18 @@ services:
       - LLM_SEMANTIC_CACHE_ENABLED=true
       - LLM_SEMANTIC_CACHE_BACKEND=redis
       - REDIS_URL=redis://redis:6379/0
+      # Streaming TTS config (disabled by default in free stack, enable for low-latency)
+      - ENABLE_STREAMING_TTS=true
+      - STREAMING_TTS_ENGINE=cosyvoice_stream
+      - STREAMING_TTS_HOST=localhost
+      - STREAMING_TTS_PORT=5000
+      # Audio Semantic Cache (TTS 段落级缓存，复用相似文本的音频)
+      - AUDIO_SEMANTIC_CACHE_ENABLED=true
+      - AUDIO_SEMANTIC_CACHE_BACKEND=redis
+      - AUDIO_SEMANTIC_CACHE_SIMILARITY=0.93
+      - AUDIO_SEMANTIC_CACHE_TTL=604800
+      - AUDIO_SEMANTIC_CACHE_MAX_SIZE=512
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -97,6 +109,18 @@ services:
       # LLM semantic cache ON by default in the free stack; shared Redis.
       - LLM_SEMANTIC_CACHE_ENABLED=true
       - LLM_SEMANTIC_CACHE_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      # Streaming TTS config
+      - ENABLE_STREAMING_TTS=true
+      - STREAMING_TTS_ENGINE=cosyvoice_stream
+      - STREAMING_TTS_HOST=localhost
+      - STREAMING_TTS_PORT=5000
+      # Audio Semantic Cache (TTS 段落级缓存，复用相似文本的音频)
+      - AUDIO_SEMANTIC_CACHE_ENABLED=true
+      - AUDIO_SEMANTIC_CACHE_BACKEND=redis
+      - AUDIO_SEMANTIC_CACHE_SIMILARITY=0.93
+      - AUDIO_SEMANTIC_CACHE_TTL=604800
+      - AUDIO_SEMANTIC_CACHE_MAX_SIZE=512
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./data:/app/data

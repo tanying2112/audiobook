@@ -255,7 +255,7 @@ class TTSChapterTask(celery_app.Task):
         try:
             members = client.smembers(key)
             return {int(m) for m in members}
-        except Exception:
+        except redis.exceptions.RedisError:
             return set()
 
     def _clear_failed_paragraphs(self, project_id: int, chapter_id: int) -> None:
@@ -266,7 +266,7 @@ class TTSChapterTask(celery_app.Task):
         key = f"tts:failed:{project_id}:{chapter_id}"
         try:
             client.delete(key)
-        except Exception:
+        except redis.exceptions.RedisError:
             pass
 
     def _save_checkpoint(
@@ -344,7 +344,7 @@ class TTSChapterTask(celery_app.Task):
         checkpoint_key = f"tts:checkpoint:{project_id}:{chapter_id}"
         try:
             client.delete(checkpoint_key)
-        except Exception:
+        except redis.exceptions.RedisError:
             pass
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
@@ -512,7 +512,7 @@ def _get_audio_duration(file_path: Path) -> int:
         size = file_path.stat().st_size
         estimated_sec = size / 48000
         return int(estimated_sec * 1000)
-    except Exception:
+    except OSError:
         return 0
 
 

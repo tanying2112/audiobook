@@ -245,7 +245,7 @@ class BaseWorker(abc.ABC):
         while self.running:
             try:
                 queue_depth = self.redis.llen("tts:tasks")
-            except Exception:
+            except redis.exceptions.RedisError:
                 queue_depth = 0
 
             self._send_heartbeat("idle" if empty_polls > 0 else "processing", queue_depth)
@@ -253,7 +253,7 @@ class BaseWorker(abc.ABC):
             try:
                 # Long-poll unified queue (5 min blocking)
                 task_data = self.redis.blpop("tts:tasks", timeout=300)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 print(f"🔌 [{self.worker_id}] Connection severed during blocking poll: {e}", file=sys.stderr)
                 time.sleep(5)
                 continue
@@ -281,7 +281,7 @@ class BaseWorker(abc.ABC):
                     try:
                         self.redis.rpush("tts:tasks", payload)
                         print(f"🔄 [{self.worker_id}] Task {task['id']} safely re-queued.")
-                    except Exception as e:
+                    except redis.exceptions.RedisError as e:
                         print(f"🚨 [{self.worker_id}] Critical failure. Task rollback lost: {e}", file=sys.stderr)
             else:
                 if not self.running:
@@ -297,7 +297,7 @@ class BaseWorker(abc.ABC):
                             )
                             self._send_heartbeat("exiting", 0)
                             break
-                    except Exception:
+                    except redis.exceptions.RedisError:
                         pass
 
         print(f"🛑 [{self.worker_id}] Process shutdown sequence complete.")

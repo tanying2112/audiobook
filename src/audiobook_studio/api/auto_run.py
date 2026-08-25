@@ -793,7 +793,7 @@ async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> Autop
                         male_count += 1
                     elif gender in ("female", "woman", "girl", "female"):
                         female_count += 1
-            except Exception:
+            except (TypeError, AttributeError):
                 pass
 
     if female_count > male_count:
@@ -820,7 +820,7 @@ async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> Autop
                     )
                     for char in analyzed.get("characters", []):
                         dialogue_chars += char.get("dialogue_count", 0) * 50  # rough estimate
-                except Exception:
+                except (TypeError, AttributeError):
                     pass
         dialogue_ratio = min(dialogue_chars / total_chars, 1.0)
 

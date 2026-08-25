@@ -195,7 +195,7 @@ def safe_open(
     # Convert fd to file object
     try:
         return os.fdopen(fd, mode, buffering, encoding, errors, newline, closefd)
-    except Exception:
+    except (OSError, ValueError):
         # If fdopen fails, close the fd
         try:
             os.close(fd)

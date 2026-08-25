@@ -23,7 +23,7 @@ def get_gpu_memory_used_mb() -> int:
     try:
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except RuntimeError:
         pass
     return 0
 
@@ -32,7 +32,7 @@ def get_gpu_memory_total_mb() -> int:
     try:
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except RuntimeError:
         pass
     return 0
 
@@ -41,7 +41,7 @@ def get_device_name() -> str:
     try:
         if torch.cuda.is_available():
             return torch.cuda.get_device_name(0)
-    except Exception:
+    except RuntimeError:
         pass
     return "CPU"
 

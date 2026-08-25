@@ -60,7 +60,7 @@ def _get_audio_duration(audio_path: str) -> Optional[float]:
 
         info = sf.info(audio_path)
         return info.duration
-    except Exception:
+    except (OSError, ImportError):
         return None
 
 

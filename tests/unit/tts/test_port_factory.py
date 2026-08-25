@@ -442,36 +442,49 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_get_default_engine_initializes(self):
         """Test get_default_engine initializes registry if needed."""
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
+        from src.audiobook_studio.di import DIContainer, set_app_container, reset_app_container
 
+        # Create a fresh container for this test
+        container = DIContainer()
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "default"
+        mock_engine.initialize = AsyncMock()
 
-        with patch("src.audiobook_studio.tts.port_factory.get_engine_registry") as mock_get_registry:
-            mock_registry = Mock()
-            # First call returns None to trigger initialization, second returns mock_engine
-            mock_registry.get_default = Mock(side_effect=[None, mock_engine])
-            mock_registry.initialize = AsyncMock()
-            mock_get_registry.return_value = mock_registry
+        mock_registry = Mock(spec=EngineRegistry)
+        # First call returns None (not initialized), second returns engine
+        mock_registry.get_default = Mock(side_effect=[None, mock_engine])
+        mock_registry.initialize = AsyncMock()
 
+        container.register_singleton(EngineRegistry, mock_registry)
+        set_app_container(container)
+
+        try:
             engine = await get_default_engine()
-
             assert engine == mock_engine
             mock_registry.initialize.assert_called_once()
+        finally:
+            reset_app_container()
 
     @pytest.mark.asyncio
     async def test_get_port_returns_adapter(self):
         """Test get_port returns EnginePortAdapter."""
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
+        from src.audiobook_studio.di import DIContainer, set_app_container, reset_app_container
 
+        container = DIContainer()
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "test"
         mock_engine.output_dir = "./output"
         mock_engine.synthesize = AsyncMock()
+        mock_engine.close = AsyncMock()
 
-        with patch("src.audiobook_studio.tts.port_factory.get_default_engine", return_value=mock_engine):
+        mock_registry = Mock(spec=EngineRegistry)
+        mock_registry.get_default = Mock(return_value=mock_engine)
+        mock_registry.initialize = AsyncMock()
+
+        container.register_singleton(EngineRegistry, mock_registry)
+        set_app_container(container)
+
+        try:
             port = await get_port()
 
             assert hasattr(port, "submit")
@@ -480,6 +493,8 @@ class TestBackwardCompatibility:
             assert hasattr(port, "cancel")
             assert hasattr(port, "health_check")
             assert hasattr(port, "close")
+        finally:
+            reset_app_container()
 
 
 class TestPortFactoryEdgeCases:

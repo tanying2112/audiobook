@@ -23,7 +23,7 @@ try:
     _env_file = _Path(".env")
     if _env_file.exists():
         _load_dotenv(_env_file)
-except Exception:  # pragma: no cover - dotenv 可选
+except ImportError:  # pragma: no cover - dotenv 可选
     pass
 
 from ..database import _get_async_database_url

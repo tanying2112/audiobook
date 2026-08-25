@@ -251,7 +251,7 @@ class TestRunStage:
     async def test_success(self, mock_registry):
         class FakeHandler:
             @staticmethod
-            def run(**kwargs):
+            async def run(**kwargs):
                 return {"result": "ok"}
 
             @staticmethod
@@ -272,7 +272,7 @@ class TestRunStage:
     async def test_with_chapter_and_paragraph(self, mock_registry):
         class FakeHandler:
             @staticmethod
-            def run(**kwargs):
+            async def run(**kwargs):
                 return "done"
 
             @staticmethod
@@ -298,7 +298,7 @@ class TestRunStage:
     async def test_with_feedback_collector(self, mock_registry):
         class FakeHandler:
             @staticmethod
-            def run(**kwargs):
+            async def run(**kwargs):
                 return "done"
 
             @staticmethod
@@ -324,7 +324,7 @@ class TestRunStage:
     async def test_with_feedback_no_project_id(self, mock_registry):
         class FakeHandler:
             @staticmethod
-            def run(**kwargs):
+            async def run(**kwargs):
                 return "ok"
 
             @staticmethod

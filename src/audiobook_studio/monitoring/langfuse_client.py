@@ -143,13 +143,13 @@ def _trace_context_manager(
     except Exception as e:
         try:
             obs.update(level="ERROR", status_message=str(e))
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
         raise
     finally:
         try:
             cm.__exit__(None, None, None)
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
         _langfuse_client.flush()
 
@@ -205,13 +205,13 @@ def span(
     except Exception as e:
         try:
             obs.update(level="ERROR", status_message=str(e))
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
         raise
     finally:
         try:
             cm.__exit__(None, None, None)
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
         _langfuse_client.flush()
 
@@ -375,7 +375,7 @@ def trace_function(
             if metadata_extractor:
                 try:
                     meta = metadata_extractor(*args, **kwargs)
-                except Exception:
+                except (RuntimeError, AttributeError, TypeError):
                     pass
 
             if stage:
@@ -433,7 +433,7 @@ def score_trace(trace_obj: Any, score: float, comment: Optional[str] = None) -> 
             value=score,
             comment=comment,
         )
-    except Exception:
+    except RuntimeError:
         # Fallback to client level
         _langfuse_client.create_score(
             name="quality",

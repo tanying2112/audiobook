@@ -26,10 +26,10 @@ import numpy as np
 from .base import CodecBackendUnavailable, CodecResult
 
 
-def _require_encodec() -> Any:
+def _require_encodec() -> tuple[Any, Any]:
     try:
-        import encodec  # type: ignore
-        import torch  # type: ignore
+        import encodec
+        import torch
 
         return encodec, torch
     except Exception as exc:  # pragma: no cover - depends on optional deps
@@ -57,11 +57,11 @@ class EncodecAdapter:
     @classmethod
     def available(cls) -> bool:
         try:
-            import encodec  # type: ignore
-            import torch  # type: ignore
+            import encodec
+            import torch
 
             return True
-        except Exception:  # pragma: no cover
+        except ImportError:  # pragma: no cover
             return False
 
     def encode(self, audio: np.ndarray, sample_rate: int | None = None) -> CodecResult:
@@ -98,13 +98,13 @@ class EncodecAdapter:
         )
         with torch.no_grad():
             wav = self._model.decode(codes)[0, 0, 0]
-        return wav.cpu().numpy().astype(np.float64)
+        return wav.cpu().numpy().astype(np.float64)  # type: ignore[no-any-return]
 
 
-def _require_transformers() -> Any:
+def _require_transformers() -> tuple[Any, Any, Any]:
     try:
-        import torch  # type: ignore
-        from transformers import Wav2Vec2FeatureExtractor, HubertModel  # type: ignore
+        import torch
+        from transformers import Wav2Vec2FeatureExtractor, HubertModel
 
         return torch, Wav2Vec2FeatureExtractor, HubertModel
     except Exception as exc:  # pragma: no cover
@@ -131,11 +131,11 @@ class HubertSemanticTokenizer:
     @classmethod
     def available(cls) -> bool:
         try:
-            import torch  # type: ignore
-            from transformers import HubertModel  # type: ignore
+            import torch
+            from transformers import HubertModel
 
             return True
-        except Exception:  # pragma: no cover
+        except ImportError:  # pragma: no cover
             return False
 
     def encode(self, audio: np.ndarray, sample_rate: int | None = None) -> CodecResult:
@@ -165,7 +165,7 @@ class HubertSemanticTokenizer:
         lo, hi = flat.min(axis=0), flat.max(axis=0)
         span = (hi - lo) + 1e-9
         q = ((flat - lo) / span * 255).astype(np.int32)
-        return q[:, 0] if q.shape[1] == 1 else q.mean(axis=1).astype(np.int32)
+        return q[:, 0] if q.shape[1] == 1 else q.mean(axis=1).astype(np.int32)  # type: ignore[no-any-return]
 
     def decode(self, result: CodecResult) -> np.ndarray:  # pragma: no cover
         # Semantic tokens are not directly invertible to audio; return a placeholder

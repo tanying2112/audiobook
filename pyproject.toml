@@ -104,6 +104,7 @@ markers = [
 source = ["src"]
 concurrency = ["multiprocessing", "thread"]
 sigterm = true
+branch = true
 omit = [
     "*/tests/*",
     "*/migrations/*",
@@ -113,16 +114,11 @@ omit = [
     "src/master/*",
     "src/voxcpm/*",
     "src/worker_base.py",
-    # TTS: external service integrations
+    # TTS: truly external (remote Modal services, require GPU)
     "src/audiobook_studio/tts/remote_voxcpm2_port.py",
     "src/audiobook_studio/tts/remote_voxcpm2_client.py",
-    "src/audiobook_studio/tts/edge_tts_port.py",
-    "src/audiobook_studio/tts/kokoro_port.py",
-    "src/audiobook_studio/tts/license_guard.py",
-    # Pipeline stages requiring external services
-    "src/audiobook_studio/pipeline/review.py",
+    # Pipeline stages requiring external GPU services
     "src/audiobook_studio/pipeline/multimodal.py",
-    "src/audiobook_studio/pipeline/progress_emitter.py",
     # Models with complex DB dependencies (not directly tested)
     "src/audiobook_studio/models/publish.py",
     "src/audiobook_studio/models/routing.py",
@@ -132,61 +128,18 @@ omit = [
     # Observability/monitoring - requires external services
     "src/audiobook_studio/observability/tracing.py",
     "src/audiobook_studio/monitoring/telemetry.py",
-    # Feedback - integration/AB testing level
+    # Feedback - integration/AB testing level (critics require LLM)
     "src/audiobook_studio/feedback/held_out_eval.py",
     "src/audiobook_studio/feedback/critics/*",
     "src/audiobook_studio/feedback/regression_suite.py",
-    "src/audiobook_studio/feedback/sop_verification.py",
-    "src/audiobook_studio/feedback/constitution.py",
     # LLM modules - require external providers
     "src/audiobook_studio/llm/llm_client.py",
     "src/audiobook_studio/llm/auto_registry.py",
     "src/audiobook_studio/llm/prompt_registry.py",
-    # CLI and config - integration level (some tested - removed from omit)
-    # "src/audiobook_studio/cli/main.py",
-    # "src/audiobook_studio/cli/pipeline.py",
-    # "src/audiobook_studio/cli/book.py",
-    # "src/audiobook_studio/cli/export.py",
-    # "src/audiobook_studio/cli/init_db.py",
-    # "src/audiobook_studio/cli/mock_data.py",
-    "src/audiobook_studio/database_async.py",
-    "src/audiobook_studio/config/settings.py",
-    "src/audiobook_studio/config/settings_loader.py",
-    # "src/audiobook_studio/config/hardware_profile.py",
-    # "src/audiobook_studio/config/acoustic_mapping.py",
-    # Auth - requires external OAuth (some tested - removed from omit)
-    # "src/audiobook_studio/auth/rbac.py",
-    # "src/audiobook_studio/auth/dependencies.py",
-    # "src/audiobook_studio/auth/jwt_handler.py",
-    # "src/audiobook_studio/auth/router.py",
-    # "src/audiobook_studio/auth/models.py",
-    # API modules - integration tests (some tested - removed from omit)
-    # "src/audiobook_studio/api/admin.py",
-    # "src/audiobook_studio/api/characters.py",
-    # "src/audiobook_studio/api/monitoring.py",
-    # "src/audiobook_studio/api/pipeline.py",
-    # "src/audiobook_studio/api/languages.py",
-    # "src/audiobook_studio/api/sop_reflection.py",
-    # "src/audiobook_studio/api/provider_router.py",
-    # Schemas not directly testable
-    "src/audiobook_studio/schemas/legacy.py",
-    # Export integration
-    "src/audiobook_studio/export/mp3.py",
-    "src/audiobook_studio/export/pool.py",
-    "src/audiobook_studio/export/__init__.py",
-    # Core modules
-    "src/audiobook_studio/analyzer.py",
-    "src/audiobook_studio/celery_app.py",
-    "src/audiobook_studio/languages.py",
-    # TTS - external deps
-    "src/audiobook_studio/tts/pronunciation_dict.py",
-    "src/audiobook_studio/tts/circuit_breaker.py",
-    "src/audiobook_studio/tts/asset_manager.py",
 ]
 
 [tool.coverage.report]
-fail_under = 60
-branch = true
+fail_under = 85
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

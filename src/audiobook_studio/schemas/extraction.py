@@ -10,6 +10,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class VisualElement(BaseModel):
+    """多模态视觉理解产出的单个图/元素描述 (Task 4).
+
+    对应图文混排书籍里的一个视觉元素：插图、图表、地图、照片，或纯文字图。
+    供下游朗读 (extracted_text) 与语义理解 (caption) 使用。
+    """
+
+    kind: Literal["text", "figure", "table", "map", "photo", "other"] = "other"
+    caption: str = Field(default="", description="一段中文描述该图的内容/意图")
+    extracted_text: str = Field(default="", description="图内可读文字（供朗读/转录）")
+
+
 class ExtractionInput(BaseModel):
     """文本提取环节输入参数."""
 
@@ -42,6 +54,11 @@ class ExtractionResult(BaseModel):
     has_ocr: bool = Field(default=False, description="是否使用了 OCR")
     ocr_page_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="OCR 处理页占比")
     warnings: list[str] = Field(default_factory=list, description="提取过程中的警告信息")
-    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
+    # Task 4 多模态视觉理解产物。图内容已合并进 raw_text；此字段保留结构化描述供下游/API 使用。
+    visual_descriptions: list[VisualElement] = Field(
+        default_factory=list, description="图文混排中视觉元素的多模态理解结果"
+    )
+    multimodal_used: bool = Field(default=False, description="本次提取是否实际调用了多模态视觉理解")
+    contract_version: int = Field(default=2, description="契约版本号，用于追踪 schema 变更")
 
     model_config = {"from_attributes": True, "extra": "forbid"}

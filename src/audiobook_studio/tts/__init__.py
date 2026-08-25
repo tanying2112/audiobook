@@ -19,11 +19,9 @@ from .engine import (
     TTSEngine,
     VoiceInfo,
     cleanup_all_engines,
-    get_engine,
-    get_engine_registry,
     initialize_all_engines,
-    register_engine,
-    set_engine_registry,
+    probe_tts_engines,
+    TTS_HEALTH_ENGINES,
 )
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
@@ -42,7 +40,6 @@ from .port_factory import (
     create_engine,
     engine_context,
     get_default_engine,
-    get_engine_registry,
     get_port,
 )
 from .rate_limiter import (
@@ -87,12 +84,10 @@ __all__ = [
     "VoiceInfo",
     "SynthesisResult",
     "EngineRegistry",
-    "get_engine_registry",
-    "set_engine_registry",
-    "get_engine",
-    "register_engine",
     "initialize_all_engines",
     "cleanup_all_engines",
+    "probe_tts_engines",
+    "TTS_HEALTH_ENGINES",
     # Voice cloning (legacy)
     "VoiceCloner",
     "VoiceCloningManager",
@@ -143,12 +138,6 @@ __all__ = [
     "KokoroPort",
     "create_kokoro_port",
     # New Engine Registry
-    "get_engine_registry",
-    "set_engine_registry",
-    "get_engine",
-    "register_engine",
-    "initialize_all_engines",
-    "cleanup_all_engines",
     "create_engine",
     "create_configured_registry",
     "engine_context",

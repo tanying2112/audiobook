@@ -146,7 +146,7 @@ async def _delete_job(job_id: str) -> None:
         key = f"publish:job:{job_id}"
         await redis_client.delete(key)
         await redis_client.aclose()
-    except Exception:
+    except redis.exceptions.RedisError:
         pass
     # In-memory fallback
     _publish_jobs_fallback.pop(job_id, None)

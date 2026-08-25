@@ -172,22 +172,35 @@ class LLMProvidersConfig(BaseSettings):
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "LLMProvidersConfig":
-        """Load configuration from YAML file.
+        """Load configuration from YAML file using UnifiedConfig.
 
         Path resolution priority (避免项目根 / 包内双 yaml 漂移):
           1. 显式传入的 config_path
           2. 当前工作目录 (CWD) 下的 config/llm_providers.yaml  ← 项目根运维版本优先
           3. 本包同目录的下 config/llm_providers.yaml            ← pip install -e 后的 fallback
         """
-        import yaml
+        # Lazy import UnifiedConfig to avoid issues when loaded via importlib
+        data: Dict[str, Any] = {}
+        try:
+            from ..config.unified import get_unified_config
+            unified = get_unified_config()
+            data = unified.load_yaml_config("llm_providers") or {}
+        except (ImportError, AttributeError, OSError):
+            pass  # Fall back to explicit path resolution below
 
-        if config_path is None:
-            cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
-            pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
-            config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        # If UnifiedConfig couldn't find it, try the explicit path resolution
+        if not data:
+            import yaml
+            if config_path is None:
+                cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
+                pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+                config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
+            
+            if Path(config_path).exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+            else:
+                data = {}
 
         providers = []
         for p in data.get("providers", []):
@@ -232,3 +245,4 @@ class LLMProvidersConfig(BaseSettings):
     def get_all_enabled(self) -> List[ProviderConfig]:
         """Get all enabled providers."""
         return [p for p in self.providers if p.enabled]
+

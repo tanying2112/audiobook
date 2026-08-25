@@ -202,7 +202,7 @@ class AudiobookshelfIntegrator:
             try:
                 with open(metadata.cover_image_path, "rb") as f:
                     cover_data = base64.b64encode(f.read()).decode("utf-8")
-            except Exception:
+            except OSError:
                 pass  # 封面图片读取失败不影响主要功能
 
         # 准备章节信息
@@ -461,7 +461,7 @@ class AudiobookshelfIntegrator:
                             break
                 if item_id:
                     break
-            except Exception:
+            except httpx.HTTPError:
                 pass
 
         # 第六步：更新元数据（如果找到 item_id）
@@ -517,7 +517,7 @@ class AudiobookshelfIntegrator:
                 if resp.status_code not in (200, 204):
                     # 不致命，继续
                     pass
-            except Exception:
+            except httpx.HTTPError:
                 pass
 
             # 第七步：上传封面图片（如果有）
@@ -532,7 +532,7 @@ class AudiobookshelfIntegrator:
                     if resp.status_code not in (200, 201):
                         # 不致命
                         pass
-                except Exception:
+                except (httpx.HTTPError, ValueError):
                     pass
 
         # 构建返回结果
@@ -578,7 +578,7 @@ class AudiobookshelfIntegrator:
                     "status": "online",
                     "last_updated": datetime.now().isoformat(),
                 }
-        except Exception:
+        except httpx.HTTPError:
             pass
 
         return {

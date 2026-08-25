@@ -25,6 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Use UnifiedConfig for centralized configuration loading
+from ..config.unified import get_unified_config
+
 logger = logging.getLogger(__name__)
 
 # 全局字典路径 (相对仓库根; 与既有 config 约定一致)。
@@ -75,78 +78,84 @@ def load_pronunciation_dict(
     g_path = global_path or _GLOBAL_DICT_PATH
     registry: Dict[str, DictEntry] = {}
 
+    # Load global dictionary via UnifiedConfig
     try:
-        import yaml  # 既有依赖, 非新增
-    except ImportError:
-        logger.warning("pronunciation_dict: pyyaml 未安装 → 字典降级 (原样透传)")
-        return registry
+        unified = get_unified_config()
+        global_raw: Dict = unified.load_yaml_config("pronunciation_dict") or {}
+        registry.update(_parse_raw(global_raw))
+    except Exception as e:
+        logger.warning("发音字典: 全局配置加载失败 (%s): %s", g_path, e)
 
-    # 全局字典
-    if Path(g_path).exists():
-        try:
-            with open(g_path, encoding="utf-8") as f:
-                registry.update(_parse_raw(yaml.safe_load(f) or {}))
-        except Exception as e:  # pragma: no cover - 解析失败诚实降级
-            logger.warning("pronunciation_dict: 全局字典解析失败 (%s): %s → 降级", g_path, e)
-
-    # 项目级字典覆盖 (同名条目 project 赢; 不同名条目补充)
-    if project_dir is not None:
-        proj_path = Path(project_dir) / _PROJECT_DICT_FILENAME
-        if proj_path.exists():
+    # Load project-level dictionary (if project_dir provided)
+    if project_dir:
+        p_path = Path(project_dir) / _PROJECT_DICT_FILENAME
+        if p_path.exists():
             try:
-                with open(proj_path, encoding="utf-8") as f:
-                    proj_entries = _parse_raw(yaml.safe_load(f) or {})
-                registry.update(proj_entries)  # 后 update → 项目条目覆盖同名全局
-                logger.info("pronunciation_dict: 加载项目级字典 %s, 覆盖/补充 %d 条", proj_path, len(proj_entries))
-            except Exception as e:  # pragma: no cover
-                logger.warning("pronunciation_dict: 项目级字典解析失败 (%s): %s", proj_path, e)
+                import yaml
+                with open(p_path, encoding="utf-8") as f:
+                    project_raw: Dict = yaml.safe_load(f) or {}
+                registry.update(_parse_raw(project_raw))
+                logger.info("发音字典: 已合并项目级字典 (%s)", p_path)
+            except Exception as e:
+                logger.warning("发音字典: 项目级配置加载失败 (%s): %s", p_path, e)
 
     return registry
 
 
-def apply_pronunciation_dict(text: str, registry: Dict[str, DictEntry]) -> str:
-    """对文本按字典做注音替换; 无条目原样透传 (向后兼容)。
-
-    长词优先 (按词长降序) 避免短词子串吃长词。中文无 \b 词边界, 用直接子串
-    正则定位 (对目标词做 re.escape)。替换为 phoneme 正文。
-    """
-    if not text or not registry:
+def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]) -> str:
+    """对文本应用发音字典替换 (长词优先, 整词边界)。"""
+    if not pronunciation_dict:
         return text
 
-    # 按词长降序: 先替换长词, 避免短词吃长词 (如 "帝" 不应吃 "帝释天" 内的子串)。
-    words = sorted(
-        (w for w in registry if w),  # 过滤空 key
-        key=lambda w: len(w),
-        reverse=True,
-    )
-    if not words:
-        return text
+    # 按词长降序排序，长词优先匹配
+    sorted_words = sorted(pronunciation_dict.keys(), key=len, reverse=True)
 
-    out = text
-    for word in words:
-        entry = registry[word]
-        if entry.phoneme == word:  # 替换体与原词相同 → 无意义, 跳过避免空操作
-            continue
-        # re.escape 防 word 含正则元字符; 直接子串匹配 (中文无词边界)。
-        pattern = re.escape(word)
-        try:
-            out = re.sub(pattern, entry.phoneme, out)
-        except re.error:
-            # 理论不可达 (re.escape 后不报错); 诚实降级跳过该词
-            logger.warning("pronunciation_dict: 替换 %r 失败 → 跳过", word)
-            continue
-    return out
+    for word in sorted_words:
+        entry = pronunciation_dict[word]
+        phoneme = entry.phoneme
+
+        # 中英文混合边界处理
+        if re.search(r"[\u4e00-\u9fff]", word):
+            # 含中文字符: 直接子串替换 (中文无词边界 \b)
+            text = text.replace(word, phoneme)
+        else:
+            # 纯 ASCII: 用单词边界 \b 防止误伤子串
+            pattern = r"\b" + re.escape(word) + r"\b"
+            text = re.sub(pattern, phoneme, text)
+
+    return text
 
 
-def apply_pronunciation_dict_using(
-    text: str,
+def get_pronunciation_dict(
     project_dir: Optional[Path] = None,
     global_path: Optional[Path] = None,
-) -> str:
-    """便捷封装: 加载字典(项目级覆盖)并替换; 字典缺失/失败 → 原样透传。
+) -> Dict[str, DictEntry]:
+    """获取发音字典 (模块级缓存, 便于复用)。"""
+    # Module-level cache
+    if not hasattr(get_pronunciation_dict, "_cache"):
+        get_pronunciation_dict._cache = None
+        get_pronunciation_dict._cache_key = None
 
-    供 synthesize 接入点一行调用; 内部每次加载 (字典小, 合成段间开销可接受;
-    若需热路径优化可由调用方缓存 registry 后直接用 apply_pronunciation_dict)。
-    """
-    registry = load_pronunciation_dict(project_dir=project_dir, global_path=global_path)
-    return apply_pronunciation_dict(text, registry)
+    cache_key = (str(project_dir) if project_dir else None, str(global_path) if global_path else None)
+    if get_pronunciation_dict._cache is not None and get_pronunciation_dict._cache_key == cache_key:
+        return get_pronunciation_dict._cache
+
+    result = load_pronunciation_dict(project_dir, global_path)
+    get_pronunciation_dict._cache = result
+    get_pronunciation_dict._cache_key = cache_key
+    return result
+
+
+if __name__ == "__main__":
+    # 手工测试入口
+    logging.basicConfig(level=logging.INFO)
+    dict_data = load_pronunciation_dict()
+    print(f"加载条目数: {len(dict_data)}")
+    for word, entry in list(dict_data.items())[:10]:
+        print(f"  {word} → {entry.phoneme} ({entry.source})")
+
+    # 测试替换
+    test_text = "帝释天降临了，帝释天很厉害。"
+    result = apply_pronunciation_dict(test_text, dict_data)
+    print(f"\n原文: {test_text}")
+    print(f"替换后: {result}")

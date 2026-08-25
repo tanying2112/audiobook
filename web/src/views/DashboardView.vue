@@ -1,7 +1,30 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import * as echarts from 'echarts'
+// Tree-shaken echarts: 仅注册本页用到的图表/组件/渲染器,避免整包 echarts(~1MB)打进 chunk。
+// 需要新增图表类型或组件时,在此处对应加一条 import + use([...]) 即可。
+import { use, init } from 'echarts/core'
+import { PieChart, BarChart, LineChart, GaugeChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+} from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { ECharts } from 'echarts/core'
+
+use([
+  PieChart,
+  BarChart,
+  LineChart,
+  GaugeChart,
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  CanvasRenderer,
+])
 import { useI18n } from '../i18n'
 import { fetchProjectMetrics, fetchMetricsHistory, fetchProjectsWithMetrics, type ProjectMetrics } from '../api'
 
@@ -19,11 +42,11 @@ const selectedProjectId = ref(projectId)
 const loading = ref(false)
 const error = ref<string>('')
 
-let costChart: echarts.ECharts | null = null
-let latencyChart: echarts.ECharts | null = null
-let providerCostChart: echarts.ECharts | null = null
-let rtfChart: echarts.ECharts | null = null
-let historyChart: echarts.ECharts | null = null
+let costChart: ECharts | null = null
+let latencyChart: ECharts | null = null
+let providerCostChart: ECharts | null = null
+let rtfChart: ECharts | null = null
+let historyChart: ECharts | null = null
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const costChartRef = ref<HTMLElement | null>(null)
@@ -34,7 +57,7 @@ const historyChartRef = ref<HTMLElement | null>(null)
 
 // Cost Pie Chart
 function initCostChart(el: HTMLElement): void {
-  costChart = echarts.init(el)
+  costChart = init(el)
   costChart.setOption({
     title: { text: t('dashboard.cost_distribution'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
@@ -49,7 +72,7 @@ function initCostChart(el: HTMLElement): void {
 
 // Latency Horizontal Bar Chart
 function initLatencyChart(el: HTMLElement): void {
-  latencyChart = echarts.init(el)
+  latencyChart = init(el)
   latencyChart.setOption({
     title: { text: t('dashboard.latency_leaderboard'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: '{b}: {c} ms' },
@@ -63,7 +86,7 @@ function initLatencyChart(el: HTMLElement): void {
 
 // Provider Cost Stacked Bar
 function initProviderCostChart(el: HTMLElement): void {
-  providerCostChart = echarts.init(el)
+  providerCostChart = init(el)
   providerCostChart.setOption({
     title: { text: t('dashboard.provider_cost_breakdown'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any[]) => { let result = `${params[0].axisValue}<br/>`; params.forEach((p: any) => { result += `${p.seriesName}: $${p.value.toFixed(6)}<br/>` }); return result } },
@@ -78,7 +101,7 @@ function initProviderCostChart(el: HTMLElement): void {
 
 // RTF Gauge Chart
 function initRtfChart(el: HTMLElement): void {
-  rtfChart = echarts.init(el)
+  rtfChart = init(el)
   rtfChart.setOption({
     series: [{ type: 'gauge', startAngle: 225, endAngle: -45, min: 0, max: 2, splitNumber: 8, radius: '85%',
       axisLine: { lineStyle: { width: 22, color: [[0.5, '#22c55e'], [1.0, '#f59e0b'], [1.5, '#f97316'], [2.0, '#ef4444']] } },
@@ -94,7 +117,7 @@ function initRtfChart(el: HTMLElement): void {
 
 // History Line Chart
 function initHistoryChart(el: HTMLElement): void {
-  historyChart = echarts.init(el)
+  historyChart = init(el)
   historyChart.setOption({
     title: { text: t('dashboard.cost_history'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', formatter: (params: any[]) => { let result = `${params[0].axisValue}<br/>`; params.forEach(p => { result += `${p.seriesName}: $${p.value.toFixed(4)}<br/>` }); return result } },

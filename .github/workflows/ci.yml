@@ -154,7 +154,9 @@ jobs:
             --ignore=tests/unit/test_self_iteration_integration.py.bak \
             --ignore=tests/unit/test_quality_check_nonmock.py.bak \
             -m "not integration and not e2e" \
-            -x
+            -x \
+            --cov=src/audiobook_studio --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=85 --cov-branch
 
       - name: Run smoke tests (MOCK_LLM=true)
         env:

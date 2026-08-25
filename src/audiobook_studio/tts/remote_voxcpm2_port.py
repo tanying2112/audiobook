@@ -399,7 +399,7 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
             error_body = ""
             try:
                 error_body = response.text
-            except Exception:
+            except httpx.HTTPError:
                 pass
 
             logger.warning(f"{method} {url} -> {response.status_code} ({elapsed_ms:.0f}ms): {error_body[:200]}")

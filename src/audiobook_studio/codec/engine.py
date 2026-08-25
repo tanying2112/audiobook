@@ -32,7 +32,7 @@ def compress_audio_file(
     output_path: str,
     method: str = "neural",
     **kwargs: object,
-) -> dict:
+) -> dict[str, object]:
     """Compress ``input_path`` (WAV) to ``output_path``.
 
     ``method`` is one of:
@@ -41,12 +41,13 @@ def compress_audio_file(
     * ``"opus"``   -- Opus via ffmpeg (self-contained bitstream).
     """
     if method == "neural":
-        codec = get_numpy_codec(**kwargs)  # type: ignore[arg-type]
+        codec = get_numpy_codec(**kwargs)
         return codec.compress_file(input_path, output_path)
     if method == "opus":
         if not OpusCompressor.available():
             raise CodecBackendUnavailable("ffmpeg not found on PATH")
-        comp = OpusCompressor(**kwargs)  # type: ignore[arg-type]
+        bitrate = str(kwargs.get("bitrate", "16k"))
+        comp = OpusCompressor(bitrate=bitrate)
         return comp.compress_file(input_path, output_path)
     raise ValueError(f"unknown codec method: {method!r}")
 
@@ -54,18 +55,19 @@ def compress_audio_file(
 def decompress_audio_file(output_path: str, wav_path: str, method: str = "neural", **kwargs: object) -> None:
     """Inverse of :func:`compress_audio_file`."""
     if method == "neural":
-        codec = get_numpy_codec(**kwargs)  # type: ignore[arg-type]
+        codec = get_numpy_codec(**kwargs)
         codec.decompress_file(output_path, wav_path)
         return
     if method == "opus":
         if not OpusCompressor.available():
             raise CodecBackendUnavailable("ffmpeg not found on PATH")
-        OpusCompressor(**kwargs).decompress_file(output_path, wav_path)  # type: ignore[arg-type]
+        bitrate = str(kwargs.get("bitrate", "16k"))
+        OpusCompressor(bitrate=bitrate).decompress_file(output_path, wav_path)
         return
     raise ValueError(f"unknown codec method: {method!r}")
 
 
-def benchmark(input_wav: str, opus_bitrate: str = "16k") -> dict:
+def benchmark(input_wav: str, opus_bitrate: str = "16k") -> dict[str, object]:
     """Report size-reduction for every available codec method.
 
     Returns a dict with ``neural`` and (if ffmpeg present) ``opus`` stats.  This

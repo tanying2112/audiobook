@@ -51,7 +51,7 @@ class PodcastEpisode:
                 # 如果文件不存在，基于路径和标题生成
                 hash_input = f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
                 return hashlib.sha256(hash_input.encode()).hexdigest()
-        except Exception:
+        except OSError:
             # 后备方案：基于标题和时间
             hash_input = f"{self.title}:{self.pub_date.isoformat()}"
             return hashlib.sha256(hash_input.encode()).hexdigest()

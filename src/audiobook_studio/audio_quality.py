@@ -680,8 +680,12 @@ async def check_all_segments(
             logger.info(f"Quality check failed for {segment_id}, retry {attempt}/{max_retries}")
 
             try:
-                # Call retry callback to re-synthesize
-                new_path = retry_callback(segment_id, attempt)
+                # Call retry callback to re-synthesize (supports both sync and async)
+                retry_result = retry_callback(segment_id, attempt)
+                if asyncio.iscoroutine(retry_result):
+                    new_path = await retry_result
+                else:
+                    new_path = retry_result
                 if new_path and Path(new_path).exists():
                     current_path = Path(new_path)
                     result = await _check_segment_async(

@@ -340,7 +340,7 @@ async def _broadcast_agent_event(project_id: int, event: dict):
         for ws in agent_chat_connections[project_id]:
             try:
                 await ws.send_text(json.dumps(event, ensure_ascii=False))
-            except Exception:
+            except RuntimeError:
                 disconnected.add(ws)
         for ws in disconnected:
             agent_chat_connections[project_id].discard(ws)

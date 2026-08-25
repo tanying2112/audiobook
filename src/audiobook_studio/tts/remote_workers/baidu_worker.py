@@ -25,12 +25,12 @@ def is_gpu_available() -> bool:
     try:
         import torch
         return torch.cuda.is_available()
-    except Exception:
+    except ImportError:
         pass
     try:
         import paddle
         return paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
-    except Exception:
+    except ImportError:
         pass
     return False
 
@@ -39,12 +39,12 @@ def get_device_name() -> str:
     try:
         import paddle
         return paddle.device.cuda.get_device_name(0)
-    except Exception:
+    except ImportError:
         pass
     try:
         import torch
         return torch.cuda.get_device_name(0)
-    except Exception:
+    except ImportError:
         pass
     return "CPU"
 
@@ -53,13 +53,13 @@ def get_gpu_memory_used_mb() -> int:
     try:
         import paddle
         return paddle.device.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except ImportError:
         pass
     try:
         import torch
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except ImportError:
         pass
     return 0
 
@@ -68,13 +68,13 @@ def get_gpu_memory_total_mb() -> int:
     try:
         import paddle
         return paddle.device.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except ImportError:
         pass
     try:
         import torch
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except ImportError:
         pass
     return 0
 
