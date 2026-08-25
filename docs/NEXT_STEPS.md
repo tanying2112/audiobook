@@ -80,6 +80,14 @@ Phase D 发布准备                  →  D1 → D2
 
 > 全程仅用免费资源:Edge-TTS(微软免费层)、本机 ffmpeg、免费 LLM 额度、确定性合成。无付费云/API。
 
+#### Phase B+ — 流式 TTS 实时播放（新增,2026-08-25）
+
+| 任务 | 策略 | 脚本/端点 | 关键结果 |
+|---|---|---|---|
+| **B+ 流式 TTS** | 新增 `/api/tts/stream`(POST+GET)返回分块音频流,客户端可在整段合成完成前开始播放 | `src/audiobook_studio/api/tts_voices.py`(`stream_tts`/`stream_tts_get`)+ `src/audiobook_studio/tts/edge_tts_engine.py`(`stream()` prosody 修复) | `StreamingResponse` + `transfer-encoding: chunked` + `x-accel-buffering: no`;`engine=edge_tts`(默认,真实免费 MP3)/`engine=mock`(或 `MOCK_TTS=true`,离线 WAV 正弦);docker 实测 HTTP 200、有效 RIFF/WAVE 16-bit mono 24000Hz、无 token 返回 401;7 个单测全绿;CI-faithful 全量 5062 passed / 21 skipped / 0 failed |
+
+> 验收:端点返回 `audio/chunk` 流(分块传输),实时播放无需等待整段合成完成。
+
 ### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
 
 | # | 任务 | 验收标准 |
@@ -111,6 +119,7 @@ Phase D 发布准备                  →  D1 → D2
 | B2 S3.1 GEPA | ✅ 已完成(真实 DSPy 跑) | `a9d1f12` | DSPy 3.3.1 已装→真实 GEPA few-shot 跑 /admin/evolution/run 路径;`perplexity_drop_pct>0.15` 为 mock 分支验收(不适用);`scripts/run_gepa_b2.py` |
 | B3 S3.3 端到端 | ✅ 已完成(真实 ffmpeg MP4) | `678131d` | Edge-TTS 真实语音 + 本地 ffmpeg 正弦 BGM + mux_audio_subtitle_to_mp4→可播放 MP4(三轨);`scripts/run_e2e_bgm_mp4.py` |
 | B4 S3.4 跨语言 | ✅ 已完成(真实免费 LLM) | `deb8ab8` | 免费 LLM(en/ja/ko→zh 翻译)+ Edge-TTS 外语音色→6 段外语音频;`scripts/run_cross_language_b4.py` |
+| B+ 流式 TTS | ✅ 已完成(真实免费 Edge-TTS + 离线 mock) | `054ab32` | `/api/tts/stream`(POST+GET)分块音频流,`transfer-encoding: chunked`;`engine=edge_tts`(默认,真实 MP3)/`mock`(离线 WAV);docker 实测 200+有效 WAV+401 鉴权;7 单测绿;CI 全量 5062 passed |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |
