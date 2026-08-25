@@ -11,11 +11,14 @@ Usage:
 
 import argparse
 import json
+import logging
 import statistics
 import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+logger = logging.getLogger(__name__)
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -153,8 +156,9 @@ def measure_stage_cost(stage: str, mock: bool = False) -> float:
             # 模拟一些处理时间
             time.sleep(0.01)
 
-        except Exception:
+        except Exception as e:
             # 如果出错，使用一个较高的成本值作为惩罚
+            logger.warning(f"Cost benchmark error: {e}")
             costs.append(0.1)
 
     return statistics.mean(costs)

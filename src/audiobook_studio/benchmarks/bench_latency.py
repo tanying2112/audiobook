@@ -11,11 +11,14 @@ Usage:
 
 import argparse
 import json
+import logging
 import statistics
 import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+logger = logging.getLogger(__name__)
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -144,8 +147,9 @@ def measure_stage_latency(stage: str, mock: bool = False) -> float:
             else:
                 time.sleep(0.05)  # 默认短延迟
 
-        except Exception:
+        except Exception as e:
             # 如果出错，使用一个惩罚性延迟值
+            logger.warning(f"Latency benchmark error: {e}")
             time.sleep(1.0)
 
         end_time = time.perf_counter()
