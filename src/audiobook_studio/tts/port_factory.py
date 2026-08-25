@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,7 +69,7 @@ class ZeroShotCloneConfig:
 
 def _get_lock():
     """Get threading lock (handles async contexts)."""
-    return os.threading.Lock() if hasattr(os, "threading") else None
+    return threading.Lock()
 
 
 def create_engine(
