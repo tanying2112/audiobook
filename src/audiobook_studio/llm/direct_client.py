@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
 
+# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
+from .semantic_cache import (
+    cached_llm_lookup,
+    cached_llm_store,
+    get_semantic_cache,
+)
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -190,60 +197,86 @@ class DirectProviderClient:
         Returns:
             LLMCallResult with parsed output and metadata
         """
-        if self.config.mock_mode:
-            return self._mock_call(prompt, response_model)
+        # --- LLM semantic cache (no-op when disabled) ---
+        _sem_cache = get_semantic_cache()
+        if _sem_cache is not None:
+            _cached = cached_llm_lookup(
+                _sem_cache,
+                prompt=prompt,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=(temperature if temperature is not None else self.config.temperature),
+                max_tokens=(max_tokens if max_tokens is not None else self.config.max_tokens),
+            )
+            if _cached is not None:
+                return _cached
 
-        messages = self._build_messages(prompt)
         temp = temperature if temperature is not None else self.config.temperature
         max_tok = max_tokens if max_tokens is not None else self.config.max_tokens
+        result: Any = None
+        if self.config.mock_mode:
+            result = self._mock_call(prompt, response_model)
+        else:
+            messages = self._build_messages(prompt)
 
-        start = time.time()
-        try:
-            # Run async call in event loop
-            if self.config.provider == DirectProviderType.OPENAI:
-                result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
-            elif self.config.provider == DirectProviderType.ANTHROPIC:
-                result = asyncio.run(self._call_anthropic(messages, response_model, temp, max_tok, **kwargs))
-            else:
-                raise ValueError(f"Unsupported provider: {self.config.provider}")
+            start = time.time()
+            try:
+                # Run async call in event loop
+                if self.config.provider == DirectProviderType.OPENAI:
+                    result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
+                elif self.config.provider == DirectProviderType.ANTHROPIC:
+                    result = asyncio.run(self._call_anthropic(messages, response_model, temp, max_tok, **kwargs))
+                else:
+                    raise ValueError(f"Unsupported provider: {self.config.provider}")
 
-            latency_ms = int((time.time() - start) * 1000)
+                latency_ms = int((time.time() - start) * 1000)
 
-            # Extract token usage from result
-            tokens_in = getattr(result, "_raw_usage", {}).get("prompt_tokens", 0)
-            tokens_out = getattr(result, "_raw_usage", {}).get("completion_tokens", 0)
+                # Extract token usage from result
+                tokens_in = getattr(result, "_raw_usage", {}).get("prompt_tokens", 0)
+                tokens_out = getattr(result, "_raw_usage", {}).get("completion_tokens", 0)
 
-            # If instructor didn't populate usage, try to get from raw response
-            if tokens_in == 0 and tokens_out == 0:
-                raw_resp = getattr(result, "_raw_response", None)
-                if raw_resp:
-                    usage = getattr(raw_resp, "usage", None)
-                    if usage:
-                        tokens_in = getattr(usage, "prompt_tokens", 0)
-                        tokens_out = getattr(usage, "completion_tokens", 0)
+                # If instructor didn't populate usage, try to get from raw response
+                if tokens_in == 0 and tokens_out == 0:
+                    raw_resp = getattr(result, "_raw_response", None)
+                    if raw_resp:
+                        usage = getattr(raw_resp, "usage", None)
+                        if usage:
+                            tokens_in = getattr(usage, "prompt_tokens", 0)
+                            tokens_out = getattr(usage, "completion_tokens", 0)
 
-            cost_usd = self._calculate_cost(tokens_in, tokens_out)
+                cost_usd = self._calculate_cost(tokens_in, tokens_out)
 
-            logger.info(
-                f"Direct LLM call [{self.config.provider.value}] model={self.config.model} "
-                f"tokens={tokens_in}/{tokens_out} cost=${cost_usd:.6f} latency={latency_ms}ms"
-            )
+                logger.info(
+                    f"Direct LLM call [{self.config.provider.value}] model={self.config.model} "
+                    f"tokens={tokens_in}/{tokens_out} cost=${cost_usd:.6f} latency={latency_ms}ms"
+                )
 
-            return LLMCallResult(
-                output=result,
+                result = LLMCallResult(
+                    output=result,
+                    model=self.config.model,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=cost_usd,
+                    latency_ms=latency_ms,
+                    schema_compliance=True,
+                    raw_response=getattr(result, "_raw_response", None),
+                )
+
+            except Exception as e:
+                latency_ms = int((time.time() - start) * 1000)
+                logger.error(f"Direct LLM call failed [{self.config.provider.value}]: {e} (latency={latency_ms}ms)")
+                raise
+        if _sem_cache is not None:
+            cached_llm_store(
+                _sem_cache,
+                prompt=prompt,
+                result=result,
+                response_model=response_model,
                 model=self.config.model,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_usd=cost_usd,
-                latency_ms=latency_ms,
-                schema_compliance=True,
-                raw_response=getattr(result, "_raw_response", None),
+                temperature=temp,
+                max_tokens=max_tok,
             )
-
-        except Exception as e:
-            latency_ms = int((time.time() - start) * 1000)
-            logger.error(f"Direct LLM call failed [{self.config.provider.value}]: {e} (latency={latency_ms}ms)")
-            raise
+        return result
 
     async def call_async(
         self,

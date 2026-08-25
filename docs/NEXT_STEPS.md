@@ -88,6 +88,14 @@ Phase D 发布准备                  →  D1 → D2
 
 > 验收:端点返回 `audio/chunk` 流(分块传输),实时播放无需等待整段合成完成。
 
+#### Phase B++ — LLM 语义缓存（新增,2026-08-25）
+
+| 任务 | 策略 | 脚本/模块 | 关键结果 |
+|---|---|---|---|
+| **B++ LLM 语义缓存** | 新增两级缓存(精确 SHA-256 + 语义余弦,默认关闭,`LLM_SEMANTIC_CACHE_ENABLED=true` 开启);零依赖特征哈希词袋向量(无需 sentence-transformers/torch);后端 `memory`(默认)/`redis`(不可达自动降级 memory);在 `LLMClient.call` 与 `DirectProviderClient.call` 透明接入 | `src/audiobook_studio/llm/semantic_cache.py`(新增 `SemanticCache`/`get_semantic_cache`/`reset_semantic_cache`/`cached_llm_lookup`/`cached_llm_store`/`normalize_prompt`)+ `src/audiobook_studio/llm/client.py` + `src/audiobook_studio/llm/direct_client.py` | 两级命中(精确 ~1.8ms / 语义重写命中),`None` 输出不缓存,差异化 namespace(model/temp/max_tokens/response_model),TTL 过期,redis 后端 + 不可达降级;15 个单测全绿(含 `test_acceptance_repeated_request_under_100ms`:首调用 ~200ms、重复 < 100ms、底层仅调用一次);CI-faithful 全量回归进行中 |
+
+> 验收:重复请求响应时间 < 100ms(精确命中 ~1.8ms;语义层对换述/同义词命中并复用历史回答)。
+
 ### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
 
 | # | 任务 | 验收标准 |
@@ -120,6 +128,7 @@ Phase D 发布准备                  →  D1 → D2
 | B3 S3.3 端到端 | ✅ 已完成(真实 ffmpeg MP4) | `678131d` | Edge-TTS 真实语音 + 本地 ffmpeg 正弦 BGM + mux_audio_subtitle_to_mp4→可播放 MP4(三轨);`scripts/run_e2e_bgm_mp4.py` |
 | B4 S3.4 跨语言 | ✅ 已完成(真实免费 LLM) | `deb8ab8` | 免费 LLM(en/ja/ko→zh 翻译)+ Edge-TTS 外语音色→6 段外语音频;`scripts/run_cross_language_b4.py` |
 | B+ 流式 TTS | ✅ 已完成(真实免费 Edge-TTS + 离线 mock) | `054ab32` | `/api/tts/stream`(POST+GET)分块音频流,`transfer-encoding: chunked`;`engine=edge_tts`(默认,真实 MP3)/`mock`(离线 WAV);docker 实测 200+有效 WAV+401 鉴权;7 单测绿;CI 全量 5062 passed |
+| B++ LLM 语义缓存 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/semantic_cache.py`(新增)+ `client.py`/`direct_client.py` 接入;两级缓存(精确+语义)、memory/redis 后端、redis 不可达降级;15 单测绿(重复请求 < 100ms 验收达成) |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |

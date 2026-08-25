@@ -34,6 +34,13 @@ from .constitutional_rules import apply_constitutional_rules
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
 
+# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
+from .semantic_cache import (
+    cached_llm_lookup,
+    cached_llm_store,
+    get_semantic_cache,
+)
+
 T = TypeVar("T", bound=BaseModel)
 
 # Model pricing (USD per 1M tokens) - approximate
@@ -233,9 +240,34 @@ class LLMClient:
         if response_model is None:
             raise ValueError("response_model is required")
 
-        if self.config.mock_mode:
-            return self._mock_call(prompt_str, response_model)
+        # --- LLM semantic cache (no-op when disabled) ---
+        _sem_cache = get_semantic_cache()
+        if _sem_cache is not None:
+            _cached = cached_llm_lookup(
+                _sem_cache,
+                prompt=prompt,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=_temperature,
+                max_tokens=_max_tokens,
+            )
+            if _cached is not None:
+                return _cached
 
+        if self.config.mock_mode:
+            result: Any = None
+            result = self._mock_call(prompt_str, response_model)
+            if _sem_cache is not None:
+                cached_llm_store(
+                    _sem_cache,
+                    prompt=prompt,
+                    result=result,
+                    response_model=response_model,
+                    model=self.config.model,
+                    temperature=_temperature,
+                    max_tokens=_max_tokens,
+                )
+            return result
         start = time.time()
         try:
             # Accept either a string prompt or a full messages list
@@ -320,7 +352,7 @@ class LLMClient:
 
             # Apply constitutional rules
             ruled_output = apply_constitutional_rules(result, context={"model": self.config.model})
-            return LLMCallResult(
+            result = LLMCallResult(
                 output=ruled_output,
                 model=self.config.model,
                 tokens_in=tokens_in,
@@ -333,6 +365,17 @@ class LLMClient:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             raise
+        if _sem_cache is not None:
+            cached_llm_store(
+                _sem_cache,
+                prompt=prompt,
+                result=result,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=_temperature,
+                max_tokens=_max_tokens,
+            )
+        return result
 
     def _mock_call(self, prompt: str, response_model: Type[T]) -> LLMCallResult:
         """Mock LLM call for testing."""
