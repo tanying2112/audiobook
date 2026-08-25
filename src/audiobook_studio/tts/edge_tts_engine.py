@@ -420,8 +420,17 @@ class EdgeTTSEngine(BaseTTSEngine):
         if voice_id not in EDGE_VOICES:
             voice_id = "zh-CN-XiaoxiaoNeural"
 
-        # Build SSML for prosody control
-        ssml = self._build_ssml(text, voice_id, prosody) if prosody else text
+        # Build SSML for prosody control. ``prosody`` is a TTSProsody dataclass here;
+        # _build_ssml expects a plain dict, so convert it (mirrors synthesize()).
+        prosody_dict = None
+        if prosody:
+            prosody_dict = {
+                "rate": prosody.rate,
+                "pitch": prosody.pitch,
+                "volume": prosody.volume,
+                "emotion": prosody.emotion,
+            }
+        ssml = self._build_ssml(text, voice_id, prosody_dict) if prosody_dict else text
 
         # Stream audio chunks
         communicate = edge_tts.Communicate(ssml, voice_id)

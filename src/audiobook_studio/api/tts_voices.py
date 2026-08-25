@@ -1,19 +1,21 @@
 """TTS Voice enumeration API endpoint."""
 
+import asyncio
 import logging
 import os
 import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import AsyncGenerator, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
-from ..tts.edge_tts_engine import create_edge_tts_engine
+from ..tts.engine import TTSTaskPayload, TTSProsody, TTSVoiceAnchor
 from ..tts.kokoro_backend import create_kokoro_backend
 
 logger = logging.getLogger(__name__)
@@ -488,6 +490,146 @@ async def preview_voice(voice_id: str, text: str = "这是一个语音试听样�
         "preview_url": f"/api/tts/preview/{voice_id}.mp3",
         "note": "Voice preview synthesis - placeholder implementation",
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Streaming TTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+DEFAULT_STREAM_VOICE = "zh-CN-XiaoxiaoNeural"
+
+
+class TTSStreamRequest(BaseModel):
+    """Request body for streaming TTS synthesis."""
+
+    text: str = Field(..., min_length=1, description="Text to synthesize (streamed back as audio)")
+    voice_id: str = Field(
+        default=DEFAULT_STREAM_VOICE,
+        description="Voice identifier (Edge-TTS voice id)",
+    )
+    engine: str = Field(
+        default="edge_tts",
+        description="Synthesis backend: 'edge_tts' (real, free, MP3) or 'mock' (offline WAV sine).",
+    )
+    speed: float = Field(default=1.0, ge=0.5, le=2.0, description="Speech rate multiplier")
+    pitch: float = Field(default=0.0, ge=-12.0, le=12.0, description="Pitch shift in semitones")
+    volume: float = Field(default=0.0, ge=-20.0, le=20.0, description="Volume gain in dB")
+
+
+def _tts_stream_use_mock(engine: str) -> bool:
+    """Whether to use the offline mock generator.
+
+    Mock is used when MOCK_TTS is enabled globally (the project-wide free/offline
+    switch) or when the caller explicitly requests engine='mock'.
+    """
+    env_mock = os.environ.get("MOCK_TTS", "false").lower() == "true"
+    return env_mock or engine == "mock"
+
+
+def _mock_wav_bytes(text: str, sample_rate: int = 24000) -> bytes:
+    """Generate a deterministic sine-tone WAV (no external deps) for offline streaming.
+
+    The WAV header is written first so a client can start decoding/playback as soon
+    as the first chunk arrives, while the remaining PCM chunks keep streaming.
+    """
+    import array
+    import io
+    import math
+    import wave
+
+    duration_s = min(max(1.0, len(text) / 20.0), 5.0)
+    num_samples = int(sample_rate * duration_s)
+    pcm = array.array("h")
+    for i in range(num_samples):
+        sample = int(32767 * 0.3 * math.sin(2.0 * math.pi * 220.0 * i / sample_rate))
+        pcm.append(sample)
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm.tobytes())
+    return buf.getvalue()
+
+
+async def _mock_stream_generator(text: str, chunk_size: int = 4096) -> AsyncGenerator[bytes, None]:
+    """Yield the mock WAV in chunks so the HTTP response streams progressively."""
+    data = _mock_wav_bytes(text)
+    for start in range(0, len(data), chunk_size):
+        yield data[start : start + chunk_size]
+        await asyncio.sleep(0)  # cooperative yield -> client receives chunks incrementally
+
+
+async def _edge_stream_generator(req: TTSStreamRequest) -> AsyncGenerator[bytes, None]:
+    """Stream real audio via Edge-TTS (yields MP3 chunks as they are synthesized)."""
+    from ..tts.edge_tts_engine import create_edge_tts_engine
+
+    engine = await create_edge_tts_engine(mock_mode=False)
+    payload = TTSTaskPayload(
+        text=req.text,
+        voice_anchor=TTSVoiceAnchor(voice_id=req.voice_id or DEFAULT_STREAM_VOICE),
+        prosody=TTSProsody(rate=req.speed, pitch=req.pitch, volume=req.volume),
+    )
+    async for chunk in engine.stream(payload):
+        if chunk:
+            yield chunk
+
+
+@router.post("/stream")
+async def stream_tts(req: TTSStreamRequest):
+    """
+    Stream synthesized speech in real time (chunked HTTP response).
+
+    The response is an ``audio/chunk`` stream: audio bytes are sent to the client
+    as soon as they are synthesized, so playback can begin *before* the whole
+    utterance has finished — no need to wait for full synthesis.
+
+    - ``engine="edge_tts"`` (default): real, free Microsoft Edge TTS. Chunks are
+      MP3 (``audio/mpeg``) produced by Edge-TTS's native streaming API.
+    - ``engine="mock"`` (or global ``MOCK_TTS=true``): a deterministic WAV sine
+      tone is streamed (``audio/wav``), so the endpoint works fully offline.
+    """
+    if _tts_stream_use_mock(req.engine):
+        generator: AsyncGenerator[bytes, None] = _mock_stream_generator(req.text)
+        media_type = "audio/wav"
+    else:
+        generator = _edge_stream_generator(req)
+        media_type = "audio/mpeg"
+
+    return StreamingResponse(
+        generator,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",  # disable proxy buffering for real-time playback
+            "Content-Disposition": "inline",
+        },
+    )
+
+
+@router.get("/stream")
+async def stream_tts_get(
+    text: str = "",
+    voice_id: str = DEFAULT_STREAM_VOICE,
+    engine: str = "edge_tts",
+    speed: float = 1.0,
+    pitch: float = 0.0,
+    volume: float = 0.0,
+):
+    """
+    GET convenience variant of ``POST /api/tts/stream`` for quick browser/curl tests.
+
+    Example::
+
+        curl -N "http://localhost:8000/api/tts/stream?text=hello&engine=mock" > out.wav
+    """
+    if not text:
+        raise HTTPException(status_code=422, detail="query parameter 'text' is required")
+    req = TTSStreamRequest(
+        text=text, voice_id=voice_id, engine=engine, speed=speed, pitch=pitch, volume=volume
+    )
+    return await stream_tts(req)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
