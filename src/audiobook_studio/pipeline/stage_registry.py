@@ -145,11 +145,6 @@ class ExtractStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        # For extract stage, chapter may not exist yet - write_extract creates it.
-        # ``write_extract`` is ``async`` (persistence.py: "All functions are async
-        # and require an AsyncSession"); the live orchestrator drives persistence
-        # via ``apersist`` below. This sync ``persist`` is retained for the
-        # abstract-base API surface and bridges the async write through the same
         """Sync bridge to :meth:`apersist`.
 
         ``apersist`` is the source of truth for the DB writes (``write_extract``

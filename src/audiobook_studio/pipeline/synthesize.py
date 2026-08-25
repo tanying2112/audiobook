@@ -31,6 +31,7 @@ from ..llm import LLMRouter, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
 from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress, emit_paragraph_complete
+from ..api.websocket import emit_pipeline_event
 from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
 from ..security import safe_subprocess_args
@@ -1357,7 +1358,7 @@ class SynthesizePipeline:
 
         except Exception as e:
             logger.error(f"Crossfade replace failed: {e}")
-            return self._simple_replace_segment(
+            return await self._simple_replace_segment(
                 chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
             )
 
