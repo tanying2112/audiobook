@@ -104,6 +104,14 @@ Phase D 发布准备                  →  D1 → D2
 
 > 验收:LLM 推理速度提升 ≥ 2 倍(前向次数 6x 确定性证明 + 墙钟 5.4x 实时证明;弱 drafter 自动退化不劣化)。本地模型(vLLM/llama.cpp/HF/TGI 均原生支持 speculative)接入即享;远程/echo+logprobs API 走 prompt-lookup 自推测。
 
+#### Phase B++++ — 联邦学习:多用户数据隐私保护下模型聚合(新增,2026-08-25)
+
+| 任务 | 策略 | 脚本/模块 | 关键结果 |
+|---|---|---|---|
+| **B++++ 联邦学习** | 引入联邦学习框架,实现**多用户数据隐私保护下的模型聚合**(纯 numpy、零额外依赖、默认关闭 `FEDERATED_LEARNING_ENABLED=true`)。四大支柱:① **本地训练**:原始数据永不出端,`FederatedClient` 仅在本地训练并上传(掩码/加扰后的)模型参数;② **FedAvg 聚合**:`FedAvgAggregator` 按样本量加权平均各客户端 n-gram 计数表(经验统计的正确合并方式);③ **安全聚合(Secure Aggregation)**:`SecAggSession` 实现成对随机掩码 MPC(Bonawitz 2017),**服务器只见掩码之和、永远拿不到任一客户端的明文参数**(含掉线容错:掉线客户的对等掩码由其余客户揭示以恢复剩余之和);④ **差分隐私(DP)**:客户端侧 L2 裁剪 + 高斯噪声 + ε/δ 记账(`gaussian_dp_epsilon`,含 RDP 组合),并内置**成员推断审计器**(`MembershipInferenceEstimator`)量化隐私增益。以项目内可训练的 n-gram 自回归模型(`LocalARModelAdapter`,即 speculative 用的草稿/语言模型)作为联邦对象——多用户可在不共享各自私有文本(书籍)的前提下协作训练更优的 n-gram 语言/规范化模型 | `src/audiobook_studio/fl/`(新增 `model.py`/`aggregator.py`/`secagg.py`/`privacy.py`/`engine.py`/`__init__.py`):`FederatableModel`/`LocalARModelAdapter`/`ModelParameters`/`FedAvgAggregator`/`SecAggSession`/`quantize`/`dequantize`/`DpConfig`/`gaussian_dp_epsilon`/`MembershipInferenceEstimator`/`clip_to_norm`/`add_gaussian_noise`/`FederatedServer`/`FederatedClient`/`FLConfig`/`is_federated_enabled` | **多用户**:3 个客户端用各自私有语料本地训练,联邦全局模型在保留集上对数似然优于任一单客户端(泛化更好);**FedAvg**:计数表按样本量正确加权平均;**安全聚合**:服务器仅恢复掩码之和、任一明文参数不可恢复(掉线场景仍正确恢复剩余之和);**DP**:ε 随噪声单调下降(γ=5 时 ε≈2.4、γ=1 时 ε≈12),成员推断攻击准确率在无 DP 时 ≥0.7、加强噪声后显著下降(趋近 0.5 随机);11 个单测全绿 |
+
+> 验收:多用户数据隐私保护下完成模型聚合——原始数据不出端(FedAvg/安全聚合),且通过差分隐私 + 成员推断审计证明隐私增益。
+
 ### Phase C — 付费/云依赖项(诚实交付,可选,需资源)
 
 | # | 任务 | 验收标准 |
@@ -138,6 +146,7 @@ Phase D 发布准备                  →  D1 → D2
 | B+ 流式 TTS | ✅ 已完成(真实免费 Edge-TTS + 离线 mock) | `054ab32` | `/api/tts/stream`(POST+GET)分块音频流,`transfer-encoding: chunked`;`engine=edge_tts`(默认,真实 MP3)/`mock`(离线 WAV);docker 实测 200+有效 WAV+401 鉴权;7 单测绿;CI 全量 5062 passed |
 | B++ LLM 语义缓存 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/semantic_cache.py`(新增)+ `client.py`/`direct_client.py` 接入;两级缓存(精确+语义)、memory/redis 后端、redis 不可达降级;15 单测绿(重复请求 < 100ms 验收达成);`Dockerfile.free` + `docker-compose.free.yml` 已默认开启(api/worker 共享 redis 后端) |
 | B+++ 推理加速 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/llm/speculative.py`(新增);Speculative Decoding(贪心==朴素贪心、前向 6x/墙钟 5.4x ≥2x)+ Prompt-Lookup 自推测 + 连续批处理(独立调用 ≥2x)+ `SpeculativeHead` 预留 Medusa/EAGLE;10 单测绿 |
+| B++++ 联邦学习 | ✅ 已完成(默认关闭,零依赖) | 待提交 | `src/audiobook_studio/fl/`(新增);本地训练(数据不出端)+ FedAvg + 安全聚合(服务器仅见掩码和)+ 差分隐私(裁剪/噪声/εδ 记账)+ 成员推断审计;n-gram 模型联邦后泛化优于单客户端;11 单测绿 |
 | C1 StableAudio | 🔲 待办(可选) | | |
 | C2 CRDT | 🔲 待办(可选) | | |
 | C3 多区域 | 🔲 待办(可选) | | |
