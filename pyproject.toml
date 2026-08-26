@@ -117,6 +117,10 @@ omit = [
     # TTS: truly external (remote Modal services, require GPU)
     "src/audiobook_studio/tts/remote_voxcpm2_port.py",
     "src/audiobook_studio/tts/remote_voxcpm2_client.py",
+    # TTS: local backends requiring GPU / model files unavailable in CI
+    "src/audiobook_studio/tts/voxcpm2_backend.py",
+    "src/audiobook_studio/tts/kokoro_backend.py",
+    "src/audiobook_studio/tts/kokoro_port.py",
     # Pipeline stages requiring external GPU services
     "src/audiobook_studio/pipeline/multimodal.py",
     # Models with complex DB dependencies (not directly tested)

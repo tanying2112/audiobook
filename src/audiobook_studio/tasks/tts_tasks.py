@@ -756,7 +756,8 @@ async def _run_synthesize_chapter_async(
                 "failed_indices": list(range(len(paragraphs))),
             }
         finally:
-            pipeline.close()
+            if "pipeline" in locals() and pipeline is not None:
+                pipeline.close()
 
 
 @celery_app.task(

@@ -36,6 +36,7 @@ class UnifiedConfig:
         self.project_root = project_root or Path(__file__).resolve().parents[3]
         self._settings: Optional[Settings] = None
         self._yaml_cache: Dict[str, Dict[str, Any]] = {}
+        self._llm_providers_cache: Optional[Any] = None
         self._docker_compose_cache: Dict[str, Any] = {}
         self._pyproject_cache: Dict[str, Any] = {}
 
@@ -100,6 +101,81 @@ class UnifiedConfig:
                 if name not in configs:
                     configs[name] = self.load_yaml_config(name)
         return configs
+
+    # =========================================================================
+    # LLM Providers Configuration (structured)
+    # =========================================================================
+
+    def load_llm_providers(self) -> Any:
+        """Load structured LLM providers configuration from llm_providers.yaml.
+
+        Returns:
+            LLMProvidersConfig instance with parsed providers, prompt_compression,
+            fallback, and cost_control settings.
+        """
+        if self._llm_providers_cache is not None:
+            return self._llm_providers_cache
+
+        try:
+            from ..llm.config_loader import LLMProvidersConfig
+        except ImportError:
+            logger = self._get_logger()
+            logger.warning("LLMProvidersConfig not available, returning raw dict")
+            return self.load_yaml_config("llm_providers")
+
+        data = self.load_yaml_config("llm_providers")
+        if not data:
+            # Return empty config with defaults
+            self._llm_providers_cache = LLMProvidersConfig(
+                providers=[],
+                prompt_compression={},
+                fallback={},
+                cost_control={},
+            )
+            return self._llm_providers_cache
+
+        # Parse using the existing LLMProvidersConfig logic
+        providers = []
+        for p in data.get("providers", []):
+            from ..llm.config_loader import ProviderConfig, StageName, ProviderType
+            providers.append(
+                ProviderConfig(
+                    name=p["name"],
+                    provider=ProviderType(p["provider"]),
+                    model=p["model"],
+                    api_key_env=p.get("api_key_env"),
+                    api_key_pool_env=p.get("api_key_pool_env", []),
+                    key_rotation_strategy=p.get("key_rotation_strategy", "round_robin"),
+                    base_url=p.get("base_url"),
+                    health_path=p.get("health_path"),
+                    priority=p.get("priority", 100),
+                    max_tokens_per_minute=p.get("max_tokens_per_minute", 10000),
+                    max_requests_per_minute=p.get("max_requests_per_minute", 60),
+                    timeout_seconds=p.get("timeout_seconds", 60),
+                    stages=[StageName(s) for s in p.get("stages", [])],
+                    enabled=p.get("enabled", True),
+                    extra_params=p.get("extra_params", {}),
+                )
+            )
+
+        # Sort by priority (lower number = higher priority)
+        providers.sort(key=lambda p: p.priority)
+
+        pc = data.get("prompt_compression", {})
+        fallback = data.get("fallback", {})
+        cost = data.get("cost_control", {})
+
+        self._llm_providers_cache = LLMProvidersConfig(
+            providers=providers,
+            prompt_compression=pc,
+            fallback=fallback,
+            cost_control=cost,
+        )
+        return self._llm_providers_cache
+
+    def get_llm_providers_config(self) -> Any:
+        """Get the structured LLM providers configuration (alias for load_llm_providers)."""
+        return self.load_llm_providers()
 
     # =========================================================================
     # Docker Compose Configuration Loading
@@ -533,6 +609,11 @@ def get_redis_config() -> Dict[str, Any]:
 def get_llm_config() -> Dict[str, Any]:
     """Get LLM configuration."""
     return get_unified_config().get_llm_config()
+
+
+def get_llm_providers_config() -> Any:
+    """Get structured LLM providers configuration."""
+    return get_unified_config().load_llm_providers()
 
 
 def get_tts_config() -> Dict[str, Any]:

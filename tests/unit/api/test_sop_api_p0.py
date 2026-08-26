@@ -107,7 +107,8 @@ class TestTriggerReflection:
         ):
             with pytest.raises(Exception) as ei:
                 await trigger_reflection("科幻")
-        assert "No corrections found" in str(ei.value.detail)
+        # DomainError has 'message' attribute instead of 'detail'
+        assert "No corrections found" in str(ei.value.message)
 
     @pytest.mark.asyncio
     async def test_below_threshold_no_update(self):

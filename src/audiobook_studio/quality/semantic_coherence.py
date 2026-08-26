@@ -93,7 +93,8 @@ class SemanticCoherenceChecker:
                 "passed": True,
                 "score": 1.0,
                 "semantic_score": 1.0,
-                "emotional_score": 1.0,
+                # 契约：未启用的检查项如实返回 None（未检查 ≠ 满分）
+                "emotional_score": 1.0 if check_emotional_curve else None,
                 "issues": ["段落数量不足，无法进行连贯性检查"],
             }
 
@@ -125,20 +126,41 @@ class SemanticCoherenceChecker:
                         f"段落 {i+1} 情感连贯性低: {score:.3f} < {emotional_threshold}"
                     )
 
-        # 计算总体得分
+        # 计算总体得分（未启用的维度不计入总分，避免虚高）
         avg_semantic = np.mean(semantic_scores) if semantic_scores else 1.0
-        avg_emotional = np.mean(emotional_scores) if emotional_scores else 1.0
-        overall_score = (avg_semantic + avg_emotional) / 2
+        if check_emotional_curve:
+            avg_emotional = np.mean(emotional_scores) if emotional_scores else 1.0
+            overall_score = (avg_semantic + avg_emotional) / 2
+            emotional_out: Optional[float] = float(avg_emotional)
+        else:
+            avg_emotional = None
+            overall_score = avg_semantic
+            emotional_out = None
 
-        return {
+        # 翻译质量（兑现 reference_paragraphs 参数承诺）：逐段原文/译文相似度均值；
+        # 引用缺失或长度不一致时如实返回 None。
+        translation_quality: Optional[float] = None
+        if reference_paragraphs is not None:
+            if len(reference_paragraphs) == len(paragraphs) and paragraphs:
+                tq_scores = [
+                    self._compute_semantic_similarity(para, ref)
+                    for para, ref in zip(paragraphs, reference_paragraphs)
+                ]
+                translation_quality = float(np.mean(tq_scores)) if tq_scores else None
+
+        result = {
             "passed": len(issues) == 0,
             "score": float(overall_score),
             "semantic_score": float(avg_semantic),
-            "emotional_score": float(avg_emotional),
+            "emotional_score": emotional_out,
             "issues": issues,
             "semantic_scores": [float(s) for s in semantic_scores],
-            "emotional_scores": [float(s) for s in emotional_scores],
         }
+        if check_emotional_curve:
+            result["emotional_scores"] = [float(s) for s in emotional_scores]
+        if translation_quality is not None or reference_paragraphs is not None:
+            result["translation_quality"] = translation_quality
+        return result
 
     def _compute_semantic_similarity(self, text1: str, text2: str) -> float:
         """计算两段文本的语义相似度."""
@@ -158,39 +180,52 @@ class SemanticCoherenceChecker:
 
     def _lexical_overlap(self, text1: str, text2: str) -> float:
         """基于词汇重叠的简化相似度 (降级方案)."""
-        words1 = set(text1.split())
-        words2 = set(text2.split())
+        # 剥离中英文标点后再分词，使 "world!" 与 "world" 视为同一词
+        import re
+
+        strip = lambda t: re.sub(r"[\s。，！？：；、,.!?;:'\"“”‘’()（）\[\]{}<>《》—…\-]+", " ", t)  # noqa: E731
+        words1 = set(strip(text1).split())
+        words2 = set(strip(text2).split())
+        if not words1 and not words2:
+            # 两个空串视为完全一致
+            return 1.0
         if not words1 or not words2:
             return 0.0
         intersection = words1 & words2
         union = words1 | words2
         return len(intersection) / len(union)
 
-    def _compute_emotional_curve(self, paragraphs: List[str]) -> List[float]:
-        """计算情感强度曲线 (简化版：基于情感词汇)."""
-        # 简化实现：基于标点和情感词汇启发式
+    def _estimate_emotion_intensity(self, text: str) -> float:
+        """估计单段文本的情感强度 (0..1, 0=平稳).
+
+        启发式信号：极性情感词占比 + 感叹号密度 + 重复字符。
+        """
         emotional_keywords = {
             "positive": ["开心", "高兴", "快乐", "兴奋", "喜悦", "满意", "幸福", "温暖", "甜蜜", "欢笑"],
             "negative": ["悲伤", "痛苦", "愤怒", "恐惧", "绝望", "孤独", "失望", "心酸", "委屈", "哭泣"],
             "neutral": ["平静", "冷静", "思考", "观察", "描述", "叙述", "说明", "解释"],
         }
+        pos_count = sum(1 for kw in emotional_keywords["positive"] if kw in text)
+        neg_count = sum(1 for kw in emotional_keywords["negative"] if kw in text)
+        neu_count = sum(1 for kw in emotional_keywords["neutral"] if kw in text)
 
-        scores = []
-        for para in paragraphs:
-            pos_count = sum(1 for kw in emotional_keywords["positive"] if kw in para)
-            neg_count = sum(1 for kw in emotional_keywords["negative"] if kw in para)
-            neu_count = sum(1 for kw in emotional_keywords["neutral"] if kw in para)
+        total = pos_count + neg_count + neu_count
+        polarity = (pos_count + neg_count) / max(total, 1) if total else 0.0
 
-            total = pos_count + neg_count + neu_count
-            if total == 0:
-                scores.append(1.0)  # 无情感词汇，视为平稳
-            else:
-                # 情感强度：极性词汇占比
-                intensity = (pos_count + neg_count) / max(total, 1)
-                # 连贯性：相邻段落情感方向一致性 (简化)
-                scores.append(1.0 - intensity * 0.5)  # 启发式：情感越强烈越难连贯
+        # 感叹号密度（每个感叹号贡献 0.2，封顶 0.6）
+        bangs = min(text.count("！") + text.count("!"), 3) * 0.2
 
-        return scores
+        # 重复字符（如"啊啊啊啊啊"）：连续同字符 ≥3 记为强情绪信号
+        repeated = 0.4 if any(
+            text[i] == text[i + 1] == text[i + 2] for i in range(len(text) - 2)
+        ) else 0.0
+
+        intensity = polarity * 0.6 + max(bangs, repeated if not polarity else 0.0)
+        return float(min(max(intensity, 0.0), 1.0))
+
+    def _compute_emotional_curve(self, paragraphs: List[str]) -> List[float]:
+        """计算情感强度曲线 (连贯性得分：情感越强烈越难保持连贯)."""
+        return [1.0 - self._estimate_emotion_intensity(para) * 0.5 for para in paragraphs]
 
 
 # Backward-compatible convenience function

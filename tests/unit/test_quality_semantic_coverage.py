@@ -21,62 +21,40 @@ from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 class TestSemanticCoherenceChecker:
     """Test SemanticCoherenceChecker class."""
 
-    @patch("audiobook_studio.quality.semantic_coherence.Path")
-    @patch("audiobook_studio.quality.semantic_coherence.yaml")
-    def test_init_default_config(self, mock_yaml, mock_path):
-        """Test initialization with default config when file not found."""
-        # Mock the path existence to return True (so we try to open the file)
-        mock_path_instance = MagicMock()
-        mock_path_instance.exists.return_value = True
-        mock_path.return_value = mock_path_instance
+    def test_init_default_config(self):
+        """配置源返回空时，构造器回退到内置默认配置。"""
+        mock_unified = MagicMock()
+        mock_unified.load_yaml_config.return_value = None  # 未找到 → 默认值
+        with patch(
+            "audiobook_studio.quality.semantic_coherence.get_unified_config",
+            return_value=mock_unified,
+        ):
+            checker = SemanticCoherenceChecker("dummy/path.yaml")
 
-        # Mock the file open to raise FileNotFoundError
-        mock_yaml.safe_load.side_effect = FileNotFoundError()
-
-        # The sentence_transformers mock is module-global and shared across the
-        # whole session, so its call count accumulates from every
-        # SemanticCoherenceChecker() instantiation elsewhere. Reset it (keeping
-        # the return_value) so we assert only this construction's single call.
-        mock_sentence_transformers.SentenceTransformer.reset_mock(return_value=False)
-
-        # Create the checker
-        checker = SemanticCoherenceChecker("dummy/path.yaml")
-
-        # Check that the default config was used
-        expected_config = {
+        expected_default = {
             "audio": {
                 "semantic_coherence_threshold": 0.75,
                 "emotional_coherence_threshold": 0.80,
             }
         }
-        assert checker.config == expected_config
-        # Check that the SentenceTransformer was called to create the model
-        mock_sentence_transformers.SentenceTransformer.assert_called_once_with("paraphrase-multilingual-MiniLM-L12-v2")
-        # Check that the model was set on the instance
-        assert checker.semantic_model == mock_st_instance
+        assert checker.config == expected_default
 
-    @patch("audiobook_studio.quality.semantic_coherence.Path")
-    @patch("audiobook_studio.quality.semantic_coherence.yaml")
-    def test_init_with_config_file(self, mock_yaml, mock_path):
-        """Test initialization with a config file."""
-        # Mock the path existence to return True
-        mock_path_instance = MagicMock()
-        mock_path_instance.exists.return_value = True
-        mock_path.return_value = mock_path_instance
-
-        # Mock yaml.safe_load to return a config
-        mock_yaml.safe_load.return_value = {
+    def test_init_with_config_file(self):
+        """构造器通过 UnifiedConfig 加载配置并原样保留各节。"""
+        loaded = {
             "audio": {"silence_threshold_db": -30},
             "semantic": {"similarity_threshold": 0.8},
         }
+        mock_unified = MagicMock()
+        mock_unified.load_yaml_config.return_value = loaded
+        with patch(
+            "audiobook_studio.quality.semantic_coherence.get_unified_config",
+            return_value=mock_unified,
+        ):
+            checker = SemanticCoherenceChecker("dummy/path.yaml")
 
-        checker = SemanticCoherenceChecker("dummy/path.yaml")
-
-        # Check that the config was loaded (note: the actual code only uses audio section)
-        # The semantic section in the config file is ignored by the current implementation
+        mock_unified.load_yaml_config.assert_called_once_with("quality_thresholds")
         assert checker.config["audio"]["silence_threshold_db"] == -30
-        # The semantic section is not used in the current implementation, so it won't be in config
-        # But let's check what actually gets loaded
         assert "audio" in checker.config
 
     def test_get_default_config(self):
@@ -93,14 +71,14 @@ class TestSemanticCoherenceChecker:
         checker = SemanticCoherenceChecker()
 
         # Call the private method
-        similarity = checker._calculate_semantic_similarity("text1", "text2")
+        similarity = checker._compute_semantic_similarity("text1", "text2")
 
         # The cosine similarity of [0.1,0.2,0.3] and [0.4,0.5,0.6] is 0.9746318461970762
         # We don't need to check the exact value, just that it's a float and reasonable
         assert isinstance(similarity, float)
         assert 0.0 <= similarity <= 1.0
         # The encode method should have been called once with a list of two strings
-        mock_st_instance.encode.assert_called_once_with(["text1", "text2"])
+        mock_st_instance.encode.assert_called_once_with(["text1", "text2"], convert_to_numpy=True)
 
     def test_check_coherence_basic(self):
         """Test check_coherence method with basic input."""

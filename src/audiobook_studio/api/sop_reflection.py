@@ -10,7 +10,9 @@ Provides REST and WebSocket endpoints for:
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 
 from src.audiobook_studio.pipeline.sop_reflection import (
@@ -152,7 +154,12 @@ async def trigger_reflection(genre: str, max_corrections: int = 100):
 
     corrections = collector.get_corrections_by_genre(genre, max_size=max_corrections)
     if not corrections:
-        raise HTTPException(status_code=404, detail=f"No corrections found for genre '{genre}'")
+        raise DomainError(
+            message=f"No corrections found for genre '{genre}'",
+            error_code="NOT_FOUND",
+            stage="reflect",
+            context={"genre": genre},
+        )
 
     result = engine.reflect(genre, corrections)
 

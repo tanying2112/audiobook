@@ -452,16 +452,28 @@ class AudiobookshelfIntegrator:
                 )
                 if resp.status_code == 200:
                     results = resp.json()
-                    for item in results:
-                        media = item.get("media") or {}
-                        metadata_item = media.get("metadata") or {}
-                        item_title = metadata_item.get("title", "")
-                        if item_title.lower() == book_title.lower():
-                            item_id = item.get("id")
-                            break
+                    # 防御：搜索接口契约是 list[dict]；若对端返回了其他形状
+                    # （dict / 字符串等），跳过本轮匹配而不是让整个上传流程失败。
+                    if isinstance(results, list):
+                        for item in results:
+                            if not isinstance(item, dict):
+                                continue
+                            media = item.get("media") or {}
+                            if not isinstance(media, dict):
+                                continue
+                            metadata_item = media.get("metadata") or {}
+                            if not isinstance(metadata_item, dict):
+                                continue
+                            item_title = metadata_item.get("title", "")
+                            if (
+                                isinstance(item_title, str)
+                                and item_title.lower() == book_title.lower()
+                            ):
+                                item_id = item.get("id")
+                                break
                 if item_id:
                     break
-            except httpx.HTTPError:
+            except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                 pass
 
         # 第六步：更新元数据（如果找到 item_id）
@@ -517,7 +529,7 @@ class AudiobookshelfIntegrator:
                 if resp.status_code not in (200, 204):
                     # 不致命，继续
                     pass
-            except httpx.HTTPError:
+            except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                 pass
 
             # 第七步：上传封面图片（如果有）
@@ -532,7 +544,7 @@ class AudiobookshelfIntegrator:
                     if resp.status_code not in (200, 201):
                         # 不致命
                         pass
-                except (httpx.HTTPError, ValueError):
+                except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                     pass
 
         # 构建返回结果
@@ -578,7 +590,7 @@ class AudiobookshelfIntegrator:
                     "status": "online",
                     "last_updated": datetime.now().isoformat(),
                 }
-        except httpx.HTTPError:
+        except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
             pass
 
         return {

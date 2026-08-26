@@ -90,35 +90,35 @@ class TestSimilarity:
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        score = checker._fallback_similarity("", "")
+        score = checker._lexical_overlap("", "")
         assert score == 1.0
 
     def test_fallback_similarity_empty_one(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        score = checker._fallback_similarity("hello", "")
+        score = checker._lexical_overlap("hello", "")
         assert score == 0.0
 
     def test_fallback_similarity_identical(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        score = checker._fallback_similarity("hello", "hello")
+        score = checker._lexical_overlap("hello", "hello")
         assert score == 1.0
 
     def test_fallback_similarity_similar(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        score = checker._fallback_similarity("hello world", "hello world!")
+        score = checker._lexical_overlap("hello world", "hello world!")
         assert score > 0.5
 
     def test_fallback_similarity_different(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        score = checker._fallback_similarity("你好", "hello")
+        score = checker._lexical_overlap("你好", "hello")
         assert score < 0.5
 
     def test_calculate_semantic_similarity_no_model(self):
@@ -127,7 +127,7 @@ class TestSimilarity:
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
         # semantic_model should be None since sentence-transformers likely not installed
         if checker.semantic_model is None:
-            score = checker._calculate_semantic_similarity("text a", "text b")
+            score = checker._compute_semantic_similarity("text a", "text b")
             assert 0.0 <= score <= 1.0
 
 
@@ -180,20 +180,21 @@ class TestEmotionalCurve:
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        scores = checker._check_emotional_curve_continuity(
+        scores = checker._compute_emotional_curve(
             [
                 "今天天气真好！",
                 "我心情愉快。",
                 "突然下起雨来。",
             ]
         )
-        assert len(scores) == 2
+        # 新契约：每段一个连贯性得分（len == 段数）
+        assert len(scores) == 3
         assert all(0.0 <= s <= 1.0 for s in scores)
 
     def test_curve_identical_emotion(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
         checker = SemanticCoherenceChecker(config_path="/nonexistent.yaml")
-        scores = checker._check_emotional_curve_continuity(["普通句子。", "另一个普通句子。"])
-        assert len(scores) == 1
-        assert scores[0] >= 0.9  # Similar emotion intensity
+        scores = checker._compute_emotional_curve(["普通句子。", "另一个普通句子。"])
+        assert len(scores) == 2
+        assert all(s >= 0.9 for s in scores)  # 无极性词 → 平稳，接近满分
