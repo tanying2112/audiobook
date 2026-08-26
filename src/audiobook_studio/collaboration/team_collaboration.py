@@ -213,7 +213,7 @@ class CollaborationManager:
                         if "updated_at" in member_data:
                             member_data["updated_at"] = datetime.fromisoformat(member_data["updated_at"])
                         self.team_members[member_id] = TeamMember(**member_data)
-            except Exception as e:
+            except (OSError, IOError, json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"⚠️ 加载团队成员数据失败: {e}")
 
         # 可以继续加载其他数据类型...
@@ -240,7 +240,7 @@ class CollaborationManager:
             with open(members_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             logger.info(f"💾 保存了 {len(self.team_members)} 个团队成员数据")
-        except Exception as e:
+        except (OSError, IOError, json.JSONDecodeError, ValueError) as e:
             logger.warning(f"⚠️ 保存团队成员数据失败: {e}")
 
         # 可以继续保存其他数据类型...

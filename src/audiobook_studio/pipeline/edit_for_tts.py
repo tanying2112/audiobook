@@ -187,7 +187,7 @@ class EditForTtsPipeline:
                 pass
 
             return cast(TtsEditOutput, result.output)
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
             # Emit stage exit (error)
             try:
                 import asyncio

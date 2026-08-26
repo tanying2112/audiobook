@@ -248,6 +248,12 @@ def _build_config_from_env() -> dict:
             "endpoint": os.environ["VOXCPM2_ENDPOINT"],
             "timeout_sec": int(os.environ.get("VOXCPM2_TIMEOUT_SEC", "60")),
         }
+    # VoxCPM2 remote URL (v0.4 - Modal free GPU)
+    elif os.environ.get("VOXCPM2_REMOTE_URL"):
+        config["voxcpm2"] = {
+            "endpoint": os.environ["VOXCPM2_REMOTE_URL"],
+            "timeout_sec": int(os.environ.get("VOXCPM2_TIMEOUT_SEC", "60")),
+        }
 
     # Streaming TTS configs (v0.4)
     streaming_engines = {

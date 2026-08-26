@@ -172,7 +172,7 @@ class AnalyzeStructurePipeline:
 
             return validated_output
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             # Emit stage exit (error)
             try:
                 import asyncio
@@ -248,6 +248,6 @@ if __name__ == "__main__":  # pragma: no cover
                 f.write(output_json)
         else:
             logger.info(output_json)
-    except Exception as e:
+    except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, IOError, json.JSONDecodeError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)

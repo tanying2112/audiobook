@@ -9,6 +9,7 @@ import base64
 import json
 import logging
 import os
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -273,7 +274,7 @@ class QualityCheckPipeline:
                 duration_match=False,
                 issues=["ffprobe_not_found"],
             )
-        except Exception as e:
+        except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as e:
             logger.error(f"Audio analysis failed for {audio_path}: {e}")
             return AudioAnalysisResult(
                 duration_ms=expected_duration_ms,
@@ -375,7 +376,7 @@ class QualityCheckPipeline:
 
         except FileNotFoundError:
             raise
-        except Exception as e:
+        except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as e:
             logger.error(f"ffprobe analysis failed: {e}")
             raise
 
@@ -397,7 +398,7 @@ class QualityCheckPipeline:
             with open(audio_path, "rb") as f:
                 audio_bytes = f.read()
             return base64.b64encode(audio_bytes).decode("utf-8")
-        except Exception as e:
+        except (OSError, IOError, ValueError) as e:
             logger.error(f"Failed to encode audio {audio_path}: {e}")
             return None
 
@@ -466,7 +467,7 @@ class QualityCheckPipeline:
                 )
                 return cast(QualityJudgment, result.output)
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             logger.warning(f"Multimodal quality judge failed for {segment_id}: {e}")
             return None
 
@@ -784,7 +785,7 @@ class QualityCheckPipeline:
                 )
 
                 judgments.append(judgment)
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                 from ..monitoring import record_stage_performance
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000

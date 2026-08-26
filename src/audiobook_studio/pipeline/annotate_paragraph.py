@@ -108,7 +108,7 @@ class AnnotateParagraphPipeline:
             rule_applier = get_rule_applier()
             input_data = rule_applier.apply_to_annotation_input(input_data, genre)
             logger.debug(f"[SOP] Applied learned rules for genre '{genre}' to paragraph {input_data.paragraph_index}")
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, ImportError, AttributeError) as e:
             logger.warning(f"[SOP] Failed to apply learned rules: {e}")
 
         # MOCK: 待真实实现
@@ -208,7 +208,7 @@ class AnnotateParagraphPipeline:
                 pass
 
             return cast(ParagraphAnnotation, result.output)
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             # Emit stage exit (error)
             try:
                 import asyncio

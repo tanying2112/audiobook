@@ -199,7 +199,7 @@ class BaseWorker(abc.ABC):
         }
         try:
             self.redis.setex(self.heartbeat_key, self.idle_timeout + 60, json.dumps(payload))
-        except Exception as e:
+        except (redis.exceptions.RedisError, json.JSONDecodeError, TypeError, ValueError) as e:
             print(f"❌ [{self.worker_id}] Heartbeat publish dropped: {e}", file=sys.stderr)
 
     def _process_single_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,7 +227,7 @@ class BaseWorker(abc.ABC):
                 "studio_id": self.studio_id,
                 "duration_ms": len(audio_bytes) * 1000 // 48000,  # rough estimate for 24kHz mono
             }
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, MemoryError, TypeError, KeyError, AttributeError) as e:
             print(f"💥 [{self.worker_id}] Task {task_id} suffered pipeline hardware crash: {e}", file=sys.stderr)
             return {
                 "id": task_id,
@@ -273,7 +273,7 @@ class BaseWorker(abc.ABC):
                 # Push result back
                 try:
                     self._execute_network_call_with_retry(self.redis.rpush, "tts:results", json.dumps(result))
-                except Exception as e:
+                except (redis.exceptions.RedisError, json.JSONDecodeError, TypeError, ValueError) as e:
                     print(f"❌ [{self.worker_id}] Result packet lost: {e}", file=sys.stderr)
 
                 # At-least-once: safe rollback on failure

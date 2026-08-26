@@ -534,7 +534,7 @@ def main():
     try:
         summary = store.get_task_summary()
         print(f"✅ State store connected. Task summary: {summary}")
-    except Exception as e:
+    except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError) as e:
         print(f"❌ Connection failed: {e}", file=sys.stderr)
         sys.exit(1)
 

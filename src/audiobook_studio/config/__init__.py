@@ -9,6 +9,18 @@ from .loader import (
     reset_settings,
 )
 from .settings import Settings
+from .unified import (
+    get_unified_config,
+    get_database_config,
+    get_redis_config,
+    get_llm_config,
+    get_tts_config,
+    get_pipeline_config,
+    get_hardware_profile,
+    validate_config,
+    dump_config,
+    reset_unified_config,
+)
 
 __all__ = [
     "Settings",
@@ -18,4 +30,14 @@ __all__ = [
     "load_quality_thresholds",
     "load_rules",
     "load_contract_versions",
+    "get_unified_config",
+    "get_database_config",
+    "get_redis_config",
+    "get_llm_config",
+    "get_tts_config",
+    "get_pipeline_config",
+    "get_hardware_profile",
+    "validate_config",
+    "dump_config",
+    "reset_unified_config",
 ]

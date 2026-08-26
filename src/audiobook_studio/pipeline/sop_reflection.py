@@ -21,7 +21,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field as dc_field
 from datetime import datetime, timezone
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from typing import Any, Callable, Dict, List, Optional, cast
 
 from src.audiobook_studio.schemas import BookMeta
@@ -292,7 +292,7 @@ class CorrectionCollector:
             self._queue.put_nowait(correction)
             logger.debug(f"[SOP] Queued correction: {correction.field} for project {correction.project_id}")
             return True
-        except Exception as e:
+        except (Full, ValueError, RuntimeError, OSError) as e:
             logger.warning(f"[SOP] Correction queue full, dropping correction: {e}")
             return False
 
@@ -335,7 +335,7 @@ class CorrectionCollector:
             if c.genre != genre:
                 try:
                     self._queue.put_nowait(c)
-                except queue.Full:
+                except Full:
                     pass
         return genre_corrections[:max_size]
 
@@ -641,7 +641,7 @@ class ReflectionEngine:
                 corrections_analyzed=len(corrections),
                 timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             )
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, json.JSONDecodeError) as e:
             logger.error(f"[SOP] Reflection LLM call failed: {e}")
             return self._heuristic_reflection(genre, correction_summary, current_rules)
 
@@ -841,7 +841,7 @@ class SOPBackgroundThread:
         while not self._stop_event.is_set():
             try:
                 self._check_and_reflect()
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                 logger.error(f"[SOP] Reflection loop error: {e}")
 
             # Sleep with interruption check
@@ -873,7 +873,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except queue.Full:
+                    except Full:
                         pass
                 continue
 
@@ -884,7 +884,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except queue.Full:
+                    except Full:
                         pass
                 continue
 
@@ -912,7 +912,7 @@ class SOPBackgroundThread:
                     for c in corrections:
                         try:
                             self.collector._queue.put_nowait(c)
-                        except queue.Full:
+                        except Full:
                             pass
             else:
                 logger.info(
@@ -924,7 +924,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except queue.Full:
+                    except Full:
                         pass
 
             self._last_reflection[genre] = now

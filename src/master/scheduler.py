@@ -265,7 +265,7 @@ class HermesScheduler:
 
                 self.cleanup_stale_workers()
 
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError) as e:
                 print(f"❌ [{self.scheduler_id}] Maintenance cycle error: {e}", file=sys.stderr)
 
             time.sleep(interval)

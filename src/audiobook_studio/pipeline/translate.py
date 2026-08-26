@@ -144,7 +144,7 @@ class TranslateAndDubPipeline:
                 dubbed_segments.append(dubbed_segment)
                 report["successful_translations"] += 1
 
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                 seg_id = getattr(segment, "id", "unknown")
                 logger.error(f"❌ 片段 {seg_id} 翻译失败: {str(e)}")
                 report["failed_translations"] += 1
@@ -191,7 +191,7 @@ class TranslateAndDubPipeline:
                     else:
                         logger.warning(f"⚠️ 情感连贯性检查失败: {len(report['continuity_issues'])} 个问题")
 
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                 logger.error(f"❌ 情感连贯性检查过程中出错: {str(e)}")
                 report["warnings"].append(f"情感连贯性检查失败: {str(e)}")
 
@@ -292,7 +292,7 @@ class TranslateAndDubPipeline:
             # router.call 依据 response_model 动态构造 LLMCallResult.output, 静态返回 Any, 按 TranslationResult 收窄
             translated = cast(TranslationResult, result.output)
             return translated.translated_text.strip()
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             logger.error(f"LLM translation failed: {e}")
             # Fallback to a simple placeholder if translation fails
             return f"[{target_language}] {text}"

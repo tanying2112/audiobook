@@ -1,7 +1,7 @@
 """Redis connection pool singleton (PERF-003).
 
 Provides a single shared async ConnectionPool so all callers reuse connections
-rather than creating new pools per call.  Config is driven by Settings.
+rather than creating new pools per call.  Config is driven by UnifiedConfig.
 """
 
 import logging
@@ -21,27 +21,26 @@ def get_redis_pool() -> "ConnectionPool":
     """Return the singleton async Redis ConnectionPool, creating it on first call.
 
     Pool parameters (max_connections, socket_keepalive, retry_on_timeout) are
-    read from the application Settings once at creation time.
+    read from the UnifiedConfig once at creation time.
     """
     global _pool
     if _pool is not None:
         return _pool
 
     from redis.asyncio import ConnectionPool
+    from ..config import get_unified_redis_config
 
-    from ..config import get_settings
-
-    s = get_settings()
+    redis_config = get_unified_redis_config()
     _pool = ConnectionPool.from_url(
-        s.REDIS_URL,
-        max_connections=s.REDIS_MAX_CONNECTIONS,
-        socket_keepalive=s.REDIS_SOCKET_KEEPALIVE,
-        retry_on_timeout=s.REDIS_RETRY_ON_TIMEOUT,
+        redis_config["url"],
+        max_connections=redis_config["max_connections"],
+        socket_keepalive=redis_config["socket_keepalive"],
+        retry_on_timeout=redis_config["retry_on_timeout"],
         decode_responses=True,
     )
     logger.info(
-        f"Redis pool created: max_connections={s.REDIS_MAX_CONNECTIONS}, "
-        f"pool_size={s.REDIS_POOL_SIZE}, keepalive={s.REDIS_SOCKET_KEEPALIVE}s"
+        f"Redis pool created: max_connections={redis_config['max_connections']}, "
+        f"pool_size={redis_config['pool_size']}, keepalive={redis_config['socket_keepalive']}s"
     )
     return _pool
 
@@ -70,14 +69,14 @@ def get_sync_redis() -> "SyncRedis":
     from redis import ConnectionPool as SyncConnectionPool
     from redis import Redis as SyncRedis
 
-    from ..config import get_settings
+    from ..config import get_unified_redis_config
 
-    s = get_settings()
+    redis_config = get_unified_redis_config()
     sync_pool = SyncConnectionPool.from_url(
-        s.REDIS_URL,
-        max_connections=s.REDIS_MAX_CONNECTIONS,
-        socket_keepalive=s.REDIS_SOCKET_KEEPALIVE,
-        retry_on_timeout=s.REDIS_RETRY_ON_TIMEOUT,
+        redis_config["url"],
+        max_connections=redis_config["max_connections"],
+        socket_keepalive=redis_config["socket_keepalive"],
+        retry_on_timeout=redis_config["retry_on_timeout"],
         decode_responses=True,
     )
     return SyncRedis(connection_pool=sync_pool)

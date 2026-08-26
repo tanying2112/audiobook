@@ -638,7 +638,7 @@ async def run_stage(
 
 async def run_pipeline(
     stages: List[str],
-    db: Session,
+    db: Union[Session, AsyncSession],
     *,
     project_id: Optional[int] = None,
     chapter_index: Optional[int] = None,

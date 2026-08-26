@@ -368,7 +368,7 @@ class AudiobookOrchestrator:
                     idempotency_key=chunk.idempotency_key,
                 )
                 submitted += 1
-            except Exception as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError) as e:
                 print(f"❌ [{self.worker_id}] Failed to submit chunk {chunk.chunk_id}: {e}", file=sys.stderr)
 
         print(f"✅ [{self.worker_id}] Submitted {submitted}/{len(all_chunks)} chunks for book {book_id}")
@@ -441,7 +441,7 @@ class AudiobookOrchestrator:
             try:
                 result = json.loads(message["data"])
                 self._handle_chunk_result(result)
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, RuntimeError, KeyError, TypeError) as e:
                 print(f"❌ [{self.worker_id}] Error processing result: {e}", file=sys.stderr)
 
     def _handle_chunk_result(self, result: Dict):
@@ -547,7 +547,7 @@ class AudiobookOrchestrator:
             # Trigger callback if provided
             # TODO: Implement webhook callback
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError, AttributeError) as e:
             self._update_progress(book_id, status="FAILED", error=str(e))
             print(f"💥 [{self.worker_id}] Finalization failed: {e}", file=sys.stderr)
 

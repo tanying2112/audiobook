@@ -48,7 +48,7 @@ class ExtractAgent(AbstractAgent):
             finally:
                 db.close()
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             self._handle_failure(e)
 
 
@@ -79,7 +79,7 @@ class AnalyzeAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             self._handle_failure(e)
         finally:
             db.close()
@@ -113,7 +113,7 @@ class SynthesizeAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             self._handle_failure(e)
         finally:
             db.close()
@@ -143,7 +143,7 @@ class QualityAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             self._handle_failure(e)
         finally:
             db.close()

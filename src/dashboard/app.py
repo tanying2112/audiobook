@@ -477,7 +477,7 @@ def render_task_queue_preview(redis_client: redis.Redis):
         else:
             st.info("Queue has tasks but details unavailable")
 
-    except Exception as e:
+    except (redis.exceptions.RedisError, ConnectionError, TimeoutError, OSError, ValueError, KeyError) as e:
         st.error(f"Failed to read queue: {e}")
 
 
