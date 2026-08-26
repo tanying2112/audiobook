@@ -1594,9 +1594,10 @@ def synthesize_paragraphs(
     """Convenience function to synthesize paragraphs."""
     pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode, port=port)
     try:
-        return cast(List[AudioSegment], pipeline.run(inputs))
+        import asyncio
+        return cast(List[AudioSegment], asyncio.run(pipeline.run(inputs)))
     finally:
-        pipeline.close()
+        asyncio.run(pipeline.close())
 
 
 if __name__ == "__main__":  # pragma: no cover

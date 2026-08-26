@@ -111,6 +111,29 @@ def check_engine_license(engine_name: str) -> LicenseVerdict:
     return LicenseVerdict.OK
 
 
+def register_guard(engine_name: str, active_profile: str) -> bool:
+    """register 时许可守门: 返回 True=允许注册, False=阻断 (诚实噪止).
+
+    P2.11 守门语义 (与 check_engine_license 对齐, 但接受显式传入的 active_profile):
+        - active_profile 为商用路径 (非 free 档) 且引擎 commercial_use=False
+          → 阻断注册 (False), 由调用方诚实噪止而非假装成功。
+        - commercial_use=None (未核实) / 非商用档 / commercial_use=True
+          → 放行 (True) (未核实仅降级 warn, 不误杀)。
+    """
+    registry = load_license_registry()
+    license_meta = registry.get(engine_name)
+    commercial = is_commercial_profile(active_profile)
+
+    if license_meta is None or license_meta.commercial_use is None:
+        # 未核实: 商用路径降级 warn 但放行, 非商用放行 → 一律放行。
+        return True
+    if license_meta.commercial_use is False:
+        # 显式禁用商用: 仅商用路径阻断, 非商用放行。
+        return not commercial
+    # commercial_use=True → 所有路径放行。
+    return True
+
+
 def log_license_audit(engine_name: str, verdict: LicenseVerdict) -> None:
     """统一日志格式, 便于审计追踪。"""
     profile = get_active_profile()

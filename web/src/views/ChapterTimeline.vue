@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useChapterStore } from '../stores/chapters'
 import { useWaveSurfer } from '../composables/useWaveSurfer'
 import { usePipelineProgress } from '../composables/usePipelineProgress'
 import { useI18n } from '../i18n'
+import { Icon } from '@iconify/vue'
 import type { PipelineStage } from '../types/pipeline'
 
 const route = useRoute()
+const router = useRouter()
 const store = useChapterStore()
 const { t } = useI18n()
 
@@ -28,16 +30,6 @@ const PIPELINE_STAGES: PipelineStage[] = [
   'audio_postprocess', 'synthesize', 'quality'
 ]
 
-const pipelineStageLabels: Record<PipelineStage, string> = {
-  extract: '文本提取',
-  analyze: '结构分析',
-  annotate: '段落标注',
-  edit: '文本编辑',
-  audio_postprocess: '音频后处理',
-  synthesize: '语音合成',
-  quality: '质量检查',
-}
-
 const {
   state: pipelineState,
   getOverallProgress,
@@ -47,6 +39,16 @@ const {
   projectId,
   autoConnect: true,
 })
+
+const pipelineStageLabels: Record<PipelineStage, string> = {
+  extract: t('pipeline.stages.extract'),
+  analyze: t('pipeline.stages.analyze'),
+  annotate: t('pipeline.stages.annotate'),
+  edit: t('pipeline.stages.edit'),
+  audio_postprocess: t('pipeline.stages.audio_postprocess'),
+  synthesize: t('pipeline.stages.synthesize'),
+  quality: t('pipeline.stages.quality'),
+}
 
 onMounted(async () => {
   await store.loadChapter(projectId, chapterId)
@@ -64,11 +66,9 @@ function selectParagraph(paraId: number) {
   const para = store.paragraphs.find((p) => p.id === paraId)
   if (!para) return
 
-  // Load audio segments if available, otherwise try direct audio URL
   store.loadAudioSegments(paraId)
   store.loadQuality(paraId)
 
-  // Load waveform
   nextTick(() => {
     loadWave(getAudioUrl(paraId))
   })
@@ -76,7 +76,6 @@ function selectParagraph(paraId: number) {
 
 function jumpToParagraph(paraId: number) {
   selectParagraph(paraId)
-  // Scroll the paragraph card into view
   const el = document.getElementById(`para-${paraId}`)
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
@@ -88,250 +87,147 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function goBack() {
+  router.push(`/projects/${projectId}`)
+}
+
 const overallProgress = computed(() => getOverallProgress())
 </script>
 
 <template>
-  <div class="chapter-timeline">
-    <div class="page-header">
-      <button class="btn btn-ghost" @click="$router.push(`/projects/${projectId}`)">
-        {{ t('common.back') }}
+  <div class="page-container chapter-timeline">
+    <header class="page-header">
+      <button class="btn btn-ghost touch-target" @click="goBack">
+        <Icon icon="mdi:arrow-left" width="18" height="18" />
+        <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
       <h1>{{ store.currentChapter?.title || t('chapter_timeline.chapter_fallback', { id: chapterId }) }}</h1>
       <div class="header-meta" v-if="store.paragraphs.length">
-        <span class="badge">{{ store.paragraphs.length }} {{ t('chapter_timeline.paragraphs_count') }}</span>
+        <span class="badge badge-muted">{{ store.paragraphs.length }} {{ t('chapter_timeline.paragraphs_count') }}</span>
       </div>
-    </div>
+    </header>
 
     <!-- Pipeline Progress Bar -->
-    <div v-if="pipelineState.isRunning || pipelineState.completedStages.length > 0" class="pipeline-progress-section">
-      <div class="pipeline-progress-header">
-        <span class="pipeline-status" :class="{ paused: pipelineState.isPaused }">
+    <div v-if="pipelineState.isRunning || pipelineState.completedStages.length > 0" class="card card-hover section pipeline-progress-section">
+      <div class="pipeline-progress-header flex items-center justify-between flex-wrap gap-2 mb-4">
+        <span class="badge" :class="pipelineState.isPaused ? 'badge-warning' : 'badge-info'">
           {{ pipelineState.isPaused ? t('pipeline.paused') : t('pipeline.running') }}
         </span>
-        <span v-if="pipelineState.currentStage" class="pipeline-current-stage">
+        <span v-if="pipelineState.currentStage" class="pipeline-current-stage text-primary font-medium text-sm">
           {{ t(`pipeline.stages.${pipelineState.currentStage}`) || pipelineState.currentStage }}
-          {{ pipelineState.currentChapterId !== null ? ` (章节 #${pipelineState.currentChapterId})` : '' }}
+          {{ pipelineState.currentChapterId !== null ? ` (${t('common.chapter')} #${pipelineState.currentChapterId})` : '' }}
         </span>
-        <span class="pipeline-overall-progress">{{ Math.round(overallProgress * 100) }}%</span>
+        <span class="pipeline-overall-progress font-medium" style="font-variant-numeric: tabular-nums;">{{ Math.round(overallProgress * 100) }}%</span>
       </div>
-      <div class="pipeline-progress-bar">
+      <div class="pipeline-progress-bar" style="height: 8px; background: var(--color-border); border-radius: 4px; overflow: hidden; margin-bottom: 16px;">
         <div
           class="pipeline-progress-fill"
           :style="{ width: `${overallProgress * 100}%` }"
+          style="height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-success)); border-radius: 4px; transition: width 0.3s ease;"
         ></div>
       </div>
-      <div class="pipeline-stages">
+      <div class="pipeline-stages flex gap-4 overflow-x-auto pb-2">
         <div
           v-for="stage in PIPELINE_STAGES"
           :key="stage"
-          class="pipeline-stage"
+          class="pipeline-stage flex flex-col items-center gap-2"
           :class="{
             completed: isStageCompleted(stage),
             active: isStageActive(stage),
             pending: !isStageCompleted(stage) && !isStageActive(stage),
           }"
+          style="flex: 1; min-width: 100px; position: relative;"
         >
-          <div class="stage-indicator">
+          <div class="stage-indicator" style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; background: var(--color-border); transition: all 0.2s ease;">
             <span v-if="isStageCompleted(stage)" class="stage-icon">✓</span>
             <span v-else-if="isStageActive(stage)" class="stage-icon spinner">⟳</span>
             <span v-else class="stage-dot"></span>
           </div>
-          <span class="stage-label">{{ pipelineStageLabels[stage] }}</span>
+          <span class="stage-label" style="font-size: 10px; color: var(--color-text-secondary); text-align: center; white-space: nowrap;">{{ t(`pipeline.stages.${stage}`) || pipelineStageLabels[stage] }}</span>
           <span
             v-if="isStageActive(stage)"
             class="stage-progress"
+            style="font-size: 10px; color: var(--color-primary); font-weight: 600;"
           >
             {{ Math.round(pipelineState.stageProgress * 100) }}%
           </span>
         </div>
       </div>
-      <div v-if="pipelineState.error" class="pipeline-error">
+      <div v-if="pipelineState.error" class="alert alert-error mt-4" style="font-size: 13px;">
         {{ pipelineState.error }}
       </div>
     </div>
 
     <!-- Waveform Player -->
-    <div class="waveform-section" v-if="selectedParaId">
-      <div class="waveform-toolbar">
-        <button class="btn-icon" @click="skip(-5)" :title="t('chapter_timeline.rewind_5s')">
-          ⟪
+    <div v-if="selectedParaId" class="card card-hover section waveform-section">
+      <div class="waveform-toolbar flex items-center gap-2 mb-4">
+        <button class="btn btn-ghost btn-sm touch-target" @click="skip(-5)" :title="t('chapter_timeline.rewind_5s')" aria-label="后退5秒">
+          <Icon icon="mdi:skip-previous" width="18" height="18" />
         </button>
-        <button class="btn-play" @click="playPause" :title="isPlaying ? t('chapter_timeline.pause') : t('chapter_timeline.play')">
-          {{ isPlaying ? '⏸' : '▶' }}
+        <button class="btn btn-primary btn-lg touch-target" @click="playPause" :title="isPlaying ? t('chapter_timeline.pause') : t('chapter_timeline.play')" aria-label="播放/暂停" style="width: 44px; height: 44px;">
+          <Icon :icon="isPlaying ? 'mdi:pause' : 'mdi:play'" width="20" height="20" />
         </button>
-        <button class="btn-icon" @click="skip(5)" :title="t('chapter_timeline.forward_5s')">
-          ⟫
+        <button class="btn btn-ghost btn-sm touch-target" @click="skip(5)" :title="t('chapter_timeline.forward_5s')" aria-label="前进5秒">
+          <Icon icon="mdi:skip-next" width="18" height="18" />
         </button>
-        <span class="time-display">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
-        <div class="zoom-controls">
-          <button class="btn-icon" @click="zoomLevel = Math.max(10, zoomLevel - 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_out')">
-            －
+        <span class="time-display text-secondary" style="font-size: 13px; font-variant-numeric: tabular-nums; min-width: 90px;">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+        <div class="zoom-controls flex items-center gap-2" style="margin-left: auto;">
+          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.max(10, zoomLevel - 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_out')" aria-label="缩小">
+            <Icon icon="mdi:minus" width="18" height="18" />
           </button>
-          <span class="zoom-label">{{ zoomLevel }}px/s</span>
-          <button class="btn-icon" @click="zoomLevel = Math.min(200, zoomLevel + 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_in')">
-            ＋
+          <span class="zoom-label text-muted" style="font-size: 11px; min-width: 50px; text-align: center;">{{ zoomLevel }}px/s</span>
+          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.min(200, zoomLevel + 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_in')" aria-label="放大">
+            <Icon icon="mdi:plus" width="18" height="18" />
           </button>
         </div>
       </div>
-      <div ref="waveformContainer" class="waveform-container"></div>
-      <div v-if="wsError" class="waveform-error">{{ wsError }}</div>
+      <div ref="waveformContainer" class="waveform-container" style="min-height: 80px;"></div>
+      <div v-if="wsError" class="alert alert-error mt-2">{{ wsError }}</div>
     </div>
 
     <!-- Paragraph Selector Hint -->
-    <div v-if="!selectedParaId && store.paragraphs.length" class="select-hint">
-      {{ t('chapter_timeline.select_hint') }}
+    <div v-if="!selectedParaId && store.paragraphs.length" class="empty-state section">
+      <Icon icon="mdi:hand-pointing-right" width="32" height="32" style="opacity: 0.4" />
+      <p>{{ t('chapter_timeline.select_hint') }}</p>
     </div>
 
     <!-- Loading -->
-    <div v-if="store.loading" class="loading">{{ t('chapter_timeline.loading') }}</div>
+    <div v-else-if="store.loading" class="loading-state section">
+      <div class="spinner"></div>
+      <span>{{ t('chapter_timeline.loading') }}</span>
+    </div>
 
     <!-- Paragraph List -->
-    <div v-else class="paragraph-list">
+    <div v-else class="paragraph-list grid gap-3">
       <div
         v-for="(para, idx) in store.paragraphs"
         :key="para.id"
         :id="`para-${para.id}`"
-        :class="['paragraph-card', { selected: selectedParaId === para.id }]"
+        class="card card-hover grid-auto-fill paragraph-card"
         @click="selectParagraph(para.id)"
+        :class="{ selected: selectedParaId === para.id }"
+        style="cursor: pointer;"
       >
-        <div class="para-header">
-          <span class="para-num">#{{ idx + 1 }}</span>
-          <span class="para-role">{{ para.speaker_canonical_name || t('chapter_timeline.narrator') }}</span>
-          <span :class="['status-dot', para.status || 'pending']" />
-          <button class="btn-icon btn-jump" @click.stop="jumpToParagraph(para.id)" :title="t('chapter_timeline.waveform_jump')">
-            ~
+        <div class="para-header flex items-center gap-2 mb-2">
+          <span class="para-num font-medium text-primary" style="font-size: 12px; min-width: 28px;">#{{ idx + 1 }}</span>
+          <span class="para-role badge badge-muted" style="font-size: 11px;">{{ para.speaker_canonical_name || t('chapter_timeline.narrator') }}</span>
+          <span :class="['status-dot', para.status || 'pending']" style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning);" :style="{ background: para.status === 'completed' ? 'var(--color-success)' : para.status === 'error' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
+          <button class="btn btn-ghost btn-sm touch-target" @click.stop="jumpToParagraph(para.id)" :title="t('chapter_timeline.waveform_jump')" aria-label="波形跳转">
+            <Icon icon="mdi:waveform" width="18" height="18" />
           </button>
         </div>
-        <p class="para-text">{{ para.text }}</p>
+        <p class="para-text" style="margin: 0; font-size: 14px; line-height: 1.7; color: var(--color-text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">{{ para.text }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.chapter-timeline { max-width: 900px; margin: 0 auto; }
+.chapter-timeline {
+  max-width: 960px;
+}
 
-/* Header */
-.page-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-.page-header h1 { margin: 0; font-size: 22px; flex: 1; }
-.badge { font-size: 11px; padding: 2px 10px; border-radius: 99px; background: #dbeafe; color: #1d4ed8; }
-
-/* Waveform */
-.waveform-section {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-.waveform-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.btn-play { background: none; border: none; cursor: pointer; color: #3b82f6; padding: 0; line-height: 1; }
-.btn-play:hover { color: #2563eb; }
-.time-display { font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; min-width: 90px; }
-.zoom-controls { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-.zoom-label { font-size: 11px; color: #94a3b8; min-width: 40px; text-align: center; }
-.waveform-container { min-height: 80px; }
-.waveform-error { color: #ef4444; font-size: 13px; margin-top: 8px; }
-
-/* Select hint */
-.select-hint { text-align: center; padding: 12px; color: #94a3b8; font-size: 13px; }
-
-/* Paragraphs */
-.paragraph-list {}
-.paragraph-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 14px 18px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.paragraph-card:hover { border-color: #93c5fd; }
-.paragraph-card.selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-.para-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.para-num { font-weight: 600; color: #3b82f6; font-size: 12px; min-width: 28px; }
-.para-role { font-size: 12px; color: #64748b; background: #f1f5f9; padding: 1px 8px; border-radius: 4px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; }
-.status-dot.completed { background: #22c55e; }
-.status-dot.pending { background: #facc15; }
-.status-dot.error { background: #ef4444; }
-.btn-jump { margin-left: auto; color: #94a3b8; }
-.btn-jump:hover { color: #3b82f6; }
-.para-text { margin: 0; font-size: 14px; line-height: 1.7; color: #1e293b; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-
-/* Pipeline Progress */
-.pipeline-progress-section {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-.pipeline-progress-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.pipeline-status {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 99px;
-  background: #dbeafe;
-  color: #1d4ed8;
-  text-transform: uppercase;
-}
-.pipeline-status.paused {
-  background: #fef3c7;
-  color: #b45309;
-}
-.pipeline-current-stage {
-  font-size: 13px;
-  color: #3b82f6;
-  font-weight: 500;
-}
-.pipeline-overall-progress {
-  margin-left: auto;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-  font-variant-numeric: tabular-nums;
-}
-.pipeline-progress-bar {
-  height: 8px;
-  background: #f1f5f9;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 16px;
-}
-.pipeline-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #22c55e);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-.pipeline-stages {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-}
 .pipeline-stage {
-  flex: 1;
-  min-width: 100px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
   position: relative;
 }
 .pipeline-stage:not(:last-child)::after {
@@ -341,73 +237,68 @@ const overallProgress = computed(() => getOverallProgress())
   right: -6px;
   width: 12px;
   height: 2px;
-  background: #e2e8f0;
+  background: var(--color-border);
 }
 .pipeline-stage.completed::after {
-  background: #22c55e;
+  background: var(--color-success);
 }
 .pipeline-stage.active::after {
-  background: #3b82f6;
+  background: var(--color-primary);
 }
+
 .stage-indicator {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  background: #e2e8f0;
   transition: all 0.2s ease;
 }
 .pipeline-stage.completed .stage-indicator {
-  background: #22c55e;
+  background: var(--color-success);
 }
 .pipeline-stage.active .stage-indicator {
-  background: #3b82f6;
+  background: var(--color-primary);
   animation: pulse 1.5s infinite;
 }
 .pipeline-stage.active .stage-icon.spinner {
   animation: spin 1s linear infinite;
 }
+
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
 }
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-.stage-label {
-  font-size: 10px;
-  color: #64748b;
-  text-align: center;
-  white-space: nowrap;
-}
+
 .pipeline-stage.completed .stage-label,
 .pipeline-stage.active .stage-label {
-  color: #1e293b;
+  color: var(--color-text);
   font-weight: 500;
 }
-.stage-progress {
-  font-size: 10px;
-  color: #3b82f6;
-  font-weight: 600;
-}
-.pipeline-error {
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
-  font-size: 13px;
+
+.paragraph-card.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha);
 }
 
-/* Utilities */
-.btn-icon { background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; border-radius: 6px; line-height: 1; display: inline-flex; align-items: center; }
-.btn-icon:hover { background: #f1f5f9; color: #1e293b; }
-.loading { text-align: center; padding: 60px; color: #64748b; }
+.status-dot.completed { background: var(--color-success); }
+.status-dot.pending { background: var(--color-warning); }
+.status-dot.error { background: var(--color-danger); }
+
+/* WaveSurfer container */
+.waveform-container {
+  min-height: 80px;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .pipeline-stages {
+    gap: 8px;
+  }
+  .pipeline-stage {
+    min-width: 80px;
+  }
+  .stage-label {
+    font-size: 9px;
+  }
+}
 </style>

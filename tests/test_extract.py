@@ -198,7 +198,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
             # Also mock fitz to avoid any import issues
             with patch("src.audiobook_studio.pipeline.extract.fitz.open") as mock_fitz:
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
+                text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_pdf("test.pdf")
 
                 assert page_count == 2
                 assert "Page 1 text content" in text
@@ -233,7 +233,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
                 mock_fitz.return_value = MockDoc()
 
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
+                text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_pdf("test.pdf")
 
                 assert page_count == 1
                 assert "Fallback text from PyMuPDF" in text
@@ -276,7 +276,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
                             mock_tesseract.image_to_string.return_value = "OCR extracted text\nMore OCR text"
                             mock_image.frombytes.return_value = Mock()
 
-                            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
+                            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_pdf("test.pdf")
 
                             assert has_ocr
                             assert page_count == 1
@@ -292,7 +292,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
                 "src.audiobook_studio.pipeline.extract.fitz.open",
                 side_effect=Exception("PyMuPDF failed"),
             ):
-                text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_pdf("test.pdf")
+                text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_pdf("test.pdf")
 
                 assert text == ""
                 assert page_count == 0
@@ -310,7 +310,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             mock_book.get_items.return_value = [mock_item]
             mock_read.return_value = mock_book
 
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub("test.epub")
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_epub("test.epub")
 
             assert "EPUB content" in text
             assert page_count == 1
@@ -323,7 +323,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.epub.read_epub",
             side_effect=Exception("EPUB failed"),
         ):
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_epub("test.epub")
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_epub("test.epub")
 
             assert text == ""
             assert page_count == 0
@@ -341,7 +341,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             mock_doc.paragraphs = [mock_para1, mock_para2]
             mock_doc_class.return_value = mock_doc
 
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx("test.docx")
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_docx("test.docx")
 
             assert "Paragraph 1" in text
             assert "Paragraph 2" in text
@@ -355,7 +355,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.Document",
             side_effect=Exception("DOCX failed"),
         ):
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_docx("test.docx")
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_docx("test.docx")
 
             assert text == ""
             assert page_count == 0
@@ -371,7 +371,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             temp_path = f.name
 
         try:
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_txt(temp_path)
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_txt(temp_path)
             assert text == "UTF-8 text content"
             assert page_count == 1
             assert not has_ocr
@@ -390,7 +390,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             temp_path = f.name
 
         try:
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_txt(temp_path)
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_txt(temp_path)
             assert "GBK 编码内容" in text
             assert page_count == 1
         finally:
@@ -398,7 +398,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_pdf(self):
         """Test run method with PDF."""
-        with patch.object(self.pipeline, "_extract_pdf", return_value=("PDF text", 3, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_pdf", return_value=("PDF text", 3, False, 0.0, [])):
             input_data = ExtractionInput(file_path="test.pdf", mime_type="application/pdf", detect_language=True)
             result = self.pipeline.run(input_data)
 
@@ -408,7 +408,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_epub(self):
         """Test run method with EPUB."""
-        with patch.object(self.pipeline, "_extract_epub", return_value=("EPUB text", 5, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_epub", return_value=("EPUB text", 5, False, 0.0, [])):
             input_data = ExtractionInput(
                 file_path="test.epub",
                 mime_type="application/epub+zip",
@@ -421,7 +421,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_docx(self):
         """Test run method with DOCX."""
-        with patch.object(self.pipeline, "_extract_docx", return_value=("DOCX text", 2, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_docx", return_value=("DOCX text", 2, False, 0.0, [])):
             input_data = ExtractionInput(
                 file_path="test.docx",
                 mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -434,7 +434,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_txt(self):
         """Test run method with TXT."""
-        with patch.object(self.pipeline, "_extract_txt", return_value=("TXT text", 1, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_txt", return_value=("TXT text", 1, False, 0.0, [])):
             input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
             result = self.pipeline.run(input_data)
 
@@ -456,7 +456,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_short_text_warning(self):
         """Test run method warns when text is too short."""
-        with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0, [])):
             input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
             result = self.pipeline.run(input_data)
 
@@ -474,7 +474,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.record_stage_performance",
             side_effect=capture_record,
         ):
-            with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0)):
+            with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0, [])):
                 input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
                 result = self.pipeline.run(input_data)
 
@@ -492,7 +492,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             "src.audiobook_studio.pipeline.extract.record_stage_performance",
             side_effect=capture_record,
         ):
-            with patch.object(self.pipeline, "_extract_pdf", return_value=("OCR text", 2, True, 0.5)):
+            with patch.object(self.pipeline, "_extract_pdf", return_value=("OCR text", 2, True, 0.5, [])):
                 input_data = ExtractionInput(
                     file_path="test.pdf",
                     mime_type="application/pdf",
@@ -517,7 +517,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             with patch.object(
                 self.pipeline,
                 "_extract_pdf",
-                return_value=("Local text", 2, False, 0.0),
+                return_value=("Local text", 2, False, 0.0, []),
             ):
                 input_data = ExtractionInput(
                     file_path="test.pdf",
@@ -531,7 +531,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
 
     def test_run_detect_language_false(self):
         """Test run method when detect_language is False."""
-        with patch.object(self.pipeline, "_extract_txt", return_value=("English text", 1, False, 0.0)):
+        with patch.object(self.pipeline, "_extract_txt", return_value=("English text", 1, False, 0.0, [])):
             input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=False)
             result = self.pipeline.run(input_data)
 
@@ -631,7 +631,7 @@ class TestExtractImage:
 
     def test_run_image_mime_type_routing(self):
         """Test run method correctly routes image MIME types to _extract_image."""
-        with patch.object(self.pipeline, "_extract_image", return_value=("Image OCR text", 1, True, 1.0)):
+        with patch.object(self.pipeline, "_extract_image", return_value=("Image OCR text", 1, True, 1.0, [])):
             input_data = ExtractionInput(file_path="test.png", mime_type="image/png", detect_language=True)
             result = self.pipeline.run(input_data)
 
@@ -652,7 +652,7 @@ class TestExtractImage:
         ]
 
         for mime_type in image_mime_types:
-            with patch.object(self.pipeline, "_extract_image", return_value=("OCR text", 1, True, 1.0)):
+            with patch.object(self.pipeline, "_extract_image", return_value=("OCR text", 1, True, 1.0, [])):
                 input_data = ExtractionInput(file_path="test.png", mime_type=mime_type, detect_language=True)
                 result = self.pipeline.run(input_data)
 
@@ -662,5 +662,7 @@ class TestExtractImage:
     def test_extract_image_no_ocr_dependency(self):
         """Test _extract_image raises ValueError when OCR dependencies not available."""
         with patch("src.audiobook_studio.pipeline.extract.OCR_AVAILABLE", False):
-            with pytest.raises(ValueError, match="Image OCR not available"):
-                self.pipeline._extract_image("test.png")
+            with patch("builtins.open", create=True) as mock_open:
+                mock_open.return_value.__enter__.return_value.read.return_value = b"fake image data"
+                with pytest.raises(ValueError, match="Image understanding unavailable"):
+                    self.pipeline._extract_image("test.png")

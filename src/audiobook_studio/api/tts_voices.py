@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
+
+from ..exceptions import DomainError
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -625,7 +627,12 @@ async def stream_tts_get(
         curl -N "http://localhost:8000/api/tts/stream?text=hello&engine=mock" > out.wav
     """
     if not text:
-        raise HTTPException(status_code=422, detail="query parameter 'text' is required")
+        raise DomainError(
+            message="query parameter 'text' is required",
+            error_code="VALIDATION_ERROR",
+            stage="tts",
+            context={"field": "text"},
+        )
     req = TTSStreamRequest(
         text=text, voice_id=voice_id, engine=engine, speed=speed, pitch=pitch, volume=volume
     )
@@ -689,17 +696,21 @@ async def clone_voice(
 
     # P2.11 合规: 克隆前强制授权核实 (红线#1A: 不勾 → 422 诚实拒, 不假装处理)
     if not consent:
-        raise HTTPException(
-            status_code=422,
-            detail="声音克隆需样本提供者明确授权 (consent=true)。未经授权的样本不得克隆。",
+        raise DomainError(
+            message="声音克隆需样本提供者明确授权 (consent=true)。未经授权的样本不得克隆。",
+            error_code="VALIDATION_ERROR",
+            stage="tts",
+            context={"field": "consent"},
         )
 
     # Validate file type
     allowed_types = {"audio/wav", "audio/wave", "audio/x-wav", "audio/mpeg", "audio/mp3"}
     if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported audio format: {file.content_type}. Use WAV or MP3.",
+        raise DomainError(
+            message=f"Unsupported audio format: {file.content_type}. Use WAV or MP3.",
+            error_code="VALIDATION_ERROR",
+            stage="tts",
+            context={"content_type": file.content_type, "allowed_types": list(allowed_types)},
         )
 
     # Save uploaded file to temp location
@@ -726,15 +737,19 @@ async def clone_voice(
         snr_db = 20 * np.log10(signal_power / noise_floor) if noise_floor > 0 else 50.0
 
         if duration < 15.0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Sample too short: {duration:.1f}s. Minimum 15 seconds required.",
+            raise DomainError(
+                message=f"Sample too short: {duration:.1f}s. Minimum 15 seconds required.",
+                error_code="VALIDATION_ERROR",
+                stage="tts",
+                context={"duration": duration, "min_duration": 15.0},
             )
 
         if snr_db < 20.0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"SNR too low: {snr_db:.1f}dB. Minimum 20dB required.",
+            raise DomainError(
+                message=f"SNR too low: {snr_db:.1f}dB. Minimum 20dB required.",
+                error_code="VALIDATION_ERROR",
+                stage="tts",
+                context={"snr_db": snr_db, "min_snr_db": 20.0},
             )
 
         # Create voice sample with P2.11 attestation (consent 授权版本记入持久化字段)
@@ -755,7 +770,12 @@ async def clone_voice(
         success, message = manager.add_voice_sample(sample)
 
         if not success:
-            raise HTTPException(status_code=400, detail=message)
+            raise DomainError(
+                message=message,
+                error_code="VALIDATION_ERROR",
+                stage="tts",
+                context={"speaker_id": speaker_id},
+            )
 
         # Get voice info
         voice_info = manager.get_voice_info(speaker_id)
@@ -771,11 +791,17 @@ async def clone_voice(
             sample_count=voice_info.get("sample_count") if voice_info else None,
         )
 
-    except HTTPException:
+    except DomainError:
         raise
     except Exception as e:
         logger.error(f"Voice cloning failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Voice cloning failed: {str(e)}") from e
+        raise DomainError(
+            message=f"Voice cloning failed: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            stage="tts",
+            context={"speaker_id": speaker_id},
+            original_error=e,
+        ) from e
     finally:
         # Cleanup temp file
         if tmp_path.exists():

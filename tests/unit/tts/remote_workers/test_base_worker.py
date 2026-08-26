@@ -38,6 +38,7 @@ _boto3_mock = _make_module_mock("boto3")
 _boto3_mock.exceptions.Boto3Error = Exception
 _redis_mock = _make_module_mock("redis")
 _redis_mock.RedisError = Exception
+_redis_mock.exceptions.RedisError = Exception
 
 with patch.dict(
     sys.modules,
@@ -244,7 +245,7 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3") as mock_boto3:
                     mock_boto3.client.return_value = Mock()
                     mock_boto3.exceptions.Boto3Error = Exception
@@ -275,7 +276,7 @@ class TestBaseWorkerInitialization:
             with patch("signal.signal") as mock_signal:
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                     mock_redis_module.Redis.return_value = Mock()
-                    mock_redis_module.RedisError = Exception
+                    mock_redis_module.exceptions.RedisError = Exception
                     with patch("src.audiobook_studio.tts.remote_workers.base_worker.boto3") as mock_boto3:
                         mock_boto3.client.return_value = Mock()
                         mock_boto3.exceptions.Boto3Error = Exception
@@ -290,7 +291,7 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader") as mock_r2:
                     worker = ConcreteWorker("test")
                     mock_r2.assert_called_once()
@@ -300,7 +301,7 @@ class TestBaseWorkerInitialization:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     with patch.object(ConcreteWorker, "_init_engine", return_value=Mock()) as mock_init:
                         with patch.object(ConcreteWorker, "_execute_smoke_test") as mock_smoke:
@@ -319,7 +320,7 @@ class TestBaseWorkerHeartbeat:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     worker = ConcreteWorker("test")
                     worker.redis = mock_redis
@@ -373,7 +374,7 @@ class TestBaseWorkerNetworkCallRetry:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     return ConcreteWorker("test")
 
@@ -456,7 +457,7 @@ class TestBaseWorkerTaskProcessing:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_component = Mock()
                 mock_redis_module.Redis.return_value = mock_redis_component
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader") as mock_r2_class:
                     mock_r2 = Mock()
                     mock_r2.upload.return_value = "https://r2.example.com/tts/task123.wav"
@@ -533,7 +534,7 @@ class TestBaseWorkerRunLoop:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 # ``run()`` only terminates on idle timeout when ``llen("tts:tasks") == 0``,
                 # so default the mocked queue length to empty for the run-loop tests.
                 mock_redis.llen.return_value = 0
@@ -636,7 +637,7 @@ class TestBaseWorkerShutdown:
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis_module.Redis.return_value = Mock()
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     return ConcreteWorker("test")
 
@@ -682,7 +683,7 @@ class TestBaseWorkerIdleTimeout:
             with patch("src.audiobook_studio.tts.remote_workers.base_worker.redis") as mock_redis_module:
                 mock_redis = Mock()
                 mock_redis_module.Redis.return_value = mock_redis
-                mock_redis_module.RedisError = Exception
+                mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     worker = ConcreteWorker("test")
                     worker.redis = mock_redis

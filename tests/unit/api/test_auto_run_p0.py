@@ -31,7 +31,12 @@ from src.audiobook_studio.api.auto_run import (
     start_auto_run,
     start_autopilot,
 )
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks
+from src.audiobook_studio.exceptions import DomainError
+
+
+def _code(exc: DomainError) -> str:
+    return getattr(exc, "error_code", "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -432,18 +437,17 @@ class TestStartEndpoint:
     @pytest.mark.asyncio
     async def test_start_404_when_project_missing(self):
         db = make_db([make_result(scalar=None)])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await start_auto_run(42, AutoRunStartRequest(), BackgroundTasks(), db)
-        assert ei.value.status_code == 404
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_start_rejects_duplicate_running_run(self):
         db = make_db([make_result(scalar=make_project())])
         _active_runs[1] = {"run_id": "r1", "status": "running"}
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await start_auto_run(1, AutoRunStartRequest(), BackgroundTasks(), db)
-        assert ei.value.status_code == 400
-        assert "already in progress" in ei.value.detail
+        assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
     async def test_start_allows_restart_after_previous_completed(self):
@@ -498,17 +502,16 @@ class TestActionEndpoints:
 
     @pytest.mark.asyncio
     async def test_pause_requires_existing_run(self):
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await pause_auto_run(1)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_pause_rejects_paused_run(self):
         self.seed(1, "paused")
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await pause_auto_run(1)
-        assert ei.value.status_code == 400
-        assert "paused" in ei.value.detail
+        assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
     async def test_pause_sets_pending_flag(self):
@@ -521,9 +524,9 @@ class TestActionEndpoints:
     @pytest.mark.asyncio
     async def test_resume_requires_paused(self):
         self.seed(2, "running")
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await resume_auto_run(2)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
     async def test_resume_emits_resumed_event(self):
@@ -536,16 +539,16 @@ class TestActionEndpoints:
 
     @pytest.mark.asyncio
     async def test_cancel_requires_active(self):
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await cancel_auto_run(3)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_cancel_rejects_terminal_state(self):
         self.seed(3, "completed")
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await cancel_auto_run(3)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
     async def test_cancels_running_and_removes_state(self):
@@ -570,17 +573,17 @@ class TestAutopilotEndpoints:
     @pytest.mark.asyncio
     async def test_start_autopilot_404(self):
         db = make_db([make_result(scalar=None)])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await start_autopilot(99, BackgroundTasks(), db)
-        assert ei.value.status_code == 404
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_start_autopilot_conflict_with_running_run(self):
         db = make_db([make_result(scalar=make_project())])
         _active_runs[5] = {"run_id": "x", "status": "running"}
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await start_autopilot(5, BackgroundTasks(), db)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
     async def test_start_autopilot_success(self):
@@ -609,9 +612,9 @@ class TestAutopilotEndpoints:
     @pytest.mark.asyncio
     async def test_preview_404(self):
         db = make_db([make_result(scalar=None)])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await preview_autopilot_config(77, db)
-        assert ei.value.status_code == 404
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_preview_success(self):
@@ -746,16 +749,16 @@ class TestIntermediateProduct:
     @pytest.mark.asyncio
     async def test_project_missing_404(self):
         db = make_db([make_result(scalar=None)])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await get_intermediate_product(1, "extract", db=db)
-        assert ei.value.status_code == 404
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_invalid_stage_400(self):
         db = make_db([make_result(scalar=make_project())])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await get_intermediate_product(1, "nope", db=db)
-        assert ei.value.status_code == 400
+        assert _code(ei.value) == "VALIDATION_ERROR"
 
     @pytest.mark.asyncio
     async def test_explicit_chapter_not_in_project_404(self):
@@ -763,18 +766,16 @@ class TestIntermediateProduct:
             make_result(scalar=make_project()),
             make_result(scalar=None),  # chapter lookup misses
         ])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await get_intermediate_product(1, "extract", chapter_id=555, db=db)
-        assert ei.value.status_code == 404
-        assert "Chapter 555" in ei.value.detail
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_default_first_chapter_missing_404(self):
         db = make_db([make_result(scalar=make_project()), make_result(first=None)])
-        with pytest.raises(HTTPException) as ei:
+        with pytest.raises(DomainError) as ei:
             await get_intermediate_product(1, "extract", db=db)
-        assert ei.value.status_code == 404
-        assert "No chapters found" in ei.value.detail
+        assert _code(ei.value) == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_extract_product(self):

@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -186,12 +188,19 @@ async def publish_project(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"project_id": project_id},
+        )
 
     if project.status != "completed":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project not ready for publishing. Current status: {project.status}",
+        raise DomainError(
+            message=f"Project not ready for publishing. Current status: {project.status}",
+            error_code="VALIDATION_ERROR",
+            stage="publish",
+            context={"project_id": project_id, "current_status": project.status},
         )
 
     # Validate destinations
@@ -199,9 +208,11 @@ async def publish_project(
     requested = set(request.destinations)
     if not requested.issubset(valid_destinations):
         invalid = requested - valid_destinations
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid destinations: {invalid}. Valid: {valid_destinations}",
+        raise DomainError(
+            message=f"Invalid destinations: {invalid}. Valid: {valid_destinations}",
+            error_code="VALIDATION_ERROR",
+            stage="publish",
+            context={"invalid_destinations": list(invalid), "valid_destinations": list(valid_destinations)},
         )
 
     # Generate job ID
@@ -701,10 +712,20 @@ async def get_publish_job(project_id: int, job_id: str):
     """Get publish job status by ID."""
     job = await _get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Publish job not found")
+        raise DomainError(
+            message="Publish job not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"job_id": job_id},
+        )
 
     if job["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Job does not belong to this project")
+        raise DomainError(
+            message="Job does not belong to this project",
+            error_code="FORBIDDEN",
+            stage="publish",
+            context={"job_id": job_id, "expected_project_id": project_id, "actual_project_id": job["project_id"]},
+        )
 
     return PublishJobOut(**job)
 
@@ -754,7 +775,12 @@ async def get_podcast_rss_feed(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"project_id": project_id},
+        )
 
     # Get current audio segments (episodes)
     result = await db.execute(

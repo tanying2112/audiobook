@@ -124,11 +124,41 @@ async def create_character(
             context={"project_id": project_id},
         )
 
+    # Check for duplicate name within the same project
+    result = await db.execute(
+        select(Character).where(
+            Character.project_id == project_id,
+            Character.canonical_name == character.canonical_name,
+        )
+    )
+    if result.scalar_one_or_none():
+        raise DomainError(
+            message="Character with this name already exists in the project",
+            error_code="DUPLICATE_NAME",
+            stage="characters",
+            context={"project_id": project_id, "canonical_name": character.canonical_name},
+        )
+
     db_character = Character(**character.model_dump(), project_id=project_id)
     db.add(db_character)
     await db.commit()
     await db.refresh(db_character)
     return db_character
+
+
+@router.get("/voice-mapping", response_model=VoiceMappingResponse)
+async def get_voice_mapping(project_id: int):
+    """获取声音映射配置 (全局配置，不依赖项目)."""
+    voice_mapping = load_voice_mapping()
+    return VoiceMappingResponse(
+        voice_mapping=voice_mapping.get("voice_mapping", {}),
+        voice_mapping_en=voice_mapping.get("voice_mapping_en", {}),
+    )
+
+
+# Note: The /voice-mapping endpoint is under /projects/{project_id}/characters/voice-mapping
+# due to the router prefix. For a global endpoint, consider a separate router.
+# This is kept for backward compatibility.
 
 
 @router.get("/{character_id}", response_model=CharacterResponse)
@@ -207,16 +237,4 @@ async def delete_character(
 # ── Voice Mapping Endpoint (no project_id in path) ───────────────────────────
 
 
-@router.get("/voice-mapping", response_model=VoiceMappingResponse)
-async def get_voice_mapping():
-    """获取声音映射配置 (全局配置，不依赖项目)."""
-    voice_mapping = load_voice_mapping()
-    return VoiceMappingResponse(
-        voice_mapping=voice_mapping.get("voice_mapping", {}),
-        voice_mapping_en=voice_mapping.get("voice_mapping_en", {}),
-    )
 
-
-# Note: The /voice-mapping endpoint is under /projects/{project_id}/characters/voice-mapping
-# due to the router prefix. For a global endpoint, consider a separate router.
-# This is kept for backward compatibility.

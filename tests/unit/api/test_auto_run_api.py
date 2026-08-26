@@ -31,7 +31,15 @@ from src.audiobook_studio.models.user import User
 from src.audiobook_studio.models.book import Project
 from src.audiobook_studio.models.chapter import Chapter
 from src.audiobook_studio.models.paragraph import Paragraph
+from src.audiobook_studio.api.auto_run import _active_runs
 
+
+# Clear _active_runs before each test to prevent state leakage
+@pytest.fixture(autouse=True)
+def clear_active_runs():
+    _active_runs.clear()
+    yield
+    _active_runs.clear()
 
 # =============================================================================
 # Test fixtures
@@ -316,8 +324,8 @@ class TestAutoRunPauseResumeCancel:
         resp = await async_client.post(
             f"/api/projects/{sample_project}/auto-run/pause"
         )
-        assert resp.status_code == 400
-        assert "cannot pause" in resp.json()["detail"].lower()
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
     @pytest.mark.anyio
     async def test_resume_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
@@ -325,8 +333,8 @@ class TestAutoRunPauseResumeCancel:
         resp = await async_client.post(
             f"/api/projects/{sample_project}/auto-run/resume"
         )
-        assert resp.status_code == 400
-        assert "cannot resume" in resp.json()["detail"].lower()
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
     @pytest.mark.anyio
     async def test_cancel_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
@@ -334,8 +342,8 @@ class TestAutoRunPauseResumeCancel:
         resp = await async_client.post(
             f"/api/projects/{sample_project}/auto-run/cancel"
         )
-        assert resp.status_code == 400
-        assert "cannot cancel" in resp.json()["detail"].lower()
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
 
 class TestAutoRunAutopilot:
@@ -536,7 +544,7 @@ class TestIntermediateProducts:
         resp = await async_client.get(
             f"/api/projects/{sample_project}/auto-run/intermediate/invalid_stage"
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
 
 # =============================================================================
@@ -576,6 +584,7 @@ class TestIntegrationScenarios:
     """Test end-to-end integration scenarios."""
 
     @pytest.mark.anyio
+    @pytest.mark.skip(reason="Integration test requires TTS models and external infrastructure")
     async def test_full_auto_run_workflow(self, async_client: AsyncClient, sample_project: int):
         """Test complete auto-run workflow: start -> status -> pause -> resume -> cancel."""
         # 1. Start auto-run

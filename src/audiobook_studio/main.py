@@ -5,9 +5,12 @@ database tables on startup (for the MVP).  In production you would run Alembic
 migrations instead of ``init_db``.
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -92,6 +95,22 @@ async def lifespan(app: FastAPI):
         init_rbac(db)
     finally:
         db.close()
+
+    # Load plugins (TTS engines, LLM providers, pipeline stages)
+    try:
+        from .plugins import get_plugin_manager
+        plugin_mgr = get_plugin_manager()
+        plugin_mgr.discover()
+        plugin_mgr.load_installed()
+        results = plugin_mgr.load_all_installed()
+        loaded = [name for name, ok in results.items() if ok]
+        failed = [name for name, ok in results.items() if not ok]
+        if loaded:
+            logger.info("Loaded plugins: %s", ", ".join(loaded))
+        if failed:
+            logger.warning("Failed to load plugins: %s", ", ".join(failed))
+    except Exception as e:
+        logger.warning("Plugin loading failed (continuing without plugins): %s", e)
 
     # Shutdown observability
     from .observability.metrics import shutdown_metrics
@@ -268,7 +287,7 @@ async def health_ready():
         import redis.asyncio as aioredis
 
         async with asyncio.timeout(timeout):
-            r = aioredis.from_url(settings.REDIS_URL)
+            r = await aioredis.from_url(settings.REDIS_URL)
             await r.ping()
             await r.aclose()
             checks["redis"] = "ok"
@@ -340,10 +359,12 @@ async def health_ready():
     )
 
 
+from .exceptions import AudiobookError
+
 # ── Global exception handler (QUAL-003: structured error responses) ────────────
 
 
-@app.exception_handler(Exception)
+@app.exception_handler(AudiobookError)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch-all exception handler returning structured JSON error responses.
 
@@ -365,10 +386,12 @@ async def global_exception_handler(request: Request, exc: Exception):
             f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
             extra={"error_code": custom_exc.error_code, "context": getattr(custom_exc, "context", {})},
         )
-        return JSONResponse(
+        response = JSONResponse(
             content={"error": error_dict},
             status_code=status_code,
         )
+        logger.debug(f"Exception handler returning response: status={status_code}, content={error_dict}")
+        return response
     # Starlette/FastAPI HTTPException — pass through
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -394,9 +417,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 def _error_code_to_status(error_code: str) -> int:
     """Map structured error codes to HTTP status codes."""
-    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR"):
+    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR", "DUPLICATE_NAME"):
         return 422
-    if error_code in ("FILE_NOT_FOUND",):
+    if error_code in ("FILE_NOT_FOUND", "NOT_FOUND"):
         return 404
     if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
         return 429

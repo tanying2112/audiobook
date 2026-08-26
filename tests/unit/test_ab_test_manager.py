@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -238,6 +238,248 @@ class TestABTestManager:
         assert isinstance(status["recent_tests"], list)
         assert len(status["recent_tests"]) == 0
         assert "description" in status
+
+
+class TestABTestManagerInit:
+    """Test ABTestManager __init__ method."""
+
+    def test_init_creates_results_dir(self, tmp_path):
+        """Test that __init__ creates the results directory."""
+        results_dir = tmp_path / "test_results"
+        assert not results_dir.exists()
+
+        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"):
+            manager = ABTestManager(str(results_dir))
+
+        assert results_dir.exists()
+        assert manager.results_dir == results_dir.resolve()
+        assert manager.test_history == []
+
+
+class TestExecuteAbTest:
+    """Test _execute_ab_test method."""
+
+    def test_execute_ab_test_with_mocked_random(self):
+        """Test _execute_ab_test with mocked random to get deterministic results."""
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch("random.uniform") as mock_uniform,
+            patch("random.random") as mock_random,
+        ):
+
+            # Make the random values deterministic
+            mock_uniform.side_effect = [0.8, 0.05, 0.85, 0.02, 0.75, 0.03, 0.88, 0.01]  # enough calls
+            mock_random.return_value = 0.5  # less than 0.6, so B will be better
+
+            manager = ABTestManager("/tmp/test")
+            config = ABTestConfig(
+                test_id="test123",
+                name="test",
+                description="desc",
+                variant_a_prompt="A",
+                variant_b_prompt="B",
+                test_segments=["seg1", "seg2"],
+                judge_criteria=["c1", "c2"],
+                sample_size=2,
+                confidence_threshold=0.8,
+            )
+
+            result = manager._execute_ab_test(config)
+
+            # Check that we got a result
+            assert isinstance(result, ABTestResult)
+            assert result.test_id == "test123"
+            assert isinstance(result.variant_a_score, float)
+            assert isinstance(result.variant_b_score, float)
+            assert result.winner in ("A", "B", "TIE")
+            assert 0.0 <= result.confidence <= 1.0
+            assert 0.0 <= result.p_value <= 1.0
+            assert isinstance(result.details, list)
+            assert len(result.details) == 2  # two segments
+
+
+class TestSaveTestResult:
+    """Test _save_test_result method."""
+
+    def test_save_test_result_creates_files(self, tmp_path):
+        """Test _save_test_result creates files."""
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch("src.audiobook_studio.feedback.ab_test_manager.json.dump") as mock_dump,
+        ):
+
+            manager = ABTestManager(str(tmp_path))
+            # Provide a detailed result with all expected fields
+            result = ABTestResult(
+                test_id="test123",
+                variant_a_score=0.8,
+                variant_b_score=0.9,
+                winner="B",
+                confidence=0.85,
+                p_value=0.02,
+                details=[
+                    {
+                        "segment_id": 0,
+                        "segment_preview": "主人公走进了昏暗的房间，心跳急剧加速。",
+                        "variant_a_score": 0.75,
+                        "variant_b_score": 0.85,
+                        "winner": "B",
+                        "score_difference": 0.1,
+                    }
+                ],
+                timestamp=datetime(2023, 1, 1, 12, 0, 0),
+                passed_quality_gate=True,
+            )
+
+            # Mock the file operations
+            with patch("builtins.open", mock_open()) as mock_file:
+                manager._save_test_result(result)
+
+                # Check that open was called twice (JSON and HTML)
+                assert mock_file.call_count == 2
+                # Check that json.dump was called
+                mock_dump.assert_called_once()
+
+
+class TestGenerateHtmlReport:
+    """Test _generate_html_report method."""
+
+    def test_generate_html_report(self, tmp_path):
+        """Test _generate_html_report creates HTML file."""
+        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"):
+            manager = ABTestManager("/tmp/test")
+
+        # Provide a detailed result with all expected fields
+        result = ABTestResult(
+            test_id="test123",
+            variant_a_score=0.8,
+            variant_b_score=0.9,
+            winner="B",
+            confidence=0.85,
+            p_value=0.02,
+            details=[
+                {
+                    "segment_id": 0,
+                    "segment_preview": "主人公走进了昏暗的房间，心跳急剧加速。",
+                    "variant_a_score": 0.75,
+                    "variant_b_score": 0.85,
+                    "winner": "B",
+                    "score_difference": 0.1,
+                }
+            ],
+            timestamp=datetime(2023, 1, 1, 12, 0, 0),
+            passed_quality_gate=True,
+        )
+
+        html_file = tmp_path / "test_report.html"
+        manager._generate_html_report(result, html_file)
+
+        # Check that file was created
+        assert html_file.exists()
+
+        # Check content
+        content = html_file.read_text(encoding="utf-8")
+        assert "A/B Test Report" in content
+        assert "test123" in content
+        assert "Variant A" in content
+        assert "Variant B" in content
+        assert "B" in content
+        assert "85.00%" in content or "85.0%" in content
+
+
+class TestGetRecentTests:
+    """Test get_recent_tests method."""
+
+    def test_get_recent_tests_empty(self):
+        """Test get_recent_tests when no tests have been run."""
+        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"):
+            manager = ABTestManager("/tmp/test")
+
+        recent = manager.get_recent_tests(5)
+        assert recent == []
+
+    def test_get_recent_tests_with_data(self):
+        """Test get_recent_tests with some test history."""
+        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"):
+            manager = ABTestManager("/tmp/test")
+            # Add some mock results
+            manager.test_history = [
+                ABTestResult(
+                    test_id="test1",
+                    variant_a_score=0.8,
+                    variant_b_score=0.85,
+                    winner="B",
+                    confidence=0.9,
+                    p_value=0.01,
+                    details=[],
+                    timestamp=datetime(2023, 1, 1, 12, 0, 0),
+                    passed_quality_gate=True,
+                ),
+                ABTestResult(
+                    test_id="test2",
+                    variant_a_score=0.7,
+                    variant_b_score=0.65,
+                    winner="A",
+                    confidence=0.75,
+                    p_value=0.05,
+                    details=[],
+                    timestamp=datetime(2023, 1, 2, 12, 0, 0),
+                    passed_quality_gate=False,
+                ),
+            ]
+
+        recent = manager.get_recent_tests(1)
+        assert len(recent) == 1
+        assert recent[0]["test_id"] == "test2"
+        assert recent[0]["winner"] == "A"
+
+        recent = manager.get_recent_tests(5)
+        assert len(recent) == 2
+        assert recent[0]["test_id"] == "test2"  # most recent first
+        assert recent[1]["test_id"] == "test1"
+
+
+class TestGetStatus:
+    """Test get_status method."""
+
+    def test_get_status(self):
+        """Test get_status returns expected structure."""
+        with patch("src.audiobook_studio.feedback.ab_test_manager.logger"):
+            manager = ABTestManager("/tmp/test")
+
+        status = manager.get_status()
+        assert "results_dir" in status
+        assert status["results_dir"] == "/tmp/test"
+        assert status["tests_run"] == 0
+        assert isinstance(status["recent_tests"], list)
+        assert len(status["recent_tests"]) == 0
+        assert "description" in status
+
+
+class TestMainFunction:
+    """Test main function."""
+
+    def test_main(self):
+        """Test main function runs without error."""
+        with (
+            patch("src.audiobook_studio.feedback.ab_test_manager.logger"),
+            patch("src.audiobook_studio.feedback.ab_test_manager.ABTestManager.run_comparison_test") as mock_run,
+        ):
+            mock_run.return_value = {
+                "test_id": "test123",
+                "test_name": "accuracy_improvement_test",
+                "variant_a": {"prompt": "Current...", "score": 0.8},
+                "variant_b": {"prompt": "Proposed...", "score": 0.9},
+                "winner": "B",
+                "confidence": 0.85,
+                "passed_quality_gate": True,
+                "details": {"p_value": 0.02},
+            }
+
+            from src.audiobook_studio.feedback.ab_test_manager import main
+
+            result = main()
+            assert result == 0
 
 
 # Helper to mock open for file writing

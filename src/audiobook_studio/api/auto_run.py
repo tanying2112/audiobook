@@ -528,16 +528,23 @@ async def start_auto_run(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     # Generate run ID
     run_id = _generate_run_id(project_id)
 
     # Check if already running
     if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
-        raise HTTPException(
-            status_code=400,
-            detail="Auto-run already in progress for this project",
+        raise DomainError(
+            message="Auto-run already in progress for this project",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id},
         )
 
     # Start background task
@@ -971,7 +978,12 @@ async def get_intermediate_product(
         result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
         chapter = result.scalars().first()
         if not chapter:
-            raise HTTPException(status_code=404, detail=f"No chapters found for project {project_id}")
+            raise DomainError(
+                message=f"No chapters found for project {project_id}",
+                error_code="NOT_FOUND",
+                stage="auto_run",
+                context={"project_id": project_id},
+            )
         return chapter
 
     chapter = await get_chapter(chapter_id)

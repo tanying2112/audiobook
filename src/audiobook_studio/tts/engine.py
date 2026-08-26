@@ -458,6 +458,13 @@ class EngineRegistry:
             # "voxcpm2": create_voxcpm2_engine,
         }
 
+        # Merge plugin-registered TTS engine factories
+        from ..plugins import get_plugin_manager
+        plugin_mgr = get_plugin_manager()
+        plugin_factories = plugin_mgr.get_tts_engine_factories()
+        for engine_name, record in plugin_factories.items():
+            engine_factories[engine_name] = record.factory
+
         for engine_name, engine_config in self._config.items():
             if engine_name in engine_factories:
                 factory = engine_factories[engine_name]

@@ -55,7 +55,7 @@ def _tts_engine_catalog() -> List[Dict[str, Any]]:
 def build_model_catalog() -> Dict[str, Any]:
     """Return the aggregated model marketplace catalog (S3.5)."""
     discovered = plugins.discover_plugins()
-    installed = set(plugins.list_installed_plugins())
+    installed = set(plugins.read_installed_names())
     plugin_entries: List[Dict[str, Any]] = []
     for m in discovered:
         plugin_entries.append(

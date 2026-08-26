@@ -70,6 +70,8 @@ class TestSemanticCoherenceChecker:
         """Test _calculate_semantic_similarity method."""
         checker = SemanticCoherenceChecker()
 
+        # 共享全局 mock：重置调用记录，仅统计本次触发的 encode
+        mock_st_instance.encode.reset_mock()
         # Call the private method
         similarity = checker._compute_semantic_similarity("text1", "text2")
 

@@ -264,6 +264,7 @@ async def emit_pipeline_event(
     event_type: str,
     stage: Optional[str] = None,
     chapter_id: Optional[int] = None,
+    chapter_index: Optional[int] = None,
     paragraph_index: Optional[int] = None,
     progress: Optional[float] = None,
     data: Optional[Dict[str, Any]] = None,
@@ -292,6 +293,8 @@ async def emit_pipeline_event(
         message["stage"] = stage
     if chapter_id is not None:
         message["chapter_id"] = chapter_id
+    if chapter_index is not None:
+        message["chapter_index"] = chapter_index
     if paragraph_index is not None:
         message["paragraph_index"] = paragraph_index
     if progress is not None:

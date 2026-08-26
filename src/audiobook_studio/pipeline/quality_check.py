@@ -286,7 +286,18 @@ class QualityCheckPipeline:
                 duration_match=False,
                 issues=[f"analysis_error: {str(e)}"],
             )
-
+        except Exception as e:
+            logger.error(f"Unexpected audio analysis error for {audio_path}: {e}")
+            return AudioAnalysisResult(
+                duration_ms=expected_duration_ms,
+                has_silence=False,
+                silence_regions=[],
+                has_clipping=False,
+                rms_db=-60.0,
+                peak_db=-60.0,
+                duration_match=False,
+                issues=[f"analysis_error: {str(e)}"],
+            )
     def _analyze_with_ffprobe(self, audio_path: Path, expected_duration_ms: int) -> AudioAnalysisResult:
         """Audio analysis using ffprobe/ffmpeg subprocess (Python 3.14+ compatible)."""
         # Hot-reload config if changed

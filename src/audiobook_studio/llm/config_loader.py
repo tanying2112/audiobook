@@ -227,6 +227,20 @@ class LLMProvidersConfig(BaseSettings):
         # Sort by priority (lower number = higher priority)
         providers.sort(key=lambda p: p.priority)
 
+        # Merge plugin-registered LLM provider factories
+        try:
+            from ..plugins import get_plugin_manager
+            plugin_mgr = get_plugin_manager()
+            plugin_factories = plugin_mgr.get_llm_provider_factories()
+            for provider_name, record in plugin_factories.items():
+                provider_config = record.factory()
+                if provider_config:
+                    providers.append(provider_config)
+            # Re-sort after adding plugin providers
+            providers.sort(key=lambda p: getattr(p, 'priority', 100))
+        except Exception as e:
+            logger.warning("Failed to load plugin LLM providers: %s", e)
+
         pc = data.get("prompt_compression", {})
         fallback = data.get("fallback", {})
         cost = data.get("cost_control", {})

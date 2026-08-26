@@ -99,10 +99,10 @@ def _get_async_database_url() -> str:
         return url.replace("sqlite:///", "sqlite+aiosqlite:///")
     elif url.startswith("sqlite://"):
         return url.replace("sqlite://", "sqlite+aiosqlite://")
-    elif url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://")
     elif url.startswith("postgresql+psycopg2://"):
         return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+    elif url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://")
     return url
 
 
@@ -320,6 +320,7 @@ class RoutedSession(AsyncSession):
     """
     
     def __init__(self, routed_engine: RoutedEngine, **kwargs):
+        kwargs.pop("bind", None)
         super().__init__(bind=routed_engine.primary_engine, **kwargs)
         self._routed_engine = routed_engine
         self._use_replica = False
@@ -450,10 +451,10 @@ async def get_routed_session() -> AsyncGenerator[RoutedSession, None]:
         async def get_chapters(session: RoutedSession = Depends(get_routed_session)):
             ...
     """
-    factory = get_routed_session_factory()
-    session = factory()
-    # Bind to primary engine initially
     routed_engine = get_routed_engine()
+    factory = get_routed_session_factory()
+    session = factory(routed_engine=routed_engine)
+    # Bind to primary engine initially
     if routed_engine._primary_engine:
         session.bind = routed_engine.primary_engine
     session.enable_replica()

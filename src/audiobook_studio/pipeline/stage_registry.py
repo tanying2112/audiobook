@@ -904,7 +904,7 @@ class SynthesizeStage(StageHandler):
             contract_version=1,
         )
         pipeline = SynthesizePipeline()
-        return pipeline.run([input_data])
+        return await pipeline.run([input_data])
 
     def persist(
         self,

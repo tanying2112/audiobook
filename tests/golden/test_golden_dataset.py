@@ -481,7 +481,8 @@ class TestGoldenDatasetSynthesize:
     def pipeline(self, router):
         return SynthesizePipeline(router=router)
 
-    def test_mock_mode_returns_valid_segments(self, pipeline):
+    @pytest.mark.asyncio
+    async def test_mock_mode_returns_valid_segments(self, pipeline):
         """Test mock mode returns valid AudioSegment via run()."""
         from audiobook_studio.pipeline.synthesize import AudioSegment
         from audiobook_studio.schemas import CharacterVoiceBinding, TtsRoutingInput
@@ -526,7 +527,7 @@ class TestGoldenDatasetSynthesize:
             prefer_local=True,
         )
 
-        results = pipeline.run([tts_input])
+        results = await pipeline.run([tts_input])
 
         assert len(results) == 1
         assert isinstance(results[0], AudioSegment)

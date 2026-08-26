@@ -1,0 +1,24 @@
+{
+  "name": "example_tts",
+  "version": "1.0.0",
+  "type": "tts_engine",
+  "description": "Example third-party TTS engine using OpenAI-compatible HTTP API. Demonstrates plugin registration without modifying core code.",
+  "author": "Audiobook Studio Team",
+  "license": "MIT",
+  "homepage": "https://github.com/example/example-tts",
+  "models": ["example-tts-voice-1", "example-tts-voice-2"],
+  "requires": [],
+  "python_requires": ">=3.10",
+  "extra_dependencies": ["httpx"],
+  "entry_point": "plugin:register",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "base_url": {"type": "string", "description": "OpenAI-compatible API base URL"},
+      "api_key_env": {"type": "string", "description": "Env var name for API key"},
+      "default_voice": {"type": "string", "description": "Default voice ID"},
+      "timeout": {"type": "number", "description": "Request timeout in seconds", "default": 30}
+    },
+    "required": ["base_url"]
+  }
+}

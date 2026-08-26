@@ -381,7 +381,7 @@ async def test_character_crud(async_client: AsyncClient):
 
     # Update character
     update_payload = {"canonical_name": "更新角色", "gender": "female"}
-    resp = await async_client.put(f"/api/projects/{project_id}/characters/{char_id}", json=update_payload)
+    resp = await async_client.patch(f"/api/projects/{project_id}/characters/{char_id}", json=update_payload)
     assert resp.status_code == 200
     assert resp.json()["canonical_name"] == "更新角色"
     assert resp.json()["gender"] == "female"
@@ -411,8 +411,8 @@ async def test_character_duplicate_name(async_client: AsyncClient):
 
     # Second create with same name should fail
     resp = await async_client.post(f"/api/projects/{project_id}/characters", json=payload)
-    assert resp.status_code == 400
-    assert "already exists" in resp.json()["detail"]
+    assert resp.status_code == 422
+    assert "already exists" in resp.json()["error"]["message"]
 
 
 @pytest.mark.anyio

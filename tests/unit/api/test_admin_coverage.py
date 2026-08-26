@@ -34,7 +34,7 @@ class TestAdminEndpoints:
         """Test warmup when no registry in container."""
         mock_background_tasks = MagicMock()
         
-        with patch('src/audiobook_studio.api.admin.get_app_container') as mock_container:
+        with patch('src.audiobook_studio.di.get_app_container') as mock_container:
             mock_container_instance = MagicMock()
             mock_container_instance.get.return_value = None
             mock_container.return_value = mock_container_instance
