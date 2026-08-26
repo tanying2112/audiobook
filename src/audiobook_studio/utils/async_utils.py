@@ -13,7 +13,7 @@ its own fresh event loop. Because it never touches the caller's event loop (it
 does not call ``asyncio.run`` / ``set_event_loop`` / ``get_running_loop`` on the
 calling thread), it is also safe under pytest-asyncio's strict loop policy: a
 sync test that calls :func:`run_sync` cannot accidentally unset the main-thread
-loop that later ``asyncio.get_event_loop()`` calls rely on.
+loop that later event-loop lookups rely on.
 """
 
 from __future__ import annotations

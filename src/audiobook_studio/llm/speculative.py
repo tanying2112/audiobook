@@ -330,7 +330,7 @@ async def continuous_batch(fn: Callable[[Any], Any], items: Sequence[Any], max_c
     independent LLM calls (the dominant workload in translate/extract/QA).
     """
     sem = asyncio.Semaphore(max(1, max_concurrency))
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     async def _run(it: Any) -> Any:
         async with sem:

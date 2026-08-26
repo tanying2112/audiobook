@@ -47,7 +47,7 @@ async def _init_db_async(args: argparse.Namespace) -> int:
         if not args.no_seed:
             # Run seed projects in sync context (uses sync SessionLocal)
             # We could make initialize_database async, but for now run in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, initialize_database, True)
         else:
             print("ℹ️  Skipping project seed data creation.")

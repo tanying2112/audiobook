@@ -290,7 +290,7 @@ class KokoroBackend(BaseTTSEngine):
         # This handles tokenization, phonemization, and inference correctly
         try:
             # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate)
-            audio, sample_rate = await asyncio.get_event_loop().run_in_executor(
+            audio, sample_rate = await asyncio.get_running_loop().run_in_executor(
                 None,
                 lambda: self._kokoro.create(
                     text=text,

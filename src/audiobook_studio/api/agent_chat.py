@@ -16,7 +16,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -551,7 +553,12 @@ async def agent_chat_http(request: AgentChatRequest, db: AsyncSession = Depends(
     result = await db.execute(select(Project).where(Project.id == request.project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": request.project_id},
+        )
 
     # Get or create session
     session_id = _get_or_create_session(request.project_id, request.session_id)
@@ -573,14 +580,29 @@ async def get_chat_history(project_id: int, session_id: str, db: AsyncSession = 
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     if session_id not in agent_sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise DomainError(
+            message="Session not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"session_id": session_id},
+        )
 
     session = agent_sessions[session_id]
     if session["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Session does not belong to this project")
+        raise DomainError(
+            message="Session does not belong to this project",
+            error_code="FORBIDDEN",
+            stage="agent_chat",
+            context={"project_id": project_id, "session_id": session_id},
+        )
 
     return {
         "session_id": session_id,
@@ -597,7 +619,12 @@ async def list_chat_sessions(project_id: int, db: AsyncSession = Depends(get_asy
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     sessions = [
         {
@@ -619,14 +646,29 @@ async def delete_chat_session(project_id: int, session_id: str, db: AsyncSession
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     if session_id not in agent_sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise DomainError(
+            message="Session not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"session_id": session_id},
+        )
 
     session = agent_sessions[session_id]
     if session["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Session does not belong to this project")
+        raise DomainError(
+            message="Session does not belong to this project",
+            error_code="FORBIDDEN",
+            stage="agent_chat",
+            context={"project_id": project_id, "session_id": session_id},
+        )
 
     del agent_sessions[session_id]
     return {"message": "Session deleted", "session_id": session_id}
@@ -638,7 +680,12 @@ async def get_agent_status(project_id: int, db: AsyncSession = Depends(get_async
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     result = await db.execute(select(AgentKnowledge))
     knowledge_count = len(result.scalars().all())
@@ -668,7 +715,12 @@ async def add_knowledge(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     knowledge_entry = AgentKnowledge(
         id=str(uuid.uuid4()),
@@ -703,7 +755,12 @@ async def list_knowledge(project_id: int, topic: Optional[str] = None, db: Async
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     query = select(AgentKnowledge)
     if topic:
@@ -749,7 +806,12 @@ async def start_pipeline(request: PipelineStartRequest, db: AsyncSession = Depen
 
     mode = PipelineMode(request.mode.lower())
     if mode not in [PipelineMode.AUTOPILOT, PipelineMode.INTERACTIVE]:
-        raise HTTPException(status_code=400, detail="Invalid mode. Use 'autopilot' or 'interactive'")
+        raise DomainError(
+            message="Invalid mode. Use 'autopilot' or 'interactive'",
+            error_code="VALIDATION_ERROR",
+            stage="agent_chat",
+            context={"mode": request.mode, "valid_modes": ["autopilot", "interactive"]},
+        )
 
     # Create FSM instance
     fsm = get_fsm(
@@ -779,12 +841,22 @@ async def confirm_pipeline(request: PipelineConfirmRequest, db: AsyncSession = D
     result = await db.execute(select(Project).where(Project.id == request.project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": request.project_id},
+        )
 
     fsm = get_fsm(request.project_id)
 
     if fsm.mode != PipelineMode.INTERACTIVE:
-        raise HTTPException(status_code=400, detail="Confirm only available in interactive mode")
+        raise DomainError(
+            message="Confirm only available in interactive mode",
+            error_code="VALIDATION_ERROR",
+            stage="agent_chat",
+            context={"mode": fsm.mode.value},
+        )
 
     if not request.confirmed:
         # User rejected - stop pipeline
@@ -818,7 +890,12 @@ async def get_pipeline_status(project_id: int, db: AsyncSession = Depends(get_as
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     if project_id not in _fsm_instances:
         return PipelineStatusResponse(
@@ -850,7 +927,12 @@ async def stop_pipeline(project_id: int, db: AsyncSession = Depends(get_async_db
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_chat",
+            context={"project_id": project_id},
+        )
 
     if project_id in _fsm_instances:
         _fsm_instances[project_id].stop()

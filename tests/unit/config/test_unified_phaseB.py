@@ -81,7 +81,28 @@ def cfg(tmp_path: Path):
     return c
 
 
-# ── env interpolation ────────────────────────────────────────────────────────
+@pytest.fixture
+def patched_llm_config():
+    """Make the env-mocked LLMProvidersConfig/ProviderConfig accept the
+    production code's keyword constructor calls."""
+    import sys
+    from types import SimpleNamespace
+
+    mod = sys.modules["src.audiobook_studio.llm.config_loader"]
+    orig_llm = mod.LLMProvidersConfig
+    orig_pc = mod.ProviderConfig
+
+    def llm_factory(**kwargs):
+        ns = SimpleNamespace(**kwargs)
+        ns.get_providers_for_stage = lambda stage: ns.providers
+        ns.get_all_enabled = lambda: ns.providers
+        return ns
+
+    mod.LLMProvidersConfig = llm_factory
+    mod.ProviderConfig = lambda **kw: SimpleNamespace(**kw)
+    yield
+    mod.LLMProvidersConfig = orig_llm
+    mod.ProviderConfig = orig_pc
 
 def test_interpolate_brace_format(cfg, monkeypatch) -> None:
     monkeypatch.setenv("MY_VAR", "value123")
@@ -107,17 +128,17 @@ def test_interpolate_escaped_dollar(cfg, monkeypatch) -> None:
 
 def test_get_nested_found() -> None:
     data = {"a": {"b": {"c": 42}}}
-    assert uc_mod.UnifiedConfig._get_nested(data, ["a", "b", "c"]) == 42
+    assert UnifiedConfig()._get_nested(data, ["a", "b", "c"]) == 42
 
 
 def test_get_nested_missing() -> None:
     data = {"a": {"b": 1}}
-    assert uc_mod.UnifiedConfig._get_nested(data, ["a", "x"]) is None
+    assert UnifiedConfig()._get_nested(data, ["a", "x"]) is None
 
 
 def test_get_nested_non_dict() -> None:
     data = {"a": 5}
-    assert uc_mod.UnifiedConfig._get_nested(data, ["a", "b"]) is None
+    assert UnifiedConfig()._get_nested(data, ["a", "b"]) is None
 
 
 # ── get priority resolution ────────────────────────────────────────────────
@@ -134,7 +155,7 @@ def test_get_from_settings(cfg) -> None:
 def test_get_from_yaml(cfg, tmp_path) -> None:
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "tts_providers.yaml").write_text("kokoro:\n  model: test-model\n")
-    assert cfg.get("tts_providers.kokoro.model") == "test-model"
+    assert cfg.get("kokoro.model") == "test-model"
 
 
 def test_get_default(cfg) -> None:
@@ -195,21 +216,21 @@ def test_load_all_yaml_configs_excludes(cfg, tmp_path) -> None:
 
 # ── LLM providers ───────────────────────────────────────────────────────────
 
-def test_load_llm_providers_empty_returns_defaults(cfg, tmp_path) -> None:
+def test_load_llm_providers_empty_returns_defaults(cfg, tmp_path, patched_llm_config) -> None:
     (tmp_path / "config").mkdir()
     result = cfg.load_llm_providers()
     assert result is not None
     assert getattr(result, "providers", None) == [] or isinstance(result, dict)
 
 
-def test_load_llm_providers_parsed(cfg, tmp_path) -> None:
+def test_load_llm_providers_parsed(cfg, tmp_path, patched_llm_config) -> None:
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "llm_providers.yaml").write_text(
         "providers:\n"
         "  - name: groq\n"
         "    provider: groq\n"
         "    model: llama3\n"
-        "    stages: [planning]\n"
+        "    stages: [extract]\n"
         "    priority: 10\n"
         "fallback: {}\n"
         "cost_control: {}\n"
@@ -220,7 +241,7 @@ def test_load_llm_providers_parsed(cfg, tmp_path) -> None:
     assert result.providers[0].name == "groq"
 
 
-def test_load_llm_providers_cached(cfg, tmp_path) -> None:
+def test_load_llm_providers_cached(cfg, tmp_path, patched_llm_config) -> None:
     (tmp_path / "config").mkdir()
     assert cfg.load_llm_providers() is cfg.load_llm_providers()
 
@@ -320,7 +341,8 @@ def test_get_section_combines(cfg, tmp_path) -> None:
         "services:\n  redis:\n    environment:\n      REDIS_HOST: localhost\n"
     )
     section = cfg.get_section("redis")
-    assert "redis" in section
+    assert "REDIS_URL" in section
+    assert "redis.REDIS_HOST" in section
 
 
 def test_get_section_settings_match(cfg) -> None:
@@ -412,7 +434,7 @@ def test_mask_sensitive_nested(cfg) -> None:
     data = {"db": {"password": "longpassword"}, "list": [{"secret": "supersecret"}]}
     masked = cfg._mask_sensitive(data)
     assert masked["db"]["password"] == "long****word"
-    assert masked["list"][0]["secret"] == "supe****ret"
+    assert masked["list"][0]["secret"] == "supe****cret"
 
 
 def test_dump_all(cfg, tmp_path) -> None:
@@ -433,11 +455,11 @@ def test_get_unified_config_singleton(tmp_path) -> None:
     reset_unified_config()
 
 
-def test_convenience_functions(tmp_path) -> None:
+def test_convenience_functions(tmp_path, patched_llm_config) -> None:
     reset_unified_config()
     c = get_unified_config()
     c._settings = FakeSettings()
-    c._project_root = tmp_path
+    c.project_root = tmp_path
     assert get_config("redis.url") == "redis://localhost:6379/0"
     assert get_database_config()["sync_url"].startswith("sqlite://")
     assert get_redis_config()["max_connections"] == 50
@@ -448,4 +470,28 @@ def test_convenience_functions(tmp_path) -> None:
     (tmp_path / "config" / "tts_providers.yaml").write_text("kokoro:\n  enabled: true\n")
     assert get_tts_config()["kokoro"]["enabled"] is True
     assert get_llm_providers_config() is not None
+    reset_unified_config()
+
+
+def test_get_llm_providers_config_method(cfg, patched_llm_config) -> None:
+    assert cfg.get_llm_providers_config() is not None
+
+
+def test_validate_config_module(patched_llm_config) -> None:
+    reset_unified_config()
+    c = get_unified_config()
+    c._settings = FakeSettings(JWT_SECRET="x", CORS_ORIGINS="http://localhost")
+    c.project_root = Path("/tmp")
+    issues = validate_config()
+    assert isinstance(issues, list)
+    reset_unified_config()
+
+
+def test_dump_config_module(patched_llm_config, tmp_path) -> None:
+    reset_unified_config()
+    c = get_unified_config()
+    c._settings = FakeSettings()
+    c.project_root = tmp_path
+    d = dump_config()
+    assert "settings" in d
     reset_unified_config()

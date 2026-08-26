@@ -3,7 +3,9 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
+
+from ..exceptions import DomainError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,9 +147,11 @@ async def create_provider(
     # Check if provider with same name exists
     result = await db.execute(select(ProviderModel).where(ProviderModel.name == payload.name))
     if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Provider '{payload.name}' already exists",
+        raise DomainError(
+            message=f"Provider '{payload.name}' already exists",
+            error_code="CONFLICT",
+            stage="provider_management",
+            context={"provider_name": payload.name},
         )
 
     provider = ProviderModel(
@@ -213,9 +217,11 @@ async def get_provider(
     result = await db.execute(select(Provider).where(Provider.id == provider_id))
     provider = result.scalar_one_or_none()
     if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider with id {provider_id} not found",
+        raise DomainError(
+            message=f"Provider with id {provider_id} not found",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id},
         )
     return provider
 
@@ -230,9 +236,11 @@ async def update_provider(
     result = await db.execute(select(Provider).where(Provider.id == provider_id))
     provider = result.scalar_one_or_none()
     if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider with id {provider_id} not found",
+        raise DomainError(
+            message=f"Provider with id {provider_id} not found",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id},
         )
 
     # Update fields
@@ -289,9 +297,11 @@ async def create_model(
     prov_result = await db.execute(select(ProviderModel).where(ProviderModel.id == provider_id))
     provider = prov_result.scalar_one_or_none()
     if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider with id {provider_id} not found",
+        raise DomainError(
+            message=f"Provider with id {provider_id} not found",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id},
         )
 
     # Check if model with same name exists under this provider
@@ -299,9 +309,11 @@ async def create_model(
         select(ModelModel).where(ModelModel.provider_id == provider_id, ModelModel.name == payload.name)
     )
     if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Model '{payload.name}' already exists under provider {provider_id}",
+        raise DomainError(
+            message=f"Model '{payload.name}' already exists under provider {provider_id}",
+            error_code="CONFLICT",
+            stage="provider_management",
+            context={"provider_id": provider_id, "model_name": payload.name},
         )
 
     model = ModelModel(
@@ -342,9 +354,11 @@ async def list_models(
     prov_result = await db.execute(select(ProviderModel).where(ProviderModel.id == provider_id))
     provider = prov_result.scalar_one_or_none()
     if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider with id {provider_id} not found",
+        raise DomainError(
+            message=f"Provider with id {provider_id} not found",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id},
         )
 
     result = await db.execute(
@@ -383,9 +397,11 @@ async def get_model(
     )
     model = result.scalar_one_or_none()
     if not model:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model with id {model_id} not found under provider {provider_id}",
+        raise DomainError(
+            message=f"Model with id {model_id} not found under provider {provider_id}",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id, "model_id": model_id},
         )
 
     prov_result = await db.execute(select(ProviderModel).where(ProviderModel.id == provider_id))
@@ -414,9 +430,11 @@ async def update_model(
     )
     model = result.scalar_one_or_none()
     if not model:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model with id {model_id} not found under provider {provider_id}",
+        raise DomainError(
+            message=f"Model with id {model_id} not found under provider {provider_id}",
+            error_code="NOT_FOUND",
+            stage="provider_management",
+            context={"provider_id": provider_id, "model_id": model_id},
         )
 
     # Check if new name conflicts with existing model under same provider
@@ -427,9 +445,11 @@ async def update_model(
             )
         )
         if conflict_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Model '{payload.name}' already exists under provider {provider_id}",
+            raise DomainError(
+                message=f"Model '{payload.name}' already exists under provider {provider_id}",
+                error_code="CONFLICT",
+                stage="provider_management",
+                context={"provider_id": provider_id, "model_name": payload.name},
             )
 
     # Update fields

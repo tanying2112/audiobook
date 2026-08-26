@@ -5,7 +5,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
+
+from ..exceptions import DomainError
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -140,7 +142,12 @@ async def get_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_async_
     result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
     p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
     return p.to_schema()
 
 
@@ -150,7 +157,12 @@ async def update_paragraph(paragraph_id: int, payload: ParagraphSchema, db: Asyn
     result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
     p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
     # Exclude id and other read-only fields from update
     update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
     for field, value in update_data.items():
@@ -166,7 +178,12 @@ async def delete_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_asy
     result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
     p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
     await db.delete(p)
     await db.commit()
     return None
@@ -199,7 +216,12 @@ async def get_paragraph_detail(
     result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
     p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
 
     # Get latest TTS edit
     result = await db.execute(select(TTSEdit).where(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()))
@@ -344,7 +366,12 @@ async def serve_paragraph_audio(paragraph_id: int, db: AsyncSession = Depends(ge
     )
     segment = result.scalar_one_or_none()
     if not segment:
-        raise HTTPException(status_code=404, detail="No audio found for this paragraph")
+        raise DomainError(
+            message="No audio found for this paragraph",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
 
     file_path = Path(segment.file_path)
     if not file_path.is_absolute():
@@ -352,7 +379,12 @@ async def serve_paragraph_audio(paragraph_id: int, db: AsyncSession = Depends(ge
         file_path = audio_dir(segment.project_id) / file_path.name
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+        raise DomainError(
+            message="Audio file not found on disk",
+            error_code="FILE_NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id, "file_path": str(file_path)},
+        )
 
     media_type = "audio/mpeg" if segment.format == "mp3" else "audio/wav"
     return FileResponse(
@@ -440,7 +472,12 @@ async def trigger_paragraph_regeneration(paragraph_id: int, db: AsyncSession = D
     result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
     p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
 
     # Mark current audio segment as not current
     result = await db.execute(

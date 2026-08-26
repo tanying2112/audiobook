@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -594,13 +596,20 @@ async def get_auto_run_status(project_id: int, run_id: Optional[str] = None):
 async def pause_auto_run(project_id: int):
     """Pause auto-run pipeline at next safe point."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     run_info = _active_runs[project_id]
     if run_info["status"] != "running":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot pause: current status is {run_info['status']}",
+        raise DomainError(
+            message=f"Cannot pause: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
         )
 
     # Set pause flag - pipeline will pause at next pause point
@@ -618,13 +627,20 @@ async def pause_auto_run(project_id: int):
 async def resume_auto_run(project_id: int):
     """Resume paused auto-run pipeline."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     run_info = _active_runs[project_id]
     if run_info["status"] != "paused":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot resume: current status is {run_info['status']}",
+        raise DomainError(
+            message=f"Cannot resume: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
         )
 
     # Resume
@@ -648,13 +664,20 @@ async def resume_auto_run(project_id: int):
 async def cancel_auto_run(project_id: int):
     """Cancel auto-run pipeline."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     run_info = _active_runs[project_id]
     if run_info["status"] not in ("running", "paused"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel: current status is {run_info['status']}",
+        raise DomainError(
+            message=f"Cannot cancel: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
         )
 
     # Cancel
@@ -693,13 +716,20 @@ async def start_autopilot(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     # Check if already running
     if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
-        raise HTTPException(
-            status_code=400,
-            detail="Auto-run already in progress for this project",
+        raise DomainError(
+            message="Auto-run already in progress for this project",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id},
         )
 
     # Analyze project and generate smart defaults
@@ -735,7 +765,12 @@ async def preview_autopilot_config(project_id: int, db: AsyncSession = Depends(g
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     return await _generate_autopilot_config(project_id, db)
 
@@ -754,7 +789,12 @@ async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> Autop
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     chapters = project.chapters
     total_chars = sum(len(ch.raw_text or "") + len(ch.extracted_text or "") for ch in chapters)
@@ -899,10 +939,20 @@ async def get_intermediate_product(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     if stage not in _stage_order:
-        raise HTTPException(status_code=400, detail=f"Unknown stage: {stage}")
+        raise DomainError(
+            message=f"Unknown stage: {stage}",
+            error_code="VALIDATION_ERROR",
+            stage="auto_run",
+            context={"stage": stage, "valid_stages": _stage_order},
+        )
 
     # Helper to get chapter
     async def get_chapter(cid: Optional[int]) -> Chapter:
@@ -910,9 +960,11 @@ async def get_intermediate_product(
             result = await db.execute(select(Chapter).where(Chapter.id == cid, Chapter.project_id == project_id))
             chapter = result.scalar_one_or_none()
             if not chapter:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Chapter {cid} not found in project {project_id}",
+                raise DomainError(
+                    message=f"Chapter {cid} not found in project {project_id}",
+                    error_code="NOT_FOUND",
+                    stage="auto_run",
+                    context={"project_id": project_id, "chapter_id": cid},
                 )
             return chapter
         # Return first chapter
@@ -1099,7 +1151,12 @@ async def get_intermediate_product(
 
     else:
         # Should not happen due to earlier check
-        raise HTTPException(status_code=400, detail=f"Unsupported stage: {stage}")
+        raise DomainError(
+            message=f"Unsupported stage: {stage}",
+            error_code="VALIDATION_ERROR",
+            stage="auto_run",
+            context={"stage": stage},
+        )
 
     return IntermediateProduct(
         stage=stage,

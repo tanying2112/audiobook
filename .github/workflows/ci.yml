@@ -123,7 +123,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir -e . pytest pytest-asyncio pytest-cov pytest-timeout
+          pip install --no-cache-dir -e . pytest pytest-asyncio pytest-cov pytest-timeout pytest-random-order
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
 
       - name: Set up test environment
@@ -154,6 +154,7 @@ jobs:
             --ignore=tests/unit/test_self_iteration_integration.py.bak \
             --ignore=tests/unit/test_quality_check_nonmock.py.bak \
             -m "not integration and not e2e" \
+            --random-order --random-order-seed=20260826 \
             -x \
             --cov=src/audiobook_studio --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=85 --cov-branch
