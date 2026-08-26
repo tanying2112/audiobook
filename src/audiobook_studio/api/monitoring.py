@@ -68,7 +68,10 @@ async def get_latest_metrics(project_id: int):
     metrics_files.append(reports_dir_path / "metrics_summary.json")
 
     if not metrics_files:
-        raise HTTPException(status_code=404, detail=f"No metrics found for project {project_id}")
+        raise AudiobookFileNotFoundError(
+            path=f"metrics files for project {project_id}",
+            operation="get_latest_metrics",
+        )
 
     # Sort by modification time, newest first
     metrics_files = [f for f in metrics_files if f.exists()]

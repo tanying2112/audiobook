@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,7 +94,12 @@ async def fetch_characters(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id},
+        )
 
     result = await db.execute(select(Character).where(Character.project_id == project_id))
     characters = result.scalars().all()
@@ -110,7 +117,12 @@ async def create_character(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id},
+        )
 
     db_character = Character(**character.model_dump(), project_id=project_id)
     db.add(db_character)
@@ -131,7 +143,12 @@ async def fetch_character(
     )
     character = result.scalar_one_or_none()
     if not character:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
+        )
     return character
 
 
@@ -148,7 +165,12 @@ async def update_character(
     )
     db_character = result.scalar_one_or_none()
     if not db_character:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
+        )
 
     update_data = character.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -171,7 +193,12 @@ async def delete_character(
     )
     character = result.scalar_one_or_none()
     if not character:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
+        )
 
     await db.delete(character)
     await db.commit()

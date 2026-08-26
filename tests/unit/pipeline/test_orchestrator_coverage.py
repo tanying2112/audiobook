@@ -30,10 +30,13 @@ def _restore_state():
         "_telemetry_collector": orch._telemetry_collector,
     }
     yield
-    orch._stage_hooks = saved["_stage_hooks"]
-    orch._pipeline_hooks = saved["_pipeline_hooks"]
-    orch._async_stage_hooks = saved["_async_stage_hooks"]
-    orch._async_pipeline_hooks = saved["_async_pipeline_hooks"]
+    # 原位写回（保持 list 对象同一性）：其他模块可能通过
+    # ``from orchestrator import _stage_hooks`` 持有同一列表的引用，
+    # 重新赋值会令其指向过期对象，造成跨文件顺序污染。
+    orch._stage_hooks[:] = saved["_stage_hooks"]
+    orch._pipeline_hooks[:] = saved["_pipeline_hooks"]
+    orch._async_stage_hooks[:] = saved["_async_stage_hooks"]
+    orch._async_pipeline_hooks[:] = saved["_async_pipeline_hooks"]
     orch._telemetry_collector = saved["_telemetry_collector"]
 
 

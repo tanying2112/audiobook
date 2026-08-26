@@ -15,7 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
+
+from ..exceptions import DomainError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -158,7 +160,12 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_async_db))
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     return project
 
 
@@ -172,7 +179,12 @@ async def update_project(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
     await db.commit()
@@ -186,7 +198,12 @@ async def delete_project(project_id: int, db: AsyncSession = Depends(get_async_d
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     await db.delete(project)
     await db.commit()
     return None
@@ -206,7 +223,12 @@ async def list_chapters(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     result = await db.execute(
         select(Chapter)
         .where(Chapter.project_id == project_id)
@@ -233,7 +255,12 @@ async def get_chapter(
     )
     chapter = result.scalar_one_or_none()
     if not chapter:
-        raise HTTPException(status_code=404, detail="Chapter not found")
+        raise DomainError(
+            message="Chapter not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id},
+        )
     return chapter
 
 
@@ -260,7 +287,12 @@ async def list_paragraphs(
     )
     chapter = result.scalar_one_or_none()
     if not chapter:
-        raise HTTPException(status_code=404, detail="Chapter not found")
+        raise DomainError(
+            message="Chapter not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id},
+        )
     result = await db.execute(
         select(Paragraph)
         .where(
@@ -294,7 +326,12 @@ async def get_paragraph(
     )
     para = result.scalar_one_or_none()
     if not para:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
     return para
 
 
@@ -319,7 +356,12 @@ async def update_paragraph(
     )
     para = result.scalar_one_or_none()
     if not para:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
     update_data = {k: v for k, v in payload.items() if k not in ("id",) and v is not None}
     for field, value in update_data.items():
         setattr(para, field, value)
@@ -389,9 +431,11 @@ async def get_quality_report(
         report_path = reports_dir(project_id) / "quality_report.json"
 
     if not report_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Quality report not found for project {project_id}, chapter {chapter_index}",
+        raise DomainError(
+            message=f"Quality report not found for project {project_id}, chapter {chapter_index}",
+            error_code="NOT_FOUND",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
         )
 
     try:
@@ -412,9 +456,21 @@ async def get_quality_report(
             generated_at=data["generated_at"],
         )
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Invalid quality report format: {e}") from e
+        raise DomainError(
+            message=f"Invalid quality report format: {e}",
+            error_code="INVALID_FORMAT",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
+            original_error=e,
+        ) from e
     except KeyError as e:
-        raise HTTPException(status_code=500, detail=f"Quality report missing required field: {e}") from e
+        raise DomainError(
+            message=f"Quality report missing required field: {e}",
+            error_code="INVALID_FORMAT",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
+            original_error=e,
+        ) from e
 
 
 @router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")
@@ -440,12 +496,22 @@ async def regenerate_paragraph(
     )
     para = result.scalar_one_or_none()
     if not para:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
 
     # Check if there's an existing audio segment
     audio_segment = para.audio_segment
     if not audio_segment:
-        raise HTTPException(status_code=400, detail="No audio segment found for this paragraph")
+        raise DomainError(
+            message="No audio segment found for this paragraph",
+            error_code="VALIDATION_ERROR",
+            stage="projects",
+            context={"project_id": project_id, "paragraph_id": paragraph_id},
+        )
 
     # Queue the re-synthesis task
     from ..tasks.tts_tasks import synthesize_paragraph_task
@@ -483,7 +549,12 @@ async def regenerate_paragraph_legacy(
     )
     para = result.scalar_one_or_none()
     if not para:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "paragraph_id": paragraph_id},
+        )
 
     return await regenerate_paragraph(
         project_id=project_id,
