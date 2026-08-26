@@ -676,7 +676,7 @@ class TestRateLimiter:
 
         @rate_limiter(max_calls=5, period=1.0)
         async def limited_func():
-            call_times.append(asyncio.get_event_loop().time())
+            call_times.append(asyncio.get_running_loop().time())
             return "ok"
 
         for _ in range(5):

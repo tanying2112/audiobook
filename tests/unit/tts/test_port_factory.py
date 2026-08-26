@@ -10,15 +10,21 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from src.audiobook_studio.di import get_app_container
+from src.audiobook_studio.tts.engine import EngineRegistry as _EngineRegistry
 from src.audiobook_studio.tts.port_factory import (
     _build_config_from_env,
     create_configured_registry,
     create_engine,
     engine_context,
     get_default_engine,
-    get_engine_registry,
     get_port,
 )
+
+
+def get_engine_registry():
+    """Backward-compat accessor: registry now lives in the DI container."""
+    return get_app_container().get(_EngineRegistry)
 from src.audiobook_studio.tts.engine import EngineRegistry, TTSEngine
 
 
@@ -429,10 +435,6 @@ class TestBackwardCompatibility:
 
     def test_get_engine_registry_singleton(self):
         """Test get_engine_registry returns same instance."""
-        # Reset global registry
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
-
         reg1 = get_engine_registry()
         reg2 = get_engine_registry()
 

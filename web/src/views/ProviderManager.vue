@@ -504,16 +504,16 @@ onMounted(loadProviders)
 </template>
 
 <style scoped>
-.provider-manager { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.provider-manager { max-width: 1100px; margin: 0 auto; }
 .breadcrumb { margin-bottom: 16px; color: #94a3b8; font-size: 13px; }
 .breadcrumb .sep { margin: 0 6px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; gap: 16px; flex-wrap: wrap; }
 .page-header h1 { margin: 0 0 4px; font-size: 22px; }
 .subtitle { margin: 0; color: #64748b; font-size: 13px; }
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .layout { display: flex; flex-direction: column; gap: 16px; }
 .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; }
-.card-title { font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.card-title { font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .data-table th, .data-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
 .data-table tbody tr { cursor: pointer; }
@@ -540,5 +540,25 @@ onMounted(loadProviders)
 .form-grid label { font-size: 13px; font-weight: 500; color: #334155; }
 .form-control { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box; }
 .form-check { width: 18px; height: 18px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+/* ── Mobile Responsive ─────────────────────────────────────── */
+@media (max-width: 600px) {
+  .provider-manager { padding: 16px; }
+  .page-header { flex-direction: column; align-items: flex-start; }
+  .header-actions { width: 100%; }
+  .header-actions .btn { flex: 1; justify-content: center; }
+
+  /* Make tables horizontally scrollable */
+  .card { overflow-x: auto; }
+  .data-table { min-width: 560px; }
+
+  /* Stack form-grid labels above inputs */
+  .form-grid { grid-template-columns: 1fr; gap: 6px 0; }
+  .form-grid label { margin-top: 8px; }
+
+  /* Modal fills screen with margin on mobile */
+  .modal { margin: 16px; padding: 20px; max-width: none; width: auto; }
+  .modal-overlay { align-items: flex-end; }
+}
 </style>

@@ -87,6 +87,11 @@ const router = createRouter({
       component: () => import('../views/MonitoringDashboard.vue'),
     },
     {
+      path: '/providers',
+      name: 'provider-manager',
+      component: () => import('../views/ProviderManager.vue'),
+    },
+    {
       path: '/model-market',
       name: 'model-market',
       component: () => import('../views/ModelMarket.vue'),

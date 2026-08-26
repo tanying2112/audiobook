@@ -25,7 +25,7 @@ from src.audiobook_studio.utils.ffmpeg_probe import (
 
 def run_async(coro):
     """Helper to run async coroutine in tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class TestAsyncRunners:

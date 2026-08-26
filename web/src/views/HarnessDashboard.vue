@@ -97,23 +97,24 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="harness-dashboard">
+  <div class="page-container harness-dashboard">
     <!-- Header -->
     <div class="page-header">
-      <button class="btn btn-ghost" @click="router.push('/')">
-        ← {{ t('common.back') }}
+      <button class="btn btn-ghost touch-target" @click="router.push('/')">
+        ← <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
       <h1>{{ t('harness_dashboard.title') }}</h1>
-      <div class="header-actions">
+      <div class="header-actions flex items-center gap-2">
         <button
-          class="btn btn-primary"
+          class="btn btn-primary touch-target"
           @click="handleTrigger"
           :disabled="triggering"
         >
           {{ triggering ? t('harness_dashboard.triggering') : t('harness_dashboard.trigger_iteration') }}
         </button>
-        <button class="btn btn-outline" @click="loadDashboard" :disabled="loading">
-          {{ t('common.refresh') }}
+        <button class="btn btn-outline touch-target" @click="loadDashboard" :disabled="loading">
+          <span class="hidden-mobile">{{ t('common.refresh') }}</span>
+          <span class="visible-mobile">↻</span>
         </button>
       </div>
     </div>
@@ -357,7 +358,6 @@ onUnmounted(() => {
 .harness-dashboard {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px;
 }
 
 /* Header */
@@ -370,6 +370,7 @@ onUnmounted(() => {
 }
 .page-header h1 { margin: 0; font-size: 22px; flex: 1; }
 .header-actions { display: flex; gap: 8px; }
+.header-actions .btn { white-space: nowrap; }
 
 .btn {
   padding: 8px 16px;
@@ -537,6 +538,37 @@ onUnmounted(() => {
 .timeline-grid { display: flex; gap: 20px; flex-wrap: wrap; }
 .timeline-stage { flex: 1; min-width: 250px; }
 .timeline-stage h3 { font-size: 14px; margin: 0 0 8px; color: #374151; }
+
+/* ── Mobile Responsive ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  .stat-row { gap: 12px; }
+  .funnel-label { width: 70px; font-size: 12px; }
+  .pattern-tag { width: 110px; }
+  .pattern-stage { width: 70px; }
+  .gate-label { width: 90px; }
+  .gate-value { width: 90px; font-size: 12px; }
+  .critic-type, .critic-verdict { width: 80px; }
+}
+
+@media (max-width: 600px) {
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .header-actions .btn { flex: 1; justify-content: center; }
+
+  .stat-row { flex-direction: column; gap: 8px; }
+
+  /* Stack funnel rows on narrow screens */
+  .funnel-label { width: auto; flex-basis: 100%; text-align: left; margin-bottom: 2px; }
+  .funnel-step { flex-wrap: wrap; }
+
+  /* Timeline stages stack vertically */
+  .timeline-stage { min-width: 100%; }
+
+  /* Status bar wraps */
+  .status-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
+
+  .canary-header, .ab-header { flex-direction: column; gap: 4px; }
+}
 .timeline-items { display: flex; flex-direction: column; gap: 6px; }
 .timeline-item {
   display: flex;

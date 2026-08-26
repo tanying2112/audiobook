@@ -1,58 +1,18 @@
-<template>
-  <div class="login-container">
-    <div class="login-card">
-      <div class="login-header">
-        <h1>Audiobook Studio</h1>
-        <p>登录以继续</p>
-      </div>
-      <form @submit.prevent="handleLogin" class="login-form">
-        <div class="form-group">
-          <label for="username">用户名</label>
-          <input
-            id="username"
-            v-model="form.username"
-            type="text"
-            required
-            autocomplete="username"
-            :disabled="loading"
-          />
-        </div>
-        <div class="form-group">
-          <label for="password">密码</label>
-          <input
-            id="password"
-            v-model="form.password"
-            type="password"
-            required
-            autocomplete="current-password"
-            :disabled="loading"
-          />
-        </div>
-        <div v-if="error" class="error-message">{{ error }}</div>
-        <button type="submit" class="btn btn-primary" :disabled="loading">
-          <span v-if="loading">登录中...</span>
-          <span v-else>登录</span>
-        </button>
-      </form>
-      <div class="login-footer">
-        <p>首次部署请运行 <code>python scripts/bootstrap_admin.py</code> 创建管理员账号</p>
-        <router-link to="/register" class="register-link">没有账号？注册新用户</router-link>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { Icon } from '@iconify/vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = ref({ username: '', password: '' })
 const error = ref<string | null>(null)
 const loading = ref(false)
+const showPassword = ref(false)
+const justRegistered = ref(route.query.registered === '1')
 
 async function handleLogin() {
   error.value = null
@@ -69,120 +29,104 @@ async function handleLogin() {
 }
 </script>
 
+<template>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <Icon icon="mdi:microphone" width="30" height="30" />
+        <h1>Audiobook Studio</h1>
+      </div>
+      <p class="auth-subtitle">登录以继续您的工作</p>
+
+      <div v-if="justRegistered" class="alert alert-success" style="margin-bottom: 16px">
+        注册成功，请使用新账号登录
+      </div>
+
+      <form class="auth-form" @submit.prevent="handleLogin">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input
+            id="username"
+            v-model.trim="form.username"
+            type="text"
+            required
+            autocomplete="username"
+            placeholder="请输入用户名"
+            :disabled="loading"
+          />
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <div class="password-field">
+            <input
+              id="password"
+              v-model="form.password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              autocomplete="current-password"
+              placeholder="请输入密码"
+              :disabled="loading"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              @click="showPassword = !showPassword"
+            >
+              <Icon :icon="showPassword ? 'mdi:eye-off-outline' : 'mdi:eye-outline'" width="18" height="18" />
+            </button>
+          </div>
+        </div>
+
+        <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" :disabled="loading">
+          <span v-if="loading" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff"></span>
+          <span>{{ loading ? '登录中…' : '登录' }}</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        <router-link to="/register">没有账号？注册新用户</router-link>
+        <p class="bootstrap-hint">首次部署请运行 <code>python scripts/bootstrap_admin.py</code> 创建管理员账号</p>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.login-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-secondary);
-  padding: 24px;
+.password-field {
+  position: relative;
 }
-
-.login-card {
+.password-field input {
   width: 100%;
-  max-width: 400px;
-  background: var(--color-bg-primary);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-  padding: 32px;
+  padding-right: 40px;
 }
-
-.login-header {
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.login-header h1 {
-  margin: 0 0 8px;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.login-header p {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.form-group input {
-  padding: 12px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 16px;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-alpha);
-}
-
-.form-group input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error-message {
-  color: var(--color-error);
-  font-size: 13px;
-  text-align: center;
-}
-
-.btn {
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   border: none;
+  background: transparent;
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: all 0.2s;
+  padding: 4px;
+  display: flex;
+  border-radius: var(--radius-sm);
 }
-
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
+.password-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-bg-tertiary);
 }
-
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.login-footer {
-  margin-top: 24px;
-  text-align: center;
-}
-
-.login-footer p {
-  margin: 0;
+.bootstrap-hint {
+  margin: 12px 0 0;
   font-size: 12px;
-  color: var(--color-text-tertiary);
+}
+.bootstrap-hint code {
+  background: var(--color-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
 }
 </style>

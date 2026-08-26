@@ -20,6 +20,10 @@
 #   LLM, pull ollama/ollama, set MOCK_LLM=false, and add the ollama service
 #   back (with api.depends_on ollama: condition: service_healthy).
 #
+# V0.4 VoxCPM2 GPU Pool (Optional - Deploy to Modal for free T4 GPU):
+#   modal deploy modal_voxcpm2_server.py
+#   Then set VOXCPM2_REMOTE_URL=http://your-modal-url in environment
+#
 # Usage:
 #   docker compose -f docker-compose.free.yml up -d
 #   docker compose -f docker-compose.free.yml logs -f
@@ -65,6 +69,11 @@ services:
       - AUDIO_SEMANTIC_CACHE_TTL=604800
       - AUDIO_SEMANTIC_CACHE_MAX_SIZE=512
       - REDIS_URL=redis://redis:6379/0
+      # VoxCPM2 Remote GPU Pool (Modal - free T4)
+      # Deploy: modal deploy modal_voxcpm2_server.py
+      # Then set: VOXCPM2_REMOTE_URL=https://your-modal-app.modal.run
+      - VOXCPM2_REMOTE_URL=${VOXCPM2_REMOTE_URL:-}
+      - VOXCPM2_API_KEY=${VOXCPM2_API_KEY:-}
     volumes:
       - ./data:/app/data
       - ./output:/app/output
@@ -122,6 +131,9 @@ services:
       - AUDIO_SEMANTIC_CACHE_TTL=604800
       - AUDIO_SEMANTIC_CACHE_MAX_SIZE=512
       - REDIS_URL=redis://redis:6379/0
+      # VoxCPM2 Remote GPU Pool (Modal - free T4)
+      - VOXCPM2_REMOTE_URL=${VOXCPM2_REMOTE_URL:-}
+      - VOXCPM2_API_KEY=${VOXCPM2_API_KEY:-}
     volumes:
       - ./data:/app/data
       - ./output:/app/output

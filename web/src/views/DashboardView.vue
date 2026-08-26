@@ -317,11 +317,13 @@ function exportCSV(): void {
 </script>
 
 <template>
-  <div class="dashboard-container">
-    <header class="dashboard-header">
-      <h1>{{ t('dashboard.title') }}</h1>
-      <div class="header-controls">
-        <select v-model="selectedProjectId" @change="handleProjectChange" class="project-select">
+  <div class="page-container">
+    <header class="page-header">
+      <div>
+        <h1>{{ t('dashboard.title') }}</h1>
+      </div>
+      <div class="header-controls flex items-center gap-2">
+        <select v-model="selectedProjectId" @change="handleProjectChange" class="form-control" style="min-width: 200px;">
           <option v-for="p in projects" :key="p.project_id" :value="p.project_id">
             {{ p.title }} (ID: {{ p.project_id }})
           </option>
@@ -329,13 +331,13 @@ function exportCSV(): void {
         <button @click="refetch" :disabled="loading" class="btn btn-primary">
           {{ loading ? t('dashboard.refreshing') : t('dashboard.refresh') }}
         </button>
-        <button @click="exportCSV" :disabled="!metrics" class="btn btn-secondary">
+        <button @click="exportCSV" :disabled="!metrics" class="btn btn-outline">
           📊 CSV
         </button>
       </div>
     </header>
 
-    <div v-if="error" class="error-banner">{{ error }}</div>
+    <div v-if="error" class="alert alert-error">{{ error }}</div>
 
     <div v-else-if="loading && !metrics" class="loading-state">
       <div class="spinner"></div>
@@ -390,7 +392,7 @@ function exportCSV(): void {
       <section class="table-section" v-if="providerBreakdown.length > 0">
         <h2>{{ t('dashboard.provider_cost_detail') }}</h2>
         <div class="table-responsive">
-          <table>
+          <table class="table table-stacked">
             <thead>
               <tr>
                 <th>{{ t('dashboard.provider') }}</th>
@@ -406,15 +408,15 @@ function exportCSV(): void {
             </thead>
             <tbody>
               <tr v-for="p in providerBreakdown" :key="p.key">
-                <td>{{ p.provider }}</td>
-                <td>{{ p.model }}</td>
-                <td>{{ formatNumber(p.prompt_tokens) }}</td>
-                <td>{{ formatNumber(p.completion_tokens) }}</td>
-                <td class="cost">{{ formatCost(p.cost_usd) }}</td>
-                <td class="cost">{{ formatRmb(p.cost_usd) }}</td>
-                <td>{{ p.call_count }}</td>
-                <td>{{ p.avg_latency_ms.toFixed(0) }}ms</td>
-                <td :class="p.success_rate >= 0.95 ? 'success' : (p.success_rate >= 0.8 ? 'warn' : 'danger')">
+                <td data-label="{{ t('dashboard.provider') }}">{{ p.provider }}</td>
+                <td data-label="{{ t('dashboard.model') }}">{{ p.model }}</td>
+                <td data-label="{{ t('dashboard.prompt_tokens') }}">{{ formatNumber(p.prompt_tokens) }}</td>
+                <td data-label="{{ t('dashboard.completion_tokens') }}">{{ formatNumber(p.completion_tokens) }}</td>
+                <td data-label="{{ t('dashboard.cost_usd') }}" class="cost">{{ formatCost(p.cost_usd) }}</td>
+                <td data-label="{{ t('dashboard.cost_rmb') }}" class="cost">{{ formatRmb(p.cost_usd) }}</td>
+                <td data-label="{{ t('dashboard.calls') }}">{{ p.call_count }}</td>
+                <td data-label="{{ t('dashboard.avg_latency') }}">{{ p.avg_latency_ms.toFixed(0) }}ms</td>
+                <td data-label="{{ t('dashboard.success_rate') }}" :class="p.success_rate >= 0.95 ? 'success' : (p.success_rate >= 0.8 ? 'warn' : 'danger')">
                   {{ (p.success_rate * 100).toFixed(1) }}%
                 </td>
               </tr>
@@ -426,7 +428,7 @@ function exportCSV(): void {
       <section class="table-section" v-if="latencyStages.length > 0">
         <h2>{{ t('dashboard.stage_latency_detail') }}</h2>
         <div class="table-responsive">
-          <table>
+          <table class="table table-stacked">
             <thead>
               <tr>
                 <th>{{ t('dashboard.rank') }}</th>
@@ -437,10 +439,10 @@ function exportCSV(): void {
             </thead>
             <tbody>
               <tr v-for="(stage, i) in latencyStages" :key="stage.name" :class="stage.success ? 'success' : 'failed'">
-                <td class="rank">{{ i + 1 }}</td>
-                <td class="stage-name">{{ stage.name }}</td>
-                <td class="duration">{{ stage.duration }} ms</td>
-                <td class="status">{{ stage.success ? '✅' : '❌' }}</td>
+                <td data-label="{{ t('dashboard.rank') }}" class="rank">{{ i + 1 }}</td>
+                <td data-label="{{ t('dashboard.stage') }}" class="stage-name">{{ stage.name }}</td>
+                <td data-label="{{ t('dashboard.duration_ms') }}" class="duration">{{ stage.duration }} ms</td>
+                <td data-label="{{ t('dashboard.status') }}" class="status">{{ stage.success ? '✅' : '❌' }}</td>
               </tr>
             </tbody>
           </table>
@@ -450,27 +452,27 @@ function exportCSV(): void {
       <section class="metrics-section" v-if="metrics">
         <h2>{{ t('dashboard.resilience_metrics') }}</h2>
         <div class="metrics-grid">
-          <div class="metric-box">
+          <div class="metric-box card">
             <span class="metric-label">{{ t('dashboard.llm_total_calls') }}</span>
             <span class="metric-value">{{ llmStats.total_calls || 0 }}</span>
           </div>
-          <div class="metric-box warn">
+          <div class="metric-box card warn">
             <span class="metric-label">{{ t('dashboard.llm_retries') }}</span>
             <span class="metric-value">{{ llmStats.total_retries || 0 }}</span>
           </div>
-          <div class="metric-box danger">
+          <div class="metric-box card danger">
             <span class="metric-label">{{ t('dashboard.llm_fallbacks') }}</span>
             <span class="metric-value">{{ llmStats.total_fallbacks || 0 }}</span>
           </div>
-          <div class="metric-box">
+          <div class="metric-box card">
             <span class="metric-label">{{ t('dashboard.tts_segments') }}</span>
             <span class="metric-value">{{ resilience.tts?.total_segments || 0 }}</span>
           </div>
-          <div class="metric-box success">
+          <div class="metric-box card success">
             <span class="metric-label">{{ t('dashboard.tts_success') }}</span>
             <span class="metric-value">{{ resilience.tts?.successful_segments || 0 }}</span>
           </div>
-          <div class="metric-box danger">
+          <div class="metric-box card danger">
             <span class="metric-label">{{ t('dashboard.tts_failed') }}</span>
             <span class="metric-value">{{ resilience.tts?.failed_segments || 0 }}</span>
           </div>
@@ -483,9 +485,9 @@ function exportCSV(): void {
       </section>
     </div>
 
-    <div v-if="metrics?.latency_profiles" class="chapter-selector">
-      <label>{{ t('dashboard.select_chapter') }}: </label>
-      <select v-model="chapterIndex" @change="handleProjectChange">
+    <div v-if="metrics?.latency_profiles" class="chapter-selector section">
+      <label class="form-label">{{ t('dashboard.select_chapter') }}: </label>
+      <select v-model="chapterIndex" @change="handleProjectChange" class="form-control" style="min-width: 200px;">
         <option :value="null">{{ t('dashboard.latest_all_chapters') }}</option>
         <option v-for="i in 10" :key="i" :value="i">
           {{ t('dashboard.chapter', { num: i }) }}
@@ -496,57 +498,14 @@ function exportCSV(): void {
 </template>
 
 <style scoped>
-.dashboard-container { max-width: 1600px; margin: 0 auto; padding: 24px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--vp-c-divider, #e8e8e8); flex-wrap: wrap; gap: 12px; }
-.dashboard-header h1 { margin: 0; font-size: 1.75rem; font-weight: 600; }
-.header-controls { display: flex; gap: 12px; align-items: center; }
-.project-select { padding: 8px 12px; border: 1px solid var(--vp-c-divider, #e8e8e8); border-radius: 6px; background: var(--vp-c-bg, #fff); font-size: 0.9rem; min-width: 280px; }
-.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: opacity 0.2s; }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-primary { background: var(--vp-c-brand, #42b883); color: white; }
-.btn-primary:hover:not(:disabled) { opacity: 0.9; }
-.btn-secondary { background: var(--vp-c-bg, #fff); color: var(--vp-c-text-1, #333); border: 1px solid var(--vp-c-divider, #e8e8e8); }
-.btn-secondary:hover:not(:disabled) { background: var(--vp-c-bg-soft, #fafafa); }
-.error-banner { padding: 12px 16px; background: #fef2f2; color: #dc2626; border-radius: 8px; margin-bottom: 16px; }
-.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; text-align: center; }
-.spinner { width: 40px; height: 40px; border: 3px solid var(--vp-c-divider, #e8e8e8); border-top-color: var(--vp-c-brand, #42b883); border-radius: 50%; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Uses global responsive utilities from style.css */
 
 .dashboard-grid { display: grid; gap: 24px; }
-.kpi-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.kpi-card { background: var(--vp-c-bg-soft, #fafafa); border: 1px solid var(--vp-c-divider, #e8e8e8); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
-.kpi-card.success { border-color: #22c55e; background: #f0fdf4; }
-.kpi-label { font-size: 0.8rem; color: var(--vp-c-text-2, #787878); text-transform: uppercase; letter-spacing: 0.05em; }
-.kpi-value { font-size: 1.75rem; font-weight: 700; color: var(--vp-c-text-1, #333); }
-.kpi-sub { font-size: 0.75rem; color: var(--vp-c-text-2, #787878); }
-
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
-@media (max-width: 1000px) { .chart-row { grid-template-columns: 1fr; } }
-.chart-card { background: var(--vp-c-bg-soft, #fafafa); border: 1px solid var(--vp-c-divider, #e8e8e8); border-radius: 12px; overflow: hidden; }
-
-.table-section, .metrics-section, .chart-section { margin-bottom: 32px; }
-.table-section h2, .metrics-section h2, .chart-section h2 { margin: 0 0 16px; font-size: 1.1rem; font-weight: 600; color: var(--vp-c-text-1, #333); }
-.table-responsive { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--vp-c-divider, #e8e8e8); }
-th { background: var(--vp-c-bg, #fff); font-weight: 600; color: var(--vp-c-text-2, #787878); }
-td.cost { color: var(--vp-c-brand, #42b883); font-weight: 600; }
-td.success { color: #22c55e; }
-td.warn { color: #f59e0b; }
-td.danger { color: #ef4444; }
-.rank { font-weight: 700; color: var(--vp-c-brand, #42b883); width: 50px; }
-.stage-name { font-family: monospace; }
-.duration { font-variant-numeric: tabular-nums; }
-
+.kpi-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-.metric-box { background: var(--vp-c-bg, #fff); border: 1px solid var(--vp-c-divider, #e8e8e8); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
-.metric-label { font-size: 0.8rem; color: var(--vp-c-text-2, #787878); }
-.metric-value { font-size: 1.5rem; font-weight: 700; color: var(--vp-c-text-1, #333); }
-.metric-box.warn .metric-value { color: #f59e0b; }
-.metric-box.danger .metric-value { color: #ef4444; }
-.metric-box.success .metric-value { color: #22c55e; }
+.kpi-card { min-height: 90px; }
 
-.chapter-selector { margin-top: 24px; padding: 16px; background: var(--vp-c-bg-soft, #fafafa); border-radius: 8px; display: flex; align-items: center; gap: 12px; }
-.chapter-selector label { font-weight: 500; }
-.chapter-selector select { padding: 6px 12px; border: 1px solid var(--vp-c-divider, #e8e8e8); border-radius: 6px; background: var(--vp-c-bg, #fff); font-size: 0.9rem; }
+/* Desktop only overrides */
+@media (max-width: 1000px) { .chart-row { grid-template-columns: 1fr; } }
 </style>

@@ -334,7 +334,7 @@ def test_download_audio_local_copy(tmp_path: Path) -> None:
     dest = tmp_path / "dest.wav"
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(p._download_audio(str(src), dest))
+    asyncio.run(p._download_audio(str(src), dest))
     assert dest.read_bytes() == b"RIFFdata"
 
 
@@ -344,7 +344,7 @@ def test_download_audio_remote_not_implemented(tmp_path: Path) -> None:
     import asyncio
 
     with pytest.raises(NotImplementedError):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             p._download_audio("/no/such/remote/key", dest)
         )
 
@@ -357,7 +357,7 @@ def test_close_with_port() -> None:
     p = SynthesizePipeline(mock_mode=False, router=MagicMock(), port=fake)
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(p.close())
+    asyncio.run(p.close())
     assert p._port is None
 
 
@@ -367,7 +367,7 @@ def test_close_without_port() -> None:
     import asyncio
 
     # should be a no-op without raising
-    asyncio.get_event_loop().run_until_complete(p.close())
+    asyncio.run(p.close())
 
 
 # ── _make_routing_decision ──────────────────────────────────────────────────
@@ -538,7 +538,7 @@ def test_crossfade_replace_segment_main(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000), (1000, 2000)]
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
     )
     assert isinstance(res, int)
@@ -553,7 +553,7 @@ def test_crossfade_replace_segment_no_chapter(monkeypatch, tmp_path) -> None:
     out = tmp_path / "out.wav"
     new.write_bytes(b"data")
     boundaries = [(0, 1000)]
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
     )
     assert isinstance(res, int)
@@ -569,7 +569,7 @@ def test_crossfade_replace_segment_out_of_bounds(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000)]  # index 5 is out of bounds
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe.crossfade_replace_segment(chapter, 5, new, out, boundaries)
     )
     assert isinstance(res, int)
@@ -586,7 +586,7 @@ def test_crossfade_replace_segment_ffmpeg_fails(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000), (1000, 2000)]
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
     )
     # The fallback (_simple_replace_segment) is invoked. NOTE: the source is
@@ -604,7 +604,7 @@ def test_simple_replace_segment_full(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     # start_ms=500>0 -> pre extracted; end_ms=3000 < total(5000) -> post extracted
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._simple_replace_segment(chapter, 0, new, out, [(500, 3000)])
     )
     assert isinstance(res, int)
@@ -619,7 +619,7 @@ def test_simple_replace_segment_no_pre_post(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     # start_ms=0 -> no pre; end_ms=9000 >= total(5000) -> no post
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._simple_replace_segment(chapter, 0, new, out, [(0, 9000)])
     )
     assert isinstance(res, int)
@@ -675,7 +675,7 @@ def test_run_single_segment(monkeypatch, tmp_path) -> None:
     pipe = SynthesizePipeline(mock_mode=True, router=MagicMock(), output_dir=str(tmp_path))
     _mock_run_pipeline(monkeypatch, pipe)
     inp = _make_input()
-    res = asyncio.get_event_loop().run_until_complete(pipe.run([inp]))
+    res = asyncio.run(pipe.run([inp]))
     assert len(res) == 1
     assert isinstance(res[0], AudioSegment)
     assert res[0].engine == "kokoro"
@@ -685,7 +685,7 @@ def test_run_result_single(monkeypatch, tmp_path) -> None:
     pipe = SynthesizePipeline(mock_mode=True, router=MagicMock(), output_dir=str(tmp_path))
     _mock_run_pipeline(monkeypatch, pipe)
     inp = _make_input()
-    res = asyncio.get_event_loop().run_until_complete(pipe.run([inp]))
+    res = asyncio.run(pipe.run([inp]))
     assert res[0].duration_ms > 0
 
 
@@ -695,7 +695,7 @@ def test_run_two_segments_crossfade(monkeypatch, tmp_path) -> None:
     inp1 = _make_input()
     inp2 = _make_input()
     inp2.paragraph_index = 2  # distinct segment_id -> both synthesize -> crossfade_stitch
-    res = asyncio.get_event_loop().run_until_complete(pipe.run([inp1, inp2]))
+    res = asyncio.run(pipe.run([inp1, inp2]))
     assert len(res) == 2
     # chapter-level stitched file requested (crossfade_stitch path)
     assert (tmp_path / "b1_ch1.mp3").exists() or True
@@ -726,7 +726,7 @@ def test_synthesize_streaming_disabled_uses_port(monkeypatch, tmp_path) -> None:
     pipe = _make_pipe()
     pipe._synthesize_via_port = AsyncMock(return_value=(1000, "kokoro"))
     out = tmp_path / "seg.wav"
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_streaming(
             "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
             project_id=1, chapter_index=1, paragraph_index=1,
@@ -749,7 +749,7 @@ def test_synthesize_streaming_success(monkeypatch, tmp_path) -> None:
     def _cb(idx, final, lat):  # noqa: ANN001
         captured.append((idx, final))
 
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_streaming(
             "Hello stream.", "zf_xiaoxiao", {"rate": 1.0, "emotion": "neutral"}, out,
             "b1_ch1_p1", project_id=1, chapter_index=1, paragraph_index=1,
@@ -771,7 +771,7 @@ def test_synthesize_streaming_engine_creation_fails(monkeypatch, tmp_path) -> No
     pipe = _make_pipe()
     pipe._synthesize_via_port = AsyncMock(return_value=(1000, "kokoro"))
     out = tmp_path / "seg.wav"
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_streaming(
             "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
             project_id=1, chapter_index=1, paragraph_index=1,
@@ -787,7 +787,7 @@ def test_synthesize_streaming_synthesis_fails_falls_back(monkeypatch, tmp_path) 
     pipe = _make_pipe()
     pipe._synthesize_via_port = AsyncMock(return_value=(1000, "kokoro"))
     out = tmp_path / "seg.wav"
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_streaming(
             "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
             project_id=1, chapter_index=1, paragraph_index=1,
@@ -812,14 +812,14 @@ def test_crossfade_stitch_direct(monkeypatch, tmp_path) -> None:
         engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h2",
     )
     out = tmp_path / "out.mp3"
-    res = asyncio.get_event_loop().run_until_complete(pipe._crossfade_stitch([s1, s2], out))
+    res = asyncio.run(pipe._crossfade_stitch([s1, s2], out))
     assert isinstance(res, int)
 
 
 def test_crossfade_stitch_empty(monkeypatch, tmp_path) -> None:
     _mock_crossfade_helpers(monkeypatch)
     pipe = _make_pipe()
-    res = asyncio.get_event_loop().run_until_complete(pipe._crossfade_stitch([], tmp_path / "out.mp3"))
+    res = asyncio.run(pipe._crossfade_stitch([], tmp_path / "out.mp3"))
     assert res == 0
 
 
@@ -856,7 +856,7 @@ def test_simple_concat_success(monkeypatch, tmp_path) -> None:
         engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h2",
     )
     out = tmp_path / "out.wav"
-    res = asyncio.get_event_loop().run_until_complete(pipe._simple_concat([s1, s2], out))
+    res = asyncio.run(pipe._simple_concat([s1, s2], out))
     assert res == 5000
 
 
@@ -878,7 +878,7 @@ def test_simple_concat_ffmpeg_fails(monkeypatch, tmp_path) -> None:
     )
     out = tmp_path / "out.wav"
     # ffmpeg failure -> fallback returns sum of segment durations
-    res = asyncio.get_event_loop().run_until_complete(pipe._simple_concat([s1, s2], out))
+    res = asyncio.run(pipe._simple_concat([s1, s2], out))
     assert res == 3000
 
 
@@ -890,7 +890,7 @@ def test_synthesize_via_port_cache_enabled(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(syn, "get_duration_sync", _fake_duration)
     pipe = _make_pipe()
     out = tmp_path / "seg.wav"
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_via_port("Cache this sentence please.", "zf_xiaoxiao", {"rate": 1.0}, out, "b1_ch1_p1")
     )
     assert res[1] == "kokoro"
@@ -914,7 +914,7 @@ def test_synthesize_via_port_cache_hit(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(syn, "get_audio_semantic_cache", lambda: _HitCache())
     pipe = _make_pipe()
     out = tmp_path / "seg.wav"
-    res = asyncio.get_event_loop().run_until_complete(
+    res = asyncio.run(
         pipe._synthesize_via_port("Hit this sentence.", "zf_xiaoxiao", {"rate": 1.0}, out, "b1_ch1_p1")
     )
     assert res == (1234, "cache")
@@ -937,7 +937,7 @@ def test_run_sync_reentrant_inside_running_loop() -> None:
     async def outer():
         return run_sync(inner())
 
-    result = asyncio.get_event_loop().run_until_complete(outer())
+    result = asyncio.run(outer())
     assert result == 7
 
 
@@ -950,6 +950,6 @@ def test_get_duration_sync_reentrant_no_asyncio_error(tmp_path) -> None:
     # Must NOT raise the asyncio reentrancy error. If ffprobe is missing the
     # call may raise a different RuntimeError, which is acceptable/offline.
     try:
-        asyncio.get_event_loop().run_until_complete(outer())
+        asyncio.run(outer())
     except RuntimeError as exc:
         assert "asyncio.run() cannot be called from a running event loop" not in str(exc)
