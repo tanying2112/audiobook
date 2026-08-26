@@ -160,7 +160,7 @@ def test_extract_pdf_no_fake_success_on_scanned_only_when_disabled(monkeypatch, 
     except Exception:
         pytest.skip("pymupdf unavailable to craft empty-text fixture")
 
-    text, pages, has_ocr, ocr_ratio = pipe._extract_pdf(str(p))
+    text, pages, has_ocr, ocr_ratio, _visual = pipe._extract_pdf(str(p))
     # No text and OCR off — must not report success via has_ocr.
     assert has_ocr is False
     assert ocr_ratio == 0.0

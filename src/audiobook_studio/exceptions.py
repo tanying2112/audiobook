@@ -557,3 +557,68 @@ class TTSAudioExportError(TTSError):
             context={"output_path": output_path, "format": format},
             original_error=original_error,
         )
+
+# ==================== Additional Domain Errors ====================
+
+
+class NotFoundError(DomainError):
+    """资源未找到 (404)."""
+
+    def __init__(
+        self,
+        resource: str,
+        identifier: Optional[str] = None,
+        stage: Optional[str] = None,
+    ):
+        msg = f"{resource} not found"
+        if identifier:
+            msg += f": {identifier}"
+        super().__init__(
+            message=msg,
+            error_code="NOT_FOUND",
+            stage=stage,
+            context={"resource": resource, "identifier": identifier},
+        )
+
+
+class ConflictError(DomainError):
+    """资源冲突 (409)."""
+
+    def __init__(
+        self,
+        message: str,
+        resource: Optional[str] = None,
+        stage: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        ctx = {"resource": resource} if resource else {}
+        if context:
+            ctx.update(context)
+        super().__init__(
+            message=message,
+            error_code="CONFLICT",
+            stage=stage,
+            context=ctx,
+        )
+
+
+class BadRequestError(DomainError):
+    """错误的请求 (400)."""
+
+    def __init__(
+        self,
+        message: str,
+        field: Optional[str] = None,
+        stage: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        ctx = {"field": field} if field else {}
+        if context:
+            ctx.update(context)
+        super().__init__(
+            message=message,
+            error_code="BAD_REQUEST",
+            stage=stage,
+            context=ctx,
+        )
+

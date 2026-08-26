@@ -17,6 +17,7 @@ Usage:
 """
 
 from abc import ABC, abstractmethod
+import asyncio
 from typing import Any, Callable, Dict, List, Optional, Type, cast
 
 from sqlalchemy import select
@@ -904,7 +905,11 @@ class SynthesizeStage(StageHandler):
             contract_version=1,
         )
         pipeline = SynthesizePipeline()
-        return await pipeline.run([input_data])
+        result = pipeline.run([input_data])
+        # 兼容同步/异步两种 run() 实现（及测试替身）：协程则等待，否则原样返回
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
 
     def persist(
         self,

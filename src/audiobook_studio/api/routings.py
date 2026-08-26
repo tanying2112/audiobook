@@ -2,11 +2,12 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import NotFoundError
 from ..models.legacy import LegacyRouting as Routing
 from ..schemas.legacy import Routing as RoutingSchema
 from .dependencies import get_async_db
@@ -65,7 +66,7 @@ async def get_routing(routing_id: int, db: AsyncSession = Depends(get_async_db))
     result = await db.execute(select(Routing).where(Routing.id == routing_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Routing not found")
+        raise NotFoundError(resource="Routing", identifier=str(routing_id))
     return i
 
 
@@ -75,7 +76,7 @@ async def update_routing(routing_id: int, payload: RoutingUpdate, db: AsyncSessi
     result = await db.execute(select(Routing).where(Routing.id == routing_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Routing not found")
+        raise NotFoundError(resource="Routing", identifier=str(routing_id))
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field in {"id", "paragraph_id"}:
             continue
@@ -91,7 +92,7 @@ async def delete_routing(routing_id: int, db: AsyncSession = Depends(get_async_d
     result = await db.execute(select(Routing).where(Routing.id == routing_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Routing not found")
+        raise NotFoundError(resource="Routing", identifier=str(routing_id))
     await db.delete(i)
     await db.commit()
     return None

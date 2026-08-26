@@ -132,6 +132,24 @@ class Settings(BaseSettings):
     # 默认 true 保持既有行为; CI/生产设 false 走真实 LLM 进化链路。
     SELF_ITERATION_MOCK: bool = Field(default=True, alias="SELF_ITERATION_MOCK")
 
+    # Mock mode for LLM/TTS (used by pipeline stages)
+    MOCK_LLM: bool = Field(default=False, alias="MOCK_LLM")
+    MOCK_TTS: bool = Field(default=False, alias="MOCK_TTS")
+
+    # Audio processing
+    CROSSFADE_MS: int = Field(default=50, alias="CROSSFADE_MS")
+    AUDIO_SEMANTIC_CACHE_ENABLED: bool = Field(default=False, alias="AUDIO_SEMANTIC_CACHE_ENABLED")
+
+    # DNSMOS model paths
+    DNSMOS_MODEL_URL: Optional[str] = Field(default=None, alias="DNSMOS_MODEL_URL")
+    DNSMOS_MODEL_PATH: str = Field(default="dnsmos.onnx", alias="DNSMOS_MODEL_PATH")
+
+    # Tesseract OCR
+    TESSERACT_CMD: Optional[str] = Field(default=None, alias="TESSERACT_CMD")
+
+    # Model cache directory
+    AUDIOBOOK_STUDIO_MODEL_CACHE: str = Field(default="~/.cache/audiobook_studio/models", alias="AUDIOBOOK_STUDIO_MODEL_CACHE")
+
     # ffmpeg concurrency control
     FFMPEG_CONCURRENCY: int = Field(default=0, alias="FFMPEG_CONCURRENCY")  # 0=auto(cpu_count-1)
 

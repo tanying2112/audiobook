@@ -72,8 +72,7 @@ def _lazy_trace_function(stage: str):
                 from ..monitoring.langfuse_client import trace_function
 
                 return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
-            except ImportError:
-                # If langfuse not available or any error, run without tracing
+            except Exception:  # noqa: BLE001 — langfuse 缺失或任何错误均无痕直跑
                 return func(*args, **kwargs)
 
         return wrapper
@@ -496,7 +495,7 @@ class LLMRouter:
                 from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
 
                 self._langfuse_enabled_cached = langfuse_is_enabled()
-            except ImportError:
+            except Exception:  # noqa: BLE001 — 观测组件故障不得影响主流程
                 self._langfuse_enabled_cached = False
         return self._langfuse_enabled_cached
 

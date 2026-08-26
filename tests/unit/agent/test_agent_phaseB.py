@@ -26,7 +26,7 @@ from src.audiobook_studio.agent.fsm import (
     remove_fsm,
 )
 from src.audiobook_studio.agent.tools import _guess_mime_type, execute_tool
-from src.audiobook_studio.schemas.review import FixCommand, ReviewerInput
+from src.audiobook_studio.schemas.review import FixCommand, ReviewerInput, ReviewerJudgment
 
 
 # ── FSM: enums & context ────────────────────────────────────────────────────
@@ -597,20 +597,7 @@ def test_apply_fix_reannotate_out_of_range() -> None:
     assert "_needs_reannotation" not in out[0]
 
 
-@pytest.mark.skip(reason="Test isolation issue - flaky in full suite")
-def test_apply_fixes_and_rerun_mock(monkeypatch) -> None:
-    fake_judgment = MagicMock()
-
-    class FakeReviewer:
-        def __init__(self, mock_mode: bool = False) -> None:
-            pass
-
-        def run(self, inp):  # noqa: ANN001
-            return fake_judgment
-
-    monkeypatch.setattr(
-        "src.audiobook_studio.pipeline.review.ReviewerAgent", FakeReviewer
-    )
+def test_apply_fixes_and_rerun_mock() -> None:
     paras = [_para()]
     cmd = FixCommand(
         command_type="add_voice_binding", target_paragraph_index=0,
@@ -622,25 +609,12 @@ def test_apply_fixes_and_rerun_mock(monkeypatch) -> None:
             character_voice_map=[], scene_tags=[], book_meta=None, mock_mode=True,
         )
     )
-    assert judgment is fake_judgment
+    assert isinstance(judgment, ReviewerJudgment)
 
-@pytest.mark.skip(reason="Test isolation issue - flaky in full suite")
 
-def test_apply_fixes_and_rerun_mock_no_voice_updates(monkeypatch) -> None:
+def test_apply_fixes_and_rerun_mock_no_voice_updates() -> None:
     # Non-voice command -> fixed paragraphs carry no _voice_map_updates, so the
     # `if "_voice_map_updates" in p` loop body is skipped (branch 264->263).
-    fake_judgment = MagicMock()
-
-    class FakeReviewer:
-        def __init__(self, mock_mode: bool = False) -> None:
-            pass
-
-        def run(self, inp):  # noqa: ANN001
-            return fake_judgment
-
-    monkeypatch.setattr(
-        "src.audiobook_studio.pipeline.review.ReviewerAgent", FakeReviewer
-    )
     paras = [_para(emotion="angry")]
     cmd = FixCommand(
         command_type="correct_emotion_tag", target_paragraph_index=0,
@@ -653,7 +627,7 @@ def test_apply_fixes_and_rerun_mock_no_voice_updates(monkeypatch) -> None:
             character_voice_map=[], scene_tags=[], book_meta=None, mock_mode=True,
         )
     )
-    assert judgment is fake_judgment
+    assert isinstance(judgment, ReviewerJudgment)
 
 
 # ── DeveloperAgent: run_reannotation mock_mode ─────────────────────────────
@@ -663,6 +637,56 @@ def test_run_reannotation_mock_mode() -> None:
     result = asyncio.run(agent.run_reannotation(1, 1, [0, 1, 2]))
     assert result["status"] == "mock"
     assert result["reannotated"] == [0, 1, 2]
+
+
+def test_run_reannotation_real_path(monkeypatch) -> None:
+    import importlib
+
+    import src.audiobook_studio.storage as storage_mod
+
+    annotate_mod = importlib.import_module(
+        "src.audiobook_studio.pipeline.annotate_paragraph"
+    )
+
+    monkeypatch.setattr(
+        storage_mod, "load_extracted_text",
+        lambda project_id, chapter_index: "Paragraph one text.\n\nParagraph two text.",
+    )
+    saved: dict = {}
+
+    def fake_save(project_id, chapter_index, annotations):
+        saved[(project_id, chapter_index)] = annotations
+
+    monkeypatch.setattr(storage_mod, "save_chapter_annotations", fake_save)
+
+    class FakeAnnotation:
+        def model_dump(self):
+            return {"speaker": "narrator"}
+
+    class FakePipeline:
+        def run(self, input_data):
+            return FakeAnnotation()
+
+    monkeypatch.setattr(annotate_mod, "AnnotateParagraphPipeline", FakePipeline)
+    monkeypatch.setenv("MOCK_LLM", "true")
+
+    agent = dev_mod.DeveloperAgent(mock_mode=False)
+    result = asyncio.run(agent.run_reannotation(1, 3, [0, 1]))
+    assert result["status"] == "ok"
+    assert result["reannotated"] == [0, 1]
+    assert saved == {(1, 3): [{"speaker": "narrator"}, {"speaker": "narrator"}]}
+
+
+def test_run_reannotation_no_text(monkeypatch) -> None:
+    import src.audiobook_studio.storage as storage_mod
+
+    monkeypatch.setattr(
+        storage_mod, "load_extracted_text", lambda project_id, chapter_index: ""
+    )
+    agent = dev_mod.DeveloperAgent(mock_mode=False)
+    result = asyncio.run(agent.run_reannotation(1, 3, [0]))
+    assert result["status"] == "failed"
+    assert result["reannotated"] == []
 
 
 # ── Tools: mime type guessing ──────────────────────────────────────────────

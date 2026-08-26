@@ -362,34 +362,6 @@ class RoutedSession(AsyncSession):
         return self
 
 
-@asynccontextmanager
-async def get_routed_session(config: DatabaseConfig) -> AsyncGenerator[RoutedSession, None]:
-    """Create a routed session with automatic routing.
-    
-    Usage:
-        async with get_routed_session(config) as session:
-            # SELECT queries go to replica
-            result = await session.execute(select(Chapter).where(...))
-            # INSERT/UPDATE go to primary
-            await session.add(obj)
-    """
-    if not hasattr(get_routed_session, "_routed_engine"):
-        get_routed_session._routed_engine = RoutedEngine(config)
-        await get_routed_session._routed_engine.initialize()
-    
-    session = RoutedSession(get_routed_session._routed_engine, expire_on_commit=False, autoflush=False)
-    session.enable_replica()
-    
-    try:
-        yield session
-        await session.commit()
-    except SQLAlchemyError:
-        await session.rollback()
-        raise
-    finally:
-        await session.close()
-
-
 # Global routed engine instance (lazy initialization)
 _routed_engine: Optional[RoutedEngine] = None
 _routed_session_factory: Optional[async_sessionmaker[RoutedSession]] = None

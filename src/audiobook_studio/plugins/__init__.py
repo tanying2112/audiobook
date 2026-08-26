@@ -18,17 +18,26 @@ The plugin manager discovers plugins in:
 
 Installation is via the marketplace API (config/installed_plugins.json).
 """
-from .manifest import PluginManifest, PluginType, discover_plugins, read_installed_names, list_installed_plugins as _list_installed_plugins_detail
+from .manifest import (
+    PluginManifest,
+    PluginType,
+    discover_plugins,
+    parse_manifest,
+    read_installed_names,
+    list_installed_plugins as _list_installed_plugins_detail,
+)
 from .context import PluginContext
-from .registry import PluginRegistry, get_plugin_manager
+from .registry import PluginRegistry, PluginManager, get_plugin_manager
 
 __all__ = [
     "PluginManifest",
     "PluginType",
     "PluginContext",
     "PluginRegistry",
+    "PluginManager",
     "get_plugin_manager",
     "discover_plugins",
     "list_installed_plugins",
+    "parse_manifest",
     "read_installed_names",
 ]

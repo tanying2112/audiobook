@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
+
+from ..exceptions import NotFoundError
 
 from .. import plugins
 from ..models_catalog import build_model_catalog
@@ -35,7 +37,7 @@ def install_model(name: str = Query(...)) -> Dict[str, Any]:
     try:
         return plugins.install_plugin(name)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise NotFoundError(resource="Model/Plugin", identifier=name) from exc
 
 
 @router.post("/uninstall")

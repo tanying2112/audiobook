@@ -32,7 +32,7 @@ PUBLISH_JOB_TTL = 86400 * 7  # 7 days TTL
 
 async def _get_redis() -> Any:
     """Get Redis client from connection pool."""
-    from ..config.settings_loader import get_settings
+    from ..config import get_settings
 
     settings = get_settings()
     import redis.asyncio as redis

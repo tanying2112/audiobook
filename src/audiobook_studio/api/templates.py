@@ -7,13 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..database import create_async_session
+from ..exceptions import NotFoundError, BadRequestError
 from ..models import Paragraph, Quality, Routing, TTSEdit
 from ..models.feedback_record import FeedbackRecord as FeedbackRecordModel
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
@@ -192,7 +193,7 @@ async def confirm_template(
     record = result.scalar_one_or_none()
 
     if not record:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise NotFoundError(resource="Template", identifier=str(template_id))
 
     if request.action == "confirm":
         record.processed = True
@@ -205,7 +206,7 @@ async def confirm_template(
         record.promoted = False
         logger.info(f"Template {template_id} rejected for project {project_id}")
     else:
-        raise HTTPException(status_code=400, detail=f"Invalid action: {request.action}")
+        raise BadRequestError(message=f"Invalid action: {request.action}", field="action")
 
     await db.commit()
     await db.refresh(record)
@@ -245,13 +246,10 @@ async def apply_template(
     template = result.scalar_one_or_none()
 
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise NotFoundError(resource="Template", identifier=str(request.template_id))
 
     if not template.processed or not template.promoted:
-        raise HTTPException(
-            status_code=400,
-            detail="Template not confirmed. Please confirm template first.",
-        )
+        raise BadRequestError(message="Template not confirmed. Please confirm template first.")
 
     task_id = f"apply_{project_id}_{request.template_id}_{int(datetime.now().timestamp())}"
 
@@ -635,5 +633,5 @@ async def get_apply_progress(
         _apply_template_background.progress = {}
     progress = _apply_template_background.progress.get(task_id)
     if not progress:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise NotFoundError(resource="Task", identifier=task_id)
     return TemplateApplyProgress(**progress)

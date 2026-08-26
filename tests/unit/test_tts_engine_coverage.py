@@ -168,44 +168,41 @@ class TestTTSEngineProtocol:
 
 
 class TestBackwardCompatShims:
-    """Coverage for module-level backward-compat helpers (now DI container delegates)."""
+    """Coverage for DI-container-based engine access (module shims were removed)."""
 
     @pytest.mark.asyncio
     async def test_module_level_shims_delegate_to_di(self):
-        """Test that module-level shims delegate to DI container."""
-        from src.audiobook_studio.tts.engine import (
-            cleanup_all_engines,
-            get_engine,
-            get_engine_registry,
-            initialize_all_engines,
-            register_engine,
+        """Engine access now flows through the DI container singleton."""
+        from src.audiobook_studio.di import (
+            get_app_container,
+            reset_app_container,
+            set_app_container,
         )
-        from src.audiobook_studio.di import get_app_container, reset_app_container
+        from src.audiobook_studio.tts.port_factory import get_default_engine
 
-        # Reset app container for clean test
         reset_app_container()
-        
-        try:
-            # Get registry from DI container (which is what shims now use)
-            registry = get_engine_registry()
-            assert isinstance(registry, EngineRegistry)
-            
-            eng = Mock(spec=TTSEngine)
-            eng.engine_name = "shim_test"
-            eng.initialize = AsyncMock()
-            eng.close = AsyncMock()
+        container = get_app_container()
 
-            await register_engine(eng, set_as_default=True)
+        registry = container.get(EngineRegistry)
+        assert isinstance(registry, EngineRegistry)
 
-            retrieved = get_engine("shim_test")
-            assert retrieved == eng
-            assert get_engine("nonexistent") is None
+        eng = Mock(spec=TTSEngine)
+        eng.engine_name = "shim_test"
+        eng.initialize = AsyncMock()
+        eng.close = AsyncMock()
 
-            await initialize_all_engines()
-            await cleanup_all_engines()
-        finally:
-            # Cleanup
-            reset_app_container()
+        # Register into the container-owned registry (old register_engine path)
+        await registry.register(eng, set_as_default=True)
+        assert registry.get("shim_test") == eng
+        assert registry.get("nonexistent") is None
+
+        # get_default_engine falls back to the container registry
+        default_engine = await get_default_engine(registry)
+        assert default_engine == eng
+
+        await registry.close_all()
+        reset_app_container()
+        set_app_container(container)
 
 
 if __name__ == "__main__":

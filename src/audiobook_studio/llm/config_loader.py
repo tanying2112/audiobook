@@ -3,6 +3,7 @@
 Type-safe configuration with environment variable support and validation.
 """
 
+import logging
 import os
 from enum import Enum
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderType(str, Enum):
@@ -235,9 +238,13 @@ class LLMProvidersConfig(BaseSettings):
             for provider_name, record in plugin_factories.items():
                 provider_config = record.factory()
                 if provider_config:
-                    providers.append(provider_config)
+                    # Convert to dict for Pydantic validation (avoids double-validation of ProviderConfig instances)
+                    if hasattr(provider_config, 'model_dump'):
+                        providers.append(provider_config.model_dump())
+                    else:
+                        providers.append(provider_config)
             # Re-sort after adding plugin providers
-            providers.sort(key=lambda p: getattr(p, 'priority', 100))
+            providers.sort(key=lambda p: p.get('priority', 100) if isinstance(p, dict) else getattr(p, 'priority', 100))
         except Exception as e:
             logger.warning("Failed to load plugin LLM providers: %s", e)
 

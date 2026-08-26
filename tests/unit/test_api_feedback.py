@@ -324,15 +324,15 @@ class TestFeedbackAPI:
         """Test getting non-existent feedback."""
         import asyncio
 
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.feedback import get_feedback
+        from src.audiobook_studio.exceptions import NotFoundError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             asyncio.run(get_feedback("nonexistent"))
 
-        assert exc_info.value.status_code == 404
-        assert "not found" in exc_info.value.detail.lower()
+        assert exc_info.value.error_code == "NOT_FOUND"
+        assert "Feedback" in exc_info.value.message
+        assert "nonexistent" in exc_info.value.message
 
     def test_get_feedback_stats(self):
         """Test getting feedback statistics."""

@@ -318,6 +318,11 @@ class TestVoiceCloningManagerBranches:
         assert manager._assess_quality(10.0) == AudioQuality.POOR
         assert manager._assess_quality(14.9) == AudioQuality.POOR
 
+    def _register_speaker(self, manager, speaker_id="test"):
+        """预置说话人指纹，避免在到达 KokoroBackend 构造前 KeyError。"""
+        manager.voice_prints[speaker_id] = {"embedding": [0.0] * 8}
+        manager.voice_samples.setdefault(speaker_id, [])
+
     def test_async_synthesize_import_error(self, manager):
         """Test _async_synthesize_with_kokoro ImportError - covers lines 425-427."""
         # The function imports KokoroBackend inside the try block
@@ -328,6 +333,7 @@ class TestVoiceCloningManagerBranches:
         mock_module = type(sys)("mock_kokoro_backend")
         mock_module.KokoroBackend = lambda *args, **kwargs: (_ for _ in ()).throw(ImportError("No module"))
         
+        self._register_speaker(manager)
         with patch.dict("sys.modules", {"src.audiobook_studio.tts.kokoro_backend": mock_module}):
             result = asyncio.run(manager._async_synthesize_with_kokoro(
                 text="Test",
@@ -352,6 +358,7 @@ class TestVoiceCloningManagerBranches:
         
         mock_module.KokoroBackend = raise_file_not_found
         
+        self._register_speaker(manager)
         with patch.dict("sys.modules", {"src.audiobook_studio.tts.kokoro_backend": mock_module}):
             result = asyncio.run(manager._async_synthesize_with_kokoro(
                 text="Test",

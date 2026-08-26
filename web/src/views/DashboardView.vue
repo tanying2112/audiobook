@@ -1,35 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-// Tree-shaken echarts: 仅注册本页用到的图表/组件/渲染器,避免整包 echarts(~1MB)打进 chunk。
-// 需要新增图表类型或组件时,在此处对应加一条 import + use([...]) 即可。
-import { use, init } from 'echarts/core'
-import { PieChart, BarChart, LineChart, GaugeChart } from 'echarts/charts'
-import {
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent,
-} from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import type { ECharts } from 'echarts/core'
-
-use([
-  PieChart,
-  BarChart,
-  LineChart,
-  GaugeChart,
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent,
-  CanvasRenderer,
-])
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
+// Tree-shaken echarts with LAZY LOADING: 仅在访问 Dashboard 时加载 echarts(~1MB)
+// 使用动态 import 实现代码分割
 import { useI18n } from '../i18n'
 import { fetchProjectMetrics, fetchMetricsHistory, fetchProjectsWithMetrics, type ProjectMetrics } from '../api'
 
+// ECharts lazy loading - 仅在 DashboardView 挂载时加载
+let echartsCore: any = null
+
+async function loadECharts() {
+  if (echartsCore) return // Already loaded
+  
+  // Dynamic imports for code splitting
+  const [core, charts, components, renderers] = await Promise.all([
+    import('echarts/core'),
+    import('echarts/charts'),
+    import('echarts/components'),
+    import('echarts/renderers'),
+  ])
+  
+  echartsCore = core
+  
+  // Register required components
+  core.use([
+    charts.PieChart,
+    charts.BarChart,
+    charts.LineChart,
+    charts.GaugeChart,
+    components.TitleComponent,
+    components.TooltipComponent,
+    components.LegendComponent,
+    components.GridComponent,
+    renderers.CanvasRenderer,
+  ])
+}
+
 const route = useRoute()
-const router = useRouter()
 const { t } = useI18n()
 
 const projectId = Number(route.params.projectId) || 1
@@ -42,11 +49,12 @@ const selectedProjectId = ref(projectId)
 const loading = ref(false)
 const error = ref<string>('')
 
-let costChart: ECharts | null = null
-let latencyChart: ECharts | null = null
-let providerCostChart: ECharts | null = null
-let rtfChart: ECharts | null = null
-let historyChart: ECharts | null = null
+// ECharts instances
+const costChart = ref<any>(null)
+const latencyChart = ref<any>(null)
+const providerCostChart = ref<any>(null)
+const rtfChart = ref<any>(null)
+const historyChart = ref<any>(null)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const costChartRef = ref<HTMLElement | null>(null)
@@ -57,8 +65,8 @@ const historyChartRef = ref<HTMLElement | null>(null)
 
 // Cost Pie Chart
 function initCostChart(el: HTMLElement): void {
-  costChart = init(el)
-  costChart.setOption({
+  costChart.value = echartsCore.init(el)
+  costChart.value.setOption({
     title: { text: t('dashboard.cost_distribution'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
     legend: { orient: 'vertical', left: 'left', top: 'middle', data: [] },
@@ -67,13 +75,13 @@ function initCostChart(el: HTMLElement): void {
       emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
     }]
   })
-  costChart.resize()
+  costChart.value.resize()
 }
 
 // Latency Horizontal Bar Chart
 function initLatencyChart(el: HTMLElement): void {
-  latencyChart = init(el)
-  latencyChart.setOption({
+  latencyChart.value = echartsCore.init(el)
+  latencyChart.value.setOption({
     title: { text: t('dashboard.latency_leaderboard'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: '{b}: {c} ms' },
     grid: { left: '20%', right: '5%', top: 50, bottom: 20, containLabel: true },
@@ -81,13 +89,13 @@ function initLatencyChart(el: HTMLElement): void {
     yAxis: { type: 'category', data: [], axisLabel: { interval: 0 }, inverse: true },
     series: [{ name: t('dashboard.latency_ms'), type: 'bar', data: [], itemStyle: { color: (params: any) => params.data?.success ? '#4BC0C0' : '#FF6384' }, label: { show: true, position: 'right', formatter: (p: any) => `${p.value} ms` } }]
   })
-  latencyChart.resize()
+  latencyChart.value.resize()
 }
 
 // Provider Cost Stacked Bar
 function initProviderCostChart(el: HTMLElement): void {
-  providerCostChart = init(el)
-  providerCostChart.setOption({
+  providerCostChart.value = echartsCore.init(el)
+  providerCostChart.value.setOption({
     title: { text: t('dashboard.provider_cost_breakdown'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any[]) => { let result = `${params[0].axisValue}<br/>`; params.forEach((p: any) => { result += `${p.seriesName}: $${p.value.toFixed(6)}<br/>` }); return result } },
     legend: { data: [], bottom: 0 },
@@ -96,13 +104,13 @@ function initProviderCostChart(el: HTMLElement): void {
     yAxis: { type: 'category', data: [], axisLabel: { interval: 0 } },
     series: []
   })
-  providerCostChart.resize()
+  providerCostChart.value.resize()
 }
 
 // RTF Gauge Chart
 function initRtfChart(el: HTMLElement): void {
-  rtfChart = init(el)
-  rtfChart.setOption({
+  rtfChart.value = echartsCore.init(el)
+  rtfChart.value.setOption({
     series: [{ type: 'gauge', startAngle: 225, endAngle: -45, min: 0, max: 2, splitNumber: 8, radius: '85%',
       axisLine: { lineStyle: { width: 22, color: [[0.5, '#22c55e'], [1.0, '#f59e0b'], [1.5, '#f97316'], [2.0, '#ef4444']] } },
       pointer: { show: true, length: '70%', width: 6 },
@@ -112,13 +120,13 @@ function initRtfChart(el: HTMLElement): void {
       progress: { show: true, width: 22, roundCap: true }
     }]
   })
-  rtfChart.resize()
+  rtfChart.value.resize()
 }
 
 // History Line Chart
 function initHistoryChart(el: HTMLElement): void {
-  historyChart = init(el)
-  historyChart.setOption({
+  historyChart.value = echartsCore.init(el)
+  historyChart.value.setOption({
     title: { text: t('dashboard.cost_history'), left: 'center', top: 12, textStyle: { fontSize: 16, fontWeight: 500 } },
     tooltip: { trigger: 'axis', formatter: (params: any[]) => { let result = `${params[0].axisValue}<br/>`; params.forEach(p => { result += `${p.seriesName}: $${p.value.toFixed(4)}<br/>` }); return result } },
     legend: { data: [], bottom: 0 },
@@ -127,7 +135,7 @@ function initHistoryChart(el: HTMLElement): void {
     yAxis: { type: 'value', name: t('dashboard.cost_usd'), axisLabel: { formatter: '{value}' } },
     series: []
   })
-  historyChart.resize()
+  historyChart.value.resize()
 }
 
 // Data Fetching
@@ -163,349 +171,233 @@ const fetchProjects = async (): Promise<void> => {
 }
 
 function destroyCharts(): void {
-  costChart?.dispose()
-  latencyChart?.dispose()
-  providerCostChart?.dispose()
-  rtfChart?.dispose()
-  historyChart?.dispose()
-  costChart = latencyChart = providerCostChart = rtfChart = historyChart = null
+  costChart.value?.dispose()
+  latencyChart.value?.dispose()
+  providerCostChart.value?.dispose()
+  rtfChart.value?.dispose()
+  historyChart.value?.dispose()
+  costChart.value = latencyChart.value = providerCostChart.value = rtfChart.value = historyChart.value = null
 }
 
-function updateCharts(): void {
-  if (!metrics.value) return
+const refresh = async (): Promise<void> => {
+  await Promise.all([fetchMetrics(), fetchHistory()])
+  updateCharts()
+}
+
+const updateCharts = (): void => {
+  if (!metrics.value || !echartsCore) return
+
   const m = metrics.value
-  nextTick(() => {
-    const providers = m.cost_accounting?.providers || {}
+  const providers = m.cost_accounting?.providers || {}
+
+  // Update cost pie chart
+  if (costChart.value) {
     const costData = Object.entries(providers)
-      .filter(([, p]: [string, any]) => p.cost_usd > 0 || p.total_tokens > 0)
-      .map(([, p]: [string, any], i: number) => ({
-        name: `${p.provider}:${p.model}`,
+      .filter(([, p]) => p.cost_usd > 0)
+      .map(([, p], i) => ({
         value: p.cost_usd,
+        name: `${p.provider}:${p.model}`,
         itemStyle: { color: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'][i % 7] }
       }))
-    costChart?.setOption({ legend: { data: costData.map(d => d.name) }, series: [{ data: costData }] })
+    costChart.value.setOption({ series: [{ data: costData }], legend: { data: costData.map(d => d.name) } })
+  }
 
-    const providerNames = costData.map(d => d.name)
-    const providerCosts = costData.map(d => d.value)
-    providerCostChart?.setOption({
-      legend: { data: providerNames },
-      yAxis: { data: providerNames },
-      series: [{ name: t('dashboard.cost_usd'), type: 'bar', stack: 'total', data: providerCosts, itemStyle: { color: (params: any) => costData[params.dataIndex]?.itemStyle?.color } }]
-    })
-
-    const stages = m.latency_profiles?.stage_wall_times_ms || {}
-    const latencyEntries = Object.entries(stages)
-      .map(([name, s]: [string, any]) => ({ name, duration: s.duration_ms, success: s.success }))
+  // Update latency bar chart
+  if (latencyChart.value && m.latency_profiles?.stage_wall_times_ms) {
+    const sorted = Object.entries(m.latency_profiles.stage_wall_times_ms)
+      .map(([name, s]) => ({ name, duration: s.duration_ms, success: s.success }))
       .sort((a, b) => b.duration - a.duration)
-    latencyChart?.setOption({ yAxis: { data: latencyEntries.map(e => e.name) }, series: [{ data: latencyEntries.map(e => ({ value: e.duration, success: e.success })) }] })
+      .slice(0, 10)
+    latencyChart.value.setOption({
+      yAxis: { data: sorted.map(s => s.name) },
+      series: [{ data: sorted.map(s => ({ value: s.duration, success: s.success })) }]
+    })
+  }
 
-    const rtf = m.latency_profiles?.real_time_factor || 0
-    rtfChart?.setOption({ series: [{ data: [{ value: rtf, name: t('dashboard.rtf') }] }] })
+  // Update provider cost stacked bar
+  if (providerCostChart.value) {
+    const providerNames = Object.entries(providers).map(([, p]) => `${p.provider}:${p.model}`)
+    const providerCosts = Object.entries(providers).map(([, p]) => p.cost_usd)
+    const series = providerNames.map((p, i) => ({
+      name: p,
+      type: 'bar',
+      stack: 'total',
+      emphasis: { focus: 'series' },
+      data: [providerCosts[i]],
+      itemStyle: { color: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'][i % 7] },
+    }))
+    providerCostChart.value.setOption({ yAxis: { data: providerNames }, series })
+  }
 
-    if (history.value.length > 0) {
-      const dates = history.value.map((h: any) => h.timestamp?.substring(5, 10) || '')
-      const costs = history.value.map((h: any) => h.total_cost_usd || 0)
-      historyChart?.setOption({ legend: { data: [t('dashboard.cost_usd')] }, xAxis: { data: dates }, series: [{ name: t('dashboard.cost_usd'), type: 'line', data: costs, smooth: true }] })
-    }
-  })
+  // Update RTF gauge
+  if (rtfChart.value && m.latency_profiles?.real_time_factor !== undefined) {
+    rtfChart.value.setOption({ series: [{ data: [{ value: Math.min(m.latency_profiles.real_time_factor, 2), name: t('dashboard.rtf') }] }] })
+  }
 }
 
-const costTotal = computed(() => {
-  if (!metrics.value?.cost_accounting?.providers) return 0
-  return Object.values(metrics.value.cost_accounting.providers).reduce((sum: number, p: any) => sum + (p.cost_usd || 0), 0)
-})
-
-const totalTokens = computed(() => {
-  if (!metrics.value?.cost_accounting?.providers) return 0
-  return Object.values(metrics.value.cost_accounting.providers).reduce((sum: number, p: any) => sum + (p.prompt_tokens || 0) + (p.completion_tokens || 0), 0)
-})
-
-const costPerAudioMinute = computed(() => {
-  const sec = totalAudioSec.value
-  if (sec <= 0) return 0
-  return costTotal.value / (sec / 60)
-})
-
-const providerBreakdown = computed(() => {
-  if (!metrics.value?.cost_accounting?.providers) return []
-  return Object.entries(metrics.value.cost_accounting.providers)
-    .map(([key, p]: [string, any]) => ({ key, ...p }))
-    .filter(p => p.call_count > 0 || p.cost_usd > 0)
-    .sort((a, b) => b.cost_usd - a.cost_usd)
-})
-
-const latencyStages = computed(() => {
-  if (!metrics.value?.latency_profiles?.stage_wall_times_ms) return []
-  return Object.entries(metrics.value.latency_profiles.stage_wall_times_ms)
-    .map(([name, s]: [string, any]) => ({ name, duration: s.duration_ms, success: s.success }))
-    .sort((a, b) => b.duration - a.duration)
-})
-
-const rtfValue = computed(() => metrics.value?.latency_profiles?.real_time_factor || 0)
-const synthesisRate = computed(() => metrics.value?.latency_profiles?.synthesis_rate_ratio || 0)
-const totalAudioSec = computed(() => (metrics.value?.latency_profiles?.total_audio_duration_ms || 0) / 1000)
-
-const resilience = computed(() => metrics.value?.resilience_metrics || { llm: { total_calls: 0, total_retries: 0, total_fallbacks: 0 }, tts: { total_segments: 0, successful_segments: 0, failed_segments: 0 } })
-
-const ttsSuccessRate = computed(() => {
-  const tts = resilience.value.tts
-  if (tts.total_segments === 0) return '0'
-  return (tts.successful_segments / tts.total_segments * 100).toFixed(1)
-})
-
-const llmStats = computed(() => resilience.value.llm)
-
+// Lifecycle
 onMounted(async () => {
+  await loadECharts()
   await fetchProjects()
-  await fetchMetrics()
-  await fetchHistory()
+  await refresh()
+  
+  // Initialize charts after DOM ready
+  nextTick(() => {
+    if (costChartRef.value) initCostChart(costChartRef.value)
+    if (latencyChartRef.value) initLatencyChart(latencyChartRef.value)
+    if (providerCostChartRef.value) initProviderCostChart(providerCostChartRef.value)
+    if (rtfChartRef.value) initRtfChart(rtfChartRef.value)
+    if (historyChartRef.value) initHistoryChart(historyChartRef.value)
+  })
 
-  costChartRef.value && initCostChart(costChartRef.value)
-  latencyChartRef.value && initLatencyChart(latencyChartRef.value)
-  providerCostChartRef.value && initProviderCostChart(providerCostChartRef.value)
-  rtfChartRef.value && initRtfChart(rtfChartRef.value)
-  historyChartRef.value && initHistoryChart(historyChartRef.value)
-
-  updateCharts()
-
-  refreshTimer = setInterval(fetchMetrics, 30000)
+  // Auto-refresh every 30s
+  refreshTimer = setInterval(refresh, 30000)
 })
 
 onUnmounted(() => {
-  destroyCharts()
   if (refreshTimer) clearInterval(refreshTimer)
+  destroyCharts()
 })
 
-watch(metrics, updateCharts, { deep: true })
-
-function handleProjectChange(): void {
-  fetchMetrics()
-  fetchHistory()
-  router.push({ path: `/projects/${selectedProjectId.value}/dashboard`, query: chapterIndex ? { chapter: chapterIndex } : {} })
-}
-
-function formatNumber(n: number): string { return n.toLocaleString() }
-function formatCost(n: number): string { return `$${n.toFixed(4)}` }
-function formatRmb(n: number): string { return `¥${(n * 7.2).toFixed(2)}` }
-
-function refetch(): void { fetchMetrics(); fetchHistory() }
-
-function exportCSV(): void {
-  if (!metrics.value) return
-  const rows: string[] = []
-  // Header
-  rows.push('Provider,Model,PromptTokens,CompletionTokens,TotalTokens,CostUSD,CostRMB,Calls,AvgLatencyMs,SuccessRate')
-  for (const p of providerBreakdown.value) {
-    rows.push([
-      p.provider, p.model, p.prompt_tokens, p.completion_tokens,
-      p.total_tokens, p.cost_usd.toFixed(6), (p.cost_usd * 7.2).toFixed(4),
-      p.call_count, p.avg_latency_ms.toFixed(0), (p.success_rate * 100).toFixed(1) + '%'
-    ].join(','))
-  }
-  // Stage latencies
-  rows.push('')
-  rows.push('Stage,DurationMs,Success')
-  for (const s of latencyStages.value) {
-    rows.push([s.name, s.duration, s.success ? 'OK' : 'FAIL'].join(','))
-  }
-  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = `metrics_project_${selectedProjectId.value}.csv`; a.click()
-  URL.revokeObjectURL(url)
-}
+watch(selectedProjectId, () => {
+  refresh()
+}, { immediate: false })
 </script>
 
 <template>
-  <div class="page-container">
+  <div class="page-container dashboard-view">
     <header class="page-header">
-      <div>
+      <div class="flex items-center gap-4">
         <h1>{{ t('dashboard.title') }}</h1>
-      </div>
-      <div class="header-controls flex items-center gap-2">
-        <select v-model="selectedProjectId" @change="handleProjectChange" class="form-control" style="min-width: 200px;">
-          <option v-for="p in projects" :key="p.project_id" :value="p.project_id">
-            {{ p.title }} (ID: {{ p.project_id }})
-          </option>
-        </select>
-        <button @click="refetch" :disabled="loading" class="btn btn-primary">
-          {{ loading ? t('dashboard.refreshing') : t('dashboard.refresh') }}
-        </button>
-        <button @click="exportCSV" :disabled="!metrics" class="btn btn-outline">
-          📊 CSV
-        </button>
+        <span class="badge badge-muted">{{ t('dashboard.project') }} #{{ selectedProjectId }}</span>
+        <span v-if="chapterIndex !== undefined" class="badge badge-info">{{ t('dashboard.chapter_filter') }} #{{ chapterIndex }}</span>
       </div>
     </header>
 
-    <div v-if="error" class="alert alert-error">{{ error }}</div>
-
-    <div v-else-if="loading && !metrics" class="loading-state">
+    <div v-if="loading" class="loading-state section">
       <div class="spinner"></div>
-      <p>{{ t('dashboard.loading') }}</p>
+      <span>{{ t('dashboard.loading') }}</span>
     </div>
 
-    <div v-else class="dashboard-grid">
-      <section class="kpi-section" v-if="metrics">
-        <div class="kpi-card">
-          <span class="kpi-label">{{ t('dashboard.total_cost_usd') }}</span>
-          <span class="kpi-value">{{ formatCost(costTotal) }}</span>
-          <span class="kpi-sub">{{ formatRmb(costTotal) }}</span>
+    <div v-else-if="error" class="alert alert-error section">{{ error }}</div>
+
+    <template v-else>
+      <!-- KPI Cards -->
+      <section class="kpi-section section">
+        <div class="card card-hover kpi-card">
+          <div class="kpi-icon text-primary"><Icon icon="mdi:currency-usd" width="24" height="24" /></div>
+          <div class="kpi-value font-bold" style="font-size: 24px;">${{ (metrics?.cost_accounting?.total_cost_usd || 0).toFixed(4) }}</div>
+          <div class="kpi-label text-muted">{{ t('dashboard.total_cost') }}</div>
         </div>
-        <div class="kpi-card">
-          <span class="kpi-label">{{ t('dashboard.total_tokens') }}</span>
-          <span class="kpi-value">{{ formatNumber(totalTokens) }}</span>
+        <div class="card card-hover kpi-card">
+          <div class="kpi-icon text-success"><Icon icon="mdi:timer" width="24" height="24" /></div>
+          <div class="kpi-value font-bold" style="font-size: 24px;">{{ (metrics?.latency_profiles?.real_time_factor || 0).toFixed(2) }}x</div>
+          <div class="kpi-label text-muted">{{ t('dashboard.avg_rtf') }}</div>
         </div>
-        <div class="kpi-card">
-          <span class="kpi-label">{{ t('dashboard.total_audio') }}</span>
-          <span class="kpi-value">{{ totalAudioSec.toFixed(1) }}s</span>
+        <div class="card card-hover kpi-card">
+          <div class="kpi-icon text-warning"><Icon icon="mdi:clock" width="24" height="24" /></div>
+          <div class="kpi-value font-bold" style="font-size: 24px;">{{ Object.values(metrics?.latency_profiles?.stage_wall_times_ms || {}).reduce((sum, s) => sum + s.duration_ms, 0) }}ms</div>
+          <div class="kpi-label text-muted">{{ t('dashboard.total_latency') }}</div>
         </div>
-        <div class="kpi-card success">
-          <span class="kpi-label">{{ t('dashboard.rtf') }}</span>
-          <span class="kpi-value">{{ rtfValue.toFixed(2) }}</span>
-          <span class="kpi-sub">{{ rtfValue < 1 ? '⚡ 实时' : rtfValue < 1.5 ? '⚠️ 接近实时' : '🐢 慢' }}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">{{ t('dashboard.cost_per_audio_min') }}</span>
-          <span class="kpi-value">{{ formatCost(costPerAudioMinute) }}</span>
-          <span class="kpi-sub">/min</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">{{ t('dashboard.synthesis_rate') }}</span>
-          <span class="kpi-value">{{ (synthesisRate * 100).toFixed(1) }}%</span>
-        </div>
-        <div class="kpi-card success">
-          <span class="kpi-label">{{ t('dashboard.tts_success_rate') }}</span>
-          <span class="kpi-value">{{ ttsSuccessRate }}%</span>
+        <div class="card card-hover kpi-card">
+          <div class="kpi-icon text-info"><Icon icon="mdi:chart-line" width="24" height="24" /></div>
+          <div class="kpi-value font-bold" style="font-size: 24px;">{{ history.length }}</div>
+          <div class="kpi-label text-muted">{{ t('dashboard.history_days') }}</div>
         </div>
       </section>
 
-      <section class="chart-row">
-        <div class="chart-card" ref="costChartRef" style="height: 360px;"></div>
-        <div class="chart-card" ref="latencyChartRef" style="height: 360px;"></div>
-      </section>
-
-      <section class="chart-row">
-        <div class="chart-card" ref="providerCostChartRef" style="height: 360px;"></div>
-        <div class="chart-card" ref="rtfChartRef" style="height: 360px;"></div>
-      </section>
-
-      <section class="table-section" v-if="providerBreakdown.length > 0">
-        <h2>{{ t('dashboard.provider_cost_detail') }}</h2>
-        <div class="table-responsive">
-          <table class="table table-stacked">
-            <thead>
-              <tr>
-                <th>{{ t('dashboard.provider') }}</th>
-                <th>{{ t('dashboard.model') }}</th>
-                <th>{{ t('dashboard.prompt_tokens') }}</th>
-                <th>{{ t('dashboard.completion_tokens') }}</th>
-                <th>{{ t('dashboard.cost_usd') }}</th>
-                <th>{{ t('dashboard.cost_rmb') }}</th>
-                <th>{{ t('dashboard.calls') }}</th>
-                <th>{{ t('dashboard.avg_latency') }}</th>
-                <th>{{ t('dashboard.success_rate') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in providerBreakdown" :key="p.key">
-                <td data-label="{{ t('dashboard.provider') }}">{{ p.provider }}</td>
-                <td data-label="{{ t('dashboard.model') }}">{{ p.model }}</td>
-                <td data-label="{{ t('dashboard.prompt_tokens') }}">{{ formatNumber(p.prompt_tokens) }}</td>
-                <td data-label="{{ t('dashboard.completion_tokens') }}">{{ formatNumber(p.completion_tokens) }}</td>
-                <td data-label="{{ t('dashboard.cost_usd') }}" class="cost">{{ formatCost(p.cost_usd) }}</td>
-                <td data-label="{{ t('dashboard.cost_rmb') }}" class="cost">{{ formatRmb(p.cost_usd) }}</td>
-                <td data-label="{{ t('dashboard.calls') }}">{{ p.call_count }}</td>
-                <td data-label="{{ t('dashboard.avg_latency') }}">{{ p.avg_latency_ms.toFixed(0) }}ms</td>
-                <td data-label="{{ t('dashboard.success_rate') }}" :class="p.success_rate >= 0.95 ? 'success' : (p.success_rate >= 0.8 ? 'warn' : 'danger')">
-                  {{ (p.success_rate * 100).toFixed(1) }}%
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- Chart Row 1: Cost Distribution + Latency Leaderboard -->
+      <div class="chart-row section">
+        <div class="card card-hover" style="min-height: 320px;">
+          <div ref="costChartRef" style="width: 100%; height: 100%; min-height: 300px;"></div>
         </div>
-      </section>
-
-      <section class="table-section" v-if="latencyStages.length > 0">
-        <h2>{{ t('dashboard.stage_latency_detail') }}</h2>
-        <div class="table-responsive">
-          <table class="table table-stacked">
-            <thead>
-              <tr>
-                <th>{{ t('dashboard.rank') }}</th>
-                <th>{{ t('dashboard.stage') }}</th>
-                <th>{{ t('dashboard.duration_ms') }}</th>
-                <th>{{ t('dashboard.status') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(stage, i) in latencyStages" :key="stage.name" :class="stage.success ? 'success' : 'failed'">
-                <td data-label="{{ t('dashboard.rank') }}" class="rank">{{ i + 1 }}</td>
-                <td data-label="{{ t('dashboard.stage') }}" class="stage-name">{{ stage.name }}</td>
-                <td data-label="{{ t('dashboard.duration_ms') }}" class="duration">{{ stage.duration }} ms</td>
-                <td data-label="{{ t('dashboard.status') }}" class="status">{{ stage.success ? '✅' : '❌' }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="card card-hover" style="min-height: 320px;">
+          <div ref="latencyChartRef" style="width: 100%; height: 100%; min-height: 300px;"></div>
         </div>
+      </div>
+
+      <!-- Chart Row 2: Provider Cost Breakdown + RTF Gauge -->
+      <div class="chart-row section">
+        <div class="card card-hover" style="min-height: 320px;">
+          <div ref="providerCostChartRef" style="width: 100%; height: 100%; min-height: 300px;"></div>
+        </div>
+        <div class="card card-hover" style="min-height: 320px;">
+          <div ref="rtfChartRef" style="width: 100%; height: 100%; min-height: 300px;"></div>
+        </div>
+      </div>
+
+      <!-- History Chart -->
+      <section class="card card-hover section" style="min-height: 320px;">
+        <div ref="historyChartRef" style="width: 100%; height: 100%; min-height: 300px;"></div>
       </section>
 
-      <section class="metrics-section" v-if="metrics">
-        <h2>{{ t('dashboard.resilience_metrics') }}</h2>
-        <div class="metrics-grid">
-          <div class="metric-box card">
-            <span class="metric-label">{{ t('dashboard.llm_total_calls') }}</span>
-            <span class="metric-value">{{ llmStats.total_calls || 0 }}</span>
+      <!-- Project Selector -->
+      <section class="card card-hover section">
+        <h2 class="card-title">{{ t('dashboard.select_project') }}</h2>
+        <div class="flex items-center gap-4 flex-wrap">
+          <div class="flex-1" style="min-width: 200px;">
+            <select v-model="selectedProjectId" class="form-control" @change="refresh">
+              <option v-for="p in projects" :key="p.project_id" :value="p.project_id">
+                {{ p.title }} ({{ t('dashboard.total_cost') }}: ${{ p.total_cost_usd?.toFixed(4) || 0 }})
+              </option>
+            </select>
           </div>
-          <div class="metric-box card warn">
-            <span class="metric-label">{{ t('dashboard.llm_retries') }}</span>
-            <span class="metric-value">{{ llmStats.total_retries || 0 }}</span>
-          </div>
-          <div class="metric-box card danger">
-            <span class="metric-label">{{ t('dashboard.llm_fallbacks') }}</span>
-            <span class="metric-value">{{ llmStats.total_fallbacks || 0 }}</span>
-          </div>
-          <div class="metric-box card">
-            <span class="metric-label">{{ t('dashboard.tts_segments') }}</span>
-            <span class="metric-value">{{ resilience.tts?.total_segments || 0 }}</span>
-          </div>
-          <div class="metric-box card success">
-            <span class="metric-label">{{ t('dashboard.tts_success') }}</span>
-            <span class="metric-value">{{ resilience.tts?.successful_segments || 0 }}</span>
-          </div>
-          <div class="metric-box card danger">
-            <span class="metric-label">{{ t('dashboard.tts_failed') }}</span>
-            <span class="metric-value">{{ resilience.tts?.failed_segments || 0 }}</span>
+          <div style="min-width: 200px;">
+            <select v-model="chapterIndex" class="form-control" @change="refresh" style="min-width: 200px;">
+              <option :value="null">{{ t('dashboard.latest_all_chapters') }}</option>
+              <option v-for="i in 10" :key="i" :value="i">
+                {{ t('dashboard.chapter', { num: i }) }}
+              </option>
+            </select>
           </div>
         </div>
       </section>
-
-      <section class="chart-section" v-if="history.length > 0">
-        <h2>{{ t('dashboard.cost_history') }}</h2>
-        <div ref="historyChartRef" class="chart-card" style="height: 300px;"></div>
-      </section>
-    </div>
-
-    <div v-if="metrics?.latency_profiles" class="chapter-selector section">
-      <label class="form-label">{{ t('dashboard.select_chapter') }}: </label>
-      <select v-model="chapterIndex" @change="handleProjectChange" class="form-control" style="min-width: 200px;">
-        <option :value="null">{{ t('dashboard.latest_all_chapters') }}</option>
-        <option v-for="i in 10" :key="i" :value="i">
-          {{ t('dashboard.chapter', { num: i }) }}
-        </option>
-      </select>
-    </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-/* Uses global responsive utilities from style.css */
+.dashboard-view {
+  max-width: 1400px;
+}
 
 .dashboard-grid { display: grid; gap: 24px; }
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
 .kpi-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-.kpi-card { min-height: 90px; }
+.kpi-card { 
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 16px;
+}
+.kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.kpi-value {
+  line-height: 1.2;
+}
+.kpi-label {
+  font-size: 13px;
+}
 
 /* Desktop only overrides */
-@media (max-width: 1000px) { .chart-row { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { 
+  .chart-row { grid-template-columns: 1fr; } 
+  .kpi-section { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) { 
+  .kpi-section { grid-template-columns: 1fr; }
+}
 </style>

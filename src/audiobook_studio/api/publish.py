@@ -137,7 +137,7 @@ async def _delete_job(job_id: str) -> None:
     try:
         import redis.asyncio as redis
 
-        from ..config.settings import get_settings
+        from ..config import get_settings
 
         settings = get_settings()
         redis_client = redis.from_url(

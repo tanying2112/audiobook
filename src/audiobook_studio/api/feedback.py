@@ -3,8 +3,10 @@
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+
+from ..exceptions import NotFoundError
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -184,7 +186,7 @@ async def get_feedback(feedback_id: str):
     for f in _feedback_store:
         if f["id"] == feedback_id:
             return FeedbackResponse(**f)
-    raise HTTPException(status_code=404, detail="Feedback not found")
+    raise NotFoundError(resource="Feedback", identifier=feedback_id)
 
 
 @router.get("/stats/summary")

@@ -421,6 +421,10 @@ def _error_code_to_status(error_code: str) -> int:
         return 422
     if error_code in ("FILE_NOT_FOUND", "NOT_FOUND"):
         return 404
+    if error_code in ("CONFLICT",):
+        return 409
+    if error_code in ("BAD_REQUEST",):
+        return 400
     if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
         return 429
     if error_code in ("CIRCUIT_OPEN", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"):

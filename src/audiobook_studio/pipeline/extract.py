@@ -124,12 +124,13 @@ class ExtractPipeline:
     # ── 多模态视觉理解 (Task 4) ──────────────────────────────────────────────
     def _get_vision_client(self):
         """懒加载并缓存 MultimodalVisionClient（尊重 self.mock_mode）。"""
-        if not self._vision_checked:
+        # getattr 防御：兼容经 __new__ 跳过 __init__ 的实例（测试/反序列化场景）
+        if not getattr(self, "_vision_checked", False):
             self._vision_checked = True
             from .vision import MultimodalVisionClient
 
-            self._vision_client = MultimodalVisionClient(mock_mode=self.mock_mode)
-        return self._vision_client
+            self._vision_client = MultimodalVisionClient(mock_mode=getattr(self, "mock_mode", False))
+        return getattr(self, "_vision_client", None)
 
     def _understand_image_bytes(self, image_bytes: bytes, media_type: Optional[str] = None):
         """对一张图像做多模态理解；无视觉提供方/失败时返回 None（诚实降级）。"""

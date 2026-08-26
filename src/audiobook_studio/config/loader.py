@@ -820,31 +820,13 @@ def get_hardware_profile_instance(config_path: str = "./config/hardware_profile.
 
 
 # =============================================================================
-# Settings Singleton with @lru_cache
+# Settings Singleton (delegates to settings_loader for single source of truth)
 # =============================================================================
 
-from functools import lru_cache
+from .settings_loader import get_settings, reset_settings
 
-from .settings import Settings
-
-
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """Get or create the global Settings singleton.
-
-    Uses @lru_cache to ensure the Settings instance is created only once.
-    This avoids side-effect imports at module load time.
-    """
-    settings = Settings()  # type: ignore[call-arg]
-    # Validate security settings on first load
-    settings.validate_jwt_secret()
-    settings.validate_cors_security()
-    return settings
-
-
-def reset_settings() -> None:
-    """Reset the global settings instance (useful for testing)."""
-    get_settings.cache_clear()
+# Re-export for backward compatibility
+__all__ = ["get_settings", "reset_settings"]
 
 
 # Backward compatibility defaults (kept for existing code)

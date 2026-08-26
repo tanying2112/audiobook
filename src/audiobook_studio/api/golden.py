@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..database import get_async_session
+from ..exceptions import NotFoundError, BadRequestError
 from ..models.feedback_record import FeedbackRecord
 
 router = APIRouter(prefix="/golden", tags=["golden"])
@@ -265,7 +266,7 @@ async def get_golden_sample(stage: str, sample_id: str):
         if sample.get("id") == sample_id:
             return sample
 
-    raise HTTPException(status_code=404, detail=f"Sample {sample_id} not found in stage {stage}")
+    raise NotFoundError(resource="GoldenSample", identifier=f"{stage}/{sample_id}")
 
 
 @router.post("/contribute", response_model=GoldenContributionResponse)
@@ -282,10 +283,7 @@ async def contribute_to_golden(
     result = await db.execute(select(FeedbackRecord).where(FeedbackRecord.id == request.template_id))
     record = result.scalar_one_or_none()
     if not record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"FeedbackRecord with id={request.template_id} not found",
-        )
+        raise NotFoundError(resource="FeedbackRecord", identifier=str(request.template_id))
 
     sample_id = _save_golden_sample(
         stage=request.stage,
@@ -317,10 +315,7 @@ async def approve_golden_sample(stage: str, sample_id: str):
     sample_file = stage_dir / f"{sample_id}.json"
 
     if not sample_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sample file not found: {sample_file}",
-        )
+        raise NotFoundError(resource="GoldenSampleFile", identifier=str(sample_file))
 
     try:
         data = json.loads(sample_file.read_text(encoding="utf-8"))
@@ -331,7 +326,7 @@ async def approve_golden_sample(stage: str, sample_id: str):
             encoding="utf-8",
         )
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update sample: {e}") from e
+        raise BadRequestError(message=f"Failed to update sample: {e}") from e
 
     return {
         "sample_id": sample_id,
@@ -348,10 +343,7 @@ async def reject_golden_sample(stage: str, sample_id: str):
     sample_file = stage_dir / f"{sample_id}.json"
 
     if not sample_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sample file not found: {sample_file}",
-        )
+        raise NotFoundError(resource="GoldenSampleFile", identifier=str(sample_file))
 
     # Move to rejected subdirectory
     rejected_dir = stage_dir / "rejected"
@@ -368,7 +360,7 @@ async def reject_golden_sample(stage: str, sample_id: str):
         )
         sample_file.unlink()
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reject sample: {e}") from e
+        raise BadRequestError(message=f"Failed to reject sample: {e}") from e
 
     return {
         "sample_id": sample_id,
