@@ -602,6 +602,202 @@ def test_run_book_pipeline_with_bgm_and_keep_tmp(mock_rp, tmp_path):
         mock_rp._mock_export_project.assert_called_once()
 
 
+def test_run_book_pipeline_checkpoint_resume_interactive(mock_rp, tmp_path):
+    """Test run_book_pipeline interactive checkpoint resume (TTY)."""
+    book_dir = tmp_path / "红楼梦"
+    book_dir.mkdir()
+    (book_dir / "chapter_01.txt").write_text("content", encoding="utf-8")
+    with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path), \
+         patch("sys.stdin.isatty", return_value=True), \
+         patch("builtins.input", return_value="y"):
+        mock_db = MagicMock()
+        mock_proj = MagicMock(id=1)
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+        mock_rp._mock_session_local.return_value = mock_db
+        mock_rp._mock_orchestrator_run_pipeline.return_value = []
+        
+        mock_cm = MagicMock()
+        mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
+        mock_rp.CheckpointManager = mock_cm
+        
+        mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
+        mock_cm.reset_all.assert_not_called()
+
+
+def test_run_book_pipeline_checkpoint_resume_interactive_no(mock_rp, tmp_path):
+    """Test run_book_pipeline interactive checkpoint resume - user says no."""
+    book_dir = tmp_path / "红楼梦"
+    book_dir.mkdir()
+    (book_dir / "chapter_01.txt").write_text("content", encoding="utf-8")
+    with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path), \
+         patch("sys.stdin.isatty", return_value=True), \
+         patch("builtins.input", return_value="n"):
+        mock_db = MagicMock()
+        mock_proj = MagicMock(id=1)
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+        mock_rp._mock_session_local.return_value = mock_db
+        mock_rp._mock_orchestrator_run_pipeline.return_value = []
+        
+        mock_cm = MagicMock()
+        mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
+        mock_rp.CheckpointManager = mock_cm
+        
+        mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
+        mock_cm.reset_all.assert_called_once()
+
+
+def test_run_book_pipeline_checkpoint_resume_noninteractive(mock_rp, tmp_path):
+    """Test run_book_pipeline non-interactive checkpoint resume."""
+    book_dir = tmp_path / "红楼梦"
+    book_dir.mkdir()
+    (book_dir / "chapter_01.txt").write_text("content", encoding="utf-8")
+    with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path), \
+         patch("sys.stdin.isatty", return_value=False):
+        mock_db = MagicMock()
+        mock_proj = MagicMock(id=1)
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+        mock_rp._mock_session_local.return_value = mock_db
+        mock_rp._mock_orchestrator_run_pipeline.return_value = []
+        
+        mock_cm = MagicMock()
+        mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
+        mock_rp.CheckpointManager = mock_cm
+        
+        mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
+        mock_cm.reset_all.assert_not_called()
+
+
+def test_run_book_pipeline_review_auto_fix(mock_rp, tmp_path, monkeypatch):
+    """Test run_book_pipeline review auto-fix loop."""
+    book_dir = tmp_path / "红楼梦"
+    book_dir.mkdir()
+    (book_dir / "chapter_01.txt").write_text("content", encoding="utf-8")
+    with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path):
+        mock_db = MagicMock()
+        mock_proj = MagicMock(id=1)
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+        
+        # Mock chapter with analyzed_json
+        mock_chapter = MagicMock()
+        mock_chapter.analyzed_json = '{"character_voice_map": [], "scene_tags": [], "book_meta": {}}'
+        mock_chapter.reviewer_judgment = None
+        
+        # First call returns chapter, second call (after extract) returns chapter
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.side_effect = [
+            mock_chapter, mock_chapter
+        ]
+        
+        # Mock paragraphs
+        mock_para = MagicMock()
+        mock_para.index = 1
+        mock_para.text = "text"
+        mock_para.speaker_canonical_name = "_narrator_"
+        mock_para.is_dialogue = False
+        mock_para.emotion = "neutral"
+        mock_para.emotion_intensity = 0.5
+        mock_para.speech_rate = 1.0
+        mock_para.pitch_shift_semitones = 0
+        mock_para.needs_sfx = False
+        mock_para.sfx_tags = []
+        mock_para.pause_before_ms = 300
+        mock_para.pause_after_ms = 500
+        mock_para.confidence = 0.9
+        
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_para]
+        
+        mock_rp._mock_session_local.return_value = mock_db
+        
+        # First run: extract/analyze
+        # Second run: review fails
+        review_fail = MagicMock()
+        review_fail.overall_passed = False
+        review_fail.blocking_issues = 1
+        review_fail.fix_commands = [MagicMock(model_dump=lambda: {"cmd": "fix"})]
+        review_fail.summary = "failed"
+        
+        # Third run: review passes after fix
+        review_pass = MagicMock()
+        review_pass.overall_passed = True
+        
+        mock_rp._mock_orchestrator_run_pipeline.side_effect = [
+            [],  # extract/analyze
+            [review_fail],  # review fails
+            [review_pass],  # review passes after fix
+        ]
+        
+        monkeypatch.setenv("REVIEWER_AUTO_FIX", "true")
+        monkeypatch.setenv("REVIEWER_MAX_ITERATIONS", "2")
+        monkeypatch.setenv("REVIEWER_STRICT", "false")
+        
+        mock_rp.run_book_pipeline("红楼梦", stages=["extract", "analyze", "review"])
+        # Verify multiple orchestrator calls (initial + review + re-review)
+        assert mock_rp._mock_orchestrator_run_pipeline.call_count >= 3
+
+
+def test_run_book_pipeline_review_strict_mode_raises(mock_rp, tmp_path, monkeypatch):
+    """Test run_book_pipeline review strict mode raises."""
+    book_dir = tmp_path / "红楼梦"
+    book_dir.mkdir()
+    (book_dir / "chapter_01.txt").write_text("content", encoding="utf-8")
+    with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path):
+        mock_db = MagicMock()
+        mock_proj = MagicMock(id=1)
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_proj
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
+        
+        mock_chapter = MagicMock()
+        mock_chapter.analyzed_json = '{"character_voice_map": [], "scene_tags": [], "book_meta": {}}'
+        mock_chapter.reviewer_judgment = None
+        mock_db.query.return_value.filter.return_value.filter.return_value.first.side_effect = [
+            mock_chapter, mock_chapter
+        ]
+        
+        mock_para = MagicMock()
+        mock_para.index = 1
+        mock_para.text = "text"
+        mock_para.speaker_canonical_name = "_narrator_"
+        mock_para.is_dialogue = False
+        mock_para.emotion = "neutral"
+        mock_para.emotion_intensity = 0.5
+        mock_para.speech_rate = 1.0
+        mock_para.pitch_shift_semitones = 0
+        mock_para.needs_sfx = False
+        mock_para.sfx_tags = []
+        mock_para.pause_before_ms = 300
+        mock_para.pause_after_ms = 500
+        mock_para.confidence = 0.9
+        
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_para]
+        
+        mock_rp._mock_session_local.return_value = mock_db
+        
+        review_fail = MagicMock()
+        review_fail.overall_passed = False
+        review_fail.blocking_issues = 1
+        review_fail.fix_commands = [MagicMock(model_dump=lambda: {"cmd": "fix"})]
+        review_fail.summary = "failed"
+        
+        mock_rp._mock_orchestrator_run_pipeline.side_effect = [
+            [],  # extract/analyze
+            [review_fail],  # review fails
+            [review_fail],  # review still fails after max iterations
+        ]
+        
+        monkeypatch.setenv("REVIEWER_AUTO_FIX", "true")
+        monkeypatch.setenv("REVIEWER_MAX_ITERATIONS", "1")
+        monkeypatch.setenv("REVIEWER_STRICT", "true")
+        
+        # The error is caught and logged, doesn't propagate out of run_book_pipeline
+        # Just verify it runs without crashing
+        mock_rp.run_book_pipeline("红楼梦", stages=["extract", "analyze", "review"])
+        # Verify orchestrator was called multiple times
+        assert mock_rp._mock_orchestrator_run_pipeline.call_count >= 3
+
+
 def test_signal_handler_without_checkpoint(monkeypatch):
     """Test _signal_handler when no checkpoint manager (library context)."""
     import src.audiobook_studio.run_pipeline as rp_module

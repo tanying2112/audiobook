@@ -359,79 +359,11 @@ async def health_ready():
     )
 
 
-from .exceptions import AudiobookError
+from .exceptions import AudiobookError, register_error_handlers
 
-# ── Global exception handler (QUAL-003: structured error responses) ────────────
-
-
-@app.exception_handler(AudiobookError)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Catch-all exception handler returning structured JSON error responses.
-
-    AudiobookError subclasses include error_code and context details.
-    Unknown exceptions are logged with traceback and returned as INTERNAL_ERROR.
-    """
-    import logging
-    import traceback
-
-    logger = logging.getLogger("audiobook_studio.errors")
-
-    if hasattr(exc, "error_code") and hasattr(exc, "to_dict"):
-        # Structured AudiobookError — return with its error_code
-        # Custom exceptions have message, error_code, to_dict(), etc.
-        custom_exc: Any = exc
-        error_dict = custom_exc.to_dict()
-        status_code = _error_code_to_status(custom_exc.error_code)
-        logger.error(
-            f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
-            extra={"error_code": custom_exc.error_code, "context": getattr(custom_exc, "context", {})},
-        )
-        response = JSONResponse(
-            content={"error": error_dict},
-            status_code=status_code,
-        )
-        logger.debug(f"Exception handler returning response: status={status_code}, content={error_dict}")
-        return response
-    # Starlette/FastAPI HTTPException — pass through
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-
-    if isinstance(exc, StarletteHTTPException):
-        return JSONResponse(
-            content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
-            status_code=exc.status_code,
-        )
-
-    # Unknown exception — log full traceback, return generic 500
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    logger.critical(f"Unhandled exception: {exc}\n{tb}")
-    return JSONResponse(
-        content={
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "An unexpected error occurred. Check server logs for details.",
-            }
-        },
-        status_code=500,
-    )
-
-
-def _error_code_to_status(error_code: str) -> int:
-    """Map structured error codes to HTTP status codes."""
-    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR", "DUPLICATE_NAME"):
-        return 422
-    if error_code in ("FILE_NOT_FOUND", "NOT_FOUND"):
-        return 404
-    if error_code in ("CONFLICT",):
-        return 409
-    if error_code in ("BAD_REQUEST",):
-        return 400
-    if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
-        return 429
-    if error_code in ("CIRCUIT_OPEN", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"):
-        return 503
-    if error_code in ("CONFIG_ERROR",):
-        return 500
-    return 500
+# ── Global exception handler (QUAL-003) — implementation lives in exceptions.py
+#    so that test apps mounting bare FastAPI() can reuse the identical contract.
+register_error_handlers(app)
 
 
 if __name__ == "__main__":

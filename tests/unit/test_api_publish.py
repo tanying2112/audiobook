@@ -11,6 +11,8 @@ Covers:
 
 from datetime import datetime, timezone
 from pathlib import Path
+
+from src.audiobook_studio.exceptions import DomainError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -77,7 +79,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_project_not_found(self):
-        from fastapi import HTTPException
         from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
@@ -89,18 +90,17 @@ class TestPublishEndpoint:
         db.execute.return_value = mock_result
         req = PublishRequest(destinations=["audiobookshelf"])
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await publish_project(
                 project_id=999,
                 request=req,
                 background_tasks=MagicMock(),
                 db=db,
             )
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_project_not_completed(self):
-        from fastapi import HTTPException
         from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
@@ -111,19 +111,18 @@ class TestPublishEndpoint:
         db.execute.return_value = mock_result
         req = PublishRequest(destinations=["audiobookshelf"])
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await publish_project(
                 project_id=10,
                 request=req,
                 background_tasks=MagicMock(),
                 db=db,
             )
-        assert exc_info.value.status_code == 400
-        assert "not ready" in exc_info.value.detail.lower()
+        assert exc_info.value.error_code == "VALIDATION_ERROR"
+        assert "not ready" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_invalid_destination(self):
-        from fastapi import HTTPException
         from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
@@ -134,15 +133,15 @@ class TestPublishEndpoint:
         db.execute.return_value = mock_result
         req = PublishRequest(destinations=["invalid_service"])
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await publish_project(
                 project_id=10,
                 request=req,
                 background_tasks=MagicMock(),
                 db=db,
             )
-        assert exc_info.value.status_code == 400
-        assert "Invalid destinations" in exc_info.value.detail
+        assert exc_info.value.error_code == "VALIDATION_ERROR"
+        assert "Invalid destinations" in exc_info.value.message
 
     @pytest.mark.asyncio
     async def test_valid_publish_creates_job(self):
@@ -258,16 +257,14 @@ class TestPublishJobEndpoints:
     def test_get_job_not_found(self):
         import asyncio
 
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.publish import get_publish_job
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             asyncio.run(get_publish_job(project_id=10, job_id="nonexistent"))
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     def test_get_job_wrong_project(self):
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.publish import _publish_jobs, get_publish_job
 
@@ -282,9 +279,9 @@ class TestPublishJobEndpoints:
         }
         import asyncio
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             asyncio.run(get_publish_job(project_id=99, job_id="publish_10_001"))
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "FORBIDDEN"
         _publish_jobs.clear()
 
     def test_get_history(self):
@@ -596,7 +593,6 @@ class TestPodcastRSSFeedEndpoint:
     async def test_project_not_found(self):
         from unittest.mock import AsyncMock, MagicMock
 
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
@@ -605,9 +601,9 @@ class TestPodcastRSSFeedEndpoint:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_podcast_rss_feed(project_id=999, db=mock_db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     def test_rss_contains_channel_and_items(self):
         project = self._make_project()

@@ -18,6 +18,10 @@ from src.audiobook_studio.api.dependencies import get_async_db
 from tests.conftest import make_async_db_override, setup_auth_overrides
 
 app = FastAPI()
+
+# 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
+from src.audiobook_studio.exceptions import register_error_handlers
+register_error_handlers(app)
 app.include_router(books_router)
 app.include_router(paragraphs_router)
 app.include_router(tts_router)

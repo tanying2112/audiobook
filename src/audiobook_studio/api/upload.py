@@ -190,7 +190,7 @@ def validate_file(file: UploadFile) -> None:
     if not file.filename:
         raise DomainError(
             message="No filename provided",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"field": "filename"},
         )
@@ -199,7 +199,7 @@ def validate_file(file: UploadFile) -> None:
     if ext not in ALLOWED_EXTENSIONS:
         raise DomainError(
             message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
@@ -207,7 +207,7 @@ def validate_file(file: UploadFile) -> None:
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise DomainError(
             message=f"MIME type {file.content_type} not allowed",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"mime_type": file.content_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
         )
@@ -436,7 +436,7 @@ async def init_upload(
     if ext not in ALLOWED_EXTENSIONS:
         raise DomainError(
             message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
@@ -444,7 +444,7 @@ async def init_upload(
     if mime_type not in ALLOWED_MIME_TYPES:
         raise DomainError(
             message=f"MIME type {mime_type} not allowed",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"mime_type": mime_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
         )
@@ -452,7 +452,7 @@ async def init_upload(
     if file_size > MAX_FILE_SIZE:
         raise DomainError(
             message=f"File too large. Max size: {MAX_FILE_SIZE} bytes",
-            error_code="VALIDATION_ERROR",
+            error_code="PAYLOAD_TOO_LARGE",
             stage="upload",
             context={"file_size": file_size, "max_file_size": MAX_FILE_SIZE},
         )
@@ -498,7 +498,7 @@ async def upload_chunk(
     if session["project_id"] != str(project_id):
         raise DomainError(
             message="Project ID mismatch",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
         )
@@ -507,7 +507,7 @@ async def upload_chunk(
     if int(session.get("total_chunks", 0)) != total_chunks:
         raise DomainError(
             message="Total chunks mismatch",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"expected_chunks": total_chunks, "actual_chunks": session.get("total_chunks")},
         )
@@ -588,7 +588,7 @@ async def upload_file(
     if len(content) > MAX_FILE_SIZE:
         raise DomainError(
             message="File too large",
-            error_code="VALIDATION_ERROR",
+            error_code="PAYLOAD_TOO_LARGE",
             stage="upload",
             context={"file_size": len(content), "max_file_size": MAX_FILE_SIZE},
         )
@@ -823,7 +823,7 @@ async def get_upload_status(
     if session["project_id"] != str(project_id):
         raise DomainError(
             message="Project ID mismatch",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
         )
@@ -865,7 +865,7 @@ async def get_extraction_status(
     if job["project_id"] != str(project_id):
         raise DomainError(
             message="Project ID mismatch",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"expected_project_id": project_id, "actual_project_id": job["project_id"]},
         )
@@ -906,7 +906,7 @@ async def cancel_upload(
     if session["project_id"] != str(project_id):
         raise DomainError(
             message="Project ID mismatch",
-            error_code="VALIDATION_ERROR",
+            error_code="BAD_REQUEST",
             stage="upload",
             context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
         )

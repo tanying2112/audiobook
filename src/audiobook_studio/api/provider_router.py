@@ -334,10 +334,11 @@ async def create_model(
     await sync_router_from_db(db)
 
     # Return with provider name nested
-    model_out = ModelOut(
-        **{c: getattr(model, c) for c in ModelOut.model_fields},
-        provider_name=provider.name,
-    )
+    # Note: ModelOut has provider_name field which is not on the Model SQLAlchemy model
+    # so we construct the dict manually
+    model_dict = {c: getattr(model, c) for c in ModelOut.model_fields if c != "provider_name"}
+    model_dict["provider_name"] = provider.name
+    model_out = ModelOut(**model_dict)
     return model_out
 
 
@@ -369,10 +370,9 @@ async def list_models(
     # Build response with provider name
     model_outs = []
     for m in models:
-        model_out = ModelOut(
-            **{c: getattr(m, c) for c in ModelOut.model_fields},
-            provider_name=provider.name,
-        )
+        model_dict = {c: getattr(m, c) for c in ModelOut.model_fields if c != "provider_name"}
+        model_dict["provider_name"] = provider.name
+        model_out = ModelOut(**model_dict)
         model_outs.append(model_out)
 
     return ModelListResponse(

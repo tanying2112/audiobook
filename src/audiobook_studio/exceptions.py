@@ -622,3 +622,77 @@ class BadRequestError(DomainError):
             context=ctx,
         )
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 全局异常处理器注册 (QUAL-003)
+#
+# 抽取为可复用函数：main.py 与各测试的裸 FastAPI() app 都需挂载同一套
+# AudiobookError → HTTP 状态码映射，否则测试直呼端点时 DomainError 会裸抛。
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def error_code_to_status(error_code: str) -> int:
+    """Map structured error codes to HTTP status codes."""
+    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR", "DUPLICATE_NAME"):
+        return 422
+    if error_code in ("FILE_NOT_FOUND", "NOT_FOUND"):
+        return 404
+    if error_code == "CONFLICT":
+        return 409
+    if error_code == "BAD_REQUEST":
+        return 400
+    if error_code == "PAYLOAD_TOO_LARGE":
+        return 413
+    if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
+        return 429
+    if error_code in ("CIRCUIT_OPEN", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"):
+        return 503
+    return 500
+
+
+def register_error_handlers(app) -> None:
+    """Register the global AudiobookError exception handler on an app.
+
+    FastAPI 主应用与测试用裸 app 均应调用，保证错误契约一致：
+    {"error": {...to_dict()...}} + 由 error_code 映射的 HTTP 状态码。
+    """
+    from starlette.responses import JSONResponse
+
+    @app.exception_handler(AudiobookError)
+    async def global_exception_handler(request, exc: Exception):  # noqa: ANN001
+        import logging
+        import traceback
+
+        lg = logging.getLogger("audiobook_studio.errors")
+
+        if hasattr(exc, "error_code") and hasattr(exc, "to_dict"):
+            custom_exc = exc
+            error_dict = custom_exc.to_dict()
+            status_code = error_code_to_status(custom_exc.error_code)
+            lg.error(
+                f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
+                extra={"error_code": custom_exc.error_code,
+                       "context": getattr(custom_exc, "context", {})},
+            )
+            return JSONResponse(content={"error": error_dict}, status_code=status_code)
+
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        if isinstance(exc, StarletteHTTPException):
+            return JSONResponse(
+                content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
+                status_code=exc.status_code,
+            )
+
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        lg.critical(f"Unhandled exception: {exc}\n{tb}")
+        return JSONResponse(
+            content={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "An unexpected error occurred. Check server logs for details.",
+                }
+            },
+            status_code=500,
+        )

@@ -321,7 +321,10 @@ class TestApplyTemplate:
         response = client.post("/api/projects/1/templates/apply", json={"template_id": 1, "scope": "all"})
 
         assert response.status_code == 400
-        assert "not confirmed" in response.json()["detail"]
+        error_data = response.json()
+        # New error format: {"error": {"code": "...", "message": "..."}}
+        assert "error" in error_data
+        assert "not confirmed" in error_data["error"]["message"]
 
     def test_apply_template_not_found(self, mock_async_db_session):
         """Should return 404 for non-existent template."""
@@ -777,7 +780,10 @@ class TestTemplateProgressEndpoint:
 
         assert response.status_code == 404
         data = response.json()
-        assert data["detail"] == "Task not found"
+        # New error format: {"error": {"error_type": "...", "error_code": "...", "message": "..."}}
+        assert "error" in data
+        assert data["error"]["error_code"] == "NOT_FOUND"
+        assert "Task not found" in data["error"]["message"]
 
     def test_progress_endpoint_completed(self, mock_async_db_session):
         """Should return completed progress."""
