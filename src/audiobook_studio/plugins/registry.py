@@ -12,6 +12,7 @@ initializes) and caches the registered factories for lookup.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -33,7 +34,7 @@ class TTSEngineFactoryRecord:
     plugin_name: str
     engine_name: str
     factory: Callable[..., Any]
-    config_schema: Optional[Type] = None
+    config_schema: Optional[Type[Any]] = None
     default_config: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -43,7 +44,7 @@ class LLMProviderFactoryRecord:
     plugin_name: str
     provider_name: str
     factory: Callable[..., Any]
-    config_schema: Optional[Type] = None
+    config_schema: Optional[Type[Any]] = None
     default_config: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -53,7 +54,7 @@ class PipelineStageFactoryRecord:
     plugin_name: str
     stage_name: str
     factory: Callable[..., Any]
-    config_schema: Optional[Type] = None
+    config_schema: Optional[Type[Any]] = None
     default_config: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -104,14 +105,15 @@ class PluginManager:
     """Manages plugin discovery, installation state, and factory registration."""
 
     _instance: Optional["PluginManager"] = None
+    _initialized: bool = False
 
-    def __new__(cls):
+    def __new__(cls) -> "PluginManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if self._initialized:
             return
         self._initialized = True
@@ -166,7 +168,7 @@ class PluginManager:
         engine_name: str,
         factory: Callable[..., Any],
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         if engine_name in self._tts_engine_factories:
@@ -191,7 +193,7 @@ class PluginManager:
         provider_name: str,
         factory: Callable[..., Any],
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         if provider_name in self._llm_provider_factories:
@@ -216,7 +218,7 @@ class PluginManager:
         stage_name: str,
         factory: Callable[..., Any],
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         if stage_name in self._pipeline_stage_factories:
@@ -265,8 +267,9 @@ class PluginManager:
 
             # Use unique module name to avoid sys.modules collision
             module_name = f"audiobook_studio.plugins.{manifest.name}.{manifest.entry_module}"
+            entry_dir = Path(manifest.directory) if manifest.directory else Path.cwd()
             spec = importlib.util.spec_from_file_location(
-                module_name, Path(manifest.directory) / f"{manifest.entry_module}.py"
+                module_name, entry_dir / f"{manifest.entry_module}.py"
             )
             if spec is None or spec.loader is None:
                 raise ImportError(f"Could not load spec for {manifest.entry_module}")

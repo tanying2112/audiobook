@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.audiobook_studio.exceptions import DomainError
+
 # ===========================================================================
 # Schema / dataclass 测试
 # ===========================================================================
@@ -586,9 +588,9 @@ class TestApplyTemplateLogic:
         req = TemplateApplyRequest(template_id=1, scope="all")
         bg = MagicMock()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await apply_template(project_id=1, request=req, background_tasks=bg, db=db)
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code in ("BAD_REQUEST", "VALIDATION_ERROR")
 
     @pytest.mark.asyncio
     async def test_apply_not_found(self):
@@ -606,9 +608,9 @@ class TestApplyTemplateLogic:
         req = TemplateApplyRequest(template_id=999, scope="all")
         bg = MagicMock()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await apply_template(project_id=1, request=req, background_tasks=bg, db=db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_apply_success(self):
@@ -646,9 +648,9 @@ class TestGetApplyProgressLogic:
 
         from src.audiobook_studio.api.templates import get_apply_progress
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_apply_progress(project_id=1, task_id="nonexistent")
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_progress_found(self):

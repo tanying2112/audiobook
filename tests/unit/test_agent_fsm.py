@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from src.audiobook_studio.exceptions import DomainError
 from src.audiobook_studio.agent.fsm import (
     AUTOPILOT_PHASES,
     INTERACTIVE_PHASES,
@@ -1016,7 +1017,7 @@ class TestPipelineFSMEndpoints:
     async def test_start_pipeline_project_not_found(self):
         """POST /agent/pipeline/start should 404 for non-existent project."""
         from src.audiobook_studio.api.agent_chat import start_pipeline
-        from fastapi import HTTPException
+        from src.audiobook_studio.exceptions import DomainError
 
         request = PipelineStartRequest(project_id=999, mode="autopilot", chapter_index=1)
 
@@ -1025,9 +1026,9 @@ class TestPipelineFSMEndpoints:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await start_pipeline(request, mock_db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_confirm_pipeline_continue(self, mock_project):
@@ -1084,7 +1085,6 @@ class TestPipelineFSMEndpoints:
         """POST /agent/pipeline/confirm should fail for non-interactive mode."""
         from src.audiobook_studio.api.agent_chat import confirm_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode
-        from fastapi import HTTPException
 
         request = PipelineConfirmRequest(project_id=1, confirmed=True)
 
@@ -1093,10 +1093,10 @@ class TestPipelineFSMEndpoints:
             mock_fsm.mode = PipelineMode.AUTOPILOT
             mock_get_fsm.return_value = mock_fsm
 
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DomainError) as exc_info:
                 await confirm_pipeline(request, mock_project)
-            assert exc_info.value.status_code == 400
-            assert "interactive" in str(exc_info.value.detail).lower()
+            assert exc_info.value.error_code == "VALIDATION_ERROR"
+            assert "interactive" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_get_pipeline_status_exists(self, mock_project):

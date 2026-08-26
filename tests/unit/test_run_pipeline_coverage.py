@@ -619,7 +619,8 @@ def test_run_book_pipeline_checkpoint_resume_interactive(mock_rp, tmp_path):
         
         mock_cm = MagicMock()
         mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
-        mock_rp.CheckpointManager = mock_cm
+        # CheckpointManager(project_id) should return mock_cm
+        mock_rp.CheckpointManager = MagicMock(return_value=mock_cm)
         
         mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
         mock_cm.reset_all.assert_not_called()
@@ -642,7 +643,8 @@ def test_run_book_pipeline_checkpoint_resume_interactive_no(mock_rp, tmp_path):
         
         mock_cm = MagicMock()
         mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
-        mock_rp.CheckpointManager = mock_cm
+        # CheckpointManager(project_id) should return mock_cm
+        mock_rp.CheckpointManager = MagicMock(return_value=mock_cm)
         
         mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
         mock_cm.reset_all.assert_called_once()
@@ -664,7 +666,7 @@ def test_run_book_pipeline_checkpoint_resume_noninteractive(mock_rp, tmp_path):
         
         mock_cm = MagicMock()
         mock_cm.last_completed_stage.return_value = "extract"  # Has incomplete
-        mock_rp.CheckpointManager = mock_cm
+        mock_rp.CheckpointManager = MagicMock(return_value=mock_cm)
         
         mock_rp.run_book_pipeline("红楼梦", stages=["extract"])
         mock_cm.reset_all.assert_not_called()

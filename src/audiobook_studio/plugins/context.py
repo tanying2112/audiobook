@@ -79,7 +79,7 @@ class PluginContext:
         engine_name: str,
         factory: TTSEngineFactory,
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Register a TTS engine factory.
@@ -112,7 +112,7 @@ class PluginContext:
         provider_name: str,
         factory: LLMProviderFactory,
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Register an LLM provider factory.
@@ -145,7 +145,7 @@ class PluginContext:
         stage_name: str,
         factory: StageFn,
         *,
-        config_schema: Optional[Type] = None,
+        config_schema: Optional[Type[Any]] = None,
         default_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Register a pipeline stage function.

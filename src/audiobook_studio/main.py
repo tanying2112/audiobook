@@ -365,6 +365,37 @@ from .exceptions import AudiobookError, register_error_handlers
 #    so that test apps mounting bare FastAPI() can reuse the identical contract.
 register_error_handlers(app)
 
+# Backward-compatible names (handler was extracted to exceptions.py; some
+# callers/tests still import these from main).
+from .exceptions import error_code_to_status as _error_code_to_status  # noqa: E402
+
+
+async def global_exception_handler(request, exc: Exception):  # noqa: ANN001
+    """Deprecated direct-call shim — the registered handler is in exceptions.py."""
+    from starlette.responses import JSONResponse
+
+    if hasattr(exc, "error_code") and hasattr(exc, "to_dict"):
+        return JSONResponse(
+            content={"error": exc.to_dict()},
+            status_code=_error_code_to_status(exc.error_code),
+        )
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if isinstance(exc, StarletteHTTPException):
+        return JSONResponse(
+            content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
+            status_code=exc.status_code,
+        )
+    return JSONResponse(
+        content={
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred. Check server logs for details.",
+            }
+        },
+        status_code=500,
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

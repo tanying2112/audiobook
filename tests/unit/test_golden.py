@@ -16,6 +16,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+
+from src.audiobook_studio.exceptions import DomainError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -26,6 +28,10 @@ from src.audiobook_studio.api.golden import router as golden_router
 
 # Create test app
 test_app = FastAPI()
+
+# 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
+from src.audiobook_studio.exceptions import register_error_handlers
+register_error_handlers(test_app)
 test_app.include_router(golden_router)
 
 
@@ -171,7 +177,7 @@ class TestGoldenSampleDetail:
         """Test retrieving a non-existent sample returns 404."""
         response = client.get("/golden/samples/extract/nonexistent")
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "not found" in response.json()["error"]["message"]
 
 
 class TestGoldenContribution:
@@ -235,7 +241,7 @@ class TestGoldenContribution:
                 },
             )
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"]
+            assert "not found" in response.json()["error"]["message"]
         finally:
             test_app.dependency_overrides.clear()
 

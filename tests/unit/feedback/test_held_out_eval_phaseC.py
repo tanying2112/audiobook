@@ -30,7 +30,7 @@ def _make_golden(tmp_path: Path, stage: str, rows):
     (d / "a.json").write_text(json.dumps(rows[0], ensure_ascii=False), encoding="utf-8")
     with (d / "b.jsonl").open("w", encoding="utf-8") as f:
         for r in rows[1:]:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            f.write(json.dumps(r, ensure_ascii=False) + "\n\n")  # trailing blank line
     # corrupt file should be skipped with a warning
     (d / "bad.json").write_text("{not valid json", encoding="utf-8")
     return d
@@ -89,6 +89,8 @@ def test_dataset_loads_from_golden(tmp_path):
     assert ds.stage == "extract"
     assert ds.case_count == 2
     assert set(ds.case_ids) == {"c1", "c2"}
+    # the cases property exposes the immutable tuple
+    assert isinstance(ds.cases, tuple) and len(ds.cases) == 2
     assert ds.by_id["c1"].case_id == "c1"
     assert isinstance(ds.signature, str) and len(ds.signature) == 64
     man = ds.manifest

@@ -113,7 +113,7 @@ def parse_manifest(path: Path) -> Optional[PluginManifest]:
     return PluginManifest(
         name=name,
         version=str(raw.get("version", "0.0.0")),
-        type=str(raw.get("type", "unknown")),
+        type=PluginType(str(raw.get("type", "unknown"))),
         description=str(raw.get("description", "")),
         author=str(raw.get("author", "")),
         license=str(raw.get("license", "MIT")),

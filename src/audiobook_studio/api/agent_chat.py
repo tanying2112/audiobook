@@ -802,7 +802,12 @@ async def start_pipeline(request: PipelineStartRequest, db: AsyncSession = Depen
     result = await db.execute(select(Project).where(Project.id == request.project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="agent_pipeline",
+            context={"project_id": request.project_id},
+        )
 
     mode = PipelineMode(request.mode.lower())
     if mode not in [PipelineMode.AUTOPILOT, PipelineMode.INTERACTIVE]:

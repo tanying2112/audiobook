@@ -407,10 +407,10 @@ async def get_model(
     prov_result = await db.execute(select(ProviderModel).where(ProviderModel.id == provider_id))
     provider = prov_result.scalar_one_or_none()
 
-    model_out = ModelOut(
-        **{c: getattr(model, c) for c in ModelOut.model_fields},
-        provider_name=provider.name if provider else None,
-    )
+    # Note: ModelOut has provider_name field which is not on the Model SQLAlchemy model
+    model_dict = {c: getattr(model, c) for c in ModelOut.model_fields if c != "provider_name"}
+    model_dict["provider_name"] = provider.name if provider else None
+    model_out = ModelOut(**model_dict)
     return model_out
 
 
