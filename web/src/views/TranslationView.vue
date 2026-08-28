@@ -313,7 +313,7 @@ onMounted(async () => {
 
   // Load languages
   try {
-    const result = await getSupportedLanguages(projectId)
+    const result = await getSupportedLanguages()
     languages.value = result.languages
   } catch {
     // Fallback languages
