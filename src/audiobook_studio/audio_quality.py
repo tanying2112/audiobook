@@ -879,26 +879,6 @@ def load_quality_report(report_path: Path) -> Optional[QualityReport]:
         return None
 
 
-if __name__ == "__main__":  # pragma: no cover
-    import sys
-
-    logging.basicConfig(level=logging.INFO)
-
-    if len(sys.argv) > 1:
-        test_path = Path(sys.argv[1])
-        if test_path.exists():
-            print(f"Testing: {test_path}")
-            print(f"Duration: {get_duration_sync(test_path)}ms")
-            print(f"Silence: {check_silence(test_path)}")
-            print(f"Corruption: {check_corruption(test_path)}")
-            print(f"Clipping: {check_clipping(test_path)}")
-            print(f"Full check: {check_segment(test_path, 'test_segment')}")
-        else:
-            print(f"File not found: {test_path}")
-    else:
-        print("Usage: python -m audiobook_studio.audio_quality <audio_file>")
-
-
 def get_duration_sync(path: Path) -> int:
     """Sync wrapper for get_duration."""
     try:
@@ -914,3 +894,23 @@ def get_duration_sync(path: Path) -> int:
             return future.result()
     else:
         return asyncio.run(get_duration(path))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import sys
+
+    logging.basicConfig(level=logging.INFO)
+
+    if len(sys.argv) > 1:
+        test_path = Path(sys.argv[1])
+        if test_path.exists():
+            logger.info(f"Testing: {test_path}")
+            logger.info(f"Duration: {get_duration_sync(test_path)}ms")
+            logger.info(f"Silence: {check_silence(test_path)}")
+            logger.info(f"Corruption: {check_corruption(test_path)}")
+            logger.info(f"Clipping: {check_clipping(test_path)}")
+            logger.info(f"Full check: {check_segment(test_path, 'test_segment')}")
+        else:
+            logger.error(f"File not found: {test_path}")
+    else:
+        logger.info("Usage: python -m audiobook_studio.audio_quality <audio_file>")

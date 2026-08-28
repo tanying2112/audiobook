@@ -90,7 +90,7 @@ class BaseSegmenter(ABC):
         """Post-process segments: merge short header-like paragraphs with next segment."""
         if not segments:
             return segments
-        
+
         # Merge heuristic: if a segment is short (< 50 chars) and doesn't end with
         # sentence-ending punctuation, it's likely a header - merge with next segment
         merged = []
@@ -100,7 +100,7 @@ class BaseSegmenter(ABC):
             # Check if this segment looks like a header (short, no sentence end punctuation)
             is_short = len(seg.text) < 50
             ends_with_punct = bool(re.search(r"[。！？.!?]\s*$", seg.text.strip()))
-            
+
             if is_short and not ends_with_punct and i + 1 < len(segments):
                 # Merge with next segment
                 next_seg = segments[i + 1]
@@ -112,9 +112,10 @@ class BaseSegmenter(ABC):
                         start_char=seg.start_char,
                         end_char=next_seg.end_char,
                         metadata={
-                            "sentence_count": (seg.metadata.get("sentence_count", 0) + 
-                                             next_seg.metadata.get("sentence_count", 0)),
-                            "merged_from": [seg.index, next_seg.index]
+                            "sentence_count": (
+                                seg.metadata.get("sentence_count", 0) + next_seg.metadata.get("sentence_count", 0)
+                            ),
+                            "merged_from": [seg.index, next_seg.index],
                         },
                     )
                 )
@@ -130,7 +131,7 @@ class BaseSegmenter(ABC):
                 )
                 merged.append(new_seg)
                 i += 1
-        
+
         return merged
 
 
@@ -177,7 +178,7 @@ class RuleSegmenter(BaseSegmenter):
             result = self._segment_with_spacy(text, nlp)
         else:
             result = self._segment_with_regex(text)
-        
+
         # Post-process: merge short header-like paragraphs
         merged_segments = self._post_process_segments(result.segments, text)
         result.segments = merged_segments
@@ -188,30 +189,30 @@ class RuleSegmenter(BaseSegmenter):
         # First, split by paragraph boundaries (double newlines)
         para_starts = [0]
         para_ends = []
-        
+
         # Find all double newline positions
         for match in re.finditer(r"\n\s*\n", text):
             para_ends.append(match.start())
             para_starts.append(match.end())
         para_ends.append(len(text))
-        
+
         segments = []
         segment_index = 0
         total_sentence_count = 0
-        
-        for para_idx, (start, end) in enumerate(zip(para_starts, para_ends)):
+
+        for _, (start, end) in enumerate(zip(para_starts, para_ends)):
             para = text[start:end]
             if not para.strip():
                 continue
-            
+
             # Process this paragraph with spaCy for sentence detection
             doc = nlp(para)
             sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
             total_sentence_count += len(sentences)
-            
+
             if not sentences:
                 continue
-            
+
             # If the entire paragraph fits within max_paragraph_chars, keep it as one segment
             # (natural paragraph boundary is preserved regardless of min_paragraph_chars)
             full_para = " ".join(sentences)
@@ -227,11 +228,11 @@ class RuleSegmenter(BaseSegmenter):
                 )
                 segment_index += 1
                 continue
-            
+
             # Paragraph is too long - need to split it, respecting min_paragraph_chars for split parts
             current_segment = ""
             current_start = start
-            
+
             for sent in sentences:
                 # Check if adding this sentence would exceed max length
                 if current_segment and len(current_segment) + len(sent) > self.config.max_paragraph_chars:
@@ -258,10 +259,12 @@ class RuleSegmenter(BaseSegmenter):
                         current_segment += " " + sent
                     else:
                         current_segment = sent
-                        current_start = para.find(sent, current_start - start) if current_start < start else current_start
+                        current_start = (
+                            para.find(sent, current_start - start) if current_start < start else current_start
+                        )
                         if current_start == -1 or current_start < start:
                             current_start = start
-            
+
             # Don't forget the last segment in this paragraph
             if current_segment and len(current_segment) >= self.config.min_paragraph_chars:
                 segments.append(
@@ -288,18 +291,18 @@ class RuleSegmenter(BaseSegmenter):
         # Use finditer to get positions of paragraph separators
         para_starts = [0]
         para_ends = []
-        
+
         # Find all double newline positions
         for match in re.finditer(r"\n\s*\n", text):
             para_ends.append(match.start())
             para_starts.append(match.end())
         para_ends.append(len(text))
-        
+
         # Now we have paragraph boundaries with correct positions
         segments = []
         segment_index = 0
 
-        for i, (start, end) in enumerate(zip(para_starts, para_ends)):
+        for _, (start, end) in enumerate(zip(para_starts, para_ends)):
             para = text[start:end].strip()
             if not para:
                 continue
@@ -435,9 +438,7 @@ class SemanticSegmenter(BaseSegmenter):
             stats={"method": "semantic", "sentence_count": len(sentences), "clusters": len(segments)},
         )
 
-    def _cluster_sentences(
-        self, sentences: List[str], embeddings, original_text: str
-    ) -> List[Segment]:
+    def _cluster_sentences(self, sentences: List[str], embeddings, original_text: str) -> List[Segment]:
         """Cluster sentences by semantic similarity."""
         import numpy as np
 
@@ -456,7 +457,10 @@ class SemanticSegmenter(BaseSegmenter):
 
             # Check if we should start a new segment
             current_text = " ".join(sentences[j] for j in current_cluster)
-            if similarity < self.config.semantic_similarity_threshold or len(current_text) > self.config.max_paragraph_chars:
+            if (
+                similarity < self.config.semantic_similarity_threshold
+                or len(current_text) > self.config.max_paragraph_chars
+            ):
                 # Finalize current cluster
                 segment_text = " ".join(sentences[j] for j in current_cluster)
                 start_pos = original_text.find(sentences[current_cluster[0]], char_offset)
@@ -515,8 +519,9 @@ class LLMSegmenter(BaseSegmenter):
         prompt = self._build_prompt(text)
 
         try:
-            from ..schemas import Segment as SegmentSchema
             from pydantic import TypeAdapter
+
+            from ..schemas import Segment as SegmentSchema
 
             result = router.call(
                 stage="segment",
@@ -640,7 +645,9 @@ class SegmentPipeline:
             strategy=SegmentStrategy(seg_config.get("strategy", "rule")),
             max_paragraph_chars=seg_config.get("max_paragraph_chars", 2000),
             min_paragraph_chars=seg_config.get("min_paragraph_chars", 50),
-            semantic_model=seg_config.get("semantic_model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+            semantic_model=seg_config.get(
+                "semantic_model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            ),
             semantic_similarity_threshold=seg_config.get("semantic_similarity_threshold", 0.75),
             llm_prompt_template=seg_config.get("llm_prompt_template"),
             preserve_dialogue=seg_config.get("preserve_dialogue", True),
@@ -740,7 +747,7 @@ if __name__ == "__main__":  # pragma: no cover
     pipeline = SegmentPipeline(mock_mode=True)
     result = pipeline.run(text=test_text)
 
-    print(f"Strategy: {result.strategy_used}")
-    print(f"Segments: {len(result.segments)}")
+    logger.info(f"Strategy: {result.strategy_used}")
+    logger.info(f"Segments: {len(result.segments)}")
     for seg in result.segments:
-        print(f"  [{seg.index}] {seg.text[:50]}...")
+        logger.info(f"  [{seg.index}] {seg.text[:50]}...")

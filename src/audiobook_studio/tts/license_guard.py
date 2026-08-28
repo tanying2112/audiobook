@@ -82,6 +82,7 @@ def get_active_profile() -> str:
     """获取当前硬件档位 (复用 hardware_profile 模块, 避免循环导入)."""
     try:
         from ..config.hardware_profile import get_active_profile as _get_active
+
         return _get_active()
     except ImportError:
         return "unknown"
@@ -159,4 +160,4 @@ if __name__ == "__main__":
     for eng in ["kokoro", "edge_tts", "azure_tts", "gcp_tts", "elevenlabs", "voxcpm2"]:
         verdict = check_engine_license(eng)
         log_license_audit(eng, verdict)
-        print(f"{eng}: {verdict.value}")
+        logger.info(f"{eng}: {verdict.value}")

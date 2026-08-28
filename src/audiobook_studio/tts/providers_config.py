@@ -176,7 +176,7 @@ def capability_matrix(path: Optional[str] = None) -> Dict[str, EngineCapability]
         matrix[p["engine"]] = EngineCapability(
             cloning=bool(cap.get("cloning", False)),
             emotion=bool(cap.get("emotion", False)),
-            languages=tuple(str(l) for l in cap.get("languages", ["zh", "en"])),
+            languages=tuple(str(lang) for lang in cap.get("languages", ["zh", "en"])),
             min_compute=str(cap.get("min_compute", "cpu")).lower(),
         )
     return matrix
@@ -238,7 +238,7 @@ def select_engine(
         cap = caps.get(engine)
         if cap is None:
             return True  # unknown engine: don't filter on language
-        return lang_prefix in [str(l).split("-")[0].lower() for l in cap.languages]
+        return lang_prefix in [str(lang).split("-")[0].lower() for lang in cap.languages]
 
     # 1) Clone requested -> prefer a real clone engine (needs GPU), else preset.
     if need_clone:
@@ -269,4 +269,4 @@ def select_engine(
 if __name__ == "__main__":
     import json
 
-    print(json.dumps(load_tts_provider_config(), indent=2, ensure_ascii=False))
+    logger.info(json.dumps(load_tts_provider_config(), indent=2, ensure_ascii=False))

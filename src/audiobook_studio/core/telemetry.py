@@ -226,6 +226,32 @@ def _init_prometheus_metrics() -> None:
                 "audiobook_active_pipelines",
                 "Number of currently active pipelines",
             ),
+            # Database connection pool metrics
+            "db_pool_size": Gauge(
+                "audiobook_db_pool_size",
+                "Configured SQLAlchemy connection pool size",
+                ["pool"],
+            ),
+            "db_pool_checked_in": Gauge(
+                "audiobook_db_pool_checked_in",
+                "Number of connections idle (checked in) in the pool",
+                ["pool"],
+            ),
+            "db_pool_checked_out": Gauge(
+                "audiobook_db_pool_checked_out",
+                "Number of connections currently checked out (in use)",
+                ["pool"],
+            ),
+            "db_pool_overflow": Gauge(
+                "audiobook_db_pool_overflow",
+                "Number of overflow connections beyond pool_size",
+                ["pool"],
+            ),
+            "db_pool_connections": Gauge(
+                "audiobook_db_pool_connections",
+                "Total live connections (checked_in + checked_out)",
+                ["pool"],
+            ),
         }
         logger.debug("Prometheus metrics initialized")
 
@@ -562,6 +588,7 @@ class TelemetryCollector:
     def export_prometheus(self) -> str:
         """Export Prometheus metrics in text format."""
         _init_prometheus_metrics()
+        update_db_pool_metrics()
         return generate_latest().decode("utf-8")
 
     def reset(self) -> None:
@@ -990,11 +1017,64 @@ if __name__ == "__main__":  # pragma: no cover
         time.sleep(0.01)
 
     summary = collector.get_summary()
-    print(f"Total cost: ${summary.total_cost_usd:.6f}")
-    print(f"Total tokens: {summary.total_tokens}")
-    print(f"By provider: {summary.by_provider}")
-    print(f"By operation: {summary.by_operation}")
+    logger.info(f"Total cost: ${summary.total_cost_usd:.6f}")
+    logger.info(f"Total tokens: {summary.total_tokens}")
+    logger.info(f"By provider: {summary.by_provider}")
+    logger.info(f"By operation: {summary.by_operation}")
 
     # Print Prometheus metrics
-    print("\n--- Prometheus Metrics ---")
-    print(collector.export_prometheus())
+    logger.info("\n--- Prometheus Metrics ---")
+    logger.info(collector.export_prometheus())
+
+
+def update_db_pool_metrics() -> None:
+    """Sample live SQLAlchemy connection-pool statistics into Prometheus gauges.
+
+    Called on each ``/metrics`` scrape so the exported pool gauges reflect the
+    current runtime state. Safe to call repeatedly; it no-ops when the database
+    layer is unavailable or when a pool type does not expose QueuePool stats
+    (e.g. SQLite ``SingletonThreadPool`` / ``StaticPool``).
+    """
+    _init_prometheus_metrics()
+
+    try:
+        from ..database import engine, get_async_engine, get_routed_engine
+    except Exception:  # pragma: no cover - database layer not importable
+        logger.debug("DB pool metrics skipped: database layer unavailable")
+        return
+
+    def _sample(name: str, pool: Any) -> None:
+        if pool is None or not hasattr(pool, "size") or not callable(pool.size):
+            return
+        try:
+            size = int(pool.size())
+            checkedin = int(pool.checkedin())
+            checkedout = int(pool.checkedout())
+            overflow = int(pool.overflow())
+        except Exception:  # pragma: no cover - pool internals changed
+            return
+        _prom_metrics["db_pool_size"].labels(pool=name).set(size)
+        _prom_metrics["db_pool_checked_in"].labels(pool=name).set(checkedin)
+        _prom_metrics["db_pool_checked_out"].labels(pool=name).set(checkedout)
+        _prom_metrics["db_pool_overflow"].labels(pool=name).set(overflow)
+        _prom_metrics["db_pool_connections"].labels(pool=name).set(checkedin + checkedout)
+
+    # Module-level sync engine
+    _sample("sync", getattr(engine, "pool", None))
+
+    # Lazy async engine
+    try:
+        _sample("async", getattr(get_async_engine(), "pool", None))
+    except Exception:  # pragma: no cover
+        logger.debug("DB pool metrics skipped: async engine unavailable")
+
+    # Routed engine (primary + read replicas) if initialized
+    try:
+        routed = get_routed_engine()
+        primary = getattr(routed, "_primary_engine", None)
+        if primary is not None:
+            _sample("primary", getattr(primary, "pool", None))
+        for i, replica in enumerate(getattr(routed, "_replica_engines", []) or []):
+            _sample(f"replica_{i}", getattr(replica, "pool", None))
+    except Exception:  # pragma: no cover
+        logger.debug("DB pool metrics skipped: routed engine unavailable")

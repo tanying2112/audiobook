@@ -96,6 +96,9 @@ export interface PaginatedResponse<T> {
   page_size: number
 }
 
+// Supported UI locales (mirrors SUPPORTED_LOCALES in i18n.js)
+export type SupportedLocale = 'zh-CN' | 'en-US'
+
 // Book Genre Type
 export type BookGenre =
   | '古典小说'

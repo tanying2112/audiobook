@@ -1,0 +1,131 @@
+{
+  "mean_overall": 0.1185,
+  "mean_utmos": 1.6116,
+  "mean_dnsmos": 1.6601,
+  "mean_wer": 1.0,
+  "mean_speaker_sim": null,
+  "scored_count": 10,
+  "total_count": 10,
+  "samples": [
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "utmos": 1.6128,
+      "dnsmos": 1.667,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1191,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_en_male_001.wav",
+      "utmos": 1.7543,
+      "dnsmos": 1.6026,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1296,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "utmos": 1.6128,
+      "dnsmos": 1.667,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1191,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_male_001.wav",
+      "utmos": 1.5641,
+      "dnsmos": 1.5756,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1067,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "utmos": 1.6128,
+      "dnsmos": 1.667,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1191,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_male_001.wav",
+      "utmos": 1.5641,
+      "dnsmos": 1.5756,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1067,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "utmos": 1.6128,
+      "dnsmos": 1.667,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1191,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_3s.wav",
+      "utmos": 1.4421,
+      "dnsmos": 2.0312,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1289,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_male_10s.wav",
+      "utmos": 1.7279,
+      "dnsmos": 1.4813,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1172,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    },
+    {
+      "audio_path": "tests/golden/v04_multilingual/ref_zh_female_001.wav",
+      "utmos": 1.6128,
+      "dnsmos": 1.667,
+      "wer": 1.0,
+      "speaker_sim": null,
+      "overall": 0.1191,
+      "available_metrics": 3,
+      "total_metrics": 4,
+      "success": true,
+      "error": null
+    }
+  ]
+}

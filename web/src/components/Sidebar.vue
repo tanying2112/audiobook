@@ -5,6 +5,7 @@ import { Icon } from '@iconify/vue'
 import { useI18n } from '../i18n'
 import { useAuthStore } from '../stores/auth'
 import { useContextStore } from '../stores/context'
+import LocaleSwitcher from './LocaleSwitcher.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -68,6 +69,7 @@ function handleLogout() {
       </button>
     </nav>
     <div class="sidebar-footer">
+      <LocaleSwitcher />
       <div class="user-info" :title="authStore.user?.email">
         <div class="user-avatar">
           {{ (authStore.user?.full_name || authStore.user?.username || '?').charAt(0).toUpperCase() }}

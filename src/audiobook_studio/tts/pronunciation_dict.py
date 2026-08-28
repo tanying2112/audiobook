@@ -92,6 +92,7 @@ def load_pronunciation_dict(
         if p_path.exists():
             try:
                 import yaml
+
                 with open(p_path, encoding="utf-8") as f:
                     project_raw: Dict = yaml.safe_load(f) or {}
                 registry.update(_parse_raw(project_raw))
@@ -150,12 +151,12 @@ if __name__ == "__main__":
     # 手工测试入口
     logging.basicConfig(level=logging.INFO)
     dict_data = load_pronunciation_dict()
-    print(f"加载条目数: {len(dict_data)}")
+    logger.info(f"加载条目数: {len(dict_data)}")
     for word, entry in list(dict_data.items())[:10]:
-        print(f"  {word} → {entry.phoneme} ({entry.source})")
+        logger.info(f"  {word} → {entry.phoneme} ({entry.source})")
 
     # 测试替换
     test_text = "帝释天降临了，帝释天很厉害。"
     result = apply_pronunciation_dict(test_text, dict_data)
-    print(f"\n原文: {test_text}")
-    print(f"替换后: {result}")
+    logger.info(f"\n原文: {test_text}")
+    logger.info(f"替换后: {result}")

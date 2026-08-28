@@ -38,6 +38,19 @@ from unittest.mock import patch
 
 import pytest
 
+# ════════════════════════════════════════════════════════════════════════════
+# Disable the LLM health-probe background thread during tests
+# ════════════════════════════════════════════════════════════════════════════
+# The real HealthProbe spawns a daemon thread that pings live provider endpoints.
+# Under unit tests the configured providers are frequently MagicMocks whose
+# ``base_url`` is truthy, so the probe marks them unhealthy asynchronously. The
+# router then skips them at the ``is_healthy`` guard, racing with ``router.call``
+# (a query succeeds in isolated runs but is skipped under heavy load) ->
+# order-dependent failures. HealthProbe.start() is a no-op when this env is set,
+# leaving probe state empty (every provider treated healthy) without spawning any
+# thread. See is_probe_disabled() in src/audiobook_studio/llm/health_probe.py.
+os.environ.setdefault("AUDIOBOOK_DISABLE_HEALTH_PROBE", "1")
+
 # Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
 from tests.conftest_minimal import *  # noqa: F403,F401
 
@@ -162,6 +175,8 @@ def _reset_global_state():
         "src.audiobook_studio.pipeline.vision:reset_vision_client",
         "src.audiobook_studio.tts.audio_semantic_cache:reset_audio_semantic_cache",
         "src.audiobook_studio.utils.redis_pool:reset_redis_pool",
+        "src.audiobook_studio.config:reset_settings",
+        "src.audiobook_studio.config:reset_unified_config",
     ]
     for spec in resets:
         mod_name, fn_name = spec.split(":")
@@ -197,6 +212,17 @@ def _reset_global_state():
         if _mgr is not None:
             _mgr.pause_states.clear()
             _mgr.pause_events.clear()
+    except Exception:
+        pass
+
+    # Restore the canonical mock-mode environment after every test. conftest_minimal
+    # forces MOCK_LLM=true for the whole suite, but a test that toggles it via plain
+    # ``os.environ[...] =`` (without monkeypatch) can leak "false" into later tests,
+    # causing mock-only tests (e.g. test_e2e_short_story_mock) to take the real LLM
+    # path and fail ordering-independently.
+    try:
+        os.environ["MOCK_LLM"] = "true"
+        os.environ["SELF_ITERATION_MOCK"] = "true"
     except Exception:
         pass
 
@@ -306,22 +332,14 @@ def pytest_collection_modifyitems(config, items):
         is_integration = nodeid.startswith("tests/integration/") or "integration" in item.keywords
 
         if is_e2e and not e2e_opt:
-            item.add_marker(
-                pytest.mark.skip(reason="need --e2e option to run E2E tests")
-            )
+            item.add_marker(pytest.mark.skip(reason="need --e2e option to run E2E tests"))
         elif is_e2e and e2e_opt and not e2e_runnable:
-            item.add_marker(
-                pytest.mark.skip(reason="E2E requires live API keys (mock-mode/no keys -> skipped)")
-            )
+            item.add_marker(pytest.mark.skip(reason="E2E requires live API keys (mock-mode/no keys -> skipped)"))
 
         if is_integration and not int_opt:
-            item.add_marker(
-                pytest.mark.skip(reason="need --integration option to run integration tests")
-            )
+            item.add_marker(pytest.mark.skip(reason="need --integration option to run integration tests"))
         elif is_integration and int_opt and not pg_present:
-            item.add_marker(
-                pytest.mark.skip(reason="need reachable Postgres to run integration tests")
-            )
+            item.add_marker(pytest.mark.skip(reason="need reachable Postgres to run integration tests"))
 
 
 def pytest_addoption(parser):
@@ -362,7 +380,7 @@ def _async_run(coro):
             try:
                 result = await coro
                 future.set_result(result)
-            except Exception as exc:
+            except Exception:
                 future.set_exc_info(sys.exc_info())
 
         loop.call_soon_threadsafe(lambda: asyncio.create_task(_wrap()))

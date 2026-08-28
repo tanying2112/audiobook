@@ -250,7 +250,7 @@ class BaseTTSEngine:
         self._lock = asyncio.Lock()
 
     def _generate_task_id(self) -> str:
-        return f"tts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"
+        return f"tts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"  # nosec B324
 
     def _build_output_path(self, task_id: str, voice_id: str) -> Path:
         return self.output_dir / f"{task_id}_{voice_id}.mp3"

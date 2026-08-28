@@ -375,8 +375,34 @@ class HardwareProfile:
         return self._hardware_specs.ram_gb
 
     def reload(self):
-        """Reload configuration from disk."""
-        self._load()
+        """Reload configuration from disk (hot-switch without process restart).
+
+        Thread-safe. Re-reads ``hardware_profile.yaml`` and re-parses the active
+        profile in place, so every caller that resolves
+        :func:`get_hardware_profile` immediately observes the new settings.
+        """
+        with self._lock:
+            self._load()
+        logger.info(f"[HardwareProfile] Reloaded profile '{self._active_profile_name}'")
+
+    def set_active_profile(self, name: str) -> None:
+        """Hot-switch the active hardware profile at runtime.
+
+        Switches the active profile name and re-parses its configuration in place
+        without restarting the process. Raises ``ValueError`` if ``name`` is not a
+        defined profile in ``hardware_profile.yaml``.
+        """
+        if not isinstance(name, str):
+            raise ValueError(f"Profile name must be a string, got {type(name).__name__}")
+        with self._lock:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            profiles_data = data.get("profiles", {})
+            if name not in profiles_data:
+                raise ValueError(f"Profile '{name}' not found in config. " f"Available: {list(profiles_data.keys())}")
+            self._active_profile_name = name
+            self._config = self._parse_profile(name, profiles_data[name])
+        logger.info(f"[HardwareProfile] Switched active profile to '{name}'")
 
 
 # Global singleton managed by DI container
@@ -391,6 +417,23 @@ def get_hardware_profile(config_path: Optional[str] = None) -> HardwareProfile:
         if _hardware_profile_instance is None:
             _hardware_profile_instance = HardwareProfile(config_path)
         return _hardware_profile_instance
+
+
+def reload_hardware_profile() -> "HardwareProfile":
+    """Hot-reload the global :class:`HardwareProfile` singleton at runtime.
+
+    Safe to call from an admin endpoint. Reloads the singleton in place (or
+    creates it on first use) so callers immediately see the refreshed
+    configuration. Returns the refreshed singleton.
+    """
+    global _hardware_profile_instance
+    with _lock:
+        if _hardware_profile_instance is None:
+            _hardware_profile_instance = HardwareProfile()
+        else:
+            _hardware_profile_instance.reload()
+    logger.info(f"[HardwareProfile] Global reload complete (active='{_hardware_profile_instance.active_profile}')")
+    return _hardware_profile_instance
 
 
 def reset_hardware_profile():

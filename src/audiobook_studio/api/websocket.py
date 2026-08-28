@@ -15,6 +15,60 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# WebSocket protocol version negotiation
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Clients advertise the protocol versions they support via the
+# ``Sec-WebSocket-Protocol`` handshake header, e.g.
+# ``audiobook-progress-v1, audiobook-progress-v2``. The server picks the highest
+# mutually supported version, echoes it back in the handshake (``accept``
+# subprotocol), and embeds the negotiated ``version`` in every message so clients
+# can adapt to wire-format changes without a redeploy.
+WS_PROTOCOL_PREFIX = "audiobook-progress"
+SUPPORTED_WS_PROTOCOL_VERSIONS = ("v1",)
+LATEST_WS_VERSION = "v1"
+
+
+def _parse_ws_version(subprotocol: str) -> Optional[str]:
+    """Extract the version token from a subprotocol name.
+
+    ``audiobook-progress-v1`` -> ``v1``; anything not matching the prefix
+    returns ``None``.
+    """
+    if subprotocol.startswith(WS_PROTOCOL_PREFIX + "-"):
+        return subprotocol[len(WS_PROTOCOL_PREFIX) + 1 :]
+    return None
+
+
+def negotiate_ws_subprotocol(client_protocols: Optional[str]) -> Optional[str]:
+    """Select the highest mutually supported WebSocket subprotocol.
+
+    ``client_protocols`` is the raw value of the client's
+    ``Sec-WebSocket-Protocol`` header (comma-separated). Returns the selected
+    subprotocol name (e.g. ``"audiobook-progress-v1"``) or ``None`` when the
+    client offered nothing we support. Callers then fall back to advertising the
+    server's latest version in the handshake message body so the client can still
+    learn it.
+    """
+    if not client_protocols or not isinstance(client_protocols, str):
+        return None
+    offered = [p.strip() for p in client_protocols.split(",") if p.strip()]
+    best: Optional[str] = None
+    best_rank = -1
+    for proto in offered:
+        version = _parse_ws_version(proto)
+        if version in SUPPORTED_WS_PROTOCOL_VERSIONS:
+            try:
+                rank = int(version.lstrip("v")) if version[:1] == "v" and version[1:].isdigit() else -1
+            except (ValueError, IndexError):
+                rank = -1
+            if rank > best_rank:
+                best_rank = rank
+                best = proto
+    return best
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Connection Manager
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -32,9 +86,14 @@ class ConnectionManager:
         # project_id -> pause state
         self.pause_states: Dict[int, bool] = {}
 
-    async def connect(self, websocket: WebSocket, project_id: int):
-        """Accept WebSocket connection and register for project updates."""
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, project_id: int, subprotocol: Optional[str] = None):
+        """Accept WebSocket connection and register for project updates.
+
+        ``subprotocol`` is the negotiated protocol version (e.g.
+        ``"audiobook-progress-v1"``) or ``None`` when the client offered nothing
+        we support.
+        """
+        await websocket.accept(subprotocol=subprotocol)
         if project_id not in self.active_connections:
             self.active_connections[project_id] = set()
         self.active_connections[project_id].add(websocket)
@@ -127,14 +186,22 @@ async def pipeline_websocket(websocket: WebSocket, project_id: int):
         "timestamp": "2026-06-26T12:00:00Z"
     }
     """
-    await manager.connect(websocket, project_id)
+    # Version negotiation: pick the highest mutually supported subprotocol and
+    # echo it back in the handshake. If the client offered nothing we support,
+    # accept without a subprotocol and advertise the latest version in the
+    # handshake message body instead.
+    client_protocols = websocket.headers.get("sec-websocket-protocol")
+    negotiated = negotiate_ws_subprotocol(client_protocols)
+    await manager.connect(websocket, project_id, subprotocol=negotiated)
 
-    # Send initial connection confirmation
+    # Send initial connection confirmation (includes negotiated protocol version)
     await manager.send_to_connection(
         websocket,
         {
             "type": "connected",
             "project_id": project_id,
+            "version": LATEST_WS_VERSION,
+            "protocol": negotiated or f"{WS_PROTOCOL_PREFIX}-{LATEST_WS_VERSION}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )
@@ -153,6 +220,7 @@ async def pipeline_websocket(websocket: WebSocket, project_id: int):
                     websocket,
                     {
                         "type": "keepalive",
+                        "version": LATEST_WS_VERSION,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
@@ -286,6 +354,7 @@ async def emit_pipeline_event(
     message = {
         "type": event_type,
         "project_id": project_id,
+        "version": LATEST_WS_VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

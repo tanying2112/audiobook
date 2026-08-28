@@ -117,6 +117,60 @@ sys.modules["langfuse"] = MagicMock()
 sys.modules["langfuse.decorators"] = MagicMock()
 sys.modules["langfuse.client"] = MagicMock()
 
+
+def _snapshot_mocks():
+    """Capture the mocked sys.modules entries created above (same objects)."""
+    store = {}
+    for name in _RECORD_TO_RESTORE:
+        current = sys.modules.get(name)
+        original = _ORIGINAL_MODULES.get(name)
+        if current is not original:
+            store[name] = current
+    return store
+
+
+_MOCK_STORE = _snapshot_mocks()
+
+
+def _apply_mocks():
+    """Re-install the mocked third-party sys.modules entries (same objects).
+
+    Called before each test in this module so the mocks are present during the
+    test while still allowing per-test teardown to restore the real modules.
+    """
+    for name, mod in _MOCK_STORE.items():
+        sys.modules[name] = mod
+
+
+def _restore_mocks():
+    """Restore third-party sys.modules entries to their originals."""
+    for name in _RECORD_TO_RESTORE:
+        original = _ORIGINAL_MODULES.get(name)
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_third_party_mocks():
+    """Restore real third-party modules after every test.
+
+    ``tearDownModule`` only runs once the whole module finishes, but
+    pytest-random-order intersperses this module's tests across the run, so the
+    mocks would otherwise leak into other test modules (notably the observability
+    instrumentation tests, where a shared mock meter makes ``_http_requests`` and
+    ``_http_errors`` alias the same Counter). Restoring after each test keeps the
+    suite order-independent.
+    """
+    _apply_mocks()
+    yield
+    _restore_mocks()
+
+
 # Prevent __spec__ errors
 for mod in ["google", "azure", "opentelemetry", "langfuse", "langfuse.decorators", "langfuse.client"]:
     if mod in sys.modules:
@@ -539,14 +593,11 @@ def tearDownModule():
     """Restore third-party sys.modules entries mocked by this suite.
 
     Prevents cross-module pollution (e.g. LLM client tests failing because
-    ``instructor`` was replaced with a MagicMock).
+    ``instructor`` was replaced with a MagicMock). A per-test autouse fixture
+    (``_isolate_third_party_mocks``) also restores after each test so the mocks
+    do not leak while this module's tests are interspersed by random ordering.
     """
-    for name in _RECORD_TO_RESTORE:
-        original = _ORIGINAL_MODULES.get(name)
-        if original is None:
-            sys.modules.pop(name, None)
-        else:
-            sys.modules[name] = original
+    _restore_mocks()
 
 
 if __name__ == "__main__":

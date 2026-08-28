@@ -40,7 +40,7 @@ class SemanticCoherenceChecker:
             if not config:
                 logger.warning(f"⚠️ 配置文件未找到: {self.config_path}，使用默认值")
                 return self._get_default_config()
-            logger.info(f"✅ 已加载质量阈值配置 (via UnifiedConfig)")
+            logger.info("✅ 已加载质量阈值配置 (via UnifiedConfig)")
             return config
         except Exception as e:
             logger.error(f"❌ 加载配置文件失败: {e}，使用默认值")
@@ -113,18 +113,14 @@ class SemanticCoherenceChecker:
             semantic_scores.append(semantic_score)
 
             if semantic_score < semantic_threshold:
-                issues.append(
-                    f"段落 {i+1}-{i+2} 语义连贯性低: {semantic_score:.3f} < {semantic_threshold}"
-                )
+                issues.append(f"段落 {i+1}-{i+2} 语义连贯性低: {semantic_score:.3f} < {semantic_threshold}")
 
         # 情感连贯性检查
         if check_emotional_curve:
             emotional_scores = self._compute_emotional_curve(paragraphs)
             for i, score in enumerate(emotional_scores):
                 if score < emotional_threshold:
-                    issues.append(
-                        f"段落 {i+1} 情感连贯性低: {score:.3f} < {emotional_threshold}"
-                    )
+                    issues.append(f"段落 {i+1} 情感连贯性低: {score:.3f} < {emotional_threshold}")
 
         # 计算总体得分（未启用的维度不计入总分，避免虚高）
         avg_semantic = np.mean(semantic_scores) if semantic_scores else 1.0
@@ -143,8 +139,7 @@ class SemanticCoherenceChecker:
         if reference_paragraphs is not None:
             if len(reference_paragraphs) == len(paragraphs) and paragraphs:
                 tq_scores = [
-                    self._compute_semantic_similarity(para, ref)
-                    for para, ref in zip(paragraphs, reference_paragraphs)
+                    self._compute_semantic_similarity(para, ref) for para, ref in zip(paragraphs, reference_paragraphs)
                 ]
                 translation_quality = float(np.mean(tq_scores)) if tq_scores else None
 
@@ -216,9 +211,7 @@ class SemanticCoherenceChecker:
         bangs = min(text.count("！") + text.count("!"), 3) * 0.2
 
         # 重复字符（如"啊啊啊啊啊"）：连续同字符 ≥3 记为强情绪信号
-        repeated = 0.4 if any(
-            text[i] == text[i + 1] == text[i + 2] for i in range(len(text) - 2)
-        ) else 0.0
+        repeated = 0.4 if any(text[i] == text[i + 1] == text[i + 2] for i in range(len(text) - 2)) else 0.0
 
         intensity = polarity * 0.6 + max(bangs, repeated if not polarity else 0.0)
         return float(min(max(intensity, 0.0), 1.0))
@@ -248,4 +241,4 @@ if __name__ == "__main__":
     ]
 
     result = check_semantic_coherence(test_paragraphs)
-    print(f"语义连贯性检查结果: {result}")
+    logger.info(f"语义连贯性检查结果: {result}")

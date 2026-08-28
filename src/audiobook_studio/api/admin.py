@@ -6,12 +6,19 @@ serving traffic, and other administrative operations.
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from starlette.background import BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin"])
+
+
+class HardwareProfileSwitchRequest(BaseModel):
+    """Body for switching the active hardware profile at runtime."""
+
+    profile: str
 
 
 @router.post("/admin/warmup")
@@ -39,3 +46,34 @@ async def warmup_engines(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_warmup)
     return {"status": "warming_up"}
+
+
+@router.post("/admin/hardware-profile/reload")
+async def reload_hardware_profile_endpoint():
+    """Hot-reload hardware profile configuration from disk.
+
+    Re-reads ``hardware_profile.yaml`` and refreshes the global singleton in
+    place, so running pipelines immediately pick up new settings without a
+    process restart.
+    """
+    from ..config.hardware_profile import reload_hardware_profile
+
+    profile = reload_hardware_profile()
+    return {"status": "reloaded", "active_profile": profile.active_profile}
+
+
+@router.post("/admin/hardware-profile/switch")
+async def switch_hardware_profile_endpoint(payload: HardwareProfileSwitchRequest):
+    """Hot-switch the active hardware profile (e.g. potato / cloud_hybrid / pro_studio).
+
+    Useful for runtime hardware-tier changes (e.g. attaching a GPU) without a
+    restart. The running pipeline picks up the new profile on its next read.
+    """
+    from ..config.hardware_profile import get_hardware_profile
+
+    profile = get_hardware_profile()
+    try:
+        profile.set_active_profile(payload.profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "switched", "active_profile": profile.active_profile}

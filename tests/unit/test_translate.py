@@ -24,6 +24,24 @@ import pytest
 os.environ.setdefault("MOCK_LLM", "true")
 
 
+@pytest.fixture(autouse=True)
+def _ensure_db_tables():
+    """Create the ORM tables so DB-backed helpers (e.g. _get_target_voice)
+    are order-independent.
+
+    Several tests call ``pipeline._get_target_voice`` with the *real*
+    ``SessionLocal`` (no patched session). Those queries the ``characters``
+    table and fail with ``no such table`` unless some earlier test created it.
+    ``init_db`` is idempotent, so ensuring the schema here makes every test
+    pass regardless of collection order under --random-order.
+    """
+    import src.audiobook_studio.models  # noqa: F401  (register ORM tables)
+    from src.audiobook_studio.database import init_db
+
+    init_db()
+    yield
+
+
 @pytest.fixture
 def pipeline():
     """Build a TranslateAndDubPipeline with all heavy collaborators mocked.

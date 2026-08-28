@@ -323,8 +323,8 @@ class TestPipelineWebsocket:
 
             await pipeline_websocket(websocket, project_id)
 
-            # Check connection handling
-            mock_manager.connect.assert_awaited_once_with(websocket, project_id)
+            # Check connection handling (subprotocol negotiated from client headers)
+            mock_manager.connect.assert_awaited_once_with(websocket, project_id, subprotocol=None)
             mock_manager.disconnect.assert_called_once_with(websocket)
 
             # Check initial connection message

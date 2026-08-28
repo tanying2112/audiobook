@@ -128,32 +128,34 @@ class SemanticCritic(BaseCritic):
                     "age_group": char.get("age_group", ""),
                 }
 
-        return template.render(
-            # Segment info
-            segment_id=Path(audio_path).stem,
-            speaker=annotation.speaker_canonical_name,
-            is_dialogue=annotation.is_dialogue,
-            expected_emotion=annotation.emotion,
-            emotion_intensity=annotation.emotion_intensity,
-            expected_speech_rate=annotation.speech_rate,
-            expected_pitch_shift=annotation.pitch_shift_semitones,
-            # Reference text
-            reference_text=reference_text,
-            # Context
-            prev_text=prev_text[:500] if prev_text else "（无前文）",
-            next_text=next_text[:500] if next_text else "（无后文）",
-            prev_emotion=prev_emotion,
-            next_emotion=next_emotion,
-            chapter_info=chapter_info,
-            # Character voice profiles
-            character_voice_profiles=char_voice_profile,
-            # Routing info
-            selected_voice=routing_decision.voice_id,
-            selected_model=routing_decision.engine_choice,
-            voice_instructions=routing_decision.prosody_overrides or {},
-            # Thresholds
-            pass_threshold=self.pass_threshold,
-            warning_threshold=self.warning_threshold,
+        return str(
+            template.render(
+                # Segment info
+                segment_id=Path(audio_path).stem,
+                speaker=annotation.speaker_canonical_name,
+                is_dialogue=annotation.is_dialogue,
+                expected_emotion=annotation.emotion,
+                emotion_intensity=annotation.emotion_intensity,
+                expected_speech_rate=annotation.speech_rate,
+                expected_pitch_shift=annotation.pitch_shift_semitones,
+                # Reference text
+                reference_text=reference_text,
+                # Context
+                prev_text=prev_text[:500] if prev_text else "（无前文）",
+                next_text=next_text[:500] if next_text else "（无后文）",
+                prev_emotion=prev_emotion,
+                next_emotion=next_emotion,
+                chapter_info=chapter_info,
+                # Character voice profiles
+                character_voice_profiles=char_voice_profile,
+                # Routing info
+                selected_voice=routing_decision.voice_id,
+                selected_model=routing_decision.engine_choice,
+                voice_instructions=routing_decision.prosody_overrides or {},
+                # Thresholds
+                pass_threshold=self.pass_threshold,
+                warning_threshold=self.warning_threshold,
+            )
         )
 
     def _evaluate_mock(

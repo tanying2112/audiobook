@@ -1,31 +1,31 @@
 {
-  "total_cost_usd": 47.399999999999906,
-  "total_tokens": 4740,
-  "total_operations": 158,
+  "total_cost_usd": 56.39999999999982,
+  "total_tokens": 5640,
+  "total_operations": 188,
   "by_provider": {
     "openai": {
-      "cost": 47.399999999999906,
-      "tokens": 4740,
-      "ops": 158
+      "cost": 56.39999999999982,
+      "tokens": 5640,
+      "ops": 188
     }
   },
   "by_operation": {
     "llm_chat": {
-      "cost": 47.399999999999906,
-      "tokens": 4740,
-      "ops": 158
+      "cost": 56.39999999999982,
+      "tokens": 5640,
+      "ops": 188
     }
   },
   "by_model": {
     "gpt-4o": {
-      "cost": 47.399999999999906,
-      "tokens": 4740,
-      "ops": 158
+      "cost": 56.39999999999982,
+      "tokens": 5640,
+      "ops": 188
     }
   },
   "errors": 0,
   "retries": 0,
-  "last_aggregated": "2026-08-28T21:05:48.759056",
+  "last_aggregated": "2026-08-29T01:02:28.400170",
   "records_aggregated_this_run": 1,
   "retention_days": 30
 }
