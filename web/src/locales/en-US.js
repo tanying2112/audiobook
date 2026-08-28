@@ -1245,4 +1245,20 @@ export default {
     historyDest: 'Destination',
     historyTime: 'Time',
   },
+
+  error: {
+    bad_request: 'Bad request',
+    unauthorized: 'Unauthorized, please sign in',
+    forbidden: 'You do not have permission to do this',
+    not_found: 'The requested resource was not found',
+    conflict: 'Resource conflict',
+    validation_error: 'Validation failed',
+    rate_limited: 'Too many requests, please slow down',
+    internal_error: 'Internal server error',
+    bad_gateway: 'Bad gateway',
+    service_unavailable: 'Service temporarily unavailable',
+    timeout: 'Request timed out',
+    network_error: 'Network error, please check your connection',
+    unknown: 'Unknown error',
+  },
 }

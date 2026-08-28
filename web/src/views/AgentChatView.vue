@@ -220,6 +220,12 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from '../i18n'
 import { Icon } from '@iconify/vue'
+import {
+  sendAgentChatMessage,
+  fetchAgentSessions,
+  fetchAgentSessionHistory,
+  deleteAgentSession,
+} from '../api'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -451,18 +457,11 @@ const sendMessage = (content?: string | Event) => {
 
 const sendHttpMessage = async (message: string) => {
   try {
-    const response = await fetch(`/api/agent/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project_id: props.projectId,
-        message,
-        session_id: currentSessionId.value,
-        context: { personality: settings.value.personality, length: settings.value.responseLength },
-      }),
+    const data = await sendAgentChatMessage(props.projectId, {
+      message,
+      session_id: currentSessionId.value,
+      context: { personality: settings.value.personality, length: settings.value.responseLength },
     })
-
-    const data = await response.json()
     loading.value = false
 
     if (data.message) {
@@ -490,8 +489,7 @@ const sendHttpMessage = async (message: string) => {
 
 const loadSessions = async () => {
   try {
-    const response = await fetch(`/api/agent/chat/${props.projectId}/sessions`)
-    const data = await response.json()
+    const data = await fetchAgentSessions(props.projectId)
     sessions.value = data.sessions || []
     if (sessions.value.length > 0 && !currentSessionId.value) {
       currentSessionId.value = sessions.value[0].session_id
@@ -504,8 +502,7 @@ const loadSessions = async () => {
 
 const loadSession = async (sessionId: string) => {
   try {
-    const response = await fetch(`/api/agent/chat/${props.projectId}/history?session_id=${sessionId}`)
-    const data = await response.json()
+    const data = await fetchAgentSessionHistory(props.projectId, sessionId)
     messages.value = data.messages || []
     currentSessionId.value = data.session_id
     showHistory.value = false
@@ -528,9 +525,7 @@ const newSession = () => {
 
 const deleteSession = async (sessionId: string) => {
   try {
-    await fetch(`/api/agent/chat/${props.projectId}/sessions/${sessionId}`, {
-      method: 'DELETE',
-    })
+    await deleteAgentSession(props.projectId, sessionId)
     sessions.value = sessions.value.filter((s) => s.session_id !== sessionId)
     if (currentSessionId.value === sessionId) {
       newSession()
@@ -545,9 +540,7 @@ const clearAllHistory = async () => {
 
   try {
     for (const session of sessions.value) {
-      await fetch(`/api/agent/chat/${props.projectId}/sessions/${session.session_id}`, {
-        method: 'DELETE',
-      })
+      await deleteAgentSession(props.projectId, session.session_id)
     }
     sessions.value = []
     newSession()

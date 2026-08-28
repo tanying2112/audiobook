@@ -51,6 +51,9 @@ class AudioQualitySample:
     audio_path: str
     utmos: Optional[float] = None
     dnsmos: Optional[float] = None
+    dnsmos_sig: Optional[float] = None
+    dnsmos_bak: Optional[float] = None
+    dnsmos_ovr: Optional[float] = None
     wer: Optional[float] = None
     speaker_sim: Optional[float] = None
     overall: float = 0.0
@@ -64,6 +67,9 @@ class AudioQualitySample:
             "audio_path": self.audio_path,
             "utmos": round(self.utmos, 4) if self.utmos is not None else None,
             "dnsmos": round(self.dnsmos, 4) if self.dnsmos is not None else None,
+            "dnsmos_sig": round(self.dnsmos_sig, 4) if self.dnsmos_sig is not None else None,
+            "dnsmos_bak": round(self.dnsmos_bak, 4) if self.dnsmos_bak is not None else None,
+            "dnsmos_ovr": round(self.dnsmos_ovr, 4) if self.dnsmos_ovr is not None else None,
             "wer": round(self.wer, 4) if self.wer is not None else None,
             "speaker_sim": round(self.speaker_sim, 4) if self.speaker_sim is not None else None,
             "overall": round(self.overall, 4),
@@ -133,7 +139,6 @@ def fuse_audio_scores(
     never a fabricated value).
     """
     w = weights or DEFAULT_WEIGHTS
-    components: List[float] = []
     avail: Dict[str, float] = {}
     if utmos is not None:
         avail["utmos"] = _mos_to_unit(utmos)
@@ -228,7 +233,7 @@ class AudioQualityScorer:
             from speechbrain.inference.speaker import EncoderClassifier  # noqa: F401
 
             features["speaker_sim"] = True
-        except (ImportError, Exception):
+        except Exception:
             pass
         return features
 
@@ -237,6 +242,7 @@ class AudioQualityScorer:
         audio_path: Path,
         reference_text: str = "",
         reference_speaker_audio: Optional[Path] = None,
+        language: Optional[str] = None,
     ) -> AudioQualitySample:
         """Score a single audio file.
 
@@ -291,6 +297,9 @@ class AudioQualityScorer:
 
             utmos = result.utmos.mos if result.utmos and result.utmos.success else None
             dnsmos = result.dnsmos.mos_ovr if result.dnsmos and result.dnsmos.success else None
+            dnsmos_sig = result.dnsmos.mos_sig if result.dnsmos and result.dnsmos.success else None
+            dnsmos_bak = result.dnsmos.mos_bak if result.dnsmos and result.dnsmos.success else None
+            dnsmos_ovr = dnsmos
             wer = result.wer.wer if result.wer and result.wer.success else None
             sim = result.speaker_sim.similarity if result.speaker_sim and result.speaker_sim.success else None
 
@@ -301,6 +310,9 @@ class AudioQualityScorer:
                 audio_path=str(path),
                 utmos=utmos,
                 dnsmos=dnsmos,
+                dnsmos_sig=dnsmos_sig,
+                dnsmos_bak=dnsmos_bak,
+                dnsmos_ovr=dnsmos_ovr,
                 wer=wer,
                 speaker_sim=sim,
                 overall=overall,
@@ -325,6 +337,9 @@ class AudioQualityScorer:
             audio_path=str(path),
             utmos=4.0,
             dnsmos=4.2,
+            dnsmos_sig=4.2,
+            dnsmos_bak=4.2,
+            dnsmos_ovr=4.2,
             wer=0.02,
             speaker_sim=0.90,
             overall=fuse_audio_scores(4.0, 4.2, 0.02, 0.90, self.weights),
@@ -361,6 +376,7 @@ class AudioQualityScorer:
                     Path(ap),
                     reference_text=s.get("reference_text", ""),
                     reference_speaker_audio=ref,
+                    language=s.get("language"),
                 )
             )
 

@@ -754,6 +754,7 @@ class UTMOSMetric(QualityMetric):
     def _resample_via_ffmpeg(self, audio_path: Path) -> "torch.Tensor":
         """ffmpeg 重采样到 16kHz mono float32 的回退路径."""
         import asyncio
+
         import torch
 
         async def _resample() -> np.ndarray:
@@ -888,7 +889,7 @@ class FunASRBackend(ASRBackend):
     MODEL_ALIASES = {
         "paraformer-zh": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
         "paraformer-zh-onnx": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx",
-        "sensevoice_small": "iic/sensevoice_small",
+        "sensevoice_small": "iic/SenseVoiceSmall",
         "sensevoice_large": "iic/sensevoice_large",
     }
 
@@ -938,6 +939,56 @@ class FunASRBackend(ASRBackend):
         # 这里只设置环境，实际下载由 AutoModel 处理
         logger.debug(f"FunASR cache directory: {cache_dir}")
         return True
+
+    def _resample_to_16k(self, audio_path: Path) -> Path:
+        """Resample *audio_path* to 16 kHz mono WAV for FunASR/SenseVoice/VAD.
+
+        FunASR's VAD + SenseVoice expect 16 kHz input; feeding 24 kHz audio
+        (as in the golden reference set) makes VAD detect no speech and yields
+        an empty hypothesis. We resample via ffmpeg to a temp file and return
+        that path. On any failure we return the original path (degraded but
+        still functional) so scoring degrades gracefully instead of crashing.
+        """
+        try:
+            import soundfile as _sf
+
+            if audio_path.suffix.lower() == ".wav":
+                try:
+                    if _sf.info(str(audio_path)).samplerate == 16000:
+                        return audio_path
+                except Exception:
+                    pass
+            import subprocess
+            import tempfile
+
+            cache_dir = self._get_cache_dir()
+            fd, tmp_name = tempfile.mkstemp(suffix=".wav", dir=str(cache_dir))
+            os.close(fd)
+            proc = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-v",
+                    "error",
+                    "-i",
+                    str(audio_path),
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    tmp_name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if proc.returncode == 0 and os.path.exists(tmp_name) and os.path.getsize(tmp_name) > 0:
+                return Path(tmp_name)
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"16k resample failed ({e}); using original audio (ASR may degrade)")
+        return audio_path
 
     def _initialize(self) -> None:
         if self._initialized:
@@ -1022,12 +1073,20 @@ class FunASRBackend(ASRBackend):
             )
         self._initialize()
         try:
-            result = self._model.generate(
-                input=str(audio_path),
-                batch_size_s=300,
-                merge_vad=True,
-                merge_length_s=15,
-            )
+            audio_for_asr = self._resample_to_16k(audio_path)
+            try:
+                result = self._model.generate(
+                    input=str(audio_for_asr),
+                    batch_size_s=300,
+                    merge_vad=True,
+                    merge_length_s=15,
+                )
+            finally:
+                if audio_for_asr != audio_path:
+                    try:
+                        os.remove(audio_for_asr)
+                    except OSError:
+                        pass
 
             if not result:
                 return ASRResult(
@@ -1042,6 +1101,19 @@ class FunASRBackend(ASRBackend):
 
             first = result[0]
             text = first.get("text", "")
+            # An empty hypothesis means the ASR detected no (usable) speech.
+            # Reporting wer=1.0 with success=True would fabricate a measurement;
+            # we fail honestly so the scorer records WER as unavailable.
+            if not text or not text.strip():
+                return ASRResult(
+                    text="",
+                    words=[],
+                    language="unknown",
+                    confidence=0.0,
+                    duration_ms=0,
+                    success=False,
+                    error="empty hypothesis (silence / non-speech / VAD rejected)",
+                )
 
             words = []
             if "words" in first:
@@ -1313,7 +1385,15 @@ class ASRWerMetric(QualityMetric):
         self.reference_text = reference_text
         self.mock_mode = mock_mode
         self.cache_dir = cache_dir
-        self._backend = self._create_backend(backend, model_name, device, compute_type, use_faster_whisper)
+        self._device = device
+        self._auto_backends: Dict[str, ASRBackend] = {}
+        # model_name == "auto" defers backend creation until compute(), where the
+        # audio language selects a multilingual (SenseVoice) vs Chinese (Paraformer)
+        # model. An explicit model name builds the backend eagerly.
+        if model_name == "auto":
+            self._backend: Optional[ASRBackend] = None
+        else:
+            self._backend = self._create_backend(backend, model_name, device, compute_type, use_faster_whisper)
 
     def _create_backend(
         self,
@@ -1341,6 +1421,29 @@ class ASRWerMetric(QualityMetric):
             )
         else:
             raise ValueError(f"Unknown ASR backend: {backend}")
+
+    def _resolve_backend(self, language: Optional[str] = None) -> ASRBackend:
+        """Return the ASR backend to use for ``language``.
+
+        In ``auto`` mode, non-Chinese audio uses the multilingual SenseVoice
+        model (zh/en/ja/ko/fr/de/es…) while Chinese audio uses the faster,
+        more accurate Paraformer-ZH. An explicit ``model_name`` returns that
+        backend unchanged.
+        """
+        if self._backend is not None:
+            return self._backend
+        if language and language != "zh":
+            model = "sensevoice_small"
+        else:
+            model = "paraformer-zh"
+        if model not in self._auto_backends:
+            self._auto_backends[model] = FunASRBackend(
+                model_name=model,
+                device=self._device,
+                cache_dir=self.cache_dir,
+                mock_mode=self.mock_mode,
+            )
+        return self._auto_backends[model]
 
     def _compute_wer_cer(self, reference: str, hypothesis: str) -> Tuple[float, float, int, int, int, int, int]:
         """计算 WER 和 CER.
@@ -1424,7 +1527,9 @@ class ASRWerMetric(QualityMetric):
 
         return wer, cer, insertions, deletions, substitutions, total_ref, total_hyp
 
-    def compute(self, audio_path: Path, reference_text: Optional[str] = None) -> WERResult:
+    def compute(
+        self, audio_path: Path, reference_text: Optional[str] = None, language: Optional[str] = None
+    ) -> WERResult:
         """计算音频的 WER (详细结果).
 
         Args:
@@ -1449,7 +1554,7 @@ class ASRWerMetric(QualityMetric):
             )
 
         try:
-            asr_result = self._backend.transcribe(audio_path)
+            asr_result = self._resolve_backend(language).transcribe(audio_path)
             if not asr_result.success:
                 return WERResult(
                     wer=1.0,
@@ -1461,6 +1566,22 @@ class ASRWerMetric(QualityMetric):
                     hypothesis_words=0,
                     success=False,
                     error=asr_result.error,
+                )
+
+            # An empty transcript cannot yield a meaningful WER; report it as a
+            # failure (so the scorer records WER as unavailable) rather than
+            # fabricating wer=1.0.
+            if not asr_result.text or not asr_result.text.strip():
+                return WERResult(
+                    wer=1.0,
+                    cer=1.0,
+                    insertions=0,
+                    deletions=0,
+                    substitutions=0,
+                    reference_words=0,
+                    hypothesis_words=0,
+                    success=False,
+                    error="empty hypothesis (ASR produced no transcript)",
                 )
 
             wer, cer, ins, dels, subs, ref_w, hyp_w = self._compute_wer_cer(ref_text, asr_result.text)
@@ -1489,7 +1610,9 @@ class ASRWerMetric(QualityMetric):
                 error=str(e),
             )
 
-    def compute_wer(self, audio_path: Path, reference_text: Optional[str] = None) -> float:
+    def compute_wer(
+        self, audio_path: Path, reference_text: Optional[str] = None, language: Optional[str] = None
+    ) -> float:
         """计算音频的 WER (简化版，仅返回 float).
 
         Args:
@@ -1499,7 +1622,7 @@ class ASRWerMetric(QualityMetric):
         Returns:
             WER 值 (0.0 - 1.0)，失败返回 1.0
         """
-        result = self.compute(audio_path, reference_text)
+        result = self.compute(audio_path, reference_text, language=language)
         return result.wer if result.success else 1.0
 
     def get_name(self) -> str:
@@ -2085,6 +2208,7 @@ class QualityCheckSuite:
         reference_text: str = "",
         reference_speaker_id: Optional[str] = None,
         reference_speaker_audio: Optional[Path] = None,
+        language: Optional[str] = None,
     ) -> QualityCheckResult:
         """执行完整的三件套质量检查.
 
@@ -2124,7 +2248,7 @@ class QualityCheckSuite:
 
         # 2. ASR WER
         if self._wer and self.config.get("quality_check", {}).get("asr_enabled", True):
-            wer_result = self._wer.compute(audio_path, reference_text)
+            wer_result = self._wer.compute(audio_path, reference_text, language=language)
             result.wer = wer_result
 
             if wer_result.success and wer_result.wer > self.asr_wer_max:

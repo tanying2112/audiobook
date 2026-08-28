@@ -1244,7 +1244,23 @@ publish: {
   historyJob: '任务',
   historyStatus: '状态',
   historyDest: '目标',
-  historyTime: '时间',
-},
+    historyTime: '时间',
+  },
+
+  error: {
+    bad_request: '请求参数错误',
+    unauthorized: '未授权，请重新登录',
+    forbidden: '没有权限执行此操作',
+    not_found: '请求的资源不存在',
+    conflict: '资源冲突',
+    validation_error: '数据校验失败',
+    rate_limited: '请求过于频繁，请稍后再试',
+    internal_error: '服务器内部错误',
+    bad_gateway: '网关错误',
+    service_unavailable: '服务暂不可用',
+    timeout: '请求超时',
+    network_error: '网络错误，请检查网络连接',
+    unknown: '未知错误',
+  },
 }
 

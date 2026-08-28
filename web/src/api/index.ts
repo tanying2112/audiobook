@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { Project, Chapter, Paragraph, AudioSegment, Character, QualityResult } from '../types'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -10,11 +11,38 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// ── Loading state (request counter + events) ──────────────────────────────
+let pendingRequests = 0
+export const apiEvents = new EventTarget()
+
+function emitLoading() {
+  const loading = pendingRequests > 0
+  apiEvents.dispatchEvent(
+    new CustomEvent('loading', { detail: { loading, pending: pendingRequests } }),
+  )
+}
+
+/** Subscribe to global loading-state changes. Returns an unsubscribe fn. */
+export function onApiLoading(
+  listener: (loading: boolean, pending: number) => void,
+): () => void {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent<{ loading: boolean; pending: number }>).detail
+    listener(detail.loading, detail.pending)
+  }
+  apiEvents.addEventListener('loading', handler)
+  // emit current state immediately
+  listener(pendingRequests > 0, pendingRequests)
+  return () => apiEvents.removeEventListener('loading', handler)
+}
+
 api.interceptors.request.use((config) => {
   const authStore = useAuthStore()
   if (authStore.token) {
     config.headers.Authorization = `Bearer ${authStore.token}`
   }
+  pendingRequests += 1
+  emitLoading()
   return config
 })
 
@@ -35,10 +63,116 @@ function processQueue(error: unknown, token: string | null = null) {
   failedQueue = []
 }
 
+// ── Unified API error-code mapping ──────────────────────────────────────────
+export interface ApiError {
+  status: number | null
+  code: string
+  message: string
+  detail?: unknown
+}
+
+function statusToCode(status: number | null, err: any): string {
+  switch (status) {
+    case 400:
+      return 'bad_request'
+    case 401:
+      return 'unauthorized'
+    case 403:
+      return 'forbidden'
+    case 404:
+      return 'not_found'
+    case 409:
+      return 'conflict'
+    case 422:
+      return 'validation_error'
+    case 429:
+      return 'rate_limited'
+    case 500:
+      return 'internal_error'
+    case 502:
+      return 'bad_gateway'
+    case 503:
+      return 'service_unavailable'
+  }
+  if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message))) return 'timeout'
+  if (err?.request && !err?.response) return 'network_error'
+  return 'unknown'
+}
+
+function defaultMessage(code: string): string {
+  switch (code) {
+    case 'bad_request':
+      return 'Bad request'
+    case 'unauthorized':
+      return 'Unauthorized'
+    case 'forbidden':
+      return 'Forbidden'
+    case 'not_found':
+      return 'Not found'
+    case 'conflict':
+      return 'Conflict'
+    case 'validation_error':
+      return 'Validation error'
+    case 'rate_limited':
+      return 'Too many requests, please slow down'
+    case 'internal_error':
+      return 'Internal server error'
+    case 'bad_gateway':
+      return 'Bad gateway'
+    case 'service_unavailable':
+      return 'Service unavailable'
+    case 'timeout':
+      return 'Request timeout'
+    case 'network_error':
+      return 'Network error'
+    default:
+      return 'Unknown error'
+  }
+}
+
+/** Normalize any axios/network error into a unified { status, code, message }. */
+export function normalizeApiError(error: unknown): ApiError {
+  const err = error as any
+  const status: number | null = err?.response?.status ?? null
+  const code = statusToCode(status, err)
+  const detail = err?.response?.data?.detail
+
+  // Prefer the backend's specific detail when available, then fall back to the
+  // localized message, then to a default English message.
+  let message = ''
+  if (typeof detail === 'string' && detail) {
+    message = detail
+  } else if (Array.isArray(detail) && detail.length) {
+    message = detail
+      .map((d: any) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d)))
+      .join('; ')
+  } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+    message = detail.message
+  }
+  if (!message) {
+    try {
+      message = t(`error.${code}`)
+    } catch {
+      message = ''
+    }
+    if (!message || message === `error.${code}`) {
+      message = defaultMessage(code)
+    }
+  }
+  return { status, code, message, detail: err?.response?.data }
+}
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
+    return response
+  },
   async (error) => {
     const originalRequest = error.config
+    // The request has settled (success or failure) — always release the counter.
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         // 如果正在刷新，将当前请求加入队列等待
@@ -77,7 +211,7 @@ api.interceptors.response.use(
         isRefreshing = false
       }
     }
-    return Promise.reject(error)
+    return Promise.reject(normalizeApiError(error))
   }
 )
 
@@ -802,6 +936,35 @@ export async function fetchMetricsHistory(
 export async function fetchProjectsWithMetrics(): Promise<ProjectsWithMetricsResponse> {
   const { data } = await api.get<ProjectsWithMetricsResponse>('/monitoring/projects')
   return data
+}
+
+// ── Agent Chat (migrated from raw fetch to share the interceptor) ───────────
+
+export interface AgentChatMessagePayload {
+  message: string
+  session_id: string | null
+  context?: Record<string, unknown>
+}
+
+export async function sendAgentChatMessage(projectId: number, payload: AgentChatMessagePayload): Promise<any> {
+  const { data } = await api.post('/api/agent/chat', { project_id: projectId, ...payload })
+  return data
+}
+
+export async function fetchAgentSessions(projectId: number): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/sessions`)
+  return data
+}
+
+export async function fetchAgentSessionHistory(projectId: number, sessionId: string): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/history`, {
+    params: { session_id: sessionId },
+  })
+  return data
+}
+
+export async function deleteAgentSession(projectId: number, sessionId: string): Promise<void> {
+  await api.delete(`/api/agent/chat/${projectId}/sessions/${sessionId}`)
 }
 
 export default api
