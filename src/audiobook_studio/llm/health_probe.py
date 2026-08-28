@@ -15,6 +15,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Registry of HealthProbe instances with a live background thread. Used by the
+# test harness (and operational shutdown) to guarantee no probe thread leaks
+# across tests. A leaked daemon thread keeps pinging providers and contends for
+# CPU, which can push slow global checks (e.g. mypy --strict) past their timeout.
+_active_probes: "set[HealthProbe]" = set()
+
+
+def stop_all_health_probes() -> None:
+    """Stop every currently-running HealthProbe background thread.
+
+    Safe to call multiple times / when none are running.
+    """
+    for probe in list(_active_probes):
+        try:
+            probe.stop()
+        except Exception:  # pragma: no cover - defensive
+            pass
+    _active_probes.clear()
+
 
 @dataclass
 class HealthStatus:
@@ -55,6 +74,7 @@ class HealthProbe:
         self.statuses: Dict[str, HealthStatus] = {}
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._registered = False
 
         for p in providers:
             self.statuses[p.name] = HealthStatus(provider=p.name)
@@ -66,6 +86,8 @@ class HealthProbe:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._probe_loop, daemon=True)
         self._thread.start()
+        _active_probes.add(self)
+        self._registered = True
         logger.info(f"Health probe started (interval={self.interval_s}s)")
 
     def stop(self):
@@ -73,6 +95,9 @@ class HealthProbe:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5.0)
+        if self._registered:
+            _active_probes.discard(self)
+            self._registered = False
         logger.info("Health probe stopped")
 
     def _probe_loop(self):

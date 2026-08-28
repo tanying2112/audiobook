@@ -663,30 +663,23 @@ class UTMOSMetric(QualityMetric):
     - 输出: 单一 MOS 分数 (1-5 范围)
     """
 
-    # 官方 UTMOS v2 模型 (强健版本)
-    # 模型来源: https://github.com/tarepan/SpeechMOS
-    MODEL_URL = "https://github.com/tarepan/SpeechMOS/releases/download/v0.1.0/utmos22_strong.onnx"
-    MODEL_FILENAME = "utmos.onnx"
     DEFAULT_SAMPLE_RATE = 16000
+    TORCH_HUB_REPO = "tarepan/SpeechMOS:v1.2.0"
+    TORCH_HUB_MODEL = "utmos22_strong"
 
     def __init__(
         self,
-        model_path: Optional[Path] = None,
         sample_rate: int = DEFAULT_SAMPLE_RATE,
-        use_ort: bool = True,
         mock_mode: bool = False,
         cache_dir: Optional[Path] = None,
     ):
         """
         Args:
-            model_path: ONNX 模型路径，None 则自动下载到缓存目录
             sample_rate: 输入音频采样率 (内部会重采样到 16kHz)
-            use_ort: 是否使用 ONNX Runtime (True) 还是 torch (False)
             mock_mode: 测试模式，返回固定分数不加载模型
             cache_dir: 自定义模型缓存目录，默认 ~/.cache/audiobook_studio/models
         """
         self.sample_rate = sample_rate
-        self.use_ort = use_ort
         self.mock_mode = mock_mode
 
         # 确定缓存目录
@@ -701,42 +694,17 @@ class UTMOSMetric(QualityMetric):
             self.cache_dir = Path(tempfile.gettempdir()) / "audiobook_studio" / "models"
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # 确定模型路径
-        if model_path is None:
-            self.model_path = self.cache_dir / self.MODEL_FILENAME
-        else:
-            self.model_path = Path(model_path)
+        # torch.hub 缓存目录
+        os.environ.setdefault("TORCH_HOME", str(self.cache_dir.parent))
 
-        self._session: Any = None
+        self._model: Any = None
         self._initialized = False
 
         # Mock mode 固定返回值 (用于测试和 CI)
         self._mock_score: float = 4.0
 
-    def _get_model_url(self) -> str:
-        """获取模型下载 URL，支持环境变量覆盖."""
-        return os.environ.get("UTMOS_MODEL_URL", self.MODEL_URL)
-
-    def _ensure_model(self) -> bool:
-        """确保模型已下载到缓存目录."""
-        if self.model_path.exists():
-            logger.debug(f"UTMOS model already cached at {self.model_path}")
-            return True
-
-        model_url = self._get_model_url()
-        logger.info(f"Downloading UTMOS model from {model_url} to {self.model_path}...")
-        try:
-            import urllib.request
-
-            urllib.request.urlretrieve(model_url, self.model_path)
-            logger.info(f"UTMOS model downloaded to {self.model_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to download UTMOS model: {e}")
-            return False
-
     def _initialize(self) -> None:
-        """初始化 ONNX Runtime 会话."""
+        """初始化 UTMOS 模型 via torch.hub."""
         if self._initialized:
             return
 
@@ -744,67 +712,49 @@ class UTMOSMetric(QualityMetric):
             self._initialized = True
             return
 
-        if not self._ensure_model():
-            raise RuntimeError("UTMOS model not available")
-
         try:
-            import onnxruntime as ort
+            import torch
 
-            sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            sess_options.intra_op_num_threads = 1
-            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-
-            self._session = ort.InferenceSession(
-                str(self.model_path),
-                sess_options=sess_options,
-                providers=["CPUExecutionProvider"],
+            logger.info(f"Loading UTMOS model via torch.hub from {self.TORCH_HUB_REPO}...")
+            self._model = torch.hub.load(
+                self.TORCH_HUB_REPO,
+                self.TORCH_HUB_MODEL,
+                trust_repo=True,
             )
+            self._model.eval()
             self._initialized = True
-            logger.info(f"UTMOS model initialized from {self.model_path}")
-
-            # 验证模型输入输出
-            assert self._session is not None
-            inputs = self._session.get_inputs()
-            outputs = self._session.get_outputs()
-            logger.debug(f"UTMOS model inputs: {[i.name for i in inputs]}")
-            logger.debug(f"UTMOS model outputs: {[o.name for o in outputs]}")
+            logger.info("UTMOS model initialized successfully")
 
         except ImportError:
-            raise RuntimeError("onnxruntime not installed. Install with: pip install onnxruntime")
+            raise RuntimeError("torch/torchaudio not installed. Install with: pip install torch torchaudio")
         except Exception as e:
             logger.error(f"Failed to initialize UTMOS model: {e}")
             raise
 
-    def _preprocess_audio(self, audio_path: Path) -> np.ndarray:
-        """预处理音频为 UTMOS 所需格式 (16kHz 单声道 float32).
+    def _preprocess_audio(self, audio_path: Path) -> "torch.Tensor":
+        """预处理音频为 UTMOS 所需格式 (16kHz 单声道 float32 tensor).
 
-        优先用 soundfile 直接读取; 仅当格式不符且 ffmpeg 可用时才回退到 ffmpeg 重采样。
+        使用 torchaudio 读取并重采样。
         """
         try:
-            import soundfile as sf
+            import torchaudio
 
-            audio, sr = sf.read(str(audio_path), dtype="float32", always_2d=False)
-            if audio.ndim > 1:
-                audio = audio.mean(axis=1)  # 多声道 -> 单声道
+            audio, sr = torchaudio.load(str(audio_path))
+            # audio shape: (channels, samples)
+            if audio.shape[0] > 1:
+                audio = audio.mean(dim=0, keepdim=True)  # 多声道 -> 单声道
             if sr != self.sample_rate:
-                try:
-                    from math import gcd
-
-                    from scipy.signal import resample_poly
-
-                    g = gcd(int(sr), self.sample_rate)
-                    audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
-                except ImportError:
-                    audio = self._resample_via_ffmpeg(audio_path)
-            return np.asarray(audio, dtype=np.float32)
+                resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+                audio = resampler(audio)
+            return audio.squeeze(0)  # (samples,)
         except Exception as e:
-            logger.debug(f"soundfile read failed for {audio_path} ({e}); trying ffmpeg")
+            logger.debug(f"torchaudio read failed for {audio_path} ({e}); trying ffmpeg fallback")
             return self._resample_via_ffmpeg(audio_path)
 
-    def _resample_via_ffmpeg(self, audio_path: Path) -> np.ndarray:
+    def _resample_via_ffmpeg(self, audio_path: Path) -> "torch.Tensor":
         """ffmpeg 重采样到 16kHz mono float32 的回退路径."""
         import asyncio
+        import torch
 
         async def _resample() -> np.ndarray:
             proc = await asyncio.create_subprocess_exec(
@@ -833,32 +783,11 @@ class UTMOSMetric(QualityMetric):
 
         return asyncio.run(_resample())
 
-    def _prepare_input_frames(self, audio: np.ndarray) -> np.ndarray:
-        """准备 UTMOS 模型输入帧.
-
-        UTMOS 模型接受形状 (N, T) 的输入，其中 T 是采样点数。
-        模型内部会处理任意长度输入并输出单一 MOS 分数。
-        """
-        # UTMOS 推荐至少 1 秒音频以获得稳定预测
-        min_samples = self.sample_rate  # 1 second
-        if len(audio) < min_samples:
-            audio = np.pad(audio, (0, min_samples - len(audio)), mode="constant")
-
-        # UTMOS 模型输入形状: (N, T) 或 (N, 1, T) 取决于导出版本
-        try:
-            expected_rank = len(self._session.get_inputs()[0].shape)
-        except (IndexError, AttributeError):
-            expected_rank = None
-
-        if expected_rank == 2:
-            return audio.reshape(1, -1)  # (1, T)
-        elif expected_rank == 3:
-            return audio.reshape(1, 1, -1)  # (1, 1, T)
-        else:
-            return audio.reshape(1, -1)  # 默认 (1, T)
-
-    def _compute_utmos(self, audio: np.ndarray) -> float:
+    def _compute_utmos(self, audio: "torch.Tensor") -> float:
         """计算 UTMOS MOS 分数.
+
+        Args:
+            audio: 预处理后的音频 tensor (samples,)
 
         Returns:
             MOS 分数 (1.0 - 5.0)
@@ -866,13 +795,20 @@ class UTMOSMetric(QualityMetric):
         if self.mock_mode:
             return self._mock_score
 
-        input_tensor = self._prepare_input_frames(audio)
-        input_name = self._session.get_inputs()[0].name
+        # UTMOS 推荐至少 1 秒音频以获得稳定预测
+        min_samples = self.sample_rate  # 1 second
+        if audio.shape[0] < min_samples:
+            audio = torch.nn.functional.pad(audio, (0, min_samples - audio.shape[0]), mode="constant")
 
-        outputs = self._session.run(None, {input_name: input_tensor})
-        # 输出形状: (1,) 或 (1, 1) -> 单一 MOS 分数
-        score = float(outputs[0].squeeze())
-        return float(np.clip(score, 1.0, 5.0))
+        # 添加 batch 维度: (1, samples)
+        audio = audio.unsqueeze(0)
+
+        with torch.no_grad():
+            score = self._model(audio, sr=self.sample_rate)
+
+        # score 是 tensor([mos_value]) 或 tensor([[mos_value]])
+        mos = float(score.squeeze().item())
+        return float(np.clip(mos, 1.0, 5.0))
 
     def compute(self, audio_path: Path) -> float:
         """计算音频文件的 UTMOS MOS 分数.

@@ -22,6 +22,7 @@ from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
 from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
+from ..quality.audio_quality import fuse_audio_scores
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas.quality import FixSuggestion
@@ -699,11 +700,26 @@ class QualityCheckPipeline:
             # Prepare real audio metrics for the judge (P0-C1)
             real_metrics: Optional[Dict[str, Any]] = None
             if not self.mock_mode and hard_result:
+
+                def _numeric(v: Any) -> Optional[float]:
+                    # Defensive: hard-check results may surface non-numeric
+                    # placeholders (e.g. when a feature is unavailable); only
+                    # pass real scores to the MOS fuser.
+                    return v if isinstance(v, (int, float)) else None
+
                 real_metrics = {
-                    "utmos": hard_result.utmos.mos if hard_result.utmos and hard_result.utmos.success else None,
-                    "dnsmos": hard_result.dnsmos.mos_ovr if hard_result.dnsmos and hard_result.dnsmos.success else None,
-                    "wer": hard_result.wer.wer if hard_result.wer and hard_result.wer.success else None,
-                    "speaker_sim": hard_result.speaker_sim.similarity if hard_result.speaker_sim and hard_result.speaker_sim.success else None,
+                    "utmos": _numeric(hard_result.utmos.mos)
+                    if hard_result.utmos and hard_result.utmos.success
+                    else None,
+                    "dnsmos": _numeric(hard_result.dnsmos.mos_ovr)
+                    if hard_result.dnsmos and hard_result.dnsmos.success
+                    else None,
+                    "wer": _numeric(hard_result.wer.wer)
+                    if hard_result.wer and hard_result.wer.success
+                    else None,
+                    "speaker_sim": _numeric(hard_result.speaker_sim.similarity)
+                    if hard_result.speaker_sim and hard_result.speaker_sim.success
+                    else None,
                 }
                 # Count available metrics
                 avail = sum(1 for v in real_metrics.values() if v is not None)

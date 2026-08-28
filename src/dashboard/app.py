@@ -376,7 +376,10 @@ def render_gpu_heatmap(workers: List[Dict]):
         return
 
     # Prepare data for heatmap
-    platforms = sorted(set(w["platform"] for w in workers), key=lambda p: PLATFORM_ORDER.get(p, 99))
+    platforms = sorted(
+        set(w["platform"] for w in workers),
+        key=lambda p: PLATFORM_ORDER.index(p) if p in PLATFORM_ORDER else 99,
+    )
 
     fig = go.Figure()
 

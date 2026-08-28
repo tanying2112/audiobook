@@ -18,6 +18,11 @@ import pytest
 pytestmark = pytest.mark.skip_env_missing
 try:
     import voxcpm  # noqa: F401
+    # voxcpm pulls the real (environment-broken) torch into sys.modules; restore
+    # the conftest canonical torch mock so it does not leak into later tests.
+    from tests.conftest_minimal import _force_torch_mock
+
+    _force_torch_mock()
     from src.audiobook_studio.tts.engine import (
         SynthesisResult,
         TTSProsody,

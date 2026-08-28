@@ -110,7 +110,7 @@ def make_real_llm_client() -> Callable[[str], str]:
         def _client(prompt: str) -> str:
             try:
                 result = router.call(
-                    stage="reflect",
+                    stage="annotate",
                     response_model=FeedbackAnalysis,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -181,7 +181,12 @@ def validate_self_iteration(
     for c in corrections:
         collector.add_correction(c)
 
-    client = llm_client or make_role_aware_llm_client(corrections)
+    # Use real LLM client when SELF_ITERATION_MOCK=false, otherwise deterministic
+    use_real = os.getenv("SELF_ITERATION_MOCK", "true").lower() in ("false", "0", "no")
+    if use_real and llm_client is None:
+        client = make_real_llm_client()
+    else:
+        client = llm_client or make_role_aware_llm_client(corrections)
     engine = ReflectionEngine(sop, llm_client=client)
     thread = SOPBackgroundThread(sop, collector, engine, check_interval=0.01)
 

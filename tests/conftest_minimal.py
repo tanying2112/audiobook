@@ -243,6 +243,48 @@ def _install_canonical_torch_mock():
     sys.modules["torch"] = _torch_mock
 
 
+def _force_torch_mock():
+    """Force ``sys.modules['torch']`` (and torchaudio) back to the canonical mock.
+
+    Some optional-backend test modules (e.g. voxcpm-based ones) must import a
+    *real* torch-dependent package at collection time. Those imports pull the
+    real, environment-broken torch into ``sys.modules``, which then leaks and
+    crashes unrelated tests later in the session (e.g. ``import spacy`` ->
+    ``thinc`` -> ``torch._C`` -> ``NameError: name '_C' is not defined``).
+    Re-establishing the canonical MagicMock here keeps the rest of the session
+    hermetic. Unlike :func:`_install_canonical_torch_mock`, this deliberately
+    OVERWRITES real torch (the importing module has already captured its own
+    reference, so restoring the mock for everyone else is safe).
+    """
+    _torch_mock = MagicMock()
+    _torch_mock.__spec__ = importlib.util.spec_from_loader("torch", None)
+    _torch_mock.__version__ = "0.0.0"
+    _cuda_mock = MagicMock()
+    _cuda_mock.is_available.return_value = False
+    _cuda_mock.device_count.return_value = 0
+    _cuda_mock.get_device_name.return_value = "cpu"
+    _cuda_mock.memory_allocated.return_value = 0
+    _cuda_mock.max_memory_allocated.return_value = 0
+    _cuda_mock.empty_cache.return_value = None
+    _cuda_mock.get_device_properties.return_value = MagicMock(total_memory=0)
+    _cuda_mock.mem_get_info.return_value = (0, 0)
+    _cuda_mock.is_bf16_supported.return_value = False
+    _torch_mock.cuda = _cuda_mock
+    _mps_mock = MagicMock()
+    _mps_mock.is_available.return_value = False
+    _torch_mock.backends = MagicMock()
+    _torch_mock.backends.mps = _mps_mock
+    _torch_mock.backends.cudnn = MagicMock()
+    _torch_mock.backends.cudnn.is_available.return_value = False
+    _torch_mock.version = MagicMock()
+    _torch_mock.version.cuda = None
+    sys.modules["torch"] = _torch_mock
+    if "torchaudio" not in sys.modules or not isinstance(sys.modules.get("torchaudio"), MagicMock):
+        _ta_mock = MagicMock()
+        _ta_mock.__spec__ = importlib.util.spec_from_loader("torchaudio", None)
+        sys.modules["torchaudio"] = _ta_mock
+
+
 for mod_name in [
     "fitz",
     "pymupdf",

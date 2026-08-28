@@ -40,6 +40,14 @@ class TestTranslateAndDubPipeline:
     def test_get_target_voice(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 
+        # _get_target_voice queries the real character-voice binding table. Ensure
+        # the schema exists so the test is order-independent (it must not rely on
+        # some earlier test having created the tables as a side effect).
+        import src.audiobook_studio.models  # noqa: F401  (register ORM tables)
+        from src.audiobook_studio.database import init_db
+
+        init_db()
+
         with (
             patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"),
             patch("src.audiobook_studio.pipeline.translate.AnnotateParagraphPipeline"),

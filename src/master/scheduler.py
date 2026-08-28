@@ -31,6 +31,7 @@ PLATFORM_ROUTING = {
 
 
 @dataclass
+@dataclass
 class WorkerTelemetry:
     """Parsed worker heartbeat payload."""
 

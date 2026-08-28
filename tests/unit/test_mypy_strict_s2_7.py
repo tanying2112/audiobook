@@ -52,8 +52,14 @@ def test_no_pydantic_v1_model_json_calls():
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(900)
 def test_mypy_strict_passes():
-    """S2.7: mypy --strict over src must exit 0 (0 errors)."""
+    """S2.7: mypy --strict over src must exit 0 (0 errors).
+
+    This is a whole-tree type-check gate; on this CI hardware it legitimately
+    exceeds the global --timeout=120, so it carries its own generous timeout.
+    The per-test marker overrides the command-line --timeout.
+    """
     python = sys.executable
     cfg = REPO_ROOT / "mypy.ini"
     result = subprocess.run(

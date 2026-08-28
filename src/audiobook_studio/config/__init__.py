@@ -7,6 +7,7 @@ from .loader import (
     load_rules,
     get_settings,
     reset_settings,
+    get_unified_redis_config,
 )
 from .settings import Settings
 from .unified import (
@@ -31,6 +32,7 @@ __all__ = [
     "load_quality_thresholds",
     "load_rules",
     "load_contract_versions",
+    "get_unified_redis_config",
     "get_unified_config",
     "get_database_config",
     "get_redis_config",

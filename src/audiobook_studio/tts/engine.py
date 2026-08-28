@@ -754,3 +754,33 @@ async def probe_tts_engines(
 
     bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}
     return {"engines": bool_map, "details": result}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Backward-compatibility shims
+#
+# The DI container is the canonical home of the EngineRegistry singleton
+# (``get_engine_registry`` lives in ``src.audiobook_studio.di``). Older
+# integration tests imported these names from ``tts.engine``; re-export them
+# here (with lazy imports) so those tests collect cleanly after the TTS
+# registry refactor.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def get_engine_registry() -> "EngineRegistry":
+    """Return the app-wide EngineRegistry singleton (delegates to the DI container)."""
+    from ..di import get_engine_registry as _get
+
+    return _get()
+
+
+def set_engine_registry(registry: "EngineRegistry") -> None:
+    """Replace the app-wide EngineRegistry singleton in the DI container."""
+    from ..di import get_app_container
+
+    container = get_app_container()
+    try:
+        container.unregister(EngineRegistry)
+    except Exception:
+        pass
+    container.register_singleton(EngineRegistry, registry)

@@ -87,15 +87,18 @@ def test_score_batch_report(tmp_path: Path):
 def test_validate_self_iteration_with_audio(tmp_path: Path):
     """The self-iteration loop accepts real audio and reports audio quality."""
     config = tmp_path / "agent_sop.json"
+    # Use repeated corrections on heuristic-supported fields (emotion, speech_rate, etc.)
+    # to trigger the heuristic reflection and achieve gain_pct > 10%.
     corrections = [
+        # emotion field: 3 corrections with "solemn" pattern (2x) + 1 different
         UserCorrection(
             timestamp="2026-01-01T00:00:00Z",
             project_id=1,
             chapter_index=0,
             paragraph_index=0,
-            field="voice",
+            field="emotion",
             original_value="x",
-            corrected_value="kokoro_zh_narrator",
+            corrected_value="solemn",
             genre="仙侠",
             context={"speaker": "旁白"},
         ),
@@ -104,25 +107,93 @@ def test_validate_self_iteration_with_audio(tmp_path: Path):
             project_id=1,
             chapter_index=0,
             paragraph_index=0,
-            field="voice",
+            field="emotion",
             original_value="x",
-            corrected_value="kokoro_zh_protagonist",
+            corrected_value="solemn",
             genre="仙侠",
-            context={"speaker": "林轩"},
+            context={"speaker": "旁白"},
         ),
         UserCorrection(
             timestamp="2026-01-01T00:00:00Z",
             project_id=1,
             chapter_index=0,
             paragraph_index=0,
-            field="voice",
+            field="emotion",
             original_value="x",
-            corrected_value="kokoro_zh_antagonist",
+            corrected_value="resolute",
             genre="仙侠",
-            context={"speaker": "魔尊"},
+            context={"speaker": "林轩"},
+        ),
+        # speech_rate field: 3 corrections with same pattern
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="speech_rate",
+            original_value="1.0",
+            corrected_value="0.9",
+            genre="仙侠",
+            context={"speaker": "旁白"},
+        ),
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="speech_rate",
+            original_value="1.0",
+            corrected_value="0.9",
+            genre="仙侠",
+            context={"speaker": "旁白"},
+        ),
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="speech_rate",
+            original_value="1.0",
+            corrected_value="0.8",
+            genre="仙侠",
+            context={"speaker": "林轩"},
+        ),
+        # pitch_shift_semitones field: 3 corrections with same pattern
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="pitch_shift_semitones",
+            original_value="0",
+            corrected_value="-2",
+            genre="仙侠",
+            context={"speaker": "旁白"},
+        ),
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="pitch_shift_semitones",
+            original_value="0",
+            corrected_value="-2",
+            genre="仙侠",
+            context={"speaker": "旁白"},
+        ),
+        UserCorrection(
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="pitch_shift_semitones",
+            original_value="0",
+            corrected_value="-3",
+            genre="仙侠",
+            context={"speaker": "林轩"},
         ),
     ]
-    held_out = [{"speaker": "旁白", "emotion": "solemn"}, {"speaker": "林轩", "emotion": "resolute"}]
+    held_out = [{"speaker": "旁白", "emotion": "solemn"}, {"speaker": "林轩", "emotion": "resolute"}, {"speaker": "魔尊", "emotion": "cold"}]
 
     report = validate_self_iteration(
         config_path=config,

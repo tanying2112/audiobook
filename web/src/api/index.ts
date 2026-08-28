@@ -658,8 +658,8 @@ export async function getTranslationStatus(projectId: number): Promise<Translati
   return data
 }
 
-export async function getSupportedLanguages(projectId: number): Promise<{ languages: TranslationLanguage[] }> {
-  const { data } = await api.get(`/api/projects/${projectId}/pipeline/translate/languages`)
+export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
+  const { data } = await api.get('/api/translate/languages')
   return data
 }
 
