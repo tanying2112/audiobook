@@ -285,8 +285,12 @@ def check_quality_improvement(
                 new_metrics = promotion_gate._compute_structure_quality_metrics(new_output, expected_output, input_data)
             else:
                 # Fallback to simple similarity
-                old_metrics = {"output_similarity": promotion_gate._compute_output_similarity(old_output, expected_output)}
-                new_metrics = {"output_similarity": promotion_gate._compute_output_similarity(new_output, expected_output)}
+                old_metrics = {
+                    "output_similarity": promotion_gate._compute_output_similarity(old_output, expected_output)
+                }
+                new_metrics = {
+                    "output_similarity": promotion_gate._compute_output_similarity(new_output, expected_output)
+                }
 
             # Aggregate into single quality score
             old_quality = promotion_gate._aggregate_quality_score(old_metrics, stage_type)
@@ -383,7 +387,7 @@ def check_regression_suite(
         score = 1.0 if no regressions, 0.0 if any regression
     """
     suite = get_regression_suite()
-    
+
     if regression_fn is None:
         return GateResult(
             name="回归套件",
@@ -392,7 +396,7 @@ def check_regression_suite(
             threshold=threshold,
             details="无回归判定函数，诚实降级不通过",
         )
-    
+
     try:
         regv = suite.check_candidate(candidate_id, regression_fn, auto_add_new=True)
         if regv.rejected:
@@ -463,7 +467,7 @@ def evaluate_promotion(
         promotion_gate.check_quality_improvement(stage, old_version, new_version),
         promotion_gate.check_human_sample(human_samples),
     ]
-    
+
     # Add regression suite check if provided
     if regression_fn is not None and candidate_id is not None:
         gates.append(promotion_gate.check_regression_suite(stage, candidate_id, regression_fn))

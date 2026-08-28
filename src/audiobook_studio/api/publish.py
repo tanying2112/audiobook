@@ -17,12 +17,11 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 from fastapi import APIRouter, BackgroundTasks, Depends
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_async_session
+from ..exceptions import DomainError
 from ..models.book import Project
 from ..tasks.publish_tasks import _get_job_state, _persist_job_state, _persist_job_state_db
 

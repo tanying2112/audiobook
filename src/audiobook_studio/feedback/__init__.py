@@ -9,13 +9,45 @@ from typing import Any
 
 from .ab_test import blind_evaluate, build_ab_samples, run_ab_test
 from .ab_test_manager import ABTestConfig, ABTestManager, ABTestResult
+from .anti_hack import (
+    DEFAULT_JUDGE_POOL,
+    META_GUARD_READONLY_PATHS,
+    AntiHackVerdict,
+    DualJudgeEvaluator,
+    DualJudgeResult,
+    JudgeVerdict,
+    evaluate_promotion_anti_hack,
+    verify_meta_guard,
+)
 from .auto_processor import FeedbackAutoProcessor, create_auto_processor, run_feedback_analysis_cli
+from .canary import (
+    GOLDEN_TO_PIPELINE_STAGE,
+    PIPELINE_STAGE_TO_PROMPT_DIR,
+    SELF_ITERATION_MOCK_ENV,
+    STAGE_TYPE,
+    _convert_input_to_model,
+    _get_required_input_fields,
+    _golden_to_pipeline_stage,
+    _load_golden_examples,
+    _load_prompt_version,
+    _pipeline_stage_to_prompt_dir,
+    _resolve_mock_mode,
+    _run_stage_with_prompt_version,
+    _self_iteration_mock_enabled,
+)
 from .collector import (
     capture_edit_feedback,
     capture_feedback,
     capture_quality_feedback,
     list_unprocessed_feedback,
     mark_feedback_processed,
+)
+from .constitution import (
+    Constitution,
+    ConstitutionAdjudicator,
+    ConstitutionVerdict,
+    HardRule,
+    get_constitution_adjudicator,
 )
 from .critics import (  # noqa: F401
     DEFAULT_CALIBRATION_SAMPLES,
@@ -33,6 +65,8 @@ from .critics import (  # noqa: F401
     SyntheticCritic,
     create_synthetic_critic,
 )
+from .evolution_guard import EvolutionGuard, PromNode, RollbackResult, get_evolution_guard
+from .held_out_eval import CandidateEvalResult, DatasetManifest, HeldOutCase, HeldOutDataset
 from .integration import (
     SelfIterationLoop,
     collect_pipeline_feedback,
@@ -43,29 +77,6 @@ from .integration import (
 from .kill_switch import DegradationLevel, KillSwitch, KillSwitchConfig, get_kill_switch
 from .llm_analyzer import LLMFeedbackAnalyzer
 from .processor import analyze_batch, analyze_single_feedback, get_trend_report
-from .similarity import (
-    _char_ngram_similarity,
-    _compute_audio_quality_metrics,
-    _compute_output_similarity,
-    _compute_structure_quality_metrics,
-    _compute_text_quality_metrics,
-    _aggregate_quality_score,
-)
-from .canary import (
-    GOLDEN_TO_PIPELINE_STAGE,
-    PIPELINE_STAGE_TO_PROMPT_DIR,
-    STAGE_TYPE,
-    _convert_input_to_model,
-    _get_required_input_fields,
-    _golden_to_pipeline_stage,
-    _load_golden_examples,
-    _load_prompt_version,
-    _pipeline_stage_to_prompt_dir,
-    _run_stage_with_prompt_version,
-    _resolve_mock_mode,
-    _self_iteration_mock_enabled,
-    SELF_ITERATION_MOCK_ENV,
-)
 from .promotion import (
     GateResult,
     PromotionGate,
@@ -77,41 +88,6 @@ from .promotion import (
     check_regression_suite,
     evaluate_promotion,
 )
-from .anti_hack import (
-    AntiHackVerdict,
-    DEFAULT_JUDGE_POOL,
-    DualJudgeEvaluator,
-    DualJudgeResult,
-    JudgeVerdict,
-    META_GUARD_READONLY_PATHS,
-    evaluate_promotion_anti_hack,
-    verify_meta_guard,
-)
-from .constitution import (
-    Constitution,
-    ConstitutionAdjudicator,
-    ConstitutionVerdict,
-    HardRule,
-    get_constitution_adjudicator,
-)
-from .held_out_eval import (
-    CandidateEvalResult,
-    DatasetManifest,
-    HeldOutCase,
-    HeldOutDataset,
-)
-from .evolution_guard import (
-    EvolutionGuard,
-    PromNode,
-    RollbackResult,
-    get_evolution_guard,
-)
-from .regression_suite import (
-    KnownFailure,
-    RegressionSuite,
-    RegressionVerdict,
-    get_regression_suite,
-)
 from .prompt_upgrader import batch_upgrade, upgrade_prompt
 from .quality_enhancement import (
     check_semantic_coherence,
@@ -120,13 +96,15 @@ from .quality_enhancement import (
     grade_difficulty,
     validate_emotions,
 )
-from .release import (
-    CanaryConfig,
-    CanaryMetrics,
-    CanaryRelease,
-    PromotionGateResult,
-    PromotionMetrics,
-    VersionStore,
+from .regression_suite import KnownFailure, RegressionSuite, RegressionVerdict, get_regression_suite
+from .release import CanaryConfig, CanaryMetrics, CanaryRelease, PromotionGateResult, PromotionMetrics, VersionStore
+from .similarity import (
+    _aggregate_quality_score,
+    _char_ngram_similarity,
+    _compute_audio_quality_metrics,
+    _compute_output_similarity,
+    _compute_structure_quality_metrics,
+    _compute_text_quality_metrics,
 )
 
 __all__ = [

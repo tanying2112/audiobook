@@ -55,9 +55,7 @@ async def test_registry_factory_registers_piper(tmp_path):
     """EngineRegistry knows how to create a piper backend (priority 0 engine)."""
     registry = EngineRegistry()
     # minimal config that includes piper in mock mode
-    await registry.initialize(
-        config={"piper": {"mock_mode": True, "output_dir": str(tmp_path / "piper_out")}}
-    )
+    await registry.initialize(config={"piper": {"mock_mode": True, "output_dir": str(tmp_path / "piper_out")}})
     assert "piper" in registry.list_engines()
     engine = registry.get("piper")
     assert engine is not None

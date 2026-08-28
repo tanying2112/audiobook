@@ -28,8 +28,8 @@ from src.audiobook_studio.agent.fsm import (
 from src.audiobook_studio.agent.tools import _guess_mime_type, execute_tool
 from src.audiobook_studio.schemas.review import FixCommand, ReviewerInput, ReviewerJudgment
 
-
 # ── FSM: enums & context ────────────────────────────────────────────────────
+
 
 def test_pipeline_state_enum() -> None:
     assert PipelineState.IDLE is not None
@@ -51,6 +51,7 @@ def test_pipeline_context_defaults() -> None:
 
 
 # ── FSM: phase / next-state logic ───────────────────────────────────────────
+
 
 def test_get_phases_autopilot() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.AUTOPILOT)
@@ -88,6 +89,7 @@ def test_next_state_unknown_returns_first() -> None:
 
 # ── FSM: transition validation ──────────────────────────────────────────────
 
+
 def test_can_transition_pending_human_confirm_valid() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.INTERACTIVE, current_state=PipelineState.ANNOTATING)
     fsm = PipelineFSM(ctx)
@@ -108,8 +110,10 @@ def test_can_transition_audio_postprocessing_autopilot() -> None:
 
 def test_can_transition_audio_postprocessing_interactive_confirmed() -> None:
     ctx = PipelineContext(
-        project_id=1, mode=PipelineMode.INTERACTIVE,
-        current_state=PipelineState.PENDING_HUMAN_CONFIRM, user_confirmed=True,
+        project_id=1,
+        mode=PipelineMode.INTERACTIVE,
+        current_state=PipelineState.PENDING_HUMAN_CONFIRM,
+        user_confirmed=True,
     )
     fsm = PipelineFSM(ctx)
     assert fsm.can_transition(PipelineState.AUDIO_POSTPROCESSING) is True
@@ -117,8 +121,10 @@ def test_can_transition_audio_postprocessing_interactive_confirmed() -> None:
 
 def test_can_transition_audio_postprocessing_interactive_unconfirmed() -> None:
     ctx = PipelineContext(
-        project_id=1, mode=PipelineMode.INTERACTIVE,
-        current_state=PipelineState.PENDING_HUMAN_CONFIRM, user_confirmed=False,
+        project_id=1,
+        mode=PipelineMode.INTERACTIVE,
+        current_state=PipelineState.PENDING_HUMAN_CONFIRM,
+        user_confirmed=False,
     )
     fsm = PipelineFSM(ctx)
     assert fsm.can_transition(PipelineState.AUDIO_POSTPROCESSING) is False
@@ -140,6 +146,7 @@ def test_can_transition_normal_skip_invalid() -> None:
 
 # ── FSM: transition_to ─────────────────────────────────────────────────────
 
+
 def test_transition_to_valid() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.AUTOPILOT, current_state=PipelineState.IDLE)
     fsm = PipelineFSM(ctx)
@@ -157,6 +164,7 @@ def test_transition_to_invalid() -> None:
 
 # ── FSM: confirm / wait_for_confirmation ───────────────────────────────────
 
+
 def test_confirm_not_in_pending_returns_false() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.INTERACTIVE, current_state=PipelineState.ANNOTATING)
     fsm = PipelineFSM(ctx)
@@ -164,7 +172,9 @@ def test_confirm_not_in_pending_returns_false() -> None:
 
 
 def test_confirm_and_wait() -> None:
-    ctx = PipelineContext(project_id=1, mode=PipelineMode.INTERACTIVE, current_state=PipelineState.PENDING_HUMAN_CONFIRM)
+    ctx = PipelineContext(
+        project_id=1, mode=PipelineMode.INTERACTIVE, current_state=PipelineState.PENDING_HUMAN_CONFIRM
+    )
     fsm = PipelineFSM(ctx)
 
     async def _go():
@@ -190,6 +200,7 @@ def test_wait_for_confirmation_wrong_state() -> None:
 
 # ── FSM: execute_stage ─────────────────────────────────────────────────────
 
+
 def test_execute_stage_with_mock_runner() -> None:
     ctx = PipelineContext(project_id=1)
     captured = {}
@@ -214,6 +225,7 @@ def test_execute_stage_no_mapping() -> None:
 
 
 # ── FSM: run_until_pause_or_complete (AUTOPILOT) ──────────────────────────
+
 
 def test_run_autopilot_completes() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.AUTOPILOT, current_state=PipelineState.IDLE)
@@ -245,6 +257,7 @@ def test_run_autopilot_stage_failure() -> None:
 
 # ── FSM: run paused (INTERACTIVE) + continue ───────────────────────────────
 
+
 def test_run_interactive_pauses() -> None:
     ctx = PipelineContext(project_id=1, mode=PipelineMode.INTERACTIVE, current_state=PipelineState.IDLE)
 
@@ -259,8 +272,10 @@ def test_run_interactive_pauses() -> None:
 
 def test_continue_after_confirmation() -> None:
     ctx = PipelineContext(
-        project_id=1, mode=PipelineMode.INTERACTIVE,
-        current_state=PipelineState.PENDING_HUMAN_CONFIRM, user_confirmed=False,
+        project_id=1,
+        mode=PipelineMode.INTERACTIVE,
+        current_state=PipelineState.PENDING_HUMAN_CONFIRM,
+        user_confirmed=False,
     )
 
     async def runner(stage, c):
@@ -281,6 +296,7 @@ def test_continue_after_confirmation_not_pending() -> None:
 
 # ── FSM: stop / get_status ─────────────────────────────────────────────────
 
+
 def test_stop_sets_not_running() -> None:
     ctx = PipelineContext(project_id=1)
     fsm = PipelineFSM(ctx)
@@ -300,6 +316,7 @@ def test_get_status() -> None:
 
 # ── FSM: global instance cache ─────────────────────────────────────────────
 
+
 def test_get_fsm_singleton_and_remove() -> None:
     remove_fsm(999)
     a = get_fsm(999, mode=PipelineMode.AUTOPILOT)
@@ -312,6 +329,7 @@ def test_get_fsm_singleton_and_remove() -> None:
 
 
 # ── DeveloperAgent: field defaults ─────────────────────────────────────────
+
 
 def test_get_field_default_known() -> None:
     agent = dev_mod.DeveloperAgent()
@@ -326,6 +344,7 @@ def test_get_field_default_unknown() -> None:
 
 # ── DeveloperAgent: apply_fix_commands ─────────────────────────────────────
 
+
 def _para(**kw) -> dict:
     base = {"emotion": "neutral", "speech_rate": 1.0, "sfx_tags": [], "pause_before_ms": 300}
     base.update(kw)
@@ -336,8 +355,11 @@ def test_apply_fix_add_voice_binding() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="add_voice_binding", target_paragraph_index=0,
-        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"}, rationale="r", priority=5,
+        command_type="add_voice_binding",
+        target_paragraph_index=0,
+        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["_voice_map_updates"][0]["canonical_name"] == "Alice"
@@ -347,8 +369,11 @@ def test_apply_fix_truncated_field() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="fix_truncated_field", target_paragraph_index=0,
-        parameters={"field_name": "emotion"}, rationale="r", priority=5,
+        command_type="fix_truncated_field",
+        target_paragraph_index=0,
+        parameters={"field_name": "emotion"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["emotion"] == "neutral"
@@ -358,8 +383,11 @@ def test_apply_fix_correct_emotion_tag() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(emotion="angry")]
     cmd = FixCommand(
-        command_type="correct_emotion_tag", target_paragraph_index=0,
-        parameters={"current_emotion": "angry", "suggested_emotion": "happy"}, rationale="r", priority=5,
+        command_type="correct_emotion_tag",
+        target_paragraph_index=0,
+        parameters={"current_emotion": "angry", "suggested_emotion": "happy"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["emotion"] == "happy"
@@ -369,8 +397,11 @@ def test_apply_fix_adjust_speed() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(speech_rate=2.0)]
     cmd = FixCommand(
-        command_type="adjust_speed", target_paragraph_index=0,
-        parameters={"current_speed": 2.0, "clamped_speed": 1.5}, rationale="r", priority=5,
+        command_type="adjust_speed",
+        target_paragraph_index=0,
+        parameters={"current_speed": 2.0, "clamped_speed": 1.5},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["speech_rate"] == 1.5
@@ -380,9 +411,11 @@ def test_apply_fix_add_sfx_tag_remove_and_replace() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(sfx_tags=["bad"])]
     cmd = FixCommand(
-        command_type="add_sfx_tag", target_paragraph_index=0,
+        command_type="add_sfx_tag",
+        target_paragraph_index=0,
         parameters={"invalid_tag": "bad", "action": "remove_or_replace", "allowed_tags": ["wind"]},
-        rationale="r", priority=5,
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert "bad" not in out[0]["sfx_tags"]
@@ -394,8 +427,11 @@ def test_apply_fix_add_sfx_tag_remove_only() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(sfx_tags=["bad"])]
     cmd = FixCommand(
-        command_type="add_sfx_tag", target_paragraph_index=0,
-        parameters={"invalid_tag": "bad", "action": "remove"}, rationale="r", priority=5,
+        command_type="add_sfx_tag",
+        target_paragraph_index=0,
+        parameters={"invalid_tag": "bad", "action": "remove"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["sfx_tags"] == []
@@ -406,9 +442,11 @@ def test_apply_fix_pause_timing() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(pause_before_ms=10)]
     cmd = FixCommand(
-        command_type="fix_pause_timing", target_paragraph_index=0,
+        command_type="fix_pause_timing",
+        target_paragraph_index=0,
         parameters={"field": "pause_before_ms", "current_value": 10, "clamped_value": 300},
-        rationale="r", priority=5,
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["pause_before_ms"] == 300
@@ -418,8 +456,11 @@ def test_apply_fix_reannotate_marks() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="re_annotate_paragraph", target_paragraph_index=0,
-        parameters={}, rationale="r", priority=5,
+        command_type="re_annotate_paragraph",
+        target_paragraph_index=0,
+        parameters={},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["_needs_reannotation"] is True
@@ -429,8 +470,11 @@ def test_apply_fix_out_of_range_index() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="correct_emotion_tag", target_paragraph_index=99,
-        parameters={"current_emotion": "x", "suggested_emotion": "y"}, rationale="r", priority=5,
+        command_type="correct_emotion_tag",
+        target_paragraph_index=99,
+        parameters={"current_emotion": "x", "suggested_emotion": "y"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     # unchanged because index out of range
@@ -440,10 +484,20 @@ def test_apply_fix_out_of_range_index() -> None:
 def test_apply_fix_sorted_by_priority() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(emotion="neutral", speech_rate=1.0)]
-    cmd1 = FixCommand(command_type="correct_emotion_tag", target_paragraph_index=0,
-                      parameters={"current_emotion": "n", "suggested_emotion": "A"}, rationale="r", priority=1)
-    cmd2 = FixCommand(command_type="adjust_speed", target_paragraph_index=0,
-                      parameters={"current_speed": 1, "clamped_speed": 2.0}, rationale="r", priority=9)
+    cmd1 = FixCommand(
+        command_type="correct_emotion_tag",
+        target_paragraph_index=0,
+        parameters={"current_emotion": "n", "suggested_emotion": "A"},
+        rationale="r",
+        priority=1,
+    )
+    cmd2 = FixCommand(
+        command_type="adjust_speed",
+        target_paragraph_index=0,
+        parameters={"current_speed": 1, "clamped_speed": 2.0},
+        rationale="r",
+        priority=9,
+    )
     out = agent.apply_fix_commands(paras, [cmd1, cmd2])
     # Both applied regardless of order; just ensure both effects present
     assert out[0]["emotion"] == "A"
@@ -452,13 +506,16 @@ def test_apply_fix_sorted_by_priority() -> None:
 
 # ── DeveloperAgent: create_fixed_reviewer_input ────────────────────────────
 
+
 def test_create_fixed_reviewer_input_no_voice_updates() -> None:
     agent = dev_mod.DeveloperAgent()
     original = ReviewerInput(
-        project_id=1, chapter_index=2,
+        project_id=1,
+        chapter_index=2,
         paragraphs=[{"emotion": "neutral"}],
         character_voice_map=[{"canonical_name": "Bob", "suggested_voice_id": "v2"}],
-        scene_tags=["wind"], book_meta=None,
+        scene_tags=["wind"],
+        book_meta=None,
     )
     new = agent.create_fixed_reviewer_input(original, [{"emotion": "happy"}])
     assert new.project_id == 1
@@ -470,12 +527,16 @@ def test_create_fixed_reviewer_input_no_voice_updates() -> None:
 def test_create_fixed_reviewer_input_with_voice_updates() -> None:
     agent = dev_mod.DeveloperAgent()
     original = ReviewerInput(
-        project_id=1, chapter_index=2,
+        project_id=1,
+        chapter_index=2,
         paragraphs=[{}],
         character_voice_map=[{"canonical_name": "Bob", "suggested_voice_id": "v2"}],
-        scene_tags=[], book_meta=None,
+        scene_tags=[],
+        book_meta=None,
     )
-    updates = [{"canonical_name": "Alice", "suggested_voice_id": "v1", "aliases": ["Al"], "gender": "f", "age_range": "adult"}]
+    updates = [
+        {"canonical_name": "Alice", "suggested_voice_id": "v1", "aliases": ["Al"], "gender": "f", "age_range": "adult"}
+    ]
     new = agent.create_fixed_reviewer_input(original, [{}], voice_map_updates=updates)
     canonicals = [v["canonical_name"] for v in new.character_voice_map]
     assert "Alice" in canonicals
@@ -485,9 +546,12 @@ def test_create_fixed_reviewer_input_with_voice_updates() -> None:
 def test_create_fixed_reviewer_input_dedup_voice() -> None:
     agent = dev_mod.DeveloperAgent()
     original = ReviewerInput(
-        project_id=1, chapter_index=2, paragraphs=[{}],
+        project_id=1,
+        chapter_index=2,
+        paragraphs=[{}],
         character_voice_map=[{"canonical_name": "Bob", "suggested_voice_id": "v2"}],
-        scene_tags=[], book_meta=None,
+        scene_tags=[],
+        book_meta=None,
     )
     updates = [
         {"canonical_name": "Bob", "suggested_voice_id": "v9"},
@@ -505,8 +569,11 @@ def test_apply_fix_voice_binding_exception_empty_paragraphs() -> None:
     # Empty paragraphs -> IndexError at line 89 is caught by apply_fix_commands loop.
     agent = dev_mod.DeveloperAgent()
     cmd = FixCommand(
-        command_type="add_voice_binding", target_paragraph_index=0,
-        parameters={"canonical_name": "Alice"}, rationale="r", priority=5,
+        command_type="add_voice_binding",
+        target_paragraph_index=0,
+        parameters={"canonical_name": "Alice"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands([], [cmd])
     assert out == []
@@ -519,8 +586,11 @@ def test_apply_fix_voice_binding_marker_present_on_first() -> None:
     paras = [_para(), _para()]
     paras[0]["_voice_map_updates"] = []
     cmd = FixCommand(
-        command_type="add_voice_binding", target_paragraph_index=0,
-        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"}, rationale="r", priority=5,
+        command_type="add_voice_binding",
+        target_paragraph_index=0,
+        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["_voice_map_updates"][0]["canonical_name"] == "Alice"
@@ -531,8 +601,11 @@ def test_apply_fix_truncated_field_out_of_range() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="fix_truncated_field", target_paragraph_index=99,
-        parameters={"field_name": "emotion"}, rationale="r", priority=5,
+        command_type="fix_truncated_field",
+        target_paragraph_index=99,
+        parameters={"field_name": "emotion"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["emotion"] == "neutral"
@@ -542,8 +615,11 @@ def test_apply_fix_adjust_speed_out_of_range() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(speech_rate=2.0)]
     cmd = FixCommand(
-        command_type="adjust_speed", target_paragraph_index=99,
-        parameters={"current_speed": 2.0, "clamped_speed": 1.5}, rationale="r", priority=5,
+        command_type="adjust_speed",
+        target_paragraph_index=99,
+        parameters={"current_speed": 2.0, "clamped_speed": 1.5},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["speech_rate"] == 2.0
@@ -553,8 +629,11 @@ def test_apply_fix_sfx_out_of_range() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(sfx_tags=["bad"])]
     cmd = FixCommand(
-        command_type="add_sfx_tag", target_paragraph_index=99,
-        parameters={"invalid_tag": "bad"}, rationale="r", priority=5,
+        command_type="add_sfx_tag",
+        target_paragraph_index=99,
+        parameters={"invalid_tag": "bad"},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["sfx_tags"] == ["bad"]
@@ -566,9 +645,11 @@ def test_apply_fix_sfx_tag_not_present() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(sfx_tags=["other"])]
     cmd = FixCommand(
-        command_type="add_sfx_tag", target_paragraph_index=0,
+        command_type="add_sfx_tag",
+        target_paragraph_index=0,
         parameters={"invalid_tag": "bad", "action": "remove_or_replace", "allowed_tags": ["wind"]},
-        rationale="r", priority=5,
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["sfx_tags"] == ["other"]
@@ -578,9 +659,11 @@ def test_apply_fix_pause_timing_out_of_range() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para(pause_before_ms=10)]
     cmd = FixCommand(
-        command_type="fix_pause_timing", target_paragraph_index=99,
+        command_type="fix_pause_timing",
+        target_paragraph_index=99,
         parameters={"field": "pause_before_ms", "current_value": 10, "clamped_value": 300},
-        rationale="r", priority=5,
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert out[0]["pause_before_ms"] == 10
@@ -590,8 +673,11 @@ def test_apply_fix_reannotate_out_of_range() -> None:
     agent = dev_mod.DeveloperAgent()
     paras = [_para()]
     cmd = FixCommand(
-        command_type="re_annotate_paragraph", target_paragraph_index=99,
-        parameters={}, rationale="r", priority=5,
+        command_type="re_annotate_paragraph",
+        target_paragraph_index=99,
+        parameters={},
+        rationale="r",
+        priority=5,
     )
     out = agent.apply_fix_commands(paras, [cmd])
     assert "_needs_reannotation" not in out[0]
@@ -600,13 +686,22 @@ def test_apply_fix_reannotate_out_of_range() -> None:
 def test_apply_fixes_and_rerun_mock() -> None:
     paras = [_para()]
     cmd = FixCommand(
-        command_type="add_voice_binding", target_paragraph_index=0,
-        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"}, rationale="r", priority=5,
+        command_type="add_voice_binding",
+        target_paragraph_index=0,
+        parameters={"canonical_name": "Alice", "suggested_voice_id": "v1"},
+        rationale="r",
+        priority=5,
     )
     judgment = asyncio.run(
         dev_mod.apply_fixes_and_rerun(
-            project_id=1, chapter_index=2, paragraphs=paras, fix_commands=[cmd],
-            character_voice_map=[], scene_tags=[], book_meta=None, mock_mode=True,
+            project_id=1,
+            chapter_index=2,
+            paragraphs=paras,
+            fix_commands=[cmd],
+            character_voice_map=[],
+            scene_tags=[],
+            book_meta=None,
+            mock_mode=True,
         )
     )
     # Class-identity is order-dependent (dual `audiobook_studio` / `src.audiobook_studio`
@@ -622,14 +717,22 @@ def test_apply_fixes_and_rerun_mock_no_voice_updates() -> None:
     # `if "_voice_map_updates" in p` loop body is skipped (branch 264->263).
     paras = [_para(emotion="angry")]
     cmd = FixCommand(
-        command_type="correct_emotion_tag", target_paragraph_index=0,
+        command_type="correct_emotion_tag",
+        target_paragraph_index=0,
         parameters={"current_emotion": "angry", "suggested_emotion": "calm"},
-        rationale="r", priority=5,
+        rationale="r",
+        priority=5,
     )
     judgment = asyncio.run(
         dev_mod.apply_fixes_and_rerun(
-            project_id=1, chapter_index=2, paragraphs=paras, fix_commands=[cmd],
-            character_voice_map=[], scene_tags=[], book_meta=None, mock_mode=True,
+            project_id=1,
+            chapter_index=2,
+            paragraphs=paras,
+            fix_commands=[cmd],
+            character_voice_map=[],
+            scene_tags=[],
+            book_meta=None,
+            mock_mode=True,
         )
     )
     assert type(judgment).__name__ == "ReviewerJudgment"
@@ -638,6 +741,7 @@ def test_apply_fixes_and_rerun_mock_no_voice_updates() -> None:
 
 
 # ── DeveloperAgent: run_reannotation mock_mode ─────────────────────────────
+
 
 def test_run_reannotation_mock_mode() -> None:
     agent = dev_mod.DeveloperAgent(mock_mode=True)
@@ -651,12 +755,11 @@ def test_run_reannotation_real_path(monkeypatch) -> None:
 
     import src.audiobook_studio.storage as storage_mod
 
-    annotate_mod = importlib.import_module(
-        "src.audiobook_studio.pipeline.annotate_paragraph"
-    )
+    annotate_mod = importlib.import_module("src.audiobook_studio.pipeline.annotate_paragraph")
 
     monkeypatch.setattr(
-        storage_mod, "load_extracted_text",
+        storage_mod,
+        "load_extracted_text",
         lambda project_id, chapter_index: "Paragraph one text.\n\nParagraph two text.",
     )
     saved: dict = {}
@@ -687,9 +790,7 @@ def test_run_reannotation_real_path(monkeypatch) -> None:
 def test_run_reannotation_no_text(monkeypatch) -> None:
     import src.audiobook_studio.storage as storage_mod
 
-    monkeypatch.setattr(
-        storage_mod, "load_extracted_text", lambda project_id, chapter_index: ""
-    )
+    monkeypatch.setattr(storage_mod, "load_extracted_text", lambda project_id, chapter_index: "")
     agent = dev_mod.DeveloperAgent(mock_mode=False)
     result = asyncio.run(agent.run_reannotation(1, 3, [0]))
     assert result["status"] == "failed"
@@ -697,6 +798,7 @@ def test_run_reannotation_no_text(monkeypatch) -> None:
 
 
 # ── Tools: mime type guessing ──────────────────────────────────────────────
+
 
 def test_guess_mime_explicit_type() -> None:
     assert _guess_mime_type("x", "pdf") == "application/pdf"
@@ -719,6 +821,7 @@ def test_guess_mime_by_extension() -> None:
 
 # ── Tools: execute_tool dispatch ───────────────────────────────────────────
 
+
 def test_execute_tool_unknown_raises() -> None:
     with pytest.raises(ValueError):
         asyncio.run(execute_tool("does_not_exist", {}))
@@ -733,9 +836,7 @@ def test_execute_tool_dispatch_and_validate() -> None:
     handlers = dict(tmod.TOOL_HANDLERS)
     handlers["load_book_file"] = fake_load
     with patch.object(tmod, "TOOL_HANDLERS", handlers):
-        result = asyncio.run(
-            execute_tool("load_book_file", {"project_id": 5, "file_path": "a.txt"})
-        )
+        result = asyncio.run(execute_tool("load_book_file", {"project_id": 5, "file_path": "a.txt"}))
     assert result == "loaded:5:a.txt"
 
 
@@ -747,13 +848,12 @@ def test_execute_tool_validation_error() -> None:
 
 # ── Tools: load_book_file ───────────────────────────────────────────────────
 
+
 def test_load_book_file_happy() -> None:
     ext = MagicMock()
     ext.run.return_value = MagicMock(raw_text="hello world")
     with patch.object(tools_mod, "ExtractPipeline", return_value=ext):
-        res = asyncio.run(
-            tools_mod.load_book_file(tools_mod.LoadBookFileArgs(project_id=1, file_path="a.txt"))
-        )
+        res = asyncio.run(tools_mod.load_book_file(tools_mod.LoadBookFileArgs(project_id=1, file_path="a.txt")))
     assert res.status == "ok"
     assert res.total_chars == len("hello world")
 
@@ -762,13 +862,12 @@ def test_load_book_file_error() -> None:
     ext = MagicMock()
     ext.run.side_effect = RuntimeError("boom")
     with patch.object(tools_mod, "ExtractPipeline", return_value=ext):
-        res = asyncio.run(
-            tools_mod.load_book_file(tools_mod.LoadBookFileArgs(project_id=1, file_path="a.txt"))
-        )
+        res = asyncio.run(tools_mod.load_book_file(tools_mod.LoadBookFileArgs(project_id=1, file_path="a.txt")))
     assert res.status == "failed"
 
 
 # ── Tools: analyze_and_split ────────────────────────────────────────────────
+
 
 def test_analyze_and_split_happy() -> None:
     with patch.object(tools_mod, "load_extracted_text", return_value=""):
@@ -777,9 +876,7 @@ def test_analyze_and_split_happy() -> None:
         pipe = MagicMock()
         pipe.run.return_value = analysis
         with patch.object(tools_mod, "AnalyzeStructurePipeline", return_value=pipe):
-            res = asyncio.run(
-                tools_mod.analyze_and_split(tools_mod.AnalyzeAndSplitArgs(project_id=1))
-            )
+            res = asyncio.run(tools_mod.analyze_and_split(tools_mod.AnalyzeAndSplitArgs(project_id=1)))
     assert res.status == "ok"
     assert len(res.chapters) == 2
 
@@ -789,28 +886,28 @@ def test_analyze_and_split_error() -> None:
         pipe = MagicMock()
         pipe.run.side_effect = RuntimeError("boom")
         with patch.object(tools_mod, "AnalyzeStructurePipeline", return_value=pipe):
-            res = asyncio.run(
-                tools_mod.analyze_and_split(tools_mod.AnalyzeAndSplitArgs(project_id=1))
-            )
+            res = asyncio.run(tools_mod.analyze_and_split(tools_mod.AnalyzeAndSplitArgs(project_id=1)))
     assert res.status == "failed"
 
 
 # ── Tools: generate_emotion_markup ─────────────────────────────────────────
 
+
 def test_generate_emotion_markup_no_text() -> None:
     with patch.object(tools_mod, "load_extracted_text", return_value=""):
         res = asyncio.run(
-            tools_mod.generate_emotion_markup(
-                tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1)
-            )
+            tools_mod.generate_emotion_markup(tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1))
         )
     assert res.status == "failed"
     assert "No extracted text" in res.error_message
 
 
 def test_generate_emotion_markup_happy() -> None:
-    with patch.object(tools_mod, "load_extracted_text",
-                      return_value="This is the first paragraph of the chapter.\n\nThis is the second paragraph of the chapter."):
+    with patch.object(
+        tools_mod,
+        "load_extracted_text",
+        return_value="This is the first paragraph of the chapter.\n\nThis is the second paragraph of the chapter.",
+    ):
         ann = MagicMock()
         ann.paragraph_index = 0
         ann.text = "p"
@@ -823,9 +920,7 @@ def test_generate_emotion_markup_happy() -> None:
         pipe.run.return_value = ann
         with patch.object(tools_mod, "AnnotateParagraphPipeline", return_value=pipe):
             res = asyncio.run(
-                tools_mod.generate_emotion_markup(
-                    tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1)
-                )
+                tools_mod.generate_emotion_markup(tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1))
             )
     assert res.status == "ok"
     assert len(res.paragraphs) == 2
@@ -837,21 +932,18 @@ def test_generate_emotion_markup_error() -> None:
         pipe.run.side_effect = RuntimeError("boom")
         with patch.object(tools_mod, "AnnotateParagraphPipeline", return_value=pipe):
             res = asyncio.run(
-                tools_mod.generate_emotion_markup(
-                    tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1)
-                )
+                tools_mod.generate_emotion_markup(tools_mod.GenerateEmotionMarkupArgs(project_id=1, chapter_index=1))
             )
     assert res.status == "failed"
 
 
 # ── Tools: execute_audio_synthesis ─────────────────────────────────────────
 
+
 def test_execute_audio_synthesis_no_annotations() -> None:
     with patch.object(tools_mod, "load_chapter_annotations", return_value=[]):
         res = asyncio.run(
-            tools_mod.execute_audio_synthesis(
-                tools_mod.ExecuteAudioSynthesisArgs(project_id=1, chapter_index=1)
-            )
+            tools_mod.execute_audio_synthesis(tools_mod.ExecuteAudioSynthesisArgs(project_id=1, chapter_index=1))
         )
     assert res.status == "failed"
 
@@ -859,9 +951,7 @@ def test_execute_audio_synthesis_no_annotations() -> None:
 def test_execute_audio_synthesis_error() -> None:
     with patch.object(tools_mod, "load_chapter_annotations", side_effect=RuntimeError("boom")):
         res = asyncio.run(
-            tools_mod.execute_audio_synthesis(
-                tools_mod.ExecuteAudioSynthesisArgs(project_id=1, chapter_index=1)
-            )
+            tools_mod.execute_audio_synthesis(tools_mod.ExecuteAudioSynthesisArgs(project_id=1, chapter_index=1))
         )
     assert res.status == "failed"
 

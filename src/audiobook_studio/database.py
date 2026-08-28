@@ -4,16 +4,15 @@ Provides both sync and async SQLAlchemy 2.0 engines and session factories.
 PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 """
 
+import logging
 import os
 import random
-from sqlalchemy.exc import SQLAlchemyError
-from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
 from contextlib import asynccontextmanager
-
-import logging
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -196,15 +195,16 @@ async def drop_async_db() -> None:
 
 # ── Read Replica Configuration & Routing (P2-5) ───
 
+
 class DatabaseConfig:
     """Database configuration with read replica support.
-    
+
     Attributes:
         primary_url: Primary database URL for writes
         replica_urls: List of read replica URLs for SELECT queries
         enable_routing: Whether to enable read/write routing
     """
-    
+
     def __init__(
         self,
         primary_url: str,
@@ -218,14 +218,14 @@ class DatabaseConfig:
 
 class ReadReplicaSelector:
     """Round-robin selector for read replicas.
-    
+
     Provides fair distribution of read queries across available replicas.
     """
-    
+
     def __init__(self, replicas: List[str]):
         self.replicas = replicas
         self._index = 0
-    
+
     def get_replica(self) -> str:
         """Get next replica in round-robin fashion."""
         if not self.replicas:
@@ -233,7 +233,7 @@ class ReadReplicaSelector:
         replica = self.replicas[self._index]
         self._index = (self._index + 1) % len(self.replicas)
         return replica
-    
+
     def get_random_replica(self) -> str:
         """Get a random replica (alternative strategy)."""
         if not self.replicas:
@@ -243,16 +243,16 @@ class ReadReplicaSelector:
 
 class RoutedEngine:
     """Manages primary and replica engines with query routing.
-    
+
     Routes SELECT queries to replicas, all other queries to primary.
     """
-    
+
     def __init__(self, config: DatabaseConfig):
         self.config = config
         self._primary_engine: Optional[AsyncEngine] = None
         self._replica_engines: List[AsyncEngine] = []
         self._selector = ReadReplicaSelector(config.replica_urls) if config.replica_urls else None
-    
+
     async def initialize(self) -> None:
         """Initialize all engines."""
         # Primary engine
@@ -263,7 +263,7 @@ class RoutedEngine:
             pool_recycle=3600,
         )
         _install_slow_query_logger(self._primary_engine)
-        
+
         # Replica engines
         for replica_url in self.config.replica_urls:
             engine = create_async_engine(
@@ -274,7 +274,7 @@ class RoutedEngine:
             )
             _install_slow_query_logger(engine)
             self._replica_engines.append(engine)
-    
+
     @staticmethod
     def _to_async_url(url: str) -> str:
         """Convert sync URL to async version."""
@@ -287,21 +287,21 @@ class RoutedEngine:
         elif url.startswith("postgresql+psycopg2://"):
             return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
         return url
-    
+
     @property
     def primary_engine(self) -> AsyncEngine:
         """Get primary engine for writes."""
         if self._primary_engine is None:
             raise RuntimeError("RoutedEngine not initialized. Call initialize() first.")
         return self._primary_engine
-    
+
     def get_replica_engine(self) -> AsyncEngine:
         """Get a replica engine for reads (round-robin)."""
         if not self.config.enable_routing or not self._replica_engines:
             return self.primary_engine
         idx = self._selector._index % len(self._replica_engines)
         return self._replica_engines[idx]
-    
+
     async def close(self) -> None:
         """Close all engines."""
         if self._primary_engine:
@@ -314,34 +314,34 @@ class RoutedEngine:
 
 class RoutedSession(AsyncSession):
     """AsyncSession that routes queries based on operation type.
-    
+
     SELECT -> replica (if available)
     INSERT/UPDATE/DELETE -> primary
     """
-    
+
     def __init__(self, routed_engine: RoutedEngine, **kwargs):
         kwargs.pop("bind", None)
         super().__init__(bind=routed_engine.primary_engine, **kwargs)
         self._routed_engine = routed_engine
         self._use_replica = False
-    
+
     def _should_use_replica(self) -> bool:
         """Determine if current query should use replica."""
         return self._use_replica and self._routed_engine.config.enable_routing
-    
+
     async def execute(self, statement, *args, **kwargs):
         """Execute statement with automatic routing."""
         from sqlalchemy import Select
-        
+
         # Determine if this is a read-only query
         is_select = isinstance(statement, Select)
-        
+
         # Check for FOR UPDATE / FOR SHARE clauses which require primary
         if is_select:
             # Check if statement has locking clauses
-            if hasattr(statement, '_for_update_arg') and statement._for_update_arg:
+            if hasattr(statement, "_for_update_arg") and statement._for_update_arg:
                 is_select = False
-        
+
         # Route to appropriate engine
         if is_select and self._should_use_replica():
             # Use replica for reads
@@ -350,12 +350,12 @@ class RoutedSession(AsyncSession):
         else:
             # Use primary for writes and locking reads
             return await super().execute(statement, *args, **kwargs)
-    
+
     def enable_replica(self) -> "RoutedSession":
         """Enable replica routing for subsequent queries in this session."""
         self._use_replica = True
         return self
-    
+
     def disable_replica(self) -> "RoutedSession":
         """Disable replica routing (force primary)."""
         self._use_replica = False
@@ -372,10 +372,12 @@ def get_routed_engine() -> RoutedEngine:
     global _routed_engine
     if _routed_engine is None:
         # Build config from environment
-        primary_url = os.getenv("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}")
+        primary_url = os.getenv(
+            "DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}"
+        )
         replica_urls_str = os.getenv("DATABASE_REPLICA_URLS", "")
         replica_urls = [u.strip() for u in replica_urls_str.split(",") if u.strip()] if replica_urls_str else []
-        
+
         config = DatabaseConfig(
             primary_url=primary_url,
             replica_urls=replica_urls,
@@ -417,7 +419,7 @@ def get_routed_session_factory() -> async_sessionmaker[RoutedSession]:
 
 async def get_routed_session() -> AsyncGenerator[RoutedSession, None]:
     """Get a routed session (FastAPI dependency).
-    
+
     Usage:
         @app.get("/chapters")
         async def get_chapters(session: RoutedSession = Depends(get_routed_session)):
@@ -430,7 +432,7 @@ async def get_routed_session() -> AsyncGenerator[RoutedSession, None]:
     if routed_engine._primary_engine:
         session.bind = routed_engine.primary_engine
     session.enable_replica()
-    
+
     try:
         yield session
         await session.commit()
@@ -443,7 +445,7 @@ async def get_routed_session() -> AsyncGenerator[RoutedSession, None]:
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """Async generator function that yields database sessions (for FastAPI dependency).
-    
+
     Uses routed session if read replicas are configured, otherwise standard session.
     """
     # Check if routing is enabled

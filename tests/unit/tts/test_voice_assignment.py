@@ -37,9 +37,7 @@ def test_distinct_per_character():
 
 
 def test_override_takes_precedence():
-    plan = va.character_voice_plan(
-        ["张三", "李四"], pool=_pool(), override={"张三": "zm_yunjian"}
-    )
+    plan = va.character_voice_plan(["张三", "李四"], pool=_pool(), override={"张三": "zm_yunjian"})
     assert plan["张三"].voice_id == "zm_yunjian"
 
 

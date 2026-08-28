@@ -17,9 +17,9 @@ from typing import Any, Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
 from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
-from .mastering import MasteringConfig, master_audio
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
-from .mp3 import ChapterInfo, Mp3Metadata, write_id3_tags, write_chapters_only, export_mp3_chapters
+from .mastering import MasteringConfig, master_audio
+from .mp3 import ChapterInfo, Mp3Metadata, export_mp3_chapters, write_chapters_only, write_id3_tags
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 
 logger = logging.getLogger(__name__)
@@ -330,7 +330,7 @@ def export_project(
 
             audio_files = _collect_audio_files(chapter_data_list)
             segment_markers = _build_segment_markers(chapter_data_list)
-            
+
             mp3_metadata = Mp3Metadata(
                 title=project.title or "Untitled Audiobook",
                 artist=project.author or "Unknown",
@@ -365,7 +365,7 @@ def export_project(
             # Export each chapter as separate MP3 with ID3 tags (基于已母带的音频)
             mp3_output_dir = output_dir / "mp3_chapters"
             mp3_output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             mp3_files = export_mp3_chapters(
                 audio_files=mastered_audio_files,
                 chapter_infos=segment_markers,
@@ -385,10 +385,20 @@ def export_project(
                         f.write(f"file '{mf.absolute()}'\n")
                 subprocess.run(
                     [
-                        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                        "-i", str(concat_list), "-c", "copy", str(combined_mp3)
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(combined_mp3),
                     ],
-                    check=True, capture_output=True,
+                    check=True,
+                    capture_output=True,
                 )
                 concat_list.unlink(missing_ok=True)
 

@@ -27,19 +27,17 @@ async def test_state_machine_success_marks_processing_then_success():
     self = MagicMock()
     self.request.retries = 0
     self.max_retries = 3
-    with patch("src.audiobook_studio.tasks.publish_tasks.mark_processing") as m_proc, patch(
-        "src.audiobook_studio.tasks.publish_tasks.mark_success"
-    ) as m_succ, patch(
-        "src.audiobook_studio.tasks.publish_tasks.register_retry"
-    ) as m_retry, patch(
-        "src.audiobook_studio.tasks.publish_tasks.mark_failure"
-    ) as m_fail:
+    with (
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_processing") as m_proc,
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_success") as m_succ,
+        patch("src.audiobook_studio.tasks.publish_tasks.register_retry") as m_retry,
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_failure") as m_fail,
+    ):
+
         async def run_coro():
             return {"status": "completed"}
 
-        result = await publish_tasks._run_publish_job_state_machine(
-            self, "j1", 1, run_coro
-        )
+        result = await publish_tasks._run_publish_job_state_machine(self, "j1", 1, run_coro)
         assert result["status"] == "completed"
         m_proc.assert_awaited_once()
         m_succ.assert_awaited_once()
@@ -52,11 +50,13 @@ async def test_state_machine_retry_reraises_and_registers():
     self = MagicMock()
     self.request.retries = 0
     self.max_retries = 3
-    with patch("src.audiobook_studio.tasks.publish_tasks.mark_processing"), patch(
-        "src.audiobook_studio.tasks.publish_tasks.register_retry"
-    ) as m_retry, patch("src.audiobook_studio.tasks.publish_tasks.mark_success"), patch(
-        "src.audiobook_studio.tasks.publish_tasks.mark_failure"
+    with (
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_processing"),
+        patch("src.audiobook_studio.tasks.publish_tasks.register_retry") as m_retry,
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_success"),
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_failure"),
     ):
+
         async def run_coro():
             raise RuntimeError("boom")
 
@@ -70,17 +70,17 @@ async def test_state_machine_exhausted_retries_marks_failure():
     self = MagicMock()
     self.request.retries = 3  # exhausted
     self.max_retries = 3
-    with patch("src.audiobook_studio.tasks.publish_tasks.mark_processing"), patch(
-        "src.audiobook_studio.tasks.publish_tasks.mark_success"
-    ) as m_succ, patch("src.audiobook_studio.tasks.publish_tasks.register_retry") as m_retry, patch(
-        "src.audiobook_studio.tasks.publish_tasks.mark_failure"
-    ) as m_fail:
+    with (
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_processing"),
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_success") as m_succ,
+        patch("src.audiobook_studio.tasks.publish_tasks.register_retry") as m_retry,
+        patch("src.audiobook_studio.tasks.publish_tasks.mark_failure") as m_fail,
+    ):
+
         async def run_coro():
             raise RuntimeError("boom")
 
-        result = await publish_tasks._run_publish_job_state_machine(
-            self, "j1", 1, run_coro
-        )
+        result = await publish_tasks._run_publish_job_state_machine(self, "j1", 1, run_coro)
         assert result["status"] == "failed"
         m_succ.assert_not_awaited()
         m_retry.assert_not_awaited()  # exhausted -> no more register_retry
@@ -105,9 +105,7 @@ def test_publish_project_async_uses_exponential_backoff_on_retry():
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
         with pytest.raises(Exception):
-            publish_tasks.publish_project_async(
-                mock_self, project_id=1, destinations=["audiobookshelf"]
-            )
+            publish_tasks.publish_project_async(mock_self, project_id=1, destinations=["audiobookshelf"])
         assert mock_self.retry.called
         # retries=1 -> countdown = 5 * 2**1 = 10
         assert captured.get("countdown") == publish_tasks.exponential_backoff_countdown(1)
@@ -130,9 +128,7 @@ def test_publish_audiobookshelf_async_uses_exponential_backoff_on_retry():
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
         with pytest.raises(Exception):
-            publish_tasks.publish_audiobookshelf_async(
-                mock_self, project_id=1, config={"server_url": "x"}
-            )
+            publish_tasks.publish_audiobookshelf_async(mock_self, project_id=1, config={"server_url": "x"})
         assert mock_self.retry.called
         # retries=2 -> countdown = 5 * 2**2 = 20
         assert captured.get("countdown") == 20
@@ -154,8 +150,6 @@ def test_generate_podcast_rss_async_uses_exponential_backoff_on_retry():
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
         with pytest.raises(Exception):
-            publish_tasks.generate_podcast_rss_async(
-                mock_self, project_id=1, config={"title": "x"}
-            )
+            publish_tasks.generate_podcast_rss_async(mock_self, project_id=1, config={"title": "x"})
         assert mock_self.retry.called
         assert captured.get("countdown") == 5

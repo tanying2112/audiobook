@@ -14,13 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from audiobook_studio.tts.engine import (
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    TTSProsody,
-    TTSVoiceAnchor,
-)
+from audiobook_studio.tts.engine import TTSProsody, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, TTSVoiceAnchor
 from audiobook_studio.tts.kokoro_backend import (
     KOKORO_VOICES,
     KokoroBackend,
@@ -72,9 +66,7 @@ class TestSynthesizeInternalMock:
         backend = KokoroBackend(mock_mode=True)
         await backend.initialize()
         out = tmp_path / "clip.mp3"
-        result = await backend._synthesize_internal(
-            text="hello", voice_id="af", output_path=out
-        )
+        result = await backend._synthesize_internal(text="hello", voice_id="af", output_path=out)
         assert isinstance(result, object)
         assert result.duration_ms == 1000
         assert result.voice_id == "af"
@@ -87,9 +79,7 @@ class TestSynthesizeInternalMock:
         backend = KokoroBackend(mock_mode=True)
         assert backend._loaded is False
         out = tmp_path / "lazy.mp3"
-        result = await backend._synthesize_internal(
-            text="hi", voice_id="zf_xiaoxiao", output_path=out
-        )
+        result = await backend._synthesize_internal(text="hi", voice_id="zf_xiaoxiao", output_path=out)
         assert result.duration_ms == 1000
         assert backend._loaded is True
 
@@ -127,9 +117,7 @@ class TestSynthesizeMock:
     async def test_success_path_with_prosody(self, tmp_path):
         backend = KokoroBackend(mock_mode=True)
         await backend.initialize()
-        payload = _payload(
-            prosody=TTSProsody(rate=1.1, pitch=2.0, volume=-3.0, emotion="happy")
-        )
+        payload = _payload(prosody=TTSProsody(rate=1.1, pitch=2.0, volume=-3.0, emotion="happy"))
         out = tmp_path / "out_prosody.mp3"
         result = await backend.synthesize(payload, out)
         assert result.status == "DONE"

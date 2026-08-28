@@ -28,19 +28,18 @@ def _fake_job(status=PublishJobStatus.SUCCESS, result=None):
 
 @pytest.mark.asyncio
 async def test_start_publish_creates_job_and_dispatches_celery():
-    req = publish_job_api.PublishStartRequest(
-        project_id=1, destinations=["audiobookshelf"]
-    )
+    req = publish_job_api.PublishStartRequest(project_id=1, destinations=["audiobookshelf"])
     db = MagicMock()
     db.get = AsyncMock(return_value=MagicMock())  # project exists
     user = MagicMock()
     user.id = 7
 
-    with patch.object(
-        publish_job_api.job_repo, "create_publish_job", new=AsyncMock(return_value=_fake_job())
-    ) as m_create, patch.object(
-        publish_job_api.publish_project_async, "delay"
-    ) as m_delay:
+    with (
+        patch.object(
+            publish_job_api.job_repo, "create_publish_job", new=AsyncMock(return_value=_fake_job())
+        ) as m_create,
+        patch.object(publish_job_api.publish_project_async, "delay") as m_delay,
+    ):
         resp = await publish_job_api.start_publish(req, db=db, current_user=user)
 
         assert resp.job_id == "publish_1_xyz"
@@ -67,9 +66,7 @@ async def test_start_publish_404_when_project_missing():
 @pytest.mark.asyncio
 async def test_status_endpoint_returns_state():
     user = MagicMock()
-    with patch.object(
-        publish_job_api.job_repo, "get_publish_job", new=AsyncMock(return_value=_fake_job())
-    ):
+    with patch.object(publish_job_api.job_repo, "get_publish_job", new=AsyncMock(return_value=_fake_job())):
         resp = await publish_job_api.get_publish_job_status("publish_1_xyz", _=user)
         assert resp.job_id == "publish_1_xyz"
         assert resp.status == PublishJobStatus.SUCCESS.value
@@ -93,9 +90,7 @@ async def test_status_endpoint_failed_state():
 @pytest.mark.asyncio
 async def test_status_endpoint_404_when_missing():
     user = MagicMock()
-    with patch.object(
-        publish_job_api.job_repo, "get_publish_job", new=AsyncMock(return_value=None)
-    ):
+    with patch.object(publish_job_api.job_repo, "get_publish_job", new=AsyncMock(return_value=None)):
         with pytest.raises(HTTPException) as exc:
             await publish_job_api.get_publish_job_status("nope", _=user)
         assert exc.value.status_code == 404

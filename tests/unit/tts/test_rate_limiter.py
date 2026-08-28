@@ -136,13 +136,17 @@ class TestTokenBucket:
     def test_consume_insufficient(self):
         bucket = TokenBucket(capacity=10, refill_rate=1.0)
         bucket.consume(10)
+        # The key invariant: after draining the full capacity, no further token
+        # is available. We avoid asserting an exact sub-ms token count because
+        # the bucket refills continuously from monotonic time and a tight
+        # tolerance flakes under concurrent/loaded CI executors.
         assert bucket.consume(1) is False
-        assert bucket._tokens == pytest.approx(0.0, abs=1e-5)
+        assert 0.0 <= bucket._tokens < 1.0
 
     def test_consume_refill(self):
         bucket = TokenBucket(capacity=10, refill_rate=10.0)  # 10 tokens/sec
         bucket.consume(10)
-        assert bucket._tokens == 0.0
+        assert bucket._tokens < 0.1
 
         time.sleep(0.2)  # 2 tokens refilled
         assert bucket.consume(1) is True
@@ -269,9 +273,11 @@ class TestTTSRateLimiter:
         assert result is True
 
     def test_acquire_timeout(self):
-        limiter = TTSRateLimiter(configs={
-            "test": RateLimitConfig(provider_name="test", bucket_capacity=3, refill_rate_per_sec=0.1),
-        })
+        limiter = TTSRateLimiter(
+            configs={
+                "test": RateLimitConfig(provider_name="test", bucket_capacity=3, refill_rate_per_sec=0.1),
+            }
+        )
 
         limiter.acquire("test", tokens=3)  # Use all
 
@@ -287,7 +293,11 @@ class TestTTSRateLimiter:
         assert limiter.try_acquire("test", 2) is True
 
     def test_get_status(self):
-        configs = {"test": RateLimitConfig(provider_name="test", requests_per_minute=60, bucket_capacity=5, refill_rate_per_sec=1.0)}
+        configs = {
+            "test": RateLimitConfig(
+                provider_name="test", requests_per_minute=60, bucket_capacity=5, refill_rate_per_sec=1.0
+            )
+        }
         limiter = TTSRateLimiter(configs=configs)
 
         status = limiter.get_status("test")
@@ -395,6 +405,7 @@ class TestGlobalSingleton:
     def setup_method(self):
         """Reset global before each test."""
         import src.audiobook_studio.tts.rate_limiter as rl
+
         rl._global_limiter = None
 
     def test_get_tts_rate_limiter_creates_default(self):

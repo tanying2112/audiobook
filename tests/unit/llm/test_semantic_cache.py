@@ -12,11 +12,7 @@ import pytest
 from pydantic import BaseModel
 
 from src.audiobook_studio.llm.client import LLMCallResult
-from src.audiobook_studio.llm.direct_client import (
-    DirectProviderClient,
-    DirectProviderClientConfig,
-    DirectProviderType,
-)
+from src.audiobook_studio.llm.direct_client import DirectProviderClient, DirectProviderClientConfig, DirectProviderType
 from src.audiobook_studio.llm.semantic_cache import (
     SemanticCache,
     cached_llm_lookup,
@@ -82,7 +78,9 @@ def test_disabled_when_env_unset(monkeypatch):
     assert get_semantic_cache() is None
     # Helpers are safe no-ops with a None cache.
     assert cached_llm_lookup(None, prompt="x", response_model=_M, model="m", temperature=0.1, max_tokens=10) is None
-    cached_llm_store(None, prompt="x", result=_make_result(), response_model=_M, model="m", temperature=0.1, max_tokens=10)
+    cached_llm_store(
+        None, prompt="x", result=_make_result(), response_model=_M, model="m", temperature=0.1, max_tokens=10
+    )
 
 
 def test_disabled_explicit_false():
@@ -114,6 +112,7 @@ def test_different_namespace_is_a_miss():
     assert cache.get("prompt", response_model=_M, model="other", temperature=0.1, max_tokens=10) is None
     # Different temperature -> miss
     assert cache.get("prompt", response_model=_M, model="m", temperature=0.5, max_tokens=10) is None
+
     # Different response_model name -> miss
     class _Other(BaseModel):
         value: str
@@ -129,7 +128,9 @@ def test_different_namespace_is_a_miss():
 
 def test_semantic_hit_for_rephrasing():
     cache = SemanticCache(backend="memory", similarity_threshold=0.95)
-    cache.put("the quick brown fox jumps", _make_result("a"), response_model=_M, model="m", temperature=0.1, max_tokens=10)
+    cache.put(
+        "the quick brown fox jumps", _make_result("a"), response_model=_M, model="m", temperature=0.1, max_tokens=10
+    )
     # Reordered / rephrased but same word set -> semantic hit.
     hit = cache.get("brown fox quick the jumps", response_model=_M, model="m", temperature=0.1, max_tokens=10)
     assert hit is not None
@@ -138,8 +139,15 @@ def test_semantic_hit_for_rephrasing():
 
 def test_semantic_miss_for_unrelated_text():
     cache = SemanticCache(backend="memory", similarity_threshold=0.95)
-    cache.put("the quick brown fox jumps", _make_result("a"), response_model=_M, model="m", temperature=0.1, max_tokens=10)
-    assert cache.get("completely different sentence about music", response_model=_M, model="m", temperature=0.1, max_tokens=10) is None
+    cache.put(
+        "the quick brown fox jumps", _make_result("a"), response_model=_M, model="m", temperature=0.1, max_tokens=10
+    )
+    assert (
+        cache.get(
+            "completely different sentence about music", response_model=_M, model="m", temperature=0.1, max_tokens=10
+        )
+        is None
+    )
     assert cache.semantic_hits == 0
 
 
@@ -159,7 +167,9 @@ def test_ttl_expiry():
 def test_does_not_cache_none_output():
     cache = SemanticCache(backend="memory")
     # A result with no output (a failure) must not be cached.
-    bad = LLMCallResult(output=None, model="m", tokens_in=0, tokens_out=0, cost_usd=0.0, latency_ms=1, schema_compliance=False)
+    bad = LLMCallResult(
+        output=None, model="m", tokens_in=0, tokens_out=0, cost_usd=0.0, latency_ms=1, schema_compliance=False
+    )
     cache.put("p", bad, response_model=_M, model="m", temperature=0.1, max_tokens=10)
     assert cache.get("p", response_model=_M, model="m", temperature=0.1, max_tokens=10) is None
 
@@ -276,9 +286,7 @@ def test_direct_client_cache_hit_fast(monkeypatch):
     monkeypatch.setenv("LLM_SEMANTIC_CACHE_BACKEND", "memory")
     reset_semantic_cache()
 
-    client = DirectProviderClient(
-        DirectProviderClientConfig(provider=DirectProviderType.OPENAI, model="gpt-4o-mini")
-    )
+    client = DirectProviderClient(DirectProviderClientConfig(provider=DirectProviderType.OPENAI, model="gpt-4o-mini"))
     calls = {"n": 0}
     orig = client._mock_call
 

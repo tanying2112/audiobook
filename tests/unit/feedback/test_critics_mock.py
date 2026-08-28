@@ -29,13 +29,12 @@ from audiobook_studio.feedback.critics import (
     CriticResult,
     CriticType,
     CriticVerdict,
-)
-from audiobook_studio.feedback.critics import (
     ObjectiveCritic,
     SemanticCritic,
     StructuralCritic,
+    SyntheticCritic,
+    create_synthetic_critic,
 )
-from audiobook_studio.feedback.critics import SyntheticCritic, create_synthetic_critic
 from audiobook_studio.feedback.critics.synthetic_critic import (
     CalibrationResult,
     CalibrationSample,
@@ -43,7 +42,6 @@ from audiobook_studio.feedback.critics.synthetic_critic import (
     _compute_f1_per_class,
 )
 from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision
-
 
 # Prompts live at the repo root (src-layout); the critics resolve prompt_dir
 # relative to the package, so we point them at the real templates explicitly
@@ -240,9 +238,7 @@ class TestBaseCriticHelpers:
 
     def test_parse_llm_response_flat(self):
         c = _ConcreteCritic(CriticType.OBJECTIVE, router=MockRouter())
-        out = c._parse_llm_response(
-            {"verdict": "warning", "score": 0.6, "confidence": 0.5, "reasoning": "meh"}
-        )
+        out = c._parse_llm_response({"verdict": "warning", "score": 0.6, "confidence": 0.5, "reasoning": "meh"})
         assert out.verdict == CriticVerdict.WARNING
         assert out.critic_type == CriticType.OBJECTIVE
 
@@ -300,9 +296,7 @@ class TestSemanticCritic:
             )
         )
         critic = _sem(router)
-        res = critic.evaluate(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic.evaluate(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert isinstance(res, CriticResult)
         # critic_type is force-set by the critic
         assert res.critic_type == CriticType.SEMANTIC
@@ -322,9 +316,7 @@ class TestSemanticCritic:
 
     def test_evaluate_mock(self):
         critic = _sem(MockRouter())
-        res = critic._evaluate_mock(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic._evaluate_mock(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert res.critic_type == CriticType.SEMANTIC
         assert res.verdict == CriticVerdict.PASS
         assert res.evidence["semantic_coherence"] == 0.88
@@ -347,9 +339,7 @@ class TestSemanticCritic:
                 }
             ],
         }
-        prompt = critic._build_prompt(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context
-        )
+        prompt = critic._build_prompt(Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context)
         assert "Alice" in prompt
         assert "前文" in prompt
 
@@ -371,9 +361,7 @@ class TestStructuralCritic:
             )
         )
         critic = _str(router)
-        res = critic.evaluate(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic.evaluate(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert res.critic_type == CriticType.STRUCTURAL
         assert res.verdict == CriticVerdict.WARNING
 
@@ -391,9 +379,7 @@ class TestStructuralCritic:
 
     def test_evaluate_mock_clean(self):
         critic = _str(MockRouter())
-        res = critic._evaluate_mock(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic._evaluate_mock(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert res.verdict == CriticVerdict.PASS
         assert res.tags == []
 
@@ -402,19 +388,13 @@ class TestStructuralCritic:
         ann = _make_annotation()
         ann.paragraph_index = 3
         context = {"is_chapter_start": True}
-        res = critic._evaluate_mock(
-            Path("seg.wav"), ann, _make_routing(), "文本", context
-        )
+        res = critic._evaluate_mock(Path("seg.wav"), ann, _make_routing(), "文本", context)
         assert "chapter_boundary_mismatch" in res.tags
 
     def test_evaluate_mock_cost_overrun(self):
         critic = _str(MockRouter())
-        context = {
-            "cost_context": {"cumulative_cost_usd": 25.0, "cost_limit_per_book": 20.0}
-        }
-        res = critic._evaluate_mock(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context
-        )
+        context = {"cost_context": {"cumulative_cost_usd": 25.0, "cost_limit_per_book": 20.0}}
+        res = critic._evaluate_mock(Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context)
         assert "cost_overrun" in res.tags
 
     def test_build_prompt_chapter_context(self):
@@ -428,9 +408,7 @@ class TestStructuralCritic:
             "cost_context": {"cumulative_cost_usd": 1.0, "cost_limit_per_book": 20.0},
             "document_structure": {"total_chapters": 5, "total_paragraphs": 100},
         }
-        prompt = critic._build_prompt(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context
-        )
+        prompt = critic._build_prompt(Path("seg.wav"), _make_annotation(), _make_routing(), "文本", context)
         assert "前段" in prompt
         assert "boundary" in prompt
 
@@ -452,9 +430,7 @@ class TestObjectiveCritic:
             return dict(canned)
 
         monkeypatch.setattr(ObjectiveCritic, "_compute_objective_metrics", _fake)
-        res = critic.evaluate(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic.evaluate(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert res.critic_type == CriticType.OBJECTIVE
         assert res.verdict == CriticVerdict.PASS
         assert "dnsmos_below_threshold" not in res.tags
@@ -467,9 +443,7 @@ class TestObjectiveCritic:
                 "speaker_sim_threshold": 0.95,
             }
         )
-        score, evidence, tags, reasoning = critic._evaluate_metrics(
-            {"dnsmos": 2.0, "wer": 0.4, "speaker_sim": 0.4}
-        )
+        score, evidence, tags, reasoning = critic._evaluate_metrics({"dnsmos": 2.0, "wer": 0.4, "speaker_sim": 0.4})
         assert "dnsmos_below_threshold" in tags
         assert "wer_above_threshold" in tags
         assert "speaker_sim_below_threshold" in tags
@@ -479,9 +453,7 @@ class TestObjectiveCritic:
 
     def test_evaluate_metrics_good(self):
         critic = self._make()
-        score, evidence, tags, reasoning = critic._evaluate_metrics(
-            {"dnsmos": 4.5, "wer": 0.0, "speaker_sim": 1.0}
-        )
+        score, evidence, tags, reasoning = critic._evaluate_metrics({"dnsmos": 4.5, "wer": 0.0, "speaker_sim": 1.0})
         assert tags == []
         assert score > 0.9
 
@@ -504,9 +476,7 @@ class TestObjectiveCritic:
 
     def test_evaluate_mock(self):
         critic = self._make()
-        res = critic._evaluate_mock(
-            Path("seg.wav"), _make_annotation(), _make_routing(), "文本"
-        )
+        res = critic._evaluate_mock(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert res.critic_type == CriticType.OBJECTIVE
         assert res.verdict == CriticVerdict.PASS
         assert res.evidence["dnsmos"] == 3.8
@@ -553,24 +523,18 @@ class TestCriticEnsembleEvaluator:
 
     def test_fuse_fail_low_score(self):
         ev = CriticEnsembleEvaluator()
-        ens = ev._fuse_results(
-            self._results((CriticType.OBJECTIVE, CriticVerdict.FAIL, 0.0, 0.5))
-        )
+        ens = ev._fuse_results(self._results((CriticType.OBJECTIVE, CriticVerdict.FAIL, 0.0, 0.5)))
         assert ens.final_verdict == CriticVerdict.FAIL
 
     def test_fuse_warning_via_verdict(self):
         ev = CriticEnsembleEvaluator()
-        ens = ev._fuse_results(
-            self._results((CriticType.STRUCTURAL, CriticVerdict.WARNING, 0.65, 0.7))
-        )
+        ens = ev._fuse_results(self._results((CriticType.STRUCTURAL, CriticVerdict.WARNING, 0.65, 0.7)))
         assert ens.final_verdict == CriticVerdict.WARNING
 
     def test_fuse_warning_via_final_score(self):
         # PASS verdict but low score → triggers `final_score < 0.7` branch
         ev = CriticEnsembleEvaluator()
-        ens = ev._fuse_results(
-            self._results((CriticType.SEMANTIC, CriticVerdict.PASS, 0.6, 0.9))
-        )
+        ens = ev._fuse_results(self._results((CriticType.SEMANTIC, CriticVerdict.PASS, 0.6, 0.9)))
         assert ens.final_verdict == CriticVerdict.WARNING
 
     def test_fuse_zero_total_weight(self):
@@ -581,9 +545,7 @@ class TestCriticEnsembleEvaluator:
                 CriticType.OBJECTIVE: 0.0,
             }
         )
-        ens = ev._fuse_results(
-            self._results((CriticType.OBJECTIVE, CriticVerdict.PASS, 0.9, 0.9))
-        )
+        ens = ev._fuse_results(self._results((CriticType.OBJECTIVE, CriticVerdict.PASS, 0.9, 0.9)))
         assert ens.final_score == 0.0
         assert ens.final_verdict == CriticVerdict.WARNING
 
@@ -617,9 +579,7 @@ class TestCriticEnsembleEvaluator:
 
         monkeypatch.setattr(ObjectiveCritic, "_compute_objective_metrics", _fake)
 
-        ev = CriticEnsembleEvaluator(
-            semantic_critic=sem, structural_critic=stc, objective_critic=obj
-        )
+        ev = CriticEnsembleEvaluator(semantic_critic=sem, structural_critic=stc, objective_critic=obj)
         ens = ev.evaluate(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert len(ens.results) == 3
         assert ens.final_verdict == CriticVerdict.PASS
@@ -709,9 +669,7 @@ class TestSyntheticCritic:
 
         monkeypatch.setattr(ObjectiveCritic, "_compute_objective_metrics", _fake)
 
-        critic = SyntheticCritic(
-            semantic_critic=sem, structural_critic=stc, objective_critic=obj
-        )
+        critic = SyntheticCritic(semantic_critic=sem, structural_critic=stc, objective_critic=obj)
         ens = critic.evaluate(Path("seg.wav"), _make_annotation(), _make_routing(), "文本")
         assert ens.final_verdict == CriticVerdict.PASS
 
@@ -767,9 +725,7 @@ class TestSyntheticCritic:
         assert abs(sum(critic.get_weights().values()) - 1.0) < 0.01
 
     def test_score_to_verdict(self):
-        critic = create_synthetic_critic(
-            mock_mode=True, pass_threshold=0.7, warning_threshold=0.5
-        )
+        critic = create_synthetic_critic(mock_mode=True, pass_threshold=0.7, warning_threshold=0.5)
         assert critic._score_to_verdict(0.8) == CriticVerdict.PASS
         assert critic._score_to_verdict(0.6) == CriticVerdict.WARNING
         assert critic._score_to_verdict(0.2) == CriticVerdict.FAIL
@@ -861,9 +817,7 @@ class TestCalibrationHelpers:
         assert m["warning"]["fail"] == 1
 
     def test_f1_per_class(self):
-        m = _compute_confusion_matrix(
-            ["pass", "pass", "fail"], ["pass", "fail", "fail"], ["pass", "fail"]
-        )
+        m = _compute_confusion_matrix(["pass", "pass", "fail"], ["pass", "fail", "fail"], ["pass", "fail"])
         f1 = _compute_f1_per_class(m, ["pass", "fail"])
         # pass: tp=1, fp=1, fn=0 → precision .5, recall 1.0 → f1 = 2/3 (rounded to 4dp)
         # fail: tp=1, fp=0, fn=1 → precision 1.0, recall .5 → f1 = 2/3

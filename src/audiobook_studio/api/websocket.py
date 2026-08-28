@@ -277,7 +277,7 @@ async def emit_pipeline_event(
 
     Usage:
         await emit_pipeline_event(
-            project_id=1,
+            project_id=123,
             event_type=PipelineEventType.STAGE_ENTER,
             stage="annotate",
             chapter_id=5,

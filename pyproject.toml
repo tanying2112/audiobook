@@ -112,29 +112,15 @@ omit = [
     "*/tests/*",
     "*/migrations/*",
     "*/__init__.py",
-    # Entry point (no business logic to cover)
-    "src/audiobook_studio/main.py",
     # Alembic migrations (schema history, not unit-tested)
     "alembic/*",
     "*/alembic/*",
-    # Root-level packages not part of the main testable codebase
-    "src/dashboard/*",
-    "src/master/*",
-    "src/voxcpm/*",
-    "src/worker_base.py",
     # TTS: truly external remote/GPU adapters (require Modal GPU services)
     "src/audiobook_studio/tts/remote_voxcpm2_port.py",
     "src/audiobook_studio/tts/remote_voxcpm2_client.py",
     # TTS: local backends requiring GPU / model weights unavailable in CI
     "src/audiobook_studio/tts/voxcpm2_backend.py",
     "src/audiobook_studio/tts/kokoro_port.py",
-    # Pipeline stages requiring external GPU services
-    "src/audiobook_studio/pipeline/multimodal.py",
-    # Observability/monitoring: require external SaaS (Langfuse/OTel)
-    "src/audiobook_studio/observability/tracing.py",
-    "src/audiobook_studio/monitoring/telemetry.py",
-    # Feedback: integration-level external judges (held-out evaluation)
-    "src/audiobook_studio/feedback/held_out_eval.py",
 ]
 
 [tool.coverage.report]

@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..schemas import ParagraphAnnotation, QualityJudgment
 from ..schemas.judge import PairwiseJudgment
@@ -78,10 +78,7 @@ def create_llm_judge_fn(stage: str, judge_model: Optional[str] = None) -> JudgeF
             result = ensemble.judge(input_data, output_a, output_b, stage)
             return result.score_a, result.score_b, result.rationale
         except Exception as e:
-            logger.warning(
-                f"LLM Judge Ensemble evaluation failed: {e}, "
-                f"falling back to heuristic scoring"
-            )
+            logger.warning(f"LLM Judge Ensemble evaluation failed: {e}, " f"falling back to heuristic scoring")
             # Fallback to heuristic scoring (no LLM available).
             score_a = _score_output(output_a, stage)
             score_b = _score_output(output_b, stage)

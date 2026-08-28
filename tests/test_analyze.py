@@ -11,10 +11,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from audiobook_studio.pipeline.analyze_structure import (
-    analyze_structure,
-    AnalyzeStructurePipeline,
-)
+from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from audiobook_studio.schemas import BookAnalysisInput, BookAnalysisOutput
 
 

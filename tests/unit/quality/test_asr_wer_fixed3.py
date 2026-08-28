@@ -14,8 +14,8 @@ mock_litellm.completion = MagicMock()
 _SAVED_MODULES = {}
 _MISSING = object()
 
-_SAVED_MODULES['litellm'] = sys.modules.get('litellm', _MISSING)
-_SAVED_MODULES['litellm._logging'] = sys.modules.get('litellm._logging', _MISSING)
+_SAVED_MODULES["litellm"] = sys.modules.get("litellm", _MISSING)
+_SAVED_MODULES["litellm._logging"] = sys.modules.get("litellm._logging", _MISSING)
 
 sys.modules["litellm"] = mock_litellm
 sys.modules["litellm._logging"] = mock_litellm._logging

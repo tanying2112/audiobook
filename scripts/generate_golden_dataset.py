@@ -449,13 +449,14 @@ STAGE_DIRS = {
 
 SPLITS = ["train", "val", "test"]
 
+
 def load_golden_samples(stage: str, split: str = "train") -> List[Dict[str, Any]]:
     """Load golden samples for a given stage and split."""
     new_dir = Path("data/golden") / split / stage
     old_dir = Path("tests/golden") / STAGE_DIRS.get(stage, stage)
-    
+
     samples = []
-    
+
     # Try new directory structure first
     if new_dir.exists():
         for f in sorted(new_dir.glob("*.jsonl")):
@@ -466,7 +467,7 @@ def load_golden_samples(stage: str, split: str = "train") -> List[Dict[str, Any]
                         samples.append(json.loads(line))
         if samples:
             return samples
-    
+
     # Fallback to old directory structure
     if old_dir.exists():
         for f in sorted(old_dir.glob("*.jsonl")):
@@ -478,26 +479,28 @@ def load_golden_samples(stage: str, split: str = "train") -> List[Dict[str, Any]
         for f in sorted(old_dir.glob("*.json")):
             with f.open("r", encoding="utf-8") as fp:
                 samples.append(json.load(fp))
-    
+
     return samples
+
 
 def save_golden_samples(stage: str, split: str, samples: List[Dict[str, Any]]) -> None:
     """Save golden samples to JSONL file."""
     out_dir = Path("data/golden") / split / stage
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"{stage}.jsonl"
-    
+
     with out_file.open("w", encoding="utf-8") as f:
         for sample in samples:
             f.write(json.dumps(sample, ensure_ascii=False) + "\n")
     print(f"Saved {len(samples)} samples to {out_file}")
+
 
 def cmd_list() -> None:
     """List available stages and sample counts."""
     print("\n=== Golden Dataset Summary ===")
     print(f"{'Stage':<12} {'Train':>6} {'Val':>6} {'Test':>6} {'Total':>6}")
     print("-" * 40)
-    
+
     for stage in STAGE_DIRS.keys():
         counts = {}
         for split in SPLITS:
@@ -507,24 +510,25 @@ def cmd_list() -> None:
         print(f"{stage:<12} {counts['train']:>6} {counts['val']:>6} {counts['test']:>6} {total:>6}")
     print()
 
+
 def cmd_validate() -> None:
     """Validate golden dataset format."""
     print("\n=== Golden Dataset Validation ===")
     issues = []
-    
+
     for stage in STAGE_DIRS.keys():
         for split in SPLITS:
             samples = load_golden_samples(stage, split)
             if not samples:
                 issues.append(f"{split}/{stage}: No samples found")
                 continue
-            
+
             for i, sample in enumerate(samples):
                 if "input" not in sample:
                     issues.append(f"{split}/{stage}[{i}]: Missing 'input' field")
                 if "expected_output" not in sample:
                     issues.append(f"{split}/{stage}[{i}]: Missing 'expected_output' field")
-    
+
     if issues:
         print(f"\nFound {len(issues)} issues:")
         for issue in issues:
@@ -533,38 +537,39 @@ def cmd_validate() -> None:
         print("✅ All golden datasets are valid!")
     print()
 
+
 def cmd_annotate() -> None:
     """Interactive annotation CLI for golden dataset."""
     print("\n=== Interactive Golden Dataset Annotation Tool ===")
     print("Available stages:")
     for i, stage in enumerate(STAGE_DIRS.keys(), 1):
         print(f"  {i}. {stage}")
-    
+
     try:
         choice = input("\nSelect stage (1-7) or 'q' to quit: ").strip()
-        if choice.lower() == 'q':
+        if choice.lower() == "q":
             return
-        
+
         stage_idx = int(choice) - 1
         if not 0 <= stage_idx < len(STAGE_DIRS):
             print("Invalid selection.")
             return
-        
+
         stage = list(STAGE_DIRS.keys())[stage_idx]
-        
+
         print(f"\nAvailable splits: {', '.join(SPLITS)}")
         split = input("Select split (train/val/test) [train]: ").strip() or "train"
         if split not in SPLITS:
             print("Invalid split.")
             return
-        
+
         samples = load_golden_samples(stage, split)
         print(f"\nLoaded {len(samples)} samples for {stage}/{split}")
-        
+
         if not samples:
             print("No samples to annotate.")
             return
-        
+
         print("\nCommands:")
         print("  n - Next sample")
         print("  p - Previous sample")
@@ -573,10 +578,10 @@ def cmd_annotate() -> None:
         print("  d - Delete current sample")
         print("  s - Save and exit")
         print("  q - Quit without saving")
-        
+
         idx = 0
         modified = False
-        
+
         while True:
             sample = samples[idx]
             print(f"\n--- Sample {idx + 1}/{len(samples)} ---")
@@ -584,9 +589,9 @@ def cmd_annotate() -> None:
             print(json.dumps(sample.get("input", {}), ensure_ascii=False, indent=2))
             print(f"\nExpected Output:")
             print(json.dumps(sample.get("expected_output", {}), ensure_ascii=False, indent=2))
-            
+
             cmd = input("\nCommand [n]: ").strip().lower() or "n"
-            
+
             if cmd == "n":
                 if idx < len(samples) - 1:
                     idx += 1
@@ -606,7 +611,7 @@ def cmd_annotate() -> None:
                         modified = True
                     except json.JSONDecodeError as e:
                         print(f"Invalid JSON: {e}")
-                
+
                 print("\nEdit expected_output (JSON):")
                 new_output = input(json.dumps(sample.get("expected_output", {}), ensure_ascii=False) + "\n> ").strip()
                 if new_output:
@@ -633,7 +638,7 @@ def cmd_annotate() -> None:
             elif cmd == "d":
                 if len(samples) > 1:
                     confirm = input(f"Delete sample {idx + 1}? (y/N): ").strip().lower()
-                    if confirm == 'y':
+                    if confirm == "y":
                         samples.pop(idx)
                         modified = True
                         if idx >= len(samples):
@@ -648,7 +653,7 @@ def cmd_annotate() -> None:
             elif cmd == "q":
                 if modified:
                     confirm = input("Unsaved changes. Quit anyway? (y/N): ").strip().lower()
-                    if confirm != 'y':
+                    if confirm != "y":
                         continue
                 break
             else:
@@ -656,9 +661,11 @@ def cmd_annotate() -> None:
     except (KeyboardInterrupt, EOFError):
         print("\n\nInterrupted.")
 
+
 def cmd_generate() -> None:
     """Generate golden dataset from novel text (original functionality)."""
     main()
+
 
 def main() -> None:
     """Main entry point with CLI subcommands."""
@@ -666,9 +673,9 @@ def main() -> None:
         # Default: generate ChapterSource from novel
         cmd_generate()
         return
-    
+
     command = sys.argv[1].lower()
-    
+
     if command == "annotate":
         cmd_annotate()
     elif command == "list":

@@ -221,7 +221,7 @@ class KokoroBackend(BaseTTSEngine):
             # Create Kokoro instance - this handles ONNX session, phonemizer, voice embeddings correctly
             self._kokoro = Kokoro(self.model_path, self.voices_path)
             # For backward compatibility with tests that check _session attribute
-            self._session = getattr(self._kokoro, 'session', None)
+            self._session = getattr(self._kokoro, "session", None)
 
             self._loaded = True
             self._initialized = True
@@ -515,13 +515,14 @@ class KokoroBackend(BaseTTSEngine):
 
     async def warmup(self) -> bool:
         """Quick warmup for health probe - verifies model files and initializes session.
-        
+
         Returns True if warmup completes within 100ms, False otherwise.
         This is a lightweight check that doesn't load full model weights.
         """
         import time
+
         start = time.perf_counter()
-        
+
         try:
             # In mock mode, warmup is instant
             if self.mock_mode:
@@ -549,15 +550,16 @@ class KokoroBackend(BaseTTSEngine):
 
                 # Quick initialization - create ONNX session but don't load full weights
                 from kokoro_onnx import Kokoro
+
                 self._kokoro = Kokoro(self.model_path, self.voices_path)
-                self._session = getattr(self._kokoro, 'session', None)
+                self._session = getattr(self._kokoro, "session", None)
                 self._loaded = True
                 self._initialized = True
 
                 elapsed_ms = (time.perf_counter() - start) * 1000
                 logger.info(f"KokoroBackend warmup completed in {elapsed_ms:.1f}ms")
                 return elapsed_ms < 100
-            
+
         except Exception as e:
             logger.error(f"KokoroBackend warmup failed: {e}")
             return False
@@ -573,23 +575,23 @@ class KokoroBackend(BaseTTSEngine):
 
     def _phonemize(self, text: str, voice_id: str):
         """Phonemize text for given voice.
-        
+
         In mock mode, returns mock tokens and lengths.
         In real mode, uses kokoro_onnx tokenizer.
         """
         import numpy as np
-        
+
         lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
         phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
-        
+
         if self.mock_mode or self._kokoro is None:
             # Mock mode: return dummy tokens
             tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
             lengths = np.array([5], dtype=np.int64)
             return tokens, lengths
-        
+
         # Real mode: use kokoro_onnx tokenizer
-        # Note: kokoro_onnx.Kokoro doesn't expose _phonemize directly, 
+        # Note: kokoro_onnx.Kokoro doesn't expose _phonemize directly,
         # but we can use its tokenizer via the session
         try:
             # The kokoro_onnx tokenizer is internal; we'll return mock for now
@@ -638,14 +640,12 @@ class KokoroBackend(BaseTTSEngine):
 
         return max(500, int(est_sec * 1000))
 
-
-
     async def stream(
         self,
         payload: TTSTaskPayload,
     ):
         """Stream audio chunks for real-time playback.
-        
+
         Kokoro generates full audio first, then yields in chunks.
         This is pseudo-streaming (not true incremental generation).
         """
@@ -654,6 +654,7 @@ class KokoroBackend(BaseTTSEngine):
 
         if self.mock_mode:
             import numpy as np
+
             yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
             return
 
@@ -678,13 +679,14 @@ class KokoroBackend(BaseTTSEngine):
 
             # Generate full audio first (Kokoro doesn't support incremental generation)
             import tempfile
-            import soundfile as sf
-            import numpy as np
             from pathlib import Path
 
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            import numpy as np
+            import soundfile as sf
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
-        
+
             try:
                 result = await self._synthesize_internal(
                     text=text,
@@ -694,12 +696,12 @@ class KokoroBackend(BaseTTSEngine):
                     reference_audio=reference_audio,
                     embedding=embedding,
                 )
-            
+
                 # Read the generated audio and yield in chunks
                 audio_data, sr = sf.read(result.audio_path)
                 if audio_data.ndim > 1:
                     audio_data = audio_data.mean(axis=1)  # Convert to mono
-            
+
                 # ── H4: Duration rationality guard for streaming ──
                 actual_ms = int(len(audio_data) / sr * 1000)
                 estimated_ms = self.estimate_duration(text, voice_id, prosody=prosody_dict)
@@ -709,18 +711,19 @@ class KokoroBackend(BaseTTSEngine):
                         f"H4 streaming guard: audio={actual_ms}ms, estimate={estimated_ms}ms, "
                         f"ratio={ratio:.1f}x. text_len={len(text)}, voice={voice_id}"
                     )
-            
+
                 # Convert to int16
                 audio_int16 = (audio_data * 32767).astype(np.int16)
-            
+
                 # Yield in ~100ms chunks (2400 samples at 24kHz)
                 chunk_size = int(sr * 0.1)  # 100ms chunks
                 for i in range(0, len(audio_int16), chunk_size):
-                    chunk = audio_int16[i:i+chunk_size]
+                    chunk = audio_int16[i : i + chunk_size]
                     yield chunk.tobytes()
-                
+
             finally:
                 tmp_path.unlink(missing_ok=True)
+
 
 async def create_kokoro_backend(
     model_path: Optional[str] = None,

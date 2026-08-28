@@ -50,14 +50,14 @@ class MasteringConfig:
 
     # 1) 降噪 (ffmpeg afftdn —— noisereduce 的原生等效)
     enable_noisereduce: bool = True
-    noisereduce_nr: float = 12.0        # afftdn: 降噪量 (dB)
-    noisereduce_nf: float = -30.0       # afftdn: 本底噪声基底 (dB)
+    noisereduce_nr: float = 12.0  # afftdn: 降噪量 (dB)
+    noisereduce_nf: float = -30.0  # afftdn: 本底噪声基底 (dB)
 
     # 2) 静音段修剪
     enable_silenceremove: bool = True
-    silence_start_threshold: float = -55.0   # dB，低于此值视为静音 (起始)
-    silence_stop_threshold: float = -40.0    # dB，高于此值视为有声 (结束)
-    silence_min_duration: float = 0.3        # s，最小静音时长才修剪
+    silence_start_threshold: float = -55.0  # dB，低于此值视为静音 (起始)
+    silence_stop_threshold: float = -40.0  # dB，高于此值视为有声 (结束)
+    silence_min_duration: float = 0.3  # s，最小静音时长才修剪
 
     # 3) 响度归一化 (loudnorm)
     enable_loudnorm: bool = True
@@ -80,6 +80,7 @@ class MasteringConfig:
 # ---------------------------------------------------------------------------
 # 滤镜图构建
 # ---------------------------------------------------------------------------
+
 
 def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, float]] = None) -> str:
     """构建 ffmpeg ``-af`` 滤镜图字符串。
@@ -106,8 +107,7 @@ def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, 
 
     if cfg.enable_loudnorm:
         if measured and all(
-            k in measured
-            for k in ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset")
+            k in measured for k in ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset")
         ):
             # 两遍法：使用第一遍测得参数精确应用
             parts.append(
@@ -119,9 +119,7 @@ def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, 
             )
         else:
             # 单遍法 (近似)
-            parts.append(
-                f"loudnorm=I={cfg.loudness_i}:TP={cfg.loudness_tp}:LRA={cfg.loudness_lra}"
-            )
+            parts.append(f"loudnorm=I={cfg.loudness_i}:TP={cfg.loudness_tp}:LRA={cfg.loudness_lra}")
 
     return ",".join(parts)
 
@@ -129,6 +127,7 @@ def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, 
 # ---------------------------------------------------------------------------
 # ffmpeg 辅助
 # ---------------------------------------------------------------------------
+
 
 def _codec_for_path(path: Path) -> tuple[str, str]:
     """根据输出扩展名选择编码与码率。"""
@@ -177,6 +176,7 @@ def _parse_loudnorm_json(stderr_text: str) -> Dict[str, float]:
 # ---------------------------------------------------------------------------
 # 对外 API
 # ---------------------------------------------------------------------------
+
 
 def measure_loudness(
     input_path: str | Path,

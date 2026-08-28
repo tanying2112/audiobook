@@ -21,14 +21,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.audiobook_studio.di import DIContainer, reset_app_container, set_app_container
+from src.audiobook_studio.di import DIContainer, get_app_container, reset_app_container, set_app_container
 from src.audiobook_studio.tts.engine import EngineRegistry, TTSEngine
-from src.audiobook_studio.tts.port import (
-    TTSStatus,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSVoiceAnchor,
-)
+from src.audiobook_studio.tts.port import TTSStatus, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
 from src.audiobook_studio.tts.port_factory import (
     StreamingTTSConfig,
     ZeroShotCloneConfig,
@@ -40,8 +35,6 @@ from src.audiobook_studio.tts.port_factory import (
     get_default_engine,
     get_port,
 )
-from src.audiobook_studio.di import get_app_container
-from src.audiobook_studio.tts.engine import EngineRegistry
 
 
 @pytest.fixture
@@ -109,21 +102,29 @@ class TestCreateEngineBranches:
 
     def test_auto_with_voxcpm2_endpoint(self):
         """auto + VOXCPM2_ENDPOINT selects remote voxcpm2 port (135)."""
-        with patch.dict(os.environ, {
-            "VOXCPM2_ENDPOINT": "http://vox:8080",
-            "MOCK_LLM": "false",
-            "TEST_MODE": "false",
-            "MOCK_TTS": "false",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "VOXCPM2_ENDPOINT": "http://vox:8080",
+                "MOCK_LLM": "false",
+                "TEST_MODE": "false",
+                "MOCK_TTS": "false",
+            },
+        ):
             with patch("src.audiobook_studio.tts.remote_voxcpm2_port.create_remote_voxcpm2_port") as mock_create:
                 mock_create.return_value = Mock()
                 engine = create_engine("auto")
                 assert engine is mock_create.return_value
                 mock_create.assert_called_once()
 
-    @pytest.mark.parametrize("engine_type", [
-        "cosyvoice_stream", "seed_tts_stream", "melotts_stream",
-    ])
+    @pytest.mark.parametrize(
+        "engine_type",
+        [
+            "cosyvoice_stream",
+            "seed_tts_stream",
+            "melotts_stream",
+        ],
+    )
     def test_explicit_streaming_engines(self, engine_type):
         """Explicit v0.4 streaming engine types (147-154)."""
         with patch("src.audiobook_studio.tts.streaming.create_streaming_tts_engine") as mock_inner:
@@ -133,9 +134,14 @@ class TestCreateEngineBranches:
             cfg = mock_inner.call_args[0][0]
             assert cfg.engine == engine_type
 
-    @pytest.mark.parametrize("engine_type", [
-        "xtts_v2", "openvoice_v2", "cosyvoice_clone",
-    ])
+    @pytest.mark.parametrize(
+        "engine_type",
+        [
+            "xtts_v2",
+            "openvoice_v2",
+            "cosyvoice_clone",
+        ],
+    )
     def test_explicit_clone_engines(self, engine_type):
         """Explicit v0.4 zero-shot clone engine types (155-163)."""
         with patch("src.audiobook_studio.tts.zero_shot_clone.create_zero_shot_clone_engine") as mock_inner:
@@ -151,9 +157,14 @@ class TestEngineBuilderFunctions:
 
     def test_create_streaming_tts_engine_builds_config(self):
         mock_engine = Mock(spec=TTSEngine)
-        with patch("src.audiobook_studio.tts.streaming.create_streaming_tts_engine", return_value=mock_engine) as mock_inner:
+        with patch(
+            "src.audiobook_studio.tts.streaming.create_streaming_tts_engine", return_value=mock_engine
+        ) as mock_inner:
             result = create_streaming_tts_engine(
-                engine="cosyvoice_stream", host="h", port=5000, mock_mode=True,
+                engine="cosyvoice_stream",
+                host="h",
+                port=5000,
+                mock_mode=True,
             )
             assert result is mock_engine
             cfg = mock_inner.call_args[0][0]
@@ -163,9 +174,14 @@ class TestEngineBuilderFunctions:
 
     def test_create_zero_shot_clone_engine_builds_config(self):
         mock_engine = Mock(spec=TTSEngine)
-        with patch("src.audiobook_studio.tts.zero_shot_clone.create_zero_shot_clone_engine", return_value=mock_engine) as mock_inner:
+        with patch(
+            "src.audiobook_studio.tts.zero_shot_clone.create_zero_shot_clone_engine", return_value=mock_engine
+        ) as mock_inner:
             result = create_zero_shot_clone_engine(
-                engine="xtts_v2", host="h", port=5010, mock_mode=True,
+                engine="xtts_v2",
+                host="h",
+                port=5010,
+                mock_mode=True,
             )
             assert result is mock_engine
             cfg = mock_inner.call_args[0][0]
@@ -190,12 +206,15 @@ class TestCreateConfiguredRegistry:
         # real KokoroBackend constructor probes the model file. Patch both so the mock
         # is used even if port_factory/kokoro_backend were reloaded by an earlier test
         # (which would otherwise leave a stale module-level reference).
-        with patch(
-            "src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend",
-            return_value=mock_engine,
-        ), patch(
-            "src.audiobook_studio.tts.kokoro_backend.KokoroBackend",
-            return_value=mock_engine,
+        with (
+            patch(
+                "src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend",
+                return_value=mock_engine,
+            ),
+            patch(
+                "src.audiobook_studio.tts.kokoro_backend.KokoroBackend",
+                return_value=mock_engine,
+            ),
         ):
             registry = await create_configured_registry({"kokoro": {"output_dir": "./output"}})
         assert isinstance(registry, EngineRegistry)
@@ -213,13 +232,16 @@ class TestBuildConfigFromEnvBranches:
     """Cover _build_config_from_env endpoint-parsing branches (265-288)."""
 
     def test_streaming_endpoints_with_port(self):
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "false",
-            "EDGE_TTS_ENABLED": "false",
-            "COSYVOICE_STREAM_ENDPOINT": "http://cosy:5000",
-            "SEED_TTS_STREAM_ENDPOINT": "http://seed:5001",
-            "MELOTTS_STREAM_ENDPOINT": "http://melo:5002",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "false",
+                "EDGE_TTS_ENABLED": "false",
+                "COSYVOICE_STREAM_ENDPOINT": "http://cosy:5000",
+                "SEED_TTS_STREAM_ENDPOINT": "http://seed:5001",
+                "MELOTTS_STREAM_ENDPOINT": "http://melo:5002",
+            },
+        ):
             config = _build_config_from_env()
             assert config["cosyvoice_stream"]["host"] == "cosy"
             assert config["cosyvoice_stream"]["port"] == 5000
@@ -228,23 +250,29 @@ class TestBuildConfigFromEnvBranches:
 
     def test_streaming_endpoint_no_port_uses_default(self):
         """Schemeless endpoint without port -> default port branch."""
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "false",
-            "EDGE_TTS_ENABLED": "false",
-            "COSYVOICE_STREAM_ENDPOINT": "cosy.example.com",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "false",
+                "EDGE_TTS_ENABLED": "false",
+                "COSYVOICE_STREAM_ENDPOINT": "cosy.example.com",
+            },
+        ):
             config = _build_config_from_env()
             assert config["cosyvoice_stream"]["host"] == "cosy.example.com"
             assert config["cosyvoice_stream"]["port"] == 5000  # default
 
     def test_clone_endpoints_with_port(self):
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "false",
-            "EDGE_TTS_ENABLED": "false",
-            "XTTS_V2_ENDPOINT": "http://xtts:5010",
-            "OPENVOICE_V2_ENDPOINT": "http://ov:5011",
-            "COSYVOICE_CLONE_ENDPOINT": "http://cv:5012",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "false",
+                "EDGE_TTS_ENABLED": "false",
+                "XTTS_V2_ENDPOINT": "http://xtts:5010",
+                "OPENVOICE_V2_ENDPOINT": "http://ov:5011",
+                "COSYVOICE_CLONE_ENDPOINT": "http://cv:5012",
+            },
+        ):
             config = _build_config_from_env()
             assert config["xtts_v2"]["host"] == "xtts"
             assert config["xtts_v2"]["port"] == 5010
@@ -252,11 +280,14 @@ class TestBuildConfigFromEnvBranches:
             assert config["cosyvoice_clone"]["host"] == "cv"
 
     def test_clone_endpoint_no_port_uses_default(self):
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "false",
-            "EDGE_TTS_ENABLED": "false",
-            "XTTS_V2_ENDPOINT": "xtts-host",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "false",
+                "EDGE_TTS_ENABLED": "false",
+                "XTTS_V2_ENDPOINT": "xtts-host",
+            },
+        ):
             config = _build_config_from_env()
             assert config["xtts_v2"]["host"] == "xtts-host"
             assert config["xtts_v2"]["port"] == 5010  # default
@@ -341,12 +372,14 @@ class TestEnginePortAdapter:
 
         engine = _make_engine(
             output_dir=str(tmp_path),
-            synthesize=AsyncMock(return_value=TTSTaskResult(
-                task_id="task1",
-                status=TTSStatus.DONE,
-                audio_path=str(audio_file),
-                duration_ms=100,
-            )),
+            synthesize=AsyncMock(
+                return_value=TTSTaskResult(
+                    task_id="task1",
+                    status=TTSStatus.DONE,
+                    audio_path=str(audio_file),
+                    duration_ms=100,
+                )
+            ),
         )
 
         try:
@@ -371,11 +404,13 @@ class TestEnginePortAdapter:
         """_run_synthesis engine FAILED status branch."""
         engine = _make_engine(
             output_dir=str(tmp_path),
-            synthesize=AsyncMock(return_value=TTSTaskResult(
-                task_id="task_fail",
-                status=TTSStatus.FAILED,
-                error_message="boom",
-            )),
+            synthesize=AsyncMock(
+                return_value=TTSTaskResult(
+                    task_id="task_fail",
+                    status=TTSStatus.FAILED,
+                    error_message="boom",
+                )
+            ),
         )
 
         try:
@@ -392,12 +427,14 @@ class TestEnginePortAdapter:
         """_run_synthesis DONE but file missing branch."""
         engine = _make_engine(
             output_dir=str(tmp_path),
-            synthesize=AsyncMock(return_value=TTSTaskResult(
-                task_id="task_missing",
-                status=TTSStatus.DONE,
-                audio_path=str(tmp_path / "nonexistent.wav"),
-                duration_ms=10,
-            )),
+            synthesize=AsyncMock(
+                return_value=TTSTaskResult(
+                    task_id="task_missing",
+                    status=TTSStatus.DONE,
+                    audio_path=str(tmp_path / "nonexistent.wav"),
+                    duration_ms=10,
+                )
+            ),
         )
 
         try:
@@ -460,8 +497,10 @@ class TestEnginePortAdapter:
             await gate.wait()
             Path(output_path).write_bytes(b"RIFF")
             return TTSTaskResult(
-                task_id="x", status=TTSStatus.DONE,
-                audio_path=str(output_path), duration_ms=1,
+                task_id="x",
+                status=TTSStatus.DONE,
+                audio_path=str(output_path),
+                duration_ms=1,
             )
 
         engine = _make_engine(output_dir=str(tmp_path), synthesize=slow_synth)
@@ -514,6 +553,7 @@ class TestGlobalRegistryHelpers:
 
     def test_sregister_engine_sync(self, di_registry):
         import asyncio
+
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "reg_sync"
 
@@ -543,6 +583,7 @@ class TestGlobalRegistryHelpers:
 
     def test_scleanup_global_registry(self, di_registry):
         import asyncio
+
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "to_scleanup"
         mock_engine.close = AsyncMock()

@@ -6,10 +6,10 @@ to succeed in environments where heavy optional dependencies are not installed.
 DO NOT add test fixtures here - they belong in tests/conftest.py
 """
 
-import os
-import sys
 import importlib.abc
 import importlib.util
+import os
+import sys
 from unittest.mock import MagicMock
 
 
@@ -58,9 +58,7 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
             return None
         if cspec is None or cspec.origin is None:
             return None
-        return importlib.util.spec_from_loader(
-            name, _CanonicalAliasLoader(canonical), origin=cspec.origin
-        )
+        return importlib.util.spec_from_loader(name, _CanonicalAliasLoader(canonical), origin=cspec.origin)
 
 
 sys.meta_path.insert(0, _AliasFinder())
@@ -202,6 +200,7 @@ if not DSPY_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════
 # Mock heavy optional dependencies that trigger import chains
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _install_canonical_torch_mock():
     """Install/repair the mocked ``torch`` with a valid ``__spec__``.
@@ -385,14 +384,17 @@ sys.modules["celery.states"].RETRY = "RETRY"
 sys.modules["celery.states"].STARTED = "STARTED"
 sys.modules["celery.states"].SUCCESS = "SUCCESS"
 
+
 # Create a proper Celery mock that returns a task with string id
 class MockAsyncResult:
     def __init__(self, task_id="test-task-id-12345"):
         self.id = task_id
 
+
 # Provide a fake Task class that can be subclassed
 class FakeCeleryTask:
     """Fake Task class that mimics celery.Task for testing."""
+
     def __init__(self):
         self.request = MagicMock()
         self.request.id = "test-task-id-12345"
@@ -403,32 +405,36 @@ class FakeCeleryTask:
         self.retry_jitter = True
         self.acks_late = True
         self.reject_on_worker_lost = True
-    
+
     def retry(self, exc=None, *args, **kwargs):
         """Mock retry method."""
         raise exc
-    
+
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Mock on_failure callback."""
         pass
-    
+
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         """Mock on_retry callback."""
         pass
-    
+
     def on_success(self, retval, task_id, args, kwargs):
         """Mock on_success callback."""
         pass
 
+
 class MockCeleryTask:
     def __init__(self, func):
         self.func = func
+
     def delay(self, *args, **kwargs):
         return MagicMock(id="test-task-id-12345")
+
     def __call__(self, *args, **kwargs):
         # In mock mode, just call the underlying function with MOCK_LLM=true
         os.environ["MOCK_LLM"] = "true"
         return self.func(*args, **kwargs)
+
 
 mock_celery_app = MagicMock()
 mock_celery_app.AsyncResult.return_value = MockAsyncResult()
@@ -442,6 +448,7 @@ sys.modules["celery"].Task = FakeCeleryTask  # Use proper fake Task class instea
 
 # Also patch celery_app module to use the fake Task
 import types
+
 mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
 mock_celery_module.celery_app = mock_celery_app
 mock_celery_module.celery_app.Task = FakeCeleryTask
@@ -449,6 +456,7 @@ sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
 
 # Also mock the celery_app module used by the codebase
 import types
+
 mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
 mock_celery_module.celery_app = mock_celery_app
 sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
@@ -520,6 +528,7 @@ class MockLLMProvidersConfig:
                 max_daily_cost_usd=10.0,
             )
         ]
+
         # Provide real PromptCompressionConfig values instead of MagicMock
         class MockPromptCompression:
             max_input_tokens = 4000
@@ -574,15 +583,16 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
     mock_config_loader = sys.modules[module_name]
     # Create an iterable StageName enum mock for router.stage_configs iteration
     from enum import Enum
+
     class MockStageName(str, Enum):
-        EXTRACT = 'extract'
-        ANALYZE = 'analyze'
-        ANNOTATE = 'annotate'
-        ANNOTATE_PARAGRAPH = 'annotate_paragraph'
-        EDIT = 'edit'
-        ROUTE = 'route'
-        JUDGE = 'judge'
-        TRANSLATE = 'translate'
+        EXTRACT = "extract"
+        ANALYZE = "analyze"
+        ANNOTATE = "annotate"
+        ANNOTATE_PARAGRAPH = "annotate_paragraph"
+        EDIT = "edit"
+        ROUTE = "route"
+        JUDGE = "judge"
+        TRANSLATE = "translate"
 
     mock_config_loader.LLMProvidersConfig = MockLLMProvidersConfig
     mock_config_loader.ProviderType = MagicMock()
@@ -755,10 +765,7 @@ def reset_redis_url():
     fix for that one pollutant (not a blanket env reset, which broke other tests).
     """
     yield
-    if (
-        os.environ.get("REDIS_URL") == "redis://localhost:6379/1"
-        and "TEST_REDIS_URL" not in os.environ
-    ):
+    if os.environ.get("REDIS_URL") == "redis://localhost:6379/1" and "TEST_REDIS_URL" not in os.environ:
         os.environ.pop("REDIS_URL", None)
 
 

@@ -568,15 +568,11 @@ class TestSelfIterationMockMode:
         assert _resolve_mock_mode(True) is True
         assert _resolve_mock_mode(False) is False
 
-    def test_run_stage_with_prompt_version_logs_real_llm_when_mock_off(
-        self, monkeypatch, tmp_path, caplog
-    ):
+    def test_run_stage_with_prompt_version_logs_real_llm_when_mock_off(self, monkeypatch, tmp_path, caplog):
         """SELF_ITERATION_MOCK=false → pipeline gets mock_mode=False + REAL-LLM log."""
         import logging
 
-        from src.audiobook_studio.feedback.promotion_gate import (
-            _run_stage_with_prompt_version,
-        )
+        from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
         from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput
 
         monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
@@ -625,19 +621,13 @@ class TestSelfIterationMockMode:
         # The live LLM path must be taken (mock_mode=False propagated to pipeline).
         assert captured["mock_mode"] is False
         # Explicit REAL-LLM record must be emitted.
-        assert any(
-            "REAL-LLM" in rec.message for rec in caplog.records
-        ), [rec.message for rec in caplog.records]
+        assert any("REAL-LLM" in rec.message for rec in caplog.records), [rec.message for rec in caplog.records]
 
-    def test_run_stage_with_prompt_version_logs_mock_when_mock_on(
-        self, monkeypatch, tmp_path, caplog
-    ):
+    def test_run_stage_with_prompt_version_logs_mock_when_mock_on(self, monkeypatch, tmp_path, caplog):
         """Default (SELF_ITERATION_MOCK unset/true) → mock_mode=True + MOCK log."""
         import logging
 
-        from src.audiobook_studio.feedback.promotion_gate import (
-            _run_stage_with_prompt_version,
-        )
+        from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
         from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput
 
         monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
@@ -682,9 +672,7 @@ class TestSelfIterationMockMode:
                 )
 
         assert captured["mock_mode"] is True
-        assert any("MOCK run" in rec.message for rec in caplog.records), [
-            rec.message for rec in caplog.records
-        ]
+        assert any("MOCK run" in rec.message for rec in caplog.records), [rec.message for rec in caplog.records]
         # In mock mode no REAL-LLM record should be emitted.
         assert not any("REAL-LLM" in rec.message for rec in caplog.records)
 

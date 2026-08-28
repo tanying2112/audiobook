@@ -49,11 +49,12 @@ async def test_piper_unavailable_honest_when_no_binary(monkeypatch):
 async def test_status_includes_piper_fields(monkeypatch):
     """/status returns piper_available / piper_model_loaded (defaults to False)."""
     monkeypatch.delenv("ENABLE_LOCAL_TTS", raising=False)
-    with patch(
-        "src.audiobook_studio.api.tts_voices.detect_piper_availability",
-        return_value=(False, {"reason": "binary_not_found"}),
-    ), patch(
-        "edge_tts.list_voices", new=AsyncMock(side_effect=Exception("offline"))
+    with (
+        patch(
+            "src.audiobook_studio.api.tts_voices.detect_piper_availability",
+            return_value=(False, {"reason": "binary_not_found"}),
+        ),
+        patch("edge_tts.list_voices", new=AsyncMock(side_effect=Exception("offline"))),
     ):
         status = await tv.get_tts_status()
         assert hasattr(status, "piper_available")
@@ -65,11 +66,12 @@ async def test_status_includes_piper_fields(monkeypatch):
 async def test_status_piper_available_sets_recommended(monkeypatch):
     """When Piper is available, it becomes the recommended engine."""
     monkeypatch.delenv("ENABLE_LOCAL_TTS", raising=False)
-    with patch(
-        "src.audiobook_studio.api.tts_voices.detect_piper_availability",
-        return_value=(True, {"binary": "/usr/bin/piper", "model": "m.onnx"}),
-    ), patch(
-        "edge_tts.list_voices", new=AsyncMock(side_effect=Exception("offline"))
+    with (
+        patch(
+            "src.audiobook_studio.api.tts_voices.detect_piper_availability",
+            return_value=(True, {"binary": "/usr/bin/piper", "model": "m.onnx"}),
+        ),
+        patch("edge_tts.list_voices", new=AsyncMock(side_effect=Exception("offline"))),
     ):
         status = await tv.get_tts_status()
         assert status.piper_available is True

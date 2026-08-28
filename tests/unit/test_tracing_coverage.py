@@ -1,7 +1,8 @@
 """Unit tests for observability tracing to boost coverage."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.observability import tracing
 

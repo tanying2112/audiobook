@@ -5,10 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from audiobook_studio.tts.engine import (
-    TTSTaskPayload,
-    TTSVoiceAnchor,
-)
+from audiobook_studio.tts.engine import TTSTaskPayload, TTSVoiceAnchor
 from audiobook_studio.tts.piper_backend import PiperBackend, create_piper_backend
 from audiobook_studio.tts.piper_models import detect_piper_availability
 
@@ -79,15 +76,14 @@ async def test_real_initialize_raises_without_binary(tmp_path):
 async def test_real_initialize_downloads_model(tmp_path):
     """When binary present + auto_download, missing model triggers download."""
     model_dir = tmp_path / "models" / "piper"
-    with patch("shutil.which", return_value="/usr/bin/piper"), patch.dict("os.environ", {}, clear=True), patch(
-        "audiobook_studio.tts.piper_backend.ensure_piper_models", return_value=True
-    ) as mock_dl, patch(
-        "audiobook_studio.tts.piper_backend.get_piper_model_path"
-    ) as mock_path:
+    with (
+        patch("shutil.which", return_value="/usr/bin/piper"),
+        patch.dict("os.environ", {}, clear=True),
+        patch("audiobook_studio.tts.piper_backend.ensure_piper_models", return_value=True) as mock_dl,
+        patch("audiobook_studio.tts.piper_backend.get_piper_model_path") as mock_path,
+    ):
         mock_path.return_value = (model_dir / "zh_CN-huayan-medium.onnx", model_dir / "zh_CN-huayan-medium.onnx.json")
-        backend = PiperBackend(
-            mock_mode=False, output_dir=str(tmp_path), auto_download=True, model_dir=str(model_dir)
-        )
+        backend = PiperBackend(mock_mode=False, output_dir=str(tmp_path), auto_download=True, model_dir=str(model_dir))
         await backend.initialize()
         mock_dl.assert_called_once()
         assert backend.is_available is True

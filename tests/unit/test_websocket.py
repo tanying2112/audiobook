@@ -70,9 +70,7 @@ class TestConnectionManager:
 
         # State must remain clean: no orphaned project mapping, no stray connection sets
         assert websocket not in manager.connection_to_project
-        assert manager.active_connections == {}, (
-            "Disconnecting unknown websocket must not create stray project sets"
-        )
+        assert manager.active_connections == {}, "Disconnecting unknown websocket must not create stray project sets"
 
     @pytest.mark.asyncio
     async def test_broadcast_to_project(self):

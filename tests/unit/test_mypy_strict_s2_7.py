@@ -10,6 +10,7 @@ Guards against regressions:
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,10 @@ def test_mypy_strict_passes():
     cfg = REPO_ROOT / "mypy.ini"
     result = subprocess.run(
         [python, "-m", "mypy", "--strict", "src/audiobook_studio",
-         "--config-file", str(cfg)],
+         "--config-file", str(cfg),
+         # Per-process cache dir so concurrent pytest workers don't race on the
+         # shared .mypy_cache (which caused spurious non-hermetic failures).
+         "--cache-dir", tempfile.mkdtemp(prefix="mypy_strict_")],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,

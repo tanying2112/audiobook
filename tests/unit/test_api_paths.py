@@ -61,8 +61,8 @@ def _collect_paths(application: FastAPI) -> set[str]:
 # relative to the included router. We assert the router-relative paths below.
 CRITICAL_PATHS = [
     "/health",
-    "/tts/voices",       # S2-4 Piper probe (priority 0 engine)
-    "/tts/status",       # S2-4 engine availability/status
+    "/tts/voices",  # S2-4 Piper probe (priority 0 engine)
+    "/tts/status",  # S2-4 engine availability/status
     "/tts/stream",
     "/projects/",
     "/paragraphs/",

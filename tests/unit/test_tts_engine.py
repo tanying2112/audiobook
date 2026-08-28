@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+from src.audiobook_studio.di import get_app_container
 from src.audiobook_studio.tts import (
     EngineRegistry,
     KokoroBackend,
@@ -22,20 +23,19 @@ from src.audiobook_studio.tts import (
     VoxCPM2Backend,
 )
 from src.audiobook_studio.tts.engine import (
-    TTSProsody,
     BaseTTSEngine,
-    rate_limiter,
-    tts_retry_policy,
+    EngineRegistry,
+    TTSProsody,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
     TTSVoiceAnchor,
-    probe_tts_engines,
     cleanup_all_engines,
     initialize_all_engines,
+    probe_tts_engines,
+    rate_limiter,
+    tts_retry_policy,
 )
-from src.audiobook_studio.di import get_app_container
-from src.audiobook_studio.tts.engine import EngineRegistry
 from src.audiobook_studio.tts.kokoro_backend import create_kokoro_backend
 from src.audiobook_studio.tts.voxcpm2_backend import create_voxcpm2_backend
 
@@ -290,6 +290,8 @@ class TestGlobalRegistry:
 
         # Non-existent
         assert registry.get("nonexistent") is None
+
+
 class TestKokoroBackend:
     """Test KokoroBackend class with deep assertions."""
 
@@ -789,7 +791,9 @@ class TestProbeTtsEngines:
     def _fake_client(status_code: int = 200, error: BaseException | None = None) -> MagicMock:
         """Build an httpx.AsyncClient(context-manager) stand-in for the probe."""
         client = MagicMock()
-        client.get = AsyncMock(side_effect=error) if error else AsyncMock(return_value=SimpleNamespace(status_code=status_code))
+        client.get = (
+            AsyncMock(side_effect=error) if error else AsyncMock(return_value=SimpleNamespace(status_code=status_code))
+        )
         ctx = MagicMock()
         ctx.__aenter__.return_value = client
         ctx.__aexit__ = AsyncMock(return_value=False)
@@ -830,8 +834,10 @@ class TestProbeTtsEngines:
         monkeypatch.setenv("KOKORO_MODEL_PATH", str(model_dir / "kokoro-v1.0.onnx"))
         # Mock KokoroBackend.warmup to return True (simulating successful warmup < 100ms)
         import src.audiobook_studio.tts.kokoro_backend as kokoro_module
+
         async def mock_warmup(self):
             return True
+
         monkeypatch.setattr(kokoro_module.KokoroBackend, "warmup", mock_warmup)
 
         result = asyncio.run(probe_tts_engines(timeout=1.0))

@@ -76,8 +76,7 @@ def init_metrics(
         # MeterProvider instance"). Build a no-op provider so metric creation
         # never crashes downstream.
         logger.warning(
-            "OpenTelemetry Prometheus reader unavailable (%s); using no-op "
-            "MeterProvider",
+            "OpenTelemetry Prometheus reader unavailable (%s); using no-op " "MeterProvider",
             exc,
         )
         _meter_provider = MeterProvider(resource=resource)
@@ -208,18 +207,14 @@ def _get_core_metrics() -> Dict[str, Any]:
             "http_request_duration_seconds",
             "HTTP request latency in seconds",
             "s",
-            explicit_bucket_boundaries_advisory=[
-                0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0
-            ],
+            explicit_bucket_boundaries_advisory=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
         ),
         # Pipeline stage metrics
         "pipeline_stage_duration_seconds": meter.create_histogram(
             "pipeline_stage_duration_seconds",
             "Pipeline stage execution latency in seconds",
             "s",
-            explicit_bucket_boundaries_advisory=[
-                0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0
-            ],
+            explicit_bucket_boundaries_advisory=[0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0],
         ),
         # Queue depth metrics
         "queue_depth": meter.create_up_down_counter(
@@ -237,9 +232,7 @@ def _get_core_metrics() -> Dict[str, Any]:
             "tts_synthesis_duration_seconds",
             "TTS synthesis latency in seconds",
             "s",
-            explicit_bucket_boundaries_advisory=[
-                0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0
-            ],
+            explicit_bucket_boundaries_advisory=[0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
         ),
         # LLM metrics
         "llm_tokens_total": meter.create_counter(
@@ -251,9 +244,7 @@ def _get_core_metrics() -> Dict[str, Any]:
             "llm_request_duration_seconds",
             "LLM API request latency in seconds",
             "s",
-            explicit_bucket_boundaries_advisory=[
-                0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0
-            ],
+            explicit_bucket_boundaries_advisory=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0],
         ),
         # Cost metrics (P1-3)
         "cost_usd_daily": meter.create_counter(
@@ -337,30 +328,42 @@ def record_http_request(method: str, path: str, status_code: int, duration_secon
     """Record HTTP request metrics."""
     metrics = _get_core_metrics()
     status_str = str(status_code)
-    metrics["http_requests_total"].add(1, attributes={
-        "method": method,
-        "path": path,
-        "status_code": status_str,
-    })
-    metrics["http_request_duration_seconds"].record(duration_seconds, attributes={
-        "method": method,
-        "path": path,
-        "status_code": status_str,
-    })
-    if status_code >= 500:
-        metrics["http_errors_total"].add(1, attributes={
+    metrics["http_requests_total"].add(
+        1,
+        attributes={
             "method": method,
             "path": path,
-        })
+            "status_code": status_str,
+        },
+    )
+    metrics["http_request_duration_seconds"].record(
+        duration_seconds,
+        attributes={
+            "method": method,
+            "path": path,
+            "status_code": status_str,
+        },
+    )
+    if status_code >= 500:
+        metrics["http_errors_total"].add(
+            1,
+            attributes={
+                "method": method,
+                "path": path,
+            },
+        )
 
 
 def record_pipeline_stage(stage: str, duration_seconds: float, success: bool = True) -> None:
     """Record pipeline stage duration."""
     metrics = _get_core_metrics()
-    metrics["pipeline_stage_duration_seconds"].record(duration_seconds, attributes={
-        "stage": stage,
-        "success": str(success).lower(),
-    })
+    metrics["pipeline_stage_duration_seconds"].record(
+        duration_seconds,
+        attributes={
+            "stage": stage,
+            "success": str(success).lower(),
+        },
+    )
     if not success:
         metrics["pipeline_failures_total"].add(1, attributes={"stage": stage})
 
@@ -368,13 +371,19 @@ def record_pipeline_stage(stage: str, duration_seconds: float, success: bool = T
 def record_tts_synthesis(engine: str, status: str, duration_seconds: float, characters: int = 0) -> None:
     """Record TTS synthesis metrics."""
     metrics = _get_core_metrics()
-    metrics["tts_synthesis_total"].add(1, attributes={
-        "engine": engine,
-        "status": status,
-    })
-    metrics["tts_synthesis_duration_seconds"].record(duration_seconds, attributes={
-        "engine": engine,
-    })
+    metrics["tts_synthesis_total"].add(
+        1,
+        attributes={
+            "engine": engine,
+            "status": status,
+        },
+    )
+    metrics["tts_synthesis_duration_seconds"].record(
+        duration_seconds,
+        attributes={
+            "engine": engine,
+        },
+    )
     if characters > 0:
         # Also record characters (existing metric)
         pass  # Characters tracked via existing tts_characters_used_total
@@ -383,33 +392,45 @@ def record_tts_synthesis(engine: str, status: str, duration_seconds: float, char
 def record_llm_tokens(model: str, token_type: str, count: int) -> None:
     """Record LLM token usage (token_type: 'input' or 'output')."""
     metrics = _get_core_metrics()
-    metrics["llm_tokens_total"].add(count, attributes={
-        "model": model,
-        "type": token_type,
-    })
+    metrics["llm_tokens_total"].add(
+        count,
+        attributes={
+            "model": model,
+            "type": token_type,
+        },
+    )
 
 
 def record_llm_cost(cost_usd: float, provider: str, category: str = "llm") -> None:
     """Record LLM cost in USD."""
     metrics = _get_core_metrics()
-    metrics["llm_cost_usd_total"].add(cost_usd, attributes={
-        "provider": provider,
-        "category": category,
-    })
+    metrics["llm_cost_usd_total"].add(
+        cost_usd,
+        attributes={
+            "provider": provider,
+            "category": category,
+        },
+    )
     # Also track daily cost
-    metrics["cost_usd_daily"].add(cost_usd, attributes={
-        "provider": provider,
-        "category": category,
-    })
+    metrics["cost_usd_daily"].add(
+        cost_usd,
+        attributes={
+            "provider": provider,
+            "category": category,
+        },
+    )
 
 
 def record_llm_request(model: str, duration_seconds: float, success: bool = True) -> None:
     """Record LLM request duration."""
     metrics = _get_core_metrics()
-    metrics["llm_request_duration_seconds"].record(duration_seconds, attributes={
-        "model": model,
-        "success": str(success).lower(),
-    })
+    metrics["llm_request_duration_seconds"].record(
+        duration_seconds,
+        attributes={
+            "model": model,
+            "success": str(success).lower(),
+        },
+    )
     if not success:
         metrics["llm_errors_total"].add(1, attributes={"model": model})
 

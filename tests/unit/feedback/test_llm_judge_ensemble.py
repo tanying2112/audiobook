@@ -12,10 +12,10 @@ import pytest
 from src.audiobook_studio.feedback.ab_test import ABTestReport, ABTestSample, run_ab_test
 from src.audiobook_studio.feedback.llm_judge import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    RUBRIC_DIMENSIONS,
     DimensionScore,
     JudgeResult,
     LLMJudgeEnsemble,
-    RUBRIC_DIMENSIONS,
     RubricScores,
 )
 from src.audiobook_studio.llm.client import LLMCallResult
@@ -59,6 +59,7 @@ def _factory_for(per_model: dict) -> callable:
 
 # ── Rubric / schema ─────────────────────────────────────────────────────────
 
+
 def test_rubric_dimensions_are_the_four_required():
     assert RUBRIC_DIMENSIONS == [
         "faithfulness",
@@ -77,6 +78,7 @@ def test_rubric_scores_defaults_are_valid_1_5():
 
 
 # ── Parallel multi-model + majority vote ────────────────────────────────────
+
 
 def test_ensemble_all_agree_b_wins():
     per_model = {
@@ -152,6 +154,7 @@ def test_ensemble_dimension_averages_reported():
 
 # ── Fallback when no judge can produce a verdict ─────────────────────────────
 
+
 def test_ensemble_all_models_fail_raises():
     def boom_factory(model):
         client = MagicMock()
@@ -176,15 +179,14 @@ def test_create_llm_judge_fn_falls_back_to_heuristic_when_ensemble_down(monkeypa
         lambda **kw: boom_factory(kw.get("model")),
     )
     judge_fn = create_llm_judge_fn("edit_for_tts")
-    score_a, score_b, rationale = judge_fn(
-        {"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300}
-    )
+    score_a, score_b, rationale = judge_fn({"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300})
     assert 0.0 <= score_a <= 1.0
     assert 0.0 <= score_b <= 1.0
     assert "heuristic" in rationale  # deprecated _score_output fallback used
 
 
 # ── End-to-end: A/B report from ensemble (non-heuristic) scores ──────────────
+
 
 def _make_samples(n: int, stage: str = "edit_for_tts") -> list:
     samples = []
@@ -209,9 +211,7 @@ def test_ab_report_uses_ensemble_non_heuristic():
     per_model = {f"m{i}": _rubric_scores(2.0, 4.0, "B") for i in range(3)}
 
     def judge_fn(input_data, output_a, output_b):
-        ens = LLMJudgeEnsemble(
-            models=list(per_model), client_factory=_factory_for(per_model)
-        )
+        ens = LLMJudgeEnsemble(models=list(per_model), client_factory=_factory_for(per_model))
         r = ens.judge(input_data, output_a, output_b, "edit_for_tts")
         return r.score_a, r.score_b, r.rationale
 

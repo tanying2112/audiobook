@@ -139,9 +139,7 @@ class LLMJudgeEnsemble:
         # Default uses the unified LLM client via the llm module (honours MOCK_LLM env
         # and any monkeypatch of src.audiobook_studio.llm.create_client).
         self.client_factory = client_factory or (
-            lambda model: _llm_module.create_client(
-                model=model, temperature=temperature, max_tokens=max_tokens
-            )
+            lambda model: _llm_module.create_client(model=model, temperature=temperature, max_tokens=max_tokens)
         )
 
     def judge(
@@ -176,8 +174,7 @@ class LLMJudgeEnsemble:
 
         if not judgments:
             raise ValueError(
-                f"LLM Judge Ensemble failed: all {len(self.models)} model(s) raised "
-                f"errors: {'; '.join(errors)}"
+                f"LLM Judge Ensemble failed: all {len(self.models)} model(s) raised " f"errors: {'; '.join(errors)}"
             )
 
         return self._aggregate(judgments)
@@ -199,9 +196,7 @@ class LLMJudgeEnsemble:
         )
         scores = result.output
         if not isinstance(scores, RubricScores):
-            raise TypeError(
-                f"Judge model {model} returned unexpected output type: {type(scores)}"
-            )
+            raise TypeError(f"Judge model {model} returned unexpected output type: {type(scores)}")
         score_a, score_b = _model_normalized_scores(scores)
         winner = scores.winner if scores.winner in ("A", "B", "tie") else "tie"
         return ModelJudgment(
@@ -262,9 +257,7 @@ class LLMJudgeEnsemble:
             f"confidence={confidence:.2f}, n_models={len(judgments)})"
         ]
         for j in judgments:
-            parts.append(
-                f"[{j.model}] -> {j.winner} (A={j.score_a:.2f}, B={j.score_b:.2f})"
-            )
+            parts.append(f"[{j.model}] -> {j.winner} (A={j.score_a:.2f}, B={j.score_b:.2f})")
         return "; ".join(parts)
 
     def _build_prompt(

@@ -113,9 +113,7 @@ def _compute_text_quality_metrics(
     if "edited_text" in actual_output and "edited_text" in expected_output:
         edited_text = actual_output["edited_text"]
         expected_text = expected_output["edited_text"]
-        metrics["text_similarity"] = _compute_output_similarity(
-            {"text": edited_text}, {"text": expected_text}
-        )
+        metrics["text_similarity"] = _compute_output_similarity({"text": edited_text}, {"text": expected_text})
 
         # Semantic coherence (if we have multiple paragraphs, but we only have one here)
         # Use fallback character n-gram similarity
@@ -127,9 +125,7 @@ def _compute_text_quality_metrics(
             # Penalize too many or too few changes
             expected_changes = len(expected_output.get("changes_made", []))
             if expected_changes > 0:
-                metrics["change_ratio"] = min(
-                    metrics["change_count"] / max(expected_changes, 1), 2.0
-                )
+                metrics["change_ratio"] = min(metrics["change_count"] / max(expected_changes, 1), 2.0)
             else:
                 metrics["change_ratio"] = 1.0 if metrics["change_count"] == 0 else 0.5
 
@@ -153,9 +149,7 @@ def _compute_audio_quality_metrics(
 
     # For quality_check stage, check quality judgment scores
     if "overall_score" in actual_output and "overall_score" in expected_output:
-        metrics["overall_score_match"] = 1.0 - abs(
-            actual_output["overall_score"] - expected_output["overall_score"]
-        )
+        metrics["overall_score_match"] = 1.0 - abs(actual_output["overall_score"] - expected_output["overall_score"])
 
         # Check individual quality dimensions
         for dim in [
@@ -188,9 +182,7 @@ def _compute_structure_quality_metrics(
         "global_style_notes",
     ]:
         if key in actual_output and key in expected_output:
-            metrics[f"{key}_similarity"] = _compute_output_similarity(
-                actual_output[key], expected_output[key]
-            )
+            metrics[f"{key}_similarity"] = _compute_output_similarity(actual_output[key], expected_output[key])
 
     return metrics
 
@@ -222,9 +214,7 @@ def _aggregate_quality_score(metrics: Dict[str, float], stage_type: str) -> floa
         # Add weights for structural elements if present
         for key in metrics:
             if key.endswith("_similarity") and key != "output_similarity":
-                weights[key] = 0.5 / max(
-                    len([k for k in metrics if k.endswith("_similarity")]), 1
-                )
+                weights[key] = 0.5 / max(len([k for k in metrics if k.endswith("_similarity")]), 1)
     elif stage_type == "audio_synthesis" or stage_type == "audio_quality":
         weights = {
             "output_similarity": 0.4,

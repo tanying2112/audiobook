@@ -691,7 +691,7 @@ if __name__ == "__main__":  # pragma: no cover
     ]
 
     result = review_annotations(
-        project_id=1,
+        project_id=123,
         chapter_index=1,
         paragraphs=test_paragraphs,
         character_voice_map=test_voice_map,

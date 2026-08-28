@@ -8,11 +8,13 @@ async fake so no real database is required.
 
 from __future__ import annotations
 
-import pytest
-from sqlalchemy.exc import NoResultFound
 from unittest.mock import AsyncMock
 
+import pytest
+from sqlalchemy.exc import NoResultFound
+
 from src.audiobook_studio.api import provider_router as pr
+from src.audiobook_studio.exceptions import DomainError
 from src.audiobook_studio.schemas.provider import (
     ModelCreate,
     ModelOut,
@@ -21,7 +23,6 @@ from src.audiobook_studio.schemas.provider import (
     ProviderOut,
     ProviderUpdate,
 )
-from src.audiobook_studio.exceptions import DomainError
 
 
 class FakeResult:
@@ -121,6 +122,7 @@ def _patch_router_bridge(monkeypatch):
 
 # ── Provider CRUD ────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_create_provider():
     db = FakeDB([FakeResult([])])
@@ -193,6 +195,7 @@ async def test_delete_provider_no_models_hard_delete():
 
 
 # ── Model CRUD ──────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_create_model():
@@ -269,7 +272,9 @@ async def test_update_model_not_found():
 @pytest.mark.asyncio
 async def test_update_model_name_conflict():
     # model found, conflict exists for the new name
-    db = FakeDB([FakeResult([_model(name="m1", mid=1)]), FakeResult([_model(name="m2", mid=2)]), FakeResult([_provider()])])
+    db = FakeDB(
+        [FakeResult([_model(name="m1", mid=1)]), FakeResult([_model(name="m2", mid=2)]), FakeResult([_provider()])]
+    )
     payload = ModelUpdate(name="m2")
     with pytest.raises(DomainError):
         await pr.update_model(1, 1, payload, db=db)
@@ -290,6 +295,7 @@ async def test_delete_model_not_found():
 
 
 # ── Hot reload ───────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_reload_providers():

@@ -142,9 +142,7 @@ def _get_http_metrics() -> tuple[Histogram[float], Counter[int], Counter[int]]:
     return duration, requests, errors
 
 
-def _record_http_metrics(
-    method: str, path: str, status_code: int, duration_seconds: float
-) -> None:
+def _record_http_metrics(method: str, path: str, status_code: int, duration_seconds: float) -> None:
     """Record one HTTP request's duration, count, and (if >=500) error."""
     dur, req, err = _get_http_metrics()
     attrs: dict[str, Any] = {
@@ -179,8 +177,8 @@ def instrument_app(
         exclude_paths: Paths to exclude from instrumentation
     """
     # Initialize tracing
+    from .metrics import create_slo_metrics, init_metrics
     from .tracing import init_tracing
-    from .metrics import init_metrics, create_slo_metrics
 
     init_tracing(
         service_name=service_name,

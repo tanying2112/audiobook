@@ -236,9 +236,7 @@ class SemanticCache:
         max_size: Optional[int] = None,
     ) -> None:
         self.backend = (backend or _cache_backend()).lower()
-        self.similarity_threshold = (
-            similarity_threshold if similarity_threshold is not None else _cache_similarity()
-        )
+        self.similarity_threshold = similarity_threshold if similarity_threshold is not None else _cache_similarity()
         self.ttl = ttl if ttl is not None else _cache_ttl()
         self.max_size = max_size if max_size is not None else _cache_max_size()
         self.enabled = True
@@ -266,9 +264,7 @@ class SemanticCache:
             import redis as _redis_lib  # type: ignore
 
             url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            client = _redis_lib.Redis.from_url(
-                url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
-            )
+            client = _redis_lib.Redis.from_url(url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
             client.ping()
             return client
         except Exception as e:  # pragma: no cover - depends on environment

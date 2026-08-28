@@ -21,15 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .engine import (
-    BaseTTSEngine,
-    SynthesisResult,
-    TTSEngine,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    VoiceInfo,
-)
+from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 from .piper_models import (
     DEFAULT_PIPER_VOICE,
     PIPER_DEFAULT_MODEL_DIR,
@@ -121,12 +113,7 @@ class PiperBackend(BaseTTSEngine):
             return
 
         # 1) Binary
-        bin_path = (
-            self.piper_bin
-            or os.environ.get("PIPER_BIN")
-            or shutil.which("piper")
-            or shutil.which("piper-tts")
-        )
+        bin_path = self.piper_bin or os.environ.get("PIPER_BIN") or shutil.which("piper") or shutil.which("piper-tts")
         if not bin_path or not (Path(bin_path).exists() or shutil.which(bin_path)):
             raise RuntimeError(
                 "Piper binary not found. Install piper-tts (`pip install piper-tts`) "
@@ -226,9 +213,7 @@ class PiperBackend(BaseTTSEngine):
             txt_path.unlink(missing_ok=True)
 
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"Piper synthesis failed (exit {proc.returncode}): {proc.stderr.strip()}"
-            )
+            raise RuntimeError(f"Piper synthesis failed (exit {proc.returncode}): {proc.stderr.strip()}")
 
         # Convert to MP3 if requested.
         if output_path.suffix == ".mp3":

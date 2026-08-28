@@ -7,17 +7,10 @@ test-specific fixtures and mocks that are needed by unit/integration tests.
 # Force numpy to load before hypothesis to avoid isinstance() issues
 # with numpy.ndarray in hypothesis internal code (hypothesis issue #3500+)
 import sys
+
 import numpy as np
+
 _ = np.ndarray  # noqa: F841
-
-import os
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
-# Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
-from tests.conftest_minimal import *  # noqa: F403,F401
 
 # ════════════════════════════════════════════════════════════════════════════
 # Canonical package alias: make `audiobook_studio` resolve to `src.audiobook_studio`
@@ -30,7 +23,7 @@ from tests.conftest_minimal import *  # noqa: F403,F401
 # module gives a single identity for the whole package and all submodules, making
 # isinstance/exceptions order-independent. (The alias only affects THIS process;
 # tests that spawn subprocesses, e.g. test_feedback_import_safety, are unaffected.)
-# 
+#
 # RE-ENABLED: the transient 'missing promotion module' import failure that prompted
 # the original disable is resolved, so the canonical alias is back on. It unifies the
 # bare `audiobook_studio` and `src.audiobook_studio` sys.modules entries so the
@@ -38,7 +31,15 @@ from tests.conftest_minimal import *  # noqa: F403,F401
 # no longer occurs. Tests that spawn subprocesses are unaffected (separate process).
 import importlib
 import importlib.util
+import os
 import sys as _sys
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+# Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
+from tests.conftest_minimal import *  # noqa: F403,F401
 
 
 class _AudiobookStudioAliasLoader:
@@ -272,6 +273,7 @@ def _async_db_path():
     """Create a fresh SQLite database with all tables for each test function."""
     import os
     import tempfile
+
     from sqlalchemy import create_engine
 
     import src.audiobook_studio.models  # noqa: F401 — register all ORM models

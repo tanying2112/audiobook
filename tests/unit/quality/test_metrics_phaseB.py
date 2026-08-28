@@ -14,8 +14,8 @@ import pytest
 
 from src.audiobook_studio.quality import metrics as M
 
-
 # ── Pure helpers ─────────────────────────────────────────────────────────────
+
 
 class _FakeTensor:
     """Duck-typed stand-in for a torch tensor (torch is globally mocked in tests)."""
@@ -50,6 +50,7 @@ def test_cosine_similarity_empty_and_zero_magnitude():
 
 # ── DNSMOS ──────────────────────────────────────────────────────────────────
 
+
 def test_dnsmos_get_model_url(monkeypatch):
     monkeypatch.setenv("DNSMOS_MODEL_URL", "https://example.com/m.onnx")
     m = M.DNSMOSMetric()
@@ -58,18 +59,14 @@ def test_dnsmos_get_model_url(monkeypatch):
 
 def test_dnsmos_compute_mock(monkeypatch):
     m = M.DNSMOSMetric(mock_mode=True)
-    monkeypatch.setattr(
-        m, "_preprocess_audio", lambda p: np.zeros(m.INPUT_LENGTH_SAMPLES, dtype=np.float32)
-    )
+    monkeypatch.setattr(m, "_preprocess_audio", lambda p: np.zeros(m.INPUT_LENGTH_SAMPLES, dtype=np.float32))
     score = m.compute("dummy.wav")
     assert score == m._mock_scores["mos_overall"]
 
 
 def test_dnsmos_compute_detailed_mock(monkeypatch):
     m = M.DNSMOSMetric(mock_mode=True)
-    monkeypatch.setattr(
-        m, "_preprocess_audio", lambda p: np.zeros(m.INPUT_LENGTH_SAMPLES, dtype=np.float32)
-    )
+    monkeypatch.setattr(m, "_preprocess_audio", lambda p: np.zeros(m.INPUT_LENGTH_SAMPLES, dtype=np.float32))
     res = m.compute_detailed("dummy.wav")
     assert res.success is True
     assert res.mos_ovr == m._mock_scores["mos_ovr"]
@@ -101,6 +98,7 @@ def test_dnsmos_ensure_model_download_failure(monkeypatch, tmp_path):
 
 
 # ── ASR WER ─────────────────────────────────────────────────────────────────
+
 
 def test_asr_wer_compute_mock():
     metric = M.ASRWerMetric(backend="whisper", mock_mode=True)
@@ -144,6 +142,7 @@ def test_asr_wer_cer_direct():
 
 # ── Speaker Similarity ──────────────────────────────────────────────────────
 
+
 def test_speaker_sim_compute_mock():
     metric = M.SpeakerSimilarityMetric(backend="ecapa_tdnn", mock_mode=True)
     res = metric.compute("target.wav", reference_audio="ref.wav")
@@ -177,10 +176,10 @@ def test_speaker_sim_backend_factory_unknown():
 
 # ── QualityCheckSuite (orchestrator) ────────────────────────────────────────
 
+
 def _suite_config(thresholds=None, qc=None):
     return {
-        "thresholds": thresholds
-        or {"dnsmos_min": 3.5, "asr_wer_max": 0.05, "speaker_sim_min": 0.85},
+        "thresholds": thresholds or {"dnsmos_min": 3.5, "asr_wer_max": 0.05, "speaker_sim_min": 0.85},
         "quality_check": qc
         or {
             "mock_mode": True,
@@ -239,9 +238,7 @@ def test_suite_register_speaker_success():
 
 
 def test_suite_register_speaker_no_backend():
-    config = _suite_config(
-        qc={"mock_mode": True, "speaker_similarity_enabled": False}
-    )
+    config = _suite_config(qc={"mock_mode": True, "speaker_similarity_enabled": False})
     suite = M.QualityCheckSuite(config=config)
     suite._initialize()
     assert suite.register_speaker("spk1", "ref.wav") is False

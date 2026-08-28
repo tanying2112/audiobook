@@ -271,8 +271,13 @@ class TestSceneTagToFilenameMapping:
 
     def test_key_tags_present(self):
         expected = [
-            "雷雨夜", "繁华街道", "酒馆喧闹", "静谧书房",
-            "战场硝烟", "森林鸟鸣", "海浪拍岸",
+            "雷雨夜",
+            "繁华街道",
+            "酒馆喧闹",
+            "静谧书房",
+            "战场硝烟",
+            "森林鸟鸣",
+            "海浪拍岸",
         ]
         for tag in expected:
             assert tag in SCENE_TAG_TO_FILENAME

@@ -468,9 +468,9 @@ class DNSMOSMetric(QualityMetric):
             if sr != self.sample_rate:
                 # 若 numpy 线性重采样够用则用之，避免拉起 ffmpeg；否则落到 ffmpeg 分支
                 try:
-                    from scipy.signal import resample_poly
-
                     from math import gcd
+
+                    from scipy.signal import resample_poly
 
                     g = gcd(int(sr), self.sample_rate)
                     audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
@@ -697,6 +697,7 @@ class UTMOSMetric(QualityMetric):
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         except (FileNotFoundError, PermissionError):
             import tempfile
+
             self.cache_dir = Path(tempfile.gettempdir()) / "audiobook_studio" / "models"
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -726,6 +727,7 @@ class UTMOSMetric(QualityMetric):
         logger.info(f"Downloading UTMOS model from {model_url} to {self.model_path}...")
         try:
             import urllib.request
+
             urllib.request.urlretrieve(model_url, self.model_path)
             logger.info(f"UTMOS model downloaded to {self.model_path}")
             return True
@@ -787,8 +789,9 @@ class UTMOSMetric(QualityMetric):
                 audio = audio.mean(axis=1)  # 多声道 -> 单声道
             if sr != self.sample_rate:
                 try:
-                    from scipy.signal import resample_poly
                     from math import gcd
+
+                    from scipy.signal import resample_poly
 
                     g = gcd(int(sr), self.sample_rate)
                     audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
@@ -807,12 +810,18 @@ class UTMOSMetric(QualityMetric):
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
                 "-y",
-                "-v", "error",
-                "-i", str(audio_path),
-                "-ar", str(self.sample_rate),
-                "-ac", "1",
-                "-f", "f32le",
-                "-acodec", "pcm_f32le",
+                "-v",
+                "error",
+                "-i",
+                str(audio_path),
+                "-ar",
+                str(self.sample_rate),
+                "-ac",
+                "1",
+                "-f",
+                "f32le",
+                "-acodec",
+                "pcm_f32le",
                 "-",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

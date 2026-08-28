@@ -39,9 +39,7 @@ def test_detect_binary_but_no_model_returns_false(tmp_path):
     bin_path = tmp_path / "piper"
     bin_path.write_text("#!/bin/sh\n")
     with patch.dict("os.environ", {}, clear=True), patch("shutil.which", return_value=None):
-        available, detail = pm.detect_piper_availability(
-            binary=str(bin_path), model_dir=tmp_path
-        )
+        available, detail = pm.detect_piper_availability(binary=str(bin_path), model_dir=tmp_path)
         assert available is False
         assert detail["reason"] == "model_not_found"
         assert detail["binary"] == str(bin_path)
@@ -52,9 +50,7 @@ def test_detect_binary_and_model_returns_true(tmp_path):
     bin_path.write_text("#!/bin/sh\n")
     (tmp_path / "zh_CN-huayan-medium.onnx").write_bytes(b"fake-model")
     with patch.dict("os.environ", {}, clear=True), patch("shutil.which", return_value=None):
-        available, detail = pm.detect_piper_availability(
-            binary=str(bin_path), model_dir=tmp_path
-        )
+        available, detail = pm.detect_piper_availability(binary=str(bin_path), model_dir=tmp_path)
         assert available is True
         assert detail["model"].endswith(".onnx")
         assert detail["model_count"] == 1
@@ -63,9 +59,7 @@ def test_detect_binary_and_model_returns_true(tmp_path):
 def test_detect_respects_local_tts_disabled(tmp_path):
     (tmp_path / "zh_CN-huayan-medium.onnx").write_bytes(b"fake-model")
     with patch.dict("os.environ", {"ENABLE_LOCAL_TTS": "false"}, clear=True), patch("shutil.which", return_value=None):
-        available, detail = pm.detect_piper_availability(
-            binary="/usr/bin/piper", model_dir=tmp_path
-        )
+        available, detail = pm.detect_piper_availability(binary="/usr/bin/piper", model_dir=tmp_path)
         assert available is False
         assert detail["reason"] == "local_tts_disabled"
 

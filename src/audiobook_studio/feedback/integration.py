@@ -712,7 +712,7 @@ def collect_pipeline_feedback(
         from src.audiobook_studio.feedback.integration import collect_pipeline_feedback
         from src.audiobook_studio.pipeline.feedback_collector import create_feedback_collector
 
-        collector = create_feedback_collector(project_id=1)
+        collector = create_feedback_collector(project_id=123)
 
         def run_stage(...):
             with collect_pipeline_feedback(collector, "annotate", chapter_index, paragraph_index) as capture:

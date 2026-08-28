@@ -11,13 +11,12 @@ from typing import AsyncGenerator, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, File, Form, UploadFile
-
-from ..exceptions import DomainError
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from ..exceptions import DomainError
 from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
-from ..tts.engine import TTSTaskPayload, TTSProsody, TTSVoiceAnchor
+from ..tts.engine import TTSProsody, TTSTaskPayload, TTSVoiceAnchor
 from ..tts.kokoro_backend import create_kokoro_backend
 from ..tts.piper_models import detect_piper_availability, list_piper_voices
 
@@ -213,6 +212,7 @@ PIPER_VOICES = [
 # Piper=0 (preferred local), Kokoro=1 (fallback local), Edge-TTS=2 (cloud).
 try:
     from ..tts.providers_config import provider_priority_map
+
     _PROVIDER_PRIORITY = provider_priority_map()
 except Exception:  # noqa: BLE001
     _PROVIDER_PRIORITY = {"piper": 0, "kokoro": 1, "edge_tts": 2}
@@ -464,9 +464,7 @@ async def get_tts_status():
     voxcpm2_model_loaded = False
     sherpa_onnx_available = False  # Sherpa-ONNX not yet implemented
 
-    local_engines_available = (
-        piper_available or kokoro_available or voxcpm2_available or sherpa_onnx_available
-    )
+    local_engines_available = piper_available or kokoro_available or voxcpm2_available or sherpa_onnx_available
 
     # Cloud engines - Edge-TTS with real connectivity check
     edge_tts_available = await _check_edge_tts_connectivity()
@@ -704,9 +702,7 @@ async def stream_tts_get(
             stage="tts",
             context={"field": "text"},
         )
-    req = TTSStreamRequest(
-        text=text, voice_id=voice_id, engine=engine, speed=speed, pitch=pitch, volume=volume
-    )
+    req = TTSStreamRequest(text=text, voice_id=voice_id, engine=engine, speed=speed, pitch=pitch, volume=volume)
     return await stream_tts(req)
 
 

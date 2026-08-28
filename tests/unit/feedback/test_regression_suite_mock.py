@@ -25,8 +25,13 @@ def _reset_singleton():
     reset_regression_suite()
 
 
-def _make_failure(stage="edit_for_tts", description="reads wrong speaker", payload=None,
-                  producer_id=None, added_at="2024-01-01T00:00:00"):
+def _make_failure(
+    stage="edit_for_tts",
+    description="reads wrong speaker",
+    payload=None,
+    producer_id=None,
+    added_at="2024-01-01T00:00:00",
+):
     return KnownFailure(
         failure_id="",
         stage=stage,
@@ -50,6 +55,7 @@ def _suite_with_active(n=2):
 
 
 # ── KnownFailure / RegressionVerdict dataclasses ─────────────────────────────
+
 
 def test_known_failure_to_dict_roundtrip():
     f = _make_failure(producer_id="p1")
@@ -78,6 +84,7 @@ def test_regression_verdict_rejected_and_to_dict():
 
 
 # ── construction / properties ────────────────────────────────────────────────
+
 
 def test_init_empty_state():
     s = RegressionSuite()
@@ -114,6 +121,7 @@ def test_digest_is_deterministic_and_content_based():
 
 
 # ── add_failure (append-only) ────────────────────────────────────────────────
+
 
 def test_add_failure_new_returns_known_failure():
     s = RegressionSuite()
@@ -155,6 +163,7 @@ def test_add_failure_duplicate_without_producer_no_index():
 
 # ── retire ──────────────────────────────────────────────────────────────────
 
+
 def test_retire_missing_returns_false():
     s = RegressionSuite()
     assert s.retire("does-not-exist") is False
@@ -168,6 +177,7 @@ def test_retire_existing_returns_true():
 
 
 # ── check_candidate: pass / regress / new failure / error / edge ─────────────
+
 
 def test_check_candidate_empty_suite_passes():
     s = RegressionSuite()
@@ -189,9 +199,7 @@ def test_check_candidate_empty_suite_passes():
 def test_check_candidate_all_pass():
     s = _suite_with_active(3)
     seen = []
-    v = s.check_candidate(
-        "c1", lambda case: (seen.append(case) or (False, None))
-    )
+    v = s.check_candidate("c1", lambda case: (seen.append(case) or (False, None)))
     assert v.passed is True
     assert v.regressed_on == []
     assert v.new_failures_added == []
@@ -236,9 +244,7 @@ def test_check_candidate_regress_and_new_failure_then_dedup():
     active = s.active_failures()[0]
 
     def ef(case):
-        same = _make_failure(
-            stage=case.stage, description=case.description, payload=dict(case.payload)
-        )
+        same = _make_failure(stage=case.stage, description=case.description, payload=dict(case.payload))
         return True, same
 
     v = s.check_candidate("c1", ef)
@@ -306,6 +312,7 @@ def test_check_candidate_returns_regression_verdict_shape():
 
 # ── snapshot ─────────────────────────────────────────────────────────────────
 
+
 def test_snapshot_structure_and_content():
     s = _suite_with_active(2)
     f = s.active_failures()[0]
@@ -319,6 +326,7 @@ def test_snapshot_structure_and_content():
 
 
 # ── module singleton ─────────────────────────────────────────────────────────
+
 
 def test_singleton_lifecycle():
     a = get_regression_suite()

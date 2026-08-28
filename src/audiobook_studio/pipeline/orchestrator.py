@@ -7,8 +7,8 @@ Usage::
 
     from src.audiobook_studio.pipeline.orchestrator import run_stage
 
-    result = run_stage("extract", session, project_id=1, input=...)
-    result = run_stage("annotate", session, project_id=1, chapter_id=1, input=...)
+    result = run_stage("extract", session, project_id=123, input=...)
+    result = run_stage("annotate", session, project_id=123, chapter_id=1, input=...)
 """
 
 import json

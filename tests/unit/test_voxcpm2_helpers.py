@@ -17,13 +17,13 @@ import pytest
 pytestmark = pytest.mark.skip_env_missing
 try:
     import voxcpm  # noqa: F401
+    from src.audiobook_studio.tts.engine import TTSProsody, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
     from src.audiobook_studio.tts.voxcpm2_backend import (
         QUANTIZATION_MODES,
         VOXCPM2_VOICES,
         VoxCPM2Backend,
         create_voxcpm2_backend,
     )
-    from src.audiobook_studio.tts.engine import TTSProsody, TTSVoiceAnchor, TTSTaskPayload, TTSTaskResult
 except Exception:  # noqa: BLE001 - 可选后端缺失/半安装时统一跳过
     pytest.skip("voxcpm optional backend not available", allow_module_level=True)
 
@@ -50,6 +50,7 @@ class TestVoxCPM2BackendInit:
         backend = VoxCPM2Backend()
         backend.mock_mode = True
         import asyncio
+
         asyncio.run(backend.initialize())
         assert backend.is_available is True
 

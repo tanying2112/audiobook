@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
 
 
@@ -204,10 +203,10 @@ class TTSEngine(Protocol):
         payload: TTSTaskPayload,
     ) -> AsyncIterator[bytes]:
         """Stream audio chunks for real-time playback.
-        
+
         Args:
             payload: Synthesis specification
-            
+
         Yields:
             Audio chunks as bytes (raw PCM or encoded format depending on engine)
         """
@@ -296,7 +295,7 @@ class BaseTTSEngine:
         payload: TTSTaskPayload,
     ) -> AsyncIterator[bytes]:
         """Stream audio chunks for real-time playback.
-        
+
         Default implementation raises NotImplementedError.
         Engines that support streaming should override this method.
         """
@@ -463,6 +462,7 @@ class EngineRegistry:
 
         # Merge plugin-registered TTS engine factories
         from ..plugins import get_plugin_manager
+
         plugin_mgr = get_plugin_manager()
         plugin_factories = plugin_mgr.get_tts_engine_factories()
         for engine_name, record in plugin_factories.items():
@@ -576,6 +576,7 @@ def _should_skip_engine(engine_name: str, gpu_enabled: bool) -> bool:
         return False
     try:
         from .providers_config import capability_matrix
+
         cap = capability_matrix().get(engine_name)
         return cap is not None and cap.min_compute == "gpu"
     except Exception:  # noqa: BLE001 — never block engine init on config errors
@@ -586,6 +587,7 @@ async def cleanup_all_engines(registry: Optional["EngineRegistry"] = None) -> No
     """Cleanup all registered engines from the given registry or the default one."""
     if registry is None:
         from ..di import get_app_container
+
         registry = get_app_container().get(EngineRegistry)
     await registry.close_all()
 
@@ -594,6 +596,7 @@ async def initialize_all_engines(registry: Optional["EngineRegistry"] = None) ->
     """Initialize all registered engines from the given registry or the default one."""
     if registry is None:
         from ..di import get_app_container
+
         registry = get_app_container().get(EngineRegistry)
     for engine in registry._engines.values():
         await engine.initialize()
@@ -642,12 +645,12 @@ async def probe_tts_engines(
     # Prefer registered engine's warmup; otherwise create a temporary one for the probe.
     kokoro_warmed_up = False
     kokoro_detail: Dict[str, Any] = {}
-    
+
     # Try registered engine first
     kokoro_engine = None
     if registry is not None:
         kokoro_engine = registry.get("kokoro")
-    
+
     if kokoro_engine is not None:
         # Use registered engine's warmup
         try:
@@ -672,13 +675,22 @@ async def probe_tts_engines(
                 # Create temporary engine and warmup
                 try:
                     from .kokoro_backend import KokoroBackend
+
                     temp_engine = KokoroBackend(model_path=kokoro_path)
                     kokoro_warmed_up = await asyncio.wait_for(temp_engine.warmup(), timeout=0.1)  # 100ms
-                    kokoro_detail = {"source": "temporary_engine", "warmed_up": kokoro_warmed_up, "model_path": kokoro_path}
+                    kokoro_detail = {
+                        "source": "temporary_engine",
+                        "warmed_up": kokoro_warmed_up,
+                        "model_path": kokoro_path,
+                    }
                     await temp_engine.close()
                 except asyncio.TimeoutError:
                     kokoro_warmed_up = False
-                    kokoro_detail = {"source": "temporary_engine", "error": "warmup timeout (>100ms)", "model_path": kokoro_path}
+                    kokoro_detail = {
+                        "source": "temporary_engine",
+                        "error": "warmup timeout (>100ms)",
+                        "model_path": kokoro_path,
+                    }
                 except Exception as e:
                     kokoro_warmed_up = False
                     kokoro_detail = {"source": "temporary_engine", "error": str(e), "model_path": kokoro_path}
@@ -714,6 +726,7 @@ async def probe_tts_engines(
     #    `piper` binary AND at least one `.onnx` model are present (never falsely happy).
     try:
         from .piper_models import detect_piper_availability
+
         available, detail = detect_piper_availability()
         _set("piper", bool(available), detail)
     except Exception as e:  # noqa: BLE001 — degrade not propagate
@@ -732,7 +745,11 @@ async def probe_tts_engines(
                 health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
                 healthy = bool(health.get("healthy", False))
                 result[name] = {"healthy": healthy, "detail": health}
-            except (asyncio.TimeoutError, RuntimeError, OSError):  # noqa: BLE001 — degrade not propagate (incl. timeout)
+            except (
+                asyncio.TimeoutError,
+                RuntimeError,
+                OSError,
+            ):  # noqa: BLE001 — degrade not propagate (incl. timeout)
                 _set(name, False, {"error": "health_check timeout or failed"})
 
     bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}

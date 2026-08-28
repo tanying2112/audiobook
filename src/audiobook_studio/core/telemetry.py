@@ -978,15 +978,15 @@ if __name__ == "__main__":  # pragma: no cover
     collector = TelemetryCollector()
 
     # Simulate some operations
-    with track_llm_call(ProviderType.OPENAI, "gpt-4o-mini", project_id=1) as ctx:
+    with track_llm_call(ProviderType.OPENAI, "gpt-4o-mini", project_id=123) as ctx:
         time.sleep(0.01)  # Simulate API call
         ctx["prompt_tokens"] = 100
         ctx["completion_tokens"] = 200
 
-    with track_tts_synthesis(ProviderType.EDGE_TTS, "edge", 5000, project_id=1, voice="zh-CN-XiaoxiaoNeural"):
+    with track_tts_synthesis(ProviderType.EDGE_TTS, "edge", 5000, project_id=123, voice="zh-CN-XiaoxiaoNeural"):
         time.sleep(0.01)
 
-    with track_pipeline_stage("synthesize", project_id=1):
+    with track_pipeline_stage("synthesize", project_id=123):
         time.sleep(0.01)
 
     summary = collector.get_summary()

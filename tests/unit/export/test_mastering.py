@@ -39,9 +39,10 @@ def _run(cmd: list[str]) -> None:
 
 def _probe_duration_ms(path: Path) -> int:
     out = subprocess.run(
-        [FFPROBE, "-v", "error", "-show_entries", "format=duration",
-         "-of", "csv=p=0", str(path)],
-        check=True, capture_output=True, text=True,
+        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     return int(float(out) * 1000)
 
@@ -49,9 +50,10 @@ def _probe_duration_ms(path: Path) -> int:
 def _rms_db(path: Path) -> float:
     """测量整段音频的 RMS level (dB)，用于噪声底噪对比。"""
     out = subprocess.run(
-        [FFMPEG, "-i", str(path),
-         "-af", "astats=metadata=1:reset=0", "-f", "null", "-"],
-        capture_output=True, text=True, timeout=120,
+        [FFMPEG, "-i", str(path), "-af", "astats=metadata=1:reset=0", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+        timeout=120,
     ).stderr
     for line in out.splitlines():
         if "RMS level dB:" in line:
@@ -71,9 +73,9 @@ def test_build_master_filtergraph_contains_all_steps():
 
 @requires_ffmpeg
 def test_build_master_filtergraph_toggle():
-    fg = build_master_filtergraph(MasteringConfig(
-        enable_noisereduce=False, enable_silenceremove=False, enable_loudnorm=False
-    ))
+    fg = build_master_filtergraph(
+        MasteringConfig(enable_noisereduce=False, enable_silenceremove=False, enable_loudnorm=False)
+    )
     assert fg == "", "全部关闭时应返回空滤镜图 (master_audio 退化为拷贝)"
 
 
@@ -84,13 +86,27 @@ def test_loudnorm_validation_passes():
         tmp = Path(tmp)
         # 合成一段较安静的人声样音频 (sine + 轻噪声)，整体偏安静 -> 需要被拉到 -16
         noisy = tmp / "noisy.wav"
-        _run([
-            FFMPEG, "-y", "-f", "lavfi", "-i",
-            "sine=frequency=220:duration=3:sample_rate=44100",
-            "-f", "lavfi", "-i", "anoisesrc=d=3:r=44100:a=0.005",
-            "-filter_complex", "[0][1]amix=inputs=2",
-            "-ac", "1", "-ar", "44100", str(noisy),
-        ])
+        _run(
+            [
+                FFMPEG,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=220:duration=3:sample_rate=44100",
+                "-f",
+                "lavfi",
+                "-i",
+                "anoisesrc=d=3:r=44100:a=0.005",
+                "-filter_complex",
+                "[0][1]amix=inputs=2",
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                str(noisy),
+            ]
+        )
         out = tmp / "mastered.wav"
         result = master_audio(noisy, out, MasteringConfig(channels=1))
         assert result["ffmpeg_returncode"] == 0
@@ -109,14 +125,25 @@ def test_noise_floor_reduced_by_at_least_10db():
         tmp = Path(tmp)
         noise_in = tmp / "noise_in.wav"
         # 纯噪声 (底噪)，RMS 约 -30 dB 量级
-        _run([
-            FFMPEG, "-y", "-f", "lavfi", "-i", "anoisesrc=d=3:r=44100:a=0.05",
-            "-ac", "1", "-ar", "44100", str(noise_in),
-        ])
+        _run(
+            [
+                FFMPEG,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anoisesrc=d=3:r=44100:a=0.05",
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                str(noise_in),
+            ]
+        )
         noise_out = tmp / "noise_out.wav"
-        master_audio(noise_in, noise_out, MasteringConfig(
-            enable_silenceremove=False, enable_loudnorm=False, channels=1
-        ))
+        master_audio(
+            noise_in, noise_out, MasteringConfig(enable_silenceremove=False, enable_loudnorm=False, channels=1)
+        )
 
         before = _rms_db(noise_in)
         after = _rms_db(noise_out)
@@ -131,26 +158,39 @@ def test_silence_segments_trimmed():
         tmp = Path(tmp)
         # 结构：1s 有声 + 3s 静音 + 1s 有声 = 5s；静音应被修剪
         body = tmp / "body.wav"
-        _run([
-            FFMPEG, "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=1:sample_rate=44100",
-            "-f", "lavfi", "-i", "sine=frequency=330:duration=1:sample_rate=44100",
-            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono:d=3",
-            "-filter_complex",
-            "[0]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s1];"
-            "[1]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s2];"
-            "[2]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s0];"
-            "[s1][s0][s2]concat=n=3:v=0:a=1",
-            "-ac", "1", "-ar", "44100", str(body),
-        ])
+        _run(
+            [
+                FFMPEG,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=330:duration=1:sample_rate=44100",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=330:duration=1:sample_rate=44100",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=mono:d=3",
+                "-filter_complex",
+                "[0]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s1];"
+                "[1]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s2];"
+                "[2]aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=mono[s0];"
+                "[s1][s0][s2]concat=n=3:v=0:a=1",
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                str(body),
+            ]
+        )
         in_dur = _probe_duration_ms(body)
         out = tmp / "trimmed.wav"
-        master_audio(body, out, MasteringConfig(
-            enable_noisereduce=False, enable_loudnorm=False, channels=1
-        ))
+        master_audio(body, out, MasteringConfig(enable_noisereduce=False, enable_loudnorm=False, channels=1))
         out_dur = _probe_duration_ms(out)
-        assert out_dur < in_dur - 1000, (
-            f"静音未被修剪: 输入 {in_dur}ms -> 输出 {out_dur}ms"
-        )
+        assert out_dur < in_dur - 1000, f"静音未被修剪: 输入 {in_dur}ms -> 输出 {out_dur}ms"
 
 
 @requires_ffmpeg
@@ -159,11 +199,21 @@ def test_master_mp3_codec():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src = tmp / "src.wav"
-        _run([
-            FFMPEG, "-y", "-f", "lavfi", "-i",
-            "sine=frequency=440:duration=2:sample_rate=44100",
-            "-ac", "1", "-ar", "44100", str(src),
-        ])
+        _run(
+            [
+                FFMPEG,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2:sample_rate=44100",
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                str(src),
+            ]
+        )
         mp3 = tmp / "out.mp3"
         res = master_audio(src, mp3, MasteringConfig(channels=1))
         assert res["ffmpeg_returncode"] == 0
@@ -178,11 +228,21 @@ def test_measured_loudness_keys():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src = tmp / "src.wav"
-        _run([
-            FFMPEG, "-y", "-f", "lavfi", "-i",
-            "sine=frequency=440:duration=2:sample_rate=44100",
-            "-ac", "1", "-ar", "44100", str(src),
-        ])
+        _run(
+            [
+                FFMPEG,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2:sample_rate=44100",
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                str(src),
+            ]
+        )
         m = measure_loudness(src)
         assert "input_i" in m, "measure_loudness 应返回 input_i"
         assert isinstance(m["input_i"], float)
@@ -191,6 +251,7 @@ def test_measured_loudness_keys():
 # ----------------------------------------------------------------------------
 # 纯逻辑单元测试 (不依赖 ffmpeg)：在 CI 无二进制节点也能覆盖 mastering.py 逻辑。
 # ----------------------------------------------------------------------------
+
 
 def _mk(stdout: str = "", stderr: str = "", returncode: int = 0) -> MagicMock:
     return MagicMock(stdout=stdout, stderr=stderr, returncode=returncode)
@@ -220,12 +281,23 @@ class TestMasteringLogic:
         def fake_run(cmd, *a, **k):
             s = " ".join(str(x) for x in cmd)
             if "print_format=json" in s:
-                return _mk(stderr=json.dumps({
-                    "input_i": -23.0, "input_tp": -3.0, "input_lra": 11.0,
-                    "input_thresh": -33.0, "output_i": -16.0, "output_tp": -1.5,
-                    "output_lra": 11.0, "output_thresh": -27.0,
-                    "normalization_type": "dynamic", "target_offset": 0.0,
-                }), returncode=0)
+                return _mk(
+                    stderr=json.dumps(
+                        {
+                            "input_i": -23.0,
+                            "input_tp": -3.0,
+                            "input_lra": 11.0,
+                            "input_thresh": -33.0,
+                            "output_i": -16.0,
+                            "output_tp": -1.5,
+                            "output_lra": 11.0,
+                            "output_thresh": -27.0,
+                            "normalization_type": "dynamic",
+                            "target_offset": 0.0,
+                        }
+                    ),
+                    returncode=0,
+                )
             # apply 调用：写出输出文件 (模拟 ffmpeg 落盘)
             out_p = Path(str(cmd[-1]))
             out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -253,9 +325,9 @@ class TestMasteringLogic:
             src.write_bytes(b"fake")
             out = tmp / "out.wav"
             res = master_audio(
-                src, out,
-                MasteringConfig(enable_noisereduce=False, enable_silenceremove=False,
-                                enable_loudnorm=False),
+                src,
+                out,
+                MasteringConfig(enable_noisereduce=False, enable_silenceremove=False, enable_loudnorm=False),
             )
             assert res["ffmpeg_returncode"] == 0
             assert out.exists()  # 退化为 shutil.copy2
@@ -274,12 +346,23 @@ class TestMasteringLogic:
         def fake_run(cmd, *a, **k):
             s = " ".join(str(x) for x in cmd)
             if "print_format=json" in s:
-                return _mk(stderr=json.dumps({
-                    "input_i": -16.0, "input_tp": -1.5, "input_lra": 11.0,
-                    "input_thresh": -26.0, "output_i": -16.0, "output_tp": -1.5,
-                    "output_lra": 11.0, "output_thresh": -26.0,
-                    "normalization_type": "dynamic", "target_offset": 0.0,
-                }), returncode=0)
+                return _mk(
+                    stderr=json.dumps(
+                        {
+                            "input_i": -16.0,
+                            "input_tp": -1.5,
+                            "input_lra": 11.0,
+                            "input_thresh": -26.0,
+                            "output_i": -16.0,
+                            "output_tp": -1.5,
+                            "output_lra": 11.0,
+                            "output_thresh": -26.0,
+                            "normalization_type": "dynamic",
+                            "target_offset": 0.0,
+                        }
+                    ),
+                    returncode=0,
+                )
             return _mk(returncode=0)
 
         mock_run.side_effect = fake_run
@@ -295,12 +378,23 @@ class TestMasteringLogic:
         def fake_run(cmd, *a, **k):
             s = " ".join(str(x) for x in cmd)
             if "print_format=json" in s:
-                return _mk(stderr=json.dumps({
-                    "input_i": -25.0, "input_tp": -3.0, "input_lra": 11.0,
-                    "input_thresh": -33.0, "output_i": -25.0, "output_tp": -3.0,
-                    "output_lra": 11.0, "output_thresh": -33.0,
-                    "normalization_type": "dynamic", "target_offset": 0.0,
-                }), returncode=0)
+                return _mk(
+                    stderr=json.dumps(
+                        {
+                            "input_i": -25.0,
+                            "input_tp": -3.0,
+                            "input_lra": 11.0,
+                            "input_thresh": -33.0,
+                            "output_i": -25.0,
+                            "output_tp": -3.0,
+                            "output_lra": 11.0,
+                            "output_thresh": -33.0,
+                            "normalization_type": "dynamic",
+                            "target_offset": 0.0,
+                        }
+                    ),
+                    returncode=0,
+                )
             return _mk(returncode=0)
 
         mock_run.side_effect = fake_run

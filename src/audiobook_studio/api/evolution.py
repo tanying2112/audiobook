@@ -123,9 +123,7 @@ class EvolutionRunRequest(BaseModel):
     """Trigger a GEPA BootstrapFewShot optimization run."""
 
     stage: str = Field("annotate_paragraph", description="Pipeline stage to optimize")
-    few_shot_path: Optional[str] = Field(
-        None, description="Optional path to few-shot training examples"
-    )
+    few_shot_path: Optional[str] = Field(None, description="Optional path to few-shot training examples")
     seed_from_sop: bool = Field(
         True,
         description="Seed the initial prompt from current SOP genre rules",
@@ -259,8 +257,7 @@ async def evolution_run(req: EvolutionRunRequest, background_tasks: BackgroundTa
     return {"status": "started", "stage": req.stage}
 
 
-@router.get("/evolution/progress", response_model=EvolutionProgressResponse,
-            summary="GEPA evolution progress / status")
+@router.get("/evolution/progress", response_model=EvolutionProgressResponse, summary="GEPA evolution progress / status")
 async def evolution_progress():
     """Return the current GEPA evolution status and last run progress.
 

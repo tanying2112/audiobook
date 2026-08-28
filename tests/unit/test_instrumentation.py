@@ -356,6 +356,29 @@ class TestTraceSpan:
 
 
 class TestInstrumentApp:
+    @pytest.fixture(autouse=True)
+    def _reload_observability(self):
+        """Reload the observability modules before each test.
+
+        Under ``pytest-random-order`` the suite shuffles test order, so a
+        preceding test may leave the global ``opentelemetry``/``prometheus``
+        mock/alias state in a state that makes the patched ``init_tracing`` /
+        ``init_metrics`` targets resolve to a stale object. Reloading forces a
+        single, fresh, consistent module state so ``instrument_app`` always
+        binds to the real functions (then patched locally). This makes the
+        tests order-independent — they already passed in isolation.
+        """
+        import importlib
+
+        import src.audiobook_studio.observability.instrumentation as instrumentation
+        import src.audiobook_studio.observability.metrics as metrics
+        import src.audiobook_studio.observability.tracing as tracing
+
+        importlib.reload(tracing)
+        importlib.reload(metrics)
+        importlib.reload(instrumentation)
+        yield
+
     def test_instrument_app_calls_init_tracing_and_metrics(self):
         from src.audiobook_studio.observability.instrumentation import instrument_app
 

@@ -13,12 +13,12 @@ import pytest
 
 from src.audiobook_studio.feedback.promotion_gate import (
     DEFAULT_JUDGE_POOL,
+    SELF_ITERATION_MOCK_ENV,
     DualJudgeEvaluator,
     GateResult,
     JudgeVerdict,
     PromotionGate,
     PromotionVerdict,
-    SELF_ITERATION_MOCK_ENV,
     _aggregate_quality_score,
     _char_ngram_similarity,
     _compute_output_similarity,
@@ -186,9 +186,7 @@ class TestRunStageWithPromptVersion:
         pipeline_inst = MagicMock()
         pipeline_inst.run.return_value = {"ok": True}
         sentinel_input = object()  # non-dict -> skips pydantic conversion
-        with patch(
-            "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst
-        ) as cls:
+        with patch("src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst) as cls:
             from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
 
             out = _run_stage_with_prompt_version("edit", 2, sentinel_input, mock_mode=True)
@@ -200,9 +198,7 @@ class TestRunStageWithPromptVersion:
     def test_v1_restored_when_pipeline_raises(self, prompt_tree):
         pipeline_inst = MagicMock()
         pipeline_inst.run.side_effect = RuntimeError("LLM provider down")
-        with patch(
-            "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst
-        ):
+        with patch("src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst):
             from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
 
             with pytest.raises(RuntimeError):
@@ -248,9 +244,7 @@ class TestRunStageWithPromptVersion:
         monkeypatch.setenv(SELF_ITERATION_MOCK_ENV, "false")
         pipeline_inst = MagicMock()
         pipeline_inst.run.return_value = {}
-        with patch(
-            "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst
-        ) as cls:
+        with patch("src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst) as cls:
             from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
 
             _run_stage_with_prompt_version("edit", 2, object(), mock_mode=None)  # env decides
@@ -260,9 +254,7 @@ class TestRunStageWithPromptVersion:
         monkeypatch.setenv(SELF_ITERATION_MOCK_ENV, "false")
         pipeline_inst = MagicMock()
         pipeline_inst.run.return_value = {}
-        with patch(
-            "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst
-        ) as cls:
+        with patch("src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", return_value=pipeline_inst) as cls:
             from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
 
             _run_stage_with_prompt_version("edit", 2, object(), mock_mode=True)
@@ -390,9 +382,7 @@ class TestQualityImprovementEdges:
     @patch(f"{MODULE}._load_prompt_version")
     def test_audio_stage_type_metrics_selected(self, mp, mg, mr):
         mp.side_effect = ["old", "new"]
-        mg.return_value = [
-            {"input": {"text": "hi", "voice_id": "v"}, "expected_output": {"overall_score": 0.9}}
-        ]
+        mg.return_value = [{"input": {"text": "hi", "voice_id": "v"}, "expected_output": {"overall_score": 0.9}}]
         out = {"output_similarity": 1.0, "overall_score": 0.9}
         mr.side_effect = [out, dict(out)]
         result = check_quality_improvement("quality_check", 1, 2, threshold=1.0)
@@ -665,9 +655,21 @@ ANTI_HACK_KW = dict(
 
 
 class TestEvaluatePromotionAntiHackMatrix:
-    def run_eval(self, *, constitution=None, held_out=None, regression=None, guard=None,
-                 judge_fn=None, baseline_fn=None, candidate_eval_fn=None, regression_fn=None,
-                 proposer_model=None, judge_pool=None, **overrides):
+    def run_eval(
+        self,
+        *,
+        constitution=None,
+        held_out=None,
+        regression=None,
+        guard=None,
+        judge_fn=None,
+        baseline_fn=None,
+        candidate_eval_fn=None,
+        regression_fn=None,
+        proposer_model=None,
+        judge_pool=None,
+        **overrides,
+    ):
         kwargs = dict(ANTI_HACK_KW)
         kwargs.update(overrides)
         # NOTE: ``promotion_gate`` only *re-exports* these helpers from ``anti_hack``;
@@ -708,30 +710,46 @@ class TestEvaluatePromotionAntiHackMatrix:
 
     def test_constitution_rejection_blocks_even_with_high_scores(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          constitution=mk_constitution(passed=False))
+        v = self.run_eval(
+            judge_fn=jf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf,
+            constitution=mk_constitution(passed=False),
+        )
         assert v.passed is False
         assert "constitution:rejected" in v.summary
         assert v.promoted_node_id is None
 
     def test_constitution_unable_to_judge_degrades_honestly(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          constitution=mk_constitution(passed=False, unable=True))
+        v = self.run_eval(
+            judge_fn=jf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf,
+            constitution=mk_constitution(passed=False, unable=True),
+        )
         assert "constitution:unable_to_judge" in v.summary
         assert v.passed is False
 
     def test_empty_held_out_set_blocks(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          held_out=mk_held_out(case_count=0))
+        v = self.run_eval(
+            judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf, held_out=mk_held_out(case_count=0)
+        )
         assert v.passed is False
         assert "held_out:empty" in v.summary
 
     def test_effect_size_below_minimum_blocks(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          held_out=mk_held_out(mean_score=0.60, baseline_mean=0.50))  # +0.10
+        v = self.run_eval(
+            judge_fn=jf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf,
+            held_out=mk_held_out(mean_score=0.60, baseline_mean=0.50),
+        )  # +0.10
         assert v.passed is False
         assert "effect_size:insufficient" in v.summary
 
@@ -761,8 +779,11 @@ class TestEvaluatePromotionAntiHackMatrix:
         _, bf, cf, rf = self._happy_deps()
         v = self.run_eval(
             judge_fn=lambda m, p: 0.9,
-            baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-            judge_pool=["single"], proposer_model="single",
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf,
+            judge_pool=["single"],
+            proposer_model="single",
         )
         assert "dual_judge:pool<2" in v.summary
 
@@ -771,7 +792,9 @@ class TestEvaluatePromotionAntiHackMatrix:
         _, bf, cf, rf = self._happy_deps()
         v = self.run_eval(
             judge_fn=lambda m, p: 0.9,
-            baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf,
             judge_pool=["gpt-4o-mini", "deepseek-chat"],
             proposer_model=None,  # proposer not set → exclusion logic can't trigger;
         )
@@ -781,8 +804,13 @@ class TestEvaluatePromotionAntiHackMatrix:
     def test_regression_failure_blocks(self):
         jf, bf, cf, _ = self._happy_deps()
         rf_fail = lambda c: (False, MagicMock())  # noqa: E731
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf_fail,
-                          regression=mk_regression(rejected=True))
+        v = self.run_eval(
+            judge_fn=jf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=rf_fail,
+            regression=mk_regression(rejected=True),
+        )
         assert "regression_suite:recurring_failure" in v.summary
 
     def test_regression_fn_missing_blocks_conservatively(self):
@@ -792,22 +820,29 @@ class TestEvaluatePromotionAntiHackMatrix:
 
     def test_regression_infra_error_blocks(self):
         jf, bf, cf, _ = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=lambda c: (True, object()),
-                          regression=mk_regression(raises=True))
+        v = self.run_eval(
+            judge_fn=jf,
+            baseline_fn=bf,
+            candidate_eval_fn=cf,
+            regression_fn=lambda c: (True, object()),
+            regression=mk_regression(raises=True),
+        )
         assert "regression_suite:error" in v.summary
 
     def test_evolution_guard_rollback_records_reason(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          guard=mk_guard(rollback=mk_rollback()))
+        v = self.run_eval(
+            judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf, guard=mk_guard(rollback=mk_rollback())
+        )
         assert "evolution_guard:rolled_back" in v.summary
         assert v.rolled_back == {"from": "nodeA"}
         assert v.promoted_node_id is None
 
     def test_evolution_guard_error_blocks(self):
         jf, bf, cf, rf = self._happy_deps()
-        v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf,
-                          guard=mk_guard(raises=True))
+        v = self.run_eval(
+            judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf, guard=mk_guard(raises=True)
+        )
         assert "evolution_guard:error" in v.summary
         assert v.passed is False
 
@@ -830,7 +865,17 @@ class TestEvaluatePromotionAntiHackMatrix:
         jf, bf, cf, rf = self._happy_deps()
         v = self.run_eval(judge_fn=jf, baseline_fn=bf, candidate_eval_fn=cf, regression_fn=rf)
         d = v.to_dict()
-        for key in ("passed", "summary", "constitution", "dual_judge", "held_out",
-                    "regression_suite", "evolution_guard", "effect_size",
-                    "beat_baseline_by_025", "promoted_node_id", "rolled_back"):
+        for key in (
+            "passed",
+            "summary",
+            "constitution",
+            "dual_judge",
+            "held_out",
+            "regression_suite",
+            "evolution_guard",
+            "effect_size",
+            "beat_baseline_by_025",
+            "promoted_node_id",
+            "rolled_back",
+        ):
             assert key in d

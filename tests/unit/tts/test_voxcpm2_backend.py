@@ -18,19 +18,19 @@ import pytest
 pytestmark = pytest.mark.skip_env_missing
 try:
     import voxcpm  # noqa: F401
+    from src.audiobook_studio.tts.engine import (
+        SynthesisResult,
+        TTSProsody,
+        TTSTaskPayload,
+        TTSTaskResult,
+        TTSTaskStatus,
+        TTSVoiceAnchor,
+    )
     from src.audiobook_studio.tts.voxcpm2_backend import (
         QUANTIZATION_MODES,
         VOXCPM2_VOICES,
         VoxCPM2Backend,
         create_voxcpm2_backend,
-    )
-    from src.audiobook_studio.tts.engine import (
-        SynthesisResult,
-        TTSTaskPayload,
-        TTSTaskResult,
-        TTSTaskStatus,
-        TTSVoiceAnchor,
-        TTSProsody,
     )
 except Exception:  # noqa: BLE001 - 可选后端缺失/半安装时统一跳过
     pytest.skip("voxcpm optional backend not available", allow_module_level=True)
@@ -52,9 +52,12 @@ class TestVOXCPM2Constants:
     def test_voxcpm2_voices_structure(self):
         """Test VOXCPM2_VOICES has expected voices."""
         expected_voices = [
-            "zh_female_1", "zh_female_2",
-            "zh_male_1", "zh_male_2",
-            "en_female_1", "en_male_1",
+            "zh_female_1",
+            "zh_female_2",
+            "zh_male_1",
+            "zh_male_2",
+            "en_female_1",
+            "en_male_1",
         ]
         for voice in expected_voices:
             assert voice in VOXCPM2_VOICES
@@ -152,7 +155,9 @@ class TestVoxCPM2BackendInitialization:
         monkeypatch.delenv("MOCK_LLM", raising=False)
         backend = VoxCPM2Backend(device="cuda", mock_mode=False)
 
-        with patch.dict("sys.modules", {"torch": Mock(cuda=Mock(is_available=Mock(return_value=False))), "torchaudio": Mock()}):
+        with patch.dict(
+            "sys.modules", {"torch": Mock(cuda=Mock(is_available=Mock(return_value=False))), "torchaudio": Mock()}
+        ):
             with pytest.raises(RuntimeError, match="CUDA not available"):
                 await backend.initialize()
 
@@ -360,6 +365,7 @@ class TestVoxCPM2BackendSynthesizeProtocol:
         await mock_backend.submit(task_id, payload)
 
         import asyncio
+
         await asyncio.sleep(0.2)
 
         result = await mock_backend.get_result(task_id)
@@ -408,6 +414,7 @@ class TestVoxCPM2BackendSynthesizeProtocol:
 
         await mock_backend.submit(task_id, payload)
         import asyncio
+
         await asyncio.sleep(0.15)
 
         cancelled = await mock_backend.cancel(task_id)

@@ -19,13 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .utils.ffmpeg_probe import (
-    detect_silence,
-    get_audio_info,
-    get_duration,
-    get_rms_peak,
-    read_pcm_samples,
-)
+from .utils.ffmpeg_probe import detect_silence, get_audio_info, get_duration, get_rms_peak, read_pcm_samples
 
 logger = logging.getLogger(__name__)
 

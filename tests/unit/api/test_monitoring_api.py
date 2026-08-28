@@ -22,8 +22,10 @@ from src.audiobook_studio.exceptions import FileNotFoundError, InfrastructureErr
 
 @pytest.fixture
 def client():
-    from fastapi import FastAPI
     from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi import FastAPI
+
     from src.audiobook_studio.api.dependencies import get_async_db
     from src.audiobook_studio.exceptions import FileNotFoundError
 
@@ -33,6 +35,7 @@ def client():
     @app.exception_handler(FileNotFoundError)
     async def file_not_found_handler(request, exc):
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=404,
             content={"detail": str(exc)},
@@ -125,6 +128,7 @@ class TestGetLatestMetrics:
             new_path.write_text(json.dumps(new_data))
 
             import time
+
             time.sleep(0.01)
             new_path.touch()
 
@@ -195,7 +199,9 @@ class TestGetMetricsHistory:
             mock_reports_dir.return_value = tmp_path
 
             (tmp_path / "metrics_summary_ch_001.json").write_text("{bad json")
-            (tmp_path / "metrics_summary_ch_002.json").write_text(json.dumps({"metadata": {"started_at": "2024-01-02"}}))
+            (tmp_path / "metrics_summary_ch_002.json").write_text(
+                json.dumps({"metadata": {"started_at": "2024-01-02"}})
+            )
 
             result = await get_metrics_history(project_id=123, limit=10)
             assert len(result["history"]) == 1
@@ -224,6 +230,7 @@ class TestListProjectsWithMetrics:
         mock_db.execute.return_value = mock_result
 
         with patch("src.audiobook_studio.api.monitoring.reports_dir") as mock_reports_dir:
+
             def reports_dir_side_effect(project_id):
                 path = tmp_path / f"project_{project_id}"
                 path.mkdir(exist_ok=True)
@@ -300,40 +307,43 @@ class TestMonitoringRouter:
             assert "history" in response.json()
             assert len(response.json()["history"]) == 2
 
+
 def test_list_projects_with_metrics_endpoint(client, tmp_path):
-        from unittest.mock import AsyncMock, MagicMock
-        from fastapi import FastAPI
-        from src.audiobook_studio.api.dependencies import get_async_db
+    from unittest.mock import AsyncMock, MagicMock
 
-        with patch("src.audiobook_studio.api.monitoring.reports_dir") as mock_reports_dir:
-            mock_project = MagicMock()
-            mock_project.id = 9999  # Unique ID to avoid conflicts
-            mock_project.title = "Test Project"
+    from fastapi import FastAPI
 
-            def reports_dir_side_effect(project_id):
-                path = tmp_path / f"project_{project_id}"
-                path.mkdir(exist_ok=True)
-                if project_id == 9999:
-                    (path / "metrics_summary.json").write_text(json.dumps({"test": "data"}))
-                return path
+    from src.audiobook_studio.api.dependencies import get_async_db
 
-            mock_reports_dir.side_effect = reports_dir_side_effect
+    with patch("src.audiobook_studio.api.monitoring.reports_dir") as mock_reports_dir:
+        mock_project = MagicMock()
+        mock_project.id = 9999  # Unique ID to avoid conflicts
+        mock_project.title = "Test Project"
 
-            # Configure the mock db for the list_projects_with_metrics endpoint
-            mock_db = AsyncMock()
-            mock_result = MagicMock()
-            mock_scalars = MagicMock()
-            mock_scalars.all.return_value = [mock_project]
-            mock_result.scalars.return_value = mock_scalars
-            mock_db.execute = AsyncMock(return_value=mock_result)
+        def reports_dir_side_effect(project_id):
+            path = tmp_path / f"project_{project_id}"
+            path.mkdir(exist_ok=True)
+            if project_id == 9999:
+                (path / "metrics_summary.json").write_text(json.dumps({"test": "data"}))
+            return path
 
-            # Override the dependency for this specific test
-            async def override_get_async_db():
-                yield mock_db
+        mock_reports_dir.side_effect = reports_dir_side_effect
 
-            client.app.dependency_overrides[get_async_db] = override_get_async_db
+        # Configure the mock db for the list_projects_with_metrics endpoint
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_project]
+        mock_result.scalars.return_value = mock_scalars
+        mock_db.execute = AsyncMock(return_value=mock_result)
 
-            response = client.get("/monitoring/projects")
-            assert response.status_code == 200
-            assert len(response.json()["projects"]) == 1
-            assert response.json()["projects"][0]["title"] == "Test Project"
+        # Override the dependency for this specific test
+        async def override_get_async_db():
+            yield mock_db
+
+        client.app.dependency_overrides[get_async_db] = override_get_async_db
+
+        response = client.get("/monitoring/projects")
+        assert response.status_code == 200
+        assert len(response.json()["projects"]) == 1
+        assert response.json()["projects"][0]["title"] == "Test Project"

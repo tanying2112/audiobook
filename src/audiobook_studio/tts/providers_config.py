@@ -29,21 +29,34 @@ from typing import Dict, List, Optional, Tuple
 
 logger = __import__("logging").getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = (
-    Path(__file__).parent.parent.parent / "config" / "tts_providers.yaml"
-)
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "tts_providers.yaml"
 
 #: Fallback ordering if the YAML file is missing.
 FALLBACK_PROVIDERS: List[Dict[str, object]] = [
-    {"name": "piper", "engine": "piper", "priority": 0, "enabled": True,
-     "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
-     "license": {"commercial_use": True, "name": "Piper (MIT/Apache)", "verified_at": None}},
-    {"name": "kokoro", "engine": "kokoro", "priority": 1, "enabled": True,
-     "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
-     "license": {"commercial_use": True, "name": "Kokoro-82M Apache-2.0", "verified_at": None}},
-    {"name": "edge_tts", "engine": "edge_tts", "priority": 2, "enabled": True,
-     "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
-     "license": {"commercial_use": None, "name": "Edge-TTS (Microsoft cloud, ToS-restricted)", "verified_at": None}},
+    {
+        "name": "piper",
+        "engine": "piper",
+        "priority": 0,
+        "enabled": True,
+        "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
+        "license": {"commercial_use": True, "name": "Piper (MIT/Apache)", "verified_at": None},
+    },
+    {
+        "name": "kokoro",
+        "engine": "kokoro",
+        "priority": 1,
+        "enabled": True,
+        "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
+        "license": {"commercial_use": True, "name": "Kokoro-82M Apache-2.0", "verified_at": None},
+    },
+    {
+        "name": "edge_tts",
+        "engine": "edge_tts",
+        "priority": 2,
+        "enabled": True,
+        "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
+        "license": {"commercial_use": None, "name": "Edge-TTS (Microsoft cloud, ToS-restricted)", "verified_at": None},
+    },
 ]
 
 
@@ -147,11 +160,7 @@ def load_tts_provider_config(path: Optional[str] = None) -> List[Dict[str, objec
 
 def provider_priority_map(path: Optional[str] = None) -> Dict[str, int]:
     """Return ``{engine_name: priority}`` for enabled providers."""
-    return {
-        p["engine"]: int(p["priority"])
-        for p in load_tts_provider_config(path)
-        if p.get("enabled", True)
-    }
+    return {p["engine"]: int(p["priority"]) for p in load_tts_provider_config(path) if p.get("enabled", True)}
 
 
 # ---------------------------------------------------------------------------

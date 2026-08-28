@@ -17,8 +17,8 @@ import pytest
 
 from src.audiobook_studio.quality import metrics as M
 
-
 # ── Whisper (faster-whisper) real transcribe path ───────────────────────────
+
 
 class _FakeWhisperSeg:
     def __init__(self, text):
@@ -57,6 +57,7 @@ def test_whisper_real_get_name():
 
 # ── FunASR real transcribe path (inject fake funasr module) ─────────────────
 
+
 def test_funasr_real_transcribe(monkeypatch):
     fake_funasr = types.ModuleType("funasr")
 
@@ -90,6 +91,7 @@ def test_funasr_backend_get_name():
 
 
 # ── DNSMOS real inference path (fake ONNX session) ──────────────────────────
+
 
 class _FakeONNXInput:
     def __init__(self):
@@ -148,6 +150,7 @@ def test_dnsmos_real_initialize_failure(monkeypatch, tmp_path):
 
 # ── Frame preparation (real numpy ops; _preprocess_audio needs soundfile) ──
 
+
 def test_prepare_input_frames_real():
     m = M.DNSMOSMetric()
     short = np.zeros(1000, dtype=np.float32)
@@ -163,6 +166,7 @@ def test_prepare_input_frames_long():
 
 
 # ── ECAPA / WavLM real _initialize raises honestly when model unavailable ──
+
 
 def test_ecapa_initialize_honest_failure(monkeypatch):
     def _boom(self):
@@ -214,5 +218,3 @@ def test_register_speaker_handles_runtime_error(monkeypatch):
 
     monkeypatch.setattr(type(suite._speaker_sim), "register_reference", _raise)
     assert suite.register_speaker("spk1", "ref.wav") is False
-
-

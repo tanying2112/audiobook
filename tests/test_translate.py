@@ -76,12 +76,8 @@ def _mock_external(monkeypatch):
     SynthesizePipeline.run is async in the real implementation and the pipeline calls
     it synchronously, so we patch it to a sync fake returning one segment.
     """
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.SessionLocal", _FakeSessionFactory()
-    )
-    monkeypatch.setattr(
-        SynthesizePipeline, "run", lambda self, rs: [_fake_segment()]
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.SessionLocal", _FakeSessionFactory())
+    monkeypatch.setattr(SynthesizePipeline, "run", lambda self, rs: [_fake_segment()])
     yield
 
 

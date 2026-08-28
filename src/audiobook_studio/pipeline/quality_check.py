@@ -696,6 +696,26 @@ class QualityCheckPipeline:
             # Start timing for LLM judgment
             judgment_start_time = time.time()
 
+            # Prepare real audio metrics for the judge (P0-C1)
+            real_metrics: Optional[Dict[str, Any]] = None
+            if not self.mock_mode and hard_result:
+                real_metrics = {
+                    "utmos": hard_result.utmos.mos if hard_result.utmos and hard_result.utmos.success else None,
+                    "dnsmos": hard_result.dnsmos.mos_ovr if hard_result.dnsmos and hard_result.dnsmos.success else None,
+                    "wer": hard_result.wer.wer if hard_result.wer and hard_result.wer.success else None,
+                    "speaker_sim": hard_result.speaker_sim.similarity if hard_result.speaker_sim and hard_result.speaker_sim.success else None,
+                }
+                # Count available metrics
+                avail = sum(1 for v in real_metrics.values() if v is not None)
+                if avail:
+                    real_metrics["available_metrics"] = avail
+                    real_metrics["overall"] = fuse_audio_scores(
+                        real_metrics.get("utmos"),
+                        real_metrics.get("dnsmos"),
+                        real_metrics.get("wer"),
+                        real_metrics.get("speaker_sim"),
+                    )
+
             # LLM-as-a-Judge evaluation
             try:
                 from ..monitoring import record_stage_performance
@@ -705,6 +725,7 @@ class QualityCheckPipeline:
                     paragraph_annotation=annotation,
                     audio_description=audio_description,
                     reference_text=reference_text,
+                    real_audio_metrics=real_metrics,
                 )
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000

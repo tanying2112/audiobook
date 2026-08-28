@@ -50,24 +50,19 @@ async def create_publish_job(
     try:
         async with AsyncSessionLocal() as db:
             if job_id is not None:
-                existing = await db.execute(
-                    select(PublishJobState).where(PublishJobState.job_id == job_id)
-                )
+                existing = await db.execute(select(PublishJobState).where(PublishJobState.job_id == job_id))
                 found = existing.scalar_one_or_none()
                 if found is not None:
                     return found
             if idempotency_key is not None:
                 existing = await db.execute(
-                    select(PublishJobState).where(
-                        PublishJobState.idempotency_key == idempotency_key
-                    )
+                    select(PublishJobState).where(PublishJobState.idempotency_key == idempotency_key)
                 )
                 found = existing.scalar_one_or_none()
                 if found is not None:
                     return found
             job = PublishJobState(
-                job_id=job_id
-                or f"publish_{project_id}_{int(_now().timestamp() * 1000)}",
+                job_id=job_id or f"publish_{project_id}_{int(_now().timestamp() * 1000)}",
                 project_id=project_id,
                 user_id=user_id,
                 target=target,
@@ -87,9 +82,7 @@ async def create_publish_job(
 async def get_publish_job(job_id: str) -> Optional[PublishJobState]:
     try:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(PublishJobState).where(PublishJobState.job_id == job_id)
-            )
+            result = await db.execute(select(PublishJobState).where(PublishJobState.job_id == job_id))
             return result.scalar_one_or_none()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("get_publish_job failed for %s: %s", job_id, exc)
@@ -99,9 +92,7 @@ async def get_publish_job(job_id: str) -> Optional[PublishJobState]:
 async def _update(job_id: str, mutate: Callable[[PublishJobState], None]) -> Optional[PublishJobState]:
     try:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(PublishJobState).where(PublishJobState.job_id == job_id)
-            )
+            result = await db.execute(select(PublishJobState).where(PublishJobState.job_id == job_id))
             job = result.scalar_one_or_none()
             if job is None:
                 return None
@@ -127,7 +118,5 @@ async def mark_success(job_id: str, result: Any = None) -> Optional[PublishJobSt
     return await _update(job_id, lambda j: j.mark_success(result))
 
 
-async def mark_failure(
-    job_id: str, error: Optional[str] = None, result: Any = None
-) -> Optional[PublishJobState]:
+async def mark_failure(job_id: str, error: Optional[str] = None, result: Any = None) -> Optional[PublishJobState]:
     return await _update(job_id, lambda j: j.mark_failure(error, result))

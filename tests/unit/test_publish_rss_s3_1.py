@@ -99,8 +99,6 @@ def test_enclosure_length_zero_when_missing():
 
 def test_enclosure_type_reflects_extension():
     gen = PodcastRSSGenerator(_feed())
-    gen.add_episode(
-        _episode("Ep1", audio_file_path=Path("/tmp/ep.m4b"), mime="audio/mp4")
-    )
+    gen.add_episode(_episode("Ep1", audio_file_path=Path("/tmp/ep.m4b"), mime="audio/mp4"))
     xml = gen.generate_rss_xml()
     assert 'type="audio/mp4"' in xml

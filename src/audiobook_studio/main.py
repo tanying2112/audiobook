@@ -32,8 +32,8 @@ from .api.export import router as export_router
 from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
-from .api.llm import router as llm_router
 from .api.languages import router as languages_router
+from .api.llm import router as llm_router
 from .api.mock_router import router as mock_router
 from .api.models_market import router as models_market_router
 from .api.monitoring import router as monitoring_router
@@ -98,6 +98,7 @@ async def lifespan(app: FastAPI):
     # Load plugins (TTS engines, LLM providers, pipeline stages)
     try:
         from .plugins import get_plugin_manager
+
         plugin_mgr = get_plugin_manager()
         plugin_mgr.discover()
         plugin_mgr.load_installed()
@@ -217,25 +218,21 @@ app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
 app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
 app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
 
+from fastapi.routing import APIWebSocketRoute
+
 # ── WebSocket Route Fix ──────────────────────────────────────────────────────
 # FastAPI's include_router doesn't properly include WebSocket routes with prefix.
 # Manually add websocket routes with combined prefix (/api + /ws = /api/ws).
 from .api.websocket import router as _websocket_router
-from fastapi.routing import APIWebSocketRoute
 
 for _route in _websocket_router.routes:
     if isinstance(_route, APIWebSocketRoute):
         _new_path = "/api" + _route.path
-        _new_route = APIWebSocketRoute(
-            path=_new_path,
-            endpoint=_route.endpoint,
-            name=_route.name
-        )
+        _new_route = APIWebSocketRoute(path=_new_path, endpoint=_route.endpoint, name=_route.name)
         app.router.routes.append(_new_route)
 
 # Clean up
 del _websocket_router, _route, _new_path, _new_route, APIWebSocketRoute
-
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
@@ -345,10 +342,25 @@ async def health_ready():
             return v
         return v == "ok" or v == "not_configured"
 
-    # Critical dependencies: DB and Redis must be healthy
-    # LLM keys are validated but invalid format only matters if keys are configured
+    from src.audiobook_studio.config.settings_loader import get_settings
+
+    # ... existing code ...
+
+    # Critical dependencies: DB must be healthy
+    # Redis is optional (controlled by REDIS_REQUIRED setting)
+    settings = get_settings()
     db_ok = _is_healthy(checks.get("database"))
-    redis_ok = _is_healthy(checks.get("redis"))
+    
+    if settings.REDIS_REQUIRED:
+        # Redis is required - must be healthy
+        redis_ok = _is_healthy(checks.get("redis"))
+        redis_status = "required"
+    else:
+        # Redis is optional - check but don't fail if unavailable
+        redis_healthy = _is_healthy(checks.get("redis"))
+        redis_ok = redis_healthy or checks.get("redis") == "not_configured"
+        redis_status = "optional"
+    
     llm_ok = _is_healthy(checks.get("llm_keys"))
 
     all_ok = db_ok and redis_ok and llm_ok

@@ -21,7 +21,7 @@ Usage::
 
     from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
 
-    cp = CheckpointManager(project_id=1)
+    cp = CheckpointManager(project_id=123)
     # chapter-level stage:
     cp.mark_stage_done("extract", chapter_index=1)
     if cp.is_stage_done("extract", chapter_index=1):
@@ -29,7 +29,7 @@ Usage::
     # paragraph-level stage:
     cp.mark_stage_done("annotate", chapter_index=1, paragraph_index=3)
     if cp.is_stage_done("annotate", chapter_index=1, paragraph_index=3):
-        logger.info("Paragraph 3 already annotated, skipping")
+        logger.info("Paragraph 3 already annotated, skipping)
 """
 
 import json

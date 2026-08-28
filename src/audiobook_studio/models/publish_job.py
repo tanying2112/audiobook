@@ -18,16 +18,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..orm_base import Base
@@ -71,17 +62,11 @@ class PublishJobState(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Public business key returned to the client for polling.
     job_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    project_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("projects.id"), nullable=False, index=True
-    )
-    user_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=True, index=True
-    )
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     # Comma-separated list of targets: audiobookshelf,podcast_rss
     target: Mapped[str] = mapped_column(String(128), nullable=False, default="audiobookshelf")
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=PublishJobStatus.PENDING.value, index=True
-    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=PublishJobStatus.PENDING.value, index=True)
     idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Whether the last attempt (or all) triggered an automatic retry.
@@ -90,12 +75,8 @@ class PublishJobState(Base):
     progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     result_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

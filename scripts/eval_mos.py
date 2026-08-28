@@ -149,8 +149,12 @@ def main() -> int:
     baseline_dir = Path(args.baseline_dir)
     candidate_dir = Path(args.candidate_dir)
 
-    baseline = evaluate_directory(baseline_dir, mock=args.mock, utmos_model=Path(args.utmos_model) if args.utmos_model else None)
-    candidate = evaluate_directory(candidate_dir, mock=args.mock, utmos_model=Path(args.utmos_model) if args.utmos_model else None)
+    baseline = evaluate_directory(
+        baseline_dir, mock=args.mock, utmos_model=Path(args.utmos_model) if args.utmos_model else None
+    )
+    candidate = evaluate_directory(
+        candidate_dir, mock=args.mock, utmos_model=Path(args.utmos_model) if args.utmos_model else None
+    )
 
     if not baseline or not candidate:
         print(f"DEGRADE: insufficient audio (baseline={len(baseline)}, candidate={len(candidate)})")
@@ -175,7 +179,11 @@ def main() -> int:
     if args.out:
         Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(json.dumps({k: v for k, v in report.items() if k not in ("baseline", "candidate")}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {k: v for k, v in report.items() if k not in ("baseline", "candidate")}, ensure_ascii=False, indent=2
+        )
+    )
     print(f"\nΔMOS = {delta:+.3f}  (threshold {args.threshold})  ->  {'PASS' if report['passed'] else 'FAIL'}")
     return 0 if report["passed"] else 1
 

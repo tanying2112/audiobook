@@ -8,12 +8,12 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
     from .constitution import ConstitutionAdjudicator
-    from .held_out_eval import HeldOutDataset
     from .evolution_guard import EvolutionGuard
+    from .held_out_eval import HeldOutDataset
     from .regression_suite import RegressionSuite
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class JudgeVerdict:
     """单个裁判对候选的打分结果。"""
 
     judge_model: str
-    score: float                 # 0-1
+    score: float  # 0-1
     rationale: str = ""
     error: Optional[str] = None  # 裁判不可用时记原因（诚实降级）
 
@@ -42,9 +42,10 @@ class DualJudgeResult:
     """双裁判裁决汇总。"""
 
     judges: List[JudgeVerdict]
-    mean: Optional[float]        # 两位可用裁判的均值；任一不可用则 None（不假通过）
-    agreement: Optional[bool]    # 两位分歧 ≤ delta 时 True；不可判（缺裁判）则 None
+    mean: Optional[float]  # 两位可用裁判的均值；任一不可用则 None（不假通过）
+    agreement: Optional[bool]  # 两位分歧 ≤ delta 时 True；不可判（缺裁判）则 None
     disagreement_delta: float = 0.0
+    pending_human: bool = False  # True 表示需人工复核（如裁判异常、分歧过大等）
 
     @property
     def promotable_score(self) -> Optional[float]:
@@ -94,6 +95,7 @@ class DualJudgeEvaluator:
         （诚实降级或分歧不晋升）。
         """
         verdicts: List[JudgeVerdict] = []
+        pending_human = False
         for jm in self.judge_models:
             try:
                 raw = judge_fn(jm, candidate_payload)
@@ -103,24 +105,30 @@ class DualJudgeEvaluator:
                 s = max(0.0, min(1.0, s))
                 verdicts.append(JudgeVerdict(judge_model=jm, score=s))
             except Exception as ex:  # noqa: BLE001
+                # 裁判异常：标记为需人工复核，而非给 0 分（诚实降级）
+                pending_human = True
                 verdicts.append(JudgeVerdict(judge_model=jm, score=0.0, error=f"{type(ex).__name__}: {ex}"))
 
         avail = [v for v in verdicts if v.available]
         if len(avail) < 2:
             # 严格：必须两位裁判都跑出真值才能给均值，否则 None（不假通过）
-            return DualJudgeResult(judges=verdicts, mean=None, agreement=None)
+            return DualJudgeResult(judges=verdicts, mean=None, agreement=None, pending_human=True)
+        
         mean = sum(v.score for v in avail) / len(avail)
         delta = abs(avail[0].score - avail[1].score)
         agreement = delta <= self.disagreement_delta
         if not agreement:
+            pending_human = True
             logger.warning(
-                "DualJudge disagreement: %s=%.3f vs %s=%.3f (Δ=%.3f > %.2f) — 不晋升",
-                avail[0].judge_model, avail[0].score, avail[1].judge_model, avail[1].score,
-                delta, self.disagreement_delta,
+                "DualJudge disagreement: %s=%.3f vs %s=%.3f (Δ=%.3f > %.2f) — 需人工复核",
+                avail[0].judge_model,
+                avail[0].score,
+                avail[1].judge_model,
+                avail[1].score,
+                delta,
+                self.disagreement_delta,
             )
-        return DualJudgeResult(
-            judges=verdicts, mean=mean, agreement=agreement, disagreement_delta=delta
-        )
+        return DualJudgeResult(judges=verdicts, mean=mean, agreement=agreement, disagreement_delta=delta, pending_human=pending_human)
 
 
 # ── 元门禁：判官 prompt / 评估集 / 指标定义文件对进化循环只读 ─────────────────────
@@ -128,12 +136,12 @@ class DualJudgeEvaluator:
 #   * 它们随本 Sprint 的自动改动列表（git diff --name-only）一并被人工/CI 复审；
 #   * 候选不得在进化循环内写这些文件（本模块纯读，无写）。
 META_GUARD_READONLY_PATHS: Tuple[str, ...] = (
-    "src/audiobook_studio/feedback/promotion_config.yaml",   # 门禁阈值
-    "src/audiobook_studio/feedback/constitution.py",         # 创作宪法硬规则
-    "src/audiobook_studio/feedback/held_out_eval.py",        # 留出集与评估契约
-    "src/audiobook_studio/quality/metrics.py",               # 硬指标定义（MOS/WER/Sim）
-    "prompts/",                                             # 裁判/生成 prompt（模板）
-    "tests/golden/",                                         # 评估集（留出集来源）
+    "src/audiobook_studio/feedback/promotion_config.yaml",  # 门禁阈值
+    "src/audiobook_studio/feedback/constitution.py",  # 创作宪法硬规则
+    "src/audiobook_studio/feedback/held_out_eval.py",  # 留出集与评估契约
+    "src/audiobook_studio/quality/metrics.py",  # 硬指标定义（MOS/WER/Sim）
+    "prompts/",  # 裁判/生成 prompt（模板）
+    "tests/golden/",  # 评估集（留出集来源）
 )
 
 
@@ -160,6 +168,7 @@ def verify_meta_guard(changed_files: List[str]) -> Dict[str, Any]:
 #   4) 回归套件：候选不得使任一 active 坏例复发（含本次新发现的失败）
 #   5) 进化守卫 record：成功晋升则 append 节点；连续退化 ≥2 则回滚+剪枝
 # 任一硬关被违反即 passed=False；依赖未就绪时该关诚实降级为"无法裁决→不晋升"。
+
 
 @dataclass
 class AntiHackVerdict:
@@ -195,21 +204,25 @@ class AntiHackVerdict:
 
 def _constitution() -> "ConstitutionAdjudicator":
     from .constitution import get_constitution_adjudicator
+
     return get_constitution_adjudicator()
 
 
 def _held_out(stage: str) -> "HeldOutDataset":
     from .held_out_eval import HeldOutDataset
+
     return HeldOutDataset(stage)
 
 
 def _evolution_guard() -> "EvolutionGuard":
     from .evolution_guard import get_evolution_guard
+
     return get_evolution_guard()
 
 
 def _regression_suite() -> "RegressionSuite":
     from .regression_suite import get_regression_suite
+
     return get_regression_suite()
 
 
@@ -289,7 +302,8 @@ def evaluate_promotion_anti_hack(
             base_scores = None
             if candidate_eval_fn is not None:
                 res = ds.evaluate_candidate(
-                    candidate_eval_fn, candidate_id=candidate_id,
+                    candidate_eval_fn,
+                    candidate_id=candidate_id,
                     baseline_fn=baseline_fn if baseline_fn is not None else (lambda c: 0.0),
                     baseline_id="baseline",
                 )
@@ -304,10 +318,8 @@ def evaluate_promotion_anti_hack(
                     "mean": djres.mean,
                     "agreement": djres.agreement,
                     "delta": djres.disagreement_delta,
-                    "judges": [
-                        {"model": j.judge_model, "score": j.score, "error": j.error}
-                        for j in djres.judges
-                    ],
+                    "pending_human": djres.pending_human,
+                    "judges": [{"model": j.judge_model, "score": j.score, "error": j.error} for j in djres.judges],
                     "promotable_score": djres.promotable_score,
                 }
                 if not djres.promotable_score and not (judge_fn is None):
@@ -315,6 +327,8 @@ def evaluate_promotion_anti_hack(
                         reasons.append("dual_judge:unavailable(缺裁判/不可用不假通过)")
                     elif djres.agreement is False:
                         reasons.append("dual_judge:disagreement(分歧超.delta不晋升)")
+                    if djres.pending_human:
+                        reasons.append("dual_judge:pending_human(需人工复核)")
             elif judge_fn is not None and not dj_avail:
                 reasons.append("dual_judge:pool<2(无法构成双裁判诚实降级)")
     except Exception as ex:  # noqa: BLE001
@@ -328,9 +342,7 @@ def evaluate_promotion_anti_hack(
         effect_size = held_out_score - baseline_score
         beat025 = effect_size >= 0.25
         if not beat025:
-            reasons.append(
-                f"effect_size:insufficient(+{effect_size:.3f} < 0.25 最小效应量门槛)"
-            )
+            reasons.append(f"effect_size:insufficient(+{effect_size:.3f} < 0.25 最小效应量门槛)")
     else:
         reasons.append("effect_size:indeterminate(缺候选或基线留出集真值)")
 
@@ -342,9 +354,7 @@ def evaluate_promotion_anti_hack(
             regv = suite.check_candidate(candidate_id, regression_fn, auto_add_new=True)
             reg_dict = regv.to_dict()
             if regv.rejected:
-                reasons.append(
-                    "regression_suite:recurring_failure(已知坏例复发或新失败入库)"
-                )
+                reasons.append("regression_suite:recurring_failure(已知坏例复发或新失败入库)")
         else:
             reg_dict = {"skipped": "no regression_fn（诚实降级，按保守不晋升）"}
             reasons.append("regression_suite:indeterminate(无回归判定函数)")

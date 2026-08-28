@@ -28,10 +28,13 @@ from audiobook_studio.tts.piper_models import (  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Download Piper TTS voice models (S2-4)")
-    ap.add_argument("--voices", nargs="+", default=[DEFAULT_PIPER_VOICE],
-                    help=f"Voice ids to download (default: {DEFAULT_PIPER_VOICE})")
-    ap.add_argument("--model-dir", default=str(PIPER_DEFAULT_MODEL_DIR),
-                    help="Target model directory")
+    ap.add_argument(
+        "--voices",
+        nargs="+",
+        default=[DEFAULT_PIPER_VOICE],
+        help=f"Voice ids to download (default: {DEFAULT_PIPER_VOICE})",
+    )
+    ap.add_argument("--model-dir", default=str(PIPER_DEFAULT_MODEL_DIR), help="Target model directory")
     ap.add_argument("--force", action="store_true", help="Re-download even if present")
     args = ap.parse_args()
 

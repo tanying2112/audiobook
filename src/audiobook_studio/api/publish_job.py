@@ -18,10 +18,7 @@ from ..models.book import Project
 from ..models.publish_job import PublishJobStatus
 from ..models.user import User
 from ..tasks import publish_job_repo as job_repo
-from ..tasks.publish_tasks import (
-    publish_audiobookshelf_async,
-    publish_project_async,
-)
+from ..tasks.publish_tasks import publish_audiobookshelf_async, publish_project_async
 
 router = APIRouter(prefix="/publish", tags=["publish-job"])
 

@@ -4,19 +4,19 @@ import asyncio
 import logging
 import os
 import re
+
+# 把 .env 注入 os.environ: pydantic Settings 只读 .env 到 Settings 对象,
+# 但 LiteLLM / provider key pool 直接读 os.environ (如 OPENAI_API_KEY、
+# KILO_API_KEY)。若不加载, 除 fcc (硬编码 extra_headers) 外所有 provider
+# 都会因 "Missing credentials" 失败。此处一次性加载, uvicorn/celery/脚本均受益。
 from pathlib import Path
+from pathlib import Path as _Path
 from typing import List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-
-# 把 .env 注入 os.environ: pydantic Settings 只读 .env 到 Settings 对象,
-# 但 LiteLLM / provider key pool 直接读 os.environ (如 OPENAI_API_KEY、
-# KILO_API_KEY)。若不加载, 除 fcc (硬编码 extra_headers) 外所有 provider
-# 都会因 "Missing credentials" 失败。此处一次性加载, uvicorn/celery/脚本均受益。
-from pathlib import Path as _Path
 
 try:
     from dotenv import load_dotenv as _load_dotenv
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     # Redis dependency mode: required | optional
     # "required" = fail startup if Redis unreachable (production)
     # "optional" = warn and continue with in-memory cache (development / potato mode)
-    REDIS_REQUIRED: bool = Field(default=True, alias="REDIS_REQUIRED")
+    REDIS_REQUIRED: bool = Field(default=False, alias="REDIS_REQUIRED")
     RATE_LIMIT_PER_USER_PER_MINUTE: int = Field(default=60, alias="RATE_LIMIT_PER_USER_PER_MINUTE")
     RATE_LIMIT_BURST: int = Field(default=10, alias="RATE_LIMIT_BURST")
 
@@ -153,7 +153,9 @@ class Settings(BaseSettings):
     TESSERACT_CMD: Optional[str] = Field(default=None, alias="TESSERACT_CMD")
 
     # Model cache directory
-    AUDIOBOOK_STUDIO_MODEL_CACHE: str = Field(default="~/.cache/audiobook_studio/models", alias="AUDIOBOOK_STUDIO_MODEL_CACHE")
+    AUDIOBOOK_STUDIO_MODEL_CACHE: str = Field(
+        default="~/.cache/audiobook_studio/models", alias="AUDIOBOOK_STUDIO_MODEL_CACHE"
+    )
 
     # ffmpeg concurrency control
     FFMPEG_CONCURRENCY: int = Field(default=0, alias="FFMPEG_CONCURRENCY")  # 0=auto(cpu_count-1)
@@ -286,10 +288,7 @@ class Settings(BaseSettings):
             logger.info("Database connectivity: OK")
         except Exception as e:
             logger.critical(f"DATABASE_URL connect failed: {e}")
-            raise RuntimeError(
-                f"DATABASE_URL connect failed: {e}. "
-                f"Check DATABASE_URL={self.DATABASE_URL}"
-            ) from e
+            raise RuntimeError(f"DATABASE_URL connect failed: {e}. " f"Check DATABASE_URL={self.DATABASE_URL}") from e
 
         # 2. Redis connectivity (async ping)
         try:
@@ -303,9 +302,7 @@ class Settings(BaseSettings):
         except Exception as e:
             if skip_external or not self.REDIS_REQUIRED:
                 # Offline / potato mode / optional Redis: degrade gracefully.
-                logger.warning(
-                    f"Redis ping failed (continuing without Redis): {e}"
-                )
+                logger.warning(f"Redis ping failed (continuing without Redis): {e}")
             else:
                 logger.critical(f"Redis ping failed: {e}")
                 raise RuntimeError(f"Redis ping failed: {e}. Check REDIS_URL={self.REDIS_URL}") from e
@@ -316,8 +313,7 @@ class Settings(BaseSettings):
             if not model_path.exists():
                 if skip_external:
                     logger.warning(
-                        f"KOKORO_MODEL_PATH not found (SKIP_RUNTIME_DEPS set, continuing): "
-                        f"{self.KOKORO_MODEL_PATH}"
+                        f"KOKORO_MODEL_PATH not found (SKIP_RUNTIME_DEPS set, continuing): " f"{self.KOKORO_MODEL_PATH}"
                     )
                 else:
                     logger.critical(f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}")

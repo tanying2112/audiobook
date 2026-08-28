@@ -55,6 +55,7 @@ def _reset_global():
 
 # ── TelemetryCollector ───────────────────────────────────────────────────────
 
+
 def test_collector_initialization():
     c = TelemetryCollector()
     assert c._records == []
@@ -184,6 +185,7 @@ def test_reset():
 
 # ── CostTelemetry (aggregation + scheduler) ──────────────────────────────────
 
+
 def test_cleanup_old_records():
     ct = TelemetryCollector()
     ct._records.append(_record(ts=datetime.now() - timedelta(days=40)))
@@ -296,6 +298,7 @@ def test_scheduler_already_running_noop(_fake_scheduler):
 
 # ── Module-level helpers ─────────────────────────────────────────────────────
 
+
 def test_get_telemetry_singleton():
     a = get_telemetry()
     b = get_telemetry()
@@ -341,7 +344,9 @@ def test_record_cost_event_llm():
 
 def test_record_cost_event_tts():
     r = record_cost_event(
-        OperationType.TTS_SYNTHESIS, ProviderType.EDGE_TTS, "edge",
+        OperationType.TTS_SYNTHESIS,
+        ProviderType.EDGE_TTS,
+        "edge",
         metadata={"characters": 100, "voice": "v"},
     )
     assert r.operation == OperationType.TTS_SYNTHESIS

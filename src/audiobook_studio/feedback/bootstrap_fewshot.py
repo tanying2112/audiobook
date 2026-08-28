@@ -88,7 +88,18 @@ DEFAULT_EARLY_STOP_PATIENCE = 10
 DEFAULT_LONG_NOVEL_DIR = "data/long_novel"
 
 
-def configure_dspy_optimizer(use_mock: bool = True) -> Any:
+def _mock_mode_from_env() -> bool:
+    """Return True only when MOCK_LLM is explicitly enabled.
+
+    The self-evolution loop defaults to a REAL LLM so that closed-loop
+    learning consumes real production samples and performs genuine LLM
+    reflection. MockLM is an explicit degradation path: set ``MOCK_LLM=true``
+    to opt in (used by tests / offline runs).
+    """
+    return os.getenv("MOCK_LLM", "false").strip().lower() in ("1", "true", "yes")
+
+
+def configure_dspy_optimizer(use_mock: bool = False) -> Any:
     """Configure DSPy with appropriate LM for optimization."""
     if use_mock:
         # Use a mock LM for testing
@@ -494,7 +505,7 @@ def load_long_novel_data(
 def run_pipeline_on_book_data(
     book_data: BookTrainingData,
     stage: str = "annotate_paragraph",
-    mock_mode: bool = True,
+    mock_mode: bool = False,
     max_paragraphs: Optional[int] = None,
 ) -> BookTrainingData:
     """Run pipeline stage on book paragraphs to extract character/voice annotations.
@@ -505,7 +516,8 @@ def run_pipeline_on_book_data(
     Args:
         book_data: BookTrainingData with extracted paragraphs
         stage: Pipeline stage to run ('annotate_paragraph' or 'edit_for_tts')
-        mock_mode: Use mock LLM for fast processing
+        mock_mode: Explicitly use MockLM (degradation path). Defaults to a REAL
+            LLM so closed-loop self-iteration learns from real production samples.
         max_paragraphs: Limit paragraphs to process
 
     Returns:
@@ -614,7 +626,7 @@ def run_pipeline_on_book_data(
 def prepare_training_data_from_books(
     novel_dir: str = DEFAULT_LONG_NOVEL_DIR,
     stage: str = "annotate_paragraph",
-    mock_mode: bool = True,
+    mock_mode: bool = False,
     max_books: Optional[int] = None,
     max_paragraphs_per_book: Optional[int] = None,
 ) -> List[Tuple[str, Dict[str, Any]]]:
@@ -771,8 +783,10 @@ class BootstrapFewShotOptimizer:
         """
         if not DSPY_AVAILABLE:
             _require_dspy("BootstrapFewShotOptimizer.optimize")
-        # Configure DSPy with mock LM for testing
-        configure_dspy_optimizer(use_mock=True)
+        # Configure DSPy for a REAL LLM by default so the self-evolution loop
+        # performs genuine reflection on real production samples. Explicitly
+        # degrade to MockLM only when MOCK_LLM is set (tests / offline runs).
+        configure_dspy_optimizer(use_mock=_mock_mode_from_env())
 
         # Reset state
         self._stopper = EarlyStoppingStopper(patience=self.early_stop_patience)

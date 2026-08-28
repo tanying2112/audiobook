@@ -474,6 +474,7 @@ class EdgeTTSEngine(BaseTTSEngine):
         if self.mock_mode:
             # Mock: yield empty chunks
             import numpy as np
+
             yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
             return
 

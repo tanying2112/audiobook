@@ -15,16 +15,8 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from audiobook_studio.llm.client import (
-    LLMCallResult,
-    LLMClient,
-    LLMClientConfig,
-    create_client,
-)
-from audiobook_studio.llm.semantic_cache import (
-    get_semantic_cache,
-    reset_semantic_cache,
-)
+from audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from audiobook_studio.llm.semantic_cache import get_semantic_cache, reset_semantic_cache
 from audiobook_studio.schemas import (
     BookAnalysisOutput,
     ExtractionResult,
@@ -72,9 +64,7 @@ class TestLLMClientConfig:
         assert cfg.mock_data_dir == "tests/golden"
 
     def test_custom(self):
-        cfg = LLMClientConfig(
-            model="m", temperature=0.5, max_tokens=2000, mock_data_dir="/tmp/x"
-        )
+        cfg = LLMClientConfig(model="m", temperature=0.5, max_tokens=2000, mock_data_dir="/tmp/x")
         assert cfg.temperature == 0.5
         assert cfg.max_tokens == 2000
         assert cfg.mock_data_dir == "/tmp/x"
@@ -195,18 +185,14 @@ class TestLoadMockData:
         d = tmp_path / "golden"
         d.mkdir()
         (d / "sample.json").write_text(json.dumps({"a": 1}))
-        (d / "other.jsonl").write_text(
-            json.dumps({"expected_output": {"req": 2}})
-        )
+        (d / "other.jsonl").write_text(json.dumps({"expected_output": {"req": 2}}))
         client = LLMClient(LLMClientConfig(model="m", mock_data_dir=str(d)))
         assert client._mock_cache["sample"] == {"a": 1}
         assert client._mock_cache["other"] == {"req": 2}
 
     def test_load_missing_dir_is_noop(self, monkeypatch, tmp_path):
         monkeypatch.setenv("MOCK_LLM", "true")
-        client = LLMClient(
-            LLMClientConfig(model="m", mock_data_dir=str(tmp_path / "nope"))
-        )
+        client = LLMClient(LLMClientConfig(model="m", mock_data_dir=str(tmp_path / "nope")))
         assert client._mock_cache == {}
 
     def test_load_jsonl_without_expected_output_and_blank_lines(self, monkeypatch, tmp_path):
@@ -287,16 +273,12 @@ class TestMockCall:
     def test_temperature_override(self, monkeypatch, tmp_path):
         client = self._mock_client(monkeypatch, tmp_path)
         # Must not raise "got multiple values for keyword argument 'temperature'"
-        result = client.call(
-            prompt="hi", response_model=ExtractionResult, temperature=0.9
-        )
+        result = client.call(prompt="hi", response_model=ExtractionResult, temperature=0.9)
         assert result is not None
 
     def test_max_tokens_override(self, monkeypatch, tmp_path):
         client = self._mock_client(monkeypatch, tmp_path)
-        result = client.call(
-            prompt="hi", response_model=ExtractionResult, max_tokens=123
-        )
+        result = client.call(prompt="hi", response_model=ExtractionResult, max_tokens=123)
         assert result is not None
 
     def test_response_model_book_analysis(self, monkeypatch, tmp_path):
@@ -310,11 +292,7 @@ class TestMockCall:
         assert out.raw_text == "Mock extracted text"
 
     def test_response_model_paragraph(self, monkeypatch, tmp_path):
-        out = (
-            self._mock_client(monkeypatch, tmp_path)
-            .call("x", ParagraphAnnotation)
-            .output
-        )
+        out = self._mock_client(monkeypatch, tmp_path).call("x", ParagraphAnnotation).output
         assert out.speaker_canonical_name == "旁白"
 
     def test_response_model_quality(self, monkeypatch, tmp_path):
@@ -326,11 +304,7 @@ class TestMockCall:
         assert "模拟编辑" in out.edited_text
 
     def test_response_model_tts_routing(self, monkeypatch, tmp_path):
-        out = (
-            self._mock_client(monkeypatch, tmp_path)
-            .call("x", TtsRoutingDecision)
-            .output
-        )
+        out = self._mock_client(monkeypatch, tmp_path).call("x", TtsRoutingDecision).output
         assert out.engine_choice == "kokoro"
 
     def test_response_model_feedback_string(self, monkeypatch, tmp_path):
@@ -501,9 +475,7 @@ class TestNonMockCall:
 
     def test_create_raises_propagates(self, monkeypatch):
         client = self._non_mock_client(monkeypatch)
-        client._client.chat.completions.create = MagicMock(
-            side_effect=RuntimeError("down")
-        )
+        client._client.chat.completions.create = MagicMock(side_effect=RuntimeError("down"))
         with pytest.raises(RuntimeError, match="down"):
             client.call(prompt="hi", response_model=Out)
 
@@ -547,9 +519,7 @@ class TestNonMockCall:
         ret._raw_response = None
         client._client.chat.completions.create = MagicMock(return_value=ret)
         client.call(prompt="hi", response_model=Out)
-        assert (
-            client._client.chat.completions.create.call_args.kwargs["timeout"] is None
-        )
+        assert client._client.chat.completions.create.call_args.kwargs["timeout"] is None
 
     def test_cache_store_non_mock(self, monkeypatch, tmp_path):
         monkeypatch.setenv("LLM_SEMANTIC_CACHE_ENABLED", "true")

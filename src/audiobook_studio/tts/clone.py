@@ -80,6 +80,7 @@ def is_kokoro_available() -> bool:
 # degrades to *preset* mode until a real clone backend (Track B) registers itself.
 # We never claim a usable clone was produced when none was.
 
+
 def real_clone_available() -> bool:
     """True only when a real zero-shot clone backend is registered/available.
 

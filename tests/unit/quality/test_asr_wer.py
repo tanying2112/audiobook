@@ -6,13 +6,13 @@ from unittest.mock import MagicMock, patch
 _SAVED_MODULES = {}
 _MISSING = object()
 
-_SAVED_MODULES['torch'] = sys.modules.get('torch', _MISSING)
-_SAVED_MODULES['torchaudio'] = sys.modules.get('torchaudio', _MISSING)
-_SAVED_MODULES['funasr'] = sys.modules.get('funasr', _MISSING)
-_SAVED_MODULES['whisper'] = sys.modules.get('whisper', _MISSING)
-_SAVED_MODULES['faster_whisper'] = sys.modules.get('faster_whisper', _MISSING)
-_SAVED_MODULES['onnxruntime'] = sys.modules.get('onnxruntime', _MISSING)
-_SAVED_MODULES['speechbrain'] = sys.modules.get('speechbrain', _MISSING)
+_SAVED_MODULES["torch"] = sys.modules.get("torch", _MISSING)
+_SAVED_MODULES["torchaudio"] = sys.modules.get("torchaudio", _MISSING)
+_SAVED_MODULES["funasr"] = sys.modules.get("funasr", _MISSING)
+_SAVED_MODULES["whisper"] = sys.modules.get("whisper", _MISSING)
+_SAVED_MODULES["faster_whisper"] = sys.modules.get("faster_whisper", _MISSING)
+_SAVED_MODULES["onnxruntime"] = sys.modules.get("onnxruntime", _MISSING)
+_SAVED_MODULES["speechbrain"] = sys.modules.get("speechbrain", _MISSING)
 
 sys.modules["torch"] = MagicMock()
 sys.modules["torchaudio"] = MagicMock()

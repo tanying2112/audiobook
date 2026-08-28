@@ -145,11 +145,7 @@ def _registration_allowed(
     if mode == "open":
         return True, None
     if mode == "invite":
-        allowed = [
-            c.strip()
-            for c in (settings.REGISTRATION_INVITE_CODES or "").split(",")
-            if c.strip()
-        ]
+        allowed = [c.strip() for c in (settings.REGISTRATION_INVITE_CODES or "").split(",") if c.strip()]
         if user_data.invite_code and user_data.invite_code in allowed:
             return True, None
         if current_user is not None and getattr(current_user, "is_superuser", False):

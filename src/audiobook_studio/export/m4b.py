@@ -196,9 +196,7 @@ def build_m4b(
                                 dur_ms = _ffprobe_duration_ms(mastered_path)
                                 chapter_markers[i].duration_ms = dur_ms
                             except Exception as e:  # pragma: no cover - defensive
-                                logger.warning(
-                                    f"Failed to probe mastered segment {mastered_path}: {e}"
-                                )
+                                logger.warning(f"Failed to probe mastered segment {mastered_path}: {e}")
                     else:
                         normalized_path = seg_path
 
