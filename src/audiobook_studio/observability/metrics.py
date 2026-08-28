@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 
 from opentelemetry import metrics
@@ -15,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 # Global meter provider
 _meter_provider: Optional[MeterProvider] = None
+
+# Module-level metrics cache for lazy initialization
+_core_metrics: Optional[Dict[str, Any]] = None
+
+# Queue depth tracking (in-memory for single-process)
+_queue_depth_gauges: Dict[str, int] = {}
 
 
 def init_metrics(
@@ -182,98 +189,247 @@ def create_gauge(
         )
 
 
-# Pre-defined SLO metrics for Audiobook Studio
+def _get_core_metrics() -> Dict[str, Any]:
+    """Get or create core metrics (lazy initialization)."""
+    global _core_metrics
+    if _core_metrics is not None:
+        return _core_metrics
+
+    meter = get_meter("audiobook_studio.core")
+
+    _core_metrics = {
+        # HTTP metrics (as specified in S3-2)
+        "http_requests_total": meter.create_counter(
+            "http_requests_total",
+            "Total HTTP requests by status code",
+            "1",
+        ),
+        "http_request_duration_seconds": meter.create_histogram(
+            "http_request_duration_seconds",
+            "HTTP request latency in seconds",
+            "s",
+            explicit_bucket_boundaries_advisory=[
+                0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0
+            ],
+        ),
+        # Pipeline stage metrics
+        "pipeline_stage_duration_seconds": meter.create_histogram(
+            "pipeline_stage_duration_seconds",
+            "Pipeline stage execution latency in seconds",
+            "s",
+            explicit_bucket_boundaries_advisory=[
+                0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0
+            ],
+        ),
+        # Queue depth metrics
+        "queue_depth": meter.create_up_down_counter(
+            "queue_depth",
+            "Current queue depth by queue name",
+            "1",
+        ),
+        # TTS metrics
+        "tts_synthesis_total": meter.create_counter(
+            "tts_synthesis_total",
+            "Total TTS synthesis requests by engine and status",
+            "1",
+        ),
+        "tts_synthesis_duration_seconds": meter.create_histogram(
+            "tts_synthesis_duration_seconds",
+            "TTS synthesis latency in seconds",
+            "s",
+            explicit_bucket_boundaries_advisory=[
+                0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0
+            ],
+        ),
+        # LLM metrics
+        "llm_tokens_total": meter.create_counter(
+            "llm_tokens_total",
+            "Total LLM tokens consumed by model and type (input/output)",
+            "1",
+        ),
+        "llm_request_duration_seconds": meter.create_histogram(
+            "llm_request_duration_seconds",
+            "LLM API request latency in seconds",
+            "s",
+            explicit_bucket_boundaries_advisory=[
+                0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0
+            ],
+        ),
+        # Cost metrics (P1-3)
+        "cost_usd_daily": meter.create_counter(
+            "cost_usd_daily",
+            "Daily cost in USD by provider and category",
+            "USD",
+        ),
+        "llm_cost_usd_total": meter.create_counter(
+            "llm_cost_usd_total",
+            "Total LLM cost in USD",
+            "USD",
+        ),
+        # Error metrics
+        "http_errors_total": meter.create_counter(
+            "http_errors_total",
+            "Total HTTP errors (5xx)",
+            "1",
+        ),
+        "llm_errors_total": meter.create_counter(
+            "llm_errors_total",
+            "Total LLM API errors",
+            "1",
+        ),
+        "pipeline_failures_total": meter.create_counter(
+            "pipeline_failures_total",
+            "Total pipeline failures",
+            "1",
+        ),
+        # Business metrics
+        "books_processed_total": meter.create_counter(
+            "books_processed_total",
+            "Total books processed",
+            "1",
+        ),
+        "chapters_synthesized_total": meter.create_counter(
+            "chapters_synthesized_total",
+            "Total chapters synthesized",
+            "1",
+        ),
+        "quality_check_failures_total": meter.create_counter(
+            "quality_check_failures_total",
+            "Total quality check failures",
+            "1",
+        ),
+        "regeneration_triggered_total": meter.create_counter(
+            "regeneration_triggered_total",
+            "Total audio regenerations triggered",
+            "1",
+        ),
+    }
+    return _core_metrics
+
+
+def get_core_metrics() -> Dict[str, Any]:
+    """Get core metrics dictionary (lazy initialization).
+
+    Returns:
+        Dictionary of core metric instruments
+    """
+    return _get_core_metrics()
+
+
+# Queue depth management functions
+def increment_queue_depth(queue_name: str, delta: int = 1) -> None:
+    """Increment queue depth gauge."""
+    global _queue_depth_gauges
+    _queue_depth_gauges[queue_name] = _queue_depth_gauges.get(queue_name, 0) + delta
+    metrics = _get_core_metrics()
+    metrics["queue_depth"].add(delta, attributes={"queue": queue_name})
+
+
+def decrement_queue_depth(queue_name: str, delta: int = 1) -> None:
+    """Decrement queue depth gauge."""
+    global _queue_depth_gauges
+    _queue_depth_gauges[queue_name] = max(0, _queue_depth_gauges.get(queue_name, 0) - delta)
+    metrics = _get_core_metrics()
+    metrics["queue_depth"].add(-delta, attributes={"queue": queue_name})
+
+
+def record_http_request(method: str, path: str, status_code: int, duration_seconds: float) -> None:
+    """Record HTTP request metrics."""
+    metrics = _get_core_metrics()
+    status_str = str(status_code)
+    metrics["http_requests_total"].add(1, attributes={
+        "method": method,
+        "path": path,
+        "status_code": status_str,
+    })
+    metrics["http_request_duration_seconds"].record(duration_seconds, attributes={
+        "method": method,
+        "path": path,
+        "status_code": status_str,
+    })
+    if status_code >= 500:
+        metrics["http_errors_total"].add(1, attributes={
+            "method": method,
+            "path": path,
+        })
+
+
+def record_pipeline_stage(stage: str, duration_seconds: float, success: bool = True) -> None:
+    """Record pipeline stage duration."""
+    metrics = _get_core_metrics()
+    metrics["pipeline_stage_duration_seconds"].record(duration_seconds, attributes={
+        "stage": stage,
+        "success": str(success).lower(),
+    })
+    if not success:
+        metrics["pipeline_failures_total"].add(1, attributes={"stage": stage})
+
+
+def record_tts_synthesis(engine: str, status: str, duration_seconds: float, characters: int = 0) -> None:
+    """Record TTS synthesis metrics."""
+    metrics = _get_core_metrics()
+    metrics["tts_synthesis_total"].add(1, attributes={
+        "engine": engine,
+        "status": status,
+    })
+    metrics["tts_synthesis_duration_seconds"].record(duration_seconds, attributes={
+        "engine": engine,
+    })
+    if characters > 0:
+        # Also record characters (existing metric)
+        pass  # Characters tracked via existing tts_characters_used_total
+
+
+def record_llm_tokens(model: str, token_type: str, count: int) -> None:
+    """Record LLM token usage (token_type: 'input' or 'output')."""
+    metrics = _get_core_metrics()
+    metrics["llm_tokens_total"].add(count, attributes={
+        "model": model,
+        "type": token_type,
+    })
+
+
+def record_llm_cost(cost_usd: float, provider: str, category: str = "llm") -> None:
+    """Record LLM cost in USD."""
+    metrics = _get_core_metrics()
+    metrics["llm_cost_usd_total"].add(cost_usd, attributes={
+        "provider": provider,
+        "category": category,
+    })
+    # Also track daily cost
+    metrics["cost_usd_daily"].add(cost_usd, attributes={
+        "provider": provider,
+        "category": category,
+    })
+
+
+def record_llm_request(model: str, duration_seconds: float, success: bool = True) -> None:
+    """Record LLM request duration."""
+    metrics = _get_core_metrics()
+    metrics["llm_request_duration_seconds"].record(duration_seconds, attributes={
+        "model": model,
+        "success": str(success).lower(),
+    })
+    if not success:
+        metrics["llm_errors_total"].add(1, attributes={"model": model})
+
+
+# Pre-defined SLO metrics for Audiobook Studio (legacy compatibility)
 def create_slo_metrics() -> Dict[str, Any]:
-    """Create standard SLO metrics for the service.
+    """Create standard SLO metrics for the service (legacy compatibility).
 
     Returns:
         Dictionary of metric instruments
     """
-    return {
-        # Latency SLOs (ms)
-        "http_request_duration": create_histogram(
-            "http_request_duration_ms",
-            "HTTP request latency in milliseconds",
-            "ms",
-            bucket_boundaries=[50, 100, 200, 500, 1000, 2000, 5000, 10000],
-        ),
-        "llm_request_duration": create_histogram(
-            "llm_request_duration_ms",
-            "LLM API request latency in milliseconds",
-            "ms",
-            bucket_boundaries=[100, 500, 1000, 2000, 5000, 10000, 30000, 60000],
-        ),
-        "tts_synthesis_duration": create_histogram(
-            "tts_synthesis_duration_ms",
-            "TTS synthesis latency in milliseconds",
-            "ms",
-            bucket_boundaries=[500, 1000, 2000, 5000, 10000, 30000],
-        ),
-        "pipeline_stage_duration": create_histogram(
-            "pipeline_stage_duration_ms",
-            "Pipeline stage execution latency in milliseconds",
-            "ms",
-            bucket_boundaries=[100, 500, 1000, 5000, 10000, 30000, 60000, 120000],
-        ),
-        # Error rate SLOs
-        "http_requests_total": create_counter(
-            "http_requests_total",
-            "Total HTTP requests",
-        ),
-        "http_errors_total": create_counter(
-            "http_errors_total",
-            "Total HTTP errors (5xx)",
-        ),
-        "llm_errors_total": create_counter(
-            "llm_errors_total",
-            "Total LLM API errors",
-        ),
-        "pipeline_failures_total": create_counter(
-            "pipeline_failures_total",
-            "Total pipeline failures",
-        ),
-        # Quota/Cost SLOs
-        "llm_tokens_used": create_counter(
-            "llm_tokens_used_total",
-            "Total LLM tokens consumed",
-        ),
-        "llm_cost_usd": create_counter(
-            "llm_cost_usd_total",
-            "Total LLM cost in USD",
-        ),
-        "tts_characters_used": create_counter(
-            "tts_characters_used_total",
-            "Total TTS characters synthesized",
-        ),
-        "free_tier_quota_remaining": create_gauge(
-            "free_tier_quota_remaining",
-            "Remaining free tier quota percentage",
-            "percent",
-        ),
-        # Business metrics
-        "books_processed_total": create_counter(
-            "books_processed_total",
-            "Total books processed",
-        ),
-        "chapters_synthesized_total": create_counter(
-            "chapters_synthesized_total",
-            "Total chapters synthesized",
-        ),
-        "quality_check_failures_total": create_counter(
-            "quality_check_failures_total",
-            "Total quality check failures",
-        ),
-        "regeneration_triggered_total": create_counter(
-            "regeneration_triggered_total",
-            "Total audio regenerations triggered",
-        ),
-    }
+    # Core metrics already include all needed metrics
+    return _get_core_metrics()
 
 
 def shutdown_metrics() -> None:
     """Shutdown meter provider."""
-    global _meter_provider
+    global _meter_provider, _core_metrics
     if _meter_provider:
         _meter_provider.shutdown()
         _meter_provider = None
+        _core_metrics = None
         logger.info("OpenTelemetry metrics shut down")

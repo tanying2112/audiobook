@@ -72,6 +72,10 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
+    invite_code: Optional[str] = Field(
+        default=None,
+        description="Invite code required when AUTH_REGISTRATION_MODE=invite",
+    )
 
 
 class UserUpdate(BaseModel):

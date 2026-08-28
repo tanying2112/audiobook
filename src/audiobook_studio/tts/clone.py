@@ -70,22 +70,51 @@ def is_kokoro_available() -> bool:
     return _KOKORO_MODEL_AVAILABLE
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# P0/A2 honesty: real zero-shot cloning is gated on a GPU clone backend.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Under free + no-GPU, true zero-shot cloning is infeasible: Kokoro/Piper discard
+# reference_audio, and the GPU neural clone models (F5-TTS / CosyVoice2 / Dia) cannot
+# run on CPU at audible speed. This module therefore stores the uploaded sample and
+# degrades to *preset* mode until a real clone backend (Track B) registers itself.
+# We never claim a usable clone was produced when none was.
+
+def real_clone_available() -> bool:
+    """True only when a real zero-shot clone backend is registered/available.
+
+    Always ``False`` under free + no-GPU. When F5-TTS / CosyVoice2 (Track B) is
+    wired in, this should return ``True`` so the API can advertise real cloning.
+    """
+    # TODO(Track B / B1): return True once an F5/CosyVoice2 backend registers a
+    # clone capability (e.g. via an engine registry capability flag).
+    return False
+
+
+def clone_mode() -> str:
+    """Return the active clone mode: 'clone' (real) or 'preset' (no-GPU fallback)."""
+    return "clone" if real_clone_available() else "preset"
+
+
 # ============================================================
 
 
 def extract_voice_features(audio_path: Path, sample_rate: int = 24000) -> np.ndarray:
-    """从音频文件提取声音特征向量 (用于 Kokoro voice embedding).
+    """从音频文件提取 *占位* 声音特征向量（preset placeholder，非真实声纹）.
 
-    基于 kokoro-onnx 的声音克隆流程:
-    - 从 15s 音频样本提取 MFCC/频谱特征
-    - 返回 256 维特征向量 (与 Kokoro 原生声音 embedding 维度匹配)
+    ⚠️ 诚实声明：本函数仅基于频谱质心 / 过零率 / RMS 等粗粒度声学统计量构造一个
+    256 维向量，**不是** 说话人声纹 / 生物特征 embedding，也**不是** Kokoro 原生的
+    voice embedding。真实克隆链路（``real_clone_available()`` 为 True 时）由
+    Kokoro-ONNX 自身生成 embedding，不会使用本向量。本向量仅用于模拟/占位模式下让
+    调用方拿到一个可复现的 deterministic 特征，便于灰度与回放测试，绝不能用于声纹
+    比对或身份认证。
 
     Args:
         audio_path: 音频文件路径
         sample_rate: 采样率 (kokoro 固定为 24000)
 
     Returns:
-        256 维特征向量 (numpy array)
+        256 维占位特征向量 (numpy array)，对应 feature_method="spectral_centroid_placeholder"
     """
     try:
         # 延迟导入 soundfile (避免强制依赖)
@@ -93,6 +122,9 @@ def extract_voice_features(audio_path: Path, sample_rate: int = 24000) -> np.nda
 
         # 加载音频
         audio_data, sr = sf.read(str(audio_path))
+        if len(audio_data) == 0:
+            # 空音频（或读取失败）直接返回默认特征向量，避免后续 0/0 产生 nan
+            return np.ones(256, dtype=np.float32) * 0.5
         if sr != sample_rate:
             # 重采样 (简单线性插值占位)
             ratio = sample_rate / sr
@@ -106,11 +138,11 @@ def extract_voice_features(audio_path: Path, sample_rate: int = 24000) -> np.nda
         if len(audio_data) > 0:
             audio_data = audio_data / np.max(np.abs(audio_data))
 
-        # 提取频谱特征 (简化版 MFCC 替代)
-        # 实际生产环境建议使用 librosa 提取真正的 MFCC
+        # 提取频谱特征 (简化版 MFCC 替代) —— 占位特征，非真实声纹
+        # 实际生产环境建议使用 librosa 提取真正的 MFCC；真实克隆由 Kokoro 自身生成 embedding
         features = []
 
-        # 1. 频谱质心 (Spectral Centroid)
+        # 1. 频谱质心 (Spectral Centroid) —— 占位特征，非真实声纹
         if len(audio_data) > 100:
             # 将音频分成 8 段计算频谱质心
             segment_size = len(audio_data) // 8
@@ -242,16 +274,24 @@ class VoiceSample:
 
 @dataclass
 class VoicePrint:
-    """声音指纹（声纹）"""
+    """声音指纹（声纹）占位对象 —— *不是* 真实生物特征声纹.
+
+    ⚠️ 诚实声明：本结构用于记录模拟/占位模式下的克隆结果。其中的 ``embedding``
+    来自 ``extract_voice_features`` 的谱质心占位特征，``voice_hash`` 来自
+    ``_calculate_audio_hash`` 的粗粒度统计哈希，二者均**不可**作为说话人身份或
+    声纹比对的依据。``feature_method`` 显式标注所用方法；仅当其为占位方法时本对象
+    才是占位结果，真实克隆模式下应由 Kokoro-ONNX 提供真正的 embedding。
+    """
 
     speaker_id: str
     voice_hash: str
-    embedding: List[float]  # 声音特征向量
+    embedding: List[float]  # 占位声音特征向量（非真实声纹）
     quality: AudioQuality
     sample_count: int
     avg_snr: float
     created_at: str
     updated_at: str
+    feature_method: str = "spectral_centroid_placeholder"  # 诚实标注：占位特征方法
 
 
 @dataclass
@@ -329,7 +369,11 @@ class VoiceCloningEngine:
             logger.error(f"⚠️ 保存声音指纹失败: {e}")
 
     def _calculate_audio_hash(self, audio_data: np.ndarray, sample_rate: int) -> str:
-        """计算音频数据的哈希值（用于声纹）"""
+        """计算音频数据的 *占位* 哈希值（preset placeholder，非声纹）.
+
+        ⚠️ 诚实声明：仅用均值/标准差/分位数等统计特征做确定性哈希，用于模拟模式下
+        区分不同样本，不构成生物特征声纹。
+        """
         # 简化实现：使用音频数据的统计特征
         features = [
             np.mean(audio_data),

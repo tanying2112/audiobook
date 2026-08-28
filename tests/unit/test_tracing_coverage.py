@@ -9,6 +9,7 @@ from src.audiobook_studio.observability import tracing
 # app imports them lazily (graceful degradation), but the patches below require
 # the modules to be importable. Skip when the extras aren't installed (e.g. a
 # minimal dev environment) — CI installs them and runs the tests normally.
+pytestmark = pytest.mark.skip_env_missing
 pytest.importorskip("opentelemetry.instrumentation")
 
 

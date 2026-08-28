@@ -354,7 +354,9 @@ class SemanticCache:
 
         t0 = time.perf_counter()
         norm = normalize_prompt(prompt)
-        namespace = self._namespace(model, temperature, max_tokens, response_model.__name__)
+        namespace = self._namespace(
+            model, temperature, max_tokens, getattr(response_model, "__name__", str(response_model))
+        )
         exact_key = self._exact_key(norm, namespace)
 
         # 1) exact (in-memory)
@@ -422,7 +424,9 @@ class SemanticCache:
             return
 
         norm = normalize_prompt(prompt)
-        namespace = self._namespace(model, temperature, max_tokens, response_model.__name__)
+        namespace = self._namespace(
+            model, temperature, max_tokens, getattr(response_model, "__name__", str(response_model))
+        )
         exact_key = self._exact_key(norm, namespace)
         payload = _serialize_result(result, response_model)
         entry = self._make_entry(exact_key, norm, namespace, payload)

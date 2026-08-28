@@ -44,6 +44,9 @@ CLIPPING_THRESHOLD_DB = float(__import__("os").getenv("AUDIO_CLIPPING_THRESHOLD_
 MIN_VALID_DURATION_MS = int(__import__("os").getenv("AUDIO_MIN_VALID_DURATION_MS", "100"))
 MAX_VALID_DURATION_MS = int(__import__("os").getenv("AUDIO_MAX_VALID_DURATION_MS", "300000"))  # 5 min
 
+# UTMOS quality threshold (1-5)
+UTMOS_THRESHOLD = float(__import__("os").getenv("AUDIO_UTMOS_THRESHOLD", "3.5"))
+
 
 @dataclass
 class SegmentQualityResult:
@@ -68,10 +71,11 @@ class SegmentQualityResult:
     peak_db: float = -60.0
     rms_db: float = -60.0
 
-    # ── 硬质检三件套 (P0.2) — 真实音频指标，来自 quality/metrics.py ──────────────
+    # ── 硬质检四件套 (P0.2 + UTMOS) — 真实音频指标，来自 quality/metrics.py ──────────────
     # None = 该指标未计算（依赖缺失或缺少参考输入），区别于"计算并通过"。
     # 越界（指标已计算且低于阈值）会把 issues / passed 翻转，overall_passed 随之 False。
     mos: Optional[float] = None  # DNSMOS 综合 MOS (1-5)，免费 CPU 门槛
+    utmos: Optional[float] = None  # UTMOS 语音质量评分 (1-5)，真实听感评分
     wer: Optional[float] = None  # ASR 字错误率 0-1（需 reference_text）
     voice_cosine: Optional[float] = None  # 声纹余弦相似度 0-1（需参考音频）
     metrics_status: Optional[str] = None  # 硬指标运行说明：None=全跑、含"skipped"提示降级原因
@@ -335,13 +339,14 @@ async def _run_hard_metrics_async(
         logger.warning(f"Hard metrics suite raised for {file_path}: {e}")
         return {
             "mos": None,
+            "utmos": None,
             "wer": None,
             "voice_cosine": None,
             "issues": [f"硬指标计算失败: {e}"],
             "status": f"skipped:suite-error:{type(e).__name__}",
         }
 
-    out: Dict[str, Any] = {"mos": None, "wer": None, "voice_cosine": None, "issues": []}
+    out: Dict[str, Any] = {"mos": None, "utmos": None, "wer": None, "voice_cosine": None, "issues": []}
     skipped: List[str] = []
 
     if qc_result.dnsmos is not None:
@@ -351,6 +356,14 @@ async def _run_hard_metrics_async(
             skipped.append(f"dnsmos({d.error or 'failed'})")
     else:
         skipped.append("dnsmos(dep-missing)")
+
+    if qc_result.utmos is not None:
+        u = qc_result.utmos
+        out["utmos"] = u.mos if u.success else None
+        if not u.success:
+            skipped.append(f"utmos({u.error or 'failed'})")
+    else:
+        skipped.append("utmos(dep-missing)")
 
     if qc_result.wer is not None:
         w = qc_result.wer
@@ -485,6 +498,7 @@ async def _check_segment_async(
         suite=suite,
     )
     result.mos = metrics_run.get("mos")
+    result.utmos = metrics_run.get("utmos")
     result.wer = metrics_run.get("wer")
     result.voice_cosine = metrics_run.get("voice_cosine")
     result.metrics_status = metrics_run.get("status")

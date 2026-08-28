@@ -233,13 +233,6 @@ def _init_prometheus_metrics() -> None:
 class TelemetryCollector:
     """Central telemetry collector for cost tracking and metrics emission."""
 
-    def __init__(self, settings=None):
-        self.settings = settings or get_settings()
-        self._records: list[CostRecord] = []
-        self._lock = threading.Lock()
-        self._session_start = datetime.now()
-        _init_prometheus_metrics()
-
     def record_llm_usage(
         self,
         provider: ProviderType,
@@ -712,6 +705,12 @@ class TelemetryCollector:
         merged["total_operations"] = merged.get("total_operations", 0) + new.total_operations
         merged["errors"] = merged.get("errors", 0) + new.errors
         merged["retries"] = merged.get("retries", 0) + new.retries
+
+        # Ensure aggregation buckets exist before deep-merging into them
+        # (an older/partial existing summary may omit these keys).
+        merged["by_provider"] = merged.get("by_provider", {}) or {}
+        merged["by_operation"] = merged.get("by_operation", {}) or {}
+        merged["by_model"] = merged.get("by_model", {}) or {}
 
         # Merge by_provider
         for prov, data in new.by_provider.items():

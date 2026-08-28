@@ -15,6 +15,7 @@ import pytest
 # 该后端不可用时整体跳过, 避免 ModuleNotFoundError/ImportError 污染套件。
 # 注意: 部分环境里 voxcpm 半安装(如缺 einops, 或 huggingface_hub 与全局 httpx mock 冲突)
 # 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
+pytestmark = pytest.mark.skip_env_missing
 try:
     import voxcpm  # noqa: F401
     from src.audiobook_studio.tts.voxcpm2_backend import (

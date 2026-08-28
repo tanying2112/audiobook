@@ -9,7 +9,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_superuser, require_permission
+from src.audiobook_studio.auth.dependencies import (
+    get_current_active_user,
+    get_current_superuser,
+    get_current_user_optional,
+    require_permission,
+)
 from src.audiobook_studio.auth.models import PermissionName
 from src.audiobook_studio.auth.router import router
 from src.audiobook_studio.database import Base, get_db
@@ -213,7 +218,7 @@ class TestRegisterEndpoint:
             )
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register",
@@ -225,8 +230,8 @@ class TestRegisterEndpoint:
             },
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 201
         data = response.json()
@@ -245,14 +250,14 @@ class TestRegisterEndpoint:
             user.is_superuser = True
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register", json={"username": "existing", "email": "new@example.com", "password": "password123"}
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 400
         assert "Username already registered" in response.json()["detail"]
@@ -269,15 +274,15 @@ class TestRegisterEndpoint:
             user.is_superuser = True
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register",
             json={"username": "newuser", "email": "existing@example.com", "password": "password123"},
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 400
         assert "Email already registered" in response.json()["detail"]

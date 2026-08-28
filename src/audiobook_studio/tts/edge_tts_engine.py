@@ -240,14 +240,81 @@ class EdgeTTSEngine(BaseTTSEngine):
         )
 
     def _build_ssml(self, text: str, voice_id: str, prosody: Optional[Dict]) -> str:
-        """Build SSML with prosody controls."""
+        """Build SSML with prosody controls and emotion support."""
         if not prosody:
             return text
 
         rate = prosody.get("rate", 1.0)
         pitch = prosody.get("pitch", 0.0)
         volume = prosody.get("volume", 0.0)
+        emotion = prosody.get("emotion")
 
+        # Emotion-based SSML templates
+        emotion_templates = {
+            "happy": {
+                "rate": "+15%",
+                "pitch": "+2st",
+                "volume": "+3dB",
+                "style": "cheerful",
+            },
+            "sad": {
+                "rate": "-10%",
+                "pitch": "-2st",
+                "volume": "-3dB",
+                "style": "sad",
+            },
+            "angry": {
+                "rate": "+20%",
+                "pitch": "+3st",
+                "volume": "+6dB",
+                "style": "angry",
+            },
+            "fearful": {
+                "rate": "+25%",
+                "pitch": "+4st",
+                "volume": "+2dB",
+                "style": "fearful",
+            },
+            "surprised": {
+                "rate": "+30%",
+                "pitch": "+5st",
+                "volume": "+4dB",
+                "style": "surprised",
+            },
+            "calm": {
+                "rate": "-15%",
+                "pitch": "-1st",
+                "volume": "-2dB",
+                "style": "gentle",
+            },
+            "neutral": {
+                "rate": "0%",
+                "pitch": "0st",
+                "volume": "0dB",
+                "style": "neutral",
+            },
+        }
+
+        # Only apply emotion template if explicit "emotion" key is provided
+        if emotion and emotion in emotion_templates:
+            template = emotion_templates[emotion]
+            rate_str = template["rate"]
+            pitch_str = template["pitch"]
+            volume_str = template["volume"]
+            # Use mstts:express-as for Microsoft voices that support it
+            style = template.get("style", "neutral")
+            ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="zh-CN">
+    <voice name="{voice_id}">
+        <mstts:express-as style="{style}">
+            <prosody rate="{rate_str}" pitch="{pitch_str}" volume="{volume_str}">
+                {text}
+            </prosody>
+        </mstts:express-as>
+    </voice>
+</speak>"""
+            return ssml
+
+        # Fallback to manual prosody controls (explicit rate/pitch/volume)
         rate_str = f"{int((rate - 1.0) * 100):+d}%"
         pitch_str = f"{pitch:+.1f}st"
         volume_str = f"{volume:+.1f}dB"

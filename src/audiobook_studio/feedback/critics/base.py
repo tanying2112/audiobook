@@ -334,7 +334,7 @@ class CriticEnsembleEvaluator:
 
 
 # 延迟导入避免循环依赖
-def _get_critics() -> Tuple[type, type, type]:
+def _get_critics() -> Tuple[type, type, type]:  # pragma: no cover - unused lazy import
     from .objective_critic import ObjectiveCritic
     from .semantic_critic import SemanticCritic
     from .structural_critic import StructuralCritic

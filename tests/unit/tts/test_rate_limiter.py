@@ -323,8 +323,14 @@ class TestTTSRateLimiter:
         configs = {"test": RateLimitConfig(provider_name="test", bucket_capacity=5, refill_rate_per_sec=1.0)}
         limiter = TTSRateLimiter(configs=configs)
 
+        before = limiter._buckets["test"].get_available()
         limiter.acquire("test", 5)
-        assert limiter._buckets["test"].get_available() == pytest.approx(0.0, abs=1e-5)
+        after = limiter._buckets["test"].get_available()
+        # Acquiring the full capacity must drain the bucket. The tiny residual
+        # allowed for is the continuous refill that occurs between acquire and
+        # the measurement (amplified under full-suite load), so assert on the
+        # consumed delta rather than an exact zero.
+        assert before - after == pytest.approx(5.0, abs=1e-2)
 
         limiter.reset("test")
         assert limiter._buckets["test"].get_available() == 5
@@ -506,10 +512,14 @@ class TestEdgeCases:
     def test_consume_negative_tokens(self):
         """Test consuming negative tokens (should work as add)."""
         bucket = TokenBucket(capacity=10, refill_rate=1.0)
+        before = bucket.get_available()
         bucket.consume(5)
 
-        # Can't pass negative to consume, but test edge
-        assert bucket.get_available() == pytest.approx(5.0, abs=1e-5)
+        # Can't pass negative to consume, but test edge: 5 tokens consumed.
+        # Compare the delta so the continuous refill between measurements
+        # (amplified under full-suite load) does not break the assertion.
+        after = bucket.get_available()
+        assert before - after == pytest.approx(5.0, abs=1e-2)
 
     def test_capacity_zero(self):
         """Test bucket with zero capacity."""

@@ -15,6 +15,18 @@ mock_st_instance.encode.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
 mock_sentence_transformers.SentenceTransformer.return_value = mock_st_instance
 sys.modules["sentence_transformers"] = mock_sentence_transformers
 
+
+@pytest.fixture(autouse=True)
+def _install_st_mock(monkeypatch):
+    """Re-install our sentence_transformers mock before each test.
+
+    Without this, a sibling test that pops/replaces ``sys.modules['sentence_transformers']``
+    (e.g. test_segment_coverage's fake_sentence_transformers fixture) leaves a stale or
+    alternative mock in place, producing nan embeddings in this file's tests.
+    """
+    monkeypatch.setitem(sys.modules, "sentence_transformers", mock_sentence_transformers)
+
+
 from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
 

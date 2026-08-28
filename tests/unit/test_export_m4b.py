@@ -81,7 +81,7 @@ class TestBuildFFmpegChapterMetadata:
 
         result = _build_ffmpeg_chapter_metadata(chapters, total_duration)
 
-        assert "; FFMETADATA" in result
+        assert ";FFMETADATA1" in result  # ffmpeg 要求带版本号的头 (;FFMETADATA1)
         assert "[CHAPTER]" in result
         assert "TIMEBASE=1/1000" in result
         assert "START=0" in result
@@ -97,7 +97,8 @@ class TestBuildFFmpegChapterMetadata:
 
         result = _build_ffmpeg_chapter_metadata(chapters, total_duration)
 
-        assert result == "; FFMETADATA"
+        # 空章节：仅版本头 (;FFMETADATA1)
+        assert result == ";FFMETADATA1"
 
     def test_special_characters_escaped(self):
         chapters = [

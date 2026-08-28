@@ -4,62 +4,156 @@ The Audiobook Studio is built with FastAPI as the web framework, SQLAlchemy 2.0 
 
 ## System Architecture
 
+### Full Pipeline Flow
+
+```mermaid
+flowchart TD
+    A[上传文件<br/>PDF/EPUB/DOCX/TXT/图片] --> B[Extract Pipeline<br/>文本提取 + 语言检测]
+    B --> C[原始文本 + 元数据]
+    C --> D[Analyze Pipeline<br/>结构分析 + 角色声纹映射]
+    D --> E[BookAnalysisOutput<br/>角色声纹绑定 + 情感快照 + 场景标签]
+    E --> F[Annotate Pipeline<br/>逐段并行标注<br/>角色/情感/语速/停顿]
+    F --> G[ParagraphAnnotation<br/>角色/情感/语速/停顿/SFX]
+    G --> H[Edit for TTS Pipeline<br/>文本润色 + 禁词过滤]
+    H --> I[TtsEditOutput<br/>润色文本 + 修改记录]
+    I --> J[Audio Postprocess<br/>声学参数最终确定]
+    J --> K[最终声学参数<br/>语速/音高/音量/SFX]
+    K --> L[Synthesize Pipeline<br/>并发 TTS 合成]
+    L --> M[AudioSegment 列表<br/>文件路径/时长/引擎/音色]
+    M --> N[Quality Check Pipeline<br/>多模态质检]
+    N --> O[QualityJudgment<br/>多维评分/问题/修复建议]
+    O --> P{需重生成?}
+    P -- 是(≤2次) --> L
+    P -- 否 --> Q[Export Pipeline<br/>M4B/SRT/RSS/MP4]
+    Q --> R[成品交付<br/>M4B/有声书/字幕/视频]
+    
+    style A fill:#e1f5fe
+    style R fill:#e8f5e9
+    style P fill:#fff3e0
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Audiobook Studio                                    │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│  ┌──────────────────────────────────────────────────────────────────────────┐   │
-│  │                            API Layer (FastAPI)                           │   │
-│  │  /projects  /books  /chapters  /paragraphs  /tts_edits  /routings        │   │
-│  │  /qualities  /export  /config  /collab  /health                          │   │
-│  └──────────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                          │
-│  ┌──────────────────────────────────────────────────────────────────────────┐   │
-│  │                         Pipeline Orchestrator                            │   │
-│  │  run_stage("extract" | "analyze" | "annotate" | "edit" | "audio_post"  │   │
-│  │         | "synthesize" | "quality" | "translate", ...)                   │   │
-│  └──────────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────┐  │
-│  │ Extract  │ │ Analyze  │ │ Annotate │ │  Edit    │ │AudioPost │ │Synth  │  │
-│  │Pipeline  │ │Pipeline  │ │Pipeline  │ │Pipeline  │ │Pipeline  │ │Pipeline│  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └───────┘  │
-│  ┌──────────┐ ┌──────────┐                                                │    │
-│  │ Quality  │ │Translate │                                                │    │
-│  │Pipeline  │ │Pipeline  │                                                │    │
-│  └──────────┘ └──────────┘                                                │    │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                      │                                          │
-│  ┌──────────────────────────────────────────────────────────────────────────┐   │
-│  │                      HARNESS Three-Layer Architecture                    │   │
-│  │  ┌─────────────┐    ┌──────────────────┐    ┌────────────────────────┐  │   │
-│  │  │  Contract   │───▶│    Execution     │───▶│    Evaluation          │  │   │
-│  │  │  (Pydantic  │    │  (Instructor +   │    │  (LLM-as-Judge +     │  │   │
-│  │  │   Schemas)  │    │   LiteLLM Router)│    │   Golden Dataset +    │  │   │
-│  │  └─────────────┘    └──────────────────┘    │   Feedback Loop)     │  │   │
-│  │       ▲               ▲                     └────────────────────────┘  │   │
-│  │       └───────────────┴──────────────────────────│                      │   │
-│  │              Versioned Contracts (YAML)          │                      │   │
-│  └──────────────────────────────────────────────────┼──────────────────────┘   │
-│                                                     │                          │
-│  ┌─────────────────────────────────────────────────┼──────────────────────┐   │
-│  │                    Persistence Layer (SQLAlchemy 2.0)                    │   │
-│  │  Project → Chapter → Paragraph → AudioSegment → Quality → TTSEdit...    │   │
-│  │  CheckpointManager (断点续传)  |  VersionStore (快照回滚)                │   │
-│  └──────────────────────────────────────────────────────────────────────────┘   │
-│                                                     │                          │
-│  ┌─────────────────────────────────────────────────┼──────────────────────┐   │
-│  │                    Storage Layout                                            │   │
-│  │  storage/books/{project_id}/                                                 │   │
-│  │  ├─ raw/          # 原始输入文件                                              │   │
-│  │  ├─ extracted/    # 提取后文本                                                │   │
-│  │  ├─ annotated/    # 段落标注结果                                              │   │
-│  │  ├─ audio/        # 合成音频片段                                              │   │
-│  │  └─ reports/      # 质量报告、导出产物                                         │   │
-│  └──────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
+
+### Self-Iteration Loop (HARNESS)
+
+```mermaid
+flowchart TD
+    A[用户反馈/质量判定差异] --> B[Feedback Collector<br/>自动采集人工修改]
+    B --> C[SOP Reflection Engine<br/>结构化反思生成规则]
+    C --> D[Prompt Version Store<br/>版本化提示词管理]
+    D --> E[Canary Deploy<br/>小流量灰度验证]
+    E --> F{晋升门禁<br/>格式≥99%/金集≥95%/质量≥102%}
+    F -- 通过 --> G[Promote to Production<br/>生效新 Prompt 版本]
+    F -- 拒绝 --> H[Rollback + Alert<br/>回滚+告警]
+    F -- Canary中拒绝 --> I[Auto Rollback<br/>自动回滚]
+    
+    style G fill:#e8f5e9
+    style H fill:#ffebee
+    style I fill:#fff3e0
+```
+
+### TTS Synthesis & Voice Pipeline
+
+```mermaid
+flowchart TD
+    A[文本输入] --> B{引擎选择}
+    B -- 本地免费 --> B1[Kokoro-ONNX<br/>CPU/GPU 82M模型]
+    B -- 云端免费 --> B2[Edge-TTS<br/>微软免费云端]
+    B -- 专业GPU --> B3[CosyVoice/VoxCPM2<br/>零样本声纹克隆]
+    B1 --> C[音频合成]
+    B2 --> C
+    B3 --> C
+    C --> D[Audio Postprocess<br/>Ducking/规格化/规格化]
+    D --> E[Quality Check<br/>DNSMOS/WER/SpeakerSim]
+    E --> F{通过?}
+    F -- 否(≤2次) --> A
+    F -- 是 --> G[Export M4B/SRT/MP4]
+    
+    style B1 fill:#e3f2fd
+    style B2 fill:#e8f5e9
+    style B3 fill:#fff3e0
+```
+
+### Publish & Export Pipeline
+
+```mermaid
+flowchart TD
+    A[AudioSegment 列表] --> B[Export Pipeline]
+    B --> C{输出格式}
+    C -- M4B --> D[M4B 章节分章<br/>元数据嵌入<br/>封面图嵌入]
+    C -- SRT --> E[字幕生成<br/>时间轴对齐<br/>字符/行限制]
+    C -- RSS --> F[RSS 2.0 Feed<br/>iTunes 标签<br/>Podcast 就绪]
+    C -- MP4 --> G[视频封装<br/>音频+静态图/波形<br/>硬字幕烧录]
+    D --> H[Audiobookshelf 推送<br/>API 上传 + 元数据]
+    E --> H
+    F --> H
+    G --> H
+    H --> I[完成交付]
+    
+    style I fill:#e8f5e9
+```
+
+### HARNESS Three-Layer Architecture
+
+```mermaid
+flowchart TB
+    subgraph Contract["Layer 1: Contract (契约层)"]
+        C1[Pydantic Schemas<br/>输入/输出契约]
+        C2[Versioned Contracts<br/>config/contract_versions.yaml]
+        C3[Golden Dataset<br/>tests/golden/{stage}/*.jsonl]
+    end
+    
+    subgraph Execution["Layer 2: Execution (执行层)"]
+        E1[Instructor<br/>结构化输出+自动重试]
+        E2[LiteLLM Router<br/>多厂商路由/成本追踪]
+        E3[Constitutional Rules<br/>config/constitutional_rules.yaml]
+        E4[Few-shot Injection<br/>动态注入黄金示例]
+    end
+    
+    subgraph Evaluation["Layer 3: Evaluation (评估层)"]
+        V1[LLM-as-Judge<br/>独立评委模型]
+        V2[Golden Dataset Regression<br/>CI 自动回归]
+        V3[Feedback Loop<br/>feedback/collector.py]
+        V4[Promotion Gate<br/>格式≥99%/金集≥95%/质量≥102%]
+    end
+    
+    Contract --> Execution --> Evaluation
+    Evaluation -.->|Feedback Loop| Contract
+    
+    style Contract fill:#e3f2fd
+    style Execution fill:#e8f5e9
+    style Evaluation fill:#fff3e0
+```
+
+### Data Flow Overview
+
+```mermaid
+flowchart LR
+    subgraph Input["输入"]
+        I1[文件上传<br/>PDF/EPUB/DOCX/TXT/图片]
+    end
+    
+    subgraph Pipeline["7-Stage Pipeline"]
+        P1[Extract]
+        P2[Analyze]
+        P3[Annotate]
+        P4[Edit]
+        P5[Audio Post]
+        P6[Synthesize]
+        P7[Quality]
+    end
+    
+    subgraph Output["输出"]
+        O1[M4B 有声书]
+        O2[SRT 字幕]
+        O3[RSS Feed]
+        O4[MP4 视频]
+    end
+    
+    I1 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> Output
+    P7 -.->|重试≤2次| P6
+    
+    style Input fill:#e1f5fe
+    style Pipeline fill:#fff3e0
+    style Output fill:#e8f5e9
 ```
 
 ## Core Components

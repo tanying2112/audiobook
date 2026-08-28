@@ -64,7 +64,7 @@ class TestBuildFfmpegChapterMetadata:
     def test_single_chapter(self):
         chapters = [ChapterMarker("Chapter 1", 0, 60000)]
         result = _build_ffmpeg_chapter_metadata(chapters, 60000)
-        assert "; FFMETADATA" in result
+        assert ";FFMETADATA1" in result  # ffmpeg 要求带版本号的头 (;FFMETADATA1)
         assert "[CHAPTER]" in result
         assert "TIMEBASE=1/1000" in result
         assert "START=0" in result
@@ -198,9 +198,14 @@ class TestBuildM4b:
             output.write_bytes(b"fake m4b")
 
             build_m4b([seg], markers, output, normalize=True)
-            # Current implementation doesn't call _normalize_audio in the loop
-            # Expected calls: concat, probe, final = 3
+            # S2-5: normalize=True 现在会真正调用 mastering 链路
+            # (降噪 afftdn + 静音修剪 silenceremove + 响度归一化 loudnorm)。
+            # 每一步 segment 都会触发 ffmpeg，调用数 > 基础 3 次。
             assert mock_run.call_count >= 3
+            # 确认 mastering 滤镜图被实际应用 (至少一次调用包含 loudnorm 与 afftdn)
+            joined = " ".join(str(c) for c in mock_run.call_args_list)
+            assert "loudnorm" in joined, "normalize 应启用 loudnorm 响度归一化"
+            assert "afftdn" in joined, "normalize 应启用降噪 (afftdn = noisereduce 原生等效)"
 
     @patch("src.audiobook_studio.export.m4b.subprocess.run")
     def test_with_cover_image(self, mock_run):

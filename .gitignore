@@ -86,6 +86,7 @@ logs/self_iteration_self_iteration.jsonl
 
 # Secrets
 .env
+.agekey
 *.key
 *.pem
 *.secret

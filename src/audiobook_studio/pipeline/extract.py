@@ -333,9 +333,25 @@ class ExtractPipeline:
 
         多模态视觉 (Task 4) 优先：转写图内文字 + 描述图的内容/性质。视觉不可用时
         诚实降级到 OCR（若可用），再否则抛错（同原 Red line #1 语义，不假装成功）。
+
+        视觉与 OCR 双缺时，即使目标文件也不存在，也必须抛能力缺失错误
+        （而非误导性的 FileNotFoundError）——red line #1 诚实语义。
         """
-        with open(file_path, "rb") as f:
-            image_bytes = f.read()
+        try:
+            with open(file_path, "rb") as f:
+                image_bytes = f.read()
+        except FileNotFoundError as e:
+            if not OCR_AVAILABLE:
+                vision_client = self._get_vision_client()
+                if not getattr(vision_client, "available", False):
+                    raise ValueError(
+                        "Image understanding unavailable: no vision provider reachable AND "
+                        "OCR not available. Install the pytesseract Python module "
+                        "(pip install pytesseract pillow) AND the tesseract system binary "
+                        "(apt-get install tesseract-ocr tesseract-ocr-chi-sim / "
+                        "brew install tesseract tesseract-lang) to enable OCR fallback."
+                    ) from e
+            raise
 
         # Task 4: VLM 理解优先
         el = self._understand_image_bytes(image_bytes)
@@ -348,10 +364,6 @@ class ExtractPipeline:
 
         # 视觉不可用 → 降级 OCR
         if not OCR_AVAILABLE:
-            # Red line #1: honest failure, not fake-success. A scanned image has
-            # NO embedded text layer to fall back to, so returning ("", False)
-            # would be masquerading-as-success. Raise so the caller can decide
-            # how to surface it.
             raise ValueError(
                 "Image understanding unavailable: no vision provider reachable AND "
                 "OCR not available. Install the pytesseract Python module "
@@ -390,9 +402,7 @@ class ExtractPipeline:
             return "zh"
         chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         # Hiragana + Katakana => Japanese
-        japanese_chars = sum(
-            1 for c in text if ("\u3040" <= c <= "\u309f") or ("\u30a0" <= c <= "\u30ff")
-        )
+        japanese_chars = sum(1 for c in text if ("\u3040" <= c <= "\u309f") or ("\u30a0" <= c <= "\u30ff"))
         # Latin letters (incl. accented) for French/English detection
         latin_chars = sum(1 for c in text if ("\u0041" <= c <= "\u007a") or ("\u00c0" <= c <= "\u017f"))
         total_alpha = len([c for c in text if c.isalpha()])
@@ -419,13 +429,16 @@ class ExtractPipeline:
         # Emit stage enter
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_enter(
-                stage="extract",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                total_items=1,
-            ))
+            loop.create_task(
+                emit_stage_enter(
+                    stage="extract",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    total_items=1,
+                )
+            )
         except RuntimeError:
             pass
 
@@ -531,28 +544,34 @@ class ExtractPipeline:
         # Emit stage progress (100% complete)
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_progress(
-                stage="extract",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                current=1,
-                total=1,
-                message="Extraction complete",
-            ))
+            loop.create_task(
+                emit_stage_progress(
+                    stage="extract",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    current=1,
+                    total=1,
+                    message="Extraction complete",
+                )
+            )
         except RuntimeError:
             pass
 
         # Emit stage exit
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_exit(
-                stage="extract",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                success=True,
-            ))
+            loop.create_task(
+                emit_stage_exit(
+                    stage="extract",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    success=True,
+                )
+            )
         except RuntimeError:
             pass
 

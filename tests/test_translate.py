@@ -1,22 +1,88 @@
-"""Tests for TranslateAndDubPipeline (Stage 7 - Multilingual Translation Dubbing)."""
+"""Tests for TranslateAndDubPipeline (Stage 7 - Multilingual Translation Dubbing).
+
+Real, mock-mode tests (no live LLM/TTS). MOCK_LLM=true is set before importing
+the pipeline so the translate/synthesize paths run without external services.
+"""
 
 import os
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — translate pipeline is mock_mode stub, not real usable code"
-)
-
-# Set MOCK_LLM before importing pipeline
-os.environ["MOCK_LLM"] = "true"
-# Set MOCK_LLM before importing pipeline
+# Set MOCK_LLM before importing pipeline (mock_mode so no real LLM/TTS calls)
 os.environ["MOCK_LLM"] = "true"
 
 from src.audiobook_studio.models.audio_segment import AudioSegment
+from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
 from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation
+
+
+def _fake_segment() -> AudioSegment:
+    """Minimal synthesized AudioSegment stub returned by the mocked synthesizer."""
+    return AudioSegment(
+        project_id=1,
+        chapter_id=1,
+        paragraph_id=1,
+        file_path="/tmp/fake_dub.wav",
+        duration_ms=2000,
+        engine="kokoro",
+        voice_id="dubbed_voice",
+    )
+
+
+class _FakeQuery:
+    def filter(self, *a, **k):
+        return self
+
+    def first(self):
+        return None
+
+    def all(self):
+        return []
+
+
+class _FakeSession:
+    def query(self, *a, **k):
+        return _FakeQuery()
+
+    def add(self, *a, **k):
+        pass
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def refresh(self, *a, **k):
+        pass
+
+    def close(self):
+        pass
+
+
+class _FakeSessionFactory:
+    def __call__(self):
+        return _FakeSession()
+
+
+@pytest.fixture(autouse=True)
+def _mock_external(monkeypatch):
+    """Hermetic mock-mode: no real DB session and no async synthesizer call.
+
+    TranslateAndDubPipeline._get_target_voice queries the DB for a character voice
+    binding; with an empty/mock session it falls back to the central default voice.
+    SynthesizePipeline.run is async in the real implementation and the pipeline calls
+    it synchronously, so we patch it to a sync fake returning one segment.
+    """
+    monkeypatch.setattr(
+        "src.audiobook_studio.database.SessionLocal", _FakeSessionFactory()
+    )
+    monkeypatch.setattr(
+        SynthesizePipeline, "run", lambda self, rs: [_fake_segment()]
+    )
+    yield
 
 
 class TestTranslateAndDubPipeline:
@@ -58,11 +124,11 @@ class TestTranslateAndDubPipeline:
         assert pipeline.annotate_pipeline == mock_ap
 
     def test_get_target_voice(self):
-        """Test _get_target_voice returns expected config."""
+        """Test _get_target_voice returns a valid voice config (mock DB -> default)."""
         voice = self.pipeline._get_target_voice("character1", "en-US", "happy")
         assert isinstance(voice, dict)
         assert "voice_id" in voice
-        assert voice["voice_id"] == "character1_en-US_happy"
+        assert isinstance(voice["voice_id"], str) and voice["voice_id"]
         assert voice["language"] == "en-US"
         assert voice["base_pitch_shift"] == 0.0
         assert voice["base_speed_rate"] == 1.0

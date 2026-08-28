@@ -36,7 +36,6 @@ class TestExtractVoiceFeatures:
             # Create empty/very short audio
             audio_data = np.array([], dtype=np.float32)
             sf.write(tmp.name, audio_data, 24000)
-            
             try:
                 features = extract_voice_features(Path(tmp.name), sample_rate=24000)
                 assert len(features) == 256

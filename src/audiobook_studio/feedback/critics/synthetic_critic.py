@@ -587,9 +587,9 @@ class SyntheticCritic:
                     continue
 
                 trial_weights = {
-                    CriticType.SEMANTIC: round(s_w, 3),
-                    CriticType.STRUCTURAL: round(st_w, 3),
-                    CriticType.OBJECTIVE: round(o_w, 3),
+                    CriticType.SEMANTIC: float(round(s_w, 3)),
+                    CriticType.STRUCTURAL: float(round(st_w, 3)),
+                    CriticType.OBJECTIVE: float(round(o_w, 3)),
                 }
 
                 old_weights = self._ensemble.weights
@@ -606,7 +606,7 @@ class SyntheticCritic:
                 self._ensemble.weights = old_weights
                 self.weights = old_weights
 
-        if best_weights:
+        if best_weights:  # pragma: no cover - best_weights always initialised non-empty
             self.weights = best_weights
             self._ensemble.weights = best_weights
 

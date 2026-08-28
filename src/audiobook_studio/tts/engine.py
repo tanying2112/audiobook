@@ -7,6 +7,7 @@ into a single protocol with optional async support.
 from __future__ import annotations
 
 import asyncio
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -449,12 +450,14 @@ class EngineRegistry:
         # Import backend factories here to avoid circular imports
         from .edge_tts_engine import create_edge_tts_engine
         from .kokoro_backend import create_kokoro_backend
+        from .piper_backend import create_piper_backend
 
         # from .voxcpm2_backend import create_voxcpm2_engine
 
         engine_factories = {
             "kokoro": create_kokoro_backend,
             "edge": create_edge_tts_engine,
+            "piper": create_piper_backend,  # S2-4: preferred local engine (priority 0)
             # "voxcpm2": create_voxcpm2_engine,
         }
 
@@ -467,6 +470,16 @@ class EngineRegistry:
 
         for engine_name, engine_config in self._config.items():
             if engine_name in engine_factories:
+                # P0 no-GPU safety: skip GPU-only engines when GPU backends are
+                # disabled (free/no-GPU hosts must never instantiate an engine
+                # they cannot run). Capability is read from the provider config;
+                # unknown engines are assumed CPU and are not skipped.
+                if _should_skip_engine(engine_name, _gpu_backends_enabled()):
+                    logger.info(
+                        "Skipping GPU engine %s (ENABLE_GPU_BACKENDS=false)",
+                        engine_name,
+                    )
+                    continue
                 factory = engine_factories[engine_name]
                 # Factories are async coroutines (create + initialize the engine)
                 engine = await factory(**engine_config)
@@ -544,6 +557,31 @@ class EngineRegistry:
 TTS_HEALTH_ENGINES: tuple[str, ...] = ("kokoro", "voxcpm2", "edge", "piper")
 
 
+def _gpu_backends_enabled() -> bool:
+    """Local mirror of ``providers_config.gpu_backends_enabled`` (no import cycle).
+
+    Returns True only when ``ENABLE_GPU_BACKENDS`` is set, so GPU-only engines
+    (F5/CosyVoice2/Dia, Track B) are skipped on free/no-GPU hosts.
+    """
+    return os.environ.get("ENABLE_GPU_BACKENDS", "false").lower() in ("1", "true", "yes", "on")
+
+
+def _should_skip_engine(engine_name: str, gpu_enabled: bool) -> bool:
+    """P0 no-GPU safety: skip GPU-only engines when GPU backends are disabled.
+
+    Returns True when ``engine_name``'s capability declares ``min_compute='gpu'``
+    but ``gpu_enabled`` is False. Unknown engines are never skipped (CPU assumed).
+    """
+    if gpu_enabled:
+        return False
+    try:
+        from .providers_config import capability_matrix
+        cap = capability_matrix().get(engine_name)
+        return cap is not None and cap.min_compute == "gpu"
+    except Exception:  # noqa: BLE001 — never block engine init on config errors
+        return False
+
+
 async def cleanup_all_engines(registry: Optional["EngineRegistry"] = None) -> None:
     """Cleanup all registered engines from the given registry or the default one."""
     if registry is None:
@@ -574,7 +612,8 @@ async def probe_tts_engines(
     Probes (each bounded by ``timeout`` and never raising — a failure degrades to
     ``healthy=False`` instead of propagating):
 
-      - ``kokoro``: local model file present under ``KOKORO_MODEL_PATH``.
+      - ``kokoro``: real warmup via ``KokoroBackend.warmup()`` with 100ms budget
+        (S1-6). Prefers registered engine; falls back to temporary engine.
       - ``voxcpm2``: real ``GET {VOXCPM2_ENDPOINT}/health`` when an endpoint is
         configured (remote pool); otherwise ``not_configured``.
       - ``edge``: real network reachability probe against the Edge speech host.
@@ -599,14 +638,53 @@ async def probe_tts_engines(
     def _set(name: str, healthy: bool, detail: Dict[str, Any]) -> None:
         result[name] = {"healthy": healthy, "detail": detail}
 
-    # 1) kokoro — model file present (real, fast; avoids loading a heavy model in a health probe).
-    kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
-    require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
-    if not require_local or not kokoro_path:
-        _set("kokoro", False, {"reason": "not_configured"})
+    # 1) kokoro — real warmup probe (S1-6): call KokoroBackend.warmup() with 100ms budget.
+    # Prefer registered engine's warmup; otherwise create a temporary one for the probe.
+    kokoro_warmed_up = False
+    kokoro_detail: Dict[str, Any] = {}
+    
+    # Try registered engine first
+    kokoro_engine = None
+    if registry is not None:
+        kokoro_engine = registry.get("kokoro")
+    
+    if kokoro_engine is not None:
+        # Use registered engine's warmup
+        try:
+            kokoro_warmed_up = await asyncio.wait_for(kokoro_engine.warmup(), timeout=0.1)  # 100ms
+            kokoro_detail = {"source": "registered_engine", "warmed_up": kokoro_warmed_up}
+        except asyncio.TimeoutError:
+            kokoro_warmed_up = False
+            kokoro_detail = {"source": "registered_engine", "error": "warmup timeout (>100ms)"}
+        except Exception as e:
+            kokoro_warmed_up = False
+            kokoro_detail = {"source": "registered_engine", "error": str(e)}
+        _set("kokoro", kokoro_warmed_up, kokoro_detail)
     else:
-        present = Path(kokoro_path).exists()
-        _set("kokoro", present, {"model_present": present, "model_path": kokoro_path})
+        # Fallback: create temporary engine for probe
+        kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
+        require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
+        if not require_local or not kokoro_path:
+            _set("kokoro", False, {"reason": "not_configured"})
+        else:
+            present = Path(kokoro_path).exists()
+            if present:
+                # Create temporary engine and warmup
+                try:
+                    from .kokoro_backend import KokoroBackend
+                    temp_engine = KokoroBackend(model_path=kokoro_path)
+                    kokoro_warmed_up = await asyncio.wait_for(temp_engine.warmup(), timeout=0.1)  # 100ms
+                    kokoro_detail = {"source": "temporary_engine", "warmed_up": kokoro_warmed_up, "model_path": kokoro_path}
+                    await temp_engine.close()
+                except asyncio.TimeoutError:
+                    kokoro_warmed_up = False
+                    kokoro_detail = {"source": "temporary_engine", "error": "warmup timeout (>100ms)", "model_path": kokoro_path}
+                except Exception as e:
+                    kokoro_warmed_up = False
+                    kokoro_detail = {"source": "temporary_engine", "error": str(e), "model_path": kokoro_path}
+            else:
+                kokoro_detail = {"reason": "model_not_found", "model_path": kokoro_path}
+            _set("kokoro", kokoro_warmed_up, kokoro_detail)
 
     # 2) voxcpm2 — real /health probe when an endpoint is configured.
     v2_endpoint = os.getenv("VOXCPM2_ENDPOINT", "").rstrip("/")
@@ -632,13 +710,22 @@ async def probe_tts_engines(
     except Exception as e:  # noqa: BLE001
         _set("edge", False, {"error": str(e)})
 
-    # 4) piper — future (S2-4), never falsely happy.
-    _set("piper", False, {"reason": "not_implemented"})
+    # 4) piper — real local detection (S2-4): available only when BOTH a runnable
+    #    `piper` binary AND at least one `.onnx` model are present (never falsely happy).
+    try:
+        from .piper_models import detect_piper_availability
+        available, detail = detect_piper_availability()
+        _set("piper", bool(available), detail)
+    except Exception as e:  # noqa: BLE001 — degrade not propagate
+        _set("piper", False, {"reason": "detection_error", "error": str(e)})
 
     # Overlay any engines actually loaded/registered: prefer their real health_check()
     # (e.g. RemoteVoxCPM2Engine does a pass-through GET /health) over static probes.
+    # Skip kokoro since we already did a real warmup probe above.
     if registry is not None:
         for name, engine in registry._engines.items():
+            if name == "kokoro":
+                continue  # Already probed via warmup()
             if name not in result:
                 _set(name, False, {"reason": "unknown_engine"})
             try:

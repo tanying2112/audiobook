@@ -1,0 +1,27 @@
+{
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": true,
+    "score": 1.0,
+    "threshold": 0.99,
+    "details": "全部格式检查通过"
+  },
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "0/3 用例通过 (0.0% ≥ 95%) | 失败: Example 3: similarity=0.42; Example 4: similarity=0.35; Example 5: similarity=0.14"
+  },
+  "outputs": [
+    {
+      "error": "3 validation errors for TtsEditInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_annotation\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndifficulty\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "3 validation errors for TtsEditInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_annotation\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndifficulty\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "3 validation errors for TtsEditInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_annotation\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndifficulty\n  Field required [type=missing, input_value={'text': 'This is a test ...r edit_for_tts case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+  ]
+}

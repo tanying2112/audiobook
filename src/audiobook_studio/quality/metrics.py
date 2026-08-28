@@ -122,6 +122,26 @@ class DNSMOSResult:
 
 
 @dataclass
+class UTMOSResult:
+    """UTMOS 语音质量评分结果.
+
+    UTMOS (UTokyo-SaruLab System for VoiceMOS Challenge 2022)
+    输出单一 MOS 分数 (1-5)，无需参考音频。
+    """
+
+    mos: float  # UTMOS MOS 综合评分 (1-5)
+    success: bool
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "mos": self.mos,
+            "success": self.success,
+            "error": self.error,
+        }
+
+
+@dataclass
 class ASRResult:
     """ASR 识别结果."""
 
@@ -224,10 +244,11 @@ class SpeakerSimilarityResult:
 
 @dataclass
 class QualityCheckResult:
-    """质量检查结果 - 三件套综合结果."""
+    """质量检查结果 - 四件套综合结果."""
 
     passed: bool = True
     dnsmos: Optional[DNSMOSResult] = None
+    utmos: Optional[UTMOSResult] = None
     wer: Optional[WERResult] = None
     speaker_sim: Optional[SpeakerSimilarityResult] = None
     overall_message: str = ""
@@ -236,6 +257,7 @@ class QualityCheckResult:
         return {
             "passed": self.passed,
             "dnsmos": self.dnsmos.to_dict() if self.dnsmos else None,
+            "utmos": self.utmos.to_dict() if self.utmos else None,
             "wer": self.wer.to_dict() if self.wer else None,
             "speaker_sim": self.speaker_sim.to_dict() if self.speaker_sim else None,
             "overall_message": self.overall_message,
@@ -617,6 +639,274 @@ class DNSMOSMetric(QualityMetric):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 1.5. UTMOS 实现 (真实听感评分)
+# ═══════════════════════════════════════════════════════════════════════════
+# UTMOS (UTokyo-SaruLab System for VoiceMOS Challenge 2022)
+# 免费、无需参考音频、CPU 推理友好、ONNX Runtime 兼容
+# 模型来源: https://github.com/tarepan/SpeechMOS
+# 论文: "UTMOS: UTokyo-SaruLab System for VoiceMOS Challenge 2022"
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class UTMOSMetric(QualityMetric):
+    """UTMOS 语音质量评分.
+
+    使用 UTokyo-SaruLab 开源的 UTMOS 模型 (VoiceMOS Challenge 2022 冠军)。
+    输出单一 MOS 分数 (1-5)，无需参考音频，反映真实听感质量。
+
+    参考: https://github.com/tarepan/SpeechMOS
+    论文: "UTMOS: UTokyo-SaruLab System for VoiceMOS Challenge 2022"
+
+    官方模型要求：
+    - 输入采样率: 16kHz (模型内部重采样)
+    - 输入格式: 单声道 float32 PCM
+    - 输出: 单一 MOS 分数 (1-5 范围)
+    """
+
+    # 官方 UTMOS v2 模型 (强健版本)
+    # 模型来源: https://github.com/tarepan/SpeechMOS
+    MODEL_URL = "https://github.com/tarepan/SpeechMOS/releases/download/v0.1.0/utmos22_strong.onnx"
+    MODEL_FILENAME = "utmos.onnx"
+    DEFAULT_SAMPLE_RATE = 16000
+
+    def __init__(
+        self,
+        model_path: Optional[Path] = None,
+        sample_rate: int = DEFAULT_SAMPLE_RATE,
+        use_ort: bool = True,
+        mock_mode: bool = False,
+        cache_dir: Optional[Path] = None,
+    ):
+        """
+        Args:
+            model_path: ONNX 模型路径，None 则自动下载到缓存目录
+            sample_rate: 输入音频采样率 (内部会重采样到 16kHz)
+            use_ort: 是否使用 ONNX Runtime (True) 还是 torch (False)
+            mock_mode: 测试模式，返回固定分数不加载模型
+            cache_dir: 自定义模型缓存目录，默认 ~/.cache/audiobook_studio/models
+        """
+        self.sample_rate = sample_rate
+        self.use_ort = use_ort
+        self.mock_mode = mock_mode
+
+        # 确定缓存目录
+        if cache_dir is None:
+            cache_dir = Path.home() / ".cache" / "audiobook_studio" / "models"
+        self.cache_dir = Path(cache_dir)
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        except (FileNotFoundError, PermissionError):
+            import tempfile
+            self.cache_dir = Path(tempfile.gettempdir()) / "audiobook_studio" / "models"
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # 确定模型路径
+        if model_path is None:
+            self.model_path = self.cache_dir / self.MODEL_FILENAME
+        else:
+            self.model_path = Path(model_path)
+
+        self._session: Any = None
+        self._initialized = False
+
+        # Mock mode 固定返回值 (用于测试和 CI)
+        self._mock_score: float = 4.0
+
+    def _get_model_url(self) -> str:
+        """获取模型下载 URL，支持环境变量覆盖."""
+        return os.environ.get("UTMOS_MODEL_URL", self.MODEL_URL)
+
+    def _ensure_model(self) -> bool:
+        """确保模型已下载到缓存目录."""
+        if self.model_path.exists():
+            logger.debug(f"UTMOS model already cached at {self.model_path}")
+            return True
+
+        model_url = self._get_model_url()
+        logger.info(f"Downloading UTMOS model from {model_url} to {self.model_path}...")
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(model_url, self.model_path)
+            logger.info(f"UTMOS model downloaded to {self.model_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to download UTMOS model: {e}")
+            return False
+
+    def _initialize(self) -> None:
+        """初始化 ONNX Runtime 会话."""
+        if self._initialized:
+            return
+
+        if self.mock_mode:
+            self._initialized = True
+            return
+
+        if not self._ensure_model():
+            raise RuntimeError("UTMOS model not available")
+
+        try:
+            import onnxruntime as ort
+
+            sess_options = ort.SessionOptions()
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.intra_op_num_threads = 1
+            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+            self._session = ort.InferenceSession(
+                str(self.model_path),
+                sess_options=sess_options,
+                providers=["CPUExecutionProvider"],
+            )
+            self._initialized = True
+            logger.info(f"UTMOS model initialized from {self.model_path}")
+
+            # 验证模型输入输出
+            assert self._session is not None
+            inputs = self._session.get_inputs()
+            outputs = self._session.get_outputs()
+            logger.debug(f"UTMOS model inputs: {[i.name for i in inputs]}")
+            logger.debug(f"UTMOS model outputs: {[o.name for o in outputs]}")
+
+        except ImportError:
+            raise RuntimeError("onnxruntime not installed. Install with: pip install onnxruntime")
+        except Exception as e:
+            logger.error(f"Failed to initialize UTMOS model: {e}")
+            raise
+
+    def _preprocess_audio(self, audio_path: Path) -> np.ndarray:
+        """预处理音频为 UTMOS 所需格式 (16kHz 单声道 float32).
+
+        优先用 soundfile 直接读取; 仅当格式不符且 ffmpeg 可用时才回退到 ffmpeg 重采样。
+        """
+        try:
+            import soundfile as sf
+
+            audio, sr = sf.read(str(audio_path), dtype="float32", always_2d=False)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)  # 多声道 -> 单声道
+            if sr != self.sample_rate:
+                try:
+                    from scipy.signal import resample_poly
+                    from math import gcd
+
+                    g = gcd(int(sr), self.sample_rate)
+                    audio = resample_poly(audio, self.sample_rate // g, int(sr) // g).astype(np.float32)
+                except ImportError:
+                    audio = self._resample_via_ffmpeg(audio_path)
+            return np.asarray(audio, dtype=np.float32)
+        except Exception as e:
+            logger.debug(f"soundfile read failed for {audio_path} ({e}); trying ffmpeg")
+            return self._resample_via_ffmpeg(audio_path)
+
+    def _resample_via_ffmpeg(self, audio_path: Path) -> np.ndarray:
+        """ffmpeg 重采样到 16kHz mono float32 的回退路径."""
+        import asyncio
+
+        async def _resample() -> np.ndarray:
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-v", "error",
+                "-i", str(audio_path),
+                "-ar", str(self.sample_rate),
+                "-ac", "1",
+                "-f", "f32le",
+                "-acodec", "pcm_f32le",
+                "-",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(f"ffmpeg resample failed: {stderr.decode()}")
+            return np.frombuffer(stdout, dtype=np.float32)
+
+        return asyncio.run(_resample())
+
+    def _prepare_input_frames(self, audio: np.ndarray) -> np.ndarray:
+        """准备 UTMOS 模型输入帧.
+
+        UTMOS 模型接受形状 (N, T) 的输入，其中 T 是采样点数。
+        模型内部会处理任意长度输入并输出单一 MOS 分数。
+        """
+        # UTMOS 推荐至少 1 秒音频以获得稳定预测
+        min_samples = self.sample_rate  # 1 second
+        if len(audio) < min_samples:
+            audio = np.pad(audio, (0, min_samples - len(audio)), mode="constant")
+
+        # UTMOS 模型输入形状: (N, T) 或 (N, 1, T) 取决于导出版本
+        try:
+            expected_rank = len(self._session.get_inputs()[0].shape)
+        except (IndexError, AttributeError):
+            expected_rank = None
+
+        if expected_rank == 2:
+            return audio.reshape(1, -1)  # (1, T)
+        elif expected_rank == 3:
+            return audio.reshape(1, 1, -1)  # (1, 1, T)
+        else:
+            return audio.reshape(1, -1)  # 默认 (1, T)
+
+    def _compute_utmos(self, audio: np.ndarray) -> float:
+        """计算 UTMOS MOS 分数.
+
+        Returns:
+            MOS 分数 (1.0 - 5.0)
+        """
+        if self.mock_mode:
+            return self._mock_score
+
+        input_tensor = self._prepare_input_frames(audio)
+        input_name = self._session.get_inputs()[0].name
+
+        outputs = self._session.run(None, {input_name: input_tensor})
+        # 输出形状: (1,) 或 (1, 1) -> 单一 MOS 分数
+        score = float(outputs[0].squeeze())
+        return float(np.clip(score, 1.0, 5.0))
+
+    def compute(self, audio_path: Path) -> float:
+        """计算音频文件的 UTMOS MOS 分数.
+
+        Args:
+            audio_path: 音频文件路径
+
+        Returns:
+            MOS 综合评分 (1.0 - 5.0)，失败返回 0.0
+        """
+        try:
+            self._initialize()
+            audio = self._preprocess_audio(audio_path)
+            score = self._compute_utmos(audio)
+            logger.debug(f"UTMOS: {score:.3f}")
+            return score
+        except Exception as e:
+            logger.error(f"UTMOS computation failed for {audio_path}: {e}")
+            return 0.0
+
+    def compute_detailed(self, audio_path: Path) -> UTMOSResult:
+        """计算详细的 UTMOS 结果.
+
+        Args:
+            audio_path: 音频文件路径
+
+        Returns:
+            UTMOSResult 包含 MOS 分数
+        """
+        try:
+            self._initialize()
+            audio = self._preprocess_audio(audio_path)
+            score = self._compute_utmos(audio)
+            return UTMOSResult(mos=score, success=True)
+        except Exception as e:
+            logger.error(f"UTMOS computation failed for {audio_path}: {e}")
+            return UTMOSResult(mos=0.0, success=False, error=str(e))
+
+    def get_name(self) -> str:
+        return "utmos"
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 2. ASR WER 实现
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1772,11 +2062,13 @@ class QualityCheckSuite:
 
         # 默认阈值
         self.dnsmos_min = self.config.get("thresholds", {}).get("dnsmos_min", 3.5)
+        self.utmos_min = self.config.get("thresholds", {}).get("utmos_min", 3.5)
         self.asr_wer_max = self.config.get("thresholds", {}).get("asr_wer_max", 0.05)
         self.speaker_sim_min = self.config.get("thresholds", {}).get("speaker_sim_min", 0.85)
 
-        # 初始化三件套 (延迟初始化)
+        # 初始化四件套 (延迟初始化)
         self._dnsmos: Optional[DNSMOSMetric] = None
+        self._utmos: Optional[UTMOSMetric] = None
         self._wer: Optional[ASRWerMetric] = None
         self._speaker_sim: Optional[SpeakerSimilarityMetric] = None
         self._initialized = False
@@ -1797,9 +2089,16 @@ class QualityCheckSuite:
         # DNSMOS (requires onnxruntime)
         if qc_config.get("dnsmos_enabled", True):
             try:
-                self._dnsmos = DNSMOSMetric()
+                self._dnsmos = DNSMOSMetric(mock_mode=qc_config.get("mock_mode", False))
             except Exception as e:
                 logger.warning(f"DNSMOS metric disabled (dependency unavailable): {e}")
+
+        # UTMOS (requires onnxruntime)
+        if qc_config.get("utmos_enabled", True):
+            try:
+                self._utmos = UTMOSMetric(mock_mode=qc_config.get("mock_mode", False))
+            except Exception as e:
+                logger.warning(f"UTMOS metric disabled (dependency unavailable): {e}")
 
         # ASR WER (requires funasr or faster-whisper)
         if qc_config.get("asr_enabled", True):
@@ -1869,6 +2168,15 @@ class QualityCheckSuite:
                 f"DNSMOS: overall={dnsmos_result.mos_ovr:.2f} sig={dnsmos_result.mos_sig:.2f} bak={dnsmos_result.mos_bak:.2f}"
             )
 
+        # 1.5. UTMOS
+        if self._utmos and self.config.get("quality_check", {}).get("utmos_enabled", True):
+            utmos_result = self._utmos.compute_detailed(audio_path)
+            result.utmos = utmos_result
+
+            if utmos_result.success and utmos_result.mos < self.utmos_min:
+                issues.append(f"UTMOS {utmos_result.mos:.2f} < {self.utmos_min}")
+            logger.info(f"UTMOS: {utmos_result.mos:.2f}")
+
         # 2. ASR WER
         if self._wer and self.config.get("quality_check", {}).get("asr_enabled", True):
             wer_result = self._wer.compute(audio_path, reference_text)
@@ -1916,6 +2224,7 @@ class QualityCheckSuite:
 __all__ = [
     # Data models
     "DNSMOSResult",
+    "UTMOSResult",
     "ASRResult",
     "WERResult",
     "SpeakerEmbedding",
@@ -1923,6 +2232,7 @@ __all__ = [
     "QualityCheckResult",
     # Metrics
     "DNSMOSMetric",
+    "UTMOSMetric",
     "ASRWerMetric",
     "SpeakerSimilarityMetric",
     "QualityCheckSuite",
@@ -1939,4 +2249,4 @@ __all__ = [
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger.info("Quality Metrics module ready")
-    logger.info("Available checks: DNSMOS, ASR WER, Speaker Similarity")
+    logger.info("Available checks: DNSMOS, UTMOS, ASR WER, Speaker Similarity")

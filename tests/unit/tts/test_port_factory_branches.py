@@ -179,7 +179,25 @@ class TestCreateConfiguredRegistry:
 
     @pytest.mark.asyncio
     async def test_with_explicit_config(self):
-        registry = await create_configured_registry({"kokoro": {"output_dir": "./output"}})
+        # Import locally: port_factory may have been reloaded by an earlier test,
+        # leaving a stale module-level reference to create_kokoro_backend.
+        from src.audiobook_studio.tts.port_factory import create_configured_registry
+
+        mock_engine = Mock(spec=TTSEngine)
+        mock_engine.engine_name = "kokoro"
+        mock_engine.initialize = AsyncMock()
+        # engine.py lazily imports create_kokoro_backend inside initialize(), and the
+        # real KokoroBackend constructor probes the model file. Patch both so the mock
+        # is used even if port_factory/kokoro_backend were reloaded by an earlier test
+        # (which would otherwise leave a stale module-level reference).
+        with patch(
+            "src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend",
+            return_value=mock_engine,
+        ), patch(
+            "src.audiobook_studio.tts.kokoro_backend.KokoroBackend",
+            return_value=mock_engine,
+        ):
+            registry = await create_configured_registry({"kokoro": {"output_dir": "./output"}})
         assert isinstance(registry, EngineRegistry)
         assert registry.config == {"kokoro": {"output_dir": "./output"}}
 

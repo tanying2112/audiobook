@@ -343,7 +343,11 @@ def test_probe_defaults_not_configured(clean_tts_env, monkeypatch):
     assert engines["voxcpm2"] is False
     assert engines["piper"] is False
     assert engines["edge"] is True
-    assert result["details"]["piper"]["detail"]["reason"] == "not_implemented"
+    assert result["details"]["piper"]["detail"]["reason"] in (
+        "binary_not_found",
+        "model_not_found",
+        "local_tts_disabled",
+    )
 
 
 def test_probe_kokoro_model_present(clean_tts_env, monkeypatch, tmp_path):

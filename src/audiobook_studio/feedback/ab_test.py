@@ -37,266 +37,55 @@ def create_llm_judge_fn(stage: str, judge_model: Optional[str] = None) -> JudgeF
     """
     Create an LLM-as-a-Judge function for blind evaluation of A/B test samples.
 
-    The judge evaluates outputs without knowing which version (A or B) produced them,
-    providing unbiased quality assessment.
+    The judge evaluates outputs without knowing which version (A or B) produced
+    them, providing unbiased quality assessment.
+
+    The real evaluation path now routes through :class:`LLMJudgeEnsemble` (S2-3):
+    >=3 LLM judge models score both outputs in parallel on a fixed 1-5 rubric
+    (faithfulness, naturalness, instruction_following, no_hallucination) and the
+    verdict is aggregated by majority vote with a confidence threshold.
+
+    When the ensemble cannot produce a verdict (e.g. no LLM available / all judges
+    fail), the deprecated :func:`_score_output` heuristic is used as a fallback.
 
     Args:
         stage: Pipeline stage name (edit_for_tts, annotate_paragraph, etc.)
-        judge_model: LLM model to use as judge (None = use default from config)
+        judge_model: Optional single judge model. When omitted, the ensemble's
+            default 3-model panel is used.
 
     Returns:
-        Function that takes (output_a, output_b, input_data) and returns (score_a, score_b, rationale)
+        Function that takes (input_data, output_a, output_b) and returns
+        (score_a, score_b, rationale).
     """
-    from ..llm import LLMClientConfig, create_client
-    from ..schemas import QualityJudgment
+    from .llm_judge import LLMJudgeEnsemble
 
-    if judge_model is None:
-        judge_model = "openrouter/auto"
-
-    client = create_client(
-        model=judge_model,
-        temperature=0.1,
-        max_tokens=2000,
-    )
-
-    # Stage-specific judge prompts
-    JUDGE_PROMPTS = {
-        "edit_for_tts": """你是专业的 TTS 文本编辑质量评估专家。请盲评两个版本的编辑输出，不知道哪个是旧版本哪个是新版本。
-
-输入段落: {input_text}
-参考标注: {reference_annotation}
-
-版本 A 输出:
-{output_a}
-
-版本 B 输出:
-{output_b}
-
-评估标准:
-1. 文本自然度 (口语化程度、流畅性)
-2. 编辑准确性 (是否正确处理数字、标点、禁用词)
-3. 情感标记保留 (是否保留了原标注的情感强度)
-4. 停顿标记合理性
-5. 整体 TTS 友好度
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由，包括具体优缺点对比"
-}}""",
-        "annotate_paragraph": """你是专业的段落标注质量评估专家。请盲评两个版本的标注输出。
-
-输入段落: {input_text}
-
-版本 A 标注:
-{output_a}
-
-版本 B 标注:
-{output_b}
-
-评估标准:
-1. 说话人识别准确性
-2. 情感标注准确性 (类别 + 强度)
-3. 语速、音调标注合理性
-4. 停顿标注合理性
-5. 音效标注完整性
-6. 整体标注一致性
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由"
-}}""",
-        "analyze_structure": """你是专业的书籍结构分析专家。请盲评两个版本的结构分析输出。
-
-输入书籍内容摘要: {input_text}
-
-版本 A 分析:
-{output_a}
-
-版本 B 分析:
-{output_b}
-
-评估标准:
-1. 书籍元信息提取准确性 (标题、作者、体裁、难度等)
-2. 角色声线映射完整性
-3. 情感快照覆盖度
-4. 故事主线摘要质量
-5. 全局文风备注准确性
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由"
-}}""",
-        "quality_judge": """你是专业的音频质量评估专家。请盲评两个版本的质量判定输出。
-
-音频参考文本: {input_text}
-
-版本 A 质量判定:
-{output_a}
-
-版本 B 质量判定:
-{output_b}
-
-评估标准:
-1. 整体质量评分准确性
-2. 问题识别完整性
-3. 修复建议实用性
-4. 是否正确识别需重生成
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由"
-}}""",
-        "synthesize": """你是专业的 TTS 合成质量评估专家。请盲评两个版本的合成输出。
-
-输入文本: {input_text}
-
-版本 A 合成结果:
-{output_a}
-
-版本 B 合成结果:
-{output_b}
-
-评估标准:
-1. 引擎选择合理性
-2. 声音 ID 选择准确性
-3. 韵律覆盖参数合理性
-4. 成本/时长估算准确性
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由"
-}}""",
-    }
-
-    default_prompt = """你是专业的 AI 输出质量评估专家。请盲评两个版本的输出。
-
-输入: {input_text}
-
-版本 A 输出:
-{output_a}
-
-版本 B 输出:
-{output_b}
-
-评估标准: 输出质量、准确性、完整性、实用性
-
-请输出 JSON 格式:
-{{
-  "score_a": 0.0-1.0,
-  "score_b": 0.0-1.0,
-  "winner": "A" | "B" | "tie",
-  "rationale": "详细评分理由"
-}}"""
-
-    prompt_template = JUDGE_PROMPTS.get(stage, default_prompt)
+    # judge_model=None -> ensemble uses its default 3-model panel (S2-3).
+    models = [judge_model] if judge_model else None
+    ensemble = LLMJudgeEnsemble(models=models)
 
     def judge_fn(
-        input_data: Dict[str, Any], output_a: Dict[str, Any], output_b: Dict[str, Any]
+        input_data: Dict[str, Any],
+        output_a: Dict[str, Any],
+        output_b: Dict[str, Any],
     ) -> Tuple[float, float, str]:
         """
-        Evaluate two outputs blindly using LLM judge.
+        Blindly evaluate two outputs using the LLM Judge Ensemble.
 
         Returns:
             (score_a, score_b, rationale)
         """
-        # Prepare input text for prompt
-        if stage == "edit_for_tts":
-            input_text = input_data.get("paragraph_text", "")
-            reference_annotation = str(input_data.get("paragraph_annotation", {}))
-            prompt = prompt_template.format(
-                input_text=input_text[:2000],
-                reference_annotation=reference_annotation[:1000],
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-        elif stage == "annotate_paragraph":
-            input_text = input_data.get("paragraph_text", "")
-            prompt = prompt_template.format(
-                input_text=input_text[:2000],
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-        elif stage == "analyze_structure":
-            input_text = input_data.get("book_text", input_data.get("text", ""))
-            prompt = prompt_template.format(
-                input_text=input_text[:2000],
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-        elif stage == "quality_judge":
-            input_text = input_data.get("expected_text", input_data.get("text", ""))
-            prompt = prompt_template.format(
-                input_text=input_text[:2000],
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-        elif stage == "synthesize":
-            input_text = input_data.get("text", "")
-            prompt = prompt_template.format(
-                input_text=input_text[:2000],
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-        else:
-            input_text = str(input_data)[:2000]
-            prompt = default_prompt.format(
-                input_text=input_text,
-                output_a=json.dumps(output_a, ensure_ascii=False, indent=2)[:3000],
-                output_b=json.dumps(output_b, ensure_ascii=False, indent=2)[:3000],
-            )
-
-        # Use a simple schema for the judge response
-        from pydantic import BaseModel
-
-        class JudgeOutput(BaseModel):
-            score_a: float
-            score_b: float
-            winner: str
-            rationale: str
-
         try:
-            result = client.call(
-                prompt=prompt,
-                response_model=JudgeOutput,
-                temperature=0.1,
-            )
-            output = result.output
-
-            # result.output is typed as BaseModel (see LLMCallResult);
-            # narrow to the concrete response_model we requested.
-            if not isinstance(output, JudgeOutput):
-                raise TypeError("LLM judge returned unexpected output type")
-
-            # Clamp scores to valid range
-            score_a = max(0.0, min(1.0, output.score_a))
-            score_b = max(0.0, min(1.0, output.score_b))
-
-            # Validate winner
-            winner = output.winner if output.winner in ("A", "B", "tie") else "tie"
-
-            return score_a, score_b, output.rationale
-
+            result = ensemble.judge(input_data, output_a, output_b, stage)
+            return result.score_a, result.score_b, result.rationale
         except Exception as e:
-            logger.warning(f"LLM Judge evaluation failed: {e}, falling back to heuristic scoring")
-            # Fallback to heuristic scoring
+            logger.warning(
+                f"LLM Judge Ensemble evaluation failed: {e}, "
+                f"falling back to heuristic scoring"
+            )
+            # Fallback to heuristic scoring (no LLM available).
             score_a = _score_output(output_a, stage)
             score_b = _score_output(output_b, stage)
-            return score_a, score_b, f"LLM Judge failed, used heuristic: {str(e)[:100]}"
+            return score_a, score_b, f"Ensemble judge failed, used heuristic: {str(e)[:100]}"
 
     return judge_fn
 
@@ -438,8 +227,12 @@ class ABTestReport:
 def _score_output(output: Dict[str, Any], stage: str) -> float:
     """对单个输出进行评分 (0-1).
 
+    .. deprecated::
+        启发式评分器。S2-3 起，真实评测路径改为 :class:`LLMJudgeEnsemble`
+        (多模型并行打分 + 多数决)。本函数仅作为 **无 LLM 时的兜底** 保留：
+        当 Ensemble 不可用（所有 judge 失败）时由 ``create_llm_judge_fn`` 调用。
+
     基于输出质量启发式评分。
-    实际使用时可以用 LLM-as-a-Judge 进行盲评。
     """
     score = 0.5  # baseline
 

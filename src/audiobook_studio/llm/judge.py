@@ -91,7 +91,7 @@ class LLMJudge:
             return output
         except Exception as e:
             logger.error(f"Quality judgment failed for {segment_id}: {e}")
-            # Return safe default - requires regeneration
+            # Return safe default - judge error (do not fabricate a content finding)
             return QualityJudgment(
                 segment_id=segment_id,
                 speaker_clarity=0.0,
@@ -99,7 +99,7 @@ class LLMJudge:
                 prosody_naturalness=0.0,
                 text_audio_alignment=0.0,
                 overall_score=0.0,
-                issues=["sensitive_content"],  # Valid literal from schema
+                issues=["judge_error"],  # Honest: judge failure, not a content finding
                 fix_suggestions=[
                     FixSuggestion(
                         suggestion_type="prosody_correction",
@@ -110,7 +110,7 @@ class LLMJudge:
                         confidence=0.9,
                     )
                 ],
-                needs_regeneration=True,
+                needs_regeneration=False,  # transient judge error != must re-synth
             )
 
     def _get_system_prompt(self) -> str:

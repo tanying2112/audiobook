@@ -1,0 +1,27 @@
+{
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": true,
+    "score": 1.0,
+    "threshold": 0.99,
+    "details": "全部格式检查通过"
+  },
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "无有效测试用例 (共 6 个，缺少必需字段)"
+  },
+  "outputs": [
+    {
+      "error": "Prompt version 1 not found for stage quality_check"
+    },
+    {
+      "error": "2 validation errors for QualityJudgment\nissues.0\n  Input should be 'wrong_speaker', 'emotion_mismatch', 'silent_segment', 'stuttering', 'truncation', 'sensitive_content', 'wrong_speed' or 'wrong_pitch' [type=literal_error, input_value='low_clarity', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error\nfix_suggestions.0\n  Input should be a valid dictionary or instance of FixSuggestion [type=model_type, input_value='improve speaker clarity', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+    },
+    {
+      "error": "Prompt version 1 not found for stage quality_check"
+    }
+  ]
+}

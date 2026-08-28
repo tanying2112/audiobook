@@ -24,6 +24,10 @@ services:
       # --fail-on-warning self-consistent in CI (non-empty placeholder only).
       - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-devplaceholder12345678901234567890123456789012345678901234}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-ant-api03-devplaceholder1234567890123456789012345678901234567890123456789012345678901234567890123456789012345}
+      # Production default: run the REAL self-iteration closed loop (S2-1).
+      # The loop issues live LLM calls unless SELF_ITERATION_MOCK=true is set
+      # (override in .env for local/dev to stay in mock mode).
+      - SELF_ITERATION_MOCK=${SELF_ITERATION_MOCK:-false}
       # Task 6.1 asset-stripping: model cache points at the Docker volume (see Dockerfile).
       - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
     volumes:
@@ -37,6 +41,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  # Alembic migration runner (S3-4): applies DB schema BEFORE web/worker start,
+  # so the app never runs migrations at startup. One-shot (restart: "no").
+  # For manual/production use: `scripts/migrate.sh up|backup|rollback|status`
+  # (pg_dump backup before upgrade runs when the pg client is available).
+  migrate:
+    build: .
+    command: ["sh", "/app/scripts/migrate.sh", "up"]
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - PYTHONPATH=/app/src
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   frontend:
     image: node:20-alpine
@@ -109,6 +131,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { useI18n } from '../i18n'
 import { useAuthStore } from '../stores/auth'
+import { useContextStore } from '../stores/context'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const authStore = useAuthStore()
+const contextStore = useContextStore()
 
 onMounted(() => {
   if (authStore.isAuthenticated() && !authStore.user) {
@@ -20,7 +22,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const navItems = [
+const navItems = computed(() => [
   { label: 'nav.projects', icon: 'mdi:bookshelf', route: '/' },
   { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
   { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback' },
@@ -28,8 +30,9 @@ const navItems = [
   { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
   { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },
   { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market' },
-  { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: '/projects/1/dashboard' },
-]
+  // Dashboard route dynamically generated with actual projectId from context store
+  { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: contextStore.projectId ? `/projects/${contextStore.projectId}/dashboard` : '' },
+])
 
 function isActive(path: string): boolean {
   if (path === '/') return route.path === '/'

@@ -8,6 +8,7 @@ Target: 70%+ coverage
 
 import os
 import sys
+import importlib
 import asyncio as _asyncio  # Import real asyncio before patching
 _real_asyncio_run = _asyncio.run  # Save real run before any patching
 
@@ -23,6 +24,13 @@ os.environ["MOCK_LLM"] = "true"
 
 # Now import the module under test
 from src.audiobook_studio.tasks import publish_tasks
+# If publish_tasks was already imported (cached) with the mocked celery
+# before the restore above, reload it so its state constants rebind to
+# the real celery states. This makes the constants-order-independent.
+if getattr(publish_tasks, "PENDING", None) is not None and not isinstance(
+    publish_tasks.PENDING, str
+):
+    importlib.reload(publish_tasks)
 
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
@@ -290,25 +298,34 @@ class TestPublishProjectAsync:
             assert result["job_id"] == "custom_job_id"
 
     def test_publish_project_async_retries_on_failure(self):
-        """Test publish_project_async retries on failure."""
+        """Test publish_project_async retries on failure with exponential backoff."""
         mock_self = MagicMock()
         mock_self.request.id = "task_123"
         mock_self.request.retries = 0
         mock_self.max_retries = 3
         test_exception = Exception("Temporary failure")
-        mock_self.retry.side_effect = lambda exc: (_ for _ in ()).throw(exc)
-        
+        captured = {}
+
+        def _retry(**kwargs):
+            captured.update(kwargs)
+            raise kwargs.get("exc", test_exception)
+
+        mock_self.retry.side_effect = _retry
+
         with patch('asyncio.run') as mock_run:
             mock_run.side_effect = test_exception
-            
+
             with pytest.raises(Exception):
                 publish_tasks.publish_project_async(
                     mock_self,
                     project_id=1,
                     destinations=["audiobookshelf"],
                 )
-            
-            mock_self.retry.assert_called_once_with(exc=test_exception)
+
+            assert mock_self.retry.called
+            # Exponential backoff: countdown grows with the retry index.
+            assert captured.get("countdown") == publish_tasks.exponential_backoff_countdown(0)
+            assert captured.get("countdown") == 5
 
 
 class TestPublishAudiobookshelfAsync:

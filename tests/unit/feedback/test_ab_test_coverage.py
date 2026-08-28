@@ -37,18 +37,6 @@ def mock_llm_client_fail():
     return client
 
 
-@pytest.fixture
-def mock_llm_client_success():
-    """Create a mock LLM client that returns valid responses."""
-    client = MagicMock()
-
-    def _call(**kwargs):
-        # Return a valid JSON response for pairwise judge
-        return '{"winner": "B", "dimension_scores": {"naturalness": {"score_a": 0.3, "score_b": 0.8}}, "rationale": "B is better"}'
-
-    client.call = _call
-    return client
-
 
 # ── _score_output edge cases ────────────────────────────────────────────────
 
@@ -323,32 +311,49 @@ def test_run_ab_test_pairwise_custom_judge_all_fields():
 
 # ── create_llm_judge_fn with mocked LLM ────────────────────────────────────
 
-def test_create_llm_judge_fn_llm_success(monkeypatch, mock_llm_client_success):
-    """Test create_llm_judge_fn when LLM call succeeds."""
-    import sys
-    import types
+def test_create_llm_judge_fn_llm_success(monkeypatch):
+    """create_llm_judge_fn routes through LLMJudgeEnsemble on LLM success.
 
-    # Create a mock module for the judge
-    mod = types.ModuleType("src.audiobook_studio.llm.judge")
+    The mocked judges all return a RubricScores favouring B, so the ensemble's
+    majority vote must pick B and emit an ensemble rationale (S2-3).
+    """
+    from src.audiobook_studio.feedback.llm_judge import DimensionScore, RubricScores
+    from src.audiobook_studio.llm.client import LLMCallResult
 
-    class FakeLLMJudge:
-        def __init__(self, *args, **kwargs):
-            pass
+    def fake_create_client(**kwargs):
+        client = MagicMock()
 
-        def judge_pairwise(self, **kwargs):
-            return _FakeJudgment(winner="B", dim_scores={"nat": _Dim(0.2, 0.9)})
+        def _call(**kw):
+            return LLMCallResult(
+                output=RubricScores(
+                    faithfulness=DimensionScore(a=2.0, b=4.0),
+                    naturalness=DimensionScore(a=2.0, b=4.0),
+                    instruction_following=DimensionScore(a=2.0, b=4.0),
+                    no_hallucination=DimensionScore(a=2.0, b=4.0),
+                    winner="B",
+                    rationale="B is more faithful and natural",
+                ),
+                model=kwargs.get("model", "fake"),
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                latency_ms=1,
+                schema_compliance=True,
+                raw_response={},
+            )
 
-    mod.LLMJudge = FakeLLMJudge
-    mod.JudgeConfig = lambda **k: None
-    monkeypatch.setitem(sys.modules, "src.audiobook_studio.llm.judge", mod)
+        client.call = _call
+        return client
 
-    # Also patch create_client to return our success client
-    monkeypatch.setattr("src.audiobook_studio.llm.create_client", lambda **kwargs: mock_llm_client_success)
+    monkeypatch.setattr("src.audiobook_studio.llm.create_client", fake_create_client)
 
     fn = create_llm_judge_fn("edit_for_tts")
-    result = fn({"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300})
-    assert result[0] <= result[1]  # B should win
-    assert "B" in result[2] or "b" in result[2].lower()
+    score_a, score_b, rationale = fn(
+        {"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300}
+    )
+    assert score_a <= score_b  # B should win
+    assert "B" in rationale
+    assert "Ensemble verdict" in rationale  # ensemble-specific rationale
 
 
 def test_create_llm_judge_fn_old_signature_judge_works(monkeypatch):

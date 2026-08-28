@@ -42,6 +42,7 @@ from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
 from .api.provider_router import router as provider_router
 from .api.publish import router as publish_router
+from .api.publish_job import router as publish_job_router
 from .api.qualities import router as qualities_router
 from .api.routings import router as routings_router
 from .api.sop_reflection import router as sop_reflection_router
@@ -78,13 +79,11 @@ async def lifespan(app: FastAPI):
     # BP-003: Startup dependency validation — fast-fail on unreachable dependencies
     await settings.validate_runtime_dependencies(timeout=settings.HEALTH_CHECK_TIMEOUT)
 
-    # P1-4: Use Alembic for DB migrations instead of create_all()
-    import sys
-    from subprocess import run
-
-    result = run([sys.executable, "-m", "alembic", "upgrade", "head"], capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Alembic migration failed: {result.stderr}")
+    # P1-4 / S3-4: DB schema is now managed EXTERNALLY via Alembic.
+    # Migrations run BEFORE the app starts (through `scripts/migrate.sh up` or
+    # the `migrate` service in docker-compose, which waits for db to be healthy),
+    # so startup NEVER runs migrations. This enables zero-downtime, rollbackable
+    # production deployments. See scripts/migrate.sh and docker-compose.yml.
 
     # Initialize RBAC with default roles and permissions
     from .auth.rbac import init_rbac
@@ -210,6 +209,7 @@ if settings.DEBUG or settings.ENVIRONMENT == "development":
     app.include_router(mock_router, prefix="/api", dependencies=auth_dep)
 app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)
 app.include_router(publish_router, prefix="/api", dependencies=auth_dep)
+app.include_router(publish_job_router, prefix="/api", dependencies=auth_dep)
 app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
 app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
 app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep)

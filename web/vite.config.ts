@@ -31,10 +31,12 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             // echarts 的底层 2D 画布引擎(~400KB, 不可 tree-shake): 独立一块 <500KB。
-            { name: 'zrender', test: /node_modules[\\/]zrender/, priority: 10 },
-            // tree-shaken 后的 echarts 业务模块(~160KB): 独立一块 <500KB。
-            // 与 zrender 拆开可避免 >500KB, 且只产生 2 个请求(比 maxSize 切 ~10 块更优)。
-            { name: 'echarts', test: /node_modules[\\/]echarts/, priority: 10 },
+            { name: 'zrender', test: /node_modules[\\/]zrender/, priority: 20 },
+            // tree-shaken 后的 echarts 核心模块: 拆分为独立 chunk, 每块 <500KB
+            { name: 'echarts-core', test: /node_modules[\\/]echarts[\\/]core/, priority: 15 },
+            { name: 'echarts-charts', test: /node_modules[\\/]echarts[\\/]charts/, priority: 15 },
+            { name: 'echarts-components', test: /node_modules[\\/]echarts[\\/]components/, priority: 15 },
+            { name: 'echarts-renderers', test: /node_modules[\\/]echarts[\\/]renderers/, priority: 15 },
             // chart.js: 仅 MonitoringDashboard 使用, 单独 chunk。
             { name: 'chartjs', test: /node_modules[\\/]chart\.js/, priority: 10 },
             // wavesurfer.js: 音频波形, 单独 chunk。

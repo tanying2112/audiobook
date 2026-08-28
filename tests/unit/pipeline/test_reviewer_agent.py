@@ -77,14 +77,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-# Load schemas.review (no external deps)
-SCHEMA_SPEC = importlib.util.spec_from_file_location(
-    "schemas_review",
-    str(PROJECT_ROOT / "src" / "audiobook_studio" / "schemas" / "review.py"),
-)
-schemas_review = importlib.util.module_from_spec(SCHEMA_SPEC)
-SCHEMA_SPEC.loader.exec_module(schemas_review)
-sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
+# Use the already-imported real schemas.review module. Do NOT re-exec it via
+# module_from_spec: that builds a *second* ReviewerJudgment class object and splits
+# its identity for every later test that does `from ...schemas.review import ...`
+# (and popping sys.modules then forces a *reload* on next import -> a third copy).
+import src.audiobook_studio.schemas.review as schemas_review
 
 # Create a mock for the pipeline/review module dependencies
 review_spec = importlib.util.spec_from_file_location(
@@ -94,12 +91,9 @@ review_spec = importlib.util.spec_from_file_location(
 review = importlib.util.module_from_spec(review_spec)
 review.__package__ = "src.audiobook_studio.pipeline"
 
-# Inject schemas.review into the review module namespace
-sys.modules["src.audiobook_studio.schemas.review"] = schemas_review
-
-# Now we need to also mock the pipeline/review imports
-# The review.py imports: from ..schemas.review import ...
-# which will use the schemas_review we injected above
+# Load review.py with the real schemas.review already importable, and temporarily
+# expose our loaded review module so its own imports resolve. We pop it afterwards so
+# we don't shadow the real pipeline.review module globally.
 REVIEW_SPEC = importlib.util.spec_from_file_location(
     "src.audiobook_studio.pipeline.review",
     str(PROJECT_ROOT / "src" / "audiobook_studio" / "pipeline" / "review.py"),
@@ -107,6 +101,7 @@ REVIEW_SPEC = importlib.util.spec_from_file_location(
 REVIEW_MODULE = importlib.util.module_from_spec(REVIEW_SPEC)
 sys.modules["src.audiobook_studio.pipeline.review"] = REVIEW_MODULE
 REVIEW_SPEC.loader.exec_module(REVIEW_MODULE)
+sys.modules.pop("src.audiobook_studio.pipeline.review", None)
 
 ReviewerAgent = REVIEW_MODULE.ReviewerAgent
 VoiceBindingCheck = schemas_review.VoiceBindingCheck

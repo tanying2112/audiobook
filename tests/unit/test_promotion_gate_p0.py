@@ -32,6 +32,7 @@ from src.audiobook_studio.feedback.promotion_gate import (
 )
 
 MODULE = "src.audiobook_studio.feedback.promotion_gate"
+ANTI_HACK_MODULE = "src.audiobook_studio.feedback.anti_hack"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -669,11 +670,14 @@ class TestEvaluatePromotionAntiHackMatrix:
                  proposer_model=None, judge_pool=None, **overrides):
         kwargs = dict(ANTI_HACK_KW)
         kwargs.update(overrides)
+        # NOTE: ``promotion_gate`` only *re-exports* these helpers from ``anti_hack``;
+        # ``evaluate_promotion_anti_hack`` (defined in anti_hack) resolves them from
+        # the anti_hack namespace, so the patch must target anti_hack, not the re-export.
         with (
-            patch(f"{MODULE}._constitution", return_value=constitution or mk_constitution()),
-            patch(f"{MODULE}._held_out", return_value=held_out or mk_held_out()),
-            patch(f"{MODULE}._regression_suite", return_value=regression or mk_regression()),
-            patch(f"{MODULE}._evolution_guard", return_value=guard or mk_guard()),
+            patch(f"{ANTI_HACK_MODULE}._constitution", return_value=constitution or mk_constitution()),
+            patch(f"{ANTI_HACK_MODULE}._held_out", return_value=held_out or mk_held_out()),
+            patch(f"{ANTI_HACK_MODULE}._regression_suite", return_value=regression or mk_regression()),
+            patch(f"{ANTI_HACK_MODULE}._evolution_guard", return_value=guard or mk_guard()),
         ):
             return evaluate_promotion_anti_hack(
                 stage="edit_for_tts",

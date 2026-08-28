@@ -18,6 +18,22 @@ monitoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitoring)
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_monitoring_collector():
+    """Reset the standalone collector after each test for order-independence.
+
+    The collector is a module-level singleton loaded via importlib under the
+    name ``monitoring_standalone``; the global conftest reset targets the
+    ``src.audiobook_studio.monitoring`` module, a different object, so this
+    file must reset its own collector to avoid cross-test record leakage.
+    """
+    yield
+    monitoring.reset_collector()
+
+
 class TestStagePerformanceRecord:
     """Tests for StagePerformanceRecord dataclass."""
 

@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Generate ChapterSource golden dataset from novel text."""
+"""Generate ChapterSource golden dataset from novel text.
+
+Also provides interactive CLI annotation tool for golden dataset.
+
+Usage:
+    python scripts/generate_golden_dataset.py              # Generate ChapterSource from novel
+    python scripts/generate_golden_dataset.py annotate     # Interactive annotation CLI
+    python scripts/generate_golden_dataset.py list         # List available stages and samples
+    python scripts/generate_golden_dataset.py validate     # Validate golden dataset
+"""
 
 import json
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, confloat, conint
 from typing_extensions import Annotated
@@ -422,6 +431,258 @@ def main():
 
     print(f"\nGenerated {len(chapter_sources)} chapters, {len(all_paragraphs)} total paragraphs")
     print(f"Collection saved to {collection_file}")
+
+
+# =============================================================================
+# INTERACTIVE CLI ANNOTATION TOOL
+# =============================================================================
+
+STAGE_DIRS = {
+    "extract": "extract",
+    "analyze": "analyze_structure",
+    "annotate": "annotate_paragraph",
+    "edit": "edit_for_tts",
+    "translate": "translate",
+    "judge": "quality_judge",
+    "quality": "quality_check",
+}
+
+SPLITS = ["train", "val", "test"]
+
+def load_golden_samples(stage: str, split: str = "train") -> List[Dict[str, Any]]:
+    """Load golden samples for a given stage and split."""
+    new_dir = Path("data/golden") / split / stage
+    old_dir = Path("tests/golden") / STAGE_DIRS.get(stage, stage)
+    
+    samples = []
+    
+    # Try new directory structure first
+    if new_dir.exists():
+        for f in sorted(new_dir.glob("*.jsonl")):
+            with f.open("r", encoding="utf-8") as fp:
+                for line in fp:
+                    line = line.strip()
+                    if line:
+                        samples.append(json.loads(line))
+        if samples:
+            return samples
+    
+    # Fallback to old directory structure
+    if old_dir.exists():
+        for f in sorted(old_dir.glob("*.jsonl")):
+            with f.open("r", encoding="utf-8") as fp:
+                for line in fp:
+                    line = line.strip()
+                    if line:
+                        samples.append(json.loads(line))
+        for f in sorted(old_dir.glob("*.json")):
+            with f.open("r", encoding="utf-8") as fp:
+                samples.append(json.load(fp))
+    
+    return samples
+
+def save_golden_samples(stage: str, split: str, samples: List[Dict[str, Any]]) -> None:
+    """Save golden samples to JSONL file."""
+    out_dir = Path("data/golden") / split / stage
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"{stage}.jsonl"
+    
+    with out_file.open("w", encoding="utf-8") as f:
+        for sample in samples:
+            f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+    print(f"Saved {len(samples)} samples to {out_file}")
+
+def cmd_list() -> None:
+    """List available stages and sample counts."""
+    print("\n=== Golden Dataset Summary ===")
+    print(f"{'Stage':<12} {'Train':>6} {'Val':>6} {'Test':>6} {'Total':>6}")
+    print("-" * 40)
+    
+    for stage in STAGE_DIRS.keys():
+        counts = {}
+        for split in SPLITS:
+            samples = load_golden_samples(stage, split)
+            counts[split] = len(samples)
+        total = sum(counts.values())
+        print(f"{stage:<12} {counts['train']:>6} {counts['val']:>6} {counts['test']:>6} {total:>6}")
+    print()
+
+def cmd_validate() -> None:
+    """Validate golden dataset format."""
+    print("\n=== Golden Dataset Validation ===")
+    issues = []
+    
+    for stage in STAGE_DIRS.keys():
+        for split in SPLITS:
+            samples = load_golden_samples(stage, split)
+            if not samples:
+                issues.append(f"{split}/{stage}: No samples found")
+                continue
+            
+            for i, sample in enumerate(samples):
+                if "input" not in sample:
+                    issues.append(f"{split}/{stage}[{i}]: Missing 'input' field")
+                if "expected_output" not in sample:
+                    issues.append(f"{split}/{stage}[{i}]: Missing 'expected_output' field")
+    
+    if issues:
+        print(f"\nFound {len(issues)} issues:")
+        for issue in issues:
+            print(f"  - {issue}")
+    else:
+        print("✅ All golden datasets are valid!")
+    print()
+
+def cmd_annotate() -> None:
+    """Interactive annotation CLI for golden dataset."""
+    print("\n=== Interactive Golden Dataset Annotation Tool ===")
+    print("Available stages:")
+    for i, stage in enumerate(STAGE_DIRS.keys(), 1):
+        print(f"  {i}. {stage}")
+    
+    try:
+        choice = input("\nSelect stage (1-7) or 'q' to quit: ").strip()
+        if choice.lower() == 'q':
+            return
+        
+        stage_idx = int(choice) - 1
+        if not 0 <= stage_idx < len(STAGE_DIRS):
+            print("Invalid selection.")
+            return
+        
+        stage = list(STAGE_DIRS.keys())[stage_idx]
+        
+        print(f"\nAvailable splits: {', '.join(SPLITS)}")
+        split = input("Select split (train/val/test) [train]: ").strip() or "train"
+        if split not in SPLITS:
+            print("Invalid split.")
+            return
+        
+        samples = load_golden_samples(stage, split)
+        print(f"\nLoaded {len(samples)} samples for {stage}/{split}")
+        
+        if not samples:
+            print("No samples to annotate.")
+            return
+        
+        print("\nCommands:")
+        print("  n - Next sample")
+        print("  p - Previous sample")
+        print("  e - Edit current sample")
+        print("  a - Add new sample")
+        print("  d - Delete current sample")
+        print("  s - Save and exit")
+        print("  q - Quit without saving")
+        
+        idx = 0
+        modified = False
+        
+        while True:
+            sample = samples[idx]
+            print(f"\n--- Sample {idx + 1}/{len(samples)} ---")
+            print(f"Input:")
+            print(json.dumps(sample.get("input", {}), ensure_ascii=False, indent=2))
+            print(f"\nExpected Output:")
+            print(json.dumps(sample.get("expected_output", {}), ensure_ascii=False, indent=2))
+            
+            cmd = input("\nCommand [n]: ").strip().lower() or "n"
+            
+            if cmd == "n":
+                if idx < len(samples) - 1:
+                    idx += 1
+                else:
+                    print("Already at last sample.")
+            elif cmd == "p":
+                if idx > 0:
+                    idx -= 1
+                else:
+                    print("Already at first sample.")
+            elif cmd == "e":
+                print("\nEdit input (JSON):")
+                new_input = input(json.dumps(sample.get("input", {}), ensure_ascii=False) + "\n> ").strip()
+                if new_input:
+                    try:
+                        sample["input"] = json.loads(new_input)
+                        modified = True
+                    except json.JSONDecodeError as e:
+                        print(f"Invalid JSON: {e}")
+                
+                print("\nEdit expected_output (JSON):")
+                new_output = input(json.dumps(sample.get("expected_output", {}), ensure_ascii=False) + "\n> ").strip()
+                if new_output:
+                    try:
+                        sample["expected_output"] = json.loads(new_output)
+                        modified = True
+                    except json.JSONDecodeError as e:
+                        print(f"Invalid JSON: {e}")
+            elif cmd == "a":
+                print("\nAdd new sample (JSON):")
+                new_input = input("Input JSON: ").strip()
+                new_output = input("Expected output JSON: ").strip()
+                try:
+                    new_sample = {
+                        "input": json.loads(new_input) if new_input else {},
+                        "expected_output": json.loads(new_output) if new_output else {},
+                    }
+                    samples.append(new_sample)
+                    idx = len(samples) - 1
+                    modified = True
+                    print("Sample added.")
+                except json.JSONDecodeError as e:
+                    print(f"Invalid JSON: {e}")
+            elif cmd == "d":
+                if len(samples) > 1:
+                    confirm = input(f"Delete sample {idx + 1}? (y/N): ").strip().lower()
+                    if confirm == 'y':
+                        samples.pop(idx)
+                        modified = True
+                        if idx >= len(samples):
+                            idx = len(samples) - 1
+                        print("Sample deleted.")
+                else:
+                    print("Cannot delete the only sample.")
+            elif cmd == "s":
+                save_golden_samples(stage, split, samples)
+                print("Changes saved.")
+                break
+            elif cmd == "q":
+                if modified:
+                    confirm = input("Unsaved changes. Quit anyway? (y/N): ").strip().lower()
+                    if confirm != 'y':
+                        continue
+                break
+            else:
+                print("Unknown command.")
+    except (KeyboardInterrupt, EOFError):
+        print("\n\nInterrupted.")
+
+def cmd_generate() -> None:
+    """Generate golden dataset from novel text (original functionality)."""
+    main()
+
+def main() -> None:
+    """Main entry point with CLI subcommands."""
+    if len(sys.argv) < 2:
+        # Default: generate ChapterSource from novel
+        cmd_generate()
+        return
+    
+    command = sys.argv[1].lower()
+    
+    if command == "annotate":
+        cmd_annotate()
+    elif command == "list":
+        cmd_list()
+    elif command == "validate":
+        cmd_validate()
+    elif command == "generate":
+        cmd_generate()
+    elif command in ("-h", "--help", "help"):
+        print(__doc__)
+    else:
+        print(f"Unknown command: {command}")
+        print(__doc__)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -129,6 +129,38 @@ async def refresh_token(
     )
 
 
+def _registration_allowed(
+    settings: "Settings",
+    user_data: UserCreate,
+    current_user: Optional[UserModel],
+) -> "tuple[bool, Optional[str]]":
+    """Decide whether registration is permitted under AUTH_REGISTRATION_MODE.
+
+    - ``open``: anyone may self-register.
+    - ``invite``: a valid invite code (REGISTRATION_INVITE_CODES) or an admin
+      bootstrap is required; otherwise registration is denied.
+    - any other mode (e.g. ``approval``): only an admin may bootstrap accounts.
+    """
+    mode = settings.AUTH_REGISTRATION_MODE
+    if mode == "open":
+        return True, None
+    if mode == "invite":
+        allowed = [
+            c.strip()
+            for c in (settings.REGISTRATION_INVITE_CODES or "").split(",")
+            if c.strip()
+        ]
+        if user_data.invite_code and user_data.invite_code in allowed:
+            return True, None
+        if current_user is not None and getattr(current_user, "is_superuser", False):
+            return True, None
+        return False, "Registration requires a valid invite code (AUTH_REGISTRATION_MODE=invite)."
+    # approval / any other mode: only an admin may bootstrap accounts.
+    if current_user is not None and getattr(current_user, "is_superuser", False):
+        return True, None
+    return False, f"Registration not allowed in '{mode}' mode. Contact administrator."
+
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserCreate,
@@ -143,15 +175,9 @@ async def register(
     - "approval": Requires admin approval after registration (not implemented yet)
     """
     settings = get_settings()
-
-    # Check registration mode
-    if settings.AUTH_REGISTRATION_MODE != "open":
-        # For non-open modes, require superuser
-        if current_user is None or not current_user.is_superuser:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Registration not allowed in '{settings.AUTH_REGISTRATION_MODE}' mode. Contact administrator."
-            )
+    allowed, reason = _registration_allowed(settings, user_data, current_user)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
 
     rbac = get_rbac_manager(db)
 

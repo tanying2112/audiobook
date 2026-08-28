@@ -6,6 +6,15 @@ from unittest.mock import MagicMock, patch
 # Mock litellm as a package to avoid network calls and import errors
 mock_litellm = types.ModuleType("litellm")
 mock_litellm._logging = types.ModuleType("litellm._logging")
+# client.py 顶层 `from litellm import completion` 必须能解析到该属性，
+# 否则空壳 ModuleType + __path__=[] 会触发 "unknown location" ImportError
+mock_litellm.completion = MagicMock()
+_SAVED_MODULES = {}
+_MISSING = object()
+
+_SAVED_MODULES['litellm'] = sys.modules.get('litellm', _MISSING)
+_SAVED_MODULES['litellm._logging'] = sys.modules.get('litellm._logging', _MISSING)
+
 sys.modules["litellm"] = mock_litellm
 sys.modules["litellm._logging"] = mock_litellm._logging
 
@@ -154,3 +163,17 @@ class TestASRWerMetric(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── 泄漏防护: 模块导入期的 sys.modules 注入必须在模块结束时还原 ────────────────
+# 否则同会话内后续测试 (如 bootstrap_fewshot / llm client) 会拿到空壳 mock。
+_MISSING = object()
+
+
+def tearDownModule() -> None:
+    """Restore the pre-injection sys.modules snapshot (pytest hook)."""
+    for _name, _orig in _SAVED_MODULES.items():
+        if _orig is _MISSING:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _orig

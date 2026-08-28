@@ -43,18 +43,47 @@ from .integration import (
 from .kill_switch import DegradationLevel, KillSwitch, KillSwitchConfig, get_kill_switch
 from .llm_analyzer import LLMFeedbackAnalyzer
 from .processor import analyze_batch, analyze_single_feedback, get_trend_report
-from .promotion_gate import (
+from .similarity import (
+    _char_ngram_similarity,
+    _compute_audio_quality_metrics,
+    _compute_output_similarity,
+    _compute_structure_quality_metrics,
+    _compute_text_quality_metrics,
+    _aggregate_quality_score,
+)
+from .canary import (
+    GOLDEN_TO_PIPELINE_STAGE,
+    PIPELINE_STAGE_TO_PROMPT_DIR,
+    STAGE_TYPE,
+    _convert_input_to_model,
+    _get_required_input_fields,
+    _golden_to_pipeline_stage,
+    _load_golden_examples,
+    _load_prompt_version,
+    _pipeline_stage_to_prompt_dir,
+    _run_stage_with_prompt_version,
+    _resolve_mock_mode,
+    _self_iteration_mock_enabled,
+    SELF_ITERATION_MOCK_ENV,
+)
+from .promotion import (
+    GateResult,
+    PromotionGate,
+    PromotionVerdict,
+    check_format_compliance,
+    check_golden_dataset,
+    check_human_sample,
+    check_quality_improvement,
+    check_regression_suite,
+    evaluate_promotion,
+)
+from .anti_hack import (
     AntiHackVerdict,
     DEFAULT_JUDGE_POOL,
     DualJudgeEvaluator,
     DualJudgeResult,
     JudgeVerdict,
     META_GUARD_READONLY_PATHS,
-    check_format_compliance,
-    check_golden_dataset,
-    check_human_sample,
-    check_quality_improvement,
-    evaluate_promotion,
     evaluate_promotion_anti_hack,
     verify_meta_guard,
 )
@@ -95,7 +124,6 @@ from .release import (
     CanaryConfig,
     CanaryMetrics,
     CanaryRelease,
-    PromotionGate,
     PromotionGateResult,
     PromotionMetrics,
     VersionStore,
@@ -115,12 +143,47 @@ __all__ = [
     # Prompt Upgrader
     "batch_upgrade",
     "upgrade_prompt",
-    # Promotion Gate
+    # Promotion Gate (split modules)
+    # similarity
+    "_char_ngram_similarity",
+    "_compute_audio_quality_metrics",
+    "_compute_output_similarity",
+    "_compute_structure_quality_metrics",
+    "_compute_text_quality_metrics",
+    "_aggregate_quality_score",
+    # canary
+    "GOLDEN_TO_PIPELINE_STAGE",
+    "PIPELINE_STAGE_TO_PROMPT_DIR",
+    "STAGE_TYPE",
+    "_convert_input_to_model",
+    "_get_required_input_fields",
+    "_golden_to_pipeline_stage",
+    "_load_golden_examples",
+    "_load_prompt_version",
+    "_pipeline_stage_to_prompt_dir",
+    "_run_stage_with_prompt_version",
+    "_resolve_mock_mode",
+    "_self_iteration_mock_enabled",
+    "SELF_ITERATION_MOCK_ENV",
+    # promotion
+    "GateResult",
+    "PromotionGate",
+    "PromotionVerdict",
     "check_format_compliance",
     "check_golden_dataset",
     "check_human_sample",
     "check_quality_improvement",
+    "check_regression_suite",
     "evaluate_promotion",
+    # anti_hack
+    "AntiHackVerdict",
+    "DEFAULT_JUDGE_POOL",
+    "DualJudgeEvaluator",
+    "DualJudgeResult",
+    "JudgeVerdict",
+    "META_GUARD_READONLY_PATHS",
+    "evaluate_promotion_anti_hack",
+    "verify_meta_guard",
     # A/B Test
     "run_ab_test",
     "build_ab_samples",

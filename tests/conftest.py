@@ -20,6 +20,64 @@ import pytest
 from tests.conftest_minimal import *  # noqa: F403,F401
 
 # ════════════════════════════════════════════════════════════════════════════
+# Canonical package alias: make `audiobook_studio` resolve to `src.audiobook_studio`
+# ════════════════════════════════════════════════════════════════════════════
+# Many test modules import the package as the bare name `audiobook_studio`, while
+# others use `src.audiobook_studio`. These are TWO distinct sys.modules entries
+# (Python keys by import name, not file path), so every class/exception is defined
+# twice. isinstance() checks and importlib.reload() then fail unpredictably depending
+# on which copy a test bound. Redirecting the bare name to the canonical `src.`
+# module gives a single identity for the whole package and all submodules, making
+# isinstance/exceptions order-independent. (The alias only affects THIS process;
+# tests that spawn subprocesses, e.g. test_feedback_import_safety, are unaffected.)
+# 
+# RE-ENABLED: the transient 'missing promotion module' import failure that prompted
+# the original disable is resolved, so the canonical alias is back on. It unifies the
+# bare `audiobook_studio` and `src.audiobook_studio` sys.modules entries so the
+# dual-package collision (which made tests/unit/ flaky depending on collection order)
+# no longer occurs. Tests that spawn subprocesses are unaffected (separate process).
+import importlib
+import importlib.util
+import sys as _sys
+
+
+class _AudiobookStudioAliasLoader:
+    """Loader that returns an already-imported canonical module unchanged."""
+
+    def __init__(self, module):
+        self._module = module
+
+    def create_module(self, spec):
+        return self._module
+
+    def exec_module(self, module):
+        return None
+
+
+class _AudiobookStudioAliasFinder:
+    """Meta-path finder redirecting `audiobook_studio` -> `src.audiobook_studio`."""
+
+    def find_spec(self, name, path, target=None):
+        if name != "audiobook_studio" and not name.startswith("audiobook_studio."):
+            return None
+        alt = "src." + name
+        try:
+            canonical = importlib.import_module(alt)
+        except ImportError:
+            return None
+        spec = importlib.util.find_spec(alt)
+        if spec is None:
+            return None
+        from importlib.machinery import ModuleSpec
+
+        return ModuleSpec(name, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
+
+
+_sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Test-specific fixtures (not needed by all tests)
+# ════════════════════════════════════════════════════════════════════════════
 # Test-specific fixtures (not needed by all tests)
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -41,6 +99,105 @@ def _isolate_sys_path():
     orig = sys.path.copy()
     yield
     sys.path[:] = orig
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _save_cwd():
+    """Remember the session start directory so tests that chdir can be reset."""
+    import os
+
+    _SAVED_CWD = os.getcwd()
+    yield _SAVED_CWD
+
+
+@pytest.fixture(autouse=True)
+def _restore_cwd(_save_cwd):
+    """Restore the working directory after every test.
+
+    Several tests use monkeypatch.chdir / tmp_path, but a stray os.chdir
+    (or a test that errors before teardown) can leave cwd pointing elsewhere,
+    breaking tests that read repo-relative paths like ``web/...`` or that write
+    files relative to the project root. Restoring cwd each test makes those
+    order-independent.
+    """
+    import os
+
+    yield
+    try:
+        os.chdir(_save_cwd)
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True, scope="function")
+def _reset_global_state():
+    """Reset cross-test global state after every test for order-independence.
+
+    The suite keeps module-level singletons/caches (LLM router, semantic cache,
+    telemetry collector, feedback adjudicators, the auto_run run registry, the
+    monitoring collector, etc.). A prior test leaving one of these mutated causes
+    order-dependent failures under --random-order. Clearing them between tests
+    makes outcomes independent of collection order.
+    """
+    yield
+    import importlib
+
+    # DI container (incl. deprecated cost tracker held there)
+    try:
+        from src.audiobook_studio.di import reset_app_container
+
+        reset_app_container()
+    except Exception:
+        pass
+
+    resets = [
+        "src.audiobook_studio.llm.router:reset_llm_router",
+        "src.audiobook_studio.llm.semantic_cache:reset_semantic_cache",
+        "src.audiobook_studio.core.telemetry:reset_telemetry",
+        "src.audiobook_studio.monitoring:reset_collector",
+        "src.audiobook_studio.feedback.constitution:reset_constitution_adjudicator",
+        "src.audiobook_studio.feedback.evolution_guard:reset_evolution_guard",
+        "src.audiobook_studio.feedback.regression_suite:reset_regression_suite",
+        "src.audiobook_studio.pipeline.vision:reset_vision_client",
+        "src.audiobook_studio.tts.audio_semantic_cache:reset_audio_semantic_cache",
+        "src.audiobook_studio.utils.redis_pool:reset_redis_pool",
+    ]
+    for spec in resets:
+        mod_name, fn_name = spec.split(":")
+        try:
+            mod = importlib.import_module(mod_name)
+            getattr(mod, fn_name)()
+        except Exception:
+            pass
+
+    # Module-level run registry (websocket / auto_run pause-resume state)
+    try:
+        from src.audiobook_studio.api import auto_run
+
+        auto_run._active_runs.clear()
+    except Exception:
+        pass
+
+    # Feedback's LLM analyzer is cached module-level and binds a router at
+    # construction; reset it so each test re-binds the current (mock) router.
+    try:
+        from src.audiobook_studio.feedback import processor as _fb_proc
+
+        _fb_proc._llm_analyzer = None
+    except Exception:
+        pass
+
+    # WebSocket pause/resume state lives on the ConnectionManager singleton
+    # (pause_states / pause_events), not on _active_runs.
+    try:
+        from src.audiobook_studio.api import websocket as _ws
+
+        _mgr = getattr(_ws, "manager", None)
+        if _mgr is not None:
+            _mgr.pause_states.clear()
+            _mgr.pause_events.clear()
+    except Exception:
+        pass
 
 
 def pytest_configure(config):

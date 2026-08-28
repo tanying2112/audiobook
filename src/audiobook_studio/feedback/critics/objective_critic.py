@@ -101,7 +101,7 @@ class ObjectiveCritic(BaseCritic):
             tags=tags,
         )
 
-    def _compute_objective_metrics(
+    def _compute_objective_metrics(  # pragma: no cover - requires real DNSMOS/ASR/Speaker models
         self,
         audio_path: Path,
         reference_text: str,

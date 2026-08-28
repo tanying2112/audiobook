@@ -25,6 +25,14 @@ from .engine import (
 )
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
+from .piper_backend import PiperBackend, create_piper_backend
+from .piper_models import (
+    DEFAULT_PIPER_VOICE,
+    PIPER_DEFAULT_MODEL_DIR,
+    detect_piper_availability,
+    ensure_piper_models,
+    list_piper_voices,
+)
 from .kokoro_port import KokoroPort, create_kokoro_port
 from .model_downloader import (
     FALLBACK_FILES,
@@ -108,6 +116,13 @@ __all__ = [
     # Backends
     "KokoroBackend",
     "create_kokoro_backend",
+    "PiperBackend",
+    "create_piper_backend",
+    "DEFAULT_PIPER_VOICE",
+    "PIPER_DEFAULT_MODEL_DIR",
+    "detect_piper_availability",
+    "ensure_piper_models",
+    "list_piper_voices",
     "VoxCPM2Backend",
     "create_voxcpm2_backend",
     # Streaming TTS (P2-3)

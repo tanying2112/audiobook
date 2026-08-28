@@ -307,8 +307,18 @@ def test_direct_client_cache_hit_fast(monkeypatch):
     assert dt < 100, f"cached call too slow: {dt} ms"
 
 
-def test_stats_reported():
+def test_stats_reported(monkeypatch):
     cache = SemanticCache(backend="memory")
+    # Pin the embedding function to a deterministic, per-text vector. Some other
+    # tests mock the global embedder to a constant vector, which would make an
+    # unrelated key ("missing") collide semantically with "p" and inflate hits.
+    import hashlib
+
+    def _fake_embed(text):
+        digest = hashlib.sha256(str(text).encode("utf-8")).digest()
+        return [float(((b >> 4) & 0xF) - 7.5) for b in digest[:16]]
+
+    monkeypatch.setattr(cache, "_embed_fn", _fake_embed)
     cache.put("p", _make_result("a"), response_model=_M, model="m", temperature=0.1, max_tokens=10)
     cache.get("p", response_model=_M, model="m", temperature=0.1, max_tokens=10)
     cache.get("missing", response_model=_M, model="m", temperature=0.1, max_tokens=10)

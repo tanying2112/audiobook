@@ -1,0 +1,72 @@
+{
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": true,
+    "score": 1.0,
+    "threshold": 0.99,
+    "details": "全部格式检查通过"
+  },
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "无有效测试用例 (共 6 个，缺少必需字段)"
+  },
+  "quality_improvement": {
+    "name": "质量 ≥ 旧版 102%",
+    "passed": false,
+    "score": 1.0,
+    "threshold": 1.02,
+    "details": "旧版 v1 平均质量: 0.166, 新版 v2 平均质量: 0.166, 比例: 1.000 (3 样本)"
+  },
+  "promotion": {
+    "stage": "analyze_structure",
+    "old_version": 1,
+    "new_version": 2,
+    "passed": false,
+    "summary": "❌ 2/4 门禁未通过 (通过率 50%)",
+    "gates": [
+      {
+        "name": "格式合规率",
+        "passed": true,
+        "score": 1.0,
+        "threshold": 0.99,
+        "details": "全部格式检查通过"
+      },
+      {
+        "name": "黄金数据集通过率",
+        "passed": false,
+        "score": 0.0,
+        "threshold": 0.95,
+        "details": "无有效测试用例 (共 6 个，缺少必需字段)"
+      },
+      {
+        "name": "质量 ≥ 旧版 102%",
+        "passed": false,
+        "score": 1.0,
+        "threshold": 1.02,
+        "details": "旧版 v1 平均质量: 0.166, 新版 v2 平均质量: 0.166, 比例: 1.000 (3 样本)"
+      },
+      {
+        "name": "人工抽样通过率",
+        "passed": true,
+        "score": 1.0,
+        "threshold": 0.8,
+        "details": "4/4 抽样通过 (100.0% ≥ 80%)"
+      }
+    ],
+    "pass_rate": 0.5
+  },
+  "outputs": [
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+  ]
+}

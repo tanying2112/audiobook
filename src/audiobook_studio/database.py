@@ -466,7 +466,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 class AsyncSessionLocal:
     """Async context manager for database sessions (legacy compatibility)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._session: Optional[AsyncSession] = None
 
     async def __aenter__(self) -> AsyncSession:
@@ -474,7 +474,12 @@ class AsyncSessionLocal:
         self._session = factory()
         return self._session
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: object,
+    ) -> None:
         if self._session:
             if exc_type:
                 await self._session.rollback()

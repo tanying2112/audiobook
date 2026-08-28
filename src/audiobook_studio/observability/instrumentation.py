@@ -1,57 +1,27 @@
 """FastAPI instrumentation and middleware for observability."""
 
+from __future__ import annotations
+
 import logging
 import time
 from functools import wraps
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import FastAPI
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
 
-from .metrics import create_counter, create_histogram, get_meter
+from .metrics import get_meter
 from .tracing import get_tracer
 
 logger = logging.getLogger(__name__)
 
-# Global metrics instruments
-_http_duration: Optional[Histogram] = None
-_http_requests: Optional[Counter] = None
-_http_errors: Optional[Counter] = None
-
-
-def _get_http_metrics():
-    """Get or create HTTP metrics instruments."""
-    global _http_duration, _http_requests, _http_errors
-    if _http_duration is None:
-        meter = get_meter("audiobook_studio.http")
-        _http_duration = meter.create_histogram(
-            "http_request_duration_ms",
-            "HTTP request latency in milliseconds",
-            "ms",
-            explicit_bucket_boundaries_advisory=[
-                50,
-                100,
-                200,
-                500,
-                1000,
-                2000,
-                5000,
-                10000,
-            ],
-        )
-        _http_requests = meter.create_counter(
-            "http_requests_total",
-            "Total HTTP requests",
-            "1",
-        )
-        _http_errors = meter.create_counter(
-            "http_errors_total",
-            "Total HTTP errors (5xx)",
-            "1",
-        )
-    return _http_duration, _http_requests, _http_errors
+# Module-level HTTP metric singletons, lazily created by ``_get_http_metrics``
+# and reset between tests via the ``_reset_http_metrics`` fixture.
+_http_duration: Optional[Histogram[float]] = None
+_http_requests: Optional[Counter[int]] = None
+_http_errors: Optional[Counter[int]] = None
 
 
 class ObservabilityMiddleware:
@@ -120,30 +90,72 @@ class ObservabilityMiddleware:
 
             try:
                 await self.app(scope, receive, send_wrapper)
-                duration_ms = (time.perf_counter() - start_time) * 1000
-                http_duration, http_requests, http_errors = _get_http_metrics()
+                duration_seconds = time.perf_counter() - start_time
                 sc = status_code[0] if status_code else 200
 
-                http_duration.record(duration_ms, attributes={"method": method, "path": path, "status_code": str(sc)})
-                http_requests.add(1, attributes={"method": method, "path": path, "status_code": str(sc)})
+                # Record metrics using the cached HTTP instruments
+                _record_http_metrics(method, path, sc, duration_seconds)
 
                 if sc >= 400:
                     span.set_status(Status(StatusCode.ERROR, f"HTTP {sc}"))
-                    if sc >= 500:
-                        http_errors.add(1, attributes={"method": method, "path": path})
                 else:
                     span.set_status(Status(StatusCode.OK))
 
             except Exception as e:
-                duration_ms = (time.perf_counter() - start_time) * 1000
-                http_duration, http_requests, http_errors = _get_http_metrics()
+                duration_seconds = time.perf_counter() - start_time
                 sc = status_code[0] if status_code else 500
-                http_duration.record(duration_ms, attributes={"method": method, "path": path, "status_code": str(sc)})
-                http_requests.add(1, attributes={"method": method, "path": path, "status_code": str(sc)})
-                http_errors.add(1, attributes={"method": method, "path": path})
+
+                _record_http_metrics(method, path, sc, duration_seconds)
+
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
+
+
+def _get_http_metrics() -> tuple[Histogram[float], Counter[int], Counter[int]]:
+    """Lazily create and cache the three HTTP server instruments.
+
+    Returns ``(duration, requests, errors)`` — an OTel Histogram plus two
+    Counters. The objects are cached on module-level singletons so repeated
+    calls return the same instances (deterministic for caching tests).
+    """
+    global _http_duration, _http_requests, _http_errors
+    if _http_duration is None:
+        meter = get_meter("audiobook_studio.http")
+        _http_duration = meter.create_histogram(
+            "http.server.duration",
+            description="HTTP server request duration in seconds",
+            unit="s",
+        )
+        _http_requests = meter.create_counter(
+            "http.server.requests",
+            description="Total HTTP server requests",
+        )
+        _http_errors = meter.create_counter(
+            "http.server.errors",
+            description="Total HTTP server errors (status >= 500)",
+        )
+    duration = _http_duration
+    requests = _http_requests
+    errors = _http_errors
+    assert duration is not None and requests is not None and errors is not None
+    return duration, requests, errors
+
+
+def _record_http_metrics(
+    method: str, path: str, status_code: int, duration_seconds: float
+) -> None:
+    """Record one HTTP request's duration, count, and (if >=500) error."""
+    dur, req, err = _get_http_metrics()
+    attrs: dict[str, Any] = {
+        "http.method": method,
+        "http.status_code": status_code,
+        "http.target": path,
+    }
+    dur.record(duration_seconds, attributes=attrs)
+    req.add(1, attributes=attrs)
+    if status_code >= 500:
+        err.add(1, attributes=attrs)
 
 
 def instrument_app(
@@ -168,6 +180,7 @@ def instrument_app(
     """
     # Initialize tracing
     from .tracing import init_tracing
+    from .metrics import init_metrics, create_slo_metrics
 
     init_tracing(
         service_name=service_name,
@@ -177,15 +190,13 @@ def instrument_app(
     )
 
     # Initialize metrics
-    from .metrics import create_slo_metrics, init_metrics
-
     init_metrics(
         service_name=service_name,
         service_version=service_version,
         prometheus_port=prometheus_port,
     )
 
-    # Create SLO metrics
+    # Create SLO metrics (this initializes all core metrics lazily)
     create_slo_metrics()
 
     # Add middleware

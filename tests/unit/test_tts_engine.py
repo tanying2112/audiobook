@@ -818,17 +818,26 @@ class TestProbeTtsEngines:
         assert set(result["engines"]) == {"kokoro", "voxcpm2", "edge", "piper"}
         assert set(result["details"]) == {"kokoro", "voxcpm2", "edge", "piper"}
 
-    def test_kokoro_model_present(self, monkeypatch, tmp_path):
-        """Kokoro reports healthy when the model file exists."""
+    def test_kokoro_warmup_healthy(self, monkeypatch, tmp_path):
+        """Kokoro reports healthy when warmup succeeds (<100ms)."""
         self._patch_httpx(monkeypatch, status_code=200)
-        model = tmp_path / "kokoro.pth"
-        model.write_bytes(b"model")
+        # Create dummy model files that warmup() checks for
+        model_dir = tmp_path / "models"
+        model_dir.mkdir()
+        (model_dir / "kokoro-v1.0.onnx").write_bytes(b"fake")
+        (model_dir / "voices-v1.0.bin").write_bytes(b"fake")
         monkeypatch.delenv("VOXCPM2_ENDPOINT", raising=False)
-        monkeypatch.setenv("KOKORO_MODEL_PATH", str(model))
+        monkeypatch.setenv("KOKORO_MODEL_PATH", str(model_dir / "kokoro-v1.0.onnx"))
+        # Mock KokoroBackend.warmup to return True (simulating successful warmup < 100ms)
+        import src.audiobook_studio.tts.kokoro_backend as kokoro_module
+        async def mock_warmup(self):
+            return True
+        monkeypatch.setattr(kokoro_module.KokoroBackend, "warmup", mock_warmup)
 
         result = asyncio.run(probe_tts_engines(timeout=1.0))
         assert result["engines"]["kokoro"] is True
-        assert result["details"]["kokoro"]["detail"]["model_present"] is True
+        assert result["details"]["kokoro"]["detail"]["source"] == "temporary_engine"
+        assert result["details"]["kokoro"]["detail"]["warmed_up"] is True
 
     def test_voxcpm2_reachable(self, monkeypatch):
         """VoxCPM2 reports healthy when /health returns < 500."""

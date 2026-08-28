@@ -16,6 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..celery_app import celery_app
 from ..database import AsyncSessionLocal
 from ..models.book import Project
+from .publish_job_repo import (
+    create_publish_job,
+    mark_failure,
+    mark_processing,
+    mark_success,
+    register_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +35,152 @@ RETRY = celery_states.RETRY
 # Redis key prefixes for job state persistence
 PUBLISH_JOB_KEY_PREFIX = "publish:job:"
 PUBLISH_JOB_TTL = 86400 * 7  # 7 days TTL
+
+# Exponential backoff policy for publish retries (S3-1 state machine).
+# Retry #n waits BASE * 2**(n-1) seconds, capped at MAX.
+EXPONENTIAL_BACKOFF_BASE_SECONDS = 5
+EXPONENTIAL_BACKOFF_MAX_SECONDS = 300
+
+
+def exponential_backoff_countdown(retries: int) -> int:
+    """Return Celery retry countdown (seconds) for the given retry index."""
+    try:
+        n = max(0, int(retries))
+        countdown: int = min(
+            EXPONENTIAL_BACKOFF_MAX_SECONDS,
+            EXPONENTIAL_BACKOFF_BASE_SECONDS * (2 ** n),
+        )
+        return countdown
+    except Exception:  # pragma: no cover - defensive
+        return EXPONENTIAL_BACKOFF_BASE_SECONDS
+
+
+async def _run_publish_job_state_machine(
+    self: Any,
+    job_id: str,
+    project_id: int,
+    run_coro: Any,
+) -> Dict[str, Any]:
+    """Drive the publish-job state machine around a single publish attempt.
+
+    Ensures the durable ``PublishJob`` record transitions:
+    PENDING -> PROCESSING -> SUCCESS (or FAILED after retries).
+    Returns the attempt result, or a ``failed`` dict on terminal error.
+    """
+    await mark_processing(job_id)
+    try:
+        result: Dict[str, Any] = await run_coro()
+        await mark_success(job_id, result)
+        return result
+    except Exception as inner:
+        if self.request.retries < self.max_retries:
+            await register_retry(job_id, str(inner))
+            # Re-raise so Celery re-queues with exponential backoff.
+            raise inner
+        await mark_failure(job_id, str(inner))
+        return {
+            "job_id": job_id,
+            "status": "failed",
+            "error": str(inner),
+            "project_id": project_id,
+        }
+
+
+async def _publish_audiobookshelf_once(
+    job_id: str, project_id: int, config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Perform a single Audiobookshelf publish attempt. Raises on failure."""
+    job_state: Dict[str, Any] = {
+        "job_id": job_id,
+        "project_id": project_id,
+        "status": "publishing",
+        "destinations": ["audiobookshelf"],
+        "results": {},
+        "error": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+    }
+    await _persist_job_state(job_id, job_state)
+    try:
+        from ..api.publish import _publish_to_audiobookshelf
+
+        result = await _publish_to_audiobookshelf(
+            project_id=project_id,
+            config=config,
+        )
+        job_state["results"]["audiobookshelf"] = {
+            "success": True,
+            "book_url": result.get("book_url"),
+            "item_id": result.get("item_id"),
+            "uploaded_files": result.get("uploaded_files", 0),
+            "total_size_bytes": result.get("total_size_bytes", 0),
+        }
+        job_state["status"] = "completed"
+    except Exception as e:
+        logger.error(f"Audiobookshelf publish failed: {e}")
+        job_state["results"]["audiobookshelf"] = {
+            "success": False,
+            "error": str(e),
+        }
+        job_state["status"] = "failed"
+        job_state["error"] = str(e)
+        job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+        await _persist_job_state(job_id, job_state)
+        await _persist_job_state_db(job_id, project_id, job_state)
+        # Propagate so the state machine can register a retry / mark failure.
+        raise
+    job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+    await _persist_job_state(job_id, job_state)
+    await _persist_job_state_db(job_id, project_id, job_state)
+    return job_state
+
+
+async def _generate_podcast_rss_once(
+    job_id: str, project_id: int, config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Perform a single Podcast RSS generation attempt. Raises on failure."""
+    job_state: Dict[str, Any] = {
+        "job_id": job_id,
+        "project_id": project_id,
+        "status": "generating",
+        "destinations": ["podcast_rss"],
+        "results": {},
+        "error": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+    }
+    await _persist_job_state(job_id, job_state)
+    try:
+        # Fixed import: the RSS generator lives in podcast_rss_generator.py.
+        from ..publish.podcast_rss_generator import generate_podcast_rss
+
+        result = await generate_podcast_rss(
+            project_id=project_id,
+            config=config,
+        )
+        job_state["results"]["podcast_rss"] = {
+            "success": True,
+            "rss_url": result.get("rss_url"),
+            "episode_count": result.get("episode_count", 0),
+        }
+        job_state["status"] = "completed"
+    except Exception as e:
+        logger.error(f"Podcast RSS generation failed: {e}")
+        job_state["results"]["podcast_rss"] = {
+            "success": False,
+            "error": str(e),
+        }
+        job_state["status"] = "failed"
+        job_state["error"] = str(e)
+        job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+        await _persist_job_state(job_id, job_state)
+        await _persist_job_state_db(job_id, project_id, job_state)
+        # Propagate so the state machine can register a retry / mark failure.
+        raise
+    job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+    await _persist_job_state(job_id, job_state)
+    await _persist_job_state_db(job_id, project_id, job_state)
+    return job_state
 
 
 async def _get_redis() -> Any:
@@ -77,7 +230,7 @@ async def _persist_job_state_db(
     """Persist job state to database as fallback."""
     try:
         if db_session is None:
-            async with AsyncSessionLocal() as db:  # type: ignore
+            async with AsyncSessionLocal() as db:
                 await _persist_job_state_db(job_id, project_id, state, db)
             return
 
@@ -241,15 +394,30 @@ def publish_project_async(
     try:
         import asyncio
 
-        result = asyncio.run(
-            _run_publish_async(
+        async def _run() -> Dict[str, Any]:
+            await create_publish_job(
+                project_id,
+                ",".join(destinations),
                 job_id=job_id,
-                project_id=project_id,
-                destinations=destinations,
-                audiobookshelf_config=audiobookshelf_config,
-                podcast_config=podcast_config,
+                config={
+                    "audiobookshelf": audiobookshelf_config or {},
+                    "podcast_rss": podcast_config or {},
+                },
             )
-        )
+            return await _run_publish_job_state_machine(
+                self,
+                job_id,
+                project_id,
+                lambda: _run_publish_async(
+                    job_id=job_id,
+                    project_id=project_id,
+                    destinations=destinations,
+                    audiobookshelf_config=audiobookshelf_config,
+                    podcast_config=podcast_config,
+                ),
+            )
+
+        result = asyncio.run(_run())
 
         response = {
             "job_id": job_id,
@@ -266,7 +434,9 @@ def publish_project_async(
     except Exception as e:
         logger.exception(f"[{task_id}] Publish failed: {e}")
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
+            raise self.retry(
+                exc=e, countdown=exponential_backoff_countdown(self.request.retries)
+            )
         return {
             "job_id": job_id,
             "task_id": task_id,
@@ -307,46 +477,15 @@ def publish_audiobookshelf_async(
         import asyncio
 
         async def _run() -> Dict[str, Any]:
-            job_state: Dict[str, Any] = {
-                "job_id": job_id,
-                "project_id": project_id,
-                "status": "publishing",
-                "destinations": ["audiobookshelf"],
-                "results": {},
-                "error": None,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "completed_at": None,
-            }
-            await _persist_job_state(job_id, job_state)
-
-            try:
-                from ..api.publish import _publish_to_audiobookshelf
-
-                result = await _publish_to_audiobookshelf(
-                    project_id=project_id,
-                    config=config,
-                )
-                job_state["results"]["audiobookshelf"] = {
-                    "success": True,
-                    "book_url": result.get("book_url"),
-                    "item_id": result.get("item_id"),
-                    "uploaded_files": result.get("uploaded_files", 0),
-                    "total_size_bytes": result.get("total_size_bytes", 0),
-                }
-                job_state["status"] = "completed"
-            except Exception as e:
-                logger.error(f"Audiobookshelf publish failed: {e}")
-                job_state["results"]["audiobookshelf"] = {
-                    "success": False,
-                    "error": str(e),
-                }
-                job_state["status"] = "failed"
-                job_state["error"] = str(e)
-
-            job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await _persist_job_state(job_id, job_state)
-            await _persist_job_state_db(job_id, project_id, job_state)
-            return job_state
+            await create_publish_job(
+                project_id, "audiobookshelf", job_id=job_id, config=config
+            )
+            return await _run_publish_job_state_machine(
+                self,
+                job_id,
+                project_id,
+                lambda: _publish_audiobookshelf_once(job_id, project_id, config),
+            )
 
         result = asyncio.run(_run())
 
@@ -365,7 +504,9 @@ def publish_audiobookshelf_async(
     except Exception as e:
         logger.exception(f"[{task_id}] Audiobookshelf publish failed: {e}")
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
+            raise self.retry(
+                exc=e, countdown=exponential_backoff_countdown(self.request.retries)
+            )
         return {
             "job_id": job_id,
             "task_id": task_id,
@@ -405,45 +546,16 @@ def generate_podcast_rss_async(
     try:
         import asyncio
 
-        from ..publish.podcast import generate_podcast_rss
-
         async def _run() -> Dict[str, Any]:
-            job_state: Dict[str, Any] = {
-                "job_id": job_id,
-                "project_id": project_id,
-                "status": "generating",
-                "destinations": ["podcast_rss"],
-                "results": {},
-                "error": None,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "completed_at": None,
-            }
-            await _persist_job_state(job_id, job_state)
-
-            try:
-                result = await generate_podcast_rss(
-                    project_id=project_id,
-                    config=config,
-                )
-                job_state["results"]["podcast_rss"] = {
-                    "success": True,
-                    "rss_url": result.get("rss_url"),
-                    "episode_count": result.get("episode_count", 0),
-                }
-                job_state["status"] = "completed"
-            except Exception as e:
-                logger.error(f"Podcast RSS generation failed: {e}")
-                job_state["results"]["podcast_rss"] = {
-                    "success": False,
-                    "error": str(e),
-                }
-                job_state["status"] = "failed"
-                job_state["error"] = str(e)
-
-            job_state["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await _persist_job_state(job_id, job_state)
-            await _persist_job_state_db(job_id, project_id, job_state)
-            return job_state
+            await create_publish_job(
+                project_id, "podcast_rss", job_id=job_id, config=config
+            )
+            return await _run_publish_job_state_machine(
+                self,
+                job_id,
+                project_id,
+                lambda: _generate_podcast_rss_once(job_id, project_id, config),
+            )
 
         result = asyncio.run(_run())
 
@@ -462,7 +574,9 @@ def generate_podcast_rss_async(
     except Exception as e:
         logger.exception(f"[{task_id}] Podcast RSS generation failed: {e}")
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
+            raise self.retry(
+                exc=e, countdown=exponential_backoff_countdown(self.request.retries)
+            )
         return {
             "job_id": job_id,
             "task_id": task_id,

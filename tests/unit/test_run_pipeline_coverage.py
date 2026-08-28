@@ -188,19 +188,23 @@ def test_create_mock_data_skips_existing(mock_rp, tmp_path):
     assert (book_dir / "chapter_03.txt").exists()
 
 
-def test_create_mock_data_unknown_book_skipped(mock_rp, tmp_path):
+def test_create_mock_data_unknown_book_skipped(mock_rp, tmp_path, monkeypatch):
     """Test create_mock_data skips unknown books without templates."""
     with patch.object(mock_rp, "MOCK_DATA_DIR", tmp_path):
-        # Add a book without templates
-        mock_rp.BOOK_CONFIG["unknown_book"] = {
-            "title": "Unknown",
-            "author": "A",
-            "genre": "G",
-            "era": "E",
-            "difficulty": "B",
-            "language": "zh",
-            "num_mock_chapters": 2,
-        }
+        # Add a book without templates (auto-removed by monkeypatch after test)
+        monkeypatch.setitem(
+            mock_rp.BOOK_CONFIG,
+            "unknown_book",
+            {
+                "title": "Unknown",
+                "author": "A",
+                "genre": "G",
+                "era": "E",
+                "difficulty": "B",
+                "language": "zh",
+                "num_mock_chapters": 2,
+            },
+        )
         mock_rp.create_mock_data()
     # Should not create directory for unknown_book since no templates
     assert not (tmp_path / "unknown_book").exists()

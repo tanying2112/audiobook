@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from audiobook_studio.pipeline import annotate_paragraph
-from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline
+from audiobook_studio.pipeline.annotate_paragraph import (
+    annotate_paragraph,
+    AnnotateParagraphPipeline,
+)
 from audiobook_studio.schemas import (
     BookMeta,
     CharacterVoiceBinding,

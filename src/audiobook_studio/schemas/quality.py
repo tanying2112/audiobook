@@ -72,6 +72,7 @@ class QualityJudgment(BaseModel):
             "sensitive_content",
             "wrong_speed",
             "wrong_pitch",
+            "judge_error",
         ]
     ] = Field(default_factory=list, description="检出的问题列表")
 

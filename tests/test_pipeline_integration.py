@@ -8,14 +8,12 @@ import sys
 
 import pytest
 
-from audiobook_studio.pipeline import (
-    analyze_structure,
-    annotate_paragraph,
-    edit_for_tts,
-    extract_text,
-    quality_check,
-    synthesize_paragraphs,
-)
+from audiobook_studio.pipeline.analyze_structure import analyze_structure
+from audiobook_studio.pipeline.annotate_paragraph import annotate_paragraph
+from audiobook_studio.pipeline.edit_for_tts import edit_for_tts
+from audiobook_studio.pipeline.extract import extract_text
+from audiobook_studio.pipeline.quality_check import quality_check
+from audiobook_studio.pipeline.synthesize import synthesize_paragraphs
 from audiobook_studio.schemas import (
     BookAnalysisInput,
     BookAnalysisOutput,

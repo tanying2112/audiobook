@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
 from ..tts.engine import TTSTaskPayload, TTSProsody, TTSVoiceAnchor
 from ..tts.kokoro_backend import create_kokoro_backend
+from ..tts.piper_models import detect_piper_availability, list_piper_voices
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,8 @@ class TTSStatusResponse(BaseModel):
     voxcpm2_available: bool = Field(False, description="VoxCPM2 local engine availability")
     voxcpm2_model_loaded: bool = Field(False, description="Whether VoxCPM2 model is loaded")
     sherpa_onnx_available: bool = Field(False, description="Sherpa-ONNX local engine availability")
+    piper_available: bool = Field(False, description="Piper (local, priority 0) engine availability")
+    piper_model_loaded: bool = Field(False, description="Whether Piper model is present on disk")
     cloud_engines_available: bool = Field(..., description="Whether any cloud TTS engine is available")
     edge_tts_available: bool = Field(True, description="Edge-TTS (free cloud) availability")
     azure_available: bool = Field(False, description="Azure Cognitive Services TTS availability")
@@ -181,6 +184,43 @@ GCP_VOICES = [
     ),
 ]
 
+# Piper voices (local, priority 0) — Chinese-focused model family.
+PIPER_VOICES = [
+    TTSVoice(
+        id="zh_CN-huayan-medium",
+        name="华婉 (中等)",
+        gender="female",
+        language="zh-CN",
+        description="Piper 本地中文女声 · 自然中等质量 (默认旁白)",
+    ),
+    TTSVoice(
+        id="zh_CN-huayan-x_low",
+        name="华婉 (极轻量)",
+        gender="female",
+        language="zh-CN",
+        description="Piper 本地中文女声 · 极轻量 (CPU 低延迟)",
+    ),
+    TTSVoice(
+        id="zh_CN-shaoer-medium",
+        name="少儿 (中等)",
+        gender="neutral",
+        language="zh-CN",
+        description="Piper 本地中文少儿/活泼声线",
+    ),
+]
+
+# Priority ordering is sourced from config/tts_providers.yaml (S2-4):
+# Piper=0 (preferred local), Kokoro=1 (fallback local), Edge-TTS=2 (cloud).
+try:
+    from ..tts.providers_config import provider_priority_map
+    _PROVIDER_PRIORITY = provider_priority_map()
+except Exception:  # noqa: BLE001
+    _PROVIDER_PRIORITY = {"piper": 0, "kokoro": 1, "edge_tts": 2}
+_PIPER_PRIORITY = _PROVIDER_PRIORITY.get("piper", 0)
+_KOKORO_PRIORITY = _PROVIDER_PRIORITY.get("kokoro", 1)
+_EDGE_PRIORITY = _PROVIDER_PRIORITY.get("edge_tts", 2)
+
+
 # VoxCPM2 voices
 VOXCPM2_VOICES = [
     TTSVoice(
@@ -233,13 +273,26 @@ async def list_tts_voices(
 
     engines = {}
 
-    # Kokoro (local, available when ENABLE_LOCAL_TTS=true)
+    # Piper (local, priority 0 — preferred local engine per tts_providers.yaml).
+    # Honest availability: only "available" when a real piper binary + model exist.
+    piper_available, piper_detail = detect_piper_availability()
+    engines["piper"] = TTSEngine(
+        id="piper",
+        name="Piper TTS",
+        available=bool(piper_available) or include_unavailable,
+        voices=PIPER_VOICES,
+        priority=_PIPER_PRIORITY,
+        supports_prosody=True,
+        supports_ssml=False,
+    )
+
+    # Kokoro (local fallback, available when ENABLE_LOCAL_TTS=true)
     engines["kokoro"] = TTSEngine(
         id="kokoro",
         name="Kokoro ONNX",
         available=enable_local_tts,
         voices=KOKORO_VOICES,
-        priority=1,
+        priority=_KOKORO_PRIORITY,
         supports_prosody=True,
         supports_ssml=False,
     )
@@ -250,7 +303,7 @@ async def list_tts_voices(
         name="Edge TTS",
         available=True,
         voices=EDGE_TTS_VOICES,
-        priority=2,
+        priority=_EDGE_PRIORITY,
         supports_prosody=True,
         supports_ssml=True,
     )
@@ -307,9 +360,17 @@ async def list_tts_voices(
     # Calculate total voices
     total_voices = sum(len(e.voices) for e in engines.values())
 
-    # Determine default engine based on ENABLE_LOCAL_TTS
-    default_engine = "kokoro" if enable_local_tts else "edge_tts"
-    default_voice = "kokoro_narrator" if enable_local_tts else "zh-CN-XiaoxiaoNeural"
+    # Determine default engine: prefer Piper (local, priority 0) when available,
+    # then Kokoro, else Edge-TTS (cloud).
+    if piper_available:
+        default_engine = "piper"
+        default_voice = "zh_CN-huayan-medium"
+    elif enable_local_tts:
+        default_engine = "kokoro"
+        default_voice = "kokoro_narrator"
+    else:
+        default_engine = "edge_tts"
+        default_voice = "zh-CN-XiaoxiaoNeural"
 
     return TTSVoicesResponse(
         engines=engines,
@@ -395,11 +456,17 @@ async def get_tts_status():
     kokoro_available = enable_local_tts and kokoro_files_exist and kokoro_can_load
     kokoro_model_loaded = kokoro_available  # For now, "loaded" means "can load"
 
+    # Piper (local, priority 0) — real binary + model detection (S2-4).
+    piper_available, _piper_detail = detect_piper_availability()
+    piper_model_loaded = bool(_piper_detail.get("model"))
+
     voxcpm2_available = False  # VoxCPM2 not yet implemented locally
     voxcpm2_model_loaded = False
     sherpa_onnx_available = False  # Sherpa-ONNX not yet implemented
 
-    local_engines_available = kokoro_available or voxcpm2_available or sherpa_onnx_available
+    local_engines_available = (
+        piper_available or kokoro_available or voxcpm2_available or sherpa_onnx_available
+    )
 
     # Cloud engines - Edge-TTS with real connectivity check
     edge_tts_available = await _check_edge_tts_connectivity()
@@ -407,8 +474,11 @@ async def get_tts_status():
     gcp_available = False  # TODO: Check actual GCP credentials
     cloud_engines_available = edge_tts_available or azure_available or gcp_available
 
-    # Determine recommended engine based on ENABLE_LOCAL_TTS and REAL availability
-    if enable_local_tts and local_engines_available:
+    # Determine recommended engine: prefer Piper (local, available) -> Kokoro -> Edge.
+    if piper_available:
+        recommended_engine = "piper"
+        recommended_voice = "zh_CN-huayan-medium"
+    elif enable_local_tts and local_engines_available:
         recommended_engine = "kokoro"
         recommended_voice = "zf_xiaoxiao"  # Chinese female voice
     else:
@@ -422,6 +492,8 @@ async def get_tts_status():
         voxcpm2_available=voxcpm2_available,
         voxcpm2_model_loaded=voxcpm2_model_loaded,
         sherpa_onnx_available=sherpa_onnx_available,
+        piper_available=piper_available,
+        piper_model_loaded=piper_model_loaded,
         cloud_engines_available=cloud_engines_available,
         edge_tts_available=edge_tts_available,
         azure_available=azure_available,
@@ -481,16 +553,15 @@ async def preview_voice(voice_id: str, text: str = "这是一个语音试听样�
     """
     Preview a voice with sample text.
 
-    Returns:
-        Audio preview URL or synthesized audio data
+    The preview is served by the real streaming TTS endpoint (``/api/tts/stream``),
+    which performs genuine synthesis - the returned ``preview_url`` is a working
+    link rather than a dead placeholder. No audio is synthesized server-side here.
     """
-    # TODO: Implement actual voice preview
-    # For now, return mock response
     return {
         "voice_id": voice_id,
         "text": text,
-        "preview_url": f"/api/tts/preview/{voice_id}.mp3",
-        "note": "Voice preview synthesis - placeholder implementation",
+        "preview_url": f"/api/tts/stream?voice_id={voice_id}&text={text}",
+        "note": "Live preview via /api/tts/stream (real synthesis).",
     }
 
 
@@ -664,6 +735,16 @@ class CloneVoiceResponse(BaseModel):
     quality: Optional[str] = None
     snr_db: Optional[float] = None
     sample_count: Optional[int] = None
+    # A2 honesty: under free + no-GPU, cloning degrades to 'preset' mode — the
+    # sample is stored for a future GPU clone backend but no real clone is produced.
+    mode: str = Field(
+        default="preset",
+        description="'clone' = real zero-shot clone produced; 'preset' = no-GPU fallback (sample stored).",
+    )
+    clone_available: bool = Field(
+        default=False,
+        description="Whether a real zero-shot clone backend was available for this request.",
+    )
 
 
 @router.post("/voices/clone", response_model=CloneVoiceResponse)
@@ -677,9 +758,16 @@ async def clone_voice(
     """
     Clone a voice from an uploaded audio sample.
 
+    ⚠️ Honest scope (free + no-GPU): this endpoint **stores the sample** and, when a
+    real zero-shot clone backend (F5-TTS / CosyVoice2, Track B) is deployed, produces
+    a true clone. On CPU-only hosts (the current default) no GPU clone model can run,
+    so cloning **degrades to 'preset' mode**: the sample is saved for later and the
+    response reports ``mode='preset'`` / ``clone_available=False``. We never claim a
+    usable clone was created when none was.
+
     - Upload a 15+ second audio sample (WAV/MP3)
-    - System extracts voice embedding and creates voice print
-    - Returns voice_id that can be used for TTS synthesis
+    - System validates duration/SNR and stores the sample (future clone source)
+    - Returns ``voice_id`` plus honest ``mode`` / ``clone_available`` flags
 
     Requirements:
     - Minimum 15 seconds duration
@@ -688,11 +776,12 @@ async def clone_voice(
     - **consent=true 样本提供者已授权克隆 (P2.11 合规, 必填)**
 
     Response:
-    - success: True if cloning succeeded
-    - voice_id: The cloned voice identifier (use with /api/tts/voices)
-    - quality: Audio quality rating (excellent/good/fair/poor)
+    - success: True if the sample was validated and stored
+    - voice_id: The stored-sample identifier (use with /api/tts/voices)
+    - mode: 'clone' (real) or 'preset' (no-GPU fallback)
+    - clone_available: whether a real clone backend served this request
     """
-    from ..tts.clone import AudioQuality
+    from ..tts.clone import AudioQuality, clone_mode, real_clone_available
 
     # P2.11 合规: 克隆前强制授权核实 (红线#1A: 不勾 → 422 诚实拒, 不假装处理)
     if not consent:
@@ -781,14 +870,27 @@ async def clone_voice(
         voice_info = manager.get_voice_info(speaker_id)
         voice_id = f"cloned_{speaker_id}"
 
+        # A2 honesty: report real mode instead of implying a usable clone was made.
+        clone_is_available = real_clone_available()
+        active_mode = clone_mode()
+        if clone_is_available:
+            honest_message = message
+        else:
+            honest_message = (
+                "样本已存储；当前无 GPU 克隆后端，克隆降级为预设声线模式 "
+                "(待 F5-TTS / CosyVoice2 接入后启用真零样本克隆)。"
+            )
+
         return CloneVoiceResponse(
             success=True,
             speaker_id=speaker_id,
             voice_id=voice_id,
-            message=message,
+            message=honest_message,
             quality=voice_info.get("quality") if voice_info else None,
             snr_db=voice_info.get("avg_snr_db") if voice_info else None,
             sample_count=voice_info.get("sample_count") if voice_info else None,
+            mode=active_mode,
+            clone_available=clone_is_available,
         )
 
     except DomainError:

@@ -195,7 +195,7 @@ async def list_providers(
         model_result = await db.execute(select(Model).where(Model.provider_id == p.id, Model.is_enabled.is_(True)))
         models = model_result.scalars().all()
         provider_out = ProviderOut(
-            **{c: getattr(p, c) for c in ProviderOut.model_fields},
+            **{c: getattr(p, c) for c in ProviderOut.model_fields if c != "model_count"},
             model_count=len(models),
         )
         provider_outs.append(provider_out)
@@ -466,7 +466,7 @@ async def update_model(
     provider = prov_result.scalar_one_or_none()
 
     model_out = ModelOut(
-        **{c: getattr(model, c) for c in ModelOut.model_fields},
+        **{c: getattr(model, c) for c in ModelOut.model_fields if c != "provider_name"},
         provider_name=provider.name if provider else None,
     )
     return model_out

@@ -53,7 +53,7 @@ async def _run_export_async(
     the call site.
     """
     if db_session is None:
-        async with AsyncSessionLocal() as db:  # type: ignore
+        async with AsyncSessionLocal() as db:
             return await export_project(project_id, db, job)  # type: ignore
     else:
         return await export_project(project_id, db_session, job)  # type: ignore
@@ -209,7 +209,7 @@ def export_chapter_async(
         from ..export.batch_exporter import export_chapter
 
         async def _run() -> Optional[str]:
-            async with AsyncSessionLocal() as db:  # type: ignore
+            async with AsyncSessionLocal() as db:
                 return await export_chapter(project_id, chapter_id, db, output_dir)  # type: ignore
 
         result_path = asyncio.run(_run())

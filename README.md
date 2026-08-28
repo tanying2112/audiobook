@@ -16,7 +16,7 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 为实现“让人人都能用得起开源智能有声书”的普惠目标，系统深度解耦并支持一键切换运行模式：
 - 🥔 **土豆模式 (Potato Mode)**：无 GPU、断网可用。TTS 走本地 `Kokoro-82M ONNX` 真合成（断网仍出可播放音频）；LLM 在断网时**诚实降级为启发式规则**（`router._heuristic_fallback`，非真生成，标记 `schema_compliance=False`），联网时回真云免费 API。README 早期描述的 `Qwen2.5-3B-GGUF` (CPU 推理) 为规划项，当前仓库无落地代码/依赖。零成本、绝对隐私。
 - ☁️ **云端白嫖模式 (Cloud-Hybrid, 默认)**：轻量级本地。依赖 `QuotaRegistry` 调度的免费大模型 API 轮换池 + 本地 `Kokoro-82M` 极速合成。
-- 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2` 实现零样本声纹锁定克隆。默认的自我迭代演进通过 **SOP 反思 + 晋升门禁** 路径实现（见 `feedback/sop_reflection.py` + `promotion_gate.py`）；**DSPy 深度演进循环**(GEPA / BootstrapFewShot)为可选实验性路径，需单独安装未声明的 `dspy` 依赖后才可启用，默认未启用。
+- 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2`（**GPU 神经克隆模型**，需独显/云端算力）实现零样本声纹锁定克隆——**此能力仅限专业显卡模式**。默认土豆/云端白嫖模式的 `Kokoro-82M` / `Piper` 会丢弃 `reference_audio`、不做真实声纹锁定，仅提供谱质心占位特征（非真实声纹，见 `clone.py` 内诚实声明）；`real_clone_available()` 在免费 + 无 GPU 环境下恒为 `False`，`clone_mode()` 返回 `'preset'`。默认的自我迭代演进通过 **SOP 反思 + 晋升门禁** 路径实现（见 `feedback/sop_reflection.py` + `promotion_gate.py`）；**DSPy 深度演进循环**(GEPA / BootstrapFewShot)为可选实验性路径，需单独安装未声明的 `dspy` 依赖后才可启用，默认未启用。
 
 ## S3 长期愿景功能详解（入口与用法）
 
@@ -24,7 +24,7 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 
 ### 跨语言声纹克隆（Multilingual Voice Clone）
 - **语言注册表**：`src/audiobook_studio/languages.py` — 集中管理管线可端到端处理的语言及其 TTS 音色、提示词引导。
-- **声纹克隆**：`src/audiobook_studio/tts/clone.py` 的 `VoiceCloner.clone_voice()` / `extract_voice_features()` / `VoicePrint`，支持零样本声纹锁定与跨语言复用。
+- **声纹克隆**：`src/audiobook_studio/tts/clone.py` 的 `VoiceCloner.clone_voice()` / `extract_voice_features()` / `VoicePrint`。**零样本声纹锁定与跨语言复用仅限专业显卡模式（Pro Studio，对接 `CosyVoice/VoxCPM2` 等 GPU 神经模型）**；默认土豆/云端模式走 `Kokoro-82M`，其 `extract_voice_features` 仅生成谱质心占位特征（非真实声纹，见 `clone.py` 内诚实声明），不得用于声纹比对。
 - 默认走本地 `Kokoro-82M` 真合成；专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「三档变速架构 → 专业显卡模式」）。
 
 ### BGM 混音（背景音乐 Ducking）
@@ -59,46 +59,160 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 - **B3（S3.3 端到端）**：`scripts/run_e2e_bgm_mp4.py` — 真实 ffmpeg + 免费 Edge-TTS：TTS→BGM 混音→MP4 封装，产出**可播放 MP4**（audio+video+subtitle 三轨）。
 - **B4（S3.4 跨语言）**：`scripts/run_cross_language_b4.py` — 免费 LLM 将 en/ja/ko 译为 zh + 免费 Edge-TTS 外语音色，产出外语音频。
 
-## 快速开始 (Quick Start)
+## 🚀 5 分钟快速开始
 
-> 🚀 **有 NVIDIA/AMD 独显（≥16GB VRAM）的专业用户？推荐走 Pro 一等路径**：
-> ```bash
-> # 一键拉起 Pro 档（GPU 检测 → 下载 VoxCPM2 → 指引 CosyVoice → 切 pro_studio 档）
-> bash scripts/setup_pro.sh
-> ```
-> 脚本会检测 GPU 显存，**不达标时诚实降级退出**（不假装成功），详见上方「三档变速架构 → 专业显卡模式」。无独显用户请走下方通用流。
-> 模型权重需手动/按指引拉取（免费资源上限：脚本不自动下载数 GB 权重），VoxCPM2 默认 `huggingface-cli`，CosyVoice 见脚本内 HF 指引。
-
-### 通用流（无独显 / 默认 cloud_hybrid 档）
+### 方式一：一键演示脚本（推荐新手）
 ```bash
-# 1. 克隆仓库
+# 1. 克隆并进入
 git clone <repo-url>
 cd audiobook
 
-# 2. 创建并激活 Python 虚拟环境（推荐使用 venv）
+# 2. 解密环境变量（如有加密）
+./scripts/decrypt_env.sh
+
+# 3. 一键跑通全流程（Mock 模式，约 1-2 分钟）
+./scripts/demo_full_pipeline.sh --book hongloumeng --mock
+```
+> **原理**：启动免费栈 → 下载模型 → 导入《红楼梦》样书 → 跑 7 级流水线 → 导出 M4B  
+> **Mock 模式** 无需任何 API Key，使用确定性模拟响应，**1-2 分钟**即可跑通全流程
+
+### 方式二：标准本地开发（完整环境）
+```bash
+# 1. 克隆并进入
+git clone <repo-url>
+cd audiobook
+
+# 2. 创建并激活虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate
 
 # 3. 安装依赖
 pip install -r requirements.txt
 
-# 4. 安装 pre‑commit 钩子（一次性）
+# 4. 安装 pre-commit 钩子
 pre-commit install
 
-# 5. 激活自动检查（只需一次）
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/audiobook-studio/dev-tools/main/install_rules.sh)"
-
-# 6. 运行本地开发环境（Docker）
+# 5. 启动本地服务
 docker compose up -d
 
-# 7. 可选：查看 Celery Worker 日志（Celery Worker 现在默认已随 docker compose up -d 启动）
-docker compose logs -f celery-worker
-
-# 8. 打开文档站点（MkDocs）
-mkdocs serve
+# 6. 运行演示（真实 LLM，需配置 .env 中的 API Key）
+./scripts/demo_full_pipeline.sh --book hongloumeng
 ```
 
-> **提示**：所有操作均可通过 `./check_rules.sh` 进行自检，确保规范遵守。
+### 方式三：专业显卡模式
+```bash
+# 仅限 NVIDIA/AMD 独显 ≥16GB VRAM
+bash scripts/setup_pro.sh
+```
+> 脚本会检测 GPU 显存，**不达标时诚实降级退出**；模型权重需手动拉取（免费资源上限）
+
+---
+
+## 🏗️ 架构图速览
+
+| 图表 | 链接 | 说明 |
+|------|------|------|
+| **全流水线流程** | [Architecture.md#full-pipeline-flow](docs/architecture.md#full-pipeline-flow) | 7 级管线：Extract→Analyze→Annotate→Edit→AudioPost→Synthesize→Quality |
+| **自迭代闭环** | [Architecture.md#self-iteration-loop-harness](docs/architecture.md#self-iteration-loop-harness) | Feedback→SOP Reflection→Prompt Version→Canary→Promotion Gate |
+| **TTS 合成与音色** | [Architecture.md#tts-synthesis-and-voice-pipeline](docs/architecture.md#tts-synthesis-and-voice-pipeline) | Kokoro/Edge-TTS/CosyVoice 三档引擎选择 |
+| **发布导出管线** | [Architecture.md#publish-and-export-pipeline](docs/architecture.md#publish-and-export-pipeline) | M4B/SRT/RSS/MP4 多格式导出 + Audiobookshelf 推送 |
+| **HARNESS 三层架构** | [Architecture.md#harness-three-layer-architecture](docs/architecture.md#harness-three-layer-architecture) | Contract→Execution→Evaluation 三层纵深防御 |
+| **数据流总览** | [Architecture.md#data-flow-overview](docs/architecture.md#data-flow-overview) | 输入→7级管线→输出，含重试回路 |
+
+> 完整架构文档见 [`docs/architecture.md`](docs/architecture.md)
+
+---
+
+## ❓ 常见问题 (FAQ)
+
+### Q1: 运行 `./scripts/demo_full_pipeline.sh` 报错 "Docker not found"
+**A**: 请先安装 Docker Desktop / Docker Engine，确保 `docker compose` 可用。  
+Linux: `sudo apt-get install docker.io docker-compose-plugin`  
+macOS/Windows: 下载 Docker Desktop
+
+### Q2: 运行时报错 "No module named 'kokoro_onnx'"
+**A**: 需下载模型文件：
+```bash
+python scripts/download_kokoro_model.py
+```
+或运行演示脚本时加 `--skip-model-download` 跳过（需手动放置模型到 `models/` 目录）。
+
+### Q3: 报错 "JWT_SECRET_KEY not set"
+**A**: 复制 `.env.example` 为 `.env` 并填入密钥：
+```bash
+cp .env.example .env
+# 生成密钥
+python scripts/generate_secrets.py --jwt-secret
+```
+或运行 `./scripts/decrypt_env.sh` 解密已加密的 `.env.encrypted`（需 `.agekey` 私钥）。
+
+### Q4: LLM 调用超时 / 失败
+**A**: 系统内置多提供商自动轮换（Gemini→Groq→NVIDIA→OpenRouter...）。  
+检查 `.env` 中至少配置了一个可用的 API Key：
+```bash
+# 至少配置一个
+GEMINI_API_KEY=...
+GROQ_API_KEY=...
+OPENROUTER_API_KEY=...
+```
+或使用 Mock 模式绕过：`./scripts/demo_full_pipeline.sh --mock`
+
+### Q5: TTS 合成极慢 / 卡住
+**A**: 
+- Mock 模式下秒级完成：`MOCK_TTS=true`
+- 真实模式下 Kokoro ONNX 首次加载模型较慢，后续复用会加速
+- 确保 `models/kokoro-v1.0.onnx` 和 `models/voices-v1.0.bin` 存在
+
+### Q6: 如何查看流水线进度？
+```bash
+# 实时日志
+docker compose logs -f celery-worker
+
+# API 查询
+curl http://localhost:8000/api/projects/<project_id>/auto-run/status | jq
+```
+
+### Q7: 导出 M4B 后如何导入 Audiobookshelf？
+1. 确保 Audiobookshelf 已运行并获取 API Key
+2. 设置环境变量：
+```bash
+export AUDIOBOOKSHELF_URL=http://localhost:13378
+export AUDIOBOOKSHELF_API_KEY=your-api-key
+```
+3. 重新运行演示脚本（会自动推送），或手动上传：
+```bash
+curl -X POST "$AUDIOBOOKSHELF_URL/api/items" \
+  -H "Authorization: Bearer $AUDIOBOOKSHELF_API_KEY" \
+  -F "file=@output/<project_id>/output.m4b"
+```
+
+### Q8: 如何切换 LLM 提供商优先级？
+编辑 `config/llm_providers.yaml`，调整 `priority` 数值（越小优先级越高）：
+```yaml
+providers:
+  - name: gemini
+    priority: 1
+  - name: groq
+    priority: 2
+```
+免费模型的 `pricing.per_1k_tokens` 设为 0 可优先使用。
+
+### Q9: 如何启用/禁用自我迭代？
+```bash
+# 启用
+curl -X POST http://localhost:8000/admin/evolution/enable \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true, "stage": "annotate_paragraph"}'
+
+# 查看进度
+curl http://localhost:8000/admin/evolution/progress
+```
+
+### Q10: 遇到未知错误如何排查？
+1. 查看错误日志：`tail -f logs/$(date +%F)_errors.log`
+2. 查看主日志：`tail -f logs/$(date +%F)_main.log`
+3. 运行自检：`./check_rules.sh`
+4. 提交 Issue 时附带：错误日志、环境信息（`python -c "import sys; print(sys.version)"`）、复现步骤
 
 ## 项目结构
 ```

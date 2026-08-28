@@ -876,7 +876,7 @@ async def get_podcast_rss_feed(
                 f"      <description>{episode_description}</description>",
                 f'      <enclosure url="{enclosure_url}" length="{seg.file_size_bytes or 0}" type="{mime_type}"/>',
                 f"      <guid>{enclosure_url}</guid>",
-                f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S %Z')}</pubDate>",
+                f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}</pubDate>",
                 f"      <itunes:duration>{seg.duration_ms // 1000 if seg.duration_ms else 0}</itunes:duration>",
                 f"    </item>",
             ]

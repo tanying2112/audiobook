@@ -144,7 +144,7 @@ class TranslateAndDubPipeline:
                 dubbed_segments.append(dubbed_segment)
                 report["successful_translations"] += 1
 
-            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+            except Exception as e:
                 seg_id = getattr(segment, "id", "unknown")
                 logger.error(f"❌ 片段 {seg_id} 翻译失败: {str(e)}")
                 report["failed_translations"] += 1
@@ -191,7 +191,7 @@ class TranslateAndDubPipeline:
                     else:
                         logger.warning(f"⚠️ 情感连贯性检查失败: {len(report['continuity_issues'])} 个问题")
 
-            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+            except Exception as e:
                 logger.error(f"❌ 情感连贯性检查过程中出错: {str(e)}")
                 report["warnings"].append(f"情感连贯性检查失败: {str(e)}")
 

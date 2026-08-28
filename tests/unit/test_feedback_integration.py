@@ -1,10 +1,15 @@
-"""Tests for feedback/integration.py — SelfIterationLoop, helpers, and factory."""
+"""Tests for feedback/integration.py — SelfIterationLoop, helpers, and factory.
+
+NOTE: ``SelfIterationLoop`` is a real, network-free implementation (it drives the
+production loop via ``FeedbackAutoProcessor`` / ``_monitor_loop``); these unit
+tests exercise it with a mocked ``db_session_factory``. The whole-file skip that
+existed here ("Sprint G Placeholder — stub") is stale — the loop is implemented,
+so we run the tests to keep the self-iteration claim honest (M4).
+"""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-pytestmark = pytest.mark.skip(reason="Sprint G Placeholder — SelfIterationLoop is a stub, not real usable code")
 
 
 class TestCollectPipelineFeedback:

@@ -3,6 +3,17 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 # Mock heavy dependencies before importing the module
+_SAVED_MODULES = {}
+_MISSING = object()
+
+_SAVED_MODULES['torch'] = sys.modules.get('torch', _MISSING)
+_SAVED_MODULES['torchaudio'] = sys.modules.get('torchaudio', _MISSING)
+_SAVED_MODULES['funasr'] = sys.modules.get('funasr', _MISSING)
+_SAVED_MODULES['whisper'] = sys.modules.get('whisper', _MISSING)
+_SAVED_MODULES['faster_whisper'] = sys.modules.get('faster_whisper', _MISSING)
+_SAVED_MODULES['onnxruntime'] = sys.modules.get('onnxruntime', _MISSING)
+_SAVED_MODULES['speechbrain'] = sys.modules.get('speechbrain', _MISSING)
+
 sys.modules["torch"] = MagicMock()
 sys.modules["torchaudio"] = MagicMock()
 sys.modules["funasr"] = MagicMock()
@@ -147,3 +158,17 @@ class TestASRWerMetric(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── 泄漏防护: 模块导入期的 sys.modules 注入必须在模块结束时还原 ────────────────
+# 否则同会话内后续测试 (如 bootstrap_fewshot / llm client) 会拿到空壳 mock。
+_MISSING = object()
+
+
+def tearDownModule() -> None:
+    """Restore the pre-injection sys.modules snapshot (pytest hook)."""
+    for _name, _orig in _SAVED_MODULES.items():
+        if _orig is _MISSING:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _orig

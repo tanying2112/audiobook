@@ -152,7 +152,7 @@ class EvolutionProgressResponse(BaseModel):
 def _seed_prompt_from_sop(stage: str) -> Optional[str]:
     """Pull the current SOP genre rules to seed GEPA's initial prompt."""
     try:
-        from src.audiobook_studio.feedback.sop_reflection import get_sop_config
+        from src.audiobook_studio.pipeline.sop_reflection import get_sop_config
 
         cfg = get_sop_config()
         # Use the global genre rules as a textual seed prompt.
@@ -200,7 +200,7 @@ def _persist_optimized_prompt_to_sop(stage: str, result: Any) -> None:
     try:
         if not getattr(result, "optimized_prompt", None):
             return
-        from src.audiobook_studio.feedback.sop_reflection import get_sop_config
+        from src.audiobook_studio.pipeline.sop_reflection import get_sop_config
 
         cfg = get_sop_config()
         # Store under a dedicated evolution key so SOP reflection can pick it up.
