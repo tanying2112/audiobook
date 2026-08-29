@@ -1,0 +1,299 @@
+# docker-compose.gpu.yml - GPU-enabled stack for Audiobook Studio (Pro Studio mode)
+#
+# This stack enables REAL zero-shot voice cloning and cross-lingual TTS by running
+# VoxCPM2 and/or CosyVoice locally on GPU hardware.
+#
+# Hardware requirements:
+#   - NVIDIA GPU with 8GB+ VRAM (T4, RTX 3080/4080, A10G, etc.)
+#   - nvidia-container-toolkit installed on host
+#   - Docker Engine with GPU support (--gpus all)
+#
+# Models (auto-downloaded on first run, cached in ./models volume):
+#   - VoxCPM2: ~2.5GB (FunAudioLLM/VoxCPM2 on ModelScope/HF)
+#   - CosyVoice 2: ~3GB (FunAudioLLM/CosyVoice2 on ModelScope/HF)
+#
+# Usage:
+#   # Start with VoxCPM2 only (lighter, ~8GB VRAM)
+#   docker compose -f docker-compose.gpu.yml --profile voxcpm2 up -d
+#
+#   # Start with CosyVoice only (~10GB VRAM)
+#   docker compose -f docker-compose.gpu.yml --profile cosyvoice up -d
+#
+#   # Start both (requires 16GB+ VRAM or sequential execution)
+#   docker compose -f docker-compose.gpu.yml --profile voxcpm2 --profile cosyvoice up -d
+#
+#   # With monitoring
+#   docker compose -f docker-compose.gpu.yml -f docker-compose.monitoring.yml up -d
+#
+# Environment variables (create .env.gpu or export):
+#   HF_TOKEN=your_huggingface_token          # Required for gated models
+#   MODELSCOPE_TOKEN=your_modelscope_token   # Alternative for Chinese models
+#   VOXCPM2_MODEL_ID=FunAudioLLM/VoxCPM2     # Override model ID
+#   COSYVOICE_MODEL_ID=FunAudioLLM/CosyVoice2-0.5B
+#   GPU_MEMORY_FRACTION=0.9                  # Limit per-container GPU memory
+#   LOG_LEVEL=INFO
+#
+# API Endpoints (after startup):
+#   VoxCPM2:   http://localhost:5010 (health: /health, synthesize: /synthesize)
+#   CosyVoice: http://localhost:5020 (health: /health, synthesize: /synthesize)
+#   Main API:  http://localhost:8000 (routes to GPU services via VOXCPM2_ENDPOINT/COSYVOICE_ENDPOINT)
+
+version: "3.9"
+
+x-common-gpu: &common-gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+  runtime: nvidia
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    - PYTHONUNBUFFERED=1
+    - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    - HF_TOKEN=${HF_TOKEN:-}
+    - MODELSCOPE_TOKEN=${MODELSCOPE_TOKEN:-}
+
+services:
+  # ========================================================================
+  # VoxCPM2 TTS Server (Zero-shot voice cloning, cross-lingual)
+  # ========================================================================
+  voxcpm2:
+    <<: *common-gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.voxcpm2
+    container_name: audiobook-voxcpm2
+    profiles: ["voxcpm2"]
+    restart: unless-stopped
+    ports:
+      - "5010:5010"
+    environment:
+      - PORT=5010
+      - MODEL_ID=${VOXCPM2_MODEL_ID:-FunAudioLLM/VoxCPM2}
+      - DEVICE=cuda
+      - MODEL_CACHE_DIR=/app/models/voxcpm2
+      - MAX_CONCURRENT=2
+      - ENABLE_VOICE_CLONING=true
+      - SAMPLE_RATE=24000
+    volumes:
+      - ./models:/app/models
+      - ./output:/app/output
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Model loading can take 1-2 minutes on cold start
+
+  # ========================================================================
+  # CosyVoice 2 TTS Server (Streaming, zero-shot, cross-lingual, emotion control)
+  # ========================================================================
+  cosyvoice:
+    <<: *common-gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.cosyvoice
+    container_name: audiobook-cosyvoice
+    profiles: ["cosyvoice"]
+    restart: unless-stopped
+    ports:
+      - "5020:5020"
+    environment:
+      - PORT=5020
+      - MODEL_ID=${COSYVOICE_MODEL_ID:-FunAudioLLM/CosyVoice2-0.5B}
+      - DEVICE=cuda
+      - MODEL_CACHE_DIR=/app/models/cosyvoice
+      - MAX_CONCURRENT=2
+      - ENABLE_VOICE_CLONING=true
+      - ENABLE_STREAMING=true
+      - SAMPLE_RATE=24000
+    volumes:
+      - ./models:/app/models
+      - ./output:/app/output
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5020/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s  # CosyVoice is heavier, longer cold start
+
+  # ========================================================================
+  # Audiobook Studio Main API (routes to GPU TTS services)
+  # ========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audiobook-api-gpu
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AUDIO_OUTPUT_DIR=/app/output
+      - CHECKPOINTS_DIR=/app/checkpoints
+      - PYTHONPATH=/app/src
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # GPU TTS endpoints (set by docker-compose networking)
+      - VOXCPM2_ENDPOINT=http://voxcpm2:5010
+      - COSYVOICE_ENDPOINT=http://cosyvoice:5020
+      # Hardware profile: pro_studio enables real cloning
+      - HARDWARE_PROFILE=pro_studio
+      - ENABLE_LOCAL_TTS=true
+      - MOCK_LLM=false
+      - MOCK_TTS=false
+      # Real self-iteration (requires LLM API keys)
+      - SELF_ITERATION_MOCK=${SELF_ITERATION_MOCK:-false}
+      # Model cache
+      - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
+      # LLM keys (required for real mode)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - FCC_GATEWAY_URL=${FCC_GATEWAY_URL:-}
+      - FCC_API_KEY=${FCC_API_KEY:-}
+    volumes:
+      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - models_cache:/app/models_cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+      voxcpm2:
+        condition: service_healthy
+      cosyvoice:
+        condition: service_healthy
+
+  # ========================================================================
+  # Celery Worker (background tasks, also needs GPU service access)
+  # ========================================================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audiobook-worker-gpu
+    restart: unless-stopped
+    command: ["celery", "-A", "src.audiobook_studio.celery_app", "worker", "-l", "info", "-Q", "export,pipeline", "--concurrency=1"]
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONPATH=/app/src
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - VOXCPM2_ENDPOINT=http://voxcpm2:5010
+      - COSYVOICE_ENDPOINT=http://cosyvoice:5020
+      - HARDWARE_PROFILE=pro_studio
+      - ENABLE_LOCAL_TTS=true
+      - MOCK_LLM=false
+      - MOCK_TTS=false
+      - SELF_ITERATION_MOCK=${SELF_ITERATION_MOCK:-false}
+      - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - models_cache:/app/models_cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+      voxcpm2:
+        condition: service_healthy
+      cosyvoice:
+        condition: service_healthy
+
+  # ========================================================================
+  # Shared Infrastructure
+  # ========================================================================
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sh", "/app/scripts/migrate.sh", "up"]
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - PYTHONPATH=/app/src
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=audiobook
+      - POSTGRES_PASSWORD=audiobook
+      - POSTGRES_DB=audiobook
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audiobook -d audiobook"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ========================================================================
+  # Frontend (optional, for dev)
+  # ========================================================================
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    volumes:
+      - ./web:/app
+    profiles:
+      - dev
+
+volumes:
+  postgres_data:
+  redis_data:
+  models_cache:
+
+networks:
+  default:
+    name: audiobook-gpu-network

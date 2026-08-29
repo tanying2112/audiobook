@@ -1,5 +1,16 @@
 # Audiobook Studio
 
+<!-- STATUS BANNER -->
+<div align="center">
+
+| 状态 | 说明 | 对应模式 |
+|------|------|----------|
+| 🟢 **已落地** | 核心流水线、双引擎 TTS、质检、导出、前端编辑、遥测看板、单句重录 | 土豆模式 / 云端白嫖模式 |
+| 🟡 **规划中** | 跨语言声纹克隆、模型市场、接口限流、自我迭代演进（DSPy 路径）、管理预热端点 | 专业显卡模式 / 需额外依赖 |
+| 🔴 **需 GPU** | 零样本声纹锁定克隆、CosyVoice/VoxCPM2 神经模型、高保真声纹复用 | 专业显卡模式（独显 ≥16GB VRAM） |
+
+</div>
+
 ## 项目概述
 Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿到成品音频全链路自动化。核心功能包括文件上传、文本提取、LLM 剧本结构化、情感标注、并发 TTS 合成、音频混音、质量检测以及多格式音频输出。
 
@@ -20,12 +31,12 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 
 ## S3 长期愿景功能详解（入口与用法）
 
-> 以下为 S3 阶段（长期愿景）交付的能力入口与基本用法。所有能力均基于**免费资源**实现（本地模型 / 免费 API 轮换池 / 诚实脚手架）。
+> 以下为 S3 阶段（长期愿景）交付的能力入口与基本用法。**注意**：跨语言声纹克隆、CosyVoice/VoxCPM2 神经模型等能力**仅限专业显卡模式（需 GPU）**，不包含在免费资源模式中。免费模式（土豆/云端白嫖）仅提供 `Kokoro-82M` 谱质心占位特征，非真实声纹克隆。
 
-### 跨语言声纹克隆（Multilingual Voice Clone）
+### 跨语言声纹克隆（Multilingual Voice Clone）— 🔴 **需 GPU / 专业显卡模式**
 - **语言注册表**：`src/audiobook_studio/languages.py` — 集中管理管线可端到端处理的语言及其 TTS 音色、提示词引导。
 - **声纹克隆**：`src/audiobook_studio/tts/clone.py` 的 `VoiceCloner.clone_voice()` / `extract_voice_features()` / `VoicePrint`。**零样本声纹锁定与跨语言复用仅限专业显卡模式（Pro Studio，对接 `CosyVoice/VoxCPM2` 等 GPU 神经模型）**；默认土豆/云端模式走 `Kokoro-82M`，其 `extract_voice_features` 仅生成谱质心占位特征（非真实声纹，见 `clone.py` 内诚实声明），不得用于声纹比对。
-- 默认走本地 `Kokoro-82M` 真合成；专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「三档变速架构 → 专业显卡模式」）。
+- 专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「三档变速架构 → 专业显卡模式」）。
 
 ### BGM 混音（背景音乐 Ducking）
 - **实现**：`src/audiobook_studio/export/audio_ducking.py`（`MixConfig`）+ 导出管线自动 ducking。

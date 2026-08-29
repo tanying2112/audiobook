@@ -651,6 +651,12 @@ export default {
     filter_by_stage: 'Filter by stage',
     filter_verified: 'Verified only',
     all_stages: 'All stages',
+    extract: 'Extract',
+    analyze: 'Analyze',
+    annotate: 'Annotate',
+    edit: 'Edit',
+    synthesize: 'Synthesize',
+    quality: 'Quality',
   },
 
   // Upload 文件上传

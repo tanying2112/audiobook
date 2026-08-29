@@ -345,12 +345,11 @@ async def health_ready():
     from src.audiobook_studio.config.settings_loader import get_settings
 
     # ... existing code ...
-
     # Critical dependencies: DB must be healthy
     # Redis is optional (controlled by REDIS_REQUIRED setting)
     settings = get_settings()
     db_ok = _is_healthy(checks.get("database"))
-    
+
     if settings.REDIS_REQUIRED:
         # Redis is required - must be healthy
         redis_ok = _is_healthy(checks.get("redis"))
@@ -360,7 +359,7 @@ async def health_ready():
         redis_healthy = _is_healthy(checks.get("redis"))
         redis_ok = redis_healthy or checks.get("redis") == "not_configured"
         redis_status = "optional"
-    
+
     llm_ok = _is_healthy(checks.get("llm_keys"))
 
     all_ok = db_ok and redis_ok and llm_ok
@@ -369,6 +368,30 @@ async def health_ready():
         content={"status": "ready" if all_ok else "not_ready", "checks": checks},
         status_code=status_code,
     )
+
+
+# ── Prometheus /metrics endpoint ───────────────────────────────────────────
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint for scraping.
+
+    Returns Prometheus-formatted metrics including:
+    - HTTP request counts/durations
+    - Pipeline stage durations
+    - Queue depths
+    - TTS synthesis counts
+    - LLM token usage
+    - Cost tracking (USD/day)
+    - DB pool stats
+    """
+    from fastapi.responses import PlainTextResponse
+
+    from .core.telemetry import get_telemetry
+
+    metrics_text = get_telemetry().export_prometheus()
+    return PlainTextResponse(content=metrics_text, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 from .exceptions import AudiobookError, register_error_handlers

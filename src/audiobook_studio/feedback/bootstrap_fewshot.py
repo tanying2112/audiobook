@@ -42,10 +42,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 # ``class X(_DspyModule)`` is a valid base in both branches.
 if TYPE_CHECKING:
     import dspy
-    from dspy import Example, Prediction
+    from dspy import Example
+    from dspy import Module as _DspyModule
+    from dspy import Prediction
     from dspy.teleprompt.gepa import GEPA
     from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
-    from dspy import Module as _DspyModule
 else:
     # Runtime stand-in base; swapped for the real ``dspy.Module`` below when
     # dspy is importable. When dspy is absent this remains, and constructing a
@@ -54,13 +55,16 @@ else:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             _require_dspy("CharacterRecognitionModule / VoiceDesignModule")
 
+
 dspy: Any = None
 try:  # pragma: no cover - exercised in test_feedback_import_safety with dspy blocked
     import dspy  # noqa: F811  (TYPE_CHECKING import is for static typing only)
-    from dspy import Example, Prediction  # noqa: F401,F811  (kept for API parity)
+    from dspy import Example  # noqa: F401,F811  (kept for API parity)
+    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
+    from dspy import Prediction  # noqa: F401,F811  (kept for API parity)
     from dspy.teleprompt.gepa import GEPA  # noqa: F401,F811
     from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401,F811
-    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
+
     DSPY_AVAILABLE: bool = True
 except ModuleNotFoundError:
     DSPY_AVAILABLE = False
@@ -141,11 +145,75 @@ def configure_dspy_optimizer(use_mock: bool = False) -> Any:
         dspy.configure(lm=mock_lm)
         return mock_lm
     else:
-        # Use real LM configuration (from environment)
+        # Use real LM configuration - try FCC gateway first
         import dspy
 
-        # DSPy will use the default LM from environment variables
-        return None
+        # Check if FCC gateway is available
+        fcc_url = os.getenv("FCC_GATEWAY_URL", "http://127.0.0.1:8082")
+        fcc_key = os.getenv("FCC_API_KEY", "freecc")
+        fcc_model = os.getenv("FCC_MODEL", "opencode/deepseek-v4-flash-free")
+
+        class FCCGatewayLM(dspy.LM):
+            """Custom DSPy LM that uses the FCC gateway (Anthropic protocol)."""
+
+            def __init__(self) -> None:
+                super().__init__(model="fcc-gateway", temperature=1.0, max_tokens=32000)
+                self.fcc_url = fcc_url
+                self.fcc_key = fcc_key
+                self.fcc_model = fcc_model
+
+            def basic_request(self, prompt: str, **kwargs: Any) -> List[Dict[str, str]]:
+                import requests
+
+                url = f"{self.fcc_url}/v1/messages"
+                headers = {"Authorization": f"Bearer {self.fcc_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": self.fcc_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": kwargs.get("max_tokens", 32000),
+                    "temperature": kwargs.get("temperature", 1.0),
+                }
+
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Extract the text content from Anthropic response format
+                    content = data.get("content", [])
+                    if content and isinstance(content, list):
+                        text = "".join([c.get("text", "") for c in content if c.get("type") == "text"])
+                    else:
+                        text = str(content)
+
+                    return [{"text": text}]
+                except Exception as e:
+                    logger.warning(f"FCC gateway call failed: {e}")
+                    # Return empty response to indicate failure
+                    return [{"text": ""}]
+
+            def __call__(
+                self,
+                prompt: Optional[str] = None,
+                messages: Optional[List[Dict[str, Any]]] = None,
+                **kwargs: Any,
+            ) -> List[Dict[str, str]]:
+                # Handle both prompt= and messages= calling conventions
+                if messages is not None:
+                    # Extract prompt from messages
+                    prompt_text = " ".join(str(m.get("content", "")) for m in messages)
+                else:
+                    prompt_text = prompt or ""
+                return self.basic_request(prompt_text, **kwargs)
+
+        try:
+            fcc_lm = FCCGatewayLM()
+            dspy.configure(lm=fcc_lm)
+            logger.info("[BootstrapFewShot] Configured DSPy with FCC gateway LM")
+            return fcc_lm
+        except Exception as e:
+            logger.warning(f"[BootstrapFewShot] Failed to configure FCC gateway LM: {e}; DSPy will use default")
+            return None
 
 
 @dataclass
