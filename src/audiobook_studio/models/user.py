@@ -58,6 +58,12 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     password_migrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Email verification
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    email_verification_token: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, index=True)
+    email_verification_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=user_roles, back_populates="users")
     project_permissions: Mapped[List["ProjectPermission"]] = relationship(
@@ -155,3 +161,21 @@ class ProjectPermission(Base):
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="project_permissions")
     project: Mapped["Project"] = relationship("Project", back_populates="permissions")
     grantor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[granted_by])
+
+
+class AuditLog(Base):
+    """Audit log for security-relevant events."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id])

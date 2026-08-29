@@ -2,11 +2,12 @@
 
 Provides Role-Based Access Control with project-level permissions.
 """
-from sqlalchemy.exc import SQLAlchemyError
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import and_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.audiobook_studio.auth.jwt_handler import hash_password, verify_password
@@ -32,6 +33,9 @@ class RBACManager:
         password: str,
         full_name: Optional[str] = None,
         is_superuser: bool = False,
+        is_email_verified: bool = False,
+        email_verification_token: Optional[str] = None,
+        email_verification_token_expires_at: Optional[datetime] = None,
     ) -> User:
         """Create a new user."""
         hashed_password = hash_password(password)
@@ -41,6 +45,9 @@ class RBACManager:
             hashed_password=hashed_password,
             full_name=full_name,
             is_superuser=is_superuser,
+            is_email_verified=is_email_verified,
+            email_verification_token=email_verification_token,
+            email_verification_token_expires_at=email_verification_token_expires_at,
         )
         self.db.add(user)
         self.db.commit()

@@ -3,14 +3,17 @@
 Provides endpoints for login, registration, token refresh, and user management.
 """
 
-from datetime import timedelta
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+# Auth dependencies
 from src.audiobook_studio.auth.dependencies import (
     _invalidate_user_cache,
     authenticate_user,
@@ -20,27 +23,134 @@ from src.audiobook_studio.auth.dependencies import (
     require_permission,
     require_role,
 )
+
+# Rate limiting (in-memory, simple implementation)
+# Rate limiting (in-memory, simple implementation)
+from src.audiobook_studio.config import get_settings
+
+# Rate limiter (in-memory, simple token bucket per IP)
+_rate_limit_store: Dict[str, List[float]] = defaultdict(list)
+
+
+def check_rate_limit(
+    request: Request,
+    limit: int = 10,
+    window_seconds: int = 60,
+) -> bool:
+    """Simple in-memory rate limiter. Returns True if allowed, False if rate limited."""
+    settings = get_settings()
+    if not settings.RATE_LIMIT_ENABLED:
+        return True
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    key = f"{request.url.path}:{client_ip}"
+
+    # Clean old entries
+    window_start = time.time() - window_seconds
+    _rate_limit_store[key] = [t for t in _rate_limit_store[key] if t > window_start]
+
+    if len(_rate_limit_store[key]) >= limit:
+        return False
+
+    _rate_limit_store[key].append(now)
+    return True
+
+
+def check_auth_rate_limit(request: Request) -> None:
+    """Rate limit for auth endpoints. Raises HTTPException if rate limited."""
+    settings = get_settings()
+    if not settings.RATE_LIMIT_ENABLED:
+        return
+
+    # Stricter limits for auth endpoints
+    limit = 5  # 5 requests
+    window_seconds = 300  # per 5 minutes
+
+    if not check_rate_limit(request, limit=limit, window_seconds=window_seconds):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+            headers={"Retry-After": "300"},
+        )
+
+
 from src.audiobook_studio.auth.jwt_handler import jwt_handler
 
 # Pydantic models
 from src.audiobook_studio.auth.models import (
     PermissionName,
     ProjectPermissionOut,
+    ResendVerificationRequest,
     RoleName,
     Token,
     UserCreate,
     UserOut,
     UserUpdate,
+    VerifyEmailRequest,
+    VerifyEmailResponse,
 )
 from src.audiobook_studio.auth.rbac import RBACManager, get_rbac_manager
 from src.audiobook_studio.config import get_settings
 from src.audiobook_studio.database import get_db
 
 # SQLAlchemy models
+from src.audiobook_studio.models.user import AuditLog as AuditLogModel
 from src.audiobook_studio.models.user import ProjectPermission as ProjectPermissionModel
 from src.audiobook_studio.models.user import User as UserModel
 
+
+def record_audit_log(
+    db: Session,
+    event_type: str,
+    user: Optional[UserModel] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    details: Optional[dict] = None,
+) -> AuditLogModel:
+    """Record an audit log entry."""
+    log = AuditLogModel(
+        event_type=event_type,
+        user_id=user.id if user else None,
+        username=user.username if user else None,
+        details=details or {},
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
 router = APIRouter(prefix="/auth", tags=["authentication"])
+
+
+def _user_out_payload(
+    user: Any,  # noqa: ANN401 - accepts UserModel (or any object exposing the same attrs)
+    roles: Optional[List[str]] = None,
+    project_permissions: Optional[List[ProjectPermissionOut]] = None,
+) -> Dict[str, Any]:
+    """Build the ``UserOut`` payload for a user row.
+
+    Centralised on purpose: every endpoint used to inline its own dict, so adding a
+    column to ``UserOut`` (e.g. ``is_email_verified``) silently 500'd every endpoint
+    that forgot to map it. Optional attributes are type-checked before being passed
+    through so a partially-populated object cannot inject an invalid type.
+    """
+    is_verified = getattr(user, "is_email_verified", False)
+    verified_at = getattr(user, "email_verified_at", None)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "is_active": user.is_active,
+        "is_superuser": user.is_superuser,
+        "is_email_verified": is_verified if isinstance(is_verified, bool) else False,
+        "created_at": user.created_at,
+        "email_verified_at": verified_at if isinstance(verified_at, datetime) else None,
+        "roles": list(roles) if roles else [],
+        "project_permissions": list(project_permissions) if project_permissions else [],
+    }
 
 
 # Request/Response models
@@ -67,10 +177,14 @@ class MessageResponse(BaseModel):
 # Auth endpoints
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
     """Authenticate user and return access/refresh tokens."""
+    # Rate limiting for login
+    check_auth_rate_limit(request)
+
     rbac = get_rbac_manager(db)
     user = rbac.authenticate_user(form_data.username, form_data.password)
 
@@ -94,6 +208,9 @@ async def login(
         roles=roles,
         permissions=list(permissions),
     )
+
+    # Record audit log for successful login
+    record_audit_log(db, "user_login", user=user)
 
     return TokenResponse(**tokens)
 
@@ -157,8 +274,20 @@ def _registration_allowed(
     return False, f"Registration not allowed in '{mode}' mode. Contact administrator."
 
 
+import secrets
+from datetime import timedelta
+
+# ... (keep existing imports)
+
+
+def generate_verification_token() -> str:
+    """Generate a secure email verification token."""
+    return secrets.token_urlsafe(32)
+
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(
+    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db),
     current_user: Optional[UserModel] = Depends(get_current_user_optional),
@@ -167,9 +296,12 @@ async def register(
 
     Behavior depends on AUTH_REGISTRATION_MODE setting:
     - "open": Anyone can register (default)
-    - "invite": Requires valid invite code (not implemented yet)
-    - "approval": Requires admin approval after registration (not implemented yet)
+    - "invite": Requires valid invite code
+    - "approval": Requires admin approval after registration
     """
+    # Rate limiting for registration
+    check_auth_rate_limit(request)
+
     settings = get_settings()
     allowed, reason = _registration_allowed(settings, user_data, current_user)
     if not allowed:
@@ -184,26 +316,85 @@ async def register(
     if rbac.get_user_by_email(user_data.email):
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    # Generate email verification token (expires in 24 hours)
+    verification_token = generate_verification_token()
+    token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
     user = rbac.create_user(
         email=user_data.email,
         username=user_data.username,
         password=user_data.password,
         full_name=user_data.full_name,
+        is_email_verified=False,
+        email_verification_token=verification_token,
+        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
+    # TODO: Send verification email (best-effort)
+    # await send_verification_email(user.email, verification_token)
+
+    # Record audit log for registration
+    record_audit_log(db, "user_register", user=user)
+
     # Construct UserOut manually to avoid from_attributes issues with roles relationship
-    user_data_dict = {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "full_name": user.full_name,
-        "is_active": user.is_active,
-        "is_superuser": user.is_superuser,
-        "created_at": user.created_at,
-        "roles": [role.name for role in user.roles],
-        "project_permissions": [],
-    }
-    return UserOut.model_validate(user_data_dict)
+    return UserOut.model_validate(_user_out_payload(user, roles=[role.name for role in user.roles]))
+
+
+@router.post("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(
+    request: VerifyEmailRequest,
+    db: Session = Depends(get_db),
+):
+    """Verify user's email address with token."""
+    rbac = get_rbac_manager(db)
+    user = db.query(UserModel).filter(UserModel.email_verification_token == request.token).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
+
+    if user.is_email_verified:
+        return VerifyEmailResponse(message="Email already verified", verified=True)
+
+    if user.email_verification_token_expires_at and user.email_verification_token_expires_at < datetime.now(
+        timezone.utc
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification token has expired")
+
+    user.is_email_verified = True
+    user.email_verified_at = datetime.now(timezone.utc)
+    user.email_verification_token = None
+    user.email_verification_token_expires_at = None
+    db.commit()
+
+    return VerifyEmailResponse(message="Email verified successfully", verified=True)
+
+
+@router.post("/resend-verification", response_model=VerifyEmailResponse)
+async def resend_verification(
+    request: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    """Resend email verification link."""
+    rbac = get_rbac_manager(db)
+    user = rbac.get_user_by_email(request.email)
+
+    if not user:
+        # Don't reveal if email exists
+        return VerifyEmailResponse(message="If the email exists, a verification link has been sent", verified=False)
+
+    if user.is_email_verified:
+        return VerifyEmailResponse(message="Email already verified", verified=True)
+
+    # Generate new token
+    verification_token = generate_verification_token()
+    user.email_verification_token = generate_verification_token()
+    user.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    db.commit()
+
+    # TODO: Send verification email (best-effort)
+    # await send_verification_email(user.email, user.email_verification_token)
+
+    return VerifyEmailResponse(message="If the email exists, a verification link has been sent", verified=False)
 
 
 @router.get("/me", response_model=UserOut)
@@ -233,18 +424,7 @@ async def read_current_user(
         )
 
     # Construct UserOut manually to avoid from_attributes issues with roles relationship
-    user_data = {
-        "id": current_user.id,
-        "email": current_user.email,
-        "username": current_user.username,
-        "full_name": current_user.full_name,
-        "is_active": current_user.is_active,
-        "is_superuser": current_user.is_superuser,
-        "created_at": current_user.created_at,
-        "roles": roles,
-        "project_permissions": project_perms_out,
-    }
-    return UserOut.model_validate(user_data)
+    return UserOut.model_validate(_user_out_payload(current_user, roles=roles, project_permissions=project_perms_out))
 
 
 @router.put("/me", response_model=UserOut)
@@ -263,18 +443,7 @@ async def update_current_user(
     await _invalidate_user_cache(current_user.id)
 
     # Construct UserOut manually to avoid from_attributes issues with roles relationship
-    user_data = {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "full_name": user.full_name,
-        "is_active": user.is_active,
-        "is_superuser": user.is_superuser,
-        "created_at": user.created_at,
-        "roles": [role.name for role in user.roles],
-        "project_permissions": [],
-    }
-    return UserOut.model_validate(user_data)
+    return UserOut.model_validate(_user_out_payload(user, roles=[role.name for role in user.roles]))
 
 
 # Admin endpoints
@@ -287,22 +456,7 @@ async def list_users(
 ):
     """List all users (admin only)."""
     users = db.query(UserModel).offset(skip).limit(limit).all()
-    return [
-        UserOut.model_validate(
-            {
-                "id": u.id,
-                "email": u.email,
-                "username": u.username,
-                "full_name": u.full_name,
-                "is_active": u.is_active,
-                "is_superuser": u.is_superuser,
-                "created_at": u.created_at,
-                "roles": [role.name for role in u.roles],
-                "project_permissions": [],
-            }
-        )
-        for u in users
-    ]
+    return [UserOut.model_validate(_user_out_payload(u, roles=[role.name for role in u.roles])) for u in users]
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -319,18 +473,7 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Construct UserOut manually to avoid from_attributes issues with roles relationship
-    user_data = {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "full_name": user.full_name,
-        "is_active": user.is_active,
-        "is_superuser": user.is_superuser,
-        "created_at": user.created_at,
-        "roles": [role.name for role in user.roles],
-        "project_permissions": [],
-    }
-    return UserOut.model_validate(user_data)
+    return UserOut.model_validate(_user_out_payload(user, roles=[role.name for role in user.roles]))
 
 
 @router.put("/users/{user_id}", response_model=UserOut)
@@ -353,7 +496,9 @@ async def update_user(
     # Invalidate cache after update
     await _invalidate_user_cache(user_id)
 
-    return UserOut.from_orm(user)
+    # Same payload builder as the other endpoints (``from_orm`` is deprecated and
+    # also tripped over the roles relationship).
+    return UserOut.model_validate(_user_out_payload(user, roles=[role.name for role in user.roles]))
 
 
 @router.delete("/users/{user_id}", response_model=MessageResponse)

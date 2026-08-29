@@ -142,6 +142,202 @@ manager = ConnectionManager()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Event Schema (Versioned)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from datetime import datetime
+from typing import Any, Dict, Literal, Optional, Union
+
+from pydantic import BaseModel, Field
+
+
+class BaseEvent(BaseModel):
+    """Base event with version field."""
+
+    type: str
+    version: str
+    timestamp: datetime
+
+
+# v1 Event Schemas
+class V1ConnectedEvent(BaseModel):
+    type: Literal["connected"]
+    version: Literal["v1"]
+    timestamp: datetime
+    project_id: int
+    protocol: str
+
+
+class V1KeepaliveEvent(BaseModel):
+    type: Literal["keepalive"]
+    version: Literal["v1"]
+    timestamp: datetime
+
+
+class V1PingEvent(BaseModel):
+    type: Literal["ping"]
+    version: Literal["v1"]
+    timestamp: datetime
+
+
+class V1PongEvent(BaseModel):
+    type: Literal["pong"]
+    version: Literal["v1"]
+    timestamp: datetime
+
+
+class V1PauseEvent(BaseModel):
+    type: Literal["pause"]
+    version: Literal["v1"]
+    timestamp: datetime
+    project_id: int
+
+
+class V1ResumeEvent(BaseModel):
+    type: Literal["resume"]
+    version: Literal["v1"]
+    timestamp: datetime
+    project_id: int
+
+
+class V1StatusEvent(BaseModel):
+    type: Literal["status"]
+    version: Literal["v1"]
+    timestamp: datetime
+    project_id: int
+    status: str
+    paused: bool
+
+
+class V1AckEvent(BaseModel):
+    type: Literal["ack"]
+    version: Literal["v1"]
+    timestamp: datetime
+    action: str
+    status: str
+
+
+class V1ErrorEvent(BaseModel):
+    type: Literal["error"]
+    version: Literal["v1"]
+    timestamp: datetime
+    message: str
+    code: Optional[str] = None
+
+
+# Pipeline event types (v1)
+class V1PipelineEvent(BaseModel):
+    type: Literal[
+        "stage_enter",
+        "stage_exit",
+        "stage_progress",
+        "chapter_complete",
+        "paragraph_complete",
+        "error",
+        "paused",
+        "resumed",
+        "completed",
+    ]
+    version: Literal["v1"]
+    timestamp: datetime
+    project_id: int
+    stage: Optional[str] = None
+    chapter_id: Optional[int] = None
+    chapter_index: Optional[int] = None
+    paragraph_index: Optional[int] = None
+    progress: Optional[float] = None
+    data: Optional[Dict[str, Any]] = None
+
+
+# Union of all v1 events
+V1Event = Union[
+    V1ConnectedEvent,
+    V1KeepaliveEvent,
+    V1PingEvent,
+    V1PongEvent,
+    V1PauseEvent,
+    V1ResumeEvent,
+    V1StatusEvent,
+    V1AckEvent,
+    V1ErrorEvent,
+    V1PipelineEvent,
+]
+
+# Event registry: version -> list of event models
+WS_EVENT_SCHEMAS = {
+    "v1": {
+        "connected": V1ConnectedEvent,
+        "keepalive": V1KeepaliveEvent,
+        "ping": V1PingEvent,
+        "pong": V1PongEvent,
+        "pause": V1PauseEvent,
+        "resume": V1ResumeEvent,
+        "status": V1StatusEvent,
+        "ack": V1AckEvent,
+        "error": V1ErrorEvent,
+        "stage_enter": V1PipelineEvent,
+        "stage_exit": V1PipelineEvent,
+        "stage_progress": V1PipelineEvent,
+        "chapter_complete": V1PipelineEvent,
+        "paragraph_complete": V1PipelineEvent,
+        "error": V1ErrorEvent,
+        "paused": V1PipelineEvent,
+        "resumed": V1PipelineEvent,
+        "completed": V1PipelineEvent,
+    },
+}
+
+# Supported versions
+SUPPORTED_WS_PROTOCOL_VERSIONS = ("v1",)
+LATEST_WS_VERSION = "v1"
+
+
+def validate_ws_event(version: str, event_data: dict) -> Optional[BaseModel]:
+    """Validate event data against the schema for the given version.
+
+    Returns the validated model instance or None if validation fails.
+    """
+    if version not in WS_EVENT_SCHEMAS:
+        return None
+
+    event_type = event_data.get("type")
+    if not event_type:
+        return None
+
+    schema_map = WS_EVENT_SCHEMAS.get(version, {})
+    model = schema_map.get(event_data.get("type"))
+
+    if not model:
+        # Fallback: try to find a matching pipeline event
+        if event_data.get("type") in {
+            "stage_enter",
+            "stage_exit",
+            "stage_progress",
+            "chapter_complete",
+            "paragraph_complete",
+            "error",
+            "paused",
+            "resumed",
+            "completed",
+        }:
+            model = V1PipelineEvent
+        else:
+            return None
+
+    try:
+        return model(**event_data)
+    except Exception:
+        return None
+
+
+def get_event_schema(version: str, event_type: str):
+    """Get the Pydantic model for a given version and event type."""
+    if version not in WS_EVENT_SCHEMAS:
+        return None
+    return WS_EVENT_SCHEMAS[version].get(event_type)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Event Types
 # ─────────────────────────────────────────────────────────────────────────────
 

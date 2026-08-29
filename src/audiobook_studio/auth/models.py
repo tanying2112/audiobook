@@ -92,7 +92,10 @@ class UserOut(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
-    is_email_verified: bool
+    # Defaults to False so a caller that cannot resolve the flag (legacy row, or a
+    # payload built before the column existed) degrades to "unverified" instead of
+    # raising a 500 on serialization.
+    is_email_verified: bool = False
     # created_at can be None on freshly-constructed/persisted users at runtime,
     # so keep it optional rather than a required datetime (was a 500 on /me).
     created_at: Optional[datetime] = None
