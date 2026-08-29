@@ -451,14 +451,25 @@ class EngineRegistry:
         from .kokoro_backend import create_kokoro_backend
         from .piper_backend import create_piper_backend
 
-        # from .voxcpm2_backend import create_voxcpm2_engine
+        # Track B / Pro Studio: reflect real GPU clone backend capability in the
+        # registry ONLY when an endpoint is actually configured. Imports are
+        # deferred and guarded so a free/no-GPU host never pays for (or breaks
+        # on) the import. (The factory symbol is ``create_voxcpm2_backend``.)
 
         engine_factories = {
             "kokoro": create_kokoro_backend,
             "edge": create_edge_tts_engine,
             "piper": create_piper_backend,  # S2-4: preferred local engine (priority 0)
-            # "voxcpm2": create_voxcpm2_engine,
         }
+
+        _voxcpm2_ep = os.getenv("VOXCPM2_ENDPOINT") or os.getenv("COSYVOICE_ENDPOINT")
+        if _voxcpm2_ep:
+            try:
+                from .voxcpm2_backend import create_voxcpm2_backend
+
+                engine_factories["voxcpm2"] = create_voxcpm2_backend
+            except Exception as _vox_err:  # noqa: BLE001 — degrade, never break init
+                logger.warning("voxcpm2 引擎注册跳过 (导入失败): %s", _vox_err)
 
         # Merge plugin-registered TTS engine factories
         from ..plugins import get_plugin_manager

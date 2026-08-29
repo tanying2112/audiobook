@@ -15,7 +15,7 @@
 | **架构设计** | 🟢 优秀 (5/5) | 7 阶段管线 + 阶段注册表 + 编排器 + 钩子机制；三档硬件抽象；HARNESS 三层（契约/执行/评估）解耦清晰 |
 | **工程成熟度** | 🟢 良好 (4/5) | 全量单测套件本次复跑：`tests/unit/pipeline/` 305 passed / 6 skipped；`tests/unit/feedback/` 189 passed；覆盖率诚实化至 85%（`d4347ca`） |
 | **「自我迭代进化」真实性** | 🟢 真实可跑 (4/5) | 架构完整（SOP 反思 + Promotion Gate 四门禁 + 宪法硬规则 + A/B + 反 hack）；**`SELF_ITERATION_MOCK` 默认已翻转为 `false`**，核心 Harness 默认跑真实 LLM 闭环；金标数据已补齐至 train/val/test 各阶段 24/20/20 样本（较 v4「仅红楼梦 7 章」质的飞跃），canary 默认加载真实金标做统计功效充足的 10% 抽样 |
-| **语音克隆真实性** | 🟡 免费档为假 / Pro Studio 真 (3/5) | `real_clone_available()` 现改为**诚实探针**：免费+无 GPU（无克隆端点）下仍为 `False`（`clone_mode()='preset'`，占位声学特征）；但自托管 `docker-compose.gpu.yml`（VoxCPM2/CosyVoice2）且其 `/health` 可达时返回 `True`，声纹克隆从占位变真实（Track B 已接通）；代码持续诚实标注，并预留 `CLONE_BACKEND_DISABLED` 强制回退 |
+| **语音克隆真实性** | 🟢 免费档诚实占位 / Pro Studio 端到端真实 (4/5) | `real_clone_available()` 为**诚实探针**：免费+无 GPU（无克隆端点）下为 `False`（`clone_mode()='preset'`，占位声学特征，绝不伪称声纹）；自托管 `docker-compose.gpu.yml`（VoxCPM2/CosyVoice2）且其 `/health` 可达时为 `True`，**克隆执行链路已闭环**——`VoiceCloningEngine.add_voice_sample` 将 15s 样本存为真实锚点（`is_real_clone=True`、`reference_audio_path`、本地 embedding 留空），`synthesize_speech` 经 `RemoteVoxCPM2Port` 真实合成并转发该样本，不再走 Kokoro 占位；回归测试 `tests/unit/tts/test_clone_real_execution.py` 覆盖「可用时真实调用 + 不可用时诚实占位」。代码持续诚实标注，`CLONE_BACKEND_DISABLED=true` 可强制回退 |
 | **TTS 音质/商用级** | 🟡 中等偏上 (3/5) | 本地已接 Kokoro-ONNX + **Piper**（S2-4 已实现，`piper_backend.py` 17KB）+ **母带后处理链路**（S2-5 `mastering.py`：afftdn 降噪 + silenceremove + loudnorm -16 LUFS 两遍）；但 CPU 下 MOS 仍与 ElevenLabs 有代差 |
 | **全栈可用性** | 🟢 已验证 (4/5) | 前端 `vite build` 通过（S1-1）；后端可启动；A/B 测试、Promotion Gate、publish 状态机、Prometheus 指标、密钥加密、Alembic 外置 **S2/S3 全部已在 git 中落地** |
 | **可观测性/运维** | 🟢 良好 (4/5) | `core/telemetry.py` 已接 `prometheus_client`（`generate_latest`）；`docker-compose.monitoring.yml` 一键起 Prometheus+Grafana+Alertmanager；但 `/metrics` HTTP 端点未在主路由挂载（仅函数级 export） |
@@ -152,6 +152,7 @@ def clone_mode() -> str:
 ### 🔴 P0 — 名实落差（影响信任与可用性）
 1. ~~**「自我迭代进化」默认 mock**~~ ✅ **已修复（2026-08-29）**：`SELF_ITERATION_MOCK` 默认已翻转为 `false`，核心 Harness 默认发起真实 LLM 调用（C-01 收尾）。用户运行系统即进入真实自我迭代闭环，仍需可用真实 LLM（FCC 网关 / 本地 Qwen）驱动收敛。
 2. ~~**「跨语言声纹克隆」免费档恒为假**~~ ✅ **已接通 Pro Studio（2026-08-29）**：`real_clone_available()` 改为诚实探针，自托管 `docker-compose.gpu.yml`（VoxCPM2/CosyVoice2）且 `/health` 可达时返回 `True`，声纹克隆从占位变真实（Track B）。免费/无 GPU 档仍为 `False`（占位），代码持续诚实标注；README 愿景节与免费档实际能力仍建议对齐（见第 3 项营销文案）。
+   - **执行链路已闭环（2026-08-29 收尾）**：此前仅探针标志翻转，克隆执行仍走 Kokoro 占位；现 `synthesize_speech` 在 `is_real_clone` 且后端可达时经 `RemoteVoxCPM2Port` 真实合成并转发 15s 参考样本，`VoiceCloningEngine` 新增 `is_real_clone`/`reference_audio_path`/`clone_backend` 锚点字段，回归测试 `tests/unit/tts/test_clone_real_execution.py` 验证「真实调用 + 诚实占位」。
 
 ### 🟡 P1 — 工程债与可用性风险
 3. **免费供给链单点**：FCC 网关协议锁定 + 直连不通，无离线 LLM 兜底（Qwen2.5-3B GGUF 仍规划）。
@@ -247,6 +248,7 @@ SELF_ITERATION_MOCK=false MOCK_LLM=false \
 
 ### 中期（1-2 月，需社区/GPU 贡献）
 9. ✅ **自托管 VoxCPM2/CosyVoice（已完成）**：`docker-compose.gpu.yml` 已提供（voxcpm2 / cosyvoice GPU 服务 + `/health` + `/synthesize`），配合 `real_clone_available()` 诚实探针，Pro Studio 模式真正可用，声纹克隆从占位变真实（Track B）。
+   - **执行闭环（2026-08-29 收尾）**：此前仅探针翻转、执行仍占位；现 `clone.py` 的 `synthesize_real_clone()` 经 `RemoteVoxCPM2Port` 提交任务/轮询/下载，真实合成并转发 15s 参考样本；`VoiceCloningEngine` 注册真实克隆锚点（`is_real_clone`/`reference_audio_path`/`clone_backend`），`engine.py` 在配置 `VOXCPM2_ENDPOINT`/`COSYVOICE_ENDPOINT` 时按需注册 `voxcpm2` 引擎工厂；回归测试 `tests/unit/tts/test_clone_real_execution.py` 覆盖真实调用与诚实降级。
 10. **硬件档位热重载**：支持运行时切换 + 配置热加载。
 11. **插件系统深化**：移除 TTS/LLM/Stage 硬编码工厂，完善插件注册机制。
 12. **WebSocket 版本协商**：定义版本化事件 Schema，前端兼容旧版本。
@@ -263,7 +265,7 @@ SELF_ITERATION_MOCK=false MOCK_LLM=false \
 
 在免费资源约束下：
 - ✅ **能做到**：导入多格式、LLM 剧本结构化、本地/云端 TTS 合成（Kokoro+Piper+Edge）、母带后处理（loudnorm -16）、BGM 混音、基础质量检查、规则级「记忆」修正、流式 TTS、语义缓存、推测解码、联邦学习、Neural Codec、Constitutional AI 门禁、Prometheus 指标（函数级）、密钥加密、Alembic 外置。
--- ⚠️ **受免费资源约束（Pro Studio 可解）**：真实自我迭代进化（默认真实 LLM，需可用 LLM 驱动收敛）、真实跨语言声纹克隆（`real_clone_available()` 在自托管 GPU 后端 `/health` 可达时为 `True`，免费/无 GPU 仍为占位）、无网络时完整运行（缺离线 LLM）。
+-- ⚠️ **受免费资源约束（Pro Studio 可解）**：真实自我迭代进化（默认真实 LLM，需可用 LLM 驱动收敛）、真实跨语言声纹克隆（`real_clone_available()` 在自托管 GPU 后端 `/health` 可达时为 `True`，此时 `synthesize_speech` 经 `RemoteVoxCPM2Port` 真实合成并转发 15s 参考样本，免费/无 GPU 仍为诚实占位）、无网络时完整运行（缺离线 LLM）。
 - ⚠️ **风险点**：免费 LLM 供给链单点（FCC 网关协议锁定）、无离线 LLM 兜底（断网即退化）。（质量门禁空心、前端 i18n、默认 `/metrics` 端点、默认 mock 均已于 2026-08-29 修复。）
 
 **预计目标达成度：约 88-90%**（v4 口径约 55-60%）。本轮（2026-08-29）已收尾「立即可做」1/2/4 与中期 #9、短期 #6/#7：默认 mock 翻转、`/metrics` 挂载、金标扩充、**自托管 VoxCPM2/CosyVoice 使 Pro Studio 真实克隆可用（Track B 接通）**、**质量门禁实心化（默认真实 DNSMOS/faster-whisper 指标）**、**前端 i18n 补全（index.ts + EN locale + 构建通过）**。差距已不在「有没有功能」，而在「免费约束下功能能否真实跑到生产级」——声纹克隆与自我迭代在 Pro Studio / 真实 LLM 下已真实可用，免费档仍诚实占位。剩余第 3 项（修正营销文案）建议尽快执行，可在不增加成本的前提下将信任度进一步提升。

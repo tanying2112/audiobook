@@ -9,12 +9,15 @@
 # Docker image) while Python 3.14's PEP 649 deferred evaluation masked it locally.
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
+import shutil
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -23,8 +26,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from .kokoro_backend import KokoroBackend
+    from .remote_voxcpm2_port import RemoteVoxCPM2Port
 
 import numpy as np
+
+from .port import TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +194,26 @@ def real_clone_available() -> bool:
 def clone_mode() -> str:
     """Return the active clone mode: 'clone' (real) or 'preset' (no-GPU fallback)."""
     return "clone" if real_clone_available() else "preset"
+
+
+def _real_clone_backend() -> Tuple[bool, Optional[str]]:
+    """Return (is_real, backend_name) for the configured real clone backend.
+
+    ``is_real`` is True only when ``real_clone_available()`` is True (a real GPU
+    VoxCPM2/CosyVoice backend is both configured AND reachable). The backend
+    name reflects which endpoint answered its ``/health`` probe. This is the
+    honest Track B integration point: we never claim a real clone was produced
+    unless a real backend is actually serving requests.
+    """
+    if not real_clone_available():
+        return False, None
+    # Prefer the first endpoint that is configured; the probe already verified
+    # reachability for whichever ``_configured_clone_endpoint()`` returned.
+    if os.getenv("VOXCPM2_ENDPOINT", "").strip():
+        return True, "voxcpm2"
+    if os.getenv("COSYVOICE_ENDPOINT", "").strip():
+        return True, "cosyvoice"
+    return True, "voxcpm2"
 
 
 # ============================================================
@@ -386,6 +412,14 @@ class VoicePrint:
     created_at: str
     updated_at: str
     feature_method: str = "spectral_centroid_placeholder"  # 诚实标注：占位特征方法
+    # Track B / Pro Studio：真实克隆锚点（仅当 feature_method="real_remote_clone" 时有效）。
+    # ``is_real_clone=True`` 表示该声音已注册为由真实 GPU 克隆后端合成，
+    # ``reference_audio_path`` 为 15s 样本路径（合成时转发给后端），
+    # ``clone_backend`` 记录实际后端名 (voxcpm2 / cosyvoice)。
+    # 注意：真实声纹 embedding 由后端持有，本结构仅存锚点，绝不伪称本地持有声纹。
+    is_real_clone: bool = False
+    reference_audio_path: Optional[str] = None
+    clone_backend: Optional[str] = None
 
 
 @dataclass
@@ -455,6 +489,10 @@ class VoiceCloningEngine:
                     "avg_snr": print_obj.avg_snr,
                     "created_at": print_obj.created_at,
                     "updated_at": print_obj.updated_at,
+                    "feature_method": print_obj.feature_method,
+                    "is_real_clone": print_obj.is_real_clone,
+                    "reference_audio_path": print_obj.reference_audio_path,
+                    "clone_backend": print_obj.clone_backend,
                 }
             with open(prints_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -574,23 +612,41 @@ class VoiceCloningEngine:
 
             voice_hash = hashlib.sha256(sample_info.encode()).hexdigest()
 
-            # 生成特征向量（真实 256 维）
-            # 从第一个有效样本提取声音特征用于克隆
-            if self._model_ready and valid_samples and valid_samples[0].file_path.exists():
-                # 使用真实的声音特征提取 (256 维)
-                embedding = extract_voice_features(valid_samples[0].file_path, valid_samples[0].sample_rate).tolist()
+            # ── Track B / Pro Studio：真实克隆模式 ───────────────────────────
+            # 当真实 GPU 克隆后端可达时，说话人声纹 embedding 由后端持有，
+            # 本模块只保存 15s 样本锚点 (reference_audio_path) 并标记该声音为
+            # 真实克隆；绝不伪称本地持有可用声纹。占位特征向量留空。
+            is_real, clone_backend = _real_clone_backend()
+            if is_real and valid_samples and valid_samples[0].file_path.exists():
+                embedding: List[float] = []
+                reference_audio_path = str(valid_samples[0].file_path)
+                feature_method = "real_remote_clone"
+                logger.info(
+                    f"🎙️ 注册真实克隆声音锚点: {speaker_id} (backend={clone_backend}, " f"ref={reference_audio_path})"
+                )
             else:
-                # 模拟模式：生成基于统计的特征向量
-                embedding = [
-                    avg_snr / 50.0,  # 归一化SNR
-                    np.mean([s.duration for s in valid_samples]) / 30.0,  # 归一化时长
-                    len(valid_samples) / 10.0,  # 样本数量归一化
-                    hash(sample.speaker_id) % 1000 / 1000.0,  # 基于ID的随机特征
-                ]
-                # 填充到 256 维
-                while len(embedding) < 256:
-                    embedding.append(0.5)
-                embedding = embedding[:256]
+                # 模拟/占位模式：生成基于统计的 256 维占位特征向量（非声纹）
+                is_real = False
+                clone_backend = None
+                reference_audio_path = None
+                feature_method = "spectral_centroid_placeholder"
+                if self._model_ready and valid_samples and valid_samples[0].file_path.exists():
+                    # 使用真实的声音特征提取 (256 维占位特征)
+                    embedding = extract_voice_features(
+                        valid_samples[0].file_path, valid_samples[0].sample_rate
+                    ).tolist()
+                else:
+                    # 模拟模式：生成基于统计的特征向量
+                    embedding = [
+                        avg_snr / 50.0,  # 归一化SNR
+                        np.mean([s.duration for s in valid_samples]) / 30.0,  # 归一化时长
+                        len(valid_samples) / 10.0,  # 样本数量归一化
+                        hash(sample.speaker_id) % 1000 / 1000.0,  # 基于ID的随机特征
+                    ]
+                    # 填充到 256 维
+                    while len(embedding) < 256:
+                        embedding.append(0.5)
+                    embedding = embedding[:256]
 
             # 检查是否已存在声音指纹
             if speaker_id in self.voice_prints:
@@ -605,6 +661,10 @@ class VoiceCloningEngine:
                         quality=self._assess_quality(avg_snr),
                         sample_count=len(valid_samples),
                         avg_snr=avg_snr,
+                        feature_method=feature_method,
+                        is_real_clone=is_real,
+                        reference_audio_path=reference_audio_path,
+                        clone_backend=clone_backend,
                         created_at=existing.created_at,
                         updated_at=datetime.now().isoformat(),
                     )
@@ -622,6 +682,10 @@ class VoiceCloningEngine:
                     quality=self._assess_quality(avg_snr),
                     sample_count=len(valid_samples),
                     avg_snr=avg_snr,
+                    feature_method=feature_method,
+                    is_real_clone=is_real,
+                    reference_audio_path=reference_audio_path,
+                    clone_backend=clone_backend,
                     created_at=datetime.now().isoformat(),
                     updated_at=datetime.now().isoformat(),
                 )
@@ -673,6 +737,43 @@ class VoiceCloningEngine:
             error_msg = f"说话人 {speaker_id} 的声音质量太差 (SNR: {voice_print.avg_snr:.1f}dB)"
             logger.error(f"❌ {error_msg}")
             return False, error_msg, None
+
+        # ── Track B / Pro Studio：真实克隆合成链路 ──────────────────────────
+        # 当该声音已注册为 *真实* 克隆 (存有 15s 样本锚点且后端可达) 时，实际合成
+        # 委托给真实 GPU 克隆后端，而非 Kokoro 占位路径。我们**绝不**在此静默降级
+        # 到预设路径——若后端此时不可用，则诚实报错，而非伪造一个克隆音频。
+        if voice_print.is_real_clone and voice_print.reference_audio_path:
+            if not real_clone_available():
+                error_msg = (
+                    "真实克隆后端当前不可用 (VOXCPM2_ENDPOINT/COSYVOICE_ENDPOINT 未配置或 "
+                    "/health 未响应)，无法为真实克隆声音合成。"
+                )
+                logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg)
+            logger.info(
+                "🎙️ 路由到真实克隆后端合成: speaker=%s backend=%s",
+                speaker_id,
+                voice_print.clone_backend,
+            )
+            output_dir = Path(self.config.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:8]
+            output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
+            try:
+                audio_path = synthesize_real_clone(
+                    text=text,
+                    reference_audio_path=voice_print.reference_audio_path,
+                    language=language,
+                    emotion=emotion,
+                    output_path=output_file,
+                )
+            except Exception as e:
+                error_msg = f"真实克隆合成失败: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg) from e
+            success_msg = f"真实克隆语音合成成功: {Path(audio_path).name}"
+            logger.info(f"✅ {success_msg}")
+            return True, success_msg, Path(audio_path)
 
         # 模型未就绪时抛出明确异常
         if not self._model_ready:
@@ -810,11 +911,133 @@ class VoiceCloningEngine:
             "created_at": vp.created_at,
             "updated_at": vp.updated_at,
             "is_available_for_cloning": vp.quality in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
+            "is_real_clone": vp.is_real_clone,
+            "clone_backend": vp.clone_backend,
+            "clone_mode": "clone" if vp.is_real_clone else "preset",
         }
 
 
 # 为了向后兼容，保留原来的类名作为别名
 VoiceCloningManager = VoiceCloningEngine
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Track B / Pro Studio：真实零样本克隆执行
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 当 ``real_clone_available()`` 为 True 时，上述克隆路径通过真实 GPU 克隆后端
+# (VoxCPM2 / CosyVoice，由 docker-compose.gpu.yml 的 Pro Studio 栈自托管) 实际合成，
+# 而非 Kokoro 占位路径。``synthesize_real_clone`` 通过 ``RemoteVoxCPM2Port`` 提交任务、
+# 轮询状态、下载音频。后端地址沿用 ``VOXCPM2_ENDPOINT`` / ``COSYVOICE_ENDPOINT``。
+#
+# 诚实性：仅在 DONE 时返回音频路径；FAILED / 超时则抛出异常，调用方不会静默降级为
+# 伪造的预设克隆。
+
+
+async def _run_remote_clone(
+    port: "RemoteVoxCPM2Port",
+    *,
+    text: str,
+    reference_audio_path: str,
+    language: str,
+    emotion: str,
+    task_timeout_s: float = 180.0,
+    poll_interval_s: float = 1.0,
+    owns_port: bool = False,
+) -> Optional[str]:
+    """提交一次真实克隆合成任务到远程端口并下载结果音频路径.
+
+    Args:
+        port: 已实例化的 ``RemoteVoxCPM2Port``（测试可注入 mock）。
+        reference_audio_path: 15s 样本路径，转发给后端作为声纹锚点。
+        task_timeout_s: 任务轮询总超时（秒）。
+        poll_interval_s: 状态轮询间隔（秒）。
+        owns_port: 为 True 时本协程负责关闭端口连接池。
+
+    Returns:
+        本地音频文件路径字符串；任务失败/超时则返回 None（由调用方转为异常）。
+
+    Raises:
+        RuntimeError: 后端任务显式 FAILED 或整体超时。
+    """
+    task_id = f"clone-{uuid.uuid4().hex[:16]}"
+    payload = TTSTaskPayload(
+        text=text,
+        voice_anchor=TTSVoiceAnchor(
+            voice_id="clone",
+            language=language,
+            reference_audio_path=reference_audio_path,
+        ),
+        prosody=TTSProsody(emotion=emotion),
+    )
+    try:
+        await port.submit(task_id, payload)
+        deadline = time.monotonic() + task_timeout_s
+        while time.monotonic() < deadline:
+            status = await port.get_status(task_id)
+            if status.status == TTSStatus.DONE:
+                result = await port.get_result(task_id)
+                return result.audio_path
+            if status.status == TTSStatus.FAILED:
+                raise RuntimeError(f"真实克隆后端任务失败: {status.error_message or 'unknown'}")
+            await asyncio.sleep(poll_interval_s)
+        raise RuntimeError("真实克隆后端超时未返回结果 (timeout)")
+    finally:
+        if owns_port:
+            try:
+                await port.close()
+            except Exception:  # noqa: BLE001 — best-effort close
+                pass
+
+
+def synthesize_real_clone(
+    text: str,
+    reference_audio_path: str,
+    language: str = "zh-CN",
+    emotion: str = "neutral",
+    output_path: Optional[Path] = None,
+    *,
+    port: Optional["RemoteVoxCPM2Port"] = None,
+    task_timeout_s: float = 180.0,
+) -> Path:
+    """同步封装：通过已配置的真实克隆后端合成零样本克隆音频.
+
+    沿用 ``VOXCPM2_ENDPOINT`` / ``COSYVOICE_ENDPOINT`` 环境变量；若未显式传入
+    ``port`` 则自动创建 ``RemoteVoxCPM2Port``。返回本地 ``.wav`` 路径。
+
+    诚实性：后端未返回音频或任务失败时**抛异常**，绝不降级为预设克隆。
+    """
+    output_path = output_path or (Path("./output/clone_real") / f"clone_{int(time.time())}.wav")
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    created_port = port is None
+    if port is None:
+        from .remote_voxcpm2_port import create_remote_voxcpm2_port
+
+        port = create_remote_voxcpm2_port()
+
+    audio_path = asyncio.run(
+        _run_remote_clone(
+            port,
+            text=text,
+            reference_audio_path=reference_audio_path,
+            language=language,
+            emotion=emotion,
+            task_timeout_s=task_timeout_s,
+            owns_port=created_port,
+        )
+    )
+
+    if not audio_path:
+        raise RuntimeError("真实克隆后端未返回音频 (honest failure)")
+
+    src = Path(audio_path)
+    if src.resolve() != output_path.resolve():
+        shutil.copyfile(src, output_path)
+    elif not src.exists():
+        raise RuntimeError(f"真实克隆后端返回的路径不存在: {audio_path}")
+    return output_path
 
 
 def main():
