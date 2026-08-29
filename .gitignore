@@ -232,3 +232,7 @@ feeds/*.rss
 docs/git-commit-log.md
 docs/changelog/auto/
 storage/books/**/reports/
+
+# S3 / golden-scorer: generated runtime scores & voice prints — NEVER commit.
+storage/golden_audio_scores.json
+voices/voice_prints.json
