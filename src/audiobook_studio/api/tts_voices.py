@@ -423,7 +423,8 @@ async def get_tts_status():
 
             sess_options = ort.SessionOptions()
             sess_options.intra_op_num_threads = 1
-            sess = ort.InferenceSession(mpath, sess_options=sess_options, providers=["CPUExecutionProvider"])
+            # Smoke-load the model to prove the ONNX file is usable (result unused).
+            ort.InferenceSession(mpath, sess_options=sess_options, providers=["CPUExecutionProvider"])
 
             # Try loading voice embeddings
             import numpy as np
@@ -798,10 +799,23 @@ async def clone_voice(
             context={"content_type": file.content_type, "allowed_types": list(allowed_types)},
         )
 
-    # Save uploaded file to temp location
+    # Save uploaded file to a temp buffer for validation. Starlette may leave
+    # the underlying spooled file at EOF after computing the upload size, so
+    # rewind first to avoid silently copying zero bytes.
+    file.file.seek(0)
     with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = Path(tmp.name)
+
+    # Durable reference-sample location. Persisted on the shared AUDIO_OUTPUT_DIR
+    # volume so the self-hosted GPU clone backend (voxcpm2 / cosyvoice in
+    # docker-compose.gpu.yml) can read the SAME path via ``reference_audio_path``.
+    # The sample MUST survive the request — real zero-shot cloning needs it later,
+    # and deleting it (as before) made true cloning impossible end-to-end.
+    _safe_id = "".join(c if c.isalnum() or c in "_.-" else "_" for c in speaker_id)
+    clone_dir = Path(os.getenv("AUDIO_OUTPUT_DIR", "./output")) / "cloned_voices"
+    clone_dir.mkdir(parents=True, exist_ok=True)
+    persist_path = clone_dir / f"{_safe_id}{Path(file.filename).suffix}"
 
     try:
         # Initialize voice cloning manager
@@ -837,10 +851,14 @@ async def clone_voice(
                 context={"snr_db": snr_db, "min_snr_db": 20.0},
             )
 
+        # Persist the validated sample durably BEFORE registering it, so the
+        # stored reference_audio_path points at a file the GPU backend can read.
+        shutil.copyfile(tmp_path, persist_path)
+
         # Create voice sample with P2.11 attestation (consent 授权版本记入持久化字段)
         sample = VoiceSample(
             id=f"clone_{speaker_id}",
-            file_path=tmp_path,
+            file_path=persist_path,
             duration=duration,
             sample_rate=sr,
             snr_db=snr_db,
@@ -901,7 +919,9 @@ async def clone_voice(
             original_error=e,
         ) from e
     finally:
-        # Cleanup temp file
+        # Only the transient upload buffer is cleaned up. The persisted reference
+        # sample (persist_path) is intentionally kept so a real zero-shot clone
+        # backend can read it later via reference_audio_path.
         if tmp_path.exists():
             tmp_path.unlink()
 

@@ -153,6 +153,7 @@ def clone_mode() -> str:
 1. ~~**「自我迭代进化」默认 mock**~~ ✅ **已修复（2026-08-29）**：`SELF_ITERATION_MOCK` 默认已翻转为 `false`，核心 Harness 默认发起真实 LLM 调用（C-01 收尾）。用户运行系统即进入真实自我迭代闭环，仍需可用真实 LLM（FCC 网关 / 本地 Qwen）驱动收敛。
 2. ~~**「跨语言声纹克隆」免费档恒为假**~~ ✅ **已接通 Pro Studio（2026-08-29）**：`real_clone_available()` 改为诚实探针，自托管 `docker-compose.gpu.yml`（VoxCPM2/CosyVoice2）且 `/health` 可达时返回 `True`，声纹克隆从占位变真实（Track B）。免费/无 GPU 档仍为 `False`（占位），代码持续诚实标注；README 愿景节与免费档实际能力仍建议对齐（见第 3 项营销文案）。
    - **执行链路已闭环（2026-08-29 收尾）**：此前仅探针标志翻转，克隆执行仍走 Kokoro 占位；现 `synthesize_speech` 在 `is_real_clone` 且后端可达时经 `RemoteVoxCPM2Port` 真实合成并转发 15s 参考样本，`VoiceCloningEngine` 新增 `is_real_clone`/`reference_audio_path`/`clone_backend` 锚点字段，回归测试 `tests/unit/tts/test_clone_real_execution.py` 验证「真实调用 + 诚实占位」。
+   - **样本持久化补齐（2026-08-29 复核）**：克隆上传端点不再删除参考样本，改为落到共享卷 `AUDIO_OUTPUT_DIR/cloned_voices/`，GPU 后端可按同一路径读取，`reference_audio_path` 不再悬空（详见「中期 #9」条目）。
 
 ### 🟡 P1 — 工程债与可用性风险
 3. **免费供给链单点**：FCC 网关协议锁定 + 直连不通，无离线 LLM 兜底（Qwen2.5-3B GGUF 仍规划）。
@@ -249,6 +250,7 @@ SELF_ITERATION_MOCK=false MOCK_LLM=false \
 ### 中期（1-2 月，需社区/GPU 贡献）
 9. ✅ **自托管 VoxCPM2/CosyVoice（已完成）**：`docker-compose.gpu.yml` 已提供（voxcpm2 / cosyvoice GPU 服务 + `/health` + `/synthesize`），配合 `real_clone_available()` 诚实探针，Pro Studio 模式真正可用，声纹克隆从占位变真实（Track B）。
    - **执行闭环（2026-08-29 收尾）**：此前仅探针翻转、执行仍占位；现 `clone.py` 的 `synthesize_real_clone()` 经 `RemoteVoxCPM2Port` 提交任务/轮询/下载，真实合成并转发 15s 参考样本；`VoiceCloningEngine` 注册真实克隆锚点（`is_real_clone`/`reference_audio_path`/`clone_backend`），`engine.py` 在配置 `VOXCPM2_ENDPOINT`/`COSYVOICE_ENDPOINT` 时按需注册 `voxcpm2` 引擎工厂；回归测试 `tests/unit/tts/test_clone_real_execution.py` 覆盖真实调用与诚实降级。
+   - **参考样本持久化（2026-08-29 复核修正）**：`POST /tts/voices/clone` 此前把上传样本写入临时文件并在 `finally` 删除，`reference_audio_path` 落库即成悬空路径 → 真实克隆端到端仍不可能；现样本经校验后持久化到共享卷 `AUDIO_OUTPUT_DIR/cloned_voices/<speaker_id><ext>`（`docker-compose.gpu.yml` 中 `api` 与 `voxcpm2`/`cosyvoice` 同挂 `./output:/app/output`，GPU 后端可按同一路径读取），仅清理临时上传缓冲；同时修正 starlette 上传句柄处于 EOF 导致复制 0 字节的问题。回归测试 `tests/unit/api/test_clone_voice_persist.py` 钉住「样本存活 + 未授权 422 诚实拒」。
 10. **硬件档位热重载**：支持运行时切换 + 配置热加载。
 11. **插件系统深化**：移除 TTS/LLM/Stage 硬编码工厂，完善插件注册机制。
 12. **WebSocket 版本协商**：定义版本化事件 Schema，前端兼容旧版本。

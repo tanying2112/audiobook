@@ -21,10 +21,10 @@ from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
 from ..quality.audio_quality import fuse_audio_scores
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
-from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas.quality import FixSuggestion
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
@@ -148,7 +148,10 @@ class QualityCheckPipeline:
             import onnxruntime  # noqa: F401
 
             features["dnsmos"] = True
-        except ImportError:
+        except Exception:
+            # Optional dep: a failed import (missing OR a native/torch conflict at
+            # runtime) must degrade gracefully to "dnsmos unavailable" rather than
+            # crash pipeline construction.
             pass
 
         # Check ASR backends (FunASR or faster-whisper)
@@ -156,17 +159,19 @@ class QualityCheckPipeline:
             import funasr  # noqa: F401
 
             features["asr"] = True
-        except ImportError:
+        except Exception:
+            # ``funasr`` pulls in ``torch``; a runtime import failure (e.g. a
+            # polluted/native-torch conflict) is treated as "asr unavailable".
             try:
                 import faster_whisper  # noqa: F401
 
                 features["asr"] = True
-            except ImportError:
+            except Exception:
                 try:
                     import whisper  # openai-whisper fallback
 
                     features["asr"] = True
-                except ImportError:
+                except Exception:
                     pass
 
         # Check Speaker Similarity (torch + speechbrain)
@@ -175,7 +180,7 @@ class QualityCheckPipeline:
             from speechbrain.inference.speaker import EncoderClassifier  # noqa: F401
 
             features["speaker_sim"] = True
-        except (ImportError, Exception):
+        except Exception:
             pass
 
         return features
@@ -299,6 +304,7 @@ class QualityCheckPipeline:
                 duration_match=False,
                 issues=[f"analysis_error: {str(e)}"],
             )
+
     def _analyze_with_ffprobe(self, audio_path: Path, expected_duration_ms: int) -> AudioAnalysisResult:
         """Audio analysis using ffprobe/ffmpeg subprocess (Python 3.14+ compatible)."""
         # Hot-reload config if changed
@@ -410,7 +416,7 @@ class QualityCheckPipeline:
             with open(audio_path, "rb") as f:
                 audio_bytes = f.read()
             return base64.b64encode(audio_bytes).decode("utf-8")
-        except (OSError, IOError, ValueError) as e:
+        except (OSError, ValueError) as e:  # IOError is an alias of OSError
             logger.error(f"Failed to encode audio {audio_path}: {e}")
             return None
 
@@ -479,7 +485,7 @@ class QualityCheckPipeline:
                 )
                 return cast(QualityJudgment, result.output)
 
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+        except (ValueError, RuntimeError, OSError) as e:  # OSError covers Connection/Timeout
             logger.warning(f"Multimodal quality judge failed for {segment_id}: {e}")
             return None
 
@@ -570,20 +576,23 @@ class QualityCheckPipeline:
         # Emit stage enter
         if inputs:
             annotation = inputs[0][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_enter(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    total_items=len(inputs),
-                ))
+                loop.create_task(
+                    emit_stage_enter(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        total_items=len(inputs),
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -592,22 +601,25 @@ class QualityCheckPipeline:
         for i, (audio_path, annotation, routing, reference_text) in enumerate(inputs):
             # Emit stage progress
             annotation = inputs[i][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_progress(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    current=i + 1,
-                    total=len(inputs),
-                    message=f"Quality checking segment {i + 1}/{len(inputs)}",
-                ))
+                loop.create_task(
+                    emit_stage_progress(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        current=i + 1,
+                        total=len(inputs),
+                        message=f"Quality checking segment {i + 1}/{len(inputs)}",
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -633,8 +645,6 @@ class QualityCheckPipeline:
             # Mock mode: skip hard quality checks entirely (DNSMOS/ASR/SpeakerSim)
             # Mock audio has no real acoustic features, so hard metrics would fail
             if self.mock_mode:
-                # Determine if regeneration is needed based on rule-based issues
-                needs_regeneration = len(analysis.issues) > 0
                 # Call judge in mock mode to get the mock judgment
                 judgment = self.judge.judge_quality(
                     segment_id=routing.segment_id,
@@ -648,9 +658,7 @@ class QualityCheckPipeline:
                 # rationale-bearing FixSuggestion. cast preserves the existing runtime merge
                 # of diagnostics into the typed issues list against the (out-of-scope) schema.
                 if analysis.issues:
-                    judgment.issues = cast(
-                        List[Any], list(analysis.issues) + list(judgment.issues)
-                    )
+                    judgment.issues = cast(List[Any], list(analysis.issues) + list(judgment.issues))
                     judgment.needs_regeneration = True
                     judgment.fix_suggestions = [
                         FixSuggestion(
@@ -708,18 +716,20 @@ class QualityCheckPipeline:
                     return v if isinstance(v, (int, float)) else None
 
                 real_metrics = {
-                    "utmos": _numeric(hard_result.utmos.mos)
-                    if hard_result.utmos and hard_result.utmos.success
-                    else None,
-                    "dnsmos": _numeric(hard_result.dnsmos.mos_ovr)
-                    if hard_result.dnsmos and hard_result.dnsmos.success
-                    else None,
-                    "wer": _numeric(hard_result.wer.wer)
-                    if hard_result.wer and hard_result.wer.success
-                    else None,
-                    "speaker_sim": _numeric(hard_result.speaker_sim.similarity)
-                    if hard_result.speaker_sim and hard_result.speaker_sim.success
-                    else None,
+                    "utmos": (
+                        _numeric(hard_result.utmos.mos) if hard_result.utmos and hard_result.utmos.success else None
+                    ),
+                    "dnsmos": (
+                        _numeric(hard_result.dnsmos.mos_ovr)
+                        if hard_result.dnsmos and hard_result.dnsmos.success
+                        else None
+                    ),
+                    "wer": _numeric(hard_result.wer.wer) if hard_result.wer and hard_result.wer.success else None,
+                    "speaker_sim": (
+                        _numeric(hard_result.speaker_sim.similarity)
+                        if hard_result.speaker_sim and hard_result.speaker_sim.success
+                        else None
+                    ),
                 }
                 # Count available metrics
                 avail = sum(1 for v in real_metrics.values() if v is not None)
@@ -766,9 +776,7 @@ class QualityCheckPipeline:
                 # Incorporate hard quality check results into judgment
                 if not hard_result.passed:
                     judgment.needs_regeneration = True
-                    cast(List[Any], judgment.issues).append(
-                        f"Hard quality check failed: {hard_result.overall_message}"
-                    )
+                    cast(List[Any], judgment.issues).append(f"Hard quality check failed: {hard_result.overall_message}")
                     judgment.fix_suggestions.append(
                         FixSuggestion(
                             suggestion_type="content_edit",
@@ -833,7 +841,7 @@ class QualityCheckPipeline:
                 )
 
                 judgments.append(judgment)
-            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+            except (ValueError, RuntimeError, OSError):  # OSError covers Connection/Timeout
                 from ..monitoring import record_stage_performance
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
@@ -857,20 +865,23 @@ class QualityCheckPipeline:
         # Emit stage exit (success)
         if inputs:
             annotation = inputs[0][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
