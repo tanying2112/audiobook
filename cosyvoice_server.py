@@ -15,6 +15,8 @@ Environment:
     ENABLE_VOICE_CLONING=true
     ENABLE_STREAMING=true
     SAMPLE_RATE=24000
+    CLONE_PROMPT_KWARG=          # escape hatch: reference-sample parameter name for
+                                 # a build whose signature we cannot introspect
 """
 
 from __future__ import annotations
@@ -30,10 +32,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Optional
 
-import torch
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from gpu_tts_common import (
+    CloneNotSupportedError,
+    normalize_audio_result,
+    read_audio_mono,
+    resolve_clone_invocation,
+    write_wav,
+)
 from pydantic import BaseModel, Field
 
 # Configure logging
@@ -52,6 +60,10 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 ENABLE_VOICE_CLONING = os.getenv("ENABLE_VOICE_CLONING", "true").lower() == "true"
 ENABLE_STREAMING = os.getenv("ENABLE_STREAMING", "true").lower() == "true"
 SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "24000"))
+# Operator escape hatch for builds whose cloning parameter we cannot detect by
+# signature (see gpu_tts_common.resolve_clone_invocation).
+CLONE_PROMPT_KWARG = os.getenv("CLONE_PROMPT_KWARG", "").strip() or None
+CLONE_METHOD = os.getenv("CLONE_METHOD", "").strip() or None
 
 MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -74,6 +86,9 @@ class SynthesizeRequest(BaseModel):
     language: Optional[str] = "zh"
     reference_audio_path: Optional[str] = None
     reference_audio_bytes: Optional[str] = None  # base64 encoded
+    # Transcript of the reference sample: CosyVoice2's inference_zero_shot takes a
+    # prompt_text and similarity degrades noticeably without it.
+    reference_text: Optional[str] = None
     prosody: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     task_id: Optional[str] = None
@@ -144,7 +159,7 @@ class CosyVoiceModel:
 
                 model_dir = MODEL_CACHE_DIR / MODEL_ID.split("/")[-1]
                 if not model_dir.exists():
-                    logger.info(f"Downloading CosyVoice2 from ModelScope...")
+                    logger.info("Downloading CosyVoice2 from ModelScope...")
                     snapshot_download(MODEL_ID, cache_dir=str(MODEL_CACHE_DIR))
                 model_path = str(model_dir)
             except Exception:
@@ -175,65 +190,75 @@ class CosyVoiceModel:
             self._loaded = True
             logger.info("CosyVoice2 loaded successfully")
 
+    @staticmethod
+    def load_prompt_waveform(path: str):
+        """Decode the reference sample into CosyVoice's 16 kHz ``[1, N]`` tensor.
+
+        CosyVoice's own ``load_wav`` helper returns exactly this; passing the *path*
+        (as this server previously did) raises inside the model, so cloning could
+        never have worked.
+        """
+        import torch
+
+        mono, _ = read_audio_mono(path, target_sr=16000)
+        return torch.from_numpy(mono).unsqueeze(0)
+
     def synthesize(
         self,
         text: str,
         voice_id: str = "default",
         language: str = "zh",
         reference_audio_path: Optional[str] = None,
+        reference_text: Optional[str] = None,
         prosody: Optional[Dict[str, Any]] = None,
         stream: bool = False,
-    ) -> torch.Tensor:
-        """Synthesize speech and return audio tensor [channels, samples]."""
+    ):
+        """Synthesize speech, returning float32 audio shaped ``[channels, samples]``.
+
+        With a reference sample this performs a real zero-shot clone: the decoded 16 kHz
+        prompt waveform (plus the prompt transcript when the build accepts one) is handed
+        to the model. If the build exposes no cloning entry point the call raises
+        :class:`CloneNotSupportedError` instead of silently rendering a preset voice.
+        """
+        import torch
+
         self.load()
 
         prosody = prosody or {}
-        speed = prosody.get("rate", 1.0)
-        pitch = prosody.get("pitch", 0)
-        volume = prosody.get("volume", 1.0)
-        emotion = prosody.get("emotion", "neutral")
+        speed = float(prosody.get("rate", 1.0) or 1.0)
 
         with torch.no_grad():
-            # CosyVoice2 inference (pseudo-code - adapt to actual API)
-            # The actual CosyVoice2 API may differ
-            if hasattr(self.model, "inference_zero_shot"):
-                # Zero-shot voice cloning
-                if reference_audio_path and ENABLE_VOICE_CLONING:
-                    audio = self.model.inference_zero_shot(
-                        text=text,
-                        prompt_speech_16k=reference_audio_path,
-                        prompt_text="",  # optional
-                        speed=speed,
-                    )
-                else:
-                    # Pre-trained voice
-                    audio = self.model.inference_sft(
-                        text=text,
-                        spk_id=voice_id,
-                        speed=speed,
-                    )
-            elif hasattr(self.model, "inference"):
-                audio = self.model.inference(
+            if reference_audio_path and ENABLE_VOICE_CLONING:
+                invocation = resolve_clone_invocation(
+                    self.model,
                     text=text,
-                    prompt_speech_16k=reference_audio_path,
+                    reference_audio_path=reference_audio_path,
+                    reference_text=reference_text,
                     speed=speed,
+                    load_prompt=self.load_prompt_waveform,
+                    override_kwarg=CLONE_PROMPT_KWARG,
+                    override_method=CLONE_METHOD,
                 )
+                logger.info(
+                    "Zero-shot clone: %s(%s=<%s>) ref=%s prompt_text=%s",
+                    invocation.method_name,
+                    invocation.prompt_kwarg,
+                    "waveform" if invocation.prompt_is_tensor else "path",
+                    reference_audio_path,
+                    bool(reference_text),
+                )
+                audio = invocation.call(self.model)
+            elif reference_audio_path and not ENABLE_VOICE_CLONING:
+                raise CloneNotSupportedError(
+                    "Clone requested but ENABLE_VOICE_CLONING=false on this server; "
+                    "refusing to return a preset-voice rendition as a clone."
+                )
+            elif hasattr(self.model, "inference_sft"):
+                audio = self.model.inference_sft(tts_text=text, spk_id=voice_id, speed=speed)
             else:
-                # Fallback
                 audio = self.model.generate(text=text, speed=speed)
 
-        # Ensure audio is [channels, samples] on CPU
-        if isinstance(audio, torch.Tensor):
-            if audio.dim() == 1:
-                audio = audio.unsqueeze(0)
-            audio = audio.cpu()
-        else:
-            # Convert numpy to tensor
-            audio = torch.from_numpy(audio).float()
-            if audio.dim() == 1:
-                audio = audio.unsqueeze(0)
-
-        return audio
+        return normalize_audio_result(audio)
 
     async def synthesize_stream(
         self,
@@ -241,30 +266,34 @@ class CosyVoiceModel:
         voice_id: str = "default",
         language: str = "zh",
         reference_audio_path: Optional[str] = None,
+        reference_text: Optional[str] = None,
         prosody: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Stream synthesized audio chunks."""
+        import torch
+
         self.load()
 
         prosody = prosody or {}
         speed = prosody.get("rate", 1.0)
 
-        # CosyVoice streaming (pseudo-code - adapt to actual API)
         if hasattr(self.model, "inference_stream"):
-            async for chunk in self.model.inference_stream(
-                text=text,
-                prompt_speech_16k=reference_audio_path if ENABLE_VOICE_CLONING else None,
-                spk_id=voice_id if not reference_audio_path else None,
-                speed=speed,
-            ):
-                # Convert chunk to bytes
+            stream_kwargs: Dict[str, Any] = {"text": text, "speed": speed}
+            if reference_audio_path and ENABLE_VOICE_CLONING:
+                stream_kwargs["prompt_speech_16k"] = self.load_prompt_waveform(reference_audio_path)
+                if reference_text:
+                    stream_kwargs["prompt_text"] = reference_text
+            else:
+                stream_kwargs["spk_id"] = voice_id
+            async for chunk in self.model.inference_stream(**stream_kwargs):
                 if isinstance(chunk, torch.Tensor):
                     chunk = chunk.cpu().numpy()
                 yield chunk.tobytes()
         else:
-            # Non-streaming fallback: yield single chunk
-            audio = self.synthesize(text, voice_id, language, reference_audio_path, prosody)
-            yield audio.cpu().numpy().tobytes()
+            # Non-streaming fallback: yield a single chunk (still a real clone when a
+            # reference sample was supplied — synthesize() refuses to fake one).
+            audio = self.synthesize(text, voice_id, language, reference_audio_path, reference_text, prosody)
+            yield audio.tobytes()
 
 
 _model = CosyVoiceModel()
@@ -284,6 +313,8 @@ async def startup_event():
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
+    import torch
+
     with _tasks_lock:
         pending = sum(1 for t in _tasks.values() if t["status"] == TaskStatus.PENDING)
         running = sum(1 for t in _tasks.values() if t["status"] == TaskStatus.RUNNING)
@@ -350,6 +381,7 @@ async def stream_audio(task_id: str):
                 voice_id=request_data.get("voice_id", "default"),
                 language=request_data.get("language", "zh"),
                 reference_audio_path=request_data.get("reference_audio_path"),
+                reference_text=request_data.get("reference_text"),
                 prosody=request_data.get("prosody", {}),
             ):
                 yield chunk
@@ -422,7 +454,7 @@ async def cancel_task(task_id: str):
 
 def run_synthesis(task_id: str, request: SynthesizeRequest):
     """Run synthesis in background thread."""
-    output_dir = Path("/app/output") / "cosyvoice"
+    output_dir = Path(os.getenv("AUDIO_OUTPUT_DIR", "/app/output")) / "cosyvoice"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -436,6 +468,7 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
             voice_id=request.voice_id or "default",
             language=request.language or "zh",
             reference_audio_path=request.reference_audio_path,
+            reference_text=request.reference_text,
             prosody=request.prosody,
         )
 
@@ -444,9 +477,7 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
 
         # Save audio
         output_path = output_dir / f"{task_id}.wav"
-        import torchaudio
-
-        torchaudio.save(str(output_path), audio, SAMPLE_RATE)
+        write_wav(str(output_path), audio, SAMPLE_RATE)
 
         with _tasks_lock:
             _tasks[task_id]["progress"] = 1.0
@@ -459,6 +490,9 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
                 "sample_rate": SAMPLE_RATE,
                 "duration_sec": audio.shape[1] / SAMPLE_RATE,
                 "channels": audio.shape[0],
+                # Honest capability report: True only when the reference sample was
+                # actually handed to the model for this task.
+                "cloned": bool(request.reference_audio_path) and ENABLE_VOICE_CLONING,
             }
 
     except Exception as e:

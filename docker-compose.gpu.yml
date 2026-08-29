@@ -38,8 +38,6 @@
 #   CosyVoice: http://localhost:5020 (health: /health, synthesize: /synthesize)
 #   Main API:  http://localhost:8000 (routes to GPU services via VOXCPM2_ENDPOINT/COSYVOICE_ENDPOINT)
 
-version: "3.9"
-
 x-common-gpu: &common-gpu
   deploy:
     resources:
@@ -175,10 +173,18 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+      # Both GPU backends live behind profiles, so they may legitimately be absent
+      # (e.g. `--profile voxcpm2` only, on an 8GB card). `required: false` keeps the
+      # ordering/health gate when the profile IS enabled while allowing the project
+      # to stay valid when it is not — without it, `docker compose config` fails with
+      # `service "api" depends on undefined service "voxcpm2"` and Pro Studio cannot
+      # start at all.
       voxcpm2:
         condition: service_healthy
+        required: false
       cosyvoice:
         condition: service_healthy
+        required: false
 
   # ========================================================================
   # Celery Worker (background tasks, also needs GPU service access)
@@ -222,10 +228,13 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+      # See the api service: profiled GPU backends must be optional dependencies.
       voxcpm2:
         condition: service_healthy
+        required: false
       cosyvoice:
         condition: service_healthy
+        required: false
 
   # ========================================================================
   # Shared Infrastructure

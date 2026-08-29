@@ -420,6 +420,9 @@ class VoicePrint:
     is_real_clone: bool = False
     reference_audio_path: Optional[str] = None
     clone_backend: Optional[str] = None
+    # 参考样本转录文本 (15s 样本的 text_content)，合成时随锚点转发给后端作 zero-shot
+    # prompt_text。缺失=None 表示未登记转录（旧样本/历史数据）。
+    reference_text: Optional[str] = None
 
 
 @dataclass
@@ -620,6 +623,7 @@ class VoiceCloningEngine:
             if is_real and valid_samples and valid_samples[0].file_path.exists():
                 embedding: List[float] = []
                 reference_audio_path = str(valid_samples[0].file_path)
+                reference_text = valid_samples[0].text_content or None
                 feature_method = "real_remote_clone"
                 logger.info(
                     f"🎙️ 注册真实克隆声音锚点: {speaker_id} (backend={clone_backend}, " f"ref={reference_audio_path})"
@@ -629,6 +633,7 @@ class VoiceCloningEngine:
                 is_real = False
                 clone_backend = None
                 reference_audio_path = None
+                reference_text = None
                 feature_method = "spectral_centroid_placeholder"
                 if self._model_ready and valid_samples and valid_samples[0].file_path.exists():
                     # 使用真实的声音特征提取 (256 维占位特征)
@@ -664,6 +669,7 @@ class VoiceCloningEngine:
                         feature_method=feature_method,
                         is_real_clone=is_real,
                         reference_audio_path=reference_audio_path,
+                        reference_text=reference_text,
                         clone_backend=clone_backend,
                         created_at=existing.created_at,
                         updated_at=datetime.now().isoformat(),
@@ -685,6 +691,7 @@ class VoiceCloningEngine:
                     feature_method=feature_method,
                     is_real_clone=is_real,
                     reference_audio_path=reference_audio_path,
+                    reference_text=reference_text,
                     clone_backend=clone_backend,
                     created_at=datetime.now().isoformat(),
                     updated_at=datetime.now().isoformat(),
@@ -763,6 +770,7 @@ class VoiceCloningEngine:
                 audio_path = synthesize_real_clone(
                     text=text,
                     reference_audio_path=voice_print.reference_audio_path,
+                    reference_text=voice_print.reference_text,
                     language=language,
                     emotion=emotion,
                     output_path=output_file,
@@ -939,6 +947,7 @@ async def _run_remote_clone(
     *,
     text: str,
     reference_audio_path: str,
+    reference_text: Optional[str] = None,
     language: str,
     emotion: str,
     task_timeout_s: float = 180.0,
@@ -967,6 +976,7 @@ async def _run_remote_clone(
             voice_id="clone",
             language=language,
             reference_audio_path=reference_audio_path,
+            reference_text=reference_text,
         ),
         prosody=TTSProsody(emotion=emotion),
     )
@@ -993,6 +1003,7 @@ async def _run_remote_clone(
 def synthesize_real_clone(
     text: str,
     reference_audio_path: str,
+    reference_text: Optional[str] = None,
     language: str = "zh-CN",
     emotion: str = "neutral",
     output_path: Optional[Path] = None,
@@ -1022,6 +1033,7 @@ def synthesize_real_clone(
             port,
             text=text,
             reference_audio_path=reference_audio_path,
+            reference_text=reference_text,
             language=language,
             emotion=emotion,
             task_timeout_s=task_timeout_s,

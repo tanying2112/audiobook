@@ -487,6 +487,12 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
             "reference_audio_path": voice_anchor.reference_audio_path,
         }
 
+        # Reference transcript (zero-shot prompt_text). Only sent when present so
+        # older backends that do not declare the field are unaffected.
+        reference_text = getattr(voice_anchor, "reference_text", None)
+        if reference_text:
+            request_data["reference_text"] = reference_text
+
         # Add prosody if provided
         if payload.prosody:
             request_data["prosody"] = {

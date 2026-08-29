@@ -50,8 +50,9 @@ RUN pip install --no-cache-dir \
 # Clone CosyVoice repository
 RUN git clone https://github.com/FunAudioLLM/CosyVoice /opt/CosyVoice 2>/dev/null || true
 
-# Copy server code
+# Copy server code (gpu_tts_common holds the shared, unit-tested cloning logic)
 COPY cosyvoice_server.py /app/cosyvoice_server.py
+COPY gpu_tts_common.py /app/gpu_tts_common.py
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \

@@ -14,6 +14,8 @@ Environment:
     MAX_CONCURRENT=2
     ENABLE_VOICE_CLONING=true
     SAMPLE_RATE=24000
+    CLONE_PROMPT_KWARG=          # escape hatch: reference-sample parameter name for
+                                 # a build whose signature we cannot introspect
 """
 
 from __future__ import annotations
@@ -28,10 +30,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import torch
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from funasr import AutoModel
+from gpu_tts_common import (
+    CloneNotSupportedError,
+    normalize_audio_result,
+    read_audio_mono,
+    resolve_clone_invocation,
+    write_wav,
+)
 from pydantic import BaseModel, Field
 
 # Configure logging
@@ -49,6 +56,10 @@ MODEL_CACHE_DIR = Path(os.getenv("MODEL_CACHE_DIR", "/app/models/voxcpm2"))
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 ENABLE_VOICE_CLONING = os.getenv("ENABLE_VOICE_CLONING", "true").lower() == "true"
 SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "24000"))
+# Operator escape hatch for model builds whose cloning parameter we cannot detect
+# by signature (see gpu_tts_common.resolve_clone_invocation).
+CLONE_PROMPT_KWARG = os.getenv("CLONE_PROMPT_KWARG", "").strip() or None
+CLONE_METHOD = os.getenv("CLONE_METHOD", "").strip() or None
 
 MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +81,9 @@ class SynthesizeRequest(BaseModel):
     speaker_name: Optional[str] = None
     language: Optional[str] = "zh"
     reference_audio_path: Optional[str] = None
+    # Transcript of the reference sample. Zero-shot cloning quality depends on it for
+    # prompt-text-aware builds, so the API forwards the stored sample transcript.
+    reference_text: Optional[str] = None
     prosody: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     task_id: Optional[str] = None
@@ -130,6 +144,10 @@ class VoxCPM2Model:
         with self._load_lock:
             if self._loaded:
                 return
+            # Imported lazily so the module stays importable (and unit-testable)
+            # without the GPU stack installed.
+            from funasr import AutoModel
+
             logger.info(f"Loading VoxCPM2 from {MODEL_ID} on {DEVICE}...")
             model_path = str(MODEL_CACHE_DIR / MODEL_ID.split("/")[-1])
             self.model = AutoModel(
@@ -141,49 +159,66 @@ class VoxCPM2Model:
             self._loaded = True
             logger.info("VoxCPM2 loaded successfully")
 
+    @staticmethod
+    def load_prompt_waveform(path: str):
+        """Decode the reference sample into the 16 kHz waveform tensor models expect."""
+        import torch
+
+        mono, _ = read_audio_mono(path, target_sr=16000)
+        return torch.from_numpy(mono).unsqueeze(0)
+
     def synthesize(
         self,
         text: str,
         voice_id: str = "default",
         language: str = "zh",
         reference_audio_path: Optional[str] = None,
+        reference_text: Optional[str] = None,
         prosody: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
-        """Synthesize speech and return audio tensor [channels, samples]."""
+    ):
+        """Synthesize speech, returning float32 audio shaped ``[channels, samples]``.
+
+        When ``reference_audio_path`` is given the sample is really handed to the model
+        for zero-shot cloning. If this build exposes no cloning entry point the call
+        raises :class:`CloneNotSupportedError` — we never fall back to the default
+        voice, because the caller would then report a clone that never happened.
+        """
+        import torch
+
         self.load()
 
         prosody = prosody or {}
-        cfg_value = prosody.get("cfg_value", 2.0)
-        inference_timesteps = prosody.get("inference_timesteps", 10)
+        speed = float(prosody.get("rate", 1.0) or 1.0)
 
         with torch.no_grad():
-            # VoxCPM2 generate via FunASR
-            # Note: FunASR's AutoModel.generate for VoxCPM2 may have different signature
-            # This is based on the modal server implementation
-            result = self.model.generate(
-                input=text,
-                # prompt_speech_16k=reference_audio_path,  # for voice cloning
-            )
+            if reference_audio_path and ENABLE_VOICE_CLONING:
+                invocation = resolve_clone_invocation(
+                    self.model,
+                    text=text,
+                    reference_audio_path=reference_audio_path,
+                    reference_text=reference_text,
+                    speed=speed,
+                    load_prompt=self.load_prompt_waveform,
+                    override_kwarg=CLONE_PROMPT_KWARG,
+                    override_method=CLONE_METHOD,
+                )
+                logger.info(
+                    "Zero-shot clone: %s(%s=<%s>) ref=%s",
+                    invocation.method_name,
+                    invocation.prompt_kwarg,
+                    "waveform" if invocation.prompt_is_tensor else "path",
+                    reference_audio_path,
+                )
+                result = invocation.call(self.model)
+            elif reference_audio_path and not ENABLE_VOICE_CLONING:
+                raise CloneNotSupportedError(
+                    "Clone requested but ENABLE_VOICE_CLONING=false on this server; "
+                    "refusing to return a default-voice rendition as a clone."
+                )
+            else:
+                result = self.model.generate(input=text)
 
-        # Extract audio tensor
-        if isinstance(result, dict):
-            audio = result.get("audio") or result.get("waveform")
-            if audio is None and "audio_path" in result:
-                import torchaudio
-
-                audio, _ = torchaudio.load(result["audio_path"])
-        else:
-            audio = result
-
-        if audio is None:
-            raise RuntimeError("No audio output from model.generate()")
-
-        # Ensure audio is [channels, samples] on CPU
-        if audio.dim() == 1:
-            audio = audio.unsqueeze(0)
-        audio = audio.cpu()
-
-        return audio
+        return normalize_audio_result(result)
 
 
 _model = VoxCPM2Model()
@@ -205,6 +240,8 @@ async def startup_event():
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
+    import torch
+
     with _tasks_lock:
         pending = sum(1 for t in _tasks.values() if t["status"] == TaskStatus.PENDING)
         running = sum(1 for t in _tasks.values() if t["status"] == TaskStatus.RUNNING)
@@ -298,7 +335,7 @@ async def cancel_task(task_id: str):
 
 def run_synthesis(task_id: str, request: SynthesizeRequest):
     """Run synthesis in background thread."""
-    output_dir = Path("/app/output") / "voxcpm2"
+    output_dir = Path(os.getenv("AUDIO_OUTPUT_DIR", "/app/output")) / "voxcpm2"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -312,6 +349,7 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
             voice_id=request.voice_id or "default",
             language=request.language or "zh",
             reference_audio_path=request.reference_audio_path,
+            reference_text=request.reference_text,
             prosody=request.prosody,
         )
 
@@ -320,9 +358,7 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
 
         # Save audio
         output_path = output_dir / f"{task_id}.wav"
-        import torchaudio
-
-        torchaudio.save(str(output_path), audio, SAMPLE_RATE)
+        write_wav(str(output_path), audio, SAMPLE_RATE)
 
         with _tasks_lock:
             _tasks[task_id]["progress"] = 1.0
@@ -335,6 +371,9 @@ def run_synthesis(task_id: str, request: SynthesizeRequest):
                 "sample_rate": SAMPLE_RATE,
                 "duration_sec": audio.shape[1] / SAMPLE_RATE,
                 "channels": audio.shape[0],
+                # Honest capability report: True only when the reference sample was
+                # actually handed to the model for this task.
+                "cloned": bool(request.reference_audio_path) and ENABLE_VOICE_CLONING,
             }
 
     except Exception as e:
