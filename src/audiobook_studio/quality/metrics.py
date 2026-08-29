@@ -2171,8 +2171,11 @@ class QualityCheckSuite:
         # ASR WER (requires funasr or faster-whisper)
         if qc_config.get("asr_enabled", True):
             try:
-                asr_model = qc_config.get("asr_model", "paraformer-zh")
-                asr_backend = qc_config.get("asr_backend", "funasr")
+                # Default to the lightweight faster-whisper "tiny" path so the
+                # quality gate can run REAL WER on free hardware (audit rec #6).
+                # Heavier FunASR/SenseVoice models remain selectable via config.
+                asr_model = qc_config.get("asr_model", "tiny")
+                asr_backend = qc_config.get("asr_backend", "whisper")
                 self._wer = ASRWerMetric(
                     backend=asr_backend,
                     model_name=asr_model,

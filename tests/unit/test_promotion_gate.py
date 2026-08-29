@@ -546,12 +546,12 @@ class TestSelfIterationMockMode:
     explicit REAL-LLM record; when true (default) it must mock.
     """
 
-    def test_resolve_mock_mode_defaults_to_mock(self, monkeypatch):
+    def test_resolve_mock_mode_defaults_to_real_llm(self, monkeypatch):
         monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
         from src.audiobook_studio.feedback.promotion_gate import _resolve_mock_mode
 
-        # Unset → default true → mock_mode True (no live LLM).
-        assert _resolve_mock_mode(None) is True
+        # Unset → default false → mock_mode False (live LLM invoked by default).
+        assert _resolve_mock_mode(None) is False
 
     def test_resolve_mock_mode_false_env_enables_real_llm(self, monkeypatch):
         monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
@@ -624,13 +624,17 @@ class TestSelfIterationMockMode:
         assert any("REAL-LLM" in rec.message for rec in caplog.records), [rec.message for rec in caplog.records]
 
     def test_run_stage_with_prompt_version_logs_mock_when_mock_on(self, monkeypatch, tmp_path, caplog):
-        """Default (SELF_ITERATION_MOCK unset/true) → mock_mode=True + MOCK log."""
+        """Explicit SELF_ITERATION_MOCK=true → mock_mode=True + MOCK log.
+
+        Note: the harness default is now real-LLM (SELF_ITERATION_MOCK unset →
+        false), so the mock path must be requested explicitly via the env var.
+        """
         import logging
 
         from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
         from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput
 
-        monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "true")
 
         prompt_dir = tmp_path / "prompts" / "edit_for_tts"
         prompt_dir.mkdir(parents=True)

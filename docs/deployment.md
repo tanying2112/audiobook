@@ -728,3 +728,55 @@ python app.py  # http://localhost:7860
 > - 想让**别的 Agent / 用户通过标准 MCP 协议调用** → 跑 11.5.1 的 MCP Server
 > - 想**零运维对外发布一个可玩的 Web Demo** → 推 11.5.2 到创空间
 > - 三者**互不冲突、可叠加**，模型权重复用同一份 NAS 缓存
+
+---
+
+### 11.6 自托管 Pro Studio 模式（docker-compose.gpu.yml，审计建议 #9）
+
+本章前几节依赖第三方免费 GPU 池（Kaggle / ModelScope / Modal）。若你**自有
+独显或云端 GPU**，可用仓库根目录的 `docker-compose.gpu.yml` 在本机/本集群**自托管**
+`VoxCPM2` 与 `CosyVoice 2` 推理服务，把「专业显卡模式（Pro Studio）」真正跑通——
+此时零样本声纹克隆从占位降级变为**真实可用**。
+
+**前置条件**
+
+- NVIDIA GPU，8GB+ 显存（VoxCPM2 约 8GB，CosyVoice 2 约 10GB；两者同开需 16GB+）
+- 宿主机已装 `nvidia-container-toolkit`（Docker 支持 `--gpus all`）
+
+**启动（按显存选一个 profile）**
+
+```bash
+# 仅 VoxCPM2（轻量，约 8GB 显存）
+docker compose -f docker-compose.gpu.yml --profile voxcpm2 up -d
+
+# 仅 CosyVoice 2（约 10GB 显存）
+docker compose -f docker-compose.gpu.yml --profile cosyvoice up -d
+
+# 两者同开（需 16GB+ 显存或错峰启动）
+docker compose -f docker-compose.gpu.yml --profile voxcpm2 --profile cosyvoice up -d
+```
+
+首次启动会自动下载模型并缓存到 `./models` 卷；`api` / `celery-worker` 通过
+`VOXCPM2_ENDPOINT=http://voxcpm2:5010`、`COSYVOICE_ENDPOINT=http://cosyvoice:5020`
+并设 `HARDWARE_PROFILE=pro_studio` 接入，且 `depends_on` 以 GPU 服务的 `/health`
+健康为启动前提。
+
+**能力诚实探针（Track B 接入点）**
+
+`src/audiobook_studio/tts/clone.py` 的 `real_clone_available()` 现在**不再恒为
+`False`**：它会探查上述 `VOXCPM2_ENDPOINT` / `COSYVOICE_ENDPOINT` 是否配置且
+`/health` 可达（带 30s TTL 缓存，避免每次请求打探）。仅当真实后端应答健康探针时，
+`/api/tts/voices` 的克隆接口才返回 `mode='clone'` / `clone_available=True`，
+否则仍诚实降级为 `mode='preset'`。
+
+```bash
+# 健康探针自检
+curl -f http://localhost:5010/health   # VoxCPM2
+curl -f http://localhost:5020/health   # CosyVoice
+```
+
+> 红线#1A：克隆前仍需 `consent=true`（样本提供者授权）。即便后端可用，未授权样本
+> 一律 `422` 诚实拒绝，绝不假装处理。
+>
+> 若需强制预设模式（如 hermetic CI 或后端偶发不可用），设 `CLONE_BACKEND_DISABLED=true`
+> 即可让 `real_clone_available()` 恒为 `False`，不改变其它逻辑。

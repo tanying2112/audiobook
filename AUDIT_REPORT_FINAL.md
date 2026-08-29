@@ -195,7 +195,7 @@ python -m src.audiobook_studio.cli export --bg-music assets/bgm.mp3 --bg-volume 
 ### 立即可做（1-2 天，零成本）
 1. **修正营销文案**：在 README 顶部用显眼 banner 区分「已落地 / 规划中 / 需 GPU」三态，删除「跨语言声纹克隆」在免费模式的误导性表述。
 2. **统一 SSOT**：PROJECT_STATUS 拆分「任务级 ✅」与「全局可用性 ⚠️」，不再用「生产完备」掩盖 425 failed。
-3. **修复 hypothesis 环境**：`pip install --force-reinstall hypothesis==6.161.1`（或升级），让 4 个关键测试可收集。
+3. **修复 hypothesis 环境**：`pip install --force-reinstall hypothesis==6.161.1`（优先进行升级），让 4 个关键测试可收集。
 
 ### 短期（1-2 周，免费资源）
 4. **落地本地离线 LLM**：集成 llama.cpp + Qwen2.5-3B GGUF，解决「断网即退化」与供给链单点。

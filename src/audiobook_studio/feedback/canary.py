@@ -120,6 +120,7 @@ SELF_ITERATION_MOCK_ENV = "SELF_ITERATION_MOCK"
 
 
 def _self_iteration_mock_enabled() -> bool:
+    # Default to "false" (real LLM mode) when unset — self-iteration harness runs real LLM by default
     return os.getenv(SELF_ITERATION_MOCK_ENV, "false").lower() not in ("false", "0", "no")
 
 

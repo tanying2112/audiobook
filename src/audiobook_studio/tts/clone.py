@@ -12,11 +12,17 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .kokoro_backend import KokoroBackend
 
 import numpy as np
 
@@ -81,15 +87,102 @@ def is_kokoro_available() -> bool:
 # We never claim a usable clone was produced when none was.
 
 
-def real_clone_available() -> bool:
-    """True only when a real zero-shot clone backend is registered/available.
+# ─────────────────────────────────────────────────────────────────────────────
+# P0/A2 honesty: real zero-shot cloning availability is *probed*, not assumed.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ``real_clone_available()`` returns True only when a real zero-shot clone backend
+# (VoxCPM2 / CosyVoice2) is both configured AND reachable. The same env vars the
+# docker-compose.gpu.yml Pro Studio stack sets (``VOXCPM2_ENDPOINT`` /
+# ``COSYVOICE_ENDPOINT``) are honored here, so once the self-hosted GPU services
+# answer their ``/health`` probe, the API honestly advertises real cloning.
+#
+# Under free + no-GPU (no endpoint configured) this stays False — we never claim a
+# usable clone was produced when no real backend is actually serving requests.
+# A cached, TTL-bounded probe avoids hammering the backend on every request.
+_CLONE_PROBE_LOCK = threading.Lock()
+_CLONE_AVAILABLE_CACHE: Optional[bool] = None
+_CLONE_PROBE_TS: float = 0.0
+_CLONE_PROBE_TTL_SECONDS = 30.0
 
-    Always ``False`` under free + no-GPU. When F5-TTS / CosyVoice2 (Track B) is
-    wired in, this should return ``True`` so the API can advertise real cloning.
+
+def _configured_clone_endpoint() -> Optional[str]:
+    """Return a configured real clone backend endpoint, or None.
+
+    Honors ``VOXCPM2_ENDPOINT`` / ``COSYVOICE_ENDPOINT`` (the same env vars the
+    Pro Studio docker-compose stack and ``remote_voxcpm2_port.py`` use). An
+    explicit opt-out via ``CLONE_BACKEND_DISABLED=true`` short-circuits
+    availability (e.g. for hermetic CI or when the operator wants to force preset).
     """
-    # TODO(Track B / B1): return True once an F5/CosyVoice2 backend registers a
-    # clone capability (e.g. via an engine registry capability flag).
-    return False
+    if os.getenv("CLONE_BACKEND_DISABLED", "").lower() in ("1", "true", "yes"):
+        return None
+    for env in ("VOXCPM2_ENDPOINT", "COSYVOICE_ENDPOINT"):
+        val = (os.getenv(env) or "").strip().rstrip("/")
+        if val:
+            return val
+    return None
+
+
+def _probe_endpoint_health(url: str, timeout: float = 1.5) -> bool:
+    """Return True when ``{url}/health`` responds with HTTP 2xx/3xx.
+
+    A 2xx/3xx means the real clone backend is alive and serving; anything else
+    (4xx/5xx/connection error) means it is not, so we must not advertise cloning.
+    """
+    try:
+        import httpx
+    except Exception:
+        # httpx missing — cannot probe; be honest and report unavailable.
+        return False
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            resp = client.get(f"{url}/health")
+        return 200 <= resp.status_code < 400
+    except Exception:
+        return False
+
+
+def probe_clone_availability(force: bool = False) -> bool:
+    """Probe configured clone backend(s) and cache the result (TTL-bounded).
+
+    Honest: returns True only when a real zero-shot clone backend endpoint is
+    configured AND reachable. Never claims availability under free/no-GPU unless
+    a real backend answers its ``/health`` probe.
+    """
+    global _CLONE_AVAILABLE_CACHE, _CLONE_PROBE_TS
+    now = time.monotonic()
+    if not force and _CLONE_AVAILABLE_CACHE is not None and (now - _CLONE_PROBE_TS) < _CLONE_PROBE_TTL_SECONDS:
+        return _CLONE_AVAILABLE_CACHE
+    with _CLONE_PROBE_LOCK:
+        now = time.monotonic()
+        if not force and _CLONE_AVAILABLE_CACHE is not None and (now - _CLONE_PROBE_TS) < _CLONE_PROBE_TTL_SECONDS:
+            return _CLONE_AVAILABLE_CACHE
+        endpoint = _configured_clone_endpoint()
+        try:
+            available = bool(endpoint) and _probe_endpoint_health(endpoint)
+        except Exception:  # noqa: BLE001 — a failing probe must never break the caller
+            available = False
+        _CLONE_AVAILABLE_CACHE = available
+        _CLONE_PROBE_TS = now
+    return _CLONE_AVAILABLE_CACHE
+
+
+def refresh_clone_availability() -> bool:
+    """Force a fresh probe (e.g. on startup or after backend reconfiguration)."""
+    return probe_clone_availability(force=True)
+
+
+def real_clone_available() -> bool:
+    """True only when a real zero-shot clone backend is registered AND reachable.
+
+    Under free + no-GPU this stays ``False`` (no endpoint configured). In Pro
+    Studio mode (docker-compose.gpu.yml with the voxcpm2 / cosyvoice profiles)
+    the ``VOXCPM2_ENDPOINT`` / ``COSYVOICE_ENDPOINT`` env vars point at a real
+    GPU backend whose ``/health`` probe must answer before we advertise real
+    cloning. This is the honest Track B integration point: we never claim a
+    usable clone was produced when no real backend is actually serving requests.
+    """
+    return probe_clone_availability()
 
 
 def clone_mode() -> str:
@@ -584,8 +677,8 @@ class VoiceCloningEngine:
         # 模型未就绪时抛出明确异常
         if not self._model_ready:
             raise RuntimeError(
-                f"Kokoro-ONNX 模型不可用: models/kokoro-onnx 目录缺失. "
-                f"请先运行: python scripts/download_kokoro_model.py"
+                "Kokoro-ONNX 模型不可用: models/kokoro-onnx 目录缺失. "
+                "请先运行: python scripts/download_kokoro_model.py"
             )
 
         output_dir = Path(self.config.output_dir)
