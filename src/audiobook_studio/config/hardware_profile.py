@@ -278,9 +278,31 @@ class HardwareProfile:
         profile_data = profiles_data[self._active_profile_name]
         self._config = self._parse_profile(self._active_profile_name, profile_data)
 
-        # Auto-detect if enabled and not explicitly set
+        # Explicit env override (HARDWARE_PROFILE) wins over both the YAML
+        # ``active_profile`` and auto-detection. This lets deployment manifests
+        # (e.g. docker-compose.gpu.yml sets HARDWARE_PROFILE=pro_studio) select
+        # the runtime tier deterministically.
+        env_profile = os.getenv("HARDWARE_PROFILE")
+        if env_profile:
+            if env_profile in profiles_data:
+                if env_profile != self._active_profile_name:
+                    logger.info(
+                        f"[HardwareProfile] Env HARDWARE_PROFILE selected: {env_profile} "
+                        f"(config: {self._active_profile_name})"
+                    )
+                self._active_profile_name = env_profile
+                profile_data = profiles_data[env_profile]
+                self._config = self._parse_profile(env_profile, profile_data)
+            else:
+                logger.warning(
+                    f"[HardwareProfile] HARDWARE_PROFILE='{env_profile}' not found in config; "
+                    f"falling back to config auto-detect. Available: {list(profiles_data.keys())}"
+                )
+                env_profile = None
+
+        # Auto-detect only when no explicit env profile was supplied.
         auto_detect = data.get("auto_detect", {})
-        if auto_detect.get("enabled", True) and not os.getenv("HARDWARE_PROFILE"):
+        if auto_detect.get("enabled", True) and not env_profile:
             recommended = self._auto_recommend_profile()
             if recommended != self._active_profile_name:
                 logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")

@@ -115,7 +115,7 @@ class QualityCheckPipeline:
         )
 
         # Apply hardware profile quality check settings
-        self._apply_hardware_profile_quality_config()
+        self._sync_hardware_profile()
 
         # Log available features for diagnostics
         enabled = [k for k, v in self._available_features.items() if v]
@@ -207,6 +207,26 @@ class QualityCheckPipeline:
         self._hw_dnsmos_enabled = qc.dnsmos_enabled
         self._hw_asr_enabled = qc.asr_enabled
         self._hw_speaker_sim_enabled = qc.speaker_similarity_enabled
+
+    def _sync_hardware_profile(self) -> None:
+        """Re-apply the active hardware profile to this checker.
+
+        Safe to call before each :meth:`run`. It re-resolves the live
+        :class:`HardwareProfile` singleton, so a runtime
+        ``set_active_profile`` / ``reload_hardware_profile`` is observed without
+        restarting the process. The underlying :class:`QualityCheckSuite` is
+        rebuilt whenever the active tier actually changes, because its device
+        selection (CPU vs CUDA) is bound at construction time.
+        """
+        if not self.hardware_profile:
+            return
+        current = self.hardware_profile.active_profile
+        self._apply_hardware_profile_quality_config()
+        if getattr(self._quality_suite, "hardware_profile", None) != current:
+            self._quality_suite = QualityCheckSuite(
+                config=dict(self.quality_thresholds),
+                hardware_profile=current,
+            )
 
     def _reload_config_if_changed(self) -> None:
         """Hot-reload quality thresholds if config file changed."""
@@ -571,6 +591,10 @@ class QualityCheckPipeline:
         Args:
             inputs: List of (audio_path, paragraph_annotation, routing_decision, reference_text)
         """
+        # Re-resolve the active hardware profile so a runtime tier switch
+        # (set_active_profile / reload_hardware_profile) is reflected here
+        # without a process restart.
+        self._sync_hardware_profile()
         logger.info(f"Quality checking {len(inputs)} segments")
 
         # Emit stage enter
