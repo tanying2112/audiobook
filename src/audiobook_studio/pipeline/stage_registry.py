@@ -16,9 +16,9 @@ Usage:
             pass
 """
 
-from abc import ABC, abstractmethod
 import asyncio
-from typing import Any, Callable, Dict, List, Optional, Type, cast
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,9 +33,6 @@ class StageHandler(ABC):
     - persist(): Write results to database (optional)
     - get_result_snapshot(): Extract observable state for logging
     """
-
-    def __init__(self) -> None:
-        pass
 
     @abstractmethod
     async def run(self, **kwargs: Any) -> Any:
@@ -53,7 +50,9 @@ class StageHandler(ABC):
         paragraph_index: Optional[int] = None,
     ) -> None:
         """Persist result to database. Override for stages that need persistence."""
-        pass
+        # Synchronous persistence is a no-op; live persistence runs via the
+        # async ``apersist`` hook used by the orchestrator.
+        return None
 
     def get_result_snapshot(self, result: Any) -> Dict[str, Any]:
         """Extract result snapshot for feedback/logging. Override for custom serialization."""
@@ -75,9 +74,33 @@ class StageRegistry:
     _handlers: Dict[str, Type[StageHandler]] = {}
 
     @classmethod
-    def register(cls, name: str, handler_class: Type[StageHandler]) -> None:
-        """Register a stage handler class."""
-        cls._handlers[name] = handler_class
+    def register(
+        cls,
+        name: str,
+        handler: Union[Type[StageHandler], Callable[..., Any]],
+    ) -> None:
+        """Register a stage handler.
+
+        Accepts either:
+        - a :class:`StageHandler` subclass (built-in stages), or
+        - a plugin-provided factory callable (``StageFn``) — wrapped into a
+          :class:`StageHandler` subclass so the orchestrator can run it exactly
+          like a built-in stage via ``StageRegistry.get(name).run(**context)``.
+        """
+        if isinstance(handler, type) and issubclass(handler, StageHandler):
+            cls._handlers[name] = handler
+        elif callable(handler):
+            cls._handlers[name] = _plugin_stage_handler_class(handler)
+        else:
+            raise TypeError(
+                f"Stage '{name}' must be a StageHandler subclass or a callable "
+                f"factory, got {type(handler).__name__}"
+            )
+
+    @classmethod
+    def register_factory(cls, name: str, factory: Callable[..., Any]) -> None:
+        """Register a plugin-provided stage factory callable."""
+        cls.register(name, factory)
 
     @classmethod
     def unregister(cls, name: str) -> bool:
@@ -111,6 +134,44 @@ class StageRegistry:
         Handlers are no longer cached as singletons, so there is no
         instance cache to clear.
         """
+
+
+class PluginStageHandler(StageHandler):
+    """Adapter that runs a plugin-provided stage factory as a StageHandler.
+
+    Plugins register a ``StageFn`` (a callable returning the stage result). This
+    adapter lets the orchestrator drive that callable through the exact same
+    ``run(**context)`` contract used by built-in stages, so a third-party stage
+    plugs into the pipeline without touching core code.
+    """
+
+    def __init__(self, factory: Callable[..., Any]) -> None:
+        super().__init__()
+        self._factory = factory
+
+    async def run(self, **kwargs: Any) -> Any:
+        result = self._factory(**kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
+
+def _plugin_stage_handler_class(factory: Callable[..., Any]) -> Type[StageHandler]:
+    """Build a :class:`StageHandler` subclass bound to ``factory``.
+
+    ``StageRegistry.get`` instantiates the stored class with no arguments, so we
+    bind ``factory`` via a closure-backed ``__init__`` rather than a constructor
+    parameter.
+    """
+
+    class _BoundPluginStageHandler(PluginStageHandler):
+        pass
+
+    def __init__(self: _BoundPluginStageHandler) -> None:
+        PluginStageHandler.__init__(self, factory)
+
+    _BoundPluginStageHandler.__init__ = __init__
+    return _BoundPluginStageHandler
 
 
 # ── Built-in Stage Handlers ──────────────────────────────────────────────────
@@ -391,21 +452,9 @@ class AnnotateStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        if chapter and paragraph is not None:
-            from .persistence import write_annotate
-
-            # Ground truth: caller-provided paragraph_index reflects the real
-            # Paragraph.index in the DB. AnnotateStage.run()'s
-            # ParagraphAnnotation.paragraph_index is LLM-generated and may be 0
-            # or wrong (e.g. deepseek returns 0 for the first paragraph), which
-            # then causes write_annotate to INSERT a bogus idx=0 paragraph with
-            # empty text, derailing downstream synthesize/quality stages.
-            para_index = paragraph_index if paragraph_index is not None else getattr(result, "paragraph_index", 0)
-            # ``write_annotate`` is async (see persistence.py); live persistence
-            # runs via ``apersist`` below.
-            # Async persistence handled by apersist
-            pass
-            setattr(result, "_paragraph_id", para.id)
+        # Synchronous persistence is a no-op; live persistence runs via the async
+        # ``apersist`` hook used by the orchestrator.
+        return None
 
     async def apersist(
         self,
@@ -434,7 +483,7 @@ class AnnotateStage(StageHandler):
                 paragraph_index=para_index,
                 result=result,
             )
-            setattr(result, "_paragraph_id", para.id)
+            result._paragraph_id = para.id
 
 
 from unittest.mock import MagicMock
@@ -531,8 +580,8 @@ class EditStage(StageHandler):
 
 from dataclasses import asdict
 
-from .audio_postprocess import AudioPostProcessor
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from .audio_postprocess import AudioPostProcessor
 
 
 class AudioPostprocessStage(StageHandler):
@@ -552,30 +601,36 @@ class AudioPostprocessStage(StageHandler):
         # Emit stage enter
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_enter(
-                stage="audio_postprocess",
-                project_id=project_id or 0,
-                chapter_index=chapter_index or 1,
-                paragraph_index=paragraph_index or 1,
-                total_items=1,
-            ))
+            loop.create_task(
+                emit_stage_enter(
+                    stage="audio_postprocess",
+                    project_id=project_id or 0,
+                    chapter_index=chapter_index or 1,
+                    paragraph_index=paragraph_index or 1,
+                    total_items=1,
+                )
+            )
         except RuntimeError:
             pass
 
         # Emit stage progress
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_progress(
-                stage="audio_postprocess",
-                project_id=project_id or 0,
-                chapter_index=chapter_index or 1,
-                paragraph_index=paragraph_index or 1,
-                current=1,
-                total=1,
-                message="Applying audio post-processing...",
-            ))
+            loop.create_task(
+                emit_stage_progress(
+                    stage="audio_postprocess",
+                    project_id=project_id or 0,
+                    chapter_index=chapter_index or 1,
+                    paragraph_index=paragraph_index or 1,
+                    current=1,
+                    total=1,
+                    message="Applying audio post-processing...",
+                )
+            )
         except RuntimeError:
             pass
 
@@ -605,14 +660,17 @@ class AudioPostprocessStage(StageHandler):
         # Emit stage exit (success)
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_exit(
-                stage="audio_postprocess",
-                project_id=project_id or 0,
-                chapter_index=chapter_index or 1,
-                paragraph_index=paragraph_index or 1,
-                success=True,
-            ))
+            loop.create_task(
+                emit_stage_exit(
+                    stage="audio_postprocess",
+                    project_id=project_id or 0,
+                    chapter_index=chapter_index or 1,
+                    paragraph_index=paragraph_index or 1,
+                    success=True,
+                )
+            )
         except RuntimeError:
             pass
 
@@ -921,20 +979,9 @@ class SynthesizeStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        if project_id and chapter and paragraph:
-            from .persistence import write_synthesize
-
-            for seg in result:
-                seg_dict = {
-                    "file_path": seg.file_path,
-                    "duration_ms": seg.duration_ms,
-                    "engine": seg.engine,
-                    "voice_id": seg.voice_id,
-                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
-                }
-                # ``write_synthesize`` is async (see persistence.py); live
-                # persistence runs via ``apersist`` below. Sync path bridges.
-                pass  # async persistence handled by apersist
+        # Synchronous persistence is a no-op; live persistence runs via the async
+        # ``apersist`` hook used by the orchestrator.
+        return None
 
     def get_result_snapshot(self, result: Any) -> Dict[str, Any]:
         """Serialize AudioSegment list for feedback."""
@@ -975,7 +1022,7 @@ class SynthesizeStage(StageHandler):
 
 
 from .quality_check import QualityCheckPipeline
-from .segment import SegmentPipeline, SegmentConfig, SegmentStrategy
+from .segment import SegmentConfig, SegmentPipeline, SegmentStrategy
 
 
 class QualityStage(StageHandler):
@@ -983,8 +1030,8 @@ class QualityStage(StageHandler):
 
     async def run(self, **kwargs: Any) -> Any:
         para = kwargs.get("paragraph")
-        exclude_keys = {"chapter", "paragraph", "db"}
-        filtered = {k: v for k, v in kwargs.items() if k not in exclude_keys}
+        # ``kwargs`` is passed through directly to the QA pipeline below; no
+        # pre-filtering is required here.
 
         # Build annotation from paragraph
         annotation = None
@@ -1110,22 +1157,9 @@ class TranslateStage(StageHandler):
         chapter_index: Optional[int] = None,
         paragraph_index: Optional[int] = None,
     ) -> None:
-        # Translate stage produces audio segments, similar to synthesize
-        if project_id and chapter and paragraph:
-            from .persistence import write_synthesize
-
-            dubbed_segments, report = result
-            for seg in dubbed_segments:
-                seg_dict = {
-                    "file_path": seg.file_path,
-                    "duration_ms": seg.duration_ms,
-                    "engine": seg.engine,
-                    "voice_id": seg.voice_id,
-                    "format": (seg.file_path.split(".")[-1] if "." in seg.file_path else "mp3"),
-                }
-                # ``write_synthesize`` is async (see persistence.py); live
-                # persistence runs via ``apersist`` below. Sync path bridges.
-                pass  # async persistence handled by apersist
+        # Synchronous persistence is a no-op; live persistence runs via the async
+        # ``apersist`` hook used by the orchestrator.
+        return None
 
     async def apersist(
         self,

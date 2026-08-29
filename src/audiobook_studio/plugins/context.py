@@ -35,7 +35,9 @@ StageFn = Callable[..., Any]
 # Forward reference types for registration (avoid circular imports)
 class TTSEngine(Protocol):
     """Minimal protocol for plugin-author type hints."""
+
     engine_name: str
+
     async def synthesize(self, payload: Any, output_path: Any) -> Any: ...
     async def submit(self, task_id: str, payload: Any) -> bool: ...
     async def get_status(self, task_id: str) -> Any: ...
@@ -48,6 +50,7 @@ class TTSEngine(Protocol):
 
 class ProviderConfig(Protocol):
     """Minimal protocol for plugin-author type hints."""
+
     name: str
     provider: str
     model: str
@@ -169,3 +172,18 @@ class PluginContext:
             config_schema=config_schema,
             default_config=default_config,
         )
+
+        # Bridge the plugin factory into the runtime StageRegistry so the
+        # orchestrator can dispatch to it via StageRegistry.get(stage_name)
+        # exactly like a built-in stage. Lazy import avoids a cycle between the
+        # plugins and pipeline packages at import time.
+        try:
+            from ..pipeline.stage_registry import StageRegistry
+
+            StageRegistry.register_factory(stage_name, factory)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "Failed to register stage '%s' into StageRegistry: %s",
+                stage_name,
+                exc,
+            )
