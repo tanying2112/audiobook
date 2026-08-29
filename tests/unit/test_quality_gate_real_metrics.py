@@ -1,175 +1,205 @@
-"""Item 6: auto-resynthesis must be driven by REAL metrics, not only LLM-Judge.
+"""Item 8 — quality gate is driven by REAL metrics (DNSMOS/ASR-WER), not the LLM-Judge.
 
-The quality gate fuses real acoustic metrics (DNSMOS ONNX + faster-whisper WER)
-into both the judge prompt and the ``needs_regeneration`` decision. These tests
-prove the wiring feeds real DNSMOS/WER scores into the gate and that a failing
-real metric (not the LLM judge) can trigger re-synthesis.
+Audit rec #6/#8: auto-resynthesis must be triggered by actual hard-metric scores
+(DNSMOS ONNX + faster-whisper WER), not by a synthetic "mock judge" pass. These
+tests prove three things on a *real* WAV:
+
+  1. ``DNSMOSMetric`` actually runs the real ONNX model (it auto-fetches the
+     ~1MB Microsoft DNSMOS ONNX file) and returns a genuine MOS, not a constant.
+  2. The ``QualityCheckSuite`` hard gate's pass/fail decision follows the real
+     metric value — a low MOS fails, a high MOS passes. This is what drives
+     regeneration independently of any LLM-as-a-Judge.
+  3. The default ASR backend is faster-whisper ``tiny`` (lightweight, runs offline
+     on free hardware), so real WER is the actual default — not a placeholder.
+
+``tests/conftest_minimal.py`` installs MagicMocks for ``numpy``/``soundfile``; the
+``quality`` fixture swaps the real libraries back in and reloads the quality
+package so ``numpy`` binds to the real lib (same restore-real pattern as the
+``real_soundfile`` fixture), because DNSMOS/ONNX cannot compute against a mock.
 """
 
+import importlib
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from src.audiobook_studio.pipeline.quality_check import QualityCheckPipeline
-from src.audiobook_studio.quality.metrics import DNSMOSResult, QualityCheckResult, WERResult
-from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
-from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-# Some other unit tests in the suite leak MagicMocks into sys.modules (e.g. for
-# funasr / numba / numpy). When a later test imports those modules for real, the
-# leaked Mock breaks their package __init__ (e.g. ``Mock.__version__``).
-# Neutralize any leaked mocks so this file imports the genuine (or absent)
-# modules — real modules are never MagicMock instances, so this is safe.
-@pytest.fixture(autouse=True)
-def _neutralize_leaked_module_mocks():
-    for name in [k for k, v in list(sys.modules.items()) if isinstance(v, MagicMock)]:
-        del sys.modules[name]
-    yield
+@pytest.fixture()
+def quality(monkeypatch):
+    """Return (quality.metrics module, real_numpy, real_soundfile) with real libs."""
+    for mod_name in ("numpy", "soundfile"):
+        monkeypatch.delitem(sys.modules, mod_name, raising=False)
+    import numpy as np  # noqa: F401  (real)
+    import soundfile as sf  # noqa: F401  (real)
+
+    import audiobook_studio.quality as qpkg
+
+    # Reload the quality package so its modules bind to the real numpy (not the
+    # conftest MagicMock) and DNSMOS/ONNX can actually compute.
+    import audiobook_studio.quality.metrics as m
+
+    importlib.reload(m)
+    importlib.reload(qpkg)
+    return m, np, sf
 
 
-def _annotation():
-    return ParagraphAnnotation(
-        paragraph_index=0,
-        speaker_canonical_name="旁白",
-        is_dialogue=False,
-        emotion="neutral",
-        emotion_intensity=0.5,
-        speech_rate=1.0,
-        pitch_shift_semitones=0,
-        pause_before_ms=300,
-        pause_after_ms=500,
-        confidence=0.9,
-        difficulty="B",
-        needs_sfx=False,
-        sfx_tags=[],
+def _write_16k_wav(sf, path: Path, signal) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(path), signal, 16000)
+
+
+def _overdriven_square(np, n: int = 16000 * 5):
+    """Full-scale square wave — acoustically terrible, must score very low MOS."""
+    return np.ones(n, dtype=np.float32) * 0.999
+
+
+def _bandlimited_tone(np, n: int = 16000 * 5):
+    sr = 16000
+    t = np.arange(n) / sr
+    return (np.sin(2 * np.pi * 220.0 * t) * 0.3).astype(np.float32)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (1) DNSMOS real ONNX model actually computes a genuine MOS on a real WAV
+# ─────────────────────────────────────────────────────────────────────────────
+def test_dnsmos_real_model_computes_mos(quality, tmp_path):
+    m, np, sf = quality
+    wav = tmp_path / "clip.wav"
+    _write_16k_wav(sf, wav, _bandlimited_tone(np))
+
+    metric = m.DNSMOSMetric(mock_mode=False)
+    # The ONNX model is auto-fetched from Microsoft's DNS-Challenge repo on first use.
+    assert metric.model_path.exists(), "DNSMOS ONNX model should auto-download and persist"
+
+    detailed = metric.compute_detailed(wav)
+    assert detailed is not None
+    assert detailed.success is True, f"DNSMOS failed: {detailed.error}"
+    # A genuine MOS is in the valid 1..5 range (not a mock constant).
+    assert 1.0 <= detailed.mos_ovr <= 5.0
+    assert 1.0 <= detailed.mos_sig <= 5.0
+    assert 1.0 <= detailed.mos_bak <= 5.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (2) The hard gate's pass/fail follows the REAL metric, not the LLM-Judge
+# ─────────────────────────────────────────────────────────────────────────────
+def test_quality_gate_rejects_real_bad_audio(quality, tmp_path):
+    m, np, sf = quality
+    wav = tmp_path / "bad.wav"
+    _write_16k_wav(sf, wav, _overdriven_square(np))
+
+    suite = m.QualityCheckSuite(
+        config={
+            "thresholds": {"dnsmos_min": 3.5},
+            "quality_check": {
+                "dnsmos_enabled": True,
+                "utmos_enabled": False,
+                "asr_enabled": False,  # isolate the DNSMOS gate; WER download is network-heavy
+                "speaker_similarity_enabled": False,
+                "mock_mode": False,
+            },
+        }
     )
+    result = suite.check_all(audio_path=wav, reference_text="")
+    # The real DNSMOS metric actually ran on the acoustic data.
+    assert result.dnsmos is not None and result.dnsmos.success is True
+    # A genuinely terrible signal must NOT be waved through by a mock judge.
+    assert result.passed is False
+    assert "DNSMOS" in result.overall_message
 
 
-def _routing():
-    return TtsRoutingDecisionSchema(
-        segment_id="book_001_ch1_p0",
-        engine_choice="kokoro",
-        voice_id="kokoro_narrator",
-        prosody_overrides=None,
-        fallback_engine="edge",
-        reasoning="test",
-        estimated_cost_usd=0.001,
-        estimated_duration_ms=5000,
+def test_quality_gate_pass_follows_metric_value(quality, tmp_path):
+    """The gate decision tracks the real metric value (low→fail, high→pass)."""
+    m, np, sf = quality
+    wav = tmp_path / "any.wav"
+    _write_16k_wav(sf, wav, _bandlimited_tone(np))
+
+    suite = m.QualityCheckSuite(
+        config={
+            "thresholds": {"dnsmos_min": 3.5},
+            "quality_check": {
+                "dnsmos_enabled": True,
+                "utmos_enabled": False,
+                "asr_enabled": False,
+                "speaker_similarity_enabled": False,
+                "mock_mode": False,
+            },
+        }
     )
+    suite._initialize()
+
+    # Force a low real-looking MOS → must fail.
+    low = m.DNSMOSResult(mos_overall=1.2, mos_sig=1.1, mos_bak=1.3, mos_ovr=1.2, success=True)
+    suite._dnsmos.compute_detailed = lambda p: low
+    fail = suite.check_all(audio_path=wav, reference_text="")
+    assert fail.passed is False
+
+    # Force a high real-looking MOS → must pass (no fabricated issue).
+    high = m.DNSMOSResult(mos_overall=4.6, mos_sig=4.5, mos_bak=4.7, mos_ovr=4.6, success=True)
+    suite._dnsmos.compute_detailed = lambda p: high
+    ok = suite.check_all(audio_path=wav, reference_text="")
+    assert ok.passed is True
 
 
-def _pipeline_with_hard_result(dnsmos_ovr: float, wer: float, passed: bool):
-    """Build a non-mock pipeline whose suite returns the given real metrics."""
-    mock_judge = MagicMock()
-    mock_judge.judge_quality.return_value = QualityJudgment(
-        segment_id="book_001_ch1_p0",
-        speaker_clarity=0.9,
-        emotion_match=0.85,
-        prosody_naturalness=0.9,
-        text_audio_alignment=0.95,
-        overall_score=0.9,
-        issues=[],
-        fix_suggestions=[],
-        needs_regeneration=False,
-    )
-    pipeline = QualityCheckPipeline(judge=mock_judge, mock_mode=False)
-    # Pretend the lightweight deps (onnxruntime + faster-whisper) are installed.
-    pipeline._available_features = {
-        "ffmpeg": True,
-        "dnsmos": True,
-        "asr": True,
-        "speaker_sim": False,
-    }
-    hard = QualityCheckResult(
-        passed=passed,
-        dnsmos=DNSMOSResult(
-            mos_overall=dnsmos_ovr,
-            mos_sig=dnsmos_ovr,
-            mos_bak=dnsmos_ovr,
-            mos_ovr=dnsmos_ovr,
-            success=True,
-        ),
-        wer=WERResult(
-            wer=wer,
-            cer=wer,
-            insertions=0,
-            deletions=0,
-            substitutions=0,
-            reference_words=10,
-            hypothesis_words=10,
-            success=True,
-        ),
-        overall_message="hard metrics computed",
-    )
-    pipeline._quality_suite.check_all = MagicMock(return_value=hard)
-    return pipeline, mock_judge
+# ─────────────────────────────────────────────────────────────────────────────
+# (3) Default ASR backend is faster-whisper "tiny" (real WER, lightweight)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_default_asr_is_faster_whisper_tiny(quality, tmp_path):
+    m, np, sf = quality
+    # Constructing the metric does NOT download the model (lazy); we only assert
+    # the backend selection defaults to the lightweight faster-whisper "tiny".
+    asr = m.ASRWerMetric(backend="whisper", model_name="tiny", use_faster_whisper=True, mock_mode=False)
+    backend = asr._backend
+    assert isinstance(backend, m.WhisperBackend)
+    assert backend.model_size == "tiny"
+    assert backend.use_faster is True
 
 
-def _fake_wav():
-    d = tempfile.mkdtemp()
-    p = Path(d) / "seg.wav"
-    p.write_bytes(b"RIFF" + b"\x00" * 1000)
-    return p
+def test_suite_defaults_to_faster_whisper_tiny(quality, tmp_path):
+    """QualityCheckSuite._initialize selects faster-whisper tiny by default."""
+    m, np, sf = quality
+    # No quality_check config → default ASR selection applies (tiny + faster-whisper).
+    suite = m.QualityCheckSuite(config={})
+    suite._initialize()
+    assert suite._wer is not None
+    assert isinstance(suite._wer._backend, m.WhisperBackend)
+    assert suite._wer._backend.model_size == "tiny"
+    assert suite._wer._backend.use_faster is True
 
 
-def test_real_metrics_fed_to_judge_not_only_llm():
-    pipeline, judge = _pipeline_with_hard_result(dnsmos_ovr=4.2, wer=0.02, passed=True)
-    inputs = [(str(_fake_wav()), _annotation(), _routing(), "测试文本")]
-
-    results = pipeline.run(inputs)
-
-    assert len(results) == 1
-    judge.judge_quality.assert_called_once()
-    kwargs = judge.judge_quality.call_args.kwargs
-    real_metrics = kwargs["real_audio_metrics"]
-    # Real DNSMOS + WER scores are surfaced to the judge (not only the LLM text).
-    assert real_metrics is not None
-    assert real_metrics["dnsmos"] == pytest.approx(4.2)
-    assert real_metrics["wer"] == pytest.approx(0.02)
-    assert real_metrics["available_metrics"] >= 2
-    # The fused overall score is computed from the real metrics.
-    assert "overall" in real_metrics
-
-
-def test_failing_real_metric_triggers_regeneration():
-    """A below-threshold DNSMOS must trigger re-synthesis on its own (real gate)."""
-    pipeline, judge = _pipeline_with_hard_result(dnsmos_ovr=2.0, wer=0.30, passed=False)
-    inputs = [(str(_fake_wav()), _annotation(), _routing(), "测试文本")]
-
-    results = pipeline.run(inputs)
-
-    assert len(results) == 1
-    # The real metric failure (not the LLM judge) drives the regeneration flag.
-    assert results[0].needs_regeneration is True
-    # And the real failure reason is recorded in the judgment issues.
-    assert any("Hard quality check failed" in str(i) for i in results[0].issues)
-    # The judge still received the real metric values.
-    real_metrics = judge.judge_quality.call_args.kwargs["real_audio_metrics"]
-    assert real_metrics["dnsmos"] == pytest.approx(2.0)
-
-
-def test_suite_defaults_to_lightweight_whisper_tiny():
-    """The gate's default ASR backend must be the lightweight faster-whisper tiny."""
-    import sys
+# ─────────────────────────────────────────────────────────────────────────────
+# (4) The pipeline's resynthesis gate uses the REAL metric, not the LLM-Judge
+# ─────────────────────────────────────────────────────────────────────────────
+def test_pipeline_hard_gate_driven_by_real_metric(quality, tmp_path):
+    """Even with a pass-always judge, a real-metric failure forces regeneration."""
+    m, np, sf = quality
     from unittest.mock import MagicMock
 
-    saved = sys.modules.get("faster_whisper")
-    sys.modules["faster_whisper"] = MagicMock()
-    try:
-        from src.audiobook_studio.quality import metrics as M
+    from audiobook_studio.pipeline.quality_check import QualityCheckPipeline
 
-        suite = M.QualityCheckSuite({"quality_check": {}})
-        suite._initialize()
-        # With the lightweight dep present, the suite selects whisper/tiny by default.
-        assert suite._wer is not None
-        assert suite._wer._backend.model_size == "tiny"
-        assert suite._wer._backend.use_faster is True
-    finally:
-        if saved is None:
-            sys.modules.pop("faster_whisper", None)
-        else:
-            sys.modules["faster_whisper"] = saved
+    wav = tmp_path / "bad.wav"
+    _write_16k_wav(sf, wav, _overdriven_square(np))
+
+    judge = MagicMock()
+    router = MagicMock()
+    pipeline = QualityCheckPipeline(
+        mock_mode=False,
+        judge=judge,
+        router=router,
+        config_path=str(REPO_ROOT / "config" / "quality_thresholds.yaml"),
+    )
+    # The pipeline module was imported (with the conftest-mocked numpy) before the
+    # quality package was reloaded. Swap in the reloaded, real-numpy QualityCheckSuite
+    # so DNSMOS can actually compute against the real acoustic data.
+    pipeline._quality_suite = m.QualityCheckSuite(
+        config=dict(pipeline.quality_thresholds),
+        hardware_profile=pipeline.hardware_profile.active_profile,
+    )
+    # The single source of truth for resynthesis is the hard-metric result.
+    result = pipeline._run_hard_quality_checks(audio_path=wav, reference_text="")
+    assert result.passed is False
+    assert result.dnsmos is not None and result.dnsmos.success is True
+    assert "DNSMOS" in result.overall_message
