@@ -585,12 +585,30 @@ class QualityCheckPipeline:
         )
 
     @trace_function(name="pipeline.quality_check.run", stage="quality")  # type: ignore[untyped-decorator]  # langfuse trace_function returns Callable[..., Any]; cannot make it parametric from here
-    def run(self, inputs: List[QualityRunInput]) -> List[QualityJudgment]:
+    def run(
+        self,
+        inputs: List[QualityRunInput],
+        *,
+        golden_feedback: bool = False,
+        golden_feedback_split: str = "val",
+        golden_feedback_stage: str = "judge",
+    ) -> List[QualityJudgment]:
         """Run quality check on synthesized segments.
 
         Args:
             inputs: List of (audio_path, paragraph_annotation, routing_decision, reference_text)
+
+        Keyword Args:
+            golden_feedback: 若为真，将每段质检判定（pass/fail + 原因）回流为
+                ``judge`` 阶段金标样本（A2：quality_check → golden 闭环）。默认关闭，
+                避免污染生产数据流。也可用环境变量 ``AUDIOBOOK_GOLDEN_FEEDBACK=1`` 全局开启。
+            golden_feedback_split: 回流目标 split（默认 ``val``，不进 train 防污染）。
+            golden_feedback_stage: 回流目标 stage（默认 ``judge``）。
         """
+        # 环境变量可全局开启质检回流（A2），便于在生产入口处统一开关。
+        if not golden_feedback and os.environ.get("AUDIOBOOK_GOLDEN_FEEDBACK", "0") == "1":
+            golden_feedback = True
+
         # Re-resolve the active hardware profile so a runtime tier switch
         # (set_active_profile / reload_hardware_profile) is reflected here
         # without a process restart.
@@ -621,6 +639,8 @@ class QualityCheckPipeline:
                 pass
 
         judgments: List[QualityJudgment] = []
+        # 与 judgments 一一对应配对（(annotation, reference_text)），供 A2 回流。
+        qc_pairs: List[Tuple[Any, str]] = []
 
         for i, (audio_path, annotation, routing, reference_text) in enumerate(inputs):
             # Emit stage progress
@@ -694,6 +714,8 @@ class QualityCheckPipeline:
                         )
                     ]
                 judgments.append(judgment)
+                # A2 回流配对：判定与对应标注/参考文本同步收集。
+                qc_pairs.append((annotation, reference_text))
                 continue
 
             # MOCK: 待真实实现
@@ -865,6 +887,7 @@ class QualityCheckPipeline:
                 )
 
                 judgments.append(judgment)
+                qc_pairs.append((annotation, reference_text))
             except (ValueError, RuntimeError, OSError):  # OSError covers Connection/Timeout
                 from ..monitoring import record_stage_performance
 
@@ -908,6 +931,27 @@ class QualityCheckPipeline:
                 )
             except RuntimeError:
                 pass
+
+        # A2 质检回流：将本批判定（pass/fail + 原因）归一化为 judge 金标样本。
+        # 已产出的判定（即便个别段走异常路径未产出）都在此回流为可学习数据；
+        # 用环境变量或 run(golden_feedback=True) 开启，默认关闭以防污染生产数据。
+        if golden_feedback and judgments:
+            try:
+                from ..feedback.loop import quality_judgments_to_golden
+
+                added = quality_judgments_to_golden(
+                    judgments,
+                    annotations=[a for a, _ in qc_pairs],
+                    reference_texts=[r for _, r in qc_pairs],
+                    split=golden_feedback_split,
+                    stage=golden_feedback_stage,
+                )
+                logger.info(
+                    f"[A2 golden feedback]回流 {added} 条质检判定 -> "
+                    f"{golden_feedback_split}/{golden_feedback_stage}"
+                )
+            except Exception as e:  # 回流失败绝不应中断主链路
+                logger.warning(f"[A2 golden feedback]回流失败（已跳过）: {e}")
 
         return judgments
 

@@ -305,7 +305,15 @@ class HardwareProfile:
         if auto_detect.get("enabled", True) and not env_profile:
             recommended = self._auto_recommend_profile()
             if recommended != self._active_profile_name:
-                logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
+                # 仅当显式离线兜底（AUDIOBOOK_OFFLINE=1 → recommended=="offline"）时
+                # 真正切换 active 档，避免改变既有默认推荐行为（potato/cloud_hybrid/pro_studio）。
+                if recommended == "offline" and "offline" in profiles_data:
+                    logger.info(f"[HardwareProfile] 离线兜底生效，切换至 offline (config: {self._active_profile_name})")
+                    self._active_profile_name = recommended
+                    profile_data = profiles_data[recommended]
+                    self._config = self._parse_profile(recommended, profile_data)
+                else:
+                    logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
 
     def _parse_profile(self, name: str, data: Dict[str, Any]) -> HardwareProfileConfig:
         """Parse profile data into typed config objects."""
@@ -324,6 +332,10 @@ class HardwareProfile:
 
     def _auto_recommend_profile(self) -> str:
         """Recommend profile based on detected hardware."""
+        # 完全离线兜底档：显式开启（无网/配额耗尽/隐私）时优先选 offline，
+        # 否则维持既有的三层推荐，避免改变默认行为影响现有链路。
+        if os.environ.get("AUDIOBOOK_OFFLINE", "0") == "1":
+            return "offline"
         specs = self._hardware_specs
 
         if not specs.gpu_enabled or specs.vram_gb < 8 or specs.ram_gb < 16:
@@ -332,6 +344,11 @@ class HardwareProfile:
             return "pro_studio"
         else:
             return "cloud_hybrid"
+
+    @property
+    def is_offline(self) -> bool:
+        """当前是否处于完全离线兜底档（offline）。"""
+        return self._active_profile_name == "offline"
 
     @property
     def active_profile(self) -> str:

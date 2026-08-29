@@ -101,18 +101,20 @@ def append_golden_sample(
     if split not in VALID_SPLITS:
         raise ValueError(f"invalid split {split!r}; expected one of {VALID_SPLITS}")
     if isinstance(sample, dict):
-        sample = GoldenSample(**sample)
-    elif not isinstance(sample, GoldenSample):
+        sample_obj = GoldenSample(**sample)
+    elif isinstance(sample, GoldenSample):
+        sample_obj = sample
+    else:
         raise TypeError(f"sample must be GoldenSample or dict, got {type(sample).__name__}")
 
-    sample = sample.model_copy()
+    sample_obj = sample_obj.model_copy()
     target = _golden_dir(golden_root, split, stage)
     file_path = target / f"{stage}.jsonl"
     existing = _load_samples(file_path)
-    if any(s.sample_hash == sample.sample_hash for s in existing):
-        logger.debug(f"skip duplicate {stage}/{split} hash={sample.sample_hash}")
+    if any(s.sample_hash == sample_obj.sample_hash for s in existing):
+        logger.debug(f"skip duplicate {stage}/{split} hash={sample_obj.sample_hash}")
         return False
-    existing.append(sample)
+    existing.append(sample_obj)
     _write_samples_atomic(file_path, existing)
     logger.info(f"appended golden sample -> {split}/{stage} (total={len(existing)})")
     return True
@@ -168,6 +170,101 @@ def feedback_record_to_sample(record: Any, stage: Optional[str] = None) -> Optio
     )
 
 
+def _coerce_dict(obj: Any) -> Any:
+    """把 pydantic/dataclass/dict/对象 统一成可 JSON 序列化的 dict 或原值。"""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _coerce_dict(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_coerce_dict(v) for v in obj]
+    model_dump = getattr(obj, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return _coerce_dict(model_dump(mode="json"))
+        except (TypeError, ValueError):
+            return _coerce_dict(model_dump())
+    # dataclass
+    fields = getattr(obj, "__dataclass_fields__", None)
+    if fields is not None:
+        from dataclasses import asdict
+
+        return _coerce_dict(asdict(obj))
+    if isinstance(obj, BaseModel):
+        return _coerce_dict(obj.model_dump())
+    if hasattr(obj, "__dict__"):
+        return {k: _coerce_dict(v) for k, v in vars(obj).items()}
+    return obj
+
+
+def quality_judgment_to_sample(
+    judgment: Any,
+    *,
+    annotation: Any = None,
+    reference_text: str = "",
+    audio_description: Optional[str] = None,
+    stage: str = "judge",
+    source: str = "quality_check",
+) -> GoldenSample:
+    """将单条质检判定（QualityJudgment）归一化为 judge/quality 阶段金标样本。
+
+    质检模块（``pipeline.quality_check``）对每段音频产出 ``QualityJudgment``：
+    ``needs_regeneration``（pass/fail）+ 各维度得分 + ``issues``（原因）+ ``fix_suggestions``。
+    回流时把「输入（段落标注 + 音频描述 + 参考文本）→ 期望输出（判定本身）」固化成
+    judge 阶段金标，使评判者自身的 verdict 成为可学习、可回归的金标数据。
+    """
+    needs_regen = bool(getattr(judgment, "needs_regeneration", False))
+    passed = not needs_regen
+    issues = list(getattr(judgment, "issues", []) or [])
+    reasons = "; ".join(str(i) for i in issues) if issues else ("PASS" if passed else "FAIL")
+    rubric = (
+        f"quality_check verdict: {'PASS' if passed else 'FAIL'} "
+        f"(overall={getattr(judgment, 'overall_score', None)}); reasons={reasons}"
+    )
+    inp: Dict[str, Any] = {
+        "segment_id": getattr(judgment, "segment_id", None),
+        "paragraph_annotation": _coerce_dict(annotation) if annotation is not None else None,
+        "audio_description": audio_description or "",
+        "reference_text": reference_text or "",
+    }
+    out = _coerce_dict(judgment)
+    return GoldenSample(
+        stage=stage,
+        input=inp,
+        output=out,
+        source=source,
+        rubric=rubric,
+    )
+
+
+def quality_judgments_to_golden(
+    judgments: List[Any],
+    annotations: Optional[List[Any]] = None,
+    reference_texts: Optional[List[str]] = None,
+    *,
+    split: str = "val",
+    stage: str = "judge",
+    golden_root: Path = GOLDEN_ROOT_DEFAULT,
+) -> int:
+    """将一批质检判定回流为 judge 阶段金标样本，返回实际新增条数。
+
+    ``annotations`` / ``reference_texts`` 与 ``judgments`` 一一对应（可选）。
+    """
+    added = 0
+    for idx, judgment in enumerate(judgments):
+        annotation = annotations[idx] if annotations and idx < len(annotations) else None
+        reference_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
+        sample = quality_judgment_to_sample(
+            judgment,
+            annotation=annotation,
+            reference_text=reference_text,
+            stage=stage,
+        )
+        if append_golden_sample(stage, split, sample, golden_root):
+            added += 1
+    return added
+
+
 def ingest_corrections(
     collector: Any,
     split: str = "val",
@@ -202,6 +299,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         "--from-jsonl",
         help="从修正 jsonl（每行一个 UserCorrection 字典）读取并回流",
     )
+    parser.add_argument(
+        "--from-qc-jsonl",
+        help="从质检判定 jsonl 回流为 judge 样本（每行 {judgment, annotation?, reference_text?, audio_description?}）",
+    )
     args = parser.parse_args(argv)
     golden_root = Path(args.golden_root)
 
@@ -223,6 +324,27 @@ def main(argv: Optional[List[str]] = None) -> None:
                 if append_golden_sample(args.stage, args.split, correction_to_sample(corr, args.stage), golden_root):
                     added += 1
         print(f"ingested {added} samples from {args.from_jsonl} -> {args.split}/{args.stage}")
+        return
+
+    if args.from_qc_jsonl:
+        added = 0
+        with open(args.from_qc_jsonl, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                judgment = rec["judgment"]
+                sample = quality_judgment_to_sample(
+                    judgment,
+                    annotation=rec.get("annotation"),
+                    reference_text=rec.get("reference_text", ""),
+                    audio_description=rec.get("audio_description"),
+                    stage=args.stage,
+                )
+                if append_golden_sample(args.stage, args.split, sample, golden_root):
+                    added += 1
+        print(f"ingested {added} quality judgments from {args.from_qc_jsonl} -> {args.split}/{args.stage}")
         return
 
     parser.error("must specify --drain-collector or --from-jsonl")

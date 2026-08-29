@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Literal, Optional
 from sqlalchemy.orm import Session
 
 from ..models import FeedbackRecord as FeedbackRecordModel
-from ..schemas.feedback import FeedbackRecord as FeedbackRecordSchema
 
 logger = logging.getLogger(__name__)
 
@@ -77,23 +76,6 @@ def capture_feedback(
     db.add(record)
     db.commit()
     db.refresh(record)
-
-    # Also log to schema-compatible format
-    schema_record = FeedbackRecordSchema(
-        id=feedback_id,
-        timestamp=now,
-        source=source,
-        stage=stage,
-        book_id=str(project_id),
-        paragraph_index=paragraph_index,
-        chapter_index=chapter_index,
-        input_snapshot=input_snapshot,
-        llm_output=llm_output,
-        corrected_output=corrected_output,
-        rationale=rationale,
-        diff_summary=diff_summary,
-        pattern_tags=pattern_tags or [],
-    )
 
     logger.info(
         f"FeedbackRecord [{source}/{stage}]: id={feedback_id} " f"project={project_id} rationale={rationale[:60]}..."
@@ -176,7 +158,9 @@ def list_unprocessed_feedback(
     query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.processed == False)  # noqa: E712
     if project_id:
         query = query.filter(FeedbackRecordModel.project_id == project_id)
-    return query.order_by(FeedbackRecordModel.created_at.asc()).limit(limit).all()
+    # SQLAlchemy query.all() 在严格类型下返回 Any；经显式注解的局部变量窄化为声明类型。
+    records: List[FeedbackRecordModel] = query.order_by(FeedbackRecordModel.created_at.asc()).limit(limit).all()
+    return records
 
 
 def mark_feedback_processed(
