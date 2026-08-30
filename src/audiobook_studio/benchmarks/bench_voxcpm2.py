@@ -222,9 +222,21 @@ def detect_hardware() -> HardwareProfile:
         if importlib.util.find_spec("torch") is not None:
             import torch
 
-            hw.cuda_available = torch.cuda.is_available()
-            hw.mps_available = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
-    except (ImportError, AttributeError):
+            # Coerce to bool defensively: in some environments ``torch`` is a
+            # mock whose ``.cuda.is_available`` returns a non-bool (or raises),
+            # which would otherwise leak a non-serializable value into the
+            # report dataclass. ``bool()`` keeps the field JSON-serializable
+            # under both real and mocked torch.
+            try:
+                hw.cuda_available = bool(torch.cuda.is_available())
+            except Exception:
+                hw.cuda_available = False
+            try:
+                _mps = getattr(torch.backends, "mps", None)
+                hw.mps_available = bool(_mps is not None and _mps.is_available())
+            except Exception:
+                hw.mps_available = False
+    except (ImportError, AttributeError, ValueError):
         pass
 
     # 评估是否满足 VoxCPM2 运行要求
@@ -490,7 +502,9 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
 # ---------------------------------------------------------------------------
 
 
-def build_summary(hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]) -> Dict[str, Any]:
+def build_summary(
+    hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]
+) -> Dict[str, Any]:
     """生成摘要字典。"""
     edge_tts_rtf = None
     if tts_results:
@@ -579,7 +593,6 @@ def render_markdown_report(report: BenchmarkReport) -> str:
     """将报告渲染为 Markdown 格式。"""
     hw = report.hardware
     proj = report.voxcpm2_projection
-    summary = report.summary
 
     met = all(report.acceptance_criteria_met.values())
     status_icon = "✅" if met else "⚠️"
@@ -796,7 +809,7 @@ def main():
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md_content)
 
-    print(f"\n📁 阶段 D：报告已生成")
+    print("\n📁 阶段 D：报告已生成")
     print(f"  JSON : {json_path}")
     if not args.json_only:
         print(f"  MD   : {output_dir / 'voxcpm2_benchmark_report.md'}")

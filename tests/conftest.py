@@ -51,8 +51,16 @@ import pytest
 # thread. See is_probe_disabled() in src/audiobook_studio/llm/health_probe.py.
 os.environ.setdefault("AUDIOBOOK_DISABLE_HEALTH_PROBE", "1")
 
+# Explicitly import the underscore-prefixed torch-mock helpers. ``import *`` above
+# does NOT bring in names starting with ``_`` (no ``__all__`` in conftest_minimal),
+# so the torch-repair calls inside ``_reset_global_state`` would raise NameError and
+# be silently swallowed by their try/except — leaving a bare ``MagicMock`` (e.g. from
+# tests/unit/quality/test_asr_wer*.py's ``sys.modules["torch"] = MagicMock()``) to
+# leak into the benchmark tests under --random-order and crash JSON serialization.
+# Importing them explicitly makes the repair actually run. (TEST-ISOLATION ONLY.)
 # Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
 from tests.conftest_minimal import *  # noqa: F403,F401
+from tests.conftest_minimal import _force_torch_mock, _install_canonical_torch_mock  # noqa: F401
 
 # ════════════════════════════════════════════════════════════════════════════
 # Eagerly import the canonical package ONCE, with the hermetic mocks already in
@@ -248,6 +256,35 @@ def _restore_cwd(_save_cwd):
         pass
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _session_torch_repair():
+    """Repair the canonical ``torch`` mock once, after collection, before tests.
+
+    ``tests/unit/quality/test_asr_wer*.py`` assign a *bare* ``MagicMock()`` to
+    ``sys.modules['torch']`` at MODULE-IMPORT time (i.e. during pytest's
+    collection phase, before any test runs). A bare mock has no explicit
+    ``__version__`` attribute, and ``MagicMock`` treats ``__version__`` as a
+    dunder and raises ``AttributeError`` on access — so ``import spacy`` ->
+    ``thinc.compat`` -> ``torch.__version__`` crashes inside the alphabetically
+    first tests (``tests/golden/test_segmentation.py``), which execute *before*
+    any per-test teardown can repair the mock.
+
+    The function-scoped ``_reset_global_state`` already repairs ``torch`` after
+    every test (covering the steady-state leak), but it cannot help the very
+    first test because no teardown runs before it. This session-scoped fixture's
+    SETUP runs once immediately after collection and before the first test, so
+    the collection-time bare mock is rebuilt into the canonical, spec-equipped,
+    ``__version__``-bearing mock before golden can touch it. ``_install_...`` is
+    a no-op when torch is real, so real-torch environments are untouched.
+    (TEST-ISOLATION ONLY — no production code is modified.)
+    """
+    try:
+        _install_canonical_torch_mock()  # noqa: F405
+    except Exception:
+        pass
+    yield
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Cache the original litellm.get_supported_openai_params so it can be restored
 # after every test. dspy 3.3.1 calls ``litellm.get_supported_openai_params`` when
@@ -408,6 +445,23 @@ def _reset_global_state():
     except Exception:
         pass
 
+    # Repair the mocked ``torch`` after every test. ``conftest_minimal`` builds a
+    # *canonical* torch MagicMock (with ``__spec__`` / ``__version__`` / real
+    # ``cuda``/``backends`` shims) so hardware-probing code (bench_voxcpm2,
+    # spacy->thinc) and the mock-LLM router backend stay deterministic and
+    # JSON-serializable. Some tests assign a *bare* ``MagicMock()`` to
+    # ``sys.modules['torch']`` (no ``__version__``), which leaks into later tests
+    # and crashes ``import torch``/``import spacy`` or stores a MagicMock inside a
+    # serialized report. ``isolate_torch_mock`` (conftest_minimal) intends to
+    # repair this at teardown, but it is defined in a non-conftest-named module
+    # imported via ``*`` and is not reliably activated, so we repair it here in the
+    # authoritative reset path. ``_install_canonical_torch_mock`` is a no-op when
+    # torch is real, so real-torch tests are untouched. (TEST-ISOLATION ONLY.)
+    try:
+        _install_canonical_torch_mock()  # noqa: F405
+    except Exception:
+        pass
+
     # Reset the OpenTelemetry metrics global provider/cache. A prior test that
     # initialised it (e.g. via init_metrics, reached through monitoring helpers)
     # leaves a leaked ``_meter_provider`` / cached ``_core_metrics``; restoring the
@@ -529,6 +583,21 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.skip(reason="need --integration option to run integration tests"))
         elif is_integration and int_opt and not pg_present:
             item.add_marker(pytest.mark.skip(reason="need reachable Postgres to run integration tests"))
+
+    # Repair the mocked ``torch`` after collection. Some test modules (e.g.
+    # tests/unit/quality/test_asr_wer*.py) assign ``sys.modules["torch"] =
+    # MagicMock()`` at *import/collection* time, which leaves a bare ``MagicMock``
+    # in sys.modules for the rest of the session. The post-test repair in
+    # ``_reset_global_state`` fixes it between tests, but modules imported later
+    # during collection would otherwise bind the bare mock; re-establishing the
+    # canonical torch mock here (after collection, before any test runs) makes the
+    # starting sys.modules state identical regardless of collection order.
+    # ``_install_canonical_torch_mock`` is a no-op when torch is real, so real-torch
+    # hosts are untouched. (TEST-ISOLATION ONLY — no production code is modified.)
+    try:
+        _install_canonical_torch_mock()
+    except Exception:
+        pass
 
 
 def pytest_addoption(parser):
