@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from audiobook_studio.feedback.prompt_compiler import (
@@ -30,9 +31,16 @@ def test_select_fewshot_prefers_passing_high_score():
     assert [s["sample_hash"] for s in top] == ["b", "c"]
 
 
-def test_compile_candidate_prompt_reads_train_and_embeds_examples():
-    # 用真实 train 金标（judge 阶段有 24 条），编译候选不落盘
-    cp = compile_candidate_prompt("judge", k=3, prompts_root=Path("prompts"))
+def test_compile_candidate_prompt_reads_train_and_embeds_examples(tmp_path: Path):
+    # 用真实 train 金标（judge 阶段有 24 条），编译候选不落盘。
+    # 使用隔离 prompts 沙箱（仅放入 v1 基线），避免受 prompts/quality_judge 下
+    # 残留 v*.j2 影响版本号判定，使测试可重复运行。
+    sandbox = tmp_path / "quality_judge"
+    sandbox.mkdir(parents=True, exist_ok=True)
+    base_src = Path("prompts") / "quality_judge" / "v1.j2"
+    if base_src.exists():
+        shutil.copy(base_src, sandbox / "v1.j2")
+    cp = compile_candidate_prompt("judge", k=3, prompts_root=tmp_path)
     assert cp.stage == "judge"
     assert cp.prompt_dir == "quality_judge"
     assert cp.version == 2  # quality_judge 当前 active 为 v1 → 候选 v2

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -49,7 +49,7 @@ class ClientResult:
     client_id: str
     sample_count: int
     params: Optional[ModelParameters] = None  # fedavg path
-    masked: Optional[np.ndarray] = None  # secagg path
+    masked: Optional[np.ndarray[Any, Any]] = None  # secagg path
     key_order: Optional[List[ContextKey]] = None
 
 
@@ -71,7 +71,7 @@ class FederatedClient:
         self.rng = rng
         self._secagg: Optional[SecAggSession] = None
 
-    def _dp_perturb(self, flat: np.ndarray) -> np.ndarray:
+    def _dp_perturb(self, flat: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         if self.config.dp.clip_norm > 0:
             flat = clip_to_norm(flat, self.config.dp.clip_norm)
         if self.config.dp.noise_multiplier > 0:
@@ -99,9 +99,7 @@ class FederatedClient:
             keys = key_order if key_order else local_params.keys()
             flat = local_params.to_flat(keys)
             flat = self._dp_perturb(flat)
-            noisy = ModelParameters.from_flat(
-                flat, keys, local_params.vocab_size, local_params.order
-            )
+            noisy = ModelParameters.from_flat(flat, keys, local_params.vocab_size, local_params.order)
             return ClientResult(self.client_id, len(self.private_data), params=noisy)
         return ClientResult(self.client_id, len(self.private_data), params=local_params)
 

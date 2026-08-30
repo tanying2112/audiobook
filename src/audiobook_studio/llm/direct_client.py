@@ -18,15 +18,11 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
+from .semantic_cache import cached_llm_lookup, cached_llm_store, get_semantic_cache
+
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
-
-# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
-from .semantic_cache import (
-    cached_llm_lookup,
-    cached_llm_store,
-    get_semantic_cache,
-)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -36,6 +32,7 @@ class DirectProviderType(str, Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
 
 
 # Model pricing (USD per 1M tokens) - for direct provider calls
@@ -51,6 +48,12 @@ DIRECT_MODEL_PRICING = {
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     # Free tier models (via OpenAI-compatible APIs)
     "gpt-4o-mini-free": {"input": 0.00, "output": 0.00},
+    # Ollama local models (free)
+    "qwen3.5:2b": {"input": 0.00, "output": 0.00},
+    "qwen2.5:14b": {"input": 0.00, "output": 0.00},
+    "qwen2.5:32b": {"input": 0.00, "output": 0.00},
+    "llama3.1:8b": {"input": 0.00, "output": 0.00},
+    "gemma4:e2b": {"input": 0.00, "output": 0.00},
 }
 
 
@@ -112,6 +115,8 @@ class DirectProviderClient:
             self._init_openai_client()
         elif self.config.provider == DirectProviderType.ANTHROPIC:
             self._init_anthropic_client()
+        elif self.config.provider == DirectProviderType.OLLAMA:
+            self._init_ollama_client()
         else:
             raise ValueError(f"Unsupported provider: {self.config.provider}")
 
@@ -161,6 +166,30 @@ class DirectProviderClient:
             raise
         except Exception as e:
             logger.error(f"Failed to initialize Anthropic client: {e}")
+            raise
+
+    def _init_ollama_client(self):
+        """Initialize Ollama client with instructor for structured output."""
+        try:
+            import instructor
+            from openai import AsyncOpenAI
+
+            # Create base OpenAI client pointed at Ollama's OpenAI-compatible API
+            base_client = AsyncOpenAI(
+                api_key="ollama",  # Ollama doesn't require real API key
+                base_url=self.config.api_base or "http://localhost:11434/v1",
+                timeout=self.config.timeout,
+                default_headers=self.config.extra_headers,
+            )
+
+            # Wrap with instructor for structured output parsing
+            self._client = instructor.from_openai(base_client, mode=instructor.Mode.JSON)
+            logger.info(f"Initialized Ollama direct client for model: {self.config.model}")
+        except ImportError as e:
+            logger.error(f"OpenAI SDK not installed: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to initialize Ollama client: {e}")
             raise
 
     def _build_messages(self, prompt: Any) -> List[Dict[str, str]]:
@@ -226,6 +255,8 @@ class DirectProviderClient:
                     result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
                 elif self.config.provider == DirectProviderType.ANTHROPIC:
                     result = asyncio.run(self._call_anthropic(messages, response_model, temp, max_tok, **kwargs))
+                elif self.config.provider == DirectProviderType.OLLAMA:
+                    result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
                 else:
                     raise ValueError(f"Unsupported provider: {self.config.provider}")
 

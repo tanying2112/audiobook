@@ -19,7 +19,7 @@ from .edit_for_tts import EditForTtsPipeline, edit_for_tts
 
 # Also export the pipeline classes for advanced usage
 # Import convenience functions from each pipeline stage
-from .extract import ExtractPipeline, extract_text
+from .extract import ExtractMimeType, ExtractPipeline, extract_text
 from .feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from .orchestrator import run_pipeline, run_stage
 from .quality_check import QualityCheckPipeline, quality_check
@@ -86,4 +86,6 @@ __all__ = [
     "stop_sop_background_thread",
     "handle_user_correction_websocket",
     "apply_learned_rules_on_import",
+    # Extract Mime Type
+    "ExtractMimeType",
 ]

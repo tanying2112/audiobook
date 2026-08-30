@@ -111,10 +111,25 @@ providers:
     extra_params:
       use_direct_sdk: true
 
-  # ============ vLLM Local Inference (P2-2) ============
-  # 本地 vLLM 服务 (需先启动: vllm serve qwen2.5:14b --host 0.0.0.0 --port 8000)
-  # 优势: KV Cache + Chunked Prefill + Prefix Caching + 可选 Speculative Decoding
-  # 成本: $0.00 (本地推理), 延迟低, 支持长上下文
+  # ============ 本地 Ollama (离线优先) ============
+  # 本地 Ollama 服务 (默认端口 11434, 需先运行: ollama serve)
+  # Qwen3.5-2B: 2B 参数中文能力强、推理快、显存占用低 (~1.5GB), 适合离线/边缘部署
+  # 启动: ollama pull qwen3.5:2b && ollama serve
+  - name: ollama_qwen35_2b
+    provider: ollama
+    model: qwen3.5:2b
+    base_url: http://localhost:11434
+    priority: 5
+    max_tokens_per_minute: 100000
+    max_requests_per_minute: 200
+    timeout_seconds: 0  # 无超时限制
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+
+  # vLLM 本地推理 (可选, 更高吞吐)
+  # vLLM 服务需先启动: vllm serve qwen2.5:14b --host 0.0.0.0 --port 8000
   - name: vllm_qwen25_14b
     provider: ollama
     model: qwen2.5:14b

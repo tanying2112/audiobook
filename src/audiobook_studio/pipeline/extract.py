@@ -39,6 +39,17 @@ ExtractMimeType = Literal[
     "image/webp",
 ]
 
+__all__ = [
+    "ExtractPipeline",
+    "ExtractMimeType",
+    "ExtractionResult",
+    "ExtractionInput",
+    "VisualElement",
+    "OCR_AVAILABLE",
+]
+
+# Optional OCR dependencies.
+
 # Optional OCR dependencies.
 #
 # Red line #1 (主路径真实性): ``OCR_AVAILABLE`` MUST reflect whether OCR can

@@ -21,6 +21,7 @@ VoxCPM2 → Kokoro → Edge-TTS 三级降级链路真验证（方案 A）
 
 退出码：0=全绿；非0=有层级未通过真断言。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,6 +30,8 @@ import sys
 import time
 import uuid
 from pathlib import Path
+
+import pytest
 
 # 让脚本能直接从仓库根目录跑
 ROOT = Path(__file__).resolve().parent.parent
@@ -146,6 +149,7 @@ def test_routing():
 # ---------------------------------------------------------------------------
 # Part 2: Tier2 Kokoro 真音频 —— auto 默认分支 → submit/poll/真WAV断言
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str) -> Path:
     payload = TTSTaskPayload(
         text=text,
@@ -174,6 +178,7 @@ async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody
     return Path(res.audio_path)
 
 
+@pytest.mark.asyncio
 async def test_tier2_kokoro_real_audio():
     print("\n── Part 2: Tier 2 Kokoro 真音频 ────")
     # 关键：确保 auto 选到 Kokoro 且不带 mock
@@ -191,6 +196,7 @@ async def test_tier2_kokoro_real_audio():
     return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
 
 
+@pytest.mark.asyncio
 async def test_tier3_edge_real_audio():
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
     # 显式构造 edge port（避免 Kokoro 默认抢占）

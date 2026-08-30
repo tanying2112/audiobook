@@ -8,14 +8,14 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional, cast
 
 from pydantic import BaseModel, Field
 
 from ..llm import LLMRouter, StageName, create_router
+from ..pipeline import ExtractMimeType
 from ..pipeline.analyze_structure import AnalyzeStructurePipeline, BookAnalysisInput
 from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline, ParagraphAnnotationInput
-from ..pipeline.extract import ExtractionInput, ExtractPipeline
 from ..pipeline.orchestrator import run_stage
 from ..pipeline.synthesize import SynthesizePipeline, TtsRoutingInput
 from ..schemas import BookAnalysisOutput, CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision
@@ -99,9 +99,9 @@ class ParagraphMarkup(BaseModel):
     text: str
     speaker: Optional[str] = None
     emotion: Optional[str] = None
-    speech_rate: float = 1.0
-    pitch_shift: int = 0
-    pause_after: int = 300  # ms
+    speech_rate: Optional[float] = 1.0
+    pitch_shift: Optional[int] = 0
+    pause_after: Optional[int] = 300  # ms
 
 
 class GenerateEmotionMarkupResult(BaseModel):
@@ -176,10 +176,12 @@ async def load_book_file(args: LoadBookFileArgs) -> LoadBookFileResult:
         )
 
 
-def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> str:
+def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> ExtractMimeType:
     """Guess MIME type from file extension or explicit type."""
+    from ..pipeline.extract import ExtractMimeType
+
     if file_type:
-        type_map = {
+        type_map: dict[str, ExtractMimeType] = {
             "pdf": "application/pdf",
             "epub": "application/epub+zip",
             "txt": "text/plain",
@@ -189,7 +191,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> str:
         return type_map.get(file_type, "application/octet-stream")
 
     suffix = Path(file_path).suffix.lower()
-    ext_map = {
+    ext_map: dict[str, ExtractMimeType] = {
         ".pdf": "application/pdf",
         ".epub": "application/epub+zip",
         ".txt": "text/plain",
@@ -290,7 +292,6 @@ async def generate_emotion_markup(args: GenerateEmotionMarkupArgs) -> GenerateEm
             difficulty="B",
             language="zh",
             total_chapters_estimated=10,
-            reading_time_minutes=60,
         )
         emotion_snapshot = EmotionSnapshot(
             chapter=args.chapter_index,
@@ -483,7 +484,7 @@ TOOL_HANDLERS = {
 }
 
 
-async def execute_tool(name: str, args: dict) -> BaseModel:
+async def execute_tool(name: str, args: dict[str, Any]) -> BaseModel:
     """Execute a tool by name with validated arguments.
 
     Args:
@@ -496,7 +497,7 @@ async def execute_tool(name: str, args: dict) -> BaseModel:
     if name not in TOOL_HANDLERS:
         raise ValueError(f"Unknown tool: {name}")
 
-    handler = TOOL_HANDLERS[name]
+    handler = cast("Callable[[Any], Awaitable[BaseModel]]", TOOL_HANDLERS[name])
     # Validate args against schema
     schema_map = {
         "load_book_file": LoadBookFileArgs,

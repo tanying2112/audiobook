@@ -32,5 +32,12 @@
     {
       "error": "Prompt version 2 not found for stage quality_check"
     }
-  ]
+  ],
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": false,
+    "score": 0.6666666666666667,
+    "threshold": 0.99,
+    "details": "发现问题 (1): 文件末尾多余空行"
+  }
 }

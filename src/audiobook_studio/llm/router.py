@@ -537,8 +537,8 @@ class LLMRouter:
             provider_type_map = {
                 ProviderType.OPENAI: DirectProviderType.OPENAI,
                 ProviderType.ANTHROPIC: DirectProviderType.ANTHROPIC,
-                # VLLM uses OpenAI-compatible API
                 ProviderType.VLLM: DirectProviderType.OPENAI,
+                ProviderType.OLLAMA: DirectProviderType.OLLAMA,
             }
             direct_type = provider_type_map.get(provider.provider)
             if not direct_type:

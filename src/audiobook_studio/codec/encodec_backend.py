@@ -34,8 +34,7 @@ def _require_encodec() -> tuple[Any, Any]:
         return encodec, torch
     except Exception as exc:  # pragma: no cover - depends on optional deps
         raise CodecBackendUnavailable(
-            "EnCodec backend requires 'torch' and 'encodec' "
-            f"(pip install torch encodec): {exc}"
+            "EnCodec backend requires 'torch' and 'encodec' " f"(pip install torch encodec): {exc}"
         )
 
 
@@ -64,7 +63,7 @@ class EncodecAdapter:
         except ImportError:  # pragma: no cover
             return False
 
-    def encode(self, audio: np.ndarray, sample_rate: int | None = None) -> CodecResult:
+    def encode(self, audio: np.ndarray[Any, Any], sample_rate: int | None = None) -> CodecResult:
         torch = self._torch
         sr = sample_rate or self.sample_rate
         if sr != self.sample_rate:
@@ -89,13 +88,11 @@ class EncodecAdapter:
             meta={"bandwidth": self.bandwidth},
         )
 
-    def decode(self, result: CodecResult) -> np.ndarray:
+    def decode(self, result: CodecResult) -> np.ndarray[Any, Any]:
         torch = self._torch
         import torch as _torch
 
-        codes = _torch.stack(
-            [torch.from_numpy(t).unsqueeze(0) for t in result.tokens], dim=0
-        )
+        codes = _torch.stack([torch.from_numpy(t).unsqueeze(0) for t in result.tokens], dim=0)
         with torch.no_grad():
             wav = self._model.decode(codes)[0, 0, 0]
         return wav.cpu().numpy().astype(np.float64)  # type: ignore[no-any-return]
@@ -104,13 +101,12 @@ class EncodecAdapter:
 def _require_transformers() -> tuple[Any, Any, Any]:
     try:
         import torch
-        from transformers import Wav2Vec2FeatureExtractor, HubertModel
+        from transformers import HubertModel, Wav2Vec2FeatureExtractor
 
         return torch, Wav2Vec2FeatureExtractor, HubertModel
     except Exception as exc:  # pragma: no cover
         raise CodecBackendUnavailable(
-            "HuBERT backend requires 'torch' and 'transformers' "
-            f"(pip install torch transformers): {exc}"
+            "HuBERT backend requires 'torch' and 'transformers' " f"(pip install torch transformers): {exc}"
         )
 
 
@@ -138,7 +134,7 @@ class HubertSemanticTokenizer:
         except ImportError:  # pragma: no cover
             return False
 
-    def encode(self, audio: np.ndarray, sample_rate: int | None = None) -> CodecResult:
+    def encode(self, audio: np.ndarray[Any, Any], sample_rate: int | None = None) -> CodecResult:
         torch = self._torch
         a = np.asarray(audio, dtype=np.float64)
         if a.ndim > 1:
@@ -160,16 +156,14 @@ class HubertSemanticTokenizer:
         )
 
     @staticmethod
-    def _coarse_quantize(flat: np.ndarray) -> np.ndarray:
+    def _coarse_quantize(flat: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         # simple per-dimension uniform quantization -> int tokens
         lo, hi = flat.min(axis=0), flat.max(axis=0)
         span = (hi - lo) + 1e-9
         q = ((flat - lo) / span * 255).astype(np.int32)
         return q[:, 0] if q.shape[1] == 1 else q.mean(axis=1).astype(np.int32)  # type: ignore[no-any-return]
 
-    def decode(self, result: CodecResult) -> np.ndarray:  # pragma: no cover
+    def decode(self, result: CodecResult) -> np.ndarray[Any, Any]:  # pragma: no cover
         # Semantic tokens are not directly invertible to audio; return a placeholder
         # waveform so callers can detect the no-op.  Full synthesis needs a vocoder.
-        raise CodecBackendUnavailable(
-            "HuBERT semantic tokens are not waveform-invertible without a vocoder"
-        )
+        raise CodecBackendUnavailable("HuBERT semantic tokens are not waveform-invertible without a vocoder")

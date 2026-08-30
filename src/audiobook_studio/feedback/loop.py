@@ -241,6 +241,7 @@ def quality_judgments_to_golden(
     judgments: List[Any],
     annotations: Optional[List[Any]] = None,
     reference_texts: Optional[List[str]] = None,
+    audio_descriptions: Optional[List[Optional[str]]] = None,
     *,
     split: str = "val",
     stage: str = "judge",
@@ -249,15 +250,18 @@ def quality_judgments_to_golden(
     """将一批质检判定回流为 judge 阶段金标样本，返回实际新增条数。
 
     ``annotations`` / ``reference_texts`` 与 ``judgments`` 一一对应（可选）。
+    ``audio_descriptions`` 与 ``judgments`` 一一对应（可选），用于富化 judge 样本输入。
     """
     added = 0
     for idx, judgment in enumerate(judgments):
         annotation = annotations[idx] if annotations and idx < len(annotations) else None
         reference_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
+        audio_description = audio_descriptions[idx] if audio_descriptions and idx < len(audio_descriptions) else None
         sample = quality_judgment_to_sample(
             judgment,
             annotation=annotation,
             reference_text=reference_text,
+            audio_description=audio_description,
             stage=stage,
         )
         if append_golden_sample(stage, split, sample, golden_root):

@@ -20,14 +20,14 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import Any, List, Sequence
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def clip_to_norm(vec: np.ndarray, clip_norm: float) -> np.ndarray:
+def clip_to_norm(vec: np.ndarray[Any, Any], clip_norm: float) -> np.ndarray[Any, Any]:
     """Clip ``vec`` so its L2 norm is at most ``clip_norm`` (no-op if already)."""
     arr = np.asarray(vec, dtype=np.float64)
     norm = float(np.linalg.norm(arr))
@@ -36,7 +36,7 @@ def clip_to_norm(vec: np.ndarray, clip_norm: float) -> np.ndarray:
     return arr * (clip_norm / norm)
 
 
-def add_gaussian_noise(vec: np.ndarray, sigma: float, rng: np.random.Generator) -> np.ndarray:
+def add_gaussian_noise(vec: np.ndarray[Any, Any], sigma: float, rng: np.random.Generator) -> np.ndarray[Any, Any]:
     return np.asarray(vec, dtype=np.float64) + rng.normal(0.0, sigma, size=np.asarray(vec).shape)
 
 

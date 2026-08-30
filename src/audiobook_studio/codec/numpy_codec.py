@@ -18,12 +18,12 @@ the file extremely small while remaining a genuine learned compression scheme.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import numpy as np
 
 from .base import CodecContainer, CodecResult, NeuralAudioCodec
-from .rvq import RvqConfig, ResidualVectorQuantizer
+from .rvq import ResidualVectorQuantizer, RvqConfig
 from .transform import reflect_pad, sine_window
 
 
@@ -63,9 +63,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         self.hop = hop
         self.latent_dim = latent_dim
         self.frame_rate = sample_rate / hop
-        self.cfg = config or RvqConfig(
-            n_codebooks=12, codebook_size=256, dim=latent_dim, iters=10, seed=seed
-        )
+        self.cfg = config or RvqConfig(n_codebooks=12, codebook_size=256, dim=latent_dim, iters=10, seed=seed)
         self.rvq = ResidualVectorQuantizer(self.cfg)
         self._train(train_seconds, seed)
 
@@ -73,7 +71,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
     # training
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _synthetic_corpus(sample_rate: int, seconds: float, seed: int) -> np.ndarray:
+    def _synthetic_corpus(sample_rate: int, seconds: float, seed: int) -> np.ndarray[Any, Any]:
         """Deterministic training corpus matched to the audiobook use case.
 
         Audiobook content is (TTS) speech, i.e. harmonically rich voiced
@@ -121,7 +119,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         out = out / (np.max(np.abs(out)) + 1e-9)
         return out  # type: ignore[no-any-return]
 
-    def _frame(self, x: np.ndarray) -> np.ndarray:
+    def _frame(self, x: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         w = sine_window(self.win)
         x = reflect_pad(x, self.win, self.hop)
         nf = 1 + (len(x) - self.win) // self.hop
@@ -133,7 +131,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         corpus = self._synthetic_corpus(self.sample_rate, seconds, seed)
         # normalise the training corpus to unit RMS so the latent space the
         # RVQ is trained on matches the (likewise RMS-normalised) encoder input
-        corpus_rms = float(np.sqrt(np.mean(corpus ** 2))) + 1e-9
+        corpus_rms = float(np.sqrt(np.mean(corpus**2))) + 1e-9
         corpus = corpus / corpus_rms
         frames = self._frame(corpus)
         self.mean = frames.mean(axis=0)
@@ -152,7 +150,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
     # ------------------------------------------------------------------ #
     # encode / decode
     # ------------------------------------------------------------------ #
-    def encode(self, audio: np.ndarray, sample_rate: Optional[int] = None) -> CodecResult:
+    def encode(self, audio: np.ndarray[Any, Any], sample_rate: Optional[int] = None) -> CodecResult:
         sr = int(sample_rate if sample_rate is not None else self.sample_rate)
         x = np.asarray(audio, dtype=np.float64)
         if x.ndim > 1:
@@ -161,7 +159,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         # corpus; the original RMS is stored as ``gain`` and restored on decode
         # (the quantiser attenuates energy, so a simple level multiply would not
         # recover the true amplitude).
-        gain = float(np.sqrt(np.mean(x ** 2))) + 1e-9
+        gain = float(np.sqrt(np.mean(x**2))) + 1e-9
         x = x / gain
         frames = self._frame(x)
         L = frames - self.mean
@@ -178,7 +176,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
             meta={"win": self.win, "hop": self.hop, "latent_dim": self.latent_dim},
         )
 
-    def decode(self, result: "CodecResult | CodecContainer") -> np.ndarray:
+    def decode(self, result: "CodecResult | CodecContainer") -> np.ndarray[Any, Any]:
         if isinstance(result, CodecContainer):
             result = result.result
         latent = self.rvq.decode(result.tokens)  # (n_frames, latent_dim)
@@ -199,7 +197,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         # we rescale the decoded (RMS-normalised) signal so its RMS equals the
         # stored original RMS -- this recovers both overall loudness and (since
         # the waveform shape is preserved) the original peak.
-        rms_hat = float(np.sqrt(np.mean(out ** 2))) + 1e-12
+        rms_hat = float(np.sqrt(np.mean(out**2))) + 1e-12
         gain = getattr(result, "gain", 1.0)
         return out * (gain / rms_hat)
 
@@ -232,7 +230,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
             "n_frames": result.n_frames,
         }
 
-    def decompress_file(self, container_path: str, out_wav_path: str) -> np.ndarray:
+    def decompress_file(self, container_path: str, out_wav_path: str) -> np.ndarray[Any, Any]:
         import soundfile as sf
 
         with open(container_path, "rb") as fh:

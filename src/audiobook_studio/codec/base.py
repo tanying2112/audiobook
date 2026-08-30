@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -34,7 +34,7 @@ class CodecBackendUnavailable(Exception):
 class CodecResult:
     """The discrete representation produced by a neural audio codec."""
 
-    tokens: list[np.ndarray]  # one int array (n_frames,) per codebook
+    tokens: list[np.ndarray[Any, Any]]  # one int array (n_frames,) per codebook
     sample_rate: int
     n_freq: int
     n_codebooks: int
@@ -97,7 +97,7 @@ class CodecContainer:
         if magic != MAGIC:
             raise ValueError("not a neural-audio-codec container")
         body = data[HEADER_SIZE:]
-        tokens: list[np.ndarray] = []
+        tokens: list[np.ndarray[Any, Any]] = []
         for q in range(n_cb):
             seg = body[q * n_frames : (q + 1) * n_frames]
             tokens.append(np.frombuffer(seg, dtype=np.uint8).astype(np.int32))
@@ -125,10 +125,10 @@ class NeuralAudioCodec(Protocol):
         """Whether this backend can run in the current environment."""
         ...
 
-    def encode(self, audio: np.ndarray, sample_rate: int | None = None) -> CodecResult:
+    def encode(self, audio: np.ndarray[Any, Any], sample_rate: int | None = None) -> CodecResult:
         """Encode mono audio (float, [-1, 1]) into discrete tokens."""
         ...
 
-    def decode(self, result: CodecResult) -> np.ndarray:
+    def decode(self, result: CodecResult) -> np.ndarray[Any, Any]:
         """Decode tokens back into a mono float waveform."""
         ...

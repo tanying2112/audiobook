@@ -9,6 +9,7 @@ import base64
 import json
 import logging
 import os
+import queue
 import subprocess
 import time
 from dataclasses import dataclass
@@ -29,6 +30,63 @@ from ..schemas.quality import FixSuggestion
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
 logger = logging.getLogger(__name__)
+
+# ── A2 全局质检判定收集器 ────────────────────────────────────────────────────
+# run() 在 golden_feedback 开启时把质检判定（pass/fail + 原因）推入此收集器，
+# 由 pipeline/sop_reflection.SOPBackgroundThread 周期性抽干并回流为 judge 金标，
+# 实现「运行时自动回流」而非仅单次 run() 同步回流。
+
+
+@dataclass
+class _QualityJudgmentRecord:
+    judgment: Any
+    annotation: Any = None
+    reference_text: str = ""
+    audio_description: Optional[str] = None
+
+
+class QualityJudgmentCollector:
+    """线程安全的质检判定收集器，供 SOPBackgroundThread 周期性抽干回流。"""
+
+    def __init__(self, max_size: int = 10000) -> None:
+        self._queue: "queue.Queue[_QualityJudgmentRecord]" = queue.Queue(maxsize=max_size)
+
+    def add(
+        self,
+        judgment: Any,
+        annotation: Any = None,
+        reference_text: str = "",
+        audio_description: Optional[str] = None,
+    ) -> bool:
+        try:
+            self._queue.put_nowait(_QualityJudgmentRecord(judgment, annotation, reference_text, audio_description))
+            return True
+        except queue.Full:
+            return False
+
+    def drain(self, max_size: int = 500) -> List[_QualityJudgmentRecord]:
+        records: List[_QualityJudgmentRecord] = []
+        while len(records) < max_size:
+            try:
+                records.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        return records
+
+    def size(self) -> int:
+        return self._queue.qsize()
+
+
+_QUALITY_JUDGMENT_COLLECTOR: Optional[QualityJudgmentCollector] = None
+
+
+def get_quality_judgment_collector() -> QualityJudgmentCollector:
+    """返回全局质检判定收集器（懒初始化，单例）。"""
+    global _QUALITY_JUDGMENT_COLLECTOR
+    if _QUALITY_JUDGMENT_COLLECTOR is None:
+        _QUALITY_JUDGMENT_COLLECTOR = QualityJudgmentCollector()
+    return _QUALITY_JUDGMENT_COLLECTOR
+
 
 # One segment passed to the quality-check run loop:
 # (audio_path, paragraph_annotation, routing_decision, reference_text).
@@ -641,6 +699,8 @@ class QualityCheckPipeline:
         judgments: List[QualityJudgment] = []
         # 与 judgments 一一对应配对（(annotation, reference_text)），供 A2 回流。
         qc_pairs: List[Tuple[Any, str]] = []
+        # 当前段的音频描述（非 mock 分支才会赋值），供 A2 样本富化；默认 None。
+        audio_description: Optional[str] = None
 
         for i, (audio_path, annotation, routing, reference_text) in enumerate(inputs):
             # Emit stage progress
@@ -716,6 +776,12 @@ class QualityCheckPipeline:
                 judgments.append(judgment)
                 # A2 回流配对：判定与对应标注/参考文本同步收集。
                 qc_pairs.append((annotation, reference_text))
+                # A2 运行时自动回流：判定推入全局收集器，交由 SOPBackgroundThread 抽干。
+                if golden_feedback:
+                    try:
+                        get_quality_judgment_collector().add(judgment, annotation, reference_text, audio_description)
+                    except Exception:  # 收集失败绝不应中断主链路
+                        pass
                 continue
 
             # MOCK: 待真实实现
@@ -888,6 +954,12 @@ class QualityCheckPipeline:
 
                 judgments.append(judgment)
                 qc_pairs.append((annotation, reference_text))
+                # A2 运行时自动回流：判定推入全局收集器，交由 SOPBackgroundThread 抽干。
+                if golden_feedback:
+                    try:
+                        get_quality_judgment_collector().add(judgment, annotation, reference_text, audio_description)
+                    except Exception:  # 收集失败绝不应中断主链路
+                        pass
             except (ValueError, RuntimeError, OSError):  # OSError covers Connection/Timeout
                 from ..monitoring import record_stage_performance
 

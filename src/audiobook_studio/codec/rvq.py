@@ -15,6 +15,7 @@ torch / GPU required.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -34,12 +35,12 @@ class ResidualVectorQuantizer:
     def __init__(self, config: RvqConfig | None = None) -> None:
         self.cfg = config or RvqConfig()
         self.rng = np.random.default_rng(self.cfg.seed)
-        self.codebooks: list[np.ndarray] = []
+        self.codebooks: list[np.ndarray[Any, Any]] = []
 
     # ------------------------------------------------------------------ #
     # training
     # ------------------------------------------------------------------ #
-    def _kmeans_init(self, x: np.ndarray, k: int) -> np.ndarray:
+    def _kmeans_init(self, x: np.ndarray[Any, Any], k: int) -> np.ndarray[Any, Any]:
         """k-means++-lite: spread initial centroids across the data.
 
         Uses rejection-free random sampling (no ``choice(p=...)`` dependency on an
@@ -63,7 +64,7 @@ class ResidualVectorQuantizer:
         return np.array(centroids, dtype=np.float64)
 
     @staticmethod
-    def _nearest(x: np.ndarray, centroids: np.ndarray) -> np.ndarray:
+    def _nearest(x: np.ndarray[Any, Any], centroids: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """Return the index in ``centroids`` nearest to each row of ``x``."""
         m = len(x)
         best = np.full(m, np.inf)
@@ -78,7 +79,7 @@ class ResidualVectorQuantizer:
                 assign[s : s + chunk][mask] = c
         return assign
 
-    def fit(self, x: np.ndarray) -> None:
+    def fit(self, x: np.ndarray[Any, Any]) -> None:
         """Train the codebook stack on latent vectors ``x`` (shape ``(M, dim)``)."""
         x = np.asarray(x, dtype=np.float64)
         residual = x.copy()
@@ -102,18 +103,18 @@ class ResidualVectorQuantizer:
     # ------------------------------------------------------------------ #
     # encode / decode
     # ------------------------------------------------------------------ #
-    def encode(self, x: np.ndarray) -> list[np.ndarray]:
+    def encode(self, x: np.ndarray[Any, Any]) -> list[np.ndarray[Any, Any]]:
         """Encode ``x`` (``(M, dim)``) into a list of ``n_codebooks`` token arrays."""
         x = np.asarray(x, dtype=np.float64)
         residual = x.copy()
-        tokens: list[np.ndarray] = []
+        tokens: list[np.ndarray[Any, Any]] = []
         for cb in self.codebooks:
             idx = self._nearest(residual, cb)
             tokens.append(idx.astype(np.int32))
             residual -= cb[idx]
         return tokens
 
-    def decode(self, tokens: list[np.ndarray]) -> np.ndarray:
+    def decode(self, tokens: list[np.ndarray[Any, Any]]) -> np.ndarray[Any, Any]:
         """Reconstruct the latent from a list of token arrays."""
         out = np.zeros((len(tokens[0]), self.cfg.dim), dtype=np.float64)
         for cb, idx in zip(self.codebooks, tokens):

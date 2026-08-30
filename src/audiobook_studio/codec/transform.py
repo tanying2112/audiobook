@@ -18,15 +18,17 @@ torch / scipy dependency) so it runs anywhere for free.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 
-def sine_window(n: int) -> np.ndarray:
+def sine_window(n: int) -> np.ndarray[Any, Any]:
     """Sine window ``sin(pi*(n+0.5)/N)`` -- complementary at 50% overlap."""
-    return np.sin(np.pi * (np.arange(n) + 0.5) / n)
+    return np.asarray(np.sin(np.pi * (np.arange(n) + 0.5) / n), dtype=np.float64)
 
 
-def reflect_pad(x: np.ndarray, win: int, hop: int) -> np.ndarray:
+def reflect_pad(x: np.ndarray[Any, Any], win: int, hop: int) -> np.ndarray[Any, Any]:
     """Mirror ``win//2`` samples at each end so the OLA edges are filled in."""
     x = np.asarray(x, dtype=np.float64)
     if x.ndim > 1:
@@ -36,7 +38,7 @@ def reflect_pad(x: np.ndarray, win: int, hop: int) -> np.ndarray:
     return np.concatenate([left, x, right])
 
 
-def stft(x: np.ndarray, win: int, hop: int) -> tuple[np.ndarray, np.ndarray, int]:
+def stft(x: np.ndarray[Any, Any], win: int, hop: int) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], int]:
     """Real STFT with a sine window.
 
     Returns ``(X, window, n_frames)`` where ``X`` is complex ``(n_frames, n_freq)``
@@ -53,12 +55,12 @@ def stft(x: np.ndarray, win: int, hop: int) -> tuple[np.ndarray, np.ndarray, int
 
 
 def istft(
-    x_spec: np.ndarray,
+    x_spec: np.ndarray[Any, Any],
     win: int,
     hop: int,
-    w: np.ndarray,
+    w: np.ndarray[Any, Any],
     length: int | None = None,
-) -> np.ndarray:
+) -> np.ndarray[Any, Any]:
     """Inverse STFT with overlap-add (perfect reconstruction for sine window)."""
     n_frames, n_freq = x_spec.shape
     buf = np.zeros(n_frames * hop + win, dtype=np.float64)
@@ -74,8 +76,8 @@ def istft(
 
 
 def audio_to_spectrogram(
-    audio: np.ndarray, win: int, hop: int
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    audio: np.ndarray[Any, Any], win: int, hop: int
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], np.ndarray[Any, Any], int]:
     """Mono audio -> ``(magnitude, phase, window, n_frames)``."""
     padded = reflect_pad(audio, win, hop)
     x_spec, w, n_frames = stft(padded, win, hop)
@@ -85,13 +87,13 @@ def audio_to_spectrogram(
 
 
 def spectrogram_to_audio(
-    mag: np.ndarray,
-    phase: np.ndarray,
+    mag: np.ndarray[Any, Any],
+    phase: np.ndarray[Any, Any],
     win: int,
     hop: int,
-    w: np.ndarray,
+    w: np.ndarray[Any, Any],
     length: int,
-) -> np.ndarray:
+) -> np.ndarray[Any, Any]:
     """``(magnitude, phase)`` -> mono audio of exactly ``length`` samples."""
     x_spec = mag * np.exp(1j * phase)
     padded_len = len(reflect_pad(np.zeros(length), win, hop)) if length else None

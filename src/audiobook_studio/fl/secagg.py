@@ -25,7 +25,7 @@ which is the standard trade-off).
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -46,12 +46,12 @@ class SecAggSession:
         self.vector_dim = vector_dim
         self.prime = prime
         # (i, j) with i < j -> shared random mask vector (unknown to the server).
-        self.masks: Dict[Tuple[int, int], np.ndarray] = {}
+        self.masks: Dict[Tuple[int, int], np.ndarray[Any, Any]] = {}
         for a in range(num_clients):
             for b in range(a + 1, num_clients):
                 self.masks[(a, b)] = rng.integers(0, prime, size=vector_dim, dtype=np.int64)
 
-    def client_mask(self, client_index: int, params_int: np.ndarray) -> np.ndarray:
+    def client_mask(self, client_index: int, params_int: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """Client-side: mask ``params_int`` so the server cannot read it."""
         out = np.asarray(params_int, dtype=np.int64) % self.prime
         for j in range(self.num_clients):
@@ -63,7 +63,7 @@ class SecAggSession:
                 out = (out - self.masks[(j, client_index)]) % self.prime
         return out
 
-    def server_aggregate(self, masked_list: Sequence[np.ndarray]) -> np.ndarray:
+    def server_aggregate(self, masked_list: Sequence[np.ndarray[Any, Any]]) -> np.ndarray[Any, Any]:
         """Server-side: recover sum(params) without ever seeing any params_i."""
         s = np.zeros(self.vector_dim, dtype=np.int64)
         for m in masked_list:
@@ -72,10 +72,10 @@ class SecAggSession:
 
     def server_aggregate_with_dropout(
         self,
-        masked_list: Sequence[np.ndarray],
+        masked_list: Sequence[np.ndarray[Any, Any]],
         dropped_index: int,
-        revealed_masks: Dict[int, np.ndarray],
-    ) -> np.ndarray:
+        revealed_masks: Dict[int, np.ndarray[Any, Any]],
+    ) -> np.ndarray[Any, Any]:
         """Recover sum of the *remaining* clients when one dropped out.
 
         ``revealed_masks[j]`` is the mask client ``dropped_index`` shared with
@@ -97,10 +97,10 @@ class SecAggSession:
         return s
 
 
-def quantize(flat: np.ndarray, scale: float) -> np.ndarray:
+def quantize(flat: np.ndarray[Any, Any], scale: float) -> np.ndarray[Any, Any]:
     """Fixed-point quantization so floats can travel through the integer field."""
-    return np.round(np.asarray(flat, dtype=np.float64) * scale).astype(np.int64)
+    return np.asarray(np.round(np.asarray(flat, dtype=np.float64) * scale), dtype=np.int64)
 
 
-def dequantize(flat_int: np.ndarray, scale: float) -> np.ndarray:
-    return np.asarray(flat_int, dtype=np.float64) / scale
+def dequantize(flat_int: np.ndarray[Any, Any], scale: float) -> np.ndarray[Any, Any]:
+    return np.asarray(np.asarray(flat_int, dtype=np.float64) / scale, dtype=np.float64)

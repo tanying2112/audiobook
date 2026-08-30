@@ -32,5 +32,12 @@
     {
       "error": "Prompt version 3 not found for stage quality_check"
     }
-  ]
+  ],
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": false,
+    "score": 0.33333333333333337,
+    "threshold": 0.99,
+    "details": "发现问题 (2): 存在连续超过 3 个空行; 文件末尾多余空行"
+  }
 }

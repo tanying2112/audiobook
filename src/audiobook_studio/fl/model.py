@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -44,20 +44,18 @@ class ModelParameters:
     def keys(self) -> List[ContextKey]:
         return sorted(self.counts.keys())
 
-    def to_flat(self, key_order: Sequence[ContextKey]) -> np.ndarray:
+    def to_flat(self, key_order: Sequence[ContextKey]) -> np.ndarray[Any, Any]:
         """Flatten to a fixed-shape vector aligned to ``key_order``.
 
         Contexts absent from this model contribute a zero vector, so two models
         flattened with the *same* ``key_order`` are identically shaped (required
         for secure aggregation and differential privacy).
         """
-        parts: List[np.ndarray] = []
+        parts: List[np.ndarray[Any, Any]] = []
         for k in key_order:
             v = self.counts.get(k)
             parts.append(
-                np.asarray(v, dtype=np.float64)
-                if v is not None
-                else np.zeros(self.vocab_size, dtype=np.float64)
+                np.asarray(v, dtype=np.float64) if v is not None else np.zeros(self.vocab_size, dtype=np.float64)
             )
         if not parts:
             return np.zeros(0, dtype=np.float64)
@@ -66,7 +64,7 @@ class ModelParameters:
     @classmethod
     def from_flat(
         cls,
-        arr: np.ndarray,
+        arr: np.ndarray[Any, Any],
         key_order: Sequence[ContextKey],
         vocab_size: int,
         order: int,
@@ -85,12 +83,10 @@ class FederatableModel(ABC):
     """Backend-agnostic surface a federated server/client can operate on."""
 
     @abstractmethod
-    def get_parameters(self) -> ModelParameters:
-        ...
+    def get_parameters(self) -> ModelParameters: ...
 
     @abstractmethod
-    def set_parameters(self, p: ModelParameters) -> None:
-        ...
+    def set_parameters(self, p: ModelParameters) -> None: ...
 
     @abstractmethod
     def train(self, token_ids: Sequence[int]) -> None:
@@ -101,8 +97,7 @@ class FederatableModel(ABC):
         """Return a higher-is-better quality metric (mean log-likelihood)."""
 
     @abstractmethod
-    def empty_copy(self) -> "FederatableModel":
-        ...
+    def empty_copy(self) -> "FederatableModel": ...
 
 
 class LocalARModelAdapter(FederatableModel):

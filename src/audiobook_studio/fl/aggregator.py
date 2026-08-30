@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Protocol, Sequence
+from typing import Any, List, Protocol, Sequence
 
 import numpy as np
 
@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 class Aggregator(Protocol):
     """Aggregates a list of per-client parameters into a global model."""
 
-    def aggregate(self, params_list: Sequence[ModelParameters], weights: Sequence[float]) -> ModelParameters:
-        ...
+    def aggregate(self, params_list: Sequence[ModelParameters], weights: Sequence[float]) -> ModelParameters: ...
 
 
 def fedavg_count_models(
@@ -52,9 +51,9 @@ def fedavg_count_models(
 
 
 def fedavg_vectors(
-    vectors: Sequence[np.ndarray],
+    vectors: Sequence[np.ndarray[Any, Any]],
     weights: Sequence[float],
-) -> np.ndarray:
+) -> np.ndarray[Any, Any]:
     """Generic weighted average of equal-shaped parameter vectors (FedAvg)."""
     if not vectors:
         raise ValueError("vectors is empty")

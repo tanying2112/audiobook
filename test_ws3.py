@@ -1,10 +1,14 @@
 import asyncio
-import websockets
 import json
 
+import pytest
+import websockets
+
+
+@pytest.mark.asyncio
 async def test_websocket():
     uri = "ws://localhost:8000/api/ws/pipeline/11"
-    
+
     try:
         async with websockets.connect(uri) as ws:
             print("Connected!")
@@ -20,5 +24,6 @@ async def test_websocket():
         print(f"Headers: {e.headers}")
     except Exception as e:
         print(f"Error: {type(e).__name__}: {e}")
+
 
 asyncio.run(test_websocket())
