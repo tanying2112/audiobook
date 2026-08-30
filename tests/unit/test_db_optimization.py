@@ -9,27 +9,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
+from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.database import engine as get_engine
 from src.audiobook_studio.models import Chapter, Project
 from src.audiobook_studio.models.audio_segment import AudioSegment
-
-
-def _fk_off(dbapi_connection, connection_record):
-    """Instance-level connect listener forcing ``PRAGMA foreign_keys=OFF``.
-
-    Neutralizes the process-wide FK=ON class listener that harness leaks (it
-    registers ``event.listens_for(Engine, "connect", ...)`` on the Engine class),
-    which otherwise makes the AudioSegment insert fail under full-suite ordering.
-    Instance listeners fire after class listeners, so this wins.
-    """
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=OFF")
-        cursor.close()
-    except Exception:
-        pass
 
 
 class TestCompositeIndexes:
@@ -41,7 +26,7 @@ class TestCompositeIndexes:
         from sqlalchemy import create_engine
 
         eng = create_engine("sqlite:///:memory:")
-        event.listen(eng, "connect", _fk_off)
+        event.listen(eng, "connect", set_sqlite_fk_off)
         return eng
 
     def test_chapter_composite_index_exists(self, engine):
@@ -133,7 +118,7 @@ class TestQueryPerformance:
         from sqlalchemy import create_engine
 
         eng = create_engine("sqlite:///:memory:")
-        event.listen(eng, "connect", _fk_off)
+        event.listen(eng, "connect", set_sqlite_fk_off)
         return eng
 
     def test_chapter_query_by_project_and_status(self, engine):

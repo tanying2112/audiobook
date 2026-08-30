@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 from sqlalchemy import event, select, text
+from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.database import (
     AsyncSessionLocal,
@@ -28,24 +29,6 @@ from src.audiobook_studio.database import (
     init_db,
     init_routed_engine,
 )
-
-
-def _fk_off(dbapi_connection, connection_record):
-    """Instance-level connect listener forcing ``PRAGMA foreign_keys=OFF``.
-
-    Neutralizes the process-wide FK=ON class listener that harness leaks (it
-    registers ``event.listens_for(Engine, "connect", ...)`` on the Engine class),
-    which otherwise makes ``drop_async_db`` (drop_all) fail under full-suite
-    ordering because of the unresolvable FK cycle. Instance listeners fire after
-    class listeners, so this wins.
-    """
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=OFF")
-        cursor.close()
-    except Exception:
-        pass
-
 
 # ---------------------------------------------------------------------------
 # URL helpers
@@ -327,7 +310,7 @@ def test_init_and_drop_async_db(tmp_path, monkeypatch):
         # the already-pooled connections with the harness-leaked FK=ON (the FK cycle
         # then makes drop_all fail with "no such table"). Instance listeners fire after
         # the harness class listener, so FK=OFF wins. (TEST-ISOLATION ONLY.)
-        event.listen(db_mod.get_async_engine().sync_engine, "connect", _fk_off)
+        event.listen(db_mod.get_async_engine().sync_engine, "connect", set_sqlite_fk_off)
         await init_async_db()
         await drop_async_db()
 

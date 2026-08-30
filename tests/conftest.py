@@ -127,11 +127,13 @@ _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
 # ════════════════════════════════════════════════════════════════════════════
 
 
-def _set_sqlite_fk_off(dbapi_connection, connection_record):
+def set_sqlite_fk_off(dbapi_connection, connection_record):
     """Instance-level connect listener forcing ``PRAGMA foreign_keys=OFF``.
 
-    Used by the bulk/optimization DB test fixtures to neutralize the process-wide
-    FK=ON class listener that harness leaks (see comment block above).
+    Shared by the bulk/phaseB/optimization DB tests (and the FK-isolation guard)
+    to neutralize the process-wide FK=ON class listener that harness leaks (see
+    comment block above). Imported directly from ``tests.conftest`` by the test
+    modules so the body lives in exactly one place.
     """
     try:
         cursor = dbapi_connection.cursor()
@@ -290,9 +292,9 @@ def _reset_global_state():
     except Exception:
         pass
 
-    # (DB CRUD test isolation is handled per-fixture via the ``_set_sqlite_fk_off``
+    # (DB CRUD test isolation is handled per-fixture via the ``set_sqlite_fk_off``
     # instance connect listener installed in ``make_async_db_override`` and the
-    # bulk/optimization test fixtures — see the comment block above. No global
+    # bulk/phaseB/optimization test fixtures — see the comment block above. No global
     # teardown needed here.)
 
 
@@ -492,7 +494,7 @@ def make_async_db_override(engine):
     from sqlalchemy import event
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    event.listen(engine.sync_engine, "connect", _set_sqlite_fk_off)
+    event.listen(engine.sync_engine, "connect", set_sqlite_fk_off)
 
     async def _override():
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
