@@ -37,6 +37,7 @@ class ExtractionInput(BaseModel):
         "image/tiff",
         "image/bmp",
         "image/webp",
+        "application/octet-stream",
     ] = Field(..., description="文件 MIME 类型")
     detect_language: bool = Field(default=True, description="是否自动检测语言")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")

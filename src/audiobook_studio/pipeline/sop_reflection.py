@@ -810,6 +810,7 @@ class SOPBackgroundThread:
         reflection_engine: ReflectionEngine,
         check_interval: float = 30.0,
         golden_root: Optional[Path] = None,
+        harness_scheduler: Optional[Any] = None,
     ):
         self.sop_config = sop_config
         self.collector = correction_collector
@@ -817,12 +818,15 @@ class SOPBackgroundThread:
         self.check_interval = check_interval
         # 金标回流根目录（默认 data/golden）；测试可注入临时目录。
         self.golden_root = golden_root or Path("data/golden")
+        # 自主迭代调度器（独立后台 worker）；不传则由 start() 按环境变量惰性构建。
+        self._harness_scheduler = harness_scheduler
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._last_reflection: Dict[str, float] = {}  # genre -> timestamp
 
     def start(self) -> None:
-        """Start the background reflection thread."""
+        """Start the background reflection thread (and, if enabled, the harness
+        autonomous-iteration worker)."""
         if self._thread and self._thread.is_alive():
             logger.warning("[SOP] Background thread already running")
             return
@@ -832,21 +836,36 @@ class SOPBackgroundThread:
         self._thread.start()
         logger.info("[SOP] Background reflection thread started")
 
+        # M-项1：自主调度层 —— 把 harness 自我迭代闭环接进独立后台 worker。
+        # 仅当 AUDIOBOOK_HARNESS_AUTONOMOUS=1 时启用；调度线程以自身 interval
+        # （默认 3600s，可由 AUDIOBOOK_HARNESS_INTERVAL 覆盖）独立驱动
+        # run_iteration_cycle，与反思链路解耦，异常绝不外溢到主链路。
+        if self._harness_autonomous_enabled():
+            try:
+                self._ensure_harness_scheduler().start()
+                logger.info("[SOP] harness 自主迭代 worker 已随后台线程启动")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[SOP] harness 自主迭代 worker 启动失败（已跳过）: {exc}")
+
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the background thread."""
+        """Stop the background thread and the harness autonomous-iteration worker."""
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=timeout)
             logger.info("[SOP] Background reflection thread stopped")
+        # 同步停止 harness 自主迭代 worker（独立后台线程），确保进程退出干净。
+        sched = self._harness_scheduler
+        if sched is not None and getattr(sched, "_thread", None) is not None and sched._thread.is_alive():
+            try:
+                sched.stop(timeout=timeout)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[SOP] harness 自主迭代 worker 停止异常（已忽略）: {exc}")
 
     def _run(self) -> None:
         """Main loop for background reflection."""
         while not self._stop_event.is_set():
             try:
                 self._check_and_reflect()
-                # M-项1：自主调度层 —— 周期性驱动 harness 自我迭代闭环。
-                # 默认关闭（AUDIOBOOK_HARNESS_AUTONOMOUS=1 才启用），且异常绝不中断主反思链路。
-                self._maybe_run_harness_iterations()
             except (ValueError, RuntimeError, OSError) as e:
                 logger.error(f"[SOP] Reflection loop error: {e}")
 
@@ -875,25 +894,27 @@ class SOPBackgroundThread:
         """
         return os.environ.get("AUDIOBOOK_HARNESS_USE_LEARNED", "0") == "1"
 
-    def _maybe_run_harness_iterations(self) -> None:
-        """若启用自主迭代，则对 harness 配置的各 stage 跑一轮迭代闭环。
+    def _ensure_harness_scheduler(self) -> Any:
+        """惰性构建/返回 harness 自主迭代调度器（独立后台 worker）。
 
-        通过 harness 包内的 ``HarnessScheduler`` 驱动 ``run_iteration_cycle``；
-        该导入被 try 包裹，保证 pipeline 主链路不受 harness 不可用/异常影响。
+        若构造时已注入 ``harness_scheduler`` 则直接使用；否则按环境变量构建默认
+        调度器（仅当 ``AUDIOBOOK_HARNESS_AUTONOMOUS=1`` 时会被 start 拉起）：
+        - AUDIOBOOK_HARNESS_INTERVAL: 迭代周期（秒），默认 3600
+        - AUDIOBOOK_HARNESS_AUTO_DEPLOY: 门禁通过是否自动部署，默认 0（关）
+        - AUDIOBOOK_HARNESS_USE_LEARNED: 学习型候选生成，默认 0（关）
         """
-        if not self._harness_autonomous_enabled():
-            return
-        try:
+        if self._harness_scheduler is None:
             from audiobook_studio.harness.scheduler import HarnessScheduler
 
+            interval = float(os.environ.get("AUDIOBOOK_HARNESS_INTERVAL", "3600"))
+            auto_deploy = os.environ.get("AUDIOBOOK_HARNESS_AUTO_DEPLOY", "0") == "1"
             use_learned = self._harness_use_learned_enabled()
-            scheduler = HarnessScheduler(auto_deploy=False, use_learned=use_learned)
-            report = scheduler.tick(use_learned=use_learned)
-            promoted = [s for s, r in report.items() if isinstance(r, dict) and r.get("deployed")]
-            if report:
-                logger.info(f"[SOP] harness 自主迭代完成：{len(report)} stages，deployed={promoted}")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[SOP] harness 自主迭代触发失败（已跳过）: {exc}")
+            self._harness_scheduler = HarnessScheduler(
+                interval=interval,
+                auto_deploy=auto_deploy,
+                use_learned=use_learned,
+            )
+        return self._harness_scheduler
 
     def _drain_quality_judgments_to_golden(self) -> int:
         """A2：抽干全局质检判定收集器，回流为 judge 阶段金标（幂等去重）。"""

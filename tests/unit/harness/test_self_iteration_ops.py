@@ -1,6 +1,7 @@
 """M-项1/项2/项3 收尾测试：调度开关、晋升门禁、看板真实计数。"""
 
 import os
+from typing import Any, Dict
 
 import pytest
 
@@ -193,3 +194,100 @@ def test_learned_experiment_records_evidence(tmp_path, monkeypatch):
     loaded = load_experiment_records(str(out))
     assert len(loaded) == 1
     assert loaded[0]["stage"] == "annotate_paragraph"
+
+
+# ── 项1：SOPBackgroundThread 真正拉起 harness 自主迭代 worker ─────────────────
+
+
+def test_sop_background_thread_starts_harness_worker(monkeypatch, tmp_path):
+    """AUDIOBOOK_HARNESS_AUTONOMOUS=1 时，SOPBackgroundThread.start() 真正拉起
+    harness 自主迭代 worker（独立后台线程），并按自身 interval 驱动 run_iteration_cycle。"""
+    import audiobook_studio.harness.harness as harness_mod
+    from audiobook_studio.harness.scheduler import HarnessScheduler
+    from src.audiobook_studio.pipeline.sop_reflection import (
+        CorrectionCollector,
+        ReflectionEngine,
+        SOPBackgroundThread,
+        SOPConfig,
+    )
+
+    captured: Dict[str, Any] = {}
+
+    class _FakeRep:
+        compiled = True
+        candidate_version = 1
+        passed = True
+        deployed = False
+        eval_mean_score = 0.9
+
+    def _fake_cycle(
+        stage,
+        run_fn=None,
+        baseline_fn=None,
+        *,
+        k=3,
+        golden_root=None,
+        prompts_root=None,
+        judge=None,
+        auto_deploy=True,
+        format_compliance_rate=1.0,
+        human_preference_score=1.0,
+        candidate_id=None,
+        use_learned=False,
+    ):
+        captured.setdefault("calls", []).append(stage)
+        return _FakeRep()
+
+    monkeypatch.setattr(harness_mod, "run_iteration_cycle", _fake_cycle)
+    monkeypatch.setenv("AUDIOBOOK_HARNESS_AUTONOMOUS", "1")
+    monkeypatch.setenv("AUDIOBOOK_HARNESS_INTERVAL", "0.05")
+
+    sop = SOPConfig(tmp_path / "agent_sop.json")
+    collector = CorrectionCollector()
+    engine = ReflectionEngine(sop)
+    # 注入一个快速 scheduler（stages 收敛到 judge，interval 极小），避免跑全量 stage。
+    sched = HarnessScheduler(stages=["judge"], interval=0.05, auto_deploy=False)
+    thread = SOPBackgroundThread(sop, collector, engine, check_interval=30.0, harness_scheduler=sched)
+
+    try:
+        thread.start()
+        # 自主迭代 worker 应作为独立后台线程被拉起
+        assert sched._thread is not None and sched._thread.is_alive()
+        import time as _t
+
+        _t.sleep(0.3)
+        # 周期线程已按自身 interval 驱动 run_iteration_cycle
+        assert "judge" in captured.get("calls", [])
+    finally:
+        thread.stop(timeout=2.0)
+    # 退出时 worker 与反思主线程都应已终止
+    assert not sched._thread.is_alive()
+    assert not thread._thread.is_alive()
+
+
+def test_sop_background_thread_no_harness_worker_when_disabled(monkeypatch, tmp_path):
+    """AUDIOBOOK_HARNESS_AUTONOMOUS 未开启时，start() 不应拉起 harness worker。"""
+    import audiobook_studio.harness.harness as harness_mod
+    from src.audiobook_studio.pipeline.sop_reflection import (
+        CorrectionCollector,
+        ReflectionEngine,
+        SOPBackgroundThread,
+        SOPConfig,
+    )
+
+    monkeypatch.delenv("AUDIOBOOK_HARNESS_AUTONOMOUS", raising=False)
+    # 即便 run_iteration_cycle 被调用也应失败，确保 worker 真的没启动
+    monkeypatch.setattr(harness_mod, "run_iteration_cycle", lambda *a, **k: None)
+
+    sop = SOPConfig(tmp_path / "agent_sop.json")
+    collector = CorrectionCollector()
+    engine = ReflectionEngine(sop)
+    thread = SOPBackgroundThread(sop, collector, engine, check_interval=30.0)
+
+    try:
+        thread.start()
+        # 自主迭代默认关闭：不应构建/启动 harness worker
+        assert thread._harness_scheduler is None
+    finally:
+        thread.stop(timeout=2.0)
+    assert not thread._thread.is_alive()

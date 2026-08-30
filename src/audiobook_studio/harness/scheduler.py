@@ -3,9 +3,11 @@
 这是「可自我迭代」闭环的驱动端：一个守护线程周期性地对各 stage 跑完整迭代
 （编译→评判→晋升→部署），使 harness 在无人干预下持续进化。
 
-默认关闭（需显式 start() 或设置环境变量 AUDIOBOOK_HARNESS_AUTONOMOUS=1 由
-SOPBackgroundThread 触发），以防在测试/生产误触。真实运行期由
-``pipeline.sop_reflection.SOPBackgroundThread`` 在每轮反思后调用 ``HarnessScheduler.tick()``。
+默认关闭，以防在测试/生产误触。真实运行期由
+``pipeline.sop_reflection.SOPBackgroundThread`` 在 ``start()`` 时（当
+``AUDIOBOOK_HARNESS_AUTONOMOUS=1``）拉起一个独立的 ``HarnessScheduler`` 守护线程，
+该线程以自身 ``interval``（默认 3600s）周期性调用 ``HarnessScheduler.tick()`` 驱动
+``run_iteration_cycle``，与反思链路解耦、互不阻塞。
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ class HarnessScheduler:
 
         任一 stage 失败不影响其余 stage；异常被吞并记录，保证调度循环不中断。
         """
-        from .harness import run_iteration_cycle
+        from .harness import run_iteration_cycle, run_stage
 
         stages = stages or self.stages
         # 参数级覆盖优先于实例级开关。
@@ -78,10 +80,14 @@ class HarnessScheduler:
         report: Dict[str, Any] = {}
         for stage in stages:
             try:
+                # 未注入 run_fn 时回退到真实 stage 运行器（run_stage 跑 live v1），
+                # 使生产自主迭代 worker 真正执行 stage，而非空转置 0 分。
+                run_fn = self.run_fn or (lambda inp, _s=stage: run_stage(_s, inp))
+                baseline_fn = self.baseline_fn or (lambda inp, _s=stage: run_stage(_s, inp))
                 rep = run_iteration_cycle(
                     stage,
-                    run_fn=self.run_fn,
-                    baseline_fn=self.baseline_fn,
+                    run_fn=run_fn,
+                    baseline_fn=baseline_fn,
                     auto_deploy=self.auto_deploy,
                     judge=self.judge,
                     use_learned=effective_learned,

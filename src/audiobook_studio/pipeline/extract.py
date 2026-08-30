@@ -37,6 +37,7 @@ ExtractMimeType = Literal[
     "image/tiff",
     "image/bmp",
     "image/webp",
+    "application/octet-stream",
 ]
 
 __all__ = [

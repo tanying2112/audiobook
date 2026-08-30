@@ -41,23 +41,44 @@ class TestHarnessFullLoop:
 
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
-        """测试前后重置存储。"""
+        """测试前后重置存储，并在测试期间隔离 SOP 配置。
+
+        ``config/agent_sop.json`` 是仓库的**共享** SOP 配置，其它测试套件
+        （如 ``test_sop_reflection``）也直接读取同一文件。本 fixture 需要一套
+        干净的默认 SOP 配置来跑闭环，但不能真的删除共享文件——否则会污染
+        同会话中后续运行的 SOP 测试（``SOPConfig._load`` 会在文件缺失时重建
+        一个只有 ``default`` 的最小配置，导致 ``玄幻`` 等类型丢失）。
+
+        做法：setup 时备份原文件并删除（让本套件从全新默认配置开始），teardown
+        时把备份**原样还原**，保证仓库共享配置不被改动。
+        """
         reset_storage()
         # 确保目录存在
         Path("data").mkdir(parents=True, exist_ok=True)
         Path("prompts").mkdir(parents=True, exist_ok=True)
         Path("data/golden").mkdir(parents=True, exist_ok=True)
         Path("prompts").mkdir(parents=True, exist_ok=True)
-        # 清理 SOP 文件
+
+        # 隔离共享 SOP 配置：备份后删除，使本套件从全新默认配置开始。
         sop_file = Path("config/agent_sop.json")
-        if sop_file.exists():
+        sop_backup = sop_file.with_name("agent_sop.json.harness_bak")
+        had_existing = sop_file.exists()
+        if had_existing:
+            shutil.copy(sop_file, sop_backup)
             sop_file.unlink()
-        yield
-        # 清理
-        reset_storage()
-        sop_file = Path("config/agent_sop.json")
-        if sop_file.exists():
-            sop_file.unlink()
+        try:
+            yield
+        finally:
+            # 清理 + 还原共享 SOP 配置，避免污染其它测试套件。
+            reset_storage()
+            if had_existing:
+                if sop_backup.exists():
+                    shutil.move(str(sop_backup), str(sop_file))
+            else:
+                if sop_file.exists():
+                    sop_file.unlink()
+                if sop_backup.exists():
+                    sop_backup.unlink()
 
     def test_m1_golden_loop_closed(self):
         """M1: 金标数据集闭环 - 纠错 → 金标样本 → 三集隔离。"""
@@ -757,6 +778,43 @@ class TestHarnessAutonomyAndOps:
         res = eng.compile_candidate("judge", k=1, use_learned=False)
         assert res["learned"] is False
         assert res["version"] > 0
+
+    def test_scheduler_default_run_fn_uses_run_stage(self, monkeypatch):
+        """未注入 run_fn 时，HarnessScheduler.tick 以真实 run_stage 作为默认 run_fn，
+        而非传 None（避免生产自主迭代空转置 0 分）。"""
+        import audiobook_studio.harness.harness as harness_mod
+        from src.audiobook_studio.harness.scheduler import HarnessScheduler
+
+        captured: Dict[str, Any] = {}
+
+        class _FakeRep:
+            compiled = True
+            candidate_version = 1
+            passed = True
+            deployed = False
+            eval_mean_score = 0.9
+
+        def _fake_cycle(stage, run_fn=None, baseline_fn=None, **kw):
+            captured["run_fn"] = run_fn
+            captured["baseline_fn"] = baseline_fn
+            return _FakeRep()
+
+        monkeypatch.setattr(harness_mod, "run_iteration_cycle", _fake_cycle)
+
+        ran: Dict[str, Any] = {}
+
+        def _fake_run_stage(stage, inp):
+            ran["stage"] = stage
+            return {"output": "ok"}
+
+        monkeypatch.setattr(harness_mod, "run_stage", _fake_run_stage)
+
+        HarnessScheduler(stages=["judge"]).tick()
+        assert callable(captured["run_fn"])
+        # 默认 run_fn 应委托到真实 run_stage（而非空转）
+        assert captured["run_fn"]({"x": 1}) == {"output": "ok"}
+        assert ran.get("stage") == "judge"
+        assert callable(captured["baseline_fn"])
 
 
 if __name__ == "__main__":

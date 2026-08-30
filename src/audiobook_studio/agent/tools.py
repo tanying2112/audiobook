@@ -211,7 +211,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> Extract
         ".bmp": "image/bmp",
         ".webp": "image/webp",
     }
-    return ext_map.get(suffix, "text/plain")
+    return ext_map.get(suffix, "application/octet-stream")
 
 
 async def analyze_and_split(args: AnalyzeAndSplitArgs) -> AnalyzeAndSplitResult:
