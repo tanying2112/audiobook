@@ -894,6 +894,29 @@ class SOPBackgroundThread:
         """
         return os.environ.get("AUDIOBOOK_HARNESS_USE_LEARNED", "0") == "1"
 
+    @staticmethod
+    def _harness_smoke_test_enabled() -> bool:
+        """是否开启每日 dry-run 冒烟验收（接进自主迭代 worker 的定时步骤）。
+
+        默认关闭：仅当显式设置 ``AUDIOBOOK_HARNESS_SMOKE=1`` 时，调度层才会周期性
+        真实跑一轮 ``run_iteration_cycle`` 做端到端验收（候选编译/评判/门禁裁决），
+        任一验收失败即告警；不通过也绝不中断主迭代。
+        """
+        return os.environ.get("AUDIOBOOK_HARNESS_SMOKE", "0") == "1"
+
+    @staticmethod
+    def _harness_smoke_test_stage() -> str:
+        """每日冒烟验收使用的 stage（默认 ``analyze``，其在 canary 真实流水线中受支持）。"""
+        return os.environ.get("AUDIOBOOK_HARNESS_SMOKE_STAGE", "analyze")
+
+    @staticmethod
+    def _harness_smoke_test_interval_days() -> float:
+        """每日冒烟验收周期（天），默认 1；``AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS`` 覆盖。"""
+        try:
+            return float(os.environ.get("AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS", "1"))
+        except ValueError:
+            return 1.0
+
     def _ensure_harness_scheduler(self) -> Any:
         """惰性构建/返回 harness 自主迭代调度器（独立后台 worker）。
 
@@ -902,6 +925,9 @@ class SOPBackgroundThread:
         - AUDIOBOOK_HARNESS_INTERVAL: 迭代周期（秒），默认 3600
         - AUDIOBOOK_HARNESS_AUTO_DEPLOY: 门禁通过是否自动部署，默认 0（关）
         - AUDIOBOOK_HARNESS_USE_LEARNED: 学习型候选生成，默认 0（关）
+        - AUDIOBOOK_HARNESS_SMOKE: 每日 dry-run 冒烟验收，默认 0（关）
+        - AUDIOBOOK_HARNESS_SMOKE_STAGE: 冒烟 stage，默认 analyze
+        - AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS: 冒烟周期（天），默认 1
         """
         if self._harness_scheduler is None:
             from audiobook_studio.harness.scheduler import HarnessScheduler
@@ -913,6 +939,9 @@ class SOPBackgroundThread:
                 interval=interval,
                 auto_deploy=auto_deploy,
                 use_learned=use_learned,
+                smoke_test_enabled=self._harness_smoke_test_enabled(),
+                smoke_test_stage=self._harness_smoke_test_stage(),
+                smoke_test_interval_days=self._harness_smoke_test_interval_days(),
             )
         return self._harness_scheduler
 

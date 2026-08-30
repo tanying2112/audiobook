@@ -45,6 +45,12 @@ class HarnessScheduler:
         auto_deploy: bool = False,
         judge: Optional[Any] = None,
         use_learned: bool = False,
+        # 每日 dry-run 冒烟验收（默认关，AUDIOBOOK_HARNESS_SMOKE=1 开启）。
+        smoke_test_enabled: bool = False,
+        smoke_test_stage: str = "analyze",
+        smoke_test_interval_days: float = 1.0,
+        smoke_test_k: int = 3,
+        smoke_test_cases: int = 3,
     ) -> None:
         self.stages = list(stages or DEFAULT_STAGES)
         self.run_fn = run_fn
@@ -56,10 +62,19 @@ class HarnessScheduler:
         # 默认关，避免在无训练样本/无本地 LLM 时产生无效变异；由环境变量
         # AUDIOBOOK_HARNESS_USE_LEARNED=1 或显式传入开启。
         self.use_learned = use_learned
+        # 每日 dry-run 冒烟验收：周期性真实跑一轮 run_iteration_cycle（编译→评判→门禁），
+        # 作为「自主迭代 harness 系统」常态化运营件验收；任一验收失败即告警。
+        self.smoke_test_enabled = smoke_test_enabled
+        self.smoke_test_stage = smoke_test_stage
+        self.smoke_test_interval_days = smoke_test_interval_days
+        self.smoke_test_k = smoke_test_k
+        self.smoke_test_cases = smoke_test_cases
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self.last_run: Dict[str, float] = {}
         self.last_report: Dict[str, Any] = {}
+        self.last_smoke_test: float = 0.0
+        self.last_smoke_report: Dict[str, Any] = {}
 
     # ── 单轮驱动（可被测试直接调用，无需起线程）──────────────────────────────
     def tick(
@@ -130,8 +145,58 @@ class HarnessScheduler:
                 self.tick()
             except Exception as exc:  # noqa: BLE001
                 logger.error("[HarnessScheduler] 调度循环异常: %s", exc)
+            # 每日 dry-run 冒烟验收（默认关）：距上次冒烟满一个周期则跑一轮端到端
+            # 验证，确认候选仍能被真实编译/评判/门禁裁决；失败仅告警、绝不中断主迭代。
+            if self.should_run_smoke_test():
+                try:
+                    self.run_smoke_test()
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("[HarnessScheduler] 冒烟验收调度异常: %s", exc)
             # 以可中断方式休眠，便于 stop() 立即生效
             self._stop.wait(self.interval)
+
+    # ── 每日 dry-run 冒烟验收 ────────────────────────────────────────────────
+    def should_run_smoke_test(self) -> bool:
+        """是否到了该跑每日冒烟的时间（需显式开启且距上次满一个周期）。"""
+        if not self.smoke_test_enabled:
+            return False
+        if self.last_smoke_test <= 0:
+            return True
+        return (time.time() - self.last_smoke_test) >= self.smoke_test_interval_days * 86400.0
+
+    def run_smoke_test(self) -> Dict[str, Any]:
+        """运行端到端 dry-run 冒烟验收（编译→评判→门禁），返回 ``smoke_test.run_smoke_test``
+        的结构化报告 dict。不抛异常：失败/异常都被记录进报告，由调用方据此告警。
+        """
+        from .smoke_test import run_smoke_test
+
+        try:
+            report = run_smoke_test(
+                stage=self.smoke_test_stage,
+                k=self.smoke_test_k,
+                cases=self.smoke_test_cases,
+                use_learned=self.use_learned,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[HarnessScheduler] 冒烟验收执行异常: %s", exc)
+            report = {
+                "script": "harness.smoke_test",
+                "stage": self.smoke_test_stage,
+                "all_passed": False,
+                "failure_count": 1,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        self.last_smoke_test = time.time()
+        self.last_smoke_report = report
+        if not report.get("all_passed"):
+            logger.error(
+                "[HarnessScheduler] ⚠️ dry-run 冒烟验收失败（%s 项）：%s",
+                report.get("failure_count"),
+                report.get("error") or "见 last_smoke_report",
+            )
+        else:
+            logger.info("[HarnessScheduler] dry-run 冒烟验收通过")
+        return report
 
 
 def create_harness_scheduler(
@@ -143,6 +208,11 @@ def create_harness_scheduler(
     auto_deploy: bool = False,
     judge: Optional[Any] = None,
     use_learned: bool = False,
+    smoke_test_enabled: bool = False,
+    smoke_test_stage: str = "analyze",
+    smoke_test_interval_days: float = 1.0,
+    smoke_test_k: int = 3,
+    smoke_test_cases: int = 3,
 ) -> HarnessScheduler:
     """便捷工厂：返回一个配置好的 ``HarnessScheduler``。"""
     return HarnessScheduler(
@@ -153,4 +223,9 @@ def create_harness_scheduler(
         auto_deploy=auto_deploy,
         judge=judge,
         use_learned=use_learned,
+        smoke_test_enabled=smoke_test_enabled,
+        smoke_test_stage=smoke_test_stage,
+        smoke_test_interval_days=smoke_test_interval_days,
+        smoke_test_k=smoke_test_k,
+        smoke_test_cases=smoke_test_cases,
     )
