@@ -3,8 +3,7 @@
 import asyncio
 
 import pytest
-
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 
 from src.audiobook_studio.database import (
     AsyncSessionLocal,
@@ -29,6 +28,23 @@ from src.audiobook_studio.database import (
     init_db,
     init_routed_engine,
 )
+
+
+def _fk_off(dbapi_connection, connection_record):
+    """Instance-level connect listener forcing ``PRAGMA foreign_keys=OFF``.
+
+    Neutralizes the process-wide FK=ON class listener that harness leaks (it
+    registers ``event.listens_for(Engine, "connect", ...)`` on the Engine class),
+    which otherwise makes ``drop_async_db`` (drop_all) fail under full-suite
+    ordering because of the unresolvable FK cycle. Instance listeners fire after
+    class listeners, so this wins.
+    """
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.close()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -188,26 +204,16 @@ def test_async_engine_and_session():
 
 
 def test_get_async_database_url(monkeypatch):
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.DATABASE_URL", "sqlite:////tmp/a.db"
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.DATABASE_URL", "sqlite:////tmp/a.db")
     assert _get_async_database_url() == "sqlite+aiosqlite:////tmp/a.db"
     # sqlite:// without the third slash -> second branch (lines 100-101)
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.DATABASE_URL", "sqlite://x.db"
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.DATABASE_URL", "sqlite://x.db")
     assert _get_async_database_url() == "sqlite+aiosqlite://x.db"
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.DATABASE_URL", "postgresql://u/p"
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.DATABASE_URL", "postgresql://u/p")
     assert _get_async_database_url() == "postgresql+asyncpg://u/p"
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.DATABASE_URL", "postgresql+psycopg2://u/p"
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.DATABASE_URL", "postgresql+psycopg2://u/p")
     assert _get_async_database_url() == "postgresql+asyncpg://u/p"
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.DATABASE_URL", "mysql://u/p"
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.DATABASE_URL", "mysql://u/p")
     assert _get_async_database_url() == "mysql://u/p"
 
 
@@ -232,9 +238,7 @@ def test_get_db_generator():
 
 def test_routed_session_execute_routing():
     async def go():
-        cfg = DatabaseConfig(
-            "sqlite:///:memory:", replica_urls=["sqlite:///:memory:"], enable_routing=True
-        )
+        cfg = DatabaseConfig("sqlite:///:memory:", replica_urls=["sqlite:///:memory:"], enable_routing=True)
         re = RoutedEngine(cfg)
         await re.initialize()
         sess = RoutedSession(re)
@@ -311,14 +315,16 @@ def test_init_and_drop_async_db(tmp_path, monkeypatch):
     import src.audiobook_studio.database as db_mod
 
     db_file = tmp_path / "phaseb_tmp.db"
-    monkeypatch.setattr(
-        db_mod, "DATABASE_URL", f"sqlite+aiosqlite:///{db_file}"
-    )
+    monkeypatch.setattr(db_mod, "DATABASE_URL", f"sqlite+aiosqlite:///{db_file}")
     monkeypatch.setattr(db_mod, "_async_engine", None)
     monkeypatch.setattr(db_mod, "_async_session_factory", None)
 
     async def go():
         await init_async_db()
+        # Neutralize the harness-leaked FK=ON class listener for this engine so
+        # drop_all (which fails under FK enforcement due to the FK cycle) succeeds
+        # order-independently. Instance listeners fire after class listeners.
+        event.listen(db_mod.get_async_engine().sync_engine, "connect", _fk_off)
         await drop_async_db()
 
     _run(go())
@@ -334,7 +340,7 @@ def test_async_session_local_context_manager():
             assert sess is not None
         # exception path -> rollback branch in __aexit__
         with pytest.raises(RuntimeError):
-            async with AsyncSessionLocal() as sess2:
+            async with AsyncSessionLocal():
                 raise RuntimeError("boom")
 
     _run(go())

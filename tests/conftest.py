@@ -54,6 +54,23 @@ os.environ.setdefault("AUDIOBOOK_DISABLE_HEALTH_PROBE", "1")
 # Import all minimal fixtures first - this sets up MOCK_LLM and dspy mocks
 from tests.conftest_minimal import *  # noqa: F403,F401
 
+# ════════════════════════════════════════════════════════════════════════════
+# Eagerly import the canonical package ONCE, with the hermetic mocks already in
+# place, so the alias finders below (and every test) always resolve
+# `audiobook_studio` to this already-loaded `src.audiobook_studio` object.
+#
+# Why this matters: the alias meta-finders redirect `audiobook_studio` ->
+# `src.audiobook_studio` by calling `import_module("src.audiobook_studio")`.
+# sqlalchemy registers its inspection types (e.g. `@_inspects(object)`) at import
+# time, so importing the package a SECOND time in the same process raises
+# `Type <class 'object'> is already registered` and aborts collection. Depending
+# on collection order the package was sometimes imported via the `src.` alias and
+# sometimes as a top-level `audiobook_studio` (pythonpath=src makes both
+# importable), producing two module identities and the double import. Importing
+# it here first makes the module identity deterministic and removes the
+# order-dependent collection failures.
+import src.audiobook_studio  # noqa: F401
+
 
 class _AudiobookStudioAliasLoader:
     """Loader that returns an already-imported canonical module unchanged."""
@@ -88,6 +105,41 @@ class _AudiobookStudioAliasFinder:
 
 
 _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Keep SQLite connections FK-OFF for the bulk/optimization DB tests.
+#
+# TEST-ISOLATION: src/audiobook_studio/harness/storage.py:DatabaseManager._create_engine
+# registers ``event.listens_for(Engine, "connect", ...)`` on the *Engine class*
+# (not on an instance). That listener runs ``PRAGMA foreign_keys=ON`` on EVERY
+# SQLite connection opened anywhere in the process for the rest of the run. So once
+# any harness test has executed, the DB CRUD/bulk/optimization tests — which (like
+# every test when run in isolation) assume FK is OFF — fail under full-suite
+# ordering with "FOREIGN KEY constraint failed" / "no such table".
+#
+# Fix: attach an *instance-level* "connect" listener that sets ``PRAGMA
+# foreign_keys=OFF``. Instance listeners fire AFTER class listeners, so this wins
+# over the harness leak and restores the default connection state these tests rely
+# on, making them collection-order independent. Harness tests are unaffected (their
+# own connections still get FK=ON from the class listener, then nothing overrides it
+# because they do not attach this instance listener). (TEST-ISOLATION ONLY — no
+# production code is modified.)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _set_sqlite_fk_off(dbapi_connection, connection_record):
+    """Instance-level connect listener forcing ``PRAGMA foreign_keys=OFF``.
+
+    Used by the bulk/optimization DB test fixtures to neutralize the process-wide
+    FK=ON class listener that harness leaks (see comment block above).
+    """
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.close()
+    except Exception:
+        pass
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Test-specific fixtures (not needed by all tests)
@@ -237,6 +289,11 @@ def _reset_global_state():
         stop_all_health_probes()
     except Exception:
         pass
+
+    # (DB CRUD test isolation is handled per-fixture via the ``_set_sqlite_fk_off``
+    # instance connect listener installed in ``make_async_db_override`` and the
+    # bulk/optimization test fixtures — see the comment block above. No global
+    # teardown needed here.)
 
 
 def pytest_configure(config):
@@ -427,8 +484,15 @@ def make_async_db_override(engine):
 
     Usage:
         app.dependency_overrides[get_async_db] = make_async_db_override(_async_db_engine)
+
+    An instance-level "connect" listener forces ``PRAGMA foreign_keys=OFF`` on the
+    override engine so these CRUD tests stay order-independent even after a harness
+    test has leaked a process-wide FK=ON class listener (see the comment block above).
     """
+    from sqlalchemy import event
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    event.listen(engine.sync_engine, "connect", _set_sqlite_fk_off)
 
     async def _override():
         factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
