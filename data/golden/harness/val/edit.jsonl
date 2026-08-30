@@ -1,0 +1,1 @@
+{"stage": "edit", "input": {"field": "text", "original_value": "错误输出", "context": {}, "paragraph_index": 1, "chapter_index": 1}, "output": {"corrected_value": "修正输出"}, "source": "correction", "sample_hash": "02b140bf3cc39b55"}
