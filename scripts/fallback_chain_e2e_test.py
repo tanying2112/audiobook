@@ -31,6 +31,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -43,6 +44,51 @@ from audiobook_studio.tts.port_factory import create_engine  # noqa: E402
 
 OUT = ROOT / "output" / "fallback_e2e"
 OUT.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# 真实 TTS 依赖自愈（关键：避免被 conftest 的全局 mock 污染）
+# ---------------------------------------------------------------------------
+# conftest_minimal 会在会话开始、对尚未 import 的重依赖（含 kokoro_onnx /
+# edge_tts）往 sys.modules 塞一个裸 MagicMock，避免它们在 sandbox 里被真实加载。
+# 但本测试是**真资源**验证（红线#2：禁伪造真音频），必须用到真实的
+# kokoro_onnx.Kokoro.create / edge_tts.Communicate。sys.modules 是进程级全局的，
+# 所以即便本脚本在 tests/ 树之外，也会继承那个 mock。
+#
+# 做法：合成前把这两个模块的 mock 影子弹出并导入真实包；结束后把影子还原，
+# 把对整套其余测试的波及降到最低（其余测试仍按 conftest 的预期看到 mock）。
+_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts")
+
+
+def _require_real_tts_modules() -> dict[str, Any]:
+    """确保 kokoro_onnx / edge_tts 是真实包；返回原始 sys.modules 快照以便还原。"""
+    import importlib
+    import sys
+
+    saved: dict[str, Any] = {}
+    for mod in _TTS_REAL_DEPS:
+        orig = sys.modules.get(mod)
+        saved[mod] = orig
+        is_mock = orig is not None and type(orig).__name__ == "MagicMock"
+        if is_mock:
+            sys.modules.pop(mod, None)
+            try:
+                sys.modules[mod] = importlib.import_module(mod)
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"e2e 需要真实的 {mod}（红线#2：禁止伪造真音频），但导入失败: {e}") from e
+        # 若本来就是真实模块，保持不动。
+    return saved
+
+
+def _restore_tts_modules(saved: dict[str, Any]) -> None:
+    """把 sys.modules 还原到合成前的状态（含 conftest 的 mock 影子）。"""
+    import sys
+
+    for mod, orig in saved.items():
+        if orig is None:
+            sys.modules.pop(mod, None)
+        else:
+            sys.modules[mod] = orig
 
 
 # ---------------------------------------------------------------------------
@@ -188,34 +234,49 @@ async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
     for k in ("VOXCPM2_ENDPOINT", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
         os.environ.pop(k, None)
     os.environ["ENABLE_LOCAL_TTS"] = "true"
-    # 显式按引擎类型构造，避免 factory kwargs 透传不一致问题（技术债，见末尾汇总）
-    port = create_engine("kokoro", output_dir=str(OUT))
-    assert type(port).__name__ == "KokoroPort", f"期望 KokoroPort，得到 {type(port).__name__}"
-    tid = f"fb_kokoro_{uuid.uuid4().hex[:6]}"
-    text = "三级降级链路验证：这是 Kokoro 本地引擎生成的真实中文音频。"
-    out = await _synthesize_tier(
-        port, tid, text, voice_id="zf_xiaoxiao", prosody=TTSProsody(rate=1.0, emotion="neutral"), name="Tier2-Kokoro"
-    )
-    return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
+    # 自愈：conftest 可能把 kokoro_onnx 全局 mock 了，这里还原真实包（红线#2）
+    saved = _require_real_tts_modules()
+    try:
+        # 显式按引擎类型构造，避免 factory kwargs 透传不一致问题（技术债，见末尾汇总）
+        port = create_engine("kokoro", output_dir=str(OUT))
+        assert type(port).__name__ == "KokoroPort", f"期望 KokoroPort，得到 {type(port).__name__}"
+        tid = f"fb_kokoro_{uuid.uuid4().hex[:6]}"
+        text = "三级降级链路验证：这是 Kokoro 本地引擎生成的真实中文音频。"
+        out = await _synthesize_tier(
+            port,
+            tid,
+            text,
+            voice_id="zf_xiaoxiao",
+            prosody=TTSProsody(rate=1.0, emotion="neutral"),
+            name="Tier2-Kokoro",
+        )
+        return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
+    finally:
+        _restore_tts_modules(saved)
 
 
 @pytest.mark.asyncio
 async def test_tier3_edge_real_audio() -> dict[str, Any]:
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
-    # 显式构造 edge port（避免 Kokoro 默认抢占）
-    port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
-    assert type(port).__name__ == "EdgeTTSPort", f"期望 EdgeTTSPort，得到 {type(port).__name__}"
-    tid = f"fb_edge_{uuid.uuid4().hex[:6]}"
-    text = "三级降级链路验证：这是 Edge-TTS 云端引擎生成的真实中文兜底音频。"
-    out = await _synthesize_tier(
-        port,
-        tid,
-        text,
-        voice_id="zh-CN-XiaoxiaoNeural",
-        prosody=TTSProsody(rate=1.0, emotion="neutral"),
-        name="Tier3-Edge",
-    )
-    return await assert_real_audio(out, min_duration_s=1.5, tier="Tier3-Edge")
+    # 自愈：conftest 可能把 edge_tts 全局 mock 了，这里还原真实包（红线#2）
+    saved = _require_real_tts_modules()
+    try:
+        # 显式构造 edge port（避免 Kokoro 默认抢占）
+        port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
+        assert type(port).__name__ == "EdgeTTSPort", f"期望 EdgeTTSPort，得到 {type(port).__name__}"
+        tid = f"fb_edge_{uuid.uuid4().hex[:6]}"
+        text = "三级降级链路验证：这是 Edge-TTS 云端引擎生成的真实中文兜底音频。"
+        out = await _synthesize_tier(
+            port,
+            tid,
+            text,
+            voice_id="zh-CN-XiaoxiaoNeural",
+            prosody=TTSProsody(rate=1.0, emotion="neutral"),
+            name="Tier3-Edge",
+        )
+        return await assert_real_audio(out, min_duration_s=1.5, tier="Tier3-Edge")
+    finally:
+        _restore_tts_modules(saved)
 
 
 # ---------------------------------------------------------------------------
