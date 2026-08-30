@@ -62,7 +62,7 @@ class TestHarnessFullLoop:
     def test_m1_golden_loop_closed(self):
         """M1: 金标数据集闭环 - 纠错 → 金标样本 → 三集隔离。"""
         # 1. 创建纠错记录
-        collector = get_correction_collector()
+        get_correction_collector()
         fb_id = capture_feedback(
             project_id=1,
             source="human_edit",
@@ -226,7 +226,7 @@ class TestHarnessFullLoop:
 
     def test_m3_reflection_engine(self):
         """M3: 反思引擎 - 批量归因分析。"""
-        engine = get_reflection_engine()
+        get_reflection_engine()
 
         # 构造测试纠错记录
         corrections = [
@@ -362,9 +362,9 @@ class TestHarnessFullLoop:
         val_samples = manager.load_samples("test_stage", "val")
         test_samples = manager.load_samples("test_stage", "test")
 
-        train_hashes = {s.sample_hash for s in train_samples}
-        val_hashes = {s.sample_hash for s in val_samples}
-        test_hashes = {s.sample_hash for s in test_samples}
+        {s.sample_hash for s in train_samples}
+        {s.sample_hash for s in val_samples}
+        {s.sample_hash for s in test_samples}
 
         # 同一样本 hash 不应同时出现在多个 split（由于去重，实际上会被拦截）
         # 这里验证样本数正确
@@ -376,7 +376,7 @@ class TestHarnessFullLoop:
     def test_full_loop_integration(self, tmp_path):
         """完整闭环集成测试：M1→M4 单次迭代。"""
         # 1. M1: 创建纠错 → 回流 golden val
-        collector = get_correction_collector()
+        get_correction_collector()
         fb_id = capture_feedback(
             project_id=1,
             source=FeedbackSource.HUMAN_EDIT,
@@ -424,7 +424,7 @@ class TestHarnessFullLoop:
         assert rep.candidate_version > 0
 
         # 3. M3: Prompt 进化 + 阈值校准 + 路由进化 + 反思
-        engine = PromptEvolutionEngine()
+        PromptEvolutionEngine()
         compile_result = PromptEvolutionEngine().compile_candidate("edit", k=3)
         assert compile_result["version"] > 0
 
@@ -447,7 +447,7 @@ class TestHarnessFullLoop:
         test_id = canary_res["test_id"]
         canary.record_metrics(test_id, True, True, 0.9, 100)
         canary.record_metrics(test_id, False, True, 0.8, 120)
-        eval_result = canary.evaluate(canary._canary_file(canary.list_canaries()[0]["test_id"]).stem)
+        canary.evaluate(canary._canary_file(canary.list_canaries()[0]["test_id"]).stem)
 
         # 晋升决策
         from audiobook_studio.feedback.prompt_compiler import stage_to_prompt_dir

@@ -126,9 +126,7 @@ class HarnessDashboard:
             # 未处理反馈
             total_feedback_unprocessed = (
                 session.execute(
-                    select(func.count())
-                    .select_from(FeedbackRecord)
-                    .where(FeedbackRecord.processed == False)  # noqa: E712
+                    select(func.count()).select_from(FeedbackRecord).where(FeedbackRecord.processed.is_(False))
                 ).scalar()
                 or 0
             )
@@ -150,7 +148,7 @@ class HarnessDashboard:
             # 活跃质量阈值
             quality_thresholds_active = (
                 session.execute(
-                    select(func.count()).select_from(QualityThreshold).where(QualityThreshold.is_active == True)
+                    select(func.count()).select_from(QualityThreshold).where(QualityThreshold.is_active.is_(True))
                 ).scalar()
                 or 0
             )
@@ -158,7 +156,7 @@ class HarnessDashboard:
             # 活跃路由权重
             routing_weights_active = (
                 session.execute(
-                    select(func.count()).select_from(RoutingWeight).where(RoutingWeight.is_active == True)
+                    select(func.count()).select_from(RoutingWeight).where(RoutingWeight.is_active.is_(True))
                 ).scalar()
                 or 0
             )
@@ -260,7 +258,7 @@ class HarnessDashboard:
             # 晋升数
             total_promotions = (
                 session.execute(
-                    select(func.count()).select_from(PromptVersion).where(PromptVersion.deployed == True)
+                    select(func.count()).select_from(PromptVersion).where(PromptVersion.deployed.is_(True))
                 ).scalar()
                 or 0
             )

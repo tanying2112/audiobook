@@ -65,7 +65,7 @@ class SOPRuleStore:
             if any(r.get("rule_id") == rule_data.rule_id for r in rules):
                 raise ValueError(f"Rule ID {rule_data.rule_id} already exists")
 
-            now = datetime.now(timezone.utc).isoformat()
+            datetime.now(timezone.utc).isoformat()
             new_rule = {
                 "rule_id": rule_data.rule_id,
                 "name": rule_data.name,
@@ -209,8 +209,8 @@ class SOPRuleStore:
 
         with self._lock:
             data = self._load_sop_file()
-            rules = data.get("rules", [])
-            cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+            data.get("rules", [])
+            datetime.now(timezone.utc) - timedelta(days=90)
             archived = 0
 
             for rule in data.get("rules", []):
@@ -262,8 +262,8 @@ class SOPRuleStore:
 
         stats = []
         for rule in rules:
-            hits = rule.get("hit_count", 0)
-            successes = rule.get("success_count", 0)
+            rule.get("hit_count", 0)
+            rule.get("success_count", 0)
             stats.append(
                 {
                     "rule_id": rule.get("rule_id"),

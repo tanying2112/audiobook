@@ -113,7 +113,7 @@ class RoutingEvolutionEngine:
                     select(RoutingWeight).where(
                         RoutingWeight.character_name == character_name,
                         RoutingWeight.voice_id == voice_id,
-                        RoutingWeight.is_active == True,
+                        RoutingWeight.is_active.is_(True),
                     )
                 )
                 .scalars()
@@ -133,8 +133,6 @@ class RoutingEvolutionEngine:
                     "last_failure_at": rw.last_failure_at.isoformat() if rw.last_failure_at else None,
                     "last_success_at": rw.last_success_at.isoformat() if rw.last_success_at else None,
                     "decay_on_failure": rw.decay_on_failure,
-                    "min_weight": rw.min_weight,
-                    "max_weight": rw.max_weight,
                     "min_success_for_recovery": rw.min_success_for_recovery,
                     "is_active": rw.is_active,
                 }
@@ -148,7 +146,7 @@ class RoutingEvolutionEngine:
 
             from ..harness.models import RoutingWeight as RoutingWeightModel
 
-            stmt = select(RoutingWeight).where(RoutingWeight.is_active == True)
+            stmt = select(RoutingWeight).where(RoutingWeight.is_active.is_(True))
             if character_name:
                 stmt = stmt.where(RoutingWeight.character_name == character_name)
             results = session.execute(stmt).scalars().all()
@@ -166,8 +164,6 @@ class RoutingEvolutionEngine:
                     "last_failure_at": rw.last_failure_at.isoformat() if rw.last_failure_at else None,
                     "last_success_at": rw.last_success_at.isoformat() if rw.last_success_at else None,
                     "decay_on_failure": rw.decay_on_failure,
-                    "min_weight": rw.min_weight,
-                    "max_weight": rw.max_weight,
                     "min_success_for_recovery": rw.min_success_for_recovery,
                     "is_active": rw.is_active,
                 }
@@ -231,8 +227,6 @@ class RoutingEvolutionEngine:
             "last_failure_at": rw.last_failure_at.isoformat() if rw.last_failure_at else None,
             "last_success_at": rw.last_success_at.isoformat() if rw.last_success_at else None,
             "decay_on_failure": rw.decay_on_failure,
-            "min_weight": rw.min_weight,
-            "max_weight": rw.max_weight,
             "min_success_for_recovery": rw.min_success_for_recovery,
             "is_active": rw.is_active,
         }
@@ -268,7 +262,7 @@ class RoutingEvolutionEngine:
             stmt = select(RoutingWeight).where(
                 RoutingWeight.character_name == character_name,
                 RoutingWeight.voice_id == voice_id,
-                RoutingWeight.is_active == True,
+                RoutingWeight.is_active.is_(True),
             )
             rw = session.execute(stmt).scalar_one_or_none()
 
@@ -283,8 +277,8 @@ class RoutingEvolutionEngine:
                 session.add(rw)
 
             old_weight = rw.weight
-            old_failure_count = rw.failure_count
-            old_success_count = rw.success_count
+            rw.failure_count
+            rw.success_count
 
             if success:
                 rw.success_count += 1
@@ -329,8 +323,8 @@ class RoutingEvolutionEngine:
         weights = self.get_all_weights(character_name)
         stats = []
         for w in weights:
-            total = w["success_count"] + w["failure_count"]
-            success_rate = w["success_count"] / max(w["success_count"] + w["failure_count"], 1)
+            w["success_count"] + w["failure_count"]
+            w["success_count"] / max(w["success_count"] + w["failure_count"], 1)
             stats.append(
                 {
                     "character_name": w["character_name"],
@@ -342,7 +336,6 @@ class RoutingEvolutionEngine:
                     "success_rate": round(w["success_count"] / max(w["success_count"] + w["failure_count"], 1), 3),
                     "last_failure_at": w["last_failure_at"],
                     "last_success_at": w["last_success_at"],
-                    "current_weight": w["weight"],
                     "min_weight": w["min_weight"],
                     "max_weight": w["max_weight"],
                 }
@@ -368,7 +361,7 @@ class RoutingEvolutionEngine:
             stmt = select(RoutingWeight).where(
                 RoutingWeight.character_name == character_name,
                 RoutingWeight.voice_id == voice_id,
-                RoutingWeight.is_active == True,
+                RoutingWeight.is_active.is_(True),
             )
             rw = session.execute(stmt).scalar_one_or_none()
 
@@ -430,8 +423,8 @@ class RoutingEvolutionEngine:
     def get_evolution_report(self, days: int = 7) -> Dict[str, Any]:
         """生成路由进化报告。"""
         stats = self.get_stats()
-        total_success = sum(s["success_count"] for s in stats)
-        total_failure = sum(s["failure_count"] for s in stats)
+        sum(s["success_count"] for s in stats)
+        sum(s["failure_count"] for s in stats)
         total = sum(s["success_count"] + s["failure_count"] for s in stats)
 
         # 找出权重变化最大的
@@ -440,7 +433,7 @@ class RoutingEvolutionEngine:
         for w in weights:
             total = w["success_count"] + w["failure_count"]
             if total > 0:
-                success_rate = w["success_count"] / (w["success_count"] + w["failure_count"])
+                w["success_count"] / (w["success_count"] + w["failure_count"])
                 changes.append(
                     {
                         "character_name": w["character_name"],

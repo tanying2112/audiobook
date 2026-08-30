@@ -70,7 +70,7 @@ class CorrectionCollector:
         Returns:
             feedback_id: 生成的反馈记录 ID
         """
-        storage = get_storage()
+        get_storage()
 
         feedback_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
@@ -79,26 +79,6 @@ class CorrectionCollector:
         if len(rationale.strip()) < 10:
             logger.warning(f"Feedback rationale too short ({len(rationale.strip())} chars), padding with placeholder")
             rationale = rationale + " (自动采集反馈记录)"
-
-        record_data = {
-            "feedback_id": feedback_id,
-            "project_id": project_id,
-            "chapter_id": chapter_id,
-            "paragraph_id": paragraph_id,
-            "paragraph_index": paragraph_index,
-            "chapter_index": chapter_index,
-            "source": source.value if isinstance(source, FeedbackSource) else source,
-            "stage": stage.value if isinstance(stage, PipelineStage) else stage,
-            "input_snapshot": input_snapshot,
-            "llm_output": llm_output,
-            "corrected_output": corrected_output,
-            "rationale": rationale,
-            "diff_summary": diff_summary,
-            "pattern_tags": pattern_tags or [],
-            "processed": False,
-            "promoted": False,
-            "created_at": now.isoformat(),
-        }
 
         # 存储到 SQLite (通过 storage)
         with self.storage.db.session() as session:
@@ -213,12 +193,12 @@ class CorrectionCollector:
             from ..harness.models import FeedbackRecord as FeedbackRecordModel
 
             stmt = select(storage.db._sync_session_factory().configure(bind=session.bind).class_).where(
-                FeedbackRecordModel.processed == False  # noqa: E712
+                FeedbackRecordModel.processed.is_(False)
             )
             if project_id:
                 stmt = stmt.where(FeedbackRecordModel.project_id == project_id)
             records = (
-                session.execute(select(FeedbackRecordModel).where(FeedbackRecordModel.processed == False).limit(500))
+                session.execute(select(FeedbackRecordModel).where(FeedbackRecordModel.processed.is_(False)).limit(500))
                 .scalars()
                 .all()
             )
@@ -268,13 +248,8 @@ class CorrectionCollector:
 
             from ..harness.models import FeedbackRecord as FeedbackRecordModel
 
-            stmt = (
-                select(storage.db._sync_session_factory().configure(bind=session.bind).class_)
-                .where(FeedbackRecordModel.processed == False)
-                .limit(100)
-            )
             records = (
-                session.execute(select(FeedbackRecordModel).where(FeedbackRecordModel.processed == False).limit(100))
+                session.execute(select(FeedbackRecordModel).where(FeedbackRecordModel.processed.is_(False)).limit(100))
                 .scalars()
                 .all()
             )

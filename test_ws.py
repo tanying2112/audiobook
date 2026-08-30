@@ -8,16 +8,16 @@ TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2IiwidXNlcm5hbWUiOiJ3c1
 
 
 @pytest.mark.asyncio
-async def test_websocket():
+async def test_websocket() -> None:
     uri = "ws://localhost:8000/api/ws/pipeline/11"
     uri_with_token = f"{uri}?token={TOKEN}"
 
     try:
         async with websockets.connect(uri_with_token) as ws:
             print("Connected!")
-            for i in range(5):
+            for _ in range(5):
                 msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                print(f"Received: {msg}")
+                print(f"Received: {msg!r}")
                 data = json.loads(msg)
                 if data.get("type") == "connected":
                     print("Connection confirmed!")

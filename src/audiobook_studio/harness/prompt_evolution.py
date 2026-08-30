@@ -277,8 +277,8 @@ class PromptEvolutionEngine:
         from ..feedback.promotion_gate import promote_candidate
         from ..harness.config import get_harness_settings
 
-        settings = get_harness_settings()
-        prompts_root = Path("prompts")
+        get_harness_settings()
+        Path("prompts")
 
         decision = promote_candidate(
             stage=stage,

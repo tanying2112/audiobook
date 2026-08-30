@@ -30,6 +30,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -47,7 +48,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # 工具：真音频时长校验（复用项目内 ffmpeg_probe，不另造轮子 §8）
 # ---------------------------------------------------------------------------
-async def probe_audio(path: Path) -> dict:
+async def probe_audio(path: Path) -> dict[str, Any]:
     """用项目自带 ffmpeg_probe 拿真实音频元数据（不猜 ffprobe 结构 §10）。"""
     from audiobook_studio.utils.ffmpeg_probe import get_audio_info, get_duration
 
@@ -63,7 +64,7 @@ async def probe_audio(path: Path) -> dict:
     return {"duration_ms": dur_ms, "duration_s": dur_ms / 1000.0, "sample_rate": sr}
 
 
-async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dict:
+async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dict[str, Any]:
     """对最终产物做深度断言（红线#2：禁空断言）。"""
     assert path.exists(), f"[{tier}] 产物不存在: {path}"
     size = path.stat().st_size
@@ -79,7 +80,7 @@ async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dic
 # ---------------------------------------------------------------------------
 # Part 1: 选路逻辑测试（无音频，快）—— 验证 auto 路由的 4 个分支
 # ---------------------------------------------------------------------------
-def test_routing():
+def test_routing() -> list[tuple[str, str, str]]:
     cases = []
     saved = {
         k: os.environ.get(k)
@@ -92,7 +93,7 @@ def test_routing():
         )
     }
 
-    def env_set(patch: dict):
+    def env_set(patch: dict[str, Any]) -> None:
         for k in ("VOXCPM2_ENDPOINT", "ENABLE_LOCAL_TTS", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
             os.environ.pop(k, None)
         for k, v in patch.items():
@@ -100,7 +101,7 @@ def test_routing():
                 continue
             os.environ[k] = v
 
-    def restore():
+    def restore() -> None:
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -150,7 +151,9 @@ def test_routing():
 # Part 2: Tier2 Kokoro 真音频 —— auto 默认分支 → submit/poll/真WAV断言
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str) -> Path:
+async def _synthesize_tier(
+    port: Any, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str
+) -> Path:
     payload = TTSTaskPayload(
         text=text,
         voice_anchor=TTSVoiceAnchor(voice_id=voice_id, language="zh-CN"),
@@ -179,7 +182,7 @@ async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody
 
 
 @pytest.mark.asyncio
-async def test_tier2_kokoro_real_audio():
+async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
     print("\n── Part 2: Tier 2 Kokoro 真音频 ────")
     # 关键：确保 auto 选到 Kokoro 且不带 mock
     for k in ("VOXCPM2_ENDPOINT", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
@@ -197,7 +200,7 @@ async def test_tier2_kokoro_real_audio():
 
 
 @pytest.mark.asyncio
-async def test_tier3_edge_real_audio():
+async def test_tier3_edge_real_audio() -> dict[str, Any]:
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
     # 显式构造 edge port（避免 Kokoro 默认抢占）
     port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
@@ -218,7 +221,7 @@ async def test_tier3_edge_real_audio():
 # ---------------------------------------------------------------------------
 # Part 4: Tier1 VoxCPM2 预留 seam ── 仅验证选路可达 + circuit breaker 存在
 # ---------------------------------------------------------------------------
-def test_tier1_voxcpm2_reserved():
+def test_tier1_voxcpm2_reserved() -> dict[str, Any]:
     print("\n── Part 4: Tier 1 VoxCPM2 预留 seam（仅选路验证，无真音频）────")
     saved = os.environ.get("VOXCPM2_ENDPOINT")
     try:
@@ -230,7 +233,7 @@ def test_tier1_voxcpm2_reserved():
         from audiobook_studio.tts.remote_voxcpm2_port import PortCircuitOpenError
 
         print(f"    [Tier1-VoxCPM2] ✅ 选路可达: {cls}（endpoint={os.environ['VOXCPM2_ENDPOINT']}）")
-        print(f"    [Tier1-VoxCPM2] ✅ 运行时 failover seam 存在: PortCircuitOpenError")
+        print("    [Tier1-VoxCPM2] ✅ 运行时 failover seam 存在: PortCircuitOpenError")
         print("    [Tier1-VoxCPM2] ⏸ 真实音频：voxcpm2-pool/ 远端 worker 处于 ADR-2026-07-19 PENDING")
         print("                       门禁内（pass 桩 + 0 输出 notebook），不伪造成功（红线#1）。")
         print("                       待人类架构师 sign-off + 对齐真实推理 API 后再补真音频测试。")
@@ -245,7 +248,7 @@ def test_tier1_voxcpm2_reserved():
 # ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
-async def main():
+async def main() -> None:
     print("=" * 72)
     print(" VoxCPM2 → Kokoro → Edge-TTS 三级降级链路 — 方案 A 真验证")
     print("=" * 72)
@@ -271,7 +274,7 @@ async def main():
     chain_json.write_text(
         json.dumps(
             {
-                "routing_cases": [{"label": l, "got": g, "want": w} for l, g, w in routing],
+                "routing_cases": [{"label": line, "got": g, "want": w} for line, g, w in routing],
                 "tier1_voxcpm2": vox,
                 "tier2_kokoro": kokoro,
                 "tier3_edge": edge,

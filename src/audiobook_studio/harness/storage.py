@@ -21,7 +21,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from .models import Base
+from .models import Base, FeedbackRecord, SOPRule
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +67,16 @@ class JSONLStore:
             return set()
         hashes = set()
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                for line in path.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                        if "sample_hash" in data:
-                            hashes.add(data["sample_hash"])
-                    except (json.JSONDecodeError, KeyError):
-                        continue
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if "sample_hash" in data:
+                        hashes.add(data["sample_hash"])
+                except (json.JSONDecodeError, KeyError):
+                    continue
         except OSError:
             pass
         return hashes
@@ -133,10 +132,9 @@ class JSONLStore:
         """加载某 split/stage 下的所有记录。"""
         if root is None:
             root = Path("data")
-        path = self._file_path(split, stage, root)
+        self._file_path(split, stage, root)
         if not Path(root).joinpath("golden", "harness", split, f"{stage}.jsonl").exists():
             return []
-        records = []
         try:
             with open(root / "golden" / "harness" / split / f"{stage}.jsonl", "r", encoding="utf-8") as f:
                 for line in f:
@@ -348,11 +346,13 @@ class Storage:
 
         from .models import FeedbackRecord
 
-        stmt = select(FeedbackRecord).where(FeedbackRecord.processed == False)  # noqa: E712
+        stmt = select(FeedbackRecord).where(FeedbackRecord.processed.is_(False))
         if project_id:
             stmt = stmt.where(FeedbackRecord.project_id == project_id)
         return (
-            session.execute(select(FeedbackRecord).where(FeedbackRecord.processed == False).limit(500)).scalars().all()
+            session.execute(select(FeedbackRecord).where(FeedbackRecord.processed.is_(False)).limit(500))
+            .scalars()
+            .all()
         )
 
     def mark_feedback_processed(self, session, feedback_id: str, pattern_tags=None, diff_summary=""):
@@ -385,7 +385,7 @@ class Storage:
             golden_root = Path("data")
 
         # 双写：JSONL (追加)
-        jsonl_added = self.jsonl.append(split, stage, record, root=Path("data"))
+        self.jsonl.append(split, stage, record, root=Path("data"))
 
         # SQLite (元数据)
         if split not in ("train", "val", "test"):
@@ -447,7 +447,6 @@ class Storage:
         if split not in ("train", "val", "test"):
             raise ValueError(f"invalid split: {split}")
 
-        records = []
         # 这里简化：实际应用中可考虑用 SQLite 索引加速
         # 目前从 JSONL 读取
         if split not in ("train", "val", "test"):
@@ -558,7 +557,7 @@ class Storage:
 
         from .models import QualityThreshold
 
-        stmt = select(QualityThreshold).where(QualityThreshold.is_active == True)
+        stmt = select(QualityThreshold).where(QualityThreshold.is_active.is_(True))
         if stage:
             stmt = stmt.where(QualityThreshold.stage == stage)
         return session.execute(stmt).scalars().all()
@@ -572,7 +571,7 @@ class Storage:
 
         from .models import RoutingWeight
 
-        stmt = select(RoutingWeight).where(RoutingWeight.is_active == True)
+        stmt = select(RoutingWeight).where(RoutingWeight.is_active.is_(True))
         if character_name:
             stmt = stmt.where(RoutingWeight.character_name == character_name)
         return session.execute(stmt).scalars().all()

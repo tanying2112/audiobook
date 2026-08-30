@@ -94,7 +94,7 @@ def run_iteration_cycle(
     root = prompts_root or HARNESS_PROMPTS_DIR
     j = judge or OfflineJudge()
 
-    settings = get_harness_settings()
+    get_harness_settings()
 
     # (M3) 编译候选并落盘 v{N+1}.j2
     if use_learned:
@@ -206,7 +206,7 @@ async def run_full_iteration_cycle(
 
     读取配置中的 stage 列表、golden_root、prompts_root 等，自动跑完整轮次。
     """
-    settings = get_harness_settings()
+    get_harness_settings()
     stages = stages or list(PipelineStage.__members__.values())
 
     # 从配置获取阶段列表
@@ -252,7 +252,7 @@ async def run_harness_cycle(
 
     返回所有 stage 的迭代报告列表。
     """
-    settings = get_harness_settings()
+    get_harness_settings()
     stages = stages or [s.value for s in PipelineStage]
 
     reports = []
@@ -273,7 +273,7 @@ async def run_harness_cycle(
 def get_harness_status() -> Dict[str, Any]:
     """获取马具迭代系统整体状态。"""
     settings = get_harness_settings()
-    storage = get_storage()
+    get_storage()
 
     return {
         "enabled": settings.ENABLED,

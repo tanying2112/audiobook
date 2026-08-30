@@ -14,11 +14,21 @@ from pydantic import BaseModel, Field
 
 from ..llm import LLMRouter, StageName, create_router
 from ..pipeline import ExtractMimeType
-from ..pipeline.analyze_structure import AnalyzeStructurePipeline, BookAnalysisInput
-from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline, ParagraphAnnotationInput
+from ..pipeline.analyze_structure import AnalyzeStructurePipeline
+from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline
+from ..pipeline.extract import ExtractPipeline
 from ..pipeline.orchestrator import run_stage
-from ..pipeline.synthesize import SynthesizePipeline, TtsRoutingInput
-from ..schemas import BookAnalysisOutput, CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision
+from ..pipeline.synthesize import SynthesizePipeline
+from ..schemas import (
+    BookAnalysisInput,
+    BookAnalysisOutput,
+    CharacterVoiceBinding,
+    ExtractionInput,
+    ParagraphAnnotation,
+    ParagraphAnnotationInput,
+    TtsRoutingDecision,
+    TtsRoutingInput,
+)
 from ..storage import (
     annotated_dir,
     audio_dir,
@@ -178,8 +188,6 @@ async def load_book_file(args: LoadBookFileArgs) -> LoadBookFileResult:
 
 def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> ExtractMimeType:
     """Guess MIME type from file extension or explicit type."""
-    from ..pipeline.extract import ExtractMimeType
-
     if file_type:
         type_map: dict[str, ExtractMimeType] = {
             "pdf": "application/pdf",
@@ -188,7 +196,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> Extract
             "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "image": "image/png",
         }
-        return type_map.get(file_type, "application/octet-stream")
+        return type_map.get(file_type, "text/plain")
 
     suffix = Path(file_path).suffix.lower()
     ext_map: dict[str, ExtractMimeType] = {
@@ -203,7 +211,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> Extract
         ".bmp": "image/bmp",
         ".webp": "image/webp",
     }
-    return ext_map.get(suffix, "application/octet-stream")
+    return ext_map.get(suffix, "text/plain")
 
 
 async def analyze_and_split(args: AnalyzeAndSplitArgs) -> AnalyzeAndSplitResult:

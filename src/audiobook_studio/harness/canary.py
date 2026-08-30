@@ -113,7 +113,7 @@ class CanaryABTest:
             return None
 
     def _save_state(self, state: Dict) -> None:
-        path = self._canary_file(state["test_id"])
+        self._canary_file(state["test_id"])
         tmp = Path(str(self._canary_dir / f"{state['test_id']}.tmp"))
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, self._canary_file(state["test_id"]))

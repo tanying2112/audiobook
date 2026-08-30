@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stages = args.stage or DEFAULT_STAGES
     print(
-        f"[learned_experiment] eval_mode={'mock' if __import__('os').getenv('MOCK_LLM','false').lower() in ('1','true','yes') else 'real'} stages={stages}"
+        f"[learned_experiment] eval_mode={'mock' if __import__('os').getenv('MOCK_LLM', 'false').lower() in ('1', 'true', 'yes') else 'real'} stages={stages}"
     )
 
     records = run_learned_experiment(

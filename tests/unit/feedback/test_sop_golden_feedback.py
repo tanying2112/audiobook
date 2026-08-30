@@ -82,7 +82,7 @@ def test_ingest_corrections_to_golden_writes_edit_samples(tmp_path: Path):
     assert added == 1
     f = tmp_path / "val" / "edit" / "edit.jsonl"
     assert f.exists()
-    rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
     assert len(rows) == 1
     assert rows[0]["stage"] == "edit"
     assert rows[0]["source"] == "user_correction"
@@ -102,7 +102,7 @@ def test_drain_quality_judgments_to_golden_writes_judge_samples(tmp_path: Path):
     assert added == 1
     f = tmp_path / "val" / "judge" / "judge.jsonl"
     assert f.exists()
-    rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
     assert len(rows) == 1
     assert rows[0]["stage"] == "judge"
     assert rows[0]["source"] == "quality_check"

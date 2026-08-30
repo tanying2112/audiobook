@@ -6,7 +6,7 @@ import websockets
 
 
 @pytest.mark.asyncio
-async def test_websocket():
+async def test_websocket() -> None:
     uri = "ws://localhost:8000/api/ws/pipeline/11"
 
     try:
@@ -15,31 +15,31 @@ async def test_websocket():
 
             # Receive connected message
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            print(f"Received: {msg}")
+            print(f"Received: {msg!r}")
 
             # Test ping
             print("\n--- Testing ping ---")
             await ws.send(json.dumps({"type": "ping"}))
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            print(f"Received: {msg}")
+            print(f"Received: {msg!r}")
 
             # Test pause
             print("\n--- Testing pause ---")
             await ws.send(json.dumps({"type": "pause"}))
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            print(f"Received: {msg}")
+            print(f"Received: {msg!r}")
 
             # Test resume
             print("\n--- Testing resume ---")
             await ws.send(json.dumps({"type": "resume"}))
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            print(f"Received: {msg}")
+            print(f"Received: {msg!r}")
 
             # Test status
             print("\n--- Testing status ---")
             await ws.send(json.dumps({"type": "status"}))
             msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            print(f"Received: {msg}")
+            print(f"Received: {msg!r}")
 
     except Exception as e:
         print(f"Error: {type(e).__name__}: {e}")

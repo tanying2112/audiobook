@@ -6,15 +6,15 @@ import websockets
 
 
 @pytest.mark.asyncio
-async def test_websocket():
+async def test_websocket() -> None:
     uri = "ws://localhost:8000/api/ws/pipeline/11"
 
     try:
         async with websockets.connect(uri) as ws:
             print("Connected!")
-            for i in range(10):
+            for _ in range(10):
                 msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                print(f"Received: {msg}")
+                print(f"Received: {msg!r}")
                 data = json.loads(msg)
                 if data.get("type") == "connected":
                     print("Connection confirmed!")

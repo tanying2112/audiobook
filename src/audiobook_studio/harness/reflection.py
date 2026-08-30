@@ -143,7 +143,7 @@ class ReflectionEngine:
         """聚合统计信息。"""
         from collections import Counter
 
-        total = len(corrections)
+        len(corrections)
         by_source = {}
         by_stage = {}
         by_field = {}
@@ -173,10 +173,10 @@ class ReflectionEngine:
     def _build_reflection_prompt(self, stage: str, corrections: List[Dict], stats: Dict) -> str:
         """构建反思提示词。"""
         # 截取前 50 条用于分析（避免超长）
-        sample_corrections = corrections[:50]
+        corrections[:50]
 
         corrections_json = json.dumps(corrections[:20], ensure_ascii=False, indent=2)
-        stats_json = json.dumps(stats, ensure_ascii=False, indent=2)
+        json.dumps(stats, ensure_ascii=False, indent=2)
 
         prompt = f"""你是 Audiobook Studio 的质量工程师，负责分析 pipeline 阶段 {stage} 的纠错记录，输出结构化归因分析。
 
@@ -337,22 +337,13 @@ class ReflectionEngine:
             from ..models import FeedbackRecord as FeedbackRecordModel
 
             cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-            stmt = (
-                select(FeedbackRecordModel)
-                .where(
-                    FeedbackRecordModel.stage == stage,
-                    FeedbackRecordModel.created_at >= cutoff,
-                    FeedbackRecordModel.processed == True,
-                )
-                .limit(200)
-            )
             records = (
                 session.execute(
                     select(FeedbackRecordModel)
                     .where(
                         FeedbackRecordModel.stage == stage,
                         FeedbackRecordModel.created_at >= cutoff,
-                        FeedbackRecordModel.processed == True,
+                        FeedbackRecordModel.processed.is_(True),
                     )
                     .limit(200)
                 )

@@ -643,7 +643,7 @@ class ReflectionEngine:
                 corrections_analyzed=len(corrections),
                 timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             )
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, json.JSONDecodeError) as e:
+        except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as e:
             logger.error(f"[SOP] Reflection LLM call failed: {e}")
             return self._heuristic_reflection(genre, correction_summary, current_rules)
 
@@ -766,7 +766,7 @@ class RuleApplier:
             enhanced["pitch_hz"] = pitch_shifts[speaker_role] * 6.0  # semitones to Hz approx
 
         # Apply pause patterns
-        pause_patterns = rules.get("pause_patterns", {})
+        rules.get("pause_patterns", {})
         # Context-dependent, would need more info
 
         # Apply SFX rules
@@ -847,7 +847,7 @@ class SOPBackgroundThread:
                 # M-项1：自主调度层 —— 周期性驱动 harness 自我迭代闭环。
                 # 默认关闭（AUDIOBOOK_HARNESS_AUTONOMOUS=1 才启用），且异常绝不中断主反思链路。
                 self._maybe_run_harness_iterations()
-            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+            except (ValueError, RuntimeError, OSError) as e:
                 logger.error(f"[SOP] Reflection loop error: {e}")
 
             # Sleep with interruption check

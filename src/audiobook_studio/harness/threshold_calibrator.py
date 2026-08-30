@@ -197,7 +197,7 @@ class ThresholdCalibrator:
             recommended = distribution.percentiles.get("p95", 0.0)
 
         # 限制变化幅度
-        max_change = self.settings.CALIBRATION_MAX_CHANGE_PCT
+        self.settings.CALIBRATION_MAX_CHANGE_PCT
         change_pct = abs(recommended - current_value) / max(abs(current_value), 1e-6)
         if change_pct > self.settings.CALIBRATION_MAX_CHANGE_PCT:
             # 限制变化幅度
@@ -207,7 +207,7 @@ class ThresholdCalibrator:
                 recommended = current_value * (1 - self.settings.CALIBRATION_MAX_CHANGE_PCT)
 
         # 计算置信度（基于样本量）
-        confidence = min(distribution.count / (self.settings.CALIBRATION_MIN_SAMPLES * 2), 1.0)
+        min(distribution.count / (self.settings.CALIBRATION_MIN_SAMPLES * 2), 1.0)
 
         change_pct = (recommended - current_value) / max(abs(current_value), 1e-6)
 
@@ -242,7 +242,7 @@ class ThresholdCalibrator:
         Returns:
             校准报告
         """
-        settings = self.settings
+        self.settings
 
         # 1. 加载当前阈值配置
         thresholds_config = self._load_thresholds_config()
@@ -256,8 +256,8 @@ class ThresholdCalibrator:
 
             stage = threshold["stage"]
             metric = threshold["metric_name"]
-            current = threshold["value"]
-            direction = "lower" if threshold.get("operator", ">=") in (">=", ">") else "upper"
+            threshold["value"]
+            "lower" if threshold.get("operator", ">=") in (">=", ">") else "upper"
 
             # 收集指标数据
             metrics_data = self.collect_metrics(stage, [metric], days=14)

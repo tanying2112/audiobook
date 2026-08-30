@@ -87,7 +87,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         ~10 dB on tones but ~-2 dB on speech, whereas this speech-dominant
         corpus scores positive SNR on both.
         """
-        rng = np.random.default_rng(seed)
+        np.random.default_rng(seed)
         total = max(1, int(sample_rate * seconds))
         out = np.zeros(total, dtype=np.float64)
         n_seg = 8
@@ -117,7 +117,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
                 sig = sig + 0.05 * r.standard_normal(n)
             out[start:stop] = sig
         out = out / (np.max(np.abs(out)) + 1e-9)
-        return out  # type: ignore[no-any-return]
+        return out
 
     def _frame(self, x: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         w = sine_window(self.win)
@@ -125,7 +125,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         nf = 1 + (len(x) - self.win) // self.hop
         idx = np.arange(self.win)[None, :] + self.hop * np.arange(nf)[:, None]
         result = (x[idx] * w).astype(np.float64)
-        return result  # type: ignore[no-any-return]
+        return result
 
     def _train(self, seconds: float, seed: int) -> None:
         corpus = self._synthetic_corpus(self.sample_rate, seconds, seed)
