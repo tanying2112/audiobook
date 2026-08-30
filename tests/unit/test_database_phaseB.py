@@ -320,11 +320,15 @@ def test_init_and_drop_async_db(tmp_path, monkeypatch):
     monkeypatch.setattr(db_mod, "_async_session_factory", None)
 
     async def go():
-        await init_async_db()
-        # Neutralize the harness-leaked FK=ON class listener for this engine so
-        # drop_all (which fails under FK enforcement due to the FK cycle) succeeds
-        # order-independently. Instance listeners fire after class listeners.
+        # Register the FK=OFF instance listener on the engine BEFORE any connection
+        # is opened, so every pooled connection (created during init_async_db and
+        # reused by drop_async_db) starts FK=OFF. The "connect" event only fires on
+        # NEW connection creation, so registering it after init_async_db would leave
+        # the already-pooled connections with the harness-leaked FK=ON (the FK cycle
+        # then makes drop_all fail with "no such table"). Instance listeners fire after
+        # the harness class listener, so FK=OFF wins. (TEST-ISOLATION ONLY.)
         event.listen(db_mod.get_async_engine().sync_engine, "connect", _fk_off)
+        await init_async_db()
         await drop_async_db()
 
     _run(go())
