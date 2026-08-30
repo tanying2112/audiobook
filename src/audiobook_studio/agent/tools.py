@@ -196,7 +196,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> Extract
             "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "image": "image/png",
         }
-        return type_map.get(file_type, "text/plain")
+        return type_map.get(file_type, "application/octet-stream")
 
     suffix = Path(file_path).suffix.lower()
     ext_map: dict[str, ExtractMimeType] = {
@@ -211,7 +211,7 @@ def _guess_mime_type(file_path: str, file_type: Optional[str] = None) -> Extract
         ".bmp": "image/bmp",
         ".webp": "image/webp",
     }
-    return ext_map.get(suffix, "text/plain")
+    return ext_map.get(suffix, "application/octet-stream")
 
 
 async def analyze_and_split(args: AnalyzeAndSplitArgs) -> AnalyzeAndSplitResult:
