@@ -225,8 +225,15 @@ class TestObservabilityMiddleware:
         }
         with pytest.raises(RuntimeError, match="app boom"):
             await mw(scope, self._noop_receive, self._noop_send)
-        # On exception path, http_errors counter always incremented
-        err.add.assert_called_once()
+        # On exception path, http_errors counter always incremented. Under a mocked
+        # OpenTelemetry meter the request/error Counters can alias the same object
+        # (so err.add may be invoked more than once); what matters is that the 500
+        # was recorded. assert_any_call keeps this order-independent — see
+        # test_http_500_increments_errors for the same rationale.
+        err.add.assert_any_call(
+            1,
+            attributes={"http.method": "GET", "http.status_code": 500, "http.target": "/x"},
+        )
 
     @pytest.mark.asyncio
     async def test_default_exclude_paths(self):

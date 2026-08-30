@@ -364,20 +364,63 @@ def _reset_global_state():
     # FK=OFF and don't fail on the FK cycle under full-suite ordering.
     _remove_harness_class_connect_listeners()
 
-    # Restore ``litellm.get_supported_openai_params`` if a prior real-mode test
-    # removed it from the module without restoring. dspy 3.3.1 calls it while
-    # building an LM client, so a leaked removal aborts later dspy-backed tests
-    # under --random-order (``module 'litellm' has no attribute
-    # 'get_supported_openai_params'``). Restoring the cached original keeps those
-    # tests order-independent.
-    if _LITELLM_GSO_ORIGINAL is not None:
-        try:
-            import litellm as _litellm_mod
+    # Restore ``litellm.get_supported_openai_params`` after every test. dspy
+    # 3.3.1 calls it while building an LM client; a prior real-mode test can
+    # either *remove* the attribute (leaving dspy to raise ``module 'litellm'
+    # has no attribute 'get_supported_openai_params'``) or *replace* it with a
+    # broken/version-incompatible callable. The previous restore only re-added
+    # it when removed, so a replaced-broken version leaked through and made the
+    # dspy forward-pass tests (test_bootstrap_fewshot_mock_coverage) flake under
+    # full-suite ordering. Restore unconditionally: back to the cached original
+    # when one existed, otherwise to a safe no-op shim so a leaked broken version
+    # cannot survive into later dspy-backed tests. (TEST-ISOLATION ONLY — no
+    # production code is modified.)
+    try:
+        import litellm as _litellm_mod
 
-            if not hasattr(_litellm_mod, "get_supported_openai_params"):
-                _litellm_mod.get_supported_openai_params = _LITELLM_GSO_ORIGINAL
-        except Exception:
-            pass
+        if _LITELLM_GSO_ORIGINAL is not None:
+            _litellm_mod.get_supported_openai_params = _LITELLM_GSO_ORIGINAL
+        elif not hasattr(_litellm_mod, "get_supported_openai_params"):
+            _litellm_mod.get_supported_openai_params = lambda model, custom_llm_provider=None: []  # noqa: E731
+    except Exception:
+        pass
+
+    # Restore the canonical third-party sys.modules mocks after every test.
+    #
+    # Several test modules swap these modules in sys.modules for their own mock
+    # objects (e.g. tests/unit/pipeline/test_synthesize_nonmock.py replaces
+    # ``opentelemetry.*`` with a shared mock meter that aliases ``_http_requests``
+    # and ``_http_errors`` to the same Counter, and tests/unit/pipeline/
+    # test_reviewer_agent.py mocks the same tree). Their per-module fixtures
+    # restore the real modules after their OWN tests, but pytest-random-order
+    # intersperses those tests across the whole run, so a swap leaks into a later
+    # module (notably the observability instrumentation tests, and the
+    # instructor/pdfplumber patches in test_llm_client / test_extract) and makes
+    # outcomes depend on collection order. Re-installing the exact session-start
+    # mock objects here makes every test begin from an identical sys.modules state
+    # -> order-independent. Only modules that conftest_minimal actually shadowed
+    # as MagicMocks are restored (real modules such as ``requests`` are excluded,
+    # so their identity is preserved). (TEST-ISOLATION ONLY — no production code
+    # is modified.)
+    try:
+        for _mock_name, _mock_mod in CANONICAL_MOCKED_MODULES.items():  # noqa: F405
+            sys.modules[_mock_name] = _mock_mod
+    except Exception:
+        pass
+
+    # Reset the OpenTelemetry metrics global provider/cache. A prior test that
+    # initialised it (e.g. via init_metrics, reached through monitoring helpers)
+    # leaves a leaked ``_meter_provider`` / cached ``_core_metrics``; restoring the
+    # canonical opentelemetry mock above already neutralises the shared-meter
+    # aliasing, but clearing these globals is belt-and-suspenders so no cached
+    # meter survives across tests under --random-order.
+    try:
+        from src.audiobook_studio.observability import metrics as _otel_metrics
+
+        _otel_metrics._meter_provider = None
+        _otel_metrics._core_metrics = None
+    except Exception:
+        pass
 
     # (DB CRUD test isolation is handled per-fixture via the ``set_sqlite_fk_off``
     # instance connect listener installed in ``make_async_db_override`` and the

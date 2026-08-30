@@ -285,6 +285,17 @@ def _force_torch_mock():
         sys.modules["torchaudio"] = _ta_mock
 
 
+# Registry of the third-party modules that were shadowed as MagicMocks at
+# session start. ``tests/conftest._reset_global_state`` re-installs these exact
+# objects after every test so a test that swaps one of them in sys.modules
+# (e.g. ``tests/unit/pipeline/test_synthesize_nonmock.py`` replaces
+# ``opentelemetry.*`` with its own shared mock meter) cannot leak the swap into
+# a later test module and break it under ``--random-order``. Only modules that
+# were *actually* mocked here are recorded (modules already imported as real,
+# such as ``requests``, are intentionally excluded so their real identity is
+# preserved). See the comment on the ``_reset_global_state`` teardown.
+CANONICAL_MOCKED_MODULES: dict = {}
+
 for mod_name in [
     "fitz",
     "pymupdf",
@@ -422,6 +433,7 @@ for mod_name in [
         # on the mocked module crashes the whole import.
         _mock_mod.__spec__ = importlib.util.spec_from_loader(mod_name, None)
         sys.modules[mod_name] = _mock_mod
+        CANONICAL_MOCKED_MODULES[mod_name] = _mock_mod
 
 # Ensure the mocked torch (which the loop above may have just created) has a
 # valid __spec__ and deterministic CUDA/MPS probes so hardware detection and
@@ -496,6 +508,9 @@ sys.modules["celery"] = mock_celery_app
 sys.modules["celery"].Celery = MagicMock(return_value=mock_celery_app)
 sys.modules["celery"].current_app = mock_celery_app
 sys.modules["celery"].Task = FakeCeleryTask  # Use proper fake Task class instead of MagicMock
+# The celery mock is finalised here (replacing the bare MagicMock the loop
+# above installed), so record its canonical identity for sys.modules restore.
+CANONICAL_MOCKED_MODULES["celery"] = mock_celery_app
 
 # Also patch celery_app module to use the fake Task
 import types
