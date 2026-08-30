@@ -72,7 +72,7 @@ class HarnessScheduler:
 
         任一 stage 失败不影响其余 stage；异常被吞并记录，保证调度循环不中断。
         """
-        from .harness import run_iteration_cycle, run_stage
+        from .harness import run_iteration_cycle
 
         stages = stages or self.stages
         # 参数级覆盖优先于实例级开关。
@@ -80,14 +80,13 @@ class HarnessScheduler:
         report: Dict[str, Any] = {}
         for stage in stages:
             try:
-                # 未注入 run_fn 时回退到真实 stage 运行器（run_stage 跑 live v1），
-                # 使生产自主迭代 worker 真正执行 stage，而非空转置 0 分。
-                run_fn = self.run_fn or (lambda inp, _s=stage: run_stage(_s, inp))
-                baseline_fn = self.baseline_fn or (lambda inp, _s=stage: run_stage(_s, inp))
+                # run_fn/baseline_fn 透传；为 None 时由 run_iteration_cycle 内部构造
+                # 版本感知的默认 run_fn（候选版本 vs 已部署版本，均读 prompts/harness），
+                # 使自主迭代 worker 真正用编译出的候选版本跑 eval，而非空转置 0 分。
                 rep = run_iteration_cycle(
                     stage,
-                    run_fn=run_fn,
-                    baseline_fn=baseline_fn,
+                    run_fn=self.run_fn,
+                    baseline_fn=self.baseline_fn,
                     auto_deploy=self.auto_deploy,
                     judge=self.judge,
                     use_learned=effective_learned,

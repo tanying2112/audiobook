@@ -115,6 +115,7 @@ class PromptEvolutionEngine:
         logger.info(f"[PromptEvolution] {stage}: 编译候选 v{cp.version}（示例={len(cp.exemplars)}）")
         return {
             "version": cp.version,
+            "base_version": cp.base_version,
             "stage": stage,
             "exemplars_count": len(cp.exemplars),
             "selection_note": cp.selection_note,

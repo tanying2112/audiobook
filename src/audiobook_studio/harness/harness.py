@@ -63,6 +63,19 @@ class IterationReport:
         }
 
 
+def _harness_run_fn_for(stage: str, version: int, prompts_root: Path) -> Callable[[Dict[str, Any]], Any]:
+    """返回以指定 harness prompt 版本（``prompts_root/<dir>/v{version}.j2``）执行 stage 的
+    ``run_fn`` 闭包，供 ``run_iteration_cycle`` 的候选/基线实证对比使用。
+
+    内部委托 ``feedback.canary._run_stage_with_prompt_version``，把候选版本临时 swap 进
+    活动 ``v1.j2`` 跑真实 stage；``prompts_root`` 默认 ``prompts/harness``，与 feedback
+    流水线活动目录解耦。
+    """
+    from ..feedback.canary import _run_stage_with_prompt_version
+
+    return lambda inp: _run_stage_with_prompt_version(stage, version, inp, prompts_root=prompts_root)
+
+
 def run_iteration_cycle(
     stage: str,
     run_fn: Callable[[Dict[str, Any]], Any],
@@ -103,22 +116,31 @@ def run_iteration_cycle(
 
         compile_result = PromptEvolutionEngine().compile_candidate(stage, k=k, prompts_root=root, use_learned=True)
         candidate_version = compile_result["version"]
+        # 基线版本取编译结果的 base_version（当前已部署版本），无则退化为 candidate-1。
+        deployed_version = compile_result.get("base_version", candidate_version - 1)
         logger.info(
             f"[harness] {stage}: 学习型编译候选 v{candidate_version}（learned={compile_result.get('learned')}）"
         )
     else:
         cp = write_candidate_prompt(stage, k=k, prompts_root=root)
         candidate_version = cp.version
+        deployed_version = cp.base_version
         logger.info(f"[harness] {stage}: 编译候选 v{candidate_version}（示例={len(cp.exemplars)}）")
+
+    # 候选/基线实证对比：默认 run_fn 跑「编译出的候选版本」，baseline_fn 跑「当前已部署
+    # 版本」，均从 prompts_root（默认 prompts/harness）读取对应版本并临时 swap 进 v1.j2
+    # 执行，使 eval 真正对比候选 vs 基线，而非两次都跑 live v1（修复此前空转置 0 的缺陷）。
+    effective_run_fn = run_fn or _harness_run_fn_for(stage, candidate_version, root)
+    effective_baseline_fn = baseline_fn or _harness_run_fn_for(stage, deployed_version, root)
 
     # (M2) 在 harness 自有冻结 test 留出集上做 候选 vs 基线 实证评判。
     # 平铺布局 data/golden/harness/test/{stage}.jsonl，harness 自洽，
     # 不借用 feedback 的 run_candidate_on_held_out（读取嵌套布局，无法读 harness 金标）。
     eval_result = evaluate_on_harness_golden(
         stage=stage,
-        run_fn=run_fn,
+        run_fn=effective_run_fn,
         judge=j,
-        baseline_fn=baseline_fn,
+        baseline_fn=effective_baseline_fn,
         split="test",
     )
 

@@ -758,9 +758,9 @@ class TestHarnessAutonomyAndOps:
         assert res["learned"] is False
         assert res["version"] > 0
 
-    def test_scheduler_default_run_fn_uses_run_stage(self, monkeypatch):
-        """未注入 run_fn 时，HarnessScheduler.tick 以真实 run_stage 作为默认 run_fn，
-        而非传 None（避免生产自主迭代空转置 0 分）。"""
+    def test_scheduler_passes_run_fn_through_to_cycle(self, monkeypatch):
+        """未注入 run_fn 时，HarnessScheduler.tick 透传 None，由 run_iteration_cycle 内部
+        构造版本感知的默认 run_fn（候选版本 vs 已部署版本），而非在调度层硬编码 run_stage。"""
         import audiobook_studio.harness.harness as harness_mod
         from src.audiobook_studio.harness.scheduler import HarnessScheduler
 
@@ -780,20 +780,50 @@ class TestHarnessAutonomyAndOps:
 
         monkeypatch.setattr(harness_mod, "run_iteration_cycle", _fake_cycle)
 
-        ran: Dict[str, Any] = {}
+        HarnessScheduler(stages=["judge"]).tick()
+        # 调度层只透传；版本感知 run_fn 由 run_iteration_cycle 构造
+        assert captured["run_fn"] is None
+        assert captured["baseline_fn"] is None
 
-        def _fake_run_stage(stage, inp):
-            ran["stage"] = stage
+    def test_run_iteration_cycle_evals_candidate_vs_deployed_versions(self, monkeypatch, tmp_path):
+        """run_iteration_cycle 默认把「编译出的候选版本」与「当前已部署版本」分别喂入
+        候选/基线 eval 的 run_fn，且均从 prompts_root（默认 prompts/harness）读取对应版本，
+        而非两次都跑 live v1（真实候选版本接入 eval 的闭环）。"""
+        from types import SimpleNamespace
+
+        import audiobook_studio.feedback.canary as canary_mod
+        import audiobook_studio.harness.golden as golden_mod
+        import audiobook_studio.harness.harness as harness_mod
+
+        captured: list = []
+
+        def _fake_run_stage_with_version(pipeline_stage, version, input_data, mock_mode=None, prompts_root=None):
+            captured.append({"stage": pipeline_stage, "version": version, "prompts_root": prompts_root})
             return {"output": "ok"}
 
-        monkeypatch.setattr(harness_mod, "run_stage", _fake_run_stage)
+        monkeypatch.setattr(canary_mod, "_run_stage_with_prompt_version", _fake_run_stage_with_version)
 
-        HarnessScheduler(stages=["judge"]).tick()
-        assert callable(captured["run_fn"])
-        # 默认 run_fn 应委托到真实 run_stage（而非空转）
-        assert captured["run_fn"]({"x": 1}) == {"output": "ok"}
-        assert ran.get("stage") == "judge"
-        assert callable(captured["baseline_fn"])
+        # 注入 harness 自有 test 留出集样本，确保 eval 真正调用 run_fn（仓库默认无 judge 测试集）。
+        def _fake_load_samples(self, stage, split):
+            if stage == "judge" and split == "test":
+                return [SimpleNamespace(input={"text": "x"}, expected_output={"text": "y"})]
+            return []
+
+        monkeypatch.setattr(golden_mod.GoldenDatasetManager, "load_samples", _fake_load_samples)
+
+        rep = harness_mod.run_iteration_cycle(
+            "judge", run_fn=None, baseline_fn=None, auto_deploy=False, prompts_root=tmp_path / "prompts"
+        )
+        assert rep.compiled is True
+
+        calls = [c for c in captured if c["stage"] == "judge"]
+        assert calls, "eval 应真正调用 run_fn"
+        # 候选与基线使用不同版本（候选版本 > 已部署版本），证明候选版本真正喂入 eval。
+        versions = sorted({c["version"] for c in calls})
+        assert len(versions) >= 2, f"候选/基线应使用不同版本，实际: {versions}"
+        assert max(versions) > min(versions)
+        # 均从 harness prompts_root 读取对应版本（真实候选版本接入 eval）。
+        assert all(c["prompts_root"] == tmp_path / "prompts" for c in calls)
 
 
 if __name__ == "__main__":

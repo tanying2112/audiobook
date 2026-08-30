@@ -191,6 +191,7 @@ def _run_stage_with_prompt_version(
     version: int,
     input_data: Any,
     mock_mode: Optional[bool] = None,
+    prompts_root: Optional[Path] = None,
 ) -> Any:
     """Run a specific pipeline stage with a specific prompt version.
 
@@ -203,6 +204,10 @@ def _run_stage_with_prompt_version(
         input_data: Input data for the pipeline (dict or model object)
         mock_mode: Whether to run in mock mode (None = resolve from
             SELF_ITERATION_MOCK env, C-01).
+        prompts_root: 候选 prompt 来源目录根（如 harness 自闭环用
+            ``prompts/harness``）；为 None 时与活动目录 ``prompts`` 同源。
+            该目录下的 ``<prompt_dir>/v{version}.j2`` 会被临时 swap 进活动
+            ``v1.j2`` 执行，使 harness 候选版本能被真实评测。
     """
     mock_mode = _resolve_mock_mode(mock_mode)
 
@@ -229,9 +234,12 @@ def _run_stage_with_prompt_version(
 
     # Map pipeline stage to prompt directory name
     prompt_dir_name = _pipeline_stage_to_prompt_dir(pipeline_stage)
-    prompt_dir = Path("prompts") / prompt_dir_name
-    v1_path = prompt_dir / "v1.j2"
-    target_path = prompt_dir / f"v{version}.j2"
+    active_prompt_dir = Path("prompts") / prompt_dir_name
+    v1_path = active_prompt_dir / "v1.j2"
+    # 候选 prompt 来源目录：harness 自闭环用 prompts/harness/<dir>/，与 feedback
+    # 流水线活动目录 prompts/<dir>/ 解耦；默认同源（prompts_root=None）。
+    source_dir = Path(prompts_root) / prompt_dir_name if prompts_root is not None else active_prompt_dir
+    target_path = source_dir / f"v{version}.j2"
 
     if not target_path.exists():
         raise FileNotFoundError(f"Prompt version {version} not found for stage {prompt_dir_name}")
