@@ -143,6 +143,52 @@ def set_sqlite_fk_off(dbapi_connection, connection_record):
         pass
 
 
+def _remove_harness_class_connect_listeners():
+    """Remove the process-wide FK=ON class listener that harness leaks.
+
+    ``src/audiobook_studio/harness/storage.py:_create_engine`` registers
+    ``event.listens_for(Engine, "connect")`` on the *Engine class* with
+    ``PRAGMA foreign_keys=ON`` (storage.py:221-227). That listener fires on
+    EVERY SQLite connection opened anywhere in the process for the rest of the
+    run, so once any harness test has initialized a harness DB the DB CRUD /
+    API / auth tests — which assume the default FK=OFF — fail under full-suite
+    ordering with ``FOREIGN KEY constraint failed`` / ``no such table``.
+
+    This scans SQLAlchemy's event registry for Engine-class ``"connect"``
+    listeners whose function was defined inside a ``harness`` module and removes
+    them, restoring the default connection state these tests rely on. It is
+    called after every test in ``_reset_global_state``, so a harness module
+    collected earlier cannot leak FK=ON into later DB tests. The harness's own
+    connections still get FK=ON (they register the listener fresh when they next
+    initialize a DB), so harness behavior is unaffected. (TEST-ISOLATION ONLY —
+    no production code is modified.)
+    """
+    try:
+        import weakref
+
+        from sqlalchemy import Engine, event
+        from sqlalchemy.event import registry as _event_registry
+
+        for key, coll in list(_event_registry._key_to_collection.items()):
+            if not (isinstance(key, tuple) and key[1] == "connect"):
+                continue
+            target = key[0]
+            if target is not Engine and getattr(target, "__name__", "") != "Engine":
+                continue
+            for fn_wr in list(coll.values()):
+                # Registry values are weakrefs to the listener functions.
+                fn = fn_wr() if isinstance(fn_wr, weakref.ref) else fn_wr
+                if fn is None:  # dead weakref
+                    continue
+                if "harness" in (getattr(fn, "__module__", "") or ""):
+                    try:
+                        event.remove(Engine, "connect", fn)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Test-specific fixtures (not needed by all tests)
 # ════════════════════════════════════════════════════════════════════════════
@@ -291,6 +337,11 @@ def _reset_global_state():
         stop_all_health_probes()
     except Exception:
         pass
+
+    # Strip the process-wide FK=ON class listener that any harness DB test may
+    # have leaked (storage.py:221), so later DB/API/auth tests see the default
+    # FK=OFF and don't fail on the FK cycle under full-suite ordering.
+    _remove_harness_class_connect_listeners()
 
     # (DB CRUD test isolation is handled per-fixture via the ``set_sqlite_fk_off``
     # instance connect listener installed in ``make_async_db_override`` and the

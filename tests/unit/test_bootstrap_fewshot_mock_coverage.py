@@ -35,7 +35,32 @@ from src.audiobook_studio.feedback.bootstrap_fewshot import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _shim_litellm_supported_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shim ``litellm.get_supported_openai_params`` for dspy LM construction.
+
+    dspy 3.3.1 calls ``litellm.get_supported_openai_params(model=..., custom_llm_provider=...)``
+    when building an LM client (via the ``supported_params`` property). Some litellm builds
+    (e.g. this sandbox) lack that attribute, which aborts LM construction before the mock LM
+    can answer and fails the forward-pass tests. Provide a no-op shim so the mock-LM tests
+    exercise the dspy modules regardless of the installed litellm version. This patches a
+    dependency quirk, not the SUT (bootstrap_fewshot).
+    """
+    try:
+        import litellm
+
+        if not hasattr(litellm, "get_supported_openai_params"):
+            monkeypatch.setattr(
+                litellm,
+                "get_supported_openai_params",
+                lambda model: [],  # type: ignore[attr-defined]
+            )
+    except Exception:
+        pass
+
+
 # ── Pure helpers ─────────────────────────────────────────────────────────────
+
 
 def test_extract_paragraphs_gutenberg_header_footer() -> None:
     text = (
@@ -68,9 +93,7 @@ def test_extract_paragraphs_metadata_skipped() -> None:
 
 
 def test_extract_paragraphs_max_paragraphs() -> None:
-    text = "\n\n".join(
-        f"Paragraph number {i} with enough text to pass the length filter." for i in range(20)
-    )
+    text = "\n\n".join(f"Paragraph number {i} with enough text to pass the length filter." for i in range(20))
     paras = extract_paragraphs_from_text(text, max_paragraphs=5)
     assert len(paras) == 5
 
@@ -83,6 +106,7 @@ def test_extract_paragraphs_single_newline_fallback() -> None:
 
 
 # ── load_long_novel_data ─────────────────────────────────────────────────────
+
 
 def test_load_long_novel_data_missing_dir(tmp_path: Path) -> None:
     result = load_long_novel_data(str(tmp_path / "does_not_exist"))
@@ -111,6 +135,7 @@ def test_load_long_novel_data_with_files(tmp_path: Path) -> None:
 
 # ── save_optimized_prompt ────────────────────────────────────────────────────
 
+
 def test_save_optimized_prompt_default_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     p = save_optimized_prompt("annotate_paragraph", "PROMPT TEXT", 3)
@@ -127,6 +152,7 @@ def test_save_optimized_prompt_custom_dir(tmp_path: Path) -> None:
 
 
 # ── dspy module forward passes (mock LM) ─────────────────────────────────────
+
 
 def test_character_module_forward() -> None:
     configure_dspy_optimizer(use_mock=True)
@@ -173,6 +199,7 @@ def test_voice_module_forward() -> None:
 
 # ── load_training_examples with temp golden files ────────────────────────────
 
+
 def test_load_training_examples_from_few_shot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     golden = tmp_path / "tests" / "golden" / "annotate_paragraph"
     golden.mkdir(parents=True)
@@ -181,9 +208,7 @@ def test_load_training_examples_from_few_shot(tmp_path: Path, monkeypatch: pytes
             {
                 "input": {
                     "paragraph_text": "Long paragraph text for the character extraction test.",
-                    "character_voice_map": [
-                        {"canonical_name": "旁白", "suggested_voice_id": "zh_female_1"}
-                    ],
+                    "character_voice_map": [{"canonical_name": "旁白", "suggested_voice_id": "zh_female_1"}],
                 },
                 "expected_output": {"speaker_canonical_name": "旁白"},
             }
@@ -206,7 +231,15 @@ def test_load_training_examples_fallback_bootstrap(tmp_path: Path, monkeypatch: 
     golden.mkdir(parents=True)
     (golden / "bootstrap_examples.json").write_text(
         json.dumps(
-            {"examples": [{"text": "A long paragraph used as bootstrap training text.", "character": "旁白", "voice": "zh_male_1"}]}
+            {
+                "examples": [
+                    {
+                        "text": "A long paragraph used as bootstrap training text.",
+                        "character": "旁白",
+                        "voice": "zh_male_1",
+                    }
+                ]
+            }
         ),
         encoding="utf-8",
     )
@@ -218,6 +251,7 @@ def test_load_training_examples_fallback_bootstrap(tmp_path: Path, monkeypatch: 
 
 
 # ── BootstrapFewShotOptimizer.optimize (mock LM + GEPA) ──────────────────────
+
 
 def test_optimizer_optimize_empty_training() -> None:
     opt = BootstrapFewShotOptimizer("annotate_paragraph")
@@ -281,7 +315,9 @@ def test_optimizer_extract_prompt_no_frontier() -> None:
 def test_run_pipeline_on_book_data_pipeline_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     d = tmp_path / "novels"
     d.mkdir()
-    (d / "b.txt").write_text("START OF THE PROJECT GUTENBERG\nA long paragraph that is kept.\n*** END", encoding="utf-8")
+    (d / "b.txt").write_text(
+        "START OF THE PROJECT GUTENBERG\nA long paragraph that is kept.\n*** END", encoding="utf-8"
+    )
     books = load_long_novel_data(str(d))
     # Force pipeline import to raise so the except branch is covered
     with patch("src.audiobook_studio.feedback.bootstrap_fewshot.Path.read_text", side_effect=RuntimeError("boom")):
@@ -299,11 +335,22 @@ def test_prepare_training_data_from_books_empty(tmp_path: Path, monkeypatch: pyt
 
 # ── run_bootstrap_optimization ───────────────────────────────────────────────
 
+
 def test_run_bootstrap_optimization_with_examples(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     golden = tmp_path / "tests" / "golden"
     golden.mkdir(parents=True)
     (golden / "bootstrap_examples.json").write_text(
-        json.dumps({"examples": [{"text": "A long paragraph for bootstrap optimization run.", "character": "旁白", "voice": "zh_female_1"}]}),
+        json.dumps(
+            {
+                "examples": [
+                    {
+                        "text": "A long paragraph for bootstrap optimization run.",
+                        "character": "旁白",
+                        "voice": "zh_female_1",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
@@ -338,9 +385,7 @@ def test_run_bootstrap_optimization_exception(tmp_path: Path, monkeypatch: pytes
     )
     monkeypatch.chdir(tmp_path)
     # Inject a failure inside the optimizer.optimize to hit the except branch
-    with patch.object(
-        BootstrapFewShotOptimizer, "optimize", side_effect=RuntimeError("injected failure")
-    ):
+    with patch.object(BootstrapFewShotOptimizer, "optimize", side_effect=RuntimeError("injected failure")):
         result = run_bootstrap_optimization("annotate_paragraph")
     assert result is None
 
@@ -352,8 +397,7 @@ def test_run_pipeline_on_book_data_success(tmp_path: Path) -> None:
     book.write_text(
         "START OF THE PROJECT GUTENBERG EBOOK\n"
         + "\n\n".join(
-            f"Paragraph number {i} with enough length to be extracted as a real paragraph."
-            for i in range(15)
+            f"Paragraph number {i} with enough length to be extracted as a real paragraph." for i in range(15)
         )
         + "\n*** END",
         encoding="utf-8",
@@ -371,10 +415,7 @@ def test_prepare_training_data_from_books_success(tmp_path: Path, monkeypatch: p
     d.mkdir()
     (d / "book1.txt").write_text(
         "START OF THE PROJECT GUTENBERG EBOOK\n"
-        + "\n\n".join(
-            f"Paragraph {i} long enough to be kept by the extraction logic in mock mode."
-            for i in range(10)
-        )
+        + "\n\n".join(f"Paragraph {i} long enough to be kept by the extraction logic in mock mode." for i in range(10))
         + "\n*** END",
         encoding="utf-8",
     )
@@ -401,8 +442,6 @@ def test_load_long_novel_data_read_error(tmp_path: Path, monkeypatch: pytest.Mon
     d = tmp_path / "novels"
     d.mkdir()
     (d / "bad.txt").write_text("content", encoding="utf-8")
-    monkeypatch.setattr(
-        Path, "read_text", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("read fail"))
-    )
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("read fail")))
     books = load_long_novel_data(str(d))
     assert books == []
