@@ -325,8 +325,17 @@ for mod_name in [
     "instructor",
     "tenacity",
     "jinja2",
-    "edge_tts",
-    "kokoro_onnx",
+    # NOTE: `edge_tts` and `kokoro_onnx` are intentionally NOT mocked here.
+    # They are real, installed packages that the real-TTS e2e
+    # (scripts/fallback_chain_e2e_test.py) and other integration tests need to
+    # run for real (红线#2: no fake audio assertions). Mocking them as bare
+    # MagicMocks in sys.modules is process-global, so even tests outside the
+    # tests/ tree (the e2e lives in scripts/) inherit the shadow and
+    # Kokoro.create / edge_tts.Communicate become MagicMocks -> real synthesis
+    # never happens. Edge-TTS import is cheap; kokoro_onnx import is cheap
+    # (the ONNX model loads lazily inside initialize()), so leaving the real
+    # modules in place does not slow collection. Tests that must avoid the real
+    # engines mock specific methods (e.g. patch KokoroBackend.warmup) instead.
     "piper_tts",
     "openai",
     "anthropic",

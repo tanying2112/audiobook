@@ -50,18 +50,28 @@ OUT.mkdir(parents=True, exist_ok=True)
 # 真实 TTS 依赖自愈（关键：避免被 conftest 的全局 mock 污染）
 # ---------------------------------------------------------------------------
 # conftest_minimal 会在会话开始、对尚未 import 的重依赖（含 kokoro_onnx /
-# edge_tts）往 sys.modules 塞一个裸 MagicMock，避免它们在 sandbox 里被真实加载。
+# edge_tts / torch）往 sys.modules 塞一个裸 MagicMock，避免它们在 sandbox 里被真实加载。
 # 但本测试是**真资源**验证（红线#2：禁伪造真音频），必须用到真实的
 # kokoro_onnx.Kokoro.create / edge_tts.Communicate。sys.modules 是进程级全局的，
 # 所以即便本脚本在 tests/ 树之外，也会继承那个 mock。
 #
-# 做法：合成前把这两个模块的 mock 影子弹出并导入真实包；结束后把影子还原，
+# 关键陷阱：kokoro_onnx 在推理路径上**依赖 torch**（传递依赖）。当 torch 被
+# conftest 换成 MagicMock 时，Kokoro.create() 会**非确定性**地返回 ()/全零音频
+# （MagicMock 在数值运算里行为随机），导致真音频合成时好时坏。因此本测试必须
+# 同时把 torch 也还原成真实包，真实合成才能稳定通过。
+#
+# 做法：合成前把这三个模块的 mock 影子弹出并导入真实包（并把 edge_tts_engine
+# 在模块加载时绑定的 `import edge_tts` 也重定向到真实包）；结束后把影子还原，
 # 把对整套其余测试的波及降到最低（其余测试仍按 conftest 的预期看到 mock）。
-_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts")
+_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts", "torch")
 
 
 def _require_real_tts_modules() -> dict[str, Any]:
-    """确保 kokoro_onnx / edge_tts 是真实包；返回原始 sys.modules 快照以便还原。"""
+    """确保 kokoro_onnx / edge_tts / torch 是真实包；返回原始 sys.modules 快照以便还原。
+
+    若任一真实包无法导入（环境无该依赖），抛出 RuntimeError —— 调用方应据此
+    跳过测试而非伪造成功（红线#2）。
+    """
     import importlib
     import sys
 
@@ -77,6 +87,16 @@ def _require_real_tts_modules() -> dict[str, Any]:
             except Exception as e:  # noqa: BLE001
                 raise RuntimeError(f"e2e 需要真实的 {mod}（红线#2：禁止伪造真音频），但导入失败: {e}") from e
         # 若本来就是真实模块，保持不动。
+    # edge_tts_engine 在模块加载时执行了 `import edge_tts`（try/except 包成 MagicMock
+    # 或 None），需把它的模块级绑定重定向到真实 edge_tts，否则 Communicate 仍是 mock。
+    try:
+        import audiobook_studio.tts.edge_tts_engine as _ete
+
+        _ete_edge = getattr(_ete, "edge_tts", None)
+        if _ete_edge is None or type(_ete_edge).__name__ == "MagicMock":
+            _ete.edge_tts = importlib.import_module("edge_tts")
+    except Exception:  # noqa: BLE001
+        pass
     return saved
 
 
@@ -234,8 +254,11 @@ async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
     for k in ("VOXCPM2_ENDPOINT", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
         os.environ.pop(k, None)
     os.environ["ENABLE_LOCAL_TTS"] = "true"
-    # 自愈：conftest 可能把 kokoro_onnx 全局 mock 了，这里还原真实包（红线#2）
-    saved = _require_real_tts_modules()
+    # 自愈：conftest 可能把 kokoro_onnx / torch 全局 mock 了，这里还原真实包（红线#2）
+    try:
+        saved = _require_real_tts_modules()
+    except RuntimeError as e:
+        pytest.skip(f"真实 TTS 依赖不可用，跳过而非伪造（红线#2）: {e}")
     try:
         # 显式按引擎类型构造，避免 factory kwargs 透传不一致问题（技术债，见末尾汇总）
         port = create_engine("kokoro", output_dir=str(OUT))
@@ -258,8 +281,11 @@ async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
 @pytest.mark.asyncio
 async def test_tier3_edge_real_audio() -> dict[str, Any]:
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
-    # 自愈：conftest 可能把 edge_tts 全局 mock 了，这里还原真实包（红线#2）
-    saved = _require_real_tts_modules()
+    # 自愈：conftest 可能把 edge_tts / torch 全局 mock 了，这里还原真实包（红线#2）
+    try:
+        saved = _require_real_tts_modules()
+    except RuntimeError as e:
+        pytest.skip(f"真实 TTS 依赖不可用，跳过而非伪造（红线#2）: {e}")
     try:
         # 显式构造 edge port（避免 Kokoro 默认抢占）
         port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
