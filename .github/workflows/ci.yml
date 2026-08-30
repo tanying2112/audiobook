@@ -12,9 +12,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feat/*"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "feat/*"]
 
 env:
   # sops will read age key from this file
