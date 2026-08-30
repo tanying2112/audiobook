@@ -21,7 +21,7 @@ from ..harness.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
-SOP_FILE = Path("config/agent_sop.json")
+SOP_FILE = Path("config/agent_sop.harness.json")
 
 
 class SOPRuleStore:
@@ -29,7 +29,7 @@ class SOPRuleStore:
 
     def __init__(self):
         self.settings = None
-        self._sop_file = Path("config/agent_sop.json")
+        self._sop_file = Path("config/agent_sop.harness.json")
         self._lock = __import__("threading").Lock()
 
     def _load_sop_file(self) -> Dict[str, Any]:

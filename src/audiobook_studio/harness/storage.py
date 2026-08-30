@@ -651,7 +651,7 @@ def reset_storage() -> None:
     if prompts_dir.exists():
         shutil.rmtree(prompts_dir, ignore_errors=True)
     # 清理 SOP 规则库与金丝雀测试的持久化 JSON，避免跨测试状态残留
-    sop_file = Path("config") / "agent_sop.json"
+    sop_file = Path("config") / "agent_sop.harness.json"
     if sop_file.exists():
         try:
             sop_file.unlink()

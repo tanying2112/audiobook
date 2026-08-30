@@ -41,16 +41,14 @@ class TestHarnessFullLoop:
 
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
-        """测试前后重置存储，并在测试期间隔离 SOP 配置。
+        """测试前后重置存储。
 
-        ``config/agent_sop.json`` 是仓库的**共享** SOP 配置，其它测试套件
-        （如 ``test_sop_reflection``）也直接读取同一文件。本 fixture 需要一套
-        干净的默认 SOP 配置来跑闭环，但不能真的删除共享文件——否则会污染
-        同会话中后续运行的 SOP 测试（``SOPConfig._load`` 会在文件缺失时重建
-        一个只有 ``default`` 的最小配置，导致 ``玄幻`` 等类型丢失）。
-
-        做法：setup 时备份原文件并删除（让本套件从全新默认配置开始），teardown
-        时把备份**原样还原**，保证仓库共享配置不被改动。
+        Harness 的 SOP 规则库已隔离到独立的
+        ``config/agent_sop.harness.json``（见 ``harness/sop_store.py`` 与
+        ``harness/storage.reset_storage``），不再触碰仓库共享的
+        ``config/agent_sop.json``，因此本 fixture 只需重置 harness 自有存储、
+        创建所需目录即可，无需再处理共享 SOP 配置，从而避免污染依赖同一文件的
+        其它测试套件（如 ``test_sop_reflection``）。
         """
         reset_storage()
         # 确保目录存在
@@ -58,27 +56,8 @@ class TestHarnessFullLoop:
         Path("prompts").mkdir(parents=True, exist_ok=True)
         Path("data/golden").mkdir(parents=True, exist_ok=True)
         Path("prompts").mkdir(parents=True, exist_ok=True)
-
-        # 隔离共享 SOP 配置：备份后删除，使本套件从全新默认配置开始。
-        sop_file = Path("config/agent_sop.json")
-        sop_backup = sop_file.with_name("agent_sop.json.harness_bak")
-        had_existing = sop_file.exists()
-        if had_existing:
-            shutil.copy(sop_file, sop_backup)
-            sop_file.unlink()
-        try:
-            yield
-        finally:
-            # 清理 + 还原共享 SOP 配置，避免污染其它测试套件。
-            reset_storage()
-            if had_existing:
-                if sop_backup.exists():
-                    shutil.move(str(sop_backup), str(sop_file))
-            else:
-                if sop_file.exists():
-                    sop_file.unlink()
-                if sop_backup.exists():
-                    sop_backup.unlink()
+        yield
+        reset_storage()
 
     def test_m1_golden_loop_closed(self):
         """M1: 金标数据集闭环 - 纠错 → 金标样本 → 三集隔离。"""

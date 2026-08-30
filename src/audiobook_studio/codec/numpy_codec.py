@@ -117,7 +117,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
                 sig = sig + 0.05 * r.standard_normal(n)
             out[start:stop] = sig
         out = out / (np.max(np.abs(out)) + 1e-9)
-        return out
+        return np.asarray(out, dtype=np.float64)
 
     def _frame(self, x: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         w = sine_window(self.win)
@@ -125,7 +125,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
         nf = 1 + (len(x) - self.win) // self.hop
         idx = np.arange(self.win)[None, :] + self.hop * np.arange(nf)[:, None]
         result = (x[idx] * w).astype(np.float64)
-        return result
+        return np.asarray(result, dtype=np.float64)
 
     def _train(self, seconds: float, seed: int) -> None:
         corpus = self._synthetic_corpus(self.sample_rate, seconds, seed)
