@@ -57,23 +57,39 @@ OUT.mkdir(parents=True, exist_ok=True)
 #
 # 关键陷阱：kokoro_onnx 在推理路径上**依赖 torch**（传递依赖）。当 torch 被
 # conftest 换成 MagicMock 时，Kokoro.create() 会**非确定性**地返回 ()/全零音频
-# （MagicMock 在数值运算里行为随机），导致真音频合成时好时坏。因此本测试必须
-# 同时把 torch 也还原成真实包，真实合成才能稳定通过。
+# （MagicMock 在数值运算里行为随机），导致真音频合成时好时坏。
 #
-# 做法：合成前把这三个模块的 mock 影子弹出并导入真实包（并把 edge_tts_engine
-# 在模块加载时绑定的 `import edge_tts` 也重定向到真实包）；结束后把影子还原，
-# 把对整套其余测试的波及降到最低（其余测试仍按 conftest 的预期看到 mock）。
-_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts", "torch")
+# 决定性约束：torch 的 C 扩展（torch._C）**无法在进程内被重新导入** —— 一旦
+# 它被裸 MagicMock 占位，再去 import 真实 torch 会稳定报 `name '_C' is not
+# defined`。因此「弹出 mock → 重导真实 torch」的自愈路径在 hermetic 全套里不可行。
+# 正确做法是：一旦探测到 torch 被 hermetic mock 替换，**直接跳过**本测试
+# （红线#2：跳过而非伪造成功），不冒重新导入 torch 的风险。只有在本脚本单独
+# 运行（torch 本就是真实包、未受 conftest 污染）时，才会真正落下真实音频。
+#
+# 做法：合成前把 kokoro_onnx / edge_tts 的 mock 影子弹出并导入真实包（并把
+# edge_tts_engine 在模块加载时绑定的 `import edge_tts` 也重定向到真实包）；
+# torch 则只探测、不重导。结束后把影子还原，把对整套其余测试的波及降到最低。
+_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts")
 
 
 def _require_real_tts_modules() -> dict[str, Any]:
-    """确保 kokoro_onnx / edge_tts / torch 是真实包；返回原始 sys.modules 快照以便还原。
+    """确保 kokoro_onnx / edge_tts 是真实包；返回原始 sys.modules 快照以便还原。
 
-    若任一真实包无法导入（环境无该依赖），抛出 RuntimeError —— 调用方应据此
-    跳过测试而非伪造成功（红线#2）。
+    若 torch 被 hermetic mock 替换（Kokoro ONNX 推理依赖真实 torch），或任一真实
+    包无法导入，抛出 RuntimeError —— 调用方应据此**跳过**测试而非伪造成功（红线#2）。
     """
     import importlib
     import sys
+
+    # torch 只探测不重导：真实 torch 的 C 扩展无法在进程内重新加载，重导必报
+    # `name '_C' is not defined`。探测到 mock 的 torch 即意味着 hermetic 环境，
+    # 真实 ONNX 推理不可行 → 跳过。
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is not None and type(torch_mod).__name__ == "MagicMock":
+        raise RuntimeError(
+            "torch 被 hermetic mock 替换，无法加载真实 ONNX 推理依赖"
+            "（红线#2：跳过而非伪造；torch._C 不可在进程内重新导入）"
+        )
 
     saved: dict[str, Any] = {}
     for mod in _TTS_REAL_DEPS:
@@ -255,6 +271,7 @@ async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
         os.environ.pop(k, None)
     os.environ["ENABLE_LOCAL_TTS"] = "true"
     # 自愈：conftest 可能把 kokoro_onnx / torch 全局 mock 了，这里还原真实包（红线#2）
+    saved: dict[str, Any] = {}
     try:
         saved = _require_real_tts_modules()
     except RuntimeError as e:
@@ -282,6 +299,7 @@ async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
 async def test_tier3_edge_real_audio() -> dict[str, Any]:
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
     # 自愈：conftest 可能把 edge_tts / torch 全局 mock 了，这里还原真实包（红线#2）
+    saved: dict[str, Any] = {}
     try:
         saved = _require_real_tts_modules()
     except RuntimeError as e:
