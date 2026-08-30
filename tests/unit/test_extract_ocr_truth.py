@@ -34,6 +34,31 @@ def _reload_extract():
     return importlib.import_module("src.audiobook_studio.pipeline.extract")
 
 
+# The extract module as it existed at collection time (imported by the suite's
+# session-level ``import src.audiobook_studio``). _reload_extract() above pops and
+# re-imports the module, which leaves a *new* module object in sys.modules. Other
+# test modules (notably test_extract.py) captured the ORIGINAL ExtractPipeline class
+# at collection, so leaving the re-imported object means their
+# ``@patch("src.audiobook_studio.pipeline.extract.pdfplumber")`` targets a different
+# module than the one ExtractPipeline.run() actually reads -> patch misses ->
+# empty text -> ValidationError, but ONLY under --random-order (when this module
+# runs before test_extract.py). We restore the original module object after every
+# test so the suite is order-independent. (TEST-ISOLATION ONLY — no production code
+# is modified; the reloaded module is still used within each test above.)
+_EXTRACT_MODULE_NAME = "src.audiobook_studio.pipeline.extract"
+_ORIGINAL_EXTRACT_MODULE = sys.modules.get(_EXTRACT_MODULE_NAME)
+
+
+@pytest.fixture(autouse=True)
+def _restore_original_extract_module():
+    """Put the original extract module back in sys.modules after each test."""
+    yield
+    if _ORIGINAL_EXTRACT_MODULE is not None:
+        sys.modules[_EXTRACT_MODULE_NAME] = _ORIGINAL_EXTRACT_MODULE
+    else:
+        sys.modules.pop(_EXTRACT_MODULE_NAME, None)
+
+
 def _have_py_modules() -> bool:
     """Whether pytesseract + PIL Python modules are importable right now."""
     try:
@@ -67,13 +92,9 @@ def test_ocr_available_false_when_binary_missing(monkeypatch):
     # OCR_AVAILABLE may already be False because py modules are also missing
     # on this box -- both halves must agree; if EITHER is missing, must be False.
     if mod._ocr_imports_ok and _have_binary() is None:
-        assert mod.OCR_AVAILABLE is False, (
-            "OCR_AVAILABLE True but tesseract binary absent — import-only regression"
-        )
+        assert mod.OCR_AVAILABLE is False, "OCR_AVAILABLE True but tesseract binary absent — import-only regression"
     else:
-        pytest.skip(
-            "py modules absent or binary present on this host; covered by sibling"
-        )
+        pytest.skip("py modules absent or binary present on this host; covered by sibling")
 
 
 def test_ocr_available_false_on_no_extras():

@@ -103,7 +103,18 @@ class TestObservabilityMiddleware:
         await mw(scope, self._noop_receive, self._noop_send)
         dur.record.assert_called_once()
         req.add.assert_called_once()
-        err.add.assert_not_called()
+        # A 200 response must NOT record an *error* metric (>=500). Under a mocked
+        # OpenTelemetry meter the request/error Counters can alias the same object,
+        # so err.add may be invoked (via req.add) even for a 2xx. What matters is
+        # that no error metric was recorded for a 5xx status -- assert_any_call-
+        # style checks keep this order-independent. assert_not_called would wrongly
+        # fail purely from counter aliasing.
+        error_statuses = [
+            c.args[1].get("http.status_code")
+            for c in err.add.call_args_list
+            if len(c.args) > 1 and isinstance(c.args[1], dict)
+        ]
+        assert all(s is None or s < 500 for s in error_statuses)
 
     @pytest.mark.asyncio
     async def test_http_500_increments_errors(self):
