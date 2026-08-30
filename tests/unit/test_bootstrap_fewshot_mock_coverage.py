@@ -50,10 +50,19 @@ def _shim_litellm_supported_params(monkeypatch: pytest.MonkeyPatch) -> None:
         import litellm
 
         if not hasattr(litellm, "get_supported_openai_params"):
+            # ``raising=False`` because a *prior* test (run earlier under
+            # ``--random-order``) may have removed this attribute from the
+            # ``litellm`` module without restoring it. With the default
+            # ``raising=True`` monkeypatch would raise AttributeError on the
+            # now-missing attribute and silently no-op (swallowed above), leaving
+            # dspy's LM construction to fail with ``module 'litellm' has no
+            # attribute 'get_supported_openai_params'``. ``raising=False`` makes
+            # the shim self-healing regardless of upstream leaks.
             monkeypatch.setattr(
                 litellm,
                 "get_supported_openai_params",
                 lambda model: [],  # type: ignore[attr-defined]
+                raising=False,
             )
     except Exception:
         pass

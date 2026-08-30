@@ -5,9 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.auth.dependencies import (
     get_current_active_user,
@@ -30,6 +31,11 @@ def test_db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,  # Critical for TestClient thread safety
     )
+    # TEST-ISOLATION: harness leaks a process-wide FK=ON Engine-class "connect"
+    # listener (storage.py). This instance listener re-asserts FK=OFF on every
+    # connection this engine opens, so register/login/audit-log inserts don't
+    # trip a spurious FOREIGN KEY constraint under --random-order.
+    event.listen(engine, "connect", set_sqlite_fk_off)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
@@ -632,7 +638,7 @@ class TestInitRBACEndpoint:
 
         app.dependency_overrides[admin_dep] = mock_admin_user
 
-        with patch("src.audiobook_studio.auth.rbac.init_rbac") as mock_init:
+        with patch("src.audiobook_studio.auth.rbac.init_rbac"):
             response = client.post("/api/auth/init-rbac")
 
         if admin_dep in app.dependency_overrides:

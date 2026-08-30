@@ -169,11 +169,16 @@ def _remove_harness_class_connect_listeners():
         from sqlalchemy import Engine, event
         from sqlalchemy.event import registry as _event_registry
 
+        engine_id = id(Engine)
         for key, coll in list(_event_registry._key_to_collection.items()):
             if not (isinstance(key, tuple) and key[1] == "connect"):
                 continue
-            target = key[0]
-            if target is not Engine and getattr(target, "__name__", "") != "Engine":
+            # SQLAlchemy 2.0 keys the event registry by ``id(target)``, so the
+            # first tuple element is the *integer* id of the Engine class, not
+            # the class object itself. (A previous version compared ``key[0] is
+            # Engine`` which never matched, so the listener leaked and the FK
+            # tests kept failing — see run3.) Match on ``id(Engine)`` instead.
+            if key[0] != engine_id:
                 continue
             for fn_wr in list(coll.values()):
                 # Registry values are weakrefs to the listener functions.
@@ -241,6 +246,22 @@ def _restore_cwd(_save_cwd):
         os.chdir(_save_cwd)
     except Exception:
         pass
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Cache the original litellm.get_supported_openai_params so it can be restored
+# after every test. dspy 3.3.1 calls ``litellm.get_supported_openai_params`` when
+# building an LM client; a prior real-mode test can remove that module attribute
+# and leak the removal, which then aborts later dspy-backed tests under
+# --random-order with ``module 'litellm' has no attribute 'get_supported_openai_params'``.
+# Restoring it in teardown makes those tests order-independent.
+# ═════════════════════════════════════════════════════════════════════════════
+try:
+    import litellm as _litellm_mod
+
+    _LITELLM_GSO_ORIGINAL = getattr(_litellm_mod, "get_supported_openai_params", None)
+except Exception:
+    _LITELLM_GSO_ORIGINAL = None
 
 
 @pytest.fixture(autouse=True, scope="function")
@@ -342,6 +363,21 @@ def _reset_global_state():
     # have leaked (storage.py:221), so later DB/API/auth tests see the default
     # FK=OFF and don't fail on the FK cycle under full-suite ordering.
     _remove_harness_class_connect_listeners()
+
+    # Restore ``litellm.get_supported_openai_params`` if a prior real-mode test
+    # removed it from the module without restoring. dspy 3.3.1 calls it while
+    # building an LM client, so a leaked removal aborts later dspy-backed tests
+    # under --random-order (``module 'litellm' has no attribute
+    # 'get_supported_openai_params'``). Restoring the cached original keeps those
+    # tests order-independent.
+    if _LITELLM_GSO_ORIGINAL is not None:
+        try:
+            import litellm as _litellm_mod
+
+            if not hasattr(_litellm_mod, "get_supported_openai_params"):
+                _litellm_mod.get_supported_openai_params = _LITELLM_GSO_ORIGINAL
+        except Exception:
+            pass
 
     # (DB CRUD test isolation is handled per-fixture via the ``set_sqlite_fk_off``
     # instance connect listener installed in ``make_async_db_override`` and the
