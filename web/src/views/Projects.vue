@@ -8,6 +8,8 @@ import { useI18n } from '../i18n'
 const router = useRouter()
 const store = useProjectStore()
 const searchQuery = ref('')
+const editingId = ref<number | null>(null)
+const draftTitle = ref('')
 const { t } = useI18n()
 
 onMounted(() => store.loadProjects())
@@ -47,13 +49,29 @@ async function removeProject(id: number, title: string) {
 }
 
 async function editProjectName(id: number, currentTitle: string) {
-  const name = prompt(t('projects.enter_project_name'), currentTitle)
-  if (!name || name === currentTitle) return
+  draftTitle.value = currentTitle
+  editingId.value = id
+}
+
+async function saveEdit(id: number) {
+  const name = draftTitle.value.trim()
+  const idx = store.projects.findIndex((p) => p.id === id)
+  const current = idx !== -1 ? (store.projects[idx].title || '') : ''
+  if (!name || name === current) {
+    editingId.value = null
+    return
+  }
   try {
     await store.editProject(id, { title: name } as any)
+    editingId.value = null
   } catch (e: any) {
     alert(t('projects.create_failed') + (e.message || e))
   }
+}
+
+function cancelEdit() {
+  editingId.value = null
+  draftTitle.value = ''
 }
 
 function exportProject(id: number) {
@@ -100,15 +118,35 @@ function exportProject(id: number) {
         @click="openProject(project.id)"
       >
         <div class="card-body">
-          <h3 class="card-title">{{ project.title || t('projects.unnamed_project') }}</h3>
-          <p v-if="project.description" class="desc">{{ project.description }}</p>
-          <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
+          <template v-if="editingId === project.id">
+            <input
+              v-model="draftTitle"
+              class="form-control"
+              :placeholder="t('projects.enter_project_name')"
+              @click.stop
+              @keyup.enter="saveEdit(project.id)"
+              @keyup.esc="cancelEdit"
+            />
+            <div class="edit-actions">
+              <button class="btn btn-primary btn-sm touch-target-sm" :title="t('common.save')" @click.stop="saveEdit(project.id)">
+                <Icon icon="mdi:check" width="18" height="18" />
+              </button>
+              <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.cancel')" @click.stop="cancelEdit">
+                <Icon icon="mdi:close" width="18" height="18" />
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h3 class="card-title">{{ project.title || t('projects.unnamed_project') }}</h3>
+            <p v-if="project.description" class="desc">{{ project.description }}</p>
+            <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
+          </template>
         </div>
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
             <Icon icon="mdi:delete-outline" width="18" height="18" />
           </button>
-          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.edit')" @click.stop="editProjectName(project.id, project.title || '')">
+          <button v-if="editingId !== project.id" class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.edit')" @click.stop="editProjectName(project.id, project.title || '')">
             <Icon icon="mdi:pencil-outline" width="18" height="18" />
           </button>
           <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.export')" @click.stop="exportProject(project.id)">
@@ -180,6 +218,12 @@ function exportProject(id: number) {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .loading-section {

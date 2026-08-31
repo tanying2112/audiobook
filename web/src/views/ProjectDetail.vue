@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projects'
 import { useChapterStore } from '../stores/chapters'
@@ -11,6 +11,9 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const chapterStore = useChapterStore()
 const { t } = useI18n()
+
+const editing = ref(false)
+const draftTitle = ref('')
 
 const projectId = Number(route.params.id)
 
@@ -43,13 +46,29 @@ function openAgentChat() {
   router.push(`/projects/${projectId}/agent-chat`)
 }
 
-function editProjectName() {
+function startEdit() {
+  draftTitle.value = projectStore.currentProject?.title || ''
+  editing.value = true
+}
+
+async function saveEdit() {
+  const name = draftTitle.value.trim()
   const current = projectStore.currentProject?.title || ''
-  const name = prompt(t('projects.enter_project_name'), current)
-  if (!name || name === current) return
-  projectStore.editProject(projectId, { title: name } as any).catch((e: any) => {
+  if (!name || name === current) {
+    editing.value = false
+    return
+  }
+  try {
+    await projectStore.editProject(projectId, { title: name } as any)
+    editing.value = false
+  } catch (e: any) {
     alert(t('projects.create_failed') + (e.message || e))
-  })
+  }
+}
+
+function cancelEdit() {
+  editing.value = false
+  draftTitle.value = ''
 }
 
 function exportProject() {
@@ -91,6 +110,21 @@ function formatStatus(status: string): string {
         <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
       <h1>{{ projectStore.currentProject?.title || t('project_detail.title') }}</h1>
+      <h1 v-if="editing" class="editing-title">
+        <input
+          v-model="draftTitle"
+          class="form-control"
+          :placeholder="t('projects.enter_project_name')"
+          @keyup.enter="saveEdit"
+          @keyup.esc="cancelEdit"
+        />
+        <button class="btn btn-primary btn-sm touch-target-sm" :title="t('common.save')" @click="saveEdit">
+          <Icon icon="mdi:check" width="18" height="18" />
+        </button>
+        <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.cancel')" @click="cancelEdit">
+          <Icon icon="mdi:close" width="18" height="18" />
+        </button>
+      </h1>
       <div class="header-actions flex gap-2">
         <button class="btn btn-outline touch-target" @click="manageCharacters" :title="t('project_detail.characters')">
           <Icon icon="mdi:account-group" width="18" height="18" />
@@ -112,7 +146,7 @@ function formatStatus(status: string): string {
           <Icon icon="mdi:translate" width="18" height="18" />
           <span class="hidden-mobile">{{ t('translation.title') }}</span>
         </button>
-        <button class="btn btn-outline touch-target" @click="editProjectName" :title="t('common.edit')">
+        <button v-if="!editing" class="btn btn-outline touch-target" @click="startEdit" :title="t('common.edit')">
           <Icon icon="mdi:pencil-outline" width="18" height="18" />
           <span class="hidden-mobile">{{ t('common.edit') }}</span>
         </button>
@@ -194,6 +228,19 @@ function formatStatus(status: string): string {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+.editing-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.editing-title .form-control {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (max-width: 767px) {
   .header-actions {
     width: 100%;
