@@ -11,28 +11,28 @@ Usage::
     result = run_stage("annotate", session, project_id=123, chapter_id=1, input=...)
 """
 
+import asyncio
 import json
 import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from sqlalchemy import select
-import asyncio
-from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from ..api.websocket import get_pause_event, is_paused, pause_check, PipelineEventType, emit_pipeline_event
-from ..pipeline.progress_emitter import (
-    emit_stage_enter,
-    emit_stage_progress,
-    emit_stage_exit,
-    emit_chapter_complete,
-    emit_paragraph_complete,
-    emit_error,
-    emit_pipeline_completed,
-)
+from ..api.websocket import PipelineEventType, emit_pipeline_event, get_pause_event, is_paused, pause_check
 from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
+from ..pipeline.progress_emitter import (
+    emit_chapter_complete,
+    emit_error,
+    emit_paragraph_complete,
+    emit_pipeline_completed,
+    emit_stage_enter,
+    emit_stage_exit,
+    emit_stage_progress,
+)
 from ..schemas import (
     AudioPostProcessParams,
     BookAnalysisOutput,
@@ -50,12 +50,12 @@ from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .persistence import (
-    write_audio_postprocess,
-    write_audio_postprocess_sync,
     write_analyze,
     write_analyze_sync,
     write_annotate,
     write_annotate_sync,
+    write_audio_postprocess,
+    write_audio_postprocess_sync,
     write_edit,
     write_edit_sync,
     write_extract,
@@ -278,6 +278,7 @@ def _default_stage_hook(
 # Auto-register default logger hook (can be disabled by clearing _stage_hooks)
 _stage_hooks.append(_default_stage_hook)
 
+
 # ── WebSocket Progress Emitter Hook ────────────────────────────────────────
 # Emit real-time progress events to WebSocket clients
 async def _websocket_stage_hook(
@@ -387,14 +388,26 @@ def shutdown_telemetry() -> Optional[Dict[str, Any]]:
         # Unregister hooks - use indices to avoid bound method identity issues
         global _pipeline_hooks, _stage_hooks
         global _async_pipeline_hooks, _async_stage_hooks
-        _pipeline_hooks[:] = [h for h in _pipeline_hooks
-                          if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
-        _stage_hooks[:] = [h for h in _stage_hooks
-                       if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
-        _async_pipeline_hooks[:] = [h for h in _async_pipeline_hooks
-                                if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)]
-        _async_stage_hooks[:] = [h for h in _async_stage_hooks
-                            if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)]
+        _pipeline_hooks[:] = [
+            h
+            for h in _pipeline_hooks
+            if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)
+        ]
+        _stage_hooks[:] = [
+            h
+            for h in _stage_hooks
+            if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)
+        ]
+        _async_pipeline_hooks[:] = [
+            h
+            for h in _async_pipeline_hooks
+            if h not in (_telemetry_collector.on_pipeline_start, _telemetry_collector.on_pipeline_end)
+        ]
+        _async_stage_hooks[:] = [
+            h
+            for h in _async_stage_hooks
+            if h not in (_telemetry_collector.on_stage_enter, _telemetry_collector.on_stage_exit)
+        ]
         _telemetry_collector = None
         return summary
     return None
@@ -562,9 +575,7 @@ async def run_stage(
         # stage_registry, outside this module's scope).
         apersist = getattr(handler, "apersist", None)
         if apersist is not None:
-            await apersist(
-                db, project_id, chapter, para, result, chapter_index, paragraph_index
-            )
+            await apersist(db, project_id, chapter, para, result, chapter_index, paragraph_index)
 
         # Capture feedback
         if feedback_capture:
@@ -707,7 +718,8 @@ async def run_pipeline(
             if paragraph_index is not None:
                 logger.info(
                     "All stages already completed for ch%d p%d, skipping pipeline",
-                    chapter_index, paragraph_index,
+                    chapter_index,
+                    paragraph_index,
                 )
             else:
                 logger.info(f"All stages already completed for ch{chapter_index}, skipping pipeline")
@@ -732,12 +744,15 @@ async def run_pipeline(
                     if paragraph_index is not None:
                         logger.info(
                             "Checkpoint: skipping stage '%s' for ch%d p%d (already done)",
-                            stage, chapter_index, paragraph_index,
+                            stage,
+                            chapter_index,
+                            paragraph_index,
                         )
                     else:
                         logger.info(
                             "Checkpoint: skipping stage '%s' for ch%d (already done)",
-                            stage, chapter_index,
+                            stage,
+                            chapter_index,
                         )
                     results.append(None)
                     continue
@@ -770,13 +785,16 @@ async def run_pipeline(
             # Count total chapters for progress
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_chapter_complete(
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    chapter_id=chapter_id,
-                    total_chapters=kwargs.get("total_chapters", 1),
-                ))
+                loop.create_task(
+                    emit_chapter_complete(
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        chapter_id=chapter_id,
+                        total_chapters=kwargs.get("total_chapters", 1),
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -784,11 +802,14 @@ async def run_pipeline(
         if project_id:
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_pipeline_completed(
-                    project_id=project_id,
-                    total_chapters=kwargs.get("total_chapters", 1),
-                ))
+                loop.create_task(
+                    emit_pipeline_completed(
+                        project_id=project_id,
+                        total_chapters=kwargs.get("total_chapters", 1),
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -800,14 +821,17 @@ async def run_pipeline(
         if project_id:
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_error(
-                    project_id=project_id,
-                    stage="pipeline",
-                    error_message=str(e),
-                    chapter_index=chapter_index,
-                    chapter_id=chapter_id,
-                ))
+                loop.create_task(
+                    emit_error(
+                        project_id=project_id,
+                        stage="pipeline",
+                        error_message=str(e),
+                        chapter_index=chapter_index,
+                        chapter_id=chapter_id,
+                    )
+                )
             except RuntimeError:
                 pass
         _emit_pipeline_end(pipeline_context, None, e)

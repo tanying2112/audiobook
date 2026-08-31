@@ -18,23 +18,23 @@ Usage:
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Type, cast, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+# Import schema classes used in stage handlers
+from ..schemas.book import BookAnalysisInput
+
 # Import pipeline classes
 from .analyze_structure import AnalyzeStructurePipeline
 from .annotate_paragraph import AnnotateParagraphPipeline
-from .edit_for_tts import EditForTtsPipeline
 from .audio_postprocess import AudioPostProcessor
-from .synthesize import SynthesizePipeline
-from .quality_check import QualityCheckPipeline
+from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
-
-# Import schema classes used in stage handlers
-from ..schemas.book import BookAnalysisInput
+from .quality_check import QualityCheckPipeline
+from .synthesize import SynthesizePipeline
 
 
 class StageHandler(ABC):
@@ -259,7 +259,7 @@ class ExtractStage(StageHandler):
         from sqlalchemy.orm import Session
 
         from ..models import Paragraph
-        from .persistence import write_extract, _aexecute, _acommit
+        from .persistence import _acommit, _aexecute, write_extract
 
         chapter_result = await write_extract(db, project_id, chapter_index or 1, result)
         result._chapter_id = chapter_result.id
@@ -276,7 +276,7 @@ class ExtractStage(StageHandler):
                         Paragraph.project_id == project_id,
                         Paragraph.chapter_id == chapter_result.id,
                         Paragraph.index == idx,
-                    )
+                    ),
                 )
                 existing = result_q.scalar_one_or_none()
                 if not existing:
@@ -290,6 +290,7 @@ class ExtractStage(StageHandler):
                     )
                     db.add(para)
             await _acommit(db)
+
 
 class AnalyzeStage(StageHandler):
     """Analyze stage: analyze chapter structure."""

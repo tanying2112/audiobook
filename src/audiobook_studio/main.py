@@ -164,7 +164,7 @@ settings = get_settings()
 # 4. ISOTimestampMiddleware (response normalization)
 # 5. ABTestMiddleware (business routing)
 # 6. ObservabilityMiddleware (added by instrument_app, innermost for request)
-# 
+#
 # For RESPONSE, order is reversed (last added = outermost for response)
 # instrument_app already added ObservabilityMiddleware as innermost for request
 # So we add the rest in REVERSE of request order (excluding ObservabilityMiddleware)

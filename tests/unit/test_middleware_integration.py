@@ -20,11 +20,12 @@ from pydantic import BaseModel
 # Set ALLOWED_HOSTS BEFORE importing app to configure TrustedHostMiddleware correctly
 os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
+# Reset settings cache to pick up the ALLOWED_HOSTS env var
+from src.audiobook_studio.config.settings_loader import reset_settings
+
 # Import app AFTER setting env var
 from src.audiobook_studio.main import app
 
-# Reset settings cache to pick up the ALLOWED_HOSTS env var
-from src.audiobook_studio.config.settings_loader import reset_settings
 reset_settings()
 
 
@@ -88,10 +89,7 @@ def test_timestamp() -> TimeResponse:
 @large_router.get("/middleware-test/large")
 def large_response() -> LargeResponse:
     return LargeResponse(
-        items=[
-            {"id": i, "created_at": datetime(2026, 1, 15, 8, 30, 0, tzinfo=timezone.utc)}
-            for i in range(50)
-        ]
+        items=[{"id": i, "created_at": datetime(2026, 1, 15, 8, 30, 0, tzinfo=timezone.utc)} for i in range(50)]
     )
 
 
@@ -194,9 +192,7 @@ class TestMiddlewareOrder:
             "ABTestMiddleware",
             "ObservabilityMiddleware",
         ]
-        assert middleware_classes == expected_order, (
-            f"Middleware order mismatch. Got: {middleware_classes}"
-        )
+        assert middleware_classes == expected_order, f"Middleware order mismatch. Got: {middleware_classes}"
 
     def test_request_flow_trusted_host_first(self, client: TestClient) -> None:
         """Request: TrustedHost should execute first (reject invalid hosts)."""
@@ -242,7 +238,9 @@ class TestMiddlewareOrder:
         assert iso_pattern.match(data["timestamp"]), f"timestamp not ISO: {data['timestamp']}"
         assert iso_pattern.match(data["epoch_seconds"]), f"epoch_seconds not ISO: {data['epoch_seconds']}"
         assert iso_pattern.match(data["epoch_millis"]), f"epoch_millis not ISO: {data['epoch_millis']}"
-        assert iso_pattern.match(data["nested"]["created_at"]), f"nested.created_at not ISO: {data['nested']['created_at']}"
+        assert iso_pattern.match(
+            data["nested"]["created_at"]
+        ), f"nested.created_at not ISO: {data['nested']['created_at']}"
         assert data["string_pass"] == "not-a-timestamp"
 
         # CORS headers present (added AFTER timestamp normalization)
@@ -304,8 +302,10 @@ class TestCORSIntegration:
         assert r.status_code == 200
         assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
         assert "POST" in r.headers.get("access-control-allow-methods", "")
-        assert "Content-Type" in r.headers.get("access-control-allow-headers", "") or \
-               "content-type" in r.headers.get("access-control-allow-headers", "").lower()
+        assert (
+            "Content-Type" in r.headers.get("access-control-allow-headers", "")
+            or "content-type" in r.headers.get("access-control-allow-headers", "").lower()
+        )
 
 
 class TestGZipIntegration:
@@ -371,11 +371,13 @@ class TestISOTimestampMiddlewareIntegration:
 
         @test_router.get("/middleware-test/epoch-raw")
         def epoch_raw_endpoint() -> Response:
-            return JSONResponse(content={
-                "seconds": 1719403200,  # 2024-06-26 12:00:00 UTC
-                "millis": 1719403200000,
-                "not_epoch": 12345,
-            })
+            return JSONResponse(
+                content={
+                    "seconds": 1719403200,  # 2024-06-26 12:00:00 UTC
+                    "millis": 1719403200000,
+                    "not_epoch": 12345,
+                }
+            )
 
         app.include_router(test_router)
 
@@ -396,10 +398,12 @@ class TestISOTimestampMiddlewareIntegration:
 
         @test_router.get("/middleware-test/strings-raw")
         def string_raw_endpoint() -> Response:
-            return JSONResponse(content={
-                "iso_string": "2026-06-26T12:00:00Z",
-                "random_string": "hello world",
-            })
+            return JSONResponse(
+                content={
+                    "iso_string": "2026-06-26T12:00:00Z",
+                    "random_string": "hello world",
+                }
+            )
 
         app.include_router(test_router)
 
@@ -419,16 +423,18 @@ class TestISOTimestampMiddlewareIntegration:
 
         @test_router.get("/middleware-test/nested-raw")
         def nested_raw_endpoint() -> Response:
-            return JSONResponse(content={
-                "data": {
-                    "created": "2026-01-01T00:00:00Z",  # Already ISO string
-                    "inner": {"updated": 1719403200},  # Numeric epoch
-                },
-                "items": [
-                    {"id": 1, "ts": "2026-02-02T00:00:00Z"},  # ISO string
-                    {"id": 2, "ts": 1719500000},  # Numeric epoch
-                ],
-            })
+            return JSONResponse(
+                content={
+                    "data": {
+                        "created": "2026-01-01T00:00:00Z",  # Already ISO string
+                        "inner": {"updated": 1719403200},  # Numeric epoch
+                    },
+                    "items": [
+                        {"id": 1, "ts": "2026-02-02T00:00:00Z"},  # ISO string
+                        {"id": 2, "ts": 1719500000},  # Numeric epoch
+                    ],
+                }
+            )
 
         app.include_router(test_router)
 
