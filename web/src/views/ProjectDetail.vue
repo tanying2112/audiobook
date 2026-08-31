@@ -43,6 +43,19 @@ function openAgentChat() {
   router.push(`/projects/${projectId}/agent-chat`)
 }
 
+function editProjectName() {
+  const current = projectStore.currentProject?.title || ''
+  const name = prompt(t('projects.enter_project_name'), current)
+  if (!name || name === current) return
+  projectStore.editProject(projectId, { title: name } as any).catch((e: any) => {
+    alert(t('projects.create_failed') + (e.message || e))
+  })
+}
+
+function exportProject() {
+  router.push(`/projects/${projectId}/export`)
+}
+
 function goBack() {
   router.push('/')
 }
@@ -99,6 +112,14 @@ function formatStatus(status: string): string {
           <Icon icon="mdi:translate" width="18" height="18" />
           <span class="hidden-mobile">{{ t('translation.title') }}</span>
         </button>
+        <button class="btn btn-outline touch-target" @click="editProjectName" :title="t('common.edit')">
+          <Icon icon="mdi:pencil-outline" width="18" height="18" />
+          <span class="hidden-mobile">{{ t('common.edit') }}</span>
+        </button>
+        <button class="btn btn-primary touch-target" @click="exportProject" :title="t('common.export')">
+          <Icon icon="mdi:export" width="18" height="18" />
+          <span class="hidden-mobile">{{ t('common.export') }}</span>
+        </button>
       </div>
     </header>
 
@@ -107,14 +128,18 @@ function formatStatus(status: string): string {
       <span>{{ t('common.loading') }}</span>
     </div>
 
+    <div v-else-if="projectStore.error" class="alert alert-error">
+      {{ t('common.error') }}: {{ projectStore.error }}
+    </div>
+
     <template v-else>
       <section class="chapter-list section">
         <div class="flex items-center justify-between mb-4">
           <h2 class="card-title">{{ t('project_detail.chapters') }}</h2>
-          <span class="badge badge-muted">{{ chapterStore.chapters.length }} {{ t('common.chapters') }}</span>
+          <span class="badge badge-muted">{{ chapterStore.chapters?.length ?? 0 }} {{ t('common.chapters') }}</span>
         </div>
 
-        <div v-if="chapterStore.chapters.length === 0" class="empty-state">
+        <div v-if="(chapterStore.chapters?.length ?? 0) === 0" class="empty-state">
           <Icon icon="mdi:book-outline" width="48" height="48" style="opacity: 0.4" />
           <p>{{ t('project_detail.no_chapters') }}</p>
           <button class="btn btn-primary mt-4" @click="router.push(`/projects/${projectId}/upload`)">

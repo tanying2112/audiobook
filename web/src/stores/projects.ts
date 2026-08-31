@@ -13,7 +13,11 @@ export const useProjectStore = defineStore('projects', () => {
     loading.value = true
     error.value = null
     try {
-      projects.value = await api.fetchProjects()
+      const data = await api.fetchProjects()
+      projects.value = Array.isArray(data) ? data : []
+      if (!Array.isArray(data)) {
+        error.value = '接口返回的数据格式异常（非项目数组）'
+      }
     } catch (e: any) {
       error.value = e.message || 'Failed to fetch projects'
     } finally {
@@ -25,7 +29,13 @@ export const useProjectStore = defineStore('projects', () => {
     loading.value = true
     error.value = null
     try {
-      currentProject.value = await api.fetchProject(id)
+      const data = await api.fetchProject(id)
+      if (data && typeof data === 'object') {
+        currentProject.value = data
+      } else {
+        currentProject.value = null
+        error.value = '接口返回的项目数据格式异常'
+      }
     } catch (e: any) {
       error.value = e.message || 'Failed to fetch project'
     } finally {

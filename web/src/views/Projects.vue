@@ -14,8 +14,9 @@ onMounted(() => store.loadProjects())
 
 const filteredProjects = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  if (!q) return store.projects
-  return store.projects.filter(
+  const list = Array.isArray(store.projects) ? store.projects : []
+  if (!q) return list
+  return list.filter(
     (p) =>
       (p.title || '').toLowerCase().includes(q) ||
       (p.description || '').toLowerCase().includes(q),
@@ -43,6 +44,20 @@ async function removeProject(id: number, title: string) {
   } catch (e: any) {
     alert(t('projects.delete_failed') + (e.message || e))
   }
+}
+
+async function editProjectName(id: number, currentTitle: string) {
+  const name = prompt(t('projects.enter_project_name'), currentTitle)
+  if (!name || name === currentTitle) return
+  try {
+    await store.editProject(id, { title: name } as any)
+  } catch (e: any) {
+    alert(t('projects.create_failed') + (e.message || e))
+  }
+}
+
+function exportProject(id: number) {
+  router.push(`/projects/${id}/export`)
 }
 </script>
 
@@ -92,6 +107,12 @@ async function removeProject(id: number, title: string) {
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
             <Icon icon="mdi:delete-outline" width="18" height="18" />
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.edit')" @click.stop="editProjectName(project.id, project.title || '')">
+            <Icon icon="mdi:pencil-outline" width="18" height="18" />
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.export')" @click.stop="exportProject(project.id)">
+            <Icon icon="mdi:export" width="18" height="18" />
           </button>
         </div>
       </div>
