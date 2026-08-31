@@ -159,7 +159,6 @@ class TestDataClasses:
     def test_quality_check_result(self):
         """Test QualityCheckResult creation and to_dict."""
         dnsmos = DNSMOSResult(4.0, 4.2, 3.8, 4.1, True)
-        asr = ASRResult("hello", [], "en", 0.9, 500.0, True)
         wer = WERResult(0.1, 0.05, 0, 0, 0, 10, 10, True)
         speaker_sim = SpeakerSimilarityResult(0.85, 0.8, True, "ref1", "tgt1", True, None)
         result = QualityCheckResult(
