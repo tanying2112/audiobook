@@ -329,7 +329,10 @@ export async function uploadFile(
   const formData = new FormData()
   formData.append('file', file)
   const { data } = await api.post(`/api/projects/${projectId}/upload`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // Setting an explicit `multipart/form-data` header (without boundary) makes the
+    // server's multipart parser fail to find the boundary and reject the upload.
+    headers: { 'Content-Type': undefined },
     onUploadProgress: (e) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))
@@ -700,7 +703,9 @@ export async function cloneVoice(
   formData.append('consent', consent ? 'true' : 'false')
 
   const { data } = await api.post('/api/tts/voices/clone', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // An explicit header without a boundary makes the server reject the upload.
+    headers: { 'Content-Type': undefined },
     onUploadProgress: (e) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))
@@ -844,8 +849,19 @@ export async function getTranslationStatus(projectId: number): Promise<Translati
 }
 
 export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
-  const { data } = await api.get('/api/translate/languages')
-  return data
+  // Backend serves the language catalog at /api/v1/languages (languages_router is
+  // mounted under /api/v1). The previous /api/translate/languages path 404'd, so the
+  // UI fell back to a hard-coded list that omitted Chinese. Map the backend shape
+  // (iso639_1 / bcp47 / display_name) into the UI's {code,name,native_name}, using
+  // bcp47 as the code so it matches the pipeline translate stage's allowed set
+  // (e.g. zh-CN, en-US, ja-JP).
+  const { data } = await api.get('/api/v1/languages')
+  const languages: TranslationLanguage[] = (data.languages || []).map((l: any) => ({
+    code: l.bcp47,
+    name: l.display_name,
+    native_name: l.display_name,
+  }))
+  return { languages }
 }
 
 // ── Monitoring / Telemetry ────────────────────────────────────────────────

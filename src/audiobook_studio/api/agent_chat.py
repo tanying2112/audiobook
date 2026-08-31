@@ -17,8 +17,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +26,7 @@ from ..agent.tools import TOOL_DEFINITIONS, TOOL_HANDLERS, execute_tool
 from ..api.dependencies import get_async_db
 from ..api.websocket import manager as ws_manager
 from ..database import create_async_session
+from ..exceptions import DomainError
 from ..models import Project
 from ..models.agent import AgentKnowledge, TaskRecord
 
@@ -383,7 +382,17 @@ async def agent_chat_websocket(websocket: WebSocket, project_id: int):
     - {"type": "error", "message": "..."}
     - {"type": "keepalive"}
     """
-    await websocket.accept()
+    # Echo the client's requested WebSocket subprotocol so the browser completes
+    # the handshake. The frontend connects with subprotocol "v1.audiobook.agent";
+    # if the server accepts *without* echoing a mutually supported subprotocol the
+    # browser rejects the handshake ("Sec-WebSocket-Protocol mismatch") and the UI
+    # silently falls back to HTTP polling ("WebSocket 未连接，使用 HTTP 轮询模式").
+    client_protocols = websocket.headers.get("sec-websocket-protocol")
+    negotiated_subprotocol: Optional[str] = None
+    if client_protocols:
+        offered = [p.strip() for p in client_protocols.split(",") if p.strip()]
+        negotiated_subprotocol = offered[0] if offered else None
+    await websocket.accept(subprotocol=negotiated_subprotocol)
 
     # Register connection
     if project_id not in agent_chat_connections:

@@ -93,7 +93,9 @@ async function startUpload() {
       `/api/projects/${createdProjectId.value}/upload`,
       formData,
       {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        // Let the browser set `multipart/form-data; boundary=...`. An explicit header
+        // without a boundary makes the server reject the upload (无法上传文件).
+        headers: { 'Content-Type': undefined },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             uploadProgress.value = Math.round(
