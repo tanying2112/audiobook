@@ -77,6 +77,18 @@ function cancelEdit() {
 function exportProject(id: number) {
   router.push(`/projects/${id}/export`)
 }
+
+function openQuality(id: number) {
+  router.push(`/projects/${id}/quality`)
+}
+
+function openTranslation(id: number) {
+  router.push(`/projects/${id}/translation`)
+}
+
+function openCharacters(id: number) {
+  router.push(`/projects/${id}/characters`)
+}
 </script>
 
 <template>
@@ -153,6 +165,20 @@ function exportProject(id: number) {
             <Icon icon="mdi:export" width="18" height="18" />
           </button>
         </div>
+        <div class="card-quicklinks">
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openCharacters(project.id)">
+            <Icon icon="mdi:account-group" width="16" height="16" />
+            <span>{{ t('project_detail.characters') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openQuality(project.id)">
+            <Icon icon="mdi:chart-bar" width="16" height="16" />
+            <span>{{ t('project_detail.quality_report') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openTranslation(project.id)">
+            <Icon icon="mdi:translate" width="16" height="16" />
+            <span>{{ t('translation.title') }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -224,6 +250,20 @@ function exportProject(id: number) {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+
+.card-quicklinks {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+@media (max-width: 767px) {
+  .card-quicklinks {
+    width: 100%;
+  }
 }
 
 .loading-section {
