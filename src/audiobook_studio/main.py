@@ -363,12 +363,10 @@ async def health_ready():
     if settings.REDIS_REQUIRED:
         # Redis is required - must be healthy
         redis_ok = _is_healthy(checks.get("redis"))
-        redis_status = "required"
     else:
         # Redis is optional - check but don't fail if unavailable
         redis_healthy = _is_healthy(checks.get("redis"))
         redis_ok = redis_healthy or checks.get("redis") == "not_configured"
-        redis_status = "optional"
 
     llm_ok = _is_healthy(checks.get("llm_keys"))
 
