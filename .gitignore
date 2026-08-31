@@ -237,3 +237,7 @@ storage/books/**/reports/
 storage/golden_audio_scores.json
 storage/metrics_summary.json
 voices/voice_prints.json
+
+# Dev runtime PIDs — written by scripts/dev/start_dev.sh (backend/frontend/redis).
+# Machine-specific and regenerated on every `./audiobook start`. Never commit.
+.dev_pids/
