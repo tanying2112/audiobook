@@ -157,7 +157,17 @@ instrument_app(
 # 5. CORSMiddleware (adds CORS headers)
 # 6. TrustedHostMiddleware
 settings = get_settings()
-# Add in REVERSE of request order (so first added = innermost for response = outermost for request)
+# Middleware order for REQUEST (first added = outermost for request):
+# 1. TrustedHostMiddleware (security — reject requests with spoofed Host headers) - FIRST for request
+# 2. CORSMiddleware (cross-origin — must handle preflight before other middleware)
+# 3. GZipMiddleware (compression)
+# 4. ISOTimestampMiddleware (response normalization)
+# 5. ABTestMiddleware (business routing)
+# 6. ObservabilityMiddleware (added by instrument_app, innermost for request)
+# 
+# For RESPONSE, order is reversed (last added = outermost for response)
+# instrument_app already added ObservabilityMiddleware as innermost for request
+# So we add the rest in REVERSE of request order (excluding ObservabilityMiddleware)
 app.add_middleware(ABTestMiddleware)
 app.add_middleware(ISOTimestampMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -171,7 +181,7 @@ app.add_middleware(
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=settings.ALLOWED_HOSTS,
-)
+)  # outermost for request (added last = first to handle request)
 
 # S3.6: API rate limiting / quota (no-op unless RATE_LIMIT_ENABLED).
 from .api.rate_limit_middleware import add_rate_limit_middleware

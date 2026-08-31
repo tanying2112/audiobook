@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 
 from src.audiobook_studio.pipeline.orchestrator import (
     _write_analyze,
@@ -22,6 +23,13 @@ from src.audiobook_studio.schemas import (
     QualityJudgment,
     TtsEditOutput,
 )
+
+
+def _make_execute_mock(return_chapter=None):
+    """Create a mock for db.execute(select(...))."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = return_chapter
+    return MagicMock(return_value=mock_result)
 
 
 @pytest.fixture

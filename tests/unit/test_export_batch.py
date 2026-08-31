@@ -389,6 +389,10 @@ class TestExportProjectSuccess:
         mock_chapter.index = 1
         mock_chapter.title = "Chapter 1"
 
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+
         mock_project = MagicMock()
         mock_project.id = 1
         mock_project.slug = "test-book"
@@ -424,7 +428,7 @@ class TestExportProjectSuccess:
 
                     mock_collect.return_value = {
                         "chapter": mock_chapter,
-                        "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
+                        "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])]
                         "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
                         "chapter_data": {},
                     }
@@ -654,7 +658,7 @@ class TestExportErrorHandling:
 
                 mock_collect.return_value = {
                     "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
-                    "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
+                    "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])]
                     "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
                     "chapter_data": {},
                 }

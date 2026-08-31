@@ -334,7 +334,7 @@ for mod_name in [
     "langfuse",
     "litellm",
     "instructor",
-    "tenacity",
+    # "tenacity",  # Do NOT mock - tts_retry_policy depends on it
     "jinja2",
     # NOTE: `edge_tts` and `kokoro_onnx` are intentionally NOT mocked here.
     # They are real, installed packages that the real-TTS e2e
@@ -357,7 +357,7 @@ for mod_name in [
     "cryptography",
     # "email_validator",  # Do NOT mock - Pydantic's EmailStr depends on it
     "python_multipart",
-    "pydantic_settings",
+    # "pydantic_settings",  # Do NOT mock - Settings class depends on it
     "python_dotenv",
     "uvicorn",
     "asyncpg",

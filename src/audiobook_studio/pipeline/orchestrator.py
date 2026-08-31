@@ -51,25 +51,32 @@ from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .persistence import (
     write_audio_postprocess,
+    write_audio_postprocess_sync,
     write_analyze,
+    write_analyze_sync,
     write_annotate,
+    write_annotate_sync,
     write_edit,
+    write_edit_sync,
     write_extract,
+    write_extract_sync,
     write_quality,
+    write_quality_sync,
     write_synthesize,
+    write_synthesize_sync,
 )
 from .quality_check import QualityCheckPipeline
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline
 
-# Backward compatibility aliases for tests
-_write_extract = write_extract
-_write_analyze = write_analyze
-_write_annotate = write_annotate
-_write_edit = write_edit
-_write_synthesize = write_synthesize
-_write_quality = write_quality
-_write_audio_postprocess = write_audio_postprocess
+# Backward compatibility aliases for tests (sync versions)
+_write_extract = write_extract_sync
+_write_analyze = write_analyze_sync
+_write_annotate = write_annotate_sync
+_write_edit = write_edit_sync
+_write_synthesize = write_synthesize_sync
+_write_quality = write_quality_sync
+_write_audio_postprocess = write_audio_postprocess_sync
 
 # Telemetry integration
 try:

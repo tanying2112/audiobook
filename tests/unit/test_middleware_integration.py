@@ -8,6 +8,7 @@ Response (innermost→outermost): Observability → ABTest → ISOTimestamp → 
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 
@@ -16,7 +17,15 @@ from fastapi import APIRouter, Response
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+# Set ALLOWED_HOSTS BEFORE importing app to configure TrustedHostMiddleware correctly
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
+
+# Import app AFTER setting env var
 from src.audiobook_studio.main import app
+
+# Reset settings cache to pick up the ALLOWED_HOSTS env var
+from src.audiobook_studio.config.settings_loader import reset_settings
+reset_settings()
 
 
 # Define test models at module level to avoid forward reference issues
