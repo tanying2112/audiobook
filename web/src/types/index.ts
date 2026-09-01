@@ -116,3 +116,4 @@ export type BookGenre =
   | '儿童文学'
   | '青春文学'
   | '其他'
+  | ''

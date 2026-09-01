@@ -301,15 +301,15 @@ const statusClass = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (connectionStatus.value === 'connected') return '在线'
-  if (connectionStatus.value === 'connecting') return '连接中...'
-  return '离线'
+  if (connectionStatus.value === 'connected') return t('status.online')
+  if (connectionStatus.value === 'connecting') return t('status.connecting')
+  return t('status.offline')
 })
 
 const connectionStatusText = computed(() => {
-  if (connectionStatus.value === 'connected') return 'WebSocket 已连接'
-  if (connectionStatus.value === 'connecting') return '正在连接 WebSocket...'
-  return 'WebSocket 未连接，使用 HTTP 轮询模式'
+  if (connectionStatus.value === 'connected') return t('agentChat.wsConnected')
+  if (connectionStatus.value === 'connecting') return t('agentChat.wsConnecting')
+  return t('agentChat.wsDisconnected')
 })
 
 const suggestedPrompts = computed(() => [

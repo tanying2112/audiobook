@@ -31,13 +31,13 @@ function closeSidebar() {
   <!-- Authenticated layout with responsive sidebar -->
   <div v-else class="app-layout">
     <!-- Mobile header with hamburger -->
-    <header class="mobile-header" aria-label="主导航">
+    <header class="mobile-header" :aria-label="t('common.main_nav')">
       <button
         class="hamburger-btn touch-target"
         @click="toggleSidebar"
         :aria-expanded="isSidebarOpen"
         aria-controls="sidebar-drawer"
-        aria-label="打开菜单"
+        :aria-label="t('common.open_menu')"
       >
         <Icon icon="mdi:menu" width="24" height="24" />
       </button>
@@ -52,7 +52,7 @@ function closeSidebar() {
       id="sidebar-drawer"
       class="sidebar"
       :class="{ open: isSidebarOpen }"
-      aria-label="侧边导航"
+      :aria-label="t('common.sidebar_nav')"
     >
       <Sidebar @close="closeSidebar" />
     </aside>

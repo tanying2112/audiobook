@@ -3,10 +3,12 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { useAuthStore } from '../stores/auth'
+import { useI18n } from '../i18n'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const { t } = useI18n()
 
 const form = ref({ username: '', password: '' })
 const error = ref<string | null>(null)
@@ -22,7 +24,7 @@ async function handleLogin() {
     await authStore.fetchUser()
     router.push('/')
   } catch (e: any) {
-    error.value = e.response?.data?.detail || '登录失败，请检查用户名和密码'
+    error.value = e.response?.data?.detail || t('auth.login_failed')
   } finally {
     loading.value = false
   }
@@ -36,27 +38,27 @@ async function handleLogin() {
         <Icon icon="mdi:microphone" width="30" height="30" />
         <h1>Audiobook Studio</h1>
       </div>
-      <p class="auth-subtitle">登录以继续您的工作</p>
+      <p class="auth-subtitle">{{ t('auth.login_subtitle') }}</p>
 
       <div v-if="justRegistered" class="alert alert-success" style="margin-bottom: 16px">
-        注册成功，请使用新账号登录
+        {{ t('auth.register_success') }}
       </div>
 
       <form class="auth-form" @submit.prevent="handleLogin">
         <div class="form-group">
-          <label for="username">用户名</label>
+          <label for="username">{{ t('auth.username') }}</label>
           <input
             id="username"
             v-model.trim="form.username"
             type="text"
             required
             autocomplete="username"
-            placeholder="请输入用户名"
+            :placeholder="t('auth.username_placeholder')"
             :disabled="loading"
           />
         </div>
         <div class="form-group">
-          <label for="password">密码</label>
+          <label for="password">{{ t('auth.password') }}</label>
           <div class="password-field">
             <input
               id="password"
@@ -64,13 +66,13 @@ async function handleLogin() {
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="current-password"
-              placeholder="请输入密码"
+              :placeholder="t('auth.password_placeholder')"
               :disabled="loading"
             />
             <button
               type="button"
               class="password-toggle"
-              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              :aria-label="showPassword ? t('auth.hide_password') : t('auth.show_password')"
               @click="showPassword = !showPassword"
             >
               <Icon :icon="showPassword ? 'mdi:eye-off-outline' : 'mdi:eye-outline'" width="18" height="18" />
@@ -82,13 +84,15 @@ async function handleLogin() {
 
         <button type="submit" class="btn btn-primary btn-lg btn-block" :disabled="loading">
           <span v-if="loading" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff"></span>
-          <span>{{ loading ? '登录中…' : '登录' }}</span>
+          <span>{{ loading ? t('auth.login_in_progress') : t('auth.login') }}</span>
         </button>
       </form>
 
       <div class="auth-footer">
-        <router-link to="/register">没有账号？注册新用户</router-link>
-        <p class="bootstrap-hint">首次部署请运行 <code>python scripts/bootstrap_admin.py</code> 创建管理员账号</p>
+        <router-link to="/register">{{ t('auth.no_account') }}</router-link>
+        <p class="bootstrap-hint">
+          {{ t('auth.bootstrap_hint_before') }}<code>python scripts/bootstrap_admin.py</code>{{ t('auth.bootstrap_hint_after') }}
+        </p>
       </div>
     </div>
   </div>
@@ -126,6 +130,7 @@ async function handleLogin() {
 .bootstrap-hint code {
   background: var(--color-bg-tertiary);
   padding: 2px 6px;
+  margin: 0 4px;
   border-radius: var(--radius-sm);
   font-size: 11px;
 }

@@ -930,12 +930,12 @@ export async function fetchProjectMetrics(
 ): Promise<ProjectMetrics> {
   const params: Record<string, number> = {}
   if (chapterIndex !== undefined) params.chapter_index = chapterIndex
-  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics`, { params })
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics`, { params })
   return data
 }
 
 export async function fetchLatestProjectMetrics(projectId: number): Promise<ProjectMetrics> {
-  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics/latest`)
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics/latest`)
   return data
 }
 
@@ -943,14 +943,14 @@ export async function fetchMetricsHistory(
   projectId: number,
   limit = 30
 ): Promise<MetricsHistoryResponse> {
-  const { data } = await api.get<MetricsHistoryResponse>(`/monitoring/projects/${projectId}/metrics/history`, {
+  const { data } = await api.get<MetricsHistoryResponse>(`/api/monitoring/projects/${projectId}/metrics/history`, {
     params: { limit }
   })
   return data
 }
 
 export async function fetchProjectsWithMetrics(): Promise<ProjectsWithMetricsResponse> {
-  const { data } = await api.get<ProjectsWithMetricsResponse>('/monitoring/projects')
+  const { data } = await api.get<ProjectsWithMetricsResponse>('/api/monitoring/projects')
   return data
 }
 

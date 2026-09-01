@@ -3,6 +3,7 @@ import { ref, watch, onMounted } from 'vue'
 import type { Paragraph, BookGenre } from '../types'
 import * as api from '../api'
 import { useSopCorrection } from '../composables/useSopCorrection'
+import { useI18n } from '../i18n'
 
 const props = defineProps<{
   paragraph: Paragraph | null
@@ -15,6 +16,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const { t } = useI18n()
+
 const editText = ref('')
 const editNotes = ref('')
 const hasChanges = ref(false)
@@ -23,7 +26,7 @@ const isSaving = ref(false)
 // ── SOP correction capture (P0.1) ─────────────────────────────────────────
 // 用户翻改段落文本 = 对"剧本内容"的人工纠错，投喂 SOP 反思循环。
 // genre 来自后端 Project.genre；在已知后初始化 composable，避免向空 genre 发送无意义修正。
-const genre = ref<BookGenre>('其他')
+const genre = ref<BookGenre>('')
 let sendCorrection: ((
   field: string,
   originalValue: string,
@@ -98,7 +101,7 @@ async function handleSave() {
 
 function handleClose() {
   if (hasChanges.value) {
-    if (!confirm('有未保存的更改，确定关闭？')) return
+    if (!confirm(t('paragraph_editor.unsaved_warning'))) return
   }
   emit('close')
 }
@@ -107,40 +110,40 @@ function handleClose() {
 <template>
   <div v-if="paragraph" class="paragraph-editor">
     <div class="editor-header">
-      <h3>段落编辑 — #{{ paragraph.id }}</h3>
+      <h3>{{ t('paragraph_editor.title', { id: paragraph.id }) }}</h3>
       <div class="editor-header-actions">
         <span v-if="paragraph.speaker_canonical_name" class="role-badge">
           {{ paragraph.speaker_canonical_name }}
         </span>
         <button class="btn btn-primary btn-sm" :disabled="!hasChanges || isSaving" @click="handleSave">
-          保存
+          {{ t('paragraph_editor.save') }}
         </button>
         <button class="btn btn-ghost btn-sm" @click="handleClose">
-          关闭
+          {{ t('paragraph_editor.close') }}
         </button>
       </div>
     </div>
 
     <div class="editor-body">
       <div class="editor-section">
-        <label class="editor-label">原文</label>
+        <label class="editor-label">{{ t('paragraph_editor.original_text') }}</label>
         <textarea
           v-model="editText"
           class="editor-textarea"
           rows="6"
           @input="onTextChange"
-          placeholder="段落文本..."
+          :placeholder="t('paragraph_editor.placeholder_edited')"
         ></textarea>
       </div>
 
       <div class="editor-section">
-        <label class="editor-label">备注</label>
+        <label class="editor-label">{{ t('paragraph_editor.notes') }}</label>
         <textarea
           v-model="editNotes"
           class="editor-textarea editor-notes"
           rows="2"
           @input="onTextChange"
-          placeholder="可选的备注信息..."
+          :placeholder="t('paragraph_editor.placeholder_notes')"
         ></textarea>
       </div>
     </div>
@@ -149,12 +152,12 @@ function handleClose() {
       <span class="status-badge" :class="paragraph.status || 'pending'">
         {{ paragraph.status || 'pending' }}
       </span>
-      <span v-if="hasChanges" class="unsaved-badge">有未保存的更改</span>
+      <span v-if="hasChanges" class="unsaved-badge">{{ t('paragraph_editor.unsaved_changes') }}</span>
     </div>
   </div>
 
   <div v-else class="editor-empty">
-    <p>选择一个段落以编辑</p>
+    <p>{{ t('paragraph_editor.select_hint') }}</p>
   </div>
 </template>
 

@@ -112,7 +112,7 @@
 
     <!-- Live Job Status (S3-1: durable job + polling) -->
     <section class="card" v-if="jobId">
-      <h2>发布状态</h2>
+      <h2>{{ t('publish.jobStatus') }}</h2>
       <div class="job-status">
         <span class="status-badge" :class="String(jobStatus).toLowerCase()">{{ jobStatus || '—' }}</span>
         <span v-if="jobProgress != null" class="progress-text">{{ Math.round(jobProgress * 100) }}%</span>
@@ -230,7 +230,7 @@ onMounted(async () => {
     project.value = await fetchProject(projectId)
     // Prefill RSS from project metadata
     if (project.value) {
-      rssConfig.value.feed_title = `${project.value.title} - 有声书`
+      rssConfig.value.feed_title = t('publish.defaultFeedTitle', { title: project.value.title })
       if (project.value.genre) rssConfig.value.author = project.value.genre
     }
     await loadHistory()

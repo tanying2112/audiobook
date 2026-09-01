@@ -3,8 +3,10 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import * as api from '../api'
+import { useI18n } from '../i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 
 const form = ref({
   username: '',
@@ -21,7 +23,7 @@ const showConfirmPassword = ref(false)
 async function handleRegister() {
   error.value = null
   if (form.value.password !== form.value.confirmPassword) {
-    error.value = '两次输入的密码不一致'
+    error.value = t('auth.password_mismatch')
     return
   }
   loading.value = true
@@ -34,7 +36,7 @@ async function handleRegister() {
     })
     router.push('/login?registered=1')
   } catch (e: any) {
-    error.value = e.response?.data?.detail || '注册失败，请检查输入'
+    error.value = e.response?.data?.detail || t('auth.register_failed')
   } finally {
     loading.value = false
   }
@@ -48,35 +50,35 @@ async function handleRegister() {
         <Icon icon="mdi:microphone" width="30" height="30" />
         <h1>Audiobook Studio</h1>
       </div>
-      <p class="auth-subtitle">创建账号开始使用</p>
+      <p class="auth-subtitle">{{ t('auth.register_subtitle') }}</p>
 
       <form class="auth-form" @submit.prevent="handleRegister">
         <div class="form-group">
-          <label for="username">用户名</label>
+          <label for="username">{{ t('auth.username') }}</label>
           <input
             id="username"
             v-model.trim="form.username"
             type="text"
             required
             autocomplete="username"
-            placeholder="请输入用户名"
+            :placeholder="t('auth.username_placeholder')"
             :disabled="loading"
           />
         </div>
         <div class="form-group">
-          <label for="email">邮箱</label>
+          <label for="email">{{ t('auth.email') }}</label>
           <input
             id="email"
             v-model.trim="form.email"
             type="email"
             required
             autocomplete="email"
-            placeholder="请输入邮箱"
+            :placeholder="t('auth.email_placeholder')"
             :disabled="loading"
           />
         </div>
         <div class="form-group">
-          <label for="password">密码</label>
+          <label for="password">{{ t('auth.password') }}</label>
           <div class="password-field">
             <input
               id="password"
@@ -84,14 +86,14 @@ async function handleRegister() {
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="new-password"
-              placeholder="至少 8 位字符"
+              :placeholder="t('auth.password_min')"
               minlength="8"
               :disabled="loading"
             />
             <button
               type="button"
               class="password-toggle"
-              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              :aria-label="showPassword ? t('auth.hide_password') : t('auth.show_password')"
               @click="showPassword = !showPassword"
             >
               <Icon :icon="showPassword ? 'mdi:eye-off-outline' : 'mdi:eye-outline'" width="18" height="18" />
@@ -99,7 +101,7 @@ async function handleRegister() {
           </div>
         </div>
         <div class="form-group">
-          <label for="confirmPassword">确认密码</label>
+          <label for="confirmPassword">{{ t('auth.confirm_password') }}</label>
           <div class="password-field">
             <input
               id="confirmPassword"
@@ -107,13 +109,13 @@ async function handleRegister() {
               :type="showConfirmPassword ? 'text' : 'password'"
               required
               autocomplete="new-password"
-              placeholder="再次输入密码"
+              :placeholder="t('auth.confirm_password_placeholder')"
               :disabled="loading"
             />
             <button
               type="button"
               class="password-toggle"
-              :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
+              :aria-label="showConfirmPassword ? t('auth.hide_password') : t('auth.show_password')"
               @click="showConfirmPassword = !showConfirmPassword"
             >
               <Icon :icon="showConfirmPassword ? 'mdi:eye-off-outline' : 'mdi:eye-outline'" width="18" height="18" />
@@ -121,13 +123,13 @@ async function handleRegister() {
           </div>
         </div>
         <div class="form-group">
-          <label for="full_name">显示名称 (可选)</label>
+          <label for="full_name">{{ t('auth.full_name_optional') }}</label>
           <input
             id="full_name"
             v-model.trim="form.full_name"
             type="text"
             autocomplete="name"
-            placeholder="您的显示名称"
+            :placeholder="t('auth.full_name_placeholder')"
             :disabled="loading"
           />
         </div>
@@ -136,12 +138,12 @@ async function handleRegister() {
 
         <button type="submit" class="btn btn-primary btn-lg btn-block" :disabled="loading">
           <span v-if="loading" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff"></span>
-          <span>{{ loading ? '注册中…' : '注册' }}</span>
+          <span>{{ loading ? t('auth.register_in_progress') : t('auth.register') }}</span>
         </button>
       </form>
 
       <div class="auth-footer">
-        <router-link to="/login">已有账号？去登录</router-link>
+        <router-link to="/login">{{ t('auth.have_account') }}</router-link>
       </div>
     </div>
   </div>

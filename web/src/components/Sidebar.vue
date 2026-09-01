@@ -6,12 +6,14 @@ import { useI18n } from '../i18n'
 import { useAuthStore } from '../stores/auth'
 import { useContextStore } from '../stores/context'
 import LocaleSwitcher from './LocaleSwitcher.vue'
+import { useTheme } from '../composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const authStore = useAuthStore()
 const contextStore = useContextStore()
+const { themeMode, isDark, cycleTheme, getThemeLabel } = useTheme()
 
 onMounted(() => {
   if (authStore.isAuthenticated() && !authStore.user) {
@@ -57,7 +59,7 @@ function handleLogout() {
       <Icon icon="mdi:microphone" width="28" height="28" />
       <span class="sidebar-title">{{ t('sidebar.title') }}</span>
     </div>
-    <nav class="sidebar-nav" aria-label="主导航">
+    <nav class="sidebar-nav" :aria-label="t('common.main_nav')">
       <button
         v-for="item in navItems"
         :key="item.label"
@@ -70,16 +72,20 @@ function handleLogout() {
     </nav>
     <div class="sidebar-footer">
       <LocaleSwitcher />
+      <!-- 主题切换 -->
+      <button class="theme-btn" :title="getThemeLabel(themeMode, t)" @click="cycleTheme" :aria-label="getThemeLabel(themeMode, t)">
+        <Icon :icon="isDark ? 'mdi:weather-night' : (themeMode === 'auto' ? 'mdi:monitor-shimmer' : 'mdi:weather-sunny')" width="18" height="18" />
+      </button>
       <div class="user-info" :title="authStore.user?.email">
         <div class="user-avatar">
           {{ (authStore.user?.full_name || authStore.user?.username || '?').charAt(0).toUpperCase() }}
         </div>
         <div class="user-meta">
           <span class="user-name">{{ authStore.user?.full_name || authStore.user?.username || '—' }}</span>
-          <span v-if="authStore.user?.is_superuser" class="user-role">管理员</span>
+          <span v-if="authStore.user?.is_superuser" class="user-role">{{ t('common.admin') }}</span>
         </div>
       </div>
-      <button class="logout-btn" :title="t('auth.logout')" aria-label="登出" @click="handleLogout">
+      <button class="logout-btn" :title="t('auth.logout')" :aria-label="t('auth.logout')" @click="handleLogout">
         <Icon icon="mdi:logout" width="18" height="18" />
       </button>
     </div>
@@ -200,5 +206,24 @@ function handleLogout() {
 .logout-btn:hover {
   background: #334155;
   color: #f87171;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.theme-btn:hover {
+  background: #334155;
+  color: var(--color-primary);
 }
 </style>

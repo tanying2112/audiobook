@@ -148,7 +148,7 @@ function clearFile() {
     </header>
 
     <!-- Step indicator -->
-    <div class="step-indicator section flex gap-2" role="navigation" aria-label="上传步骤">
+    <div class="step-indicator section flex gap-2" role="navigation" :aria-label="t('upload.upload_steps')">
       <div v-for="s in 3" :key="s" class="step-item flex-1 flex items-center gap-2" :class="{ active: step === s, completed: step > s }">
         <span class="step-number" :class="{ 'text-primary': step >= s, 'text-success': step > s }">{{ s }}</span>
         <span class="step-label text-sm" v-if="step >= s || step > s">

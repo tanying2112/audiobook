@@ -46,6 +46,10 @@ function openAgentChat() {
   router.push(`/projects/${projectId}/agent-chat`)
 }
 
+function openAutoRun() {
+  router.push(`/projects/${projectId}/auto-run`)
+}
+
 function startEdit() {
   draftTitle.value = projectStore.currentProject?.title || ''
   editing.value = true
@@ -137,6 +141,10 @@ function formatStatus(status: string): string {
         <button class="btn btn-outline touch-target" @click="openAgentChat" :title="t('project_detail.agent_chat')">
           <Icon icon="mdi:robot-outline" width="18" height="18" />
           <span class="hidden-mobile">{{ t('project_detail.agent_chat') }}</span>
+        </button>
+        <button class="btn btn-primary touch-target" @click="openAutoRun" :title="t('auto_run.title')">
+          <Icon icon="mdi:play-circle-outline" width="18" height="18" />
+          <span class="hidden-mobile">{{ t('auto_run.title') }}</span>
         </button>
         <button class="btn btn-primary touch-target" @click="openVoiceClone" :title="t('voice_clone.title')">
           <Icon icon="mdi:microphone" width="18" height="18" />

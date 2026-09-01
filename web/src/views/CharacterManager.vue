@@ -26,7 +26,7 @@ const formPitch = ref(0)
 const formSpeed = ref(1.0)
 
 // SOP correction capture
-const genre = ref<BookGenre>('其他')
+const genre = ref<BookGenre>('')
 let sendCorrection: ((
   field: string,
   originalValue: string,

@@ -1,30 +1,30 @@
 <template>
   <div class="monitoring-dashboard">
     <header class="dashboard-header">
-      <h1>📊 监控仪表盘</h1>
+      <h1>{{ t('monitoring.title') }}</h1>
       <div class="header-controls">
         <select v-model="selectedProjectId" @change="fetchMetrics" class="project-select">
           <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }} (ID: {{ p.id }})</option>
         </select>
         <button @click="refreshData" :disabled="loading" class="btn btn-primary">
-          {{ loading ? '刷新中...' : '刷新数据' }}
+          {{ loading ? t('monitoring.refreshing') : t('monitoring.refresh') }}
         </button>
       </div>
     </header>
 
     <div v-if="loading" class="loading-overlay">
       <div class="spinner"></div>
-      <p>正在加载遥测数据...</p>
+      <p>{{ t('monitoring.loading') }}</p>
     </div>
 
     <div v-else-if="!metrics" class="empty-state">
-      <p>暂无遥测数据。请运行流水线生成 metrics_summary.json</p>
+      <p>{{ t('monitoring.empty') }}</p>
     </div>
 
     <div v-else class="dashboard-grid">
       <!-- Cost Analysis Pie Chart -->
       <section class="chart-card">
-        <h2>💰 成本分析饼图</h2>
+        <h2>{{ t('monitoring.cost_pie') }}</h2>
         <div class="chart-container">
           <canvas ref="costChart"></canvas>
         </div>
@@ -36,15 +36,15 @@
             <span class="legend-pct">({{ ((costChartData.datasets[0].data[i] / costTotal) * 100).toFixed(1) }}%)</span>
           </div>
           <div class="legend-total">
-            <strong>总计: ${{ costTotal.toFixed(4) }}</strong>
+            <strong>{{ t('monitoring.cost_total', { total: costTotal.toFixed(4) }) }}</strong>
           </div>
         </div>
-        <div v-if="costChartData.labels.length === 0" class="no-data">暂无成本数据</div>
+        <div v-if="costChartData.labels.length === 0" class="no-data">{{ t('monitoring.no_cost_data') }}</div>
       </section>
 
       <!-- Stage Latency Leaderboard -->
       <section class="chart-card">
-        <h2>⏱️ 阶段延迟排行榜</h2>
+        <h2>{{ t('monitoring.latency_leaderboard') }}</h2>
         <div class="chart-container">
           <canvas ref="latencyChart"></canvas>
         </div>
@@ -52,10 +52,10 @@
           <table>
             <thead>
               <tr>
-                <th>排名</th>
-                <th>阶段</th>
-                <th>延迟 (ms)</th>
-                <th>状态</th>
+                <th>{{ t('monitoring.rank') }}</th>
+                <th>{{ t('monitoring.stage') }}</th>
+                <th>{{ t('monitoring.latency_ms') }}</th>
+                <th>{{ t('monitoring.status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -63,68 +63,68 @@
                 <td class="rank">{{ i + 1 }}</td>
                 <td class="stage-name">{{ stage.name }}</td>
                 <td class="latency">{{ stage.duration.toFixed(0) }} ms</td>
-                <td class="status">{{ stage.success ? '✅ 成功' : '❌ 失败' }}</td>
+                <td class="status">{{ stage.success ? t('monitoring.success') : t('monitoring.failed') }}</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-if="latencyChartData.labels.length === 0" class="no-data">暂无阶段延迟数据</div>
+        <div v-if="latencyChartData.labels.length === 0" class="no-data">{{ t('monitoring.no_latency_data') }}</div>
       </section>
 
       <!-- Resilience Metrics -->
       <section class="metrics-card">
-        <h2>🛡️ 复原力指标</h2>
+        <h2>{{ t('monitoring.resilience') }}</h2>
         <div class="metrics-grid">
           <div class="metric-box">
-            <span class="metric-label">LLM 总调用</span>
+            <span class="metric-label">{{ t('monitoring.llm_total_calls') }}</span>
             <span class="metric-value">{{ resilience.llm.total_calls }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">LLM 重试次数</span>
+            <span class="metric-label">{{ t('monitoring.llm_retries') }}</span>
             <span class="metric-value warn">{{ resilience.llm.total_retries }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">LLM 回退次数</span>
+            <span class="metric-label">{{ t('monitoring.llm_fallbacks') }}</span>
             <span class="metric-value danger">{{ resilience.llm.total_fallbacks }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">TTS 总片段</span>
+            <span class="metric-label">{{ t('monitoring.tts_segments') }}</span>
             <span class="metric-value">{{ resilience.tts.total_segments }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">TTS 成功率</span>
+            <span class="metric-label">{{ t('monitoring.tts_success_rate') }}</span>
             <span class="metric-value success">{{ (resilience.tts.total_segments > 0 ? (resilience.tts.successful_segments / resilience.tts.total_segments * 100).toFixed(1) : 0) }}%</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">合成率比</span>
+            <span class="metric-label">{{ t('monitoring.synthesis_rate_ratio') }}</span>
             <span class="metric-value">{{ latency.synthesis_rate_ratio.toFixed(2) }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">实时因子</span>
+            <span class="metric-label">{{ t('monitoring.real_time_factor') }}</span>
             <span class="metric-value">{{ latency.real_time_factor.toFixed(2) }}</span>
           </div>
           <div class="metric-box">
-            <span class="metric-label">总音频时长</span>
-            <span class="metric-value">{{ (latency.total_audio_duration_ms / 1000).toFixed(1) }} 秒</span>
+            <span class="metric-label">{{ t('monitoring.total_audio_duration') }}</span>
+            <span class="metric-value">{{ t('monitoring.seconds', { n: (latency.total_audio_duration_ms / 1000).toFixed(1) }) }}</span>
           </div>
         </div>
       </section>
 
       <!-- Provider Cost Breakdown -->
       <section class="metrics-card">
-        <h2>📦 Provider 成本明细</h2>
+        <h2>{{ t('monitoring.provider_cost') }}</h2>
         <div class="provider-table" v-if="providerBreakdown.length > 0">
           <table>
             <thead>
               <tr>
-                <th>Provider</th>
-                <th>Model</th>
-                <th>Prompt Tokens</th>
-                <th>Completion Tokens</th>
-                <th>成本 ($)</th>
-                <th>调用次数</th>
-                <th>平均延迟</th>
-                <th>成功率</th>
+                <th>{{ t('monitoring.provider') }}</th>
+                <th>{{ t('monitoring.model') }}</th>
+                <th>{{ t('monitoring.prompt_tokens') }}</th>
+                <th>{{ t('monitoring.completion_tokens') }}</th>
+                <th>{{ t('monitoring.cost_usd') }}</th>
+                <th>{{ t('monitoring.call_count') }}</th>
+                <th>{{ t('monitoring.avg_latency') }}</th>
+                <th>{{ t('monitoring.success_rate') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -143,21 +143,21 @@
             </tbody>
           </table>
         </div>
-        <div v-else class="no-data">暂无 Provider 数据</div>
+        <div v-else class="no-data">{{ t('monitoring.no_provider_data') }}</div>
       </section>
     </div>
 
     <!-- Pipeline Metadata -->
     <section class="metadata-section" v-if="metrics?.metadata">
-      <h2>📋 流水线元数据</h2>
+      <h2>{{ t('monitoring.pipeline_metadata') }}</h2>
       <div class="metadata-grid">
-        <div><strong>Project ID:</strong> {{ metrics.metadata.project_id }}</div>
-        <div><strong>Pipeline ID:</strong> {{ metrics.metadata.pipeline_id }}</div>
-        <div><strong>开始时间:</strong> {{ formatDate(metrics.metadata.started_at) }}</div>
-        <div><strong>结束时间:</strong> {{ metrics.metadata.ended_at ? formatDate(metrics.metadata.ended_at) : '进行中' }}</div>
-        <div><strong>总耗时:</strong> {{ metrics.metadata.duration_ms.toFixed(0) }} ms</div>
-        <div><strong>状态:</strong> <span :class="metrics.metadata.success ? 'success' : 'danger'">{{ metrics.metadata.success ? '✅ 成功' : '❌ 失败' }}</span></div>
-        <div v-if="metrics.metadata.error"><strong>错误:</strong> {{ metrics.metadata.error }}</div>
+        <div><strong>{{ t('monitoring.project_id') }}</strong> {{ metrics.metadata.project_id }}</div>
+        <div><strong>{{ t('monitoring.pipeline_id') }}</strong> {{ metrics.metadata.pipeline_id }}</div>
+        <div><strong>{{ t('monitoring.started_at') }}</strong> {{ formatDate(metrics.metadata.started_at) }}</div>
+        <div><strong>{{ t('monitoring.ended_at') }}</strong> {{ metrics.metadata.ended_at ? formatDate(metrics.metadata.ended_at) : t('monitoring.in_progress') }}</div>
+        <div><strong>{{ t('monitoring.duration') }}</strong> {{ metrics.metadata.duration_ms.toFixed(0) }} ms</div>
+        <div><strong>{{ t('monitoring.status') }}</strong> <span :class="metrics.metadata.success ? 'success' : 'danger'">{{ metrics.metadata.success ? t('monitoring.success') : t('monitoring.failed') }}</span></div>
+        <div v-if="metrics.metadata.error"><strong>{{ t('monitoring.error') }}</strong> {{ metrics.metadata.error }}</div>
       </div>
     </section>
   </div>
@@ -167,8 +167,11 @@
 import { ref, onMounted, watch, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import axios from 'axios'
+import { useI18n } from '../i18n'
 
 Chart.register(...registerables)
+
+const { t, getLocale } = useI18n()
 
 const selectedProjectId = ref<number>(1)
 const projects = ref<Array<{id: number, title: string}>>([])
@@ -252,7 +255,7 @@ const initCharts = () => {
           }
         },
         scales: {
-          x: { beginAtZero: true, title: { display: true, text: '延迟 (ms)' } }
+          x: { beginAtZero: true, title: { display: true, text: t('monitoring.latency_ms') } }
         }
       }
     })
@@ -294,7 +297,7 @@ const costTotal = computed(() => {
 
 const latencyChartData = computed(() => {
   if (!metrics.value?.latency_profiles?.stage_wall_times_ms) {
-    return { labels: [], datasets: [{ label: '延迟 (ms)', data: [], backgroundColor: [] }] }
+    return { labels: [], datasets: [{ label: t('monitoring.latency_ms'), data: [], backgroundColor: [] }] }
   }
   const stages = metrics.value.latency_profiles.stage_wall_times_ms
   const labels: string[] = []
@@ -309,7 +312,7 @@ const latencyChartData = computed(() => {
 
   return {
     labels,
-    datasets: [{ label: '延迟 (ms)', data, backgroundColor: colors }]
+    datasets: [{ label: t('monitoring.latency_ms'), data, backgroundColor: colors }]
   }
 })
 
@@ -332,7 +335,7 @@ const providerBreakdown = computed(() => {
 })
 
 const formatDate = (iso: string) => {
-  try { return new Date(iso).toLocaleString('zh-CN') } catch { return iso }
+  try { return new Date(iso).toLocaleString(getLocale()) } catch { return iso }
 }
 
 const refreshData = () => fetchMetrics()

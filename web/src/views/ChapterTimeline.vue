@@ -161,22 +161,22 @@ const overallProgress = computed(() => getOverallProgress())
     <!-- Waveform Player -->
     <div v-if="selectedParaId" class="card card-hover section waveform-section">
       <div class="waveform-toolbar flex items-center gap-2 mb-4">
-        <button class="btn btn-ghost btn-sm touch-target" @click="skip(-5)" :title="t('chapter_timeline.rewind_5s')" aria-label="后退5秒">
+        <button class="btn btn-ghost btn-sm touch-target" @click="skip(-5)" :title="t('chapter_timeline.rewind_5s')" :aria-label="t('chapter_timeline.rewind_5s')">
           <Icon icon="mdi:skip-previous" width="18" height="18" />
         </button>
-        <button class="btn btn-primary btn-lg touch-target" @click="playPause" :title="isPlaying ? t('chapter_timeline.pause') : t('chapter_timeline.play')" aria-label="播放/暂停" style="width: 44px; height: 44px;">
+        <button class="btn btn-primary btn-lg touch-target" @click="playPause" :title="isPlaying ? t('chapter_timeline.pause') : t('chapter_timeline.play')" :aria-label="isPlaying ? t('chapter_timeline.pause') : t('chapter_timeline.play')" style="width: 44px; height: 44px;">
           <Icon :icon="isPlaying ? 'mdi:pause' : 'mdi:play'" width="20" height="20" />
         </button>
-        <button class="btn btn-ghost btn-sm touch-target" @click="skip(5)" :title="t('chapter_timeline.forward_5s')" aria-label="前进5秒">
+        <button class="btn btn-ghost btn-sm touch-target" @click="skip(5)" :title="t('chapter_timeline.forward_5s')" :aria-label="t('chapter_timeline.forward_5s')">
           <Icon icon="mdi:skip-next" width="18" height="18" />
         </button>
         <span class="time-display text-secondary" style="font-size: 13px; font-variant-numeric: tabular-nums; min-width: 90px;">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
         <div class="zoom-controls flex items-center gap-2" style="margin-left: auto;">
-          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.max(10, zoomLevel - 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_out')" aria-label="缩小">
+          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.max(10, zoomLevel - 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_out')" :aria-label="t('chapter_timeline.zoom_out')">
             <Icon icon="mdi:minus" width="18" height="18" />
           </button>
           <span class="zoom-label text-muted" style="font-size: 11px; min-width: 50px; text-align: center;">{{ zoomLevel }}px/s</span>
-          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.min(200, zoomLevel + 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_in')" aria-label="放大">
+          <button class="btn btn-ghost btn-sm touch-target" @click="zoomLevel = Math.min(200, zoomLevel + 10); zoom(zoomLevel)" :title="t('chapter_timeline.zoom_in')" :aria-label="t('chapter_timeline.zoom_in')">
             <Icon icon="mdi:plus" width="18" height="18" />
           </button>
         </div>
@@ -212,7 +212,7 @@ const overallProgress = computed(() => getOverallProgress())
           <span class="para-num font-medium text-primary" style="font-size: 12px; min-width: 28px;">#{{ idx + 1 }}</span>
           <span class="para-role badge badge-muted" style="font-size: 11px;">{{ para.speaker_canonical_name || t('chapter_timeline.narrator') }}</span>
           <span :class="['status-dot', para.status || 'pending']" style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning);" :style="{ background: para.status === 'completed' ? 'var(--color-success)' : para.status === 'error' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
-          <button class="btn btn-ghost btn-sm touch-target" @click.stop="jumpToParagraph(para.id)" :title="t('chapter_timeline.waveform_jump')" aria-label="波形跳转">
+          <button class="btn btn-ghost btn-sm touch-target" @click.stop="jumpToParagraph(para.id)" :title="t('chapter_timeline.waveform_jump')" :aria-label="t('chapter_timeline.waveform_jump')">
             <Icon icon="mdi:waveform" width="18" height="18" />
           </button>
         </div>
