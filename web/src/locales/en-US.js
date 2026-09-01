@@ -533,6 +533,18 @@ export default {
     rewind_5s: 'Rewind 5s',
     forward_5s: 'Forward 5s',
     waveform_jump: 'Waveform Jump',
+    pipeline_flow: '7-Stage Pipeline',
+    pipeline_idle: 'Pipeline has not run',
+    pipeline_not_started: 'Not started',
+    emotion: 'Emotion',
+    emotion_intensity: 'Intensity',
+    speech_rate: 'Speech Rate',
+    pitch: 'Pitch',
+    sfx: 'SFX',
+    dialogue: 'Dialogue',
+    narration: 'Narration',
+    edited_badge: 'Edited',
+    original_badge: 'Original',
   },
 
   // QualityReport 页面 QualityReport Page
@@ -1116,6 +1128,7 @@ export default {
     },
     paused: 'Paused',
     running: 'Running',
+    completed: 'Completed',
   },
 
   // Auto Run (one-click full pipeline)

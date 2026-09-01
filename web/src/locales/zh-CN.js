@@ -530,6 +530,18 @@ export default {
     rewind_5s: '后退 5s',
     forward_5s: '快进 5s',
     waveform_jump: '波形跳转',
+    pipeline_flow: '7 阶段流程',
+    pipeline_idle: '管线尚未运行',
+    pipeline_not_started: '尚未开始',
+    emotion: '情感',
+    emotion_intensity: '强度',
+    speech_rate: '语速',
+    pitch: '音高',
+    sfx: '音效',
+    dialogue: '对白',
+    narration: '旁白',
+    edited_badge: '已编辑',
+    original_badge: '原文',
   },
 
   // QualityReport 页面 QualityReport Page
@@ -1113,6 +1125,7 @@ export default {
     },
     paused: '已暂停',
     running: '运行中',
+    completed: '已完成',
   },
 
   // 自动运行（一键跑通 8 步管线）
