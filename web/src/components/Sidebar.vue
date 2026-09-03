@@ -38,12 +38,16 @@ const navItems = computed(() => [
 ])
 
 function isActive(path: string): boolean {
+  if (!path) return false
   if (path === '/') return route.path === '/'
+  // '/projects' 与 '/' 同页：首页时不高亮「项目管理」，避免双高亮
+  if (path === '/projects') return route.path.startsWith('/projects')
   return route.path.startsWith(path)
 }
 
 function handleNavClick(itemRoute: string) {
-  router.push(itemRoute || '/')
+  if (!itemRoute) return // 无目标路由（如未选项目时的仪表板）则不跳转
+  router.push(itemRoute)
   emit('close')
 }
 
@@ -63,8 +67,9 @@ function handleLogout() {
       <button
         v-for="item in navItems"
         :key="item.label"
-        :class="['nav-btn', { active: isActive(item.route || item.pattern || '') }]"
-        @click="handleNavClick(item.route || '/')"
+        :class="['nav-btn', { active: isActive(item.route || ''), disabled: !item.route }]"
+        :disabled="!item.route"
+        @click="handleNavClick(item.route)"
       >
         <Icon :icon="item.icon" width="20" height="20" />
         <span>{{ t(item.label) }}</span>
@@ -140,6 +145,16 @@ function handleLogout() {
 .nav-btn:hover {
   background: #334155;
   color: #f1f5f9;
+}
+.nav-btn.disabled,
+.nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nav-btn.disabled:hover,
+.nav-btn:disabled:hover {
+  background: transparent;
+  color: #cbd5e1;
 }
 .nav-btn.active {
   background: var(--color-primary);
