@@ -13,6 +13,12 @@ export interface Project {
   /** Book genre — drives SOP reflection rule-bucketing (matches backend Project.genre). */
   genre?: string
   status?: string
+  /** 当前 7 阶段之一 (extract/analyze/annotate/edit/audio_postprocess/synthesize/quality) */
+  current_stage?: string
+  /** 0-1 进度 */
+  progress?: number
+  total_cost_usd?: number
+  difficulty?: string
   created_at?: string
   updated_at?: string
 }

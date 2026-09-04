@@ -12,6 +12,39 @@ const editingId = ref<number | null>(null)
 const draftTitle = ref('')
 const { t } = useI18n()
 
+// 7 阶段流程（与 AutoRunView / ChapterTimeline 一致）
+const PIPELINE_STAGES = [
+  'extract', 'analyze', 'annotate', 'edit',
+  'audio_postprocess', 'synthesize', 'quality',
+] as const
+
+function stageLabel(stage: string): string {
+  const map: Record<string, string> = {
+    extract: t('pipeline.stages.extract'),
+    analyze: t('pipeline.stages.analyze'),
+    annotate: t('pipeline.stages.annotate'),
+    edit: t('pipeline.stages.edit'),
+    audio_postprocess: t('pipeline.stages.audio_postprocess'),
+    synthesize: t('pipeline.stages.synthesize'),
+    quality: t('pipeline.stages.quality'),
+  }
+  return map[stage] || stage
+}
+
+/** 当前阶段在 7 阶段中的索引；'pending' → -1（未开始），'completed' → 全部完成 */
+function currentStageIndex(stage?: string): number {
+  if (!stage || stage === 'pending') return -1
+  if (stage === 'completed') return PIPELINE_STAGES.length
+  return PIPELINE_STAGES.indexOf(stage as any)
+}
+
+/** 后端 progress 为 0-100 浮点；归一化到 0-1 */
+function progressRatio(project: { progress?: number }): number {
+  const p = project.progress ?? 0
+  const ratio = p > 1 ? p / 100 : p
+  return Math.max(0, Math.min(1, ratio))
+}
+
 onMounted(() => store.loadProjects())
 
 const filteredProjects = computed(() => {
@@ -76,6 +109,10 @@ function cancelEdit() {
 
 function exportProject(id: number) {
   router.push(`/projects/${id}/export`)
+}
+
+function openAutoRun(id: number) {
+  router.push(`/projects/${id}/auto-run`)
 }
 
 function openQuality(id: number) {
@@ -152,6 +189,32 @@ function openCharacters(id: number) {
             <h3 class="card-title">{{ project.title || t('projects.unnamed_project') }}</h3>
             <p v-if="project.description" class="desc">{{ project.description }}</p>
             <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
+
+            <!-- 7 阶段流程进度 -->
+            <div class="stage-progress-row">
+              <div class="stage-progress-steps">
+                <span
+                  v-for="(stage, si) in PIPELINE_STAGES"
+                  :key="stage"
+                  class="stage-dot"
+                  :class="{
+                    done: currentStageIndex(project.current_stage) > si,
+                    active: currentStageIndex(project.current_stage) === si,
+                  }"
+                  :title="stageLabel(stage)"
+                ></span>
+              </div>
+              <div class="stage-progress-bar">
+                <div
+                  class="stage-progress-fill"
+                  :style="{ width: `${Math.round(progressRatio(project) * 100)}%` }"
+                ></div>
+              </div>
+              <div class="stage-progress-meta">
+                <span class="stage-current">{{ project.current_stage ? stageLabel(project.current_stage) : t('projects.not_started') }}</span>
+                <span class="stage-percent">{{ Math.round(progressRatio(project) * 100) }}%</span>
+              </div>
+            </div>
           </template>
         </div>
         <div class="card-actions">
@@ -166,6 +229,10 @@ function openCharacters(id: number) {
           </button>
         </div>
         <div class="card-quicklinks">
+          <button class="btn btn-primary btn-sm touch-target-sm" @click.stop="openAutoRun(project.id)">
+            <Icon icon="mdi:play-circle-outline" width="16" height="16" />
+            <span>{{ t('auto_run.title') }}</span>
+          </button>
           <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openCharacters(project.id)">
             <Icon icon="mdi:account-group" width="16" height="16" />
             <span>{{ t('project_detail.characters') }}</span>
@@ -177,6 +244,10 @@ function openCharacters(id: number) {
           <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openTranslation(project.id)">
             <Icon icon="mdi:translate" width="16" height="16" />
             <span>{{ t('translation.title') }}</span>
+          </button>
+          <button class="btn btn-outline btn-sm touch-target-sm" @click.stop="exportProject(project.id)">
+            <Icon icon="mdi:download" width="16" height="16" />
+            <span>{{ t('projects.export_audio') }}</span>
           </button>
         </div>
       </div>

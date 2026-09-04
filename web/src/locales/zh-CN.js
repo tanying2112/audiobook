@@ -237,6 +237,24 @@ export default {
     unnamed_project: '未命名项目',
     project_id: 'ID: {id}',
     delete_tooltip: '删除',
+    not_started: '未开始',
+    export_audio: '导出音频',
+  },
+
+  // ProjectManagement 项目管理页（全流程 7 阶段 + 管理操作）
+  project_mgmt: {
+    title: '项目管理',
+    subtitle: '全流程 7 阶段状态与项目管理',
+    chapters_count: '{count} 个章节',
+    no_chapters: '暂无章节',
+    open_detail: '打开详情',
+    auto_run: '自动运行',
+    export_audio: '导出音频',
+    quality_report: '质量报告',
+    stage_progress: '阶段进度',
+    loading_stages: '加载阶段状态中…',
+    stage_failed: '阶段状态加载失败',
+    manage_hint: '点击卡片打开项目，或使用下方操作管理',
   },
 
   // ProjectDetail 页面 ProjectDetail Page

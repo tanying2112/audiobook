@@ -239,6 +239,24 @@ export default {
     unnamed_project: 'Untitled project',
     project_id: 'ID: {id}',
     delete_tooltip: 'Delete',
+    not_started: 'Not started',
+    export_audio: 'Export Audio',
+  },
+
+  // ProjectManagement page (7-stage pipeline overview + management actions)
+  project_mgmt: {
+    title: 'Project Management',
+    subtitle: 'Full 7-stage pipeline status & management',
+    chapters_count: '{count} chapters',
+    no_chapters: 'No chapters',
+    open_detail: 'Open Details',
+    auto_run: 'Auto Run',
+    export_audio: 'Export Audio',
+    quality_report: 'Quality Report',
+    stage_progress: 'Stage Progress',
+    loading_stages: 'Loading stage status…',
+    stage_failed: 'Failed to load stage status',
+    manage_hint: 'Click a card to open the project, or use the actions below',
   },
 
   // ProjectDetail 页面 ProjectDetail Page

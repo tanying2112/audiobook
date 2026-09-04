@@ -40,8 +40,8 @@ const navItems = computed(() => [
 function isActive(path: string): boolean {
   if (!path) return false
   if (path === '/') return route.path === '/'
-  // '/projects' 与 '/' 同页：首页时不高亮「项目管理」，避免双高亮
-  if (path === '/projects') return route.path.startsWith('/projects')
+  // '/projects'（项目管理）与 '/'（项目列表）是不同页面，精确匹配避免误高亮
+  if (path === '/projects') return route.path === '/projects'
   return route.path.startsWith(path)
 }
 
