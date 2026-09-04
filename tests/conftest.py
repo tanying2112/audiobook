@@ -79,7 +79,13 @@ import src.audiobook_studio  # noqa: F401
 
 
 class _AudiobookStudioAliasLoader:
-    """Loader that returns an already-imported canonical module unchanged."""
+    """Loader yielding the already-executed canonical ``src.`` module.
+
+    ``find_spec`` below pre-populates ``sys.modules[name]`` with the canonical
+    object, so the import machinery returns it directly and never calls
+    ``create_module``/``exec_module``. These stubs exist only as a safe fallback
+    for any path that does reach ``_load``.
+    """
 
     def __init__(self, module):
         self._module = module
@@ -102,9 +108,16 @@ class _AudiobookStudioAliasFinder:
             canonical = importlib.import_module(alt)
         except ImportError:
             return None
-        spec = importlib.util.find_spec(alt)
-        if spec is None:
-            return None
+        # Pre-populate sys.modules so `_find_and_load_unlocked` returns the
+        # canonical module WITHOUT invoking `_load`/`_init_module_attrs`. If we
+        # instead let `_load` run and hand it the canonical object from
+        # create_module, CPython overwrites the canonical module's `__spec__`
+        # with the alias spec, leaving `module.__name__` ("src.…") disagreeing
+        # with `module.__spec__.name` ("audiobook_studio.…"). That half-aliased
+        # object is what intermittently surfaces as
+        # ``cannot import name '__all__' from '<unknown module name>'`` under
+        # some collection orders. Pre-populating keeps the canonical pristine.
+        sys.modules[name] = canonical
         from importlib.machinery import ModuleSpec
 
         return ModuleSpec(name, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)

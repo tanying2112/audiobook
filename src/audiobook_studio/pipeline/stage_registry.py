@@ -939,7 +939,15 @@ class SynthesizeStage(StageHandler):
                 )
             ]
 
-        text = para.text if para else ""
+        # TTS 必须读 edit 阶段的产出：edited_text 非空 → 用编辑后文本；
+        # edited_text == "" → 编辑阶段有意清空（封面/扉页/插图说明等不可朗读
+        # 内容），传空串由 SynthesizePipeline 跳过该段；edited_text is NULL →
+        # 该段未经过编辑，回退原始文本。此前直接用 para.text 导致 OCR 噪声、
+        # 断词、插图 JSON 全部进了 TTS（2026-09-05 导出 SRT 实测）。
+        if para and para.edited_text is not None:
+            text = para.edited_text
+        else:
+            text = para.text if para else ""
 
         input_data = TtsRoutingInput(
             paragraph_annotation=paragraph_annotation,

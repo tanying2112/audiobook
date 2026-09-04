@@ -27,7 +27,16 @@ from unittest.mock import MagicMock
 # module object so the two namespaces are a single object.
 # ═══════════════════════════════════════════════════════════════════════════
 class _CanonicalAliasLoader(importlib.abc.Loader):
-    """Loader that yields the already-loaded canonical ``src.`` module object."""
+    """Loader that yields the already-loaded canonical ``src.`` module object.
+
+    ``_AliasFinder.find_spec`` pre-populates ``sys.modules[name]`` with the
+    canonical object before returning a spec, so the import machinery returns it
+    directly and ``_load``/``_init_module_attrs`` never runs on it. Doing
+    otherwise — handing the canonical module back from ``create_module`` — makes
+    CPython overwrite its ``__spec__`` with the alias spec (name/``__name__``
+    disagree), which intermittently surfaces as ``cannot import name '__all__'
+    from '<unknown module name>'``. The stubs below are only a safe fallback.
+    """
 
     def __init__(self, canonical: str):
         self.canonical = canonical
@@ -53,12 +62,17 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
                 name, existing.__loader__, origin=getattr(existing, "__file__", None)
             )
         try:
-            cspec = importlib.util.find_spec(canonical)
+            canonical_mod = importlib.import_module(canonical)
         except Exception:
             return None
-        if cspec is None or cspec.origin is None:
-            return None
-        return importlib.util.spec_from_loader(name, _CanonicalAliasLoader(canonical), origin=cspec.origin)
+        # Pre-populate sys.modules so the canonical object is returned without
+        # running `_load`/`_init_module_attrs` on it (see loader docstring).
+        sys.modules[name] = canonical_mod
+        return importlib.util.spec_from_loader(
+            name,
+            _CanonicalAliasLoader(canonical),
+            origin=getattr(canonical_mod, "__file__", None),
+        )
 
 
 sys.meta_path.insert(0, _AliasFinder())
@@ -744,13 +758,15 @@ def reset_singletons():
 def mock_voice_mapping(tmp_path):
     """Create a temporary voice_mapping.yaml for tests."""
     voice_mapping = tmp_path / "voice_mapping.yaml"
-    voice_mapping.write_text("""
+    voice_mapping.write_text(
+        """
 voice_mapping:
   test_voice:
     voice_id: "test_voice_id"
     description: "Test voice"
     language: "zh-CN"
-""")
+"""
+    )
     with patch("pathlib.Path.exists", return_value=True):
         with patch("pathlib.Path.read_text", return_value=voice_mapping.read_text()):
             yield voice_mapping
