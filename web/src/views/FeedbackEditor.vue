@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '../api'
 import { useI18n } from '../i18n'
 
 const { t } = useI18n()
 
-const API_BASE = '/api'
 
 interface FeedbackForm {
   source: string
@@ -101,7 +100,7 @@ const submitFeedback = async () => {
   message.value = ''
 
   try {
-    await axios.post(`${API_BASE}/feedback/`, form.value)
+    await api.post('/api/feedback/', form.value)
     message.value = t('feedback_editor.submit_success')
     messageType.value = 'success'
     ElMessage.success(message.value)

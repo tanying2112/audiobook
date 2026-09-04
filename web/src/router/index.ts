@@ -116,6 +116,26 @@ const router = createRouter({
       name: 'video-canvas',
       component: () => import('../views/VideoCanvasView.vue'),
     },
+    {
+      path: '/projects/:id/overview',
+      name: 'project-overview',
+      component: () => import('../views/ProjectOverviewView.vue'),
+    },
+    {
+      path: '/evolution/promotions',
+      name: 'promotions',
+      component: () => import('../views/PromotionsView.vue'),
+    },
+    {
+      path: '/evolution/golden',
+      name: 'golden-data',
+      component: () => import('../views/GoldenDataView.vue'),
+    },
+    {
+      path: '/evolution/sop',
+      name: 'sop-rules',
+      component: () => import('../views/SopRulesView.vue'),
+    },
   ],
 })
 
