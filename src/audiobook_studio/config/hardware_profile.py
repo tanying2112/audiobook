@@ -174,6 +174,7 @@ class QualityCheckProfileConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     dnsmos_enabled: bool = False
+    utmos_enabled: bool = False
     asr_enabled: bool = False
     asr_model: str = "sensevoice_small"
     speaker_similarity_enabled: bool = False

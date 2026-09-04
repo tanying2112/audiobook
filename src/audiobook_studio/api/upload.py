@@ -6,6 +6,7 @@ with async text extraction and WebSocket progress updates.
 Uses Redis for distributed upload sessions and extraction job tracking.
 """
 
+import asyncio
 import logging
 import os
 import uuid
@@ -400,7 +401,8 @@ async def list_project_extractions(redis_client: redis.Redis, project_id: int) -
     for job_id in job_ids:
         job_data = await get_extraction_job(redis_client, job_id)
         if job_data:
-            jobs.append(ExtractionJobStatus(**job_data))
+            # Drop "" placeholders (e.g. completed_at) that fail validation.
+            jobs.append(ExtractionJobStatus(**{k: v for k, v in job_data.items() if v != ""}))
     return sorted(jobs, key=lambda x: x.created_at, reverse=True)
 
 
@@ -472,6 +474,7 @@ async def init_upload(
 async def upload_chunk(
     project_id: int,
     upload_id: str,
+    background_tasks: BackgroundTasks,
     chunk_index: int = Form(...),
     total_chunks: int = Form(...),
     is_final: bool = Form(False),
@@ -543,6 +546,11 @@ async def upload_chunk(
         # Start extraction job
         job_id = await create_extraction_job(redis_client, project_id, upload_id, file_path, session["mime_type"])
 
+        # Same fix as upload_file: actually schedule extraction (was dead code).
+        background_tasks.add_task(
+            run_extraction, job_id, project_id, file_path, session["mime_type"]
+        )
+
         return UploadCompleteResponse(
             upload_id=upload_id,
             project_id=project_id,
@@ -610,6 +618,14 @@ async def upload_file(
         file.content_type or "application/octet-stream",
     )
 
+    # run_extraction was previously dead code — nothing scheduled it, so
+    # uploads left the job at status="pending" forever and no chapters were
+    # ever created (auto-run then "completed" in ~0.1s on an empty project).
+    background_tasks.add_task(
+        run_extraction, job_id, project_id, str(file_path),
+        file.content_type or "application/octet-stream",
+    )
+
     return UploadCompleteResponse(
         upload_id=upload_id,
         project_id=project_id,
@@ -647,7 +663,10 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         )
 
         # Extract text using pipeline
-        result = extract_text(file_path, mime_type)
+        # extract_text is sync and performs blocking vision-LLM HTTP calls per
+        # embedded image; run it in a worker thread so the event loop (and
+        # thus /health and every other request) stays responsive.
+        result = await asyncio.to_thread(extract_text, file_path, mime_type)
 
         await update_extraction_job(
             redis_client,
@@ -867,7 +886,10 @@ async def get_extraction_status(
             context={"expected_project_id": project_id, "actual_project_id": job["project_id"]},
         )
 
-    return ExtractionJobStatus(**job)
+    # Redis hash stores unset optional fields as "" which fails datetime
+    # validation (completed_at=""), turning every status poll into a 500.
+    cleaned = {k: v for k, v in job.items() if v != ""}
+    return ExtractionJobStatus(**cleaned)
 
 
 @router.get("/{project_id}/extractions", response_model=List[ExtractionJobStatus])

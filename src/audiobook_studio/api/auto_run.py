@@ -183,6 +183,26 @@ async def _create_paragraphs_from_chapters(db: AsyncSession, project_id: int):
         logger.info(f"Created {len(paragraphs)} paragraphs for chapter {chapter.index}")
 
 
+def _run_auto_pipeline_blocking(
+    project_id: int,
+    run_id: str,
+    config: AutoRunConfig,
+    pause_points: Optional[List[StagePausePoint]] = None,
+):
+    """Sync wrapper: run the auto pipeline on its own event loop in a worker
+    thread. Several stages perform blocking sync I/O (LLM HTTP clients, TTS);
+    run inside the main loop they freeze every other request (incl. /health).
+    """
+    asyncio.run(
+        _run_auto_pipeline(
+            project_id=project_id,
+            run_id=run_id,
+            config=config,
+            pause_points=pause_points,
+        )
+    )
+
+
 async def _run_auto_pipeline(
     project_id: int,
     run_id: str,
@@ -540,9 +560,9 @@ async def start_auto_run(
             context={"project_id": project_id},
         )
 
-    # Start background task
+    # Start background task (blocking wrapper: own thread + event loop)
     background_tasks.add_task(
-        _run_auto_pipeline,
+        _run_auto_pipeline_blocking,
         project_id=project_id,
         run_id=run_id,
         config=request.config,
@@ -738,9 +758,9 @@ async def start_autopilot(
     # Generate run ID
     run_id = _generate_run_id(project_id)
 
-    # Start background task
+    # Start background task (blocking wrapper: own thread + event loop)
     background_tasks.add_task(
-        _run_auto_pipeline,
+        _run_auto_pipeline_blocking,
         project_id=project_id,
         run_id=run_id,
         config=config,

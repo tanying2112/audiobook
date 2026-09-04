@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,22 @@ from ..tts.streaming import StreamingTTSConfig, create_streaming_tts_engine
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
+
+
+# 提取阶段 (pipeline/extract.py) 将图片理解结果以 "[插图: {…json…}]" 块并入段落
+# 文本，供分析/标注阶段参考。JSON 内容可能跨行，故用 DOTALL 非贪婪匹配到块尾 "]"。
+# 块可能被截断（无闭合 "]" 直到段尾），故结尾允许 "]" 或字符串结束。
+_IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
+
+
+def _strip_image_placeholders(text: str) -> str:
+    """Remove ``[插图: ...]`` image-understanding blocks from paragraph text
+    before TTS. Returns the remaining speakable text (whitespace-normalized);
+    an empty string means the paragraph is image-only."""
+    if not text:
+        return ""
+    cleaned = _IMAGE_PLACEHOLDER_RE.sub(" ", text)
+    return " ".join(cleaned.split())
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping
@@ -730,6 +747,19 @@ class SynthesizePipeline:
 
         for i, inp in enumerate(inputs):
             decision = self._make_routing_decision(inp)
+
+            # 提取阶段会把图片理解结果以 "[插图: {…json…}]" 块并入段落文本，
+            # 供分析/标注等文本阶段参考；这些块（含整段 JSON caption）不是可朗读
+            # 内容，进 TTS 前必须剥离 —— 否则 Kokoro 会把 JSON 读出来，且中英混杂
+            # 的长 JSON 会超过 510 音素上下文窗口直接崩掉整章合成（2026-09-04 E2E
+            # 实测: 14_ch5_p6）。剥离后为空 ⇒ 纯图片段落，无语音内容，跳过并记录。
+            inp.text = _strip_image_placeholders(inp.text)
+            if not inp.text:
+                logger.info(
+                    f"Segment {decision.segment_id}: no speakable text after stripping "
+                    "image placeholder blocks; skipping synthesis for this paragraph"
+                )
+                continue
 
             # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
             # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。

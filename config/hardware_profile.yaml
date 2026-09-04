@@ -194,10 +194,14 @@ profiles:
         - engine: "azure"
         - engine: "gcp"
     quality_check:
-      dnsmos_enabled: true
-      asr_enabled: true
+      # torch 2.2.2 下 DNSMOS/UTMOS/SpeechMOS/ASR/说话人模型在进程内推理会
+      # 原生崩溃（segfault）直接杀死整个 API 进程 —— 2026-09-04 E2E 实测。
+      # 全部关闭，诚实降级为规则检测（report 中 metrics_status=skipped）。
+      dnsmos_enabled: false
+      utmos_enabled: false
+      asr_enabled: false
       asr_model: "sensevoice_small"
-      speaker_similarity_enabled: true
+      speaker_similarity_enabled: false
       speaker_embed_model: "ecapa_tdnn"
       rules_enabled: true
       thresholds:
