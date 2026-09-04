@@ -9,9 +9,7 @@ Covers:
 """
 
 import asyncio
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,25 +31,20 @@ from src.audiobook_studio.agent.tools import (
     TOOL_HANDLERS,
     AnalyzeAndSplitArgs,
     AnalyzeAndSplitResult,
-    AudioSegment,
     ExecuteAudioSynthesisArgs,
     ExecuteAudioSynthesisResult,
     GenerateEmotionMarkupArgs,
     GenerateEmotionMarkupResult,
     LoadBookFileArgs,
     LoadBookFileResult,
-    ParagraphMarkup,
     analyze_and_split,
     execute_audio_synthesis,
     execute_tool,
     generate_emotion_markup,
     load_book_file,
 )
-from src.audiobook_studio.api.agent_chat import (
-    PipelineConfirmRequest,
-    PipelineStartRequest,
-    agent_sessions,
-)
+from src.audiobook_studio.api.agent_chat import PipelineConfirmRequest, PipelineStartRequest, agent_sessions
+from src.audiobook_studio.exceptions import DomainError
 from src.audiobook_studio.main import app
 
 
@@ -227,7 +220,7 @@ class TestPipelineFSM:
 
     def test_remove_fsm(self):
         """remove_fsm should delete instance."""
-        fsm = get_fsm(1, PipelineMode.AUTOPILOT, 1)
+        get_fsm(1, PipelineMode.AUTOPILOT, 1)
         remove_fsm(1)
         assert 1 not in _fsm_instances
 
@@ -524,7 +517,7 @@ class TestPipelineFSMEdgeCases:
             return {"result": "ok"}
 
         mock_runner.side_effect = stop_after_first
-        result = await fsm.run_until_pause_or_complete()
+        await fsm.run_until_pause_or_complete()
 
         # Should have stopped after first stage
         assert mock_runner.call_count == 1
@@ -552,6 +545,7 @@ class TestPipelineFSMEdgeCases:
             del agent_fsm_instances[999]
 
         from src.audiobook_studio.agent.fsm import get_fsm
+
         # Just verify get_fsm doesn't error for new project
         fsm = get_fsm(999, PipelineMode.AUTOPILOT, 1)
         assert fsm is not None
@@ -700,7 +694,9 @@ class TestPipelineTools:
     @patch("src.audiobook_studio.agent.tools.ParagraphMarkup")
     @patch("src.audiobook_studio.agent.tools.AnnotateParagraphPipeline")
     @patch("src.audiobook_studio.agent.tools.load_extracted_text")
-    async def test_generate_emotion_markup_success(self, mock_load_text, mock_annotate_pipeline, mock_paragraph_markup, mock_result_cls):
+    async def test_generate_emotion_markup_success(
+        self, mock_load_text, mock_annotate_pipeline, mock_paragraph_markup, mock_result_cls
+    ):
         """generate_emotion_markup should return markup for paragraphs."""
         mock_load_text.return_value = "Paragraph 1\n\nParagraph 2\n\nParagraph 3"
         mock_pipeline_instance = MagicMock()
@@ -744,6 +740,7 @@ class TestPipelineTools:
             m = MagicMock()
             m.configure_mock(**kwargs)
             return m
+
         mock_result_cls.side_effect = make_result
 
         args = GenerateEmotionMarkupArgs(project_id=1, chapter_index=1, style="detailed")
@@ -774,18 +771,28 @@ class TestPipelineTools:
     @patch("src.audiobook_studio.agent.tools.SynthesizePipeline")
     @patch("src.audiobook_studio.agent.tools.load_chapter_annotations")
     @patch("src.audiobook_studio.agent.tools.audio_dir")
-    async def test_execute_audio_synthesis_success(self, mock_audio_dir, mock_load_ann, mock_synth, mock_fake_port, mock_result_cls):
+    async def test_execute_audio_synthesis_success(
+        self, mock_audio_dir, mock_load_ann, mock_synth, mock_fake_port, mock_result_cls
+    ):
         """execute_audio_synthesis should return audio segments."""
         # Provide complete annotation data with all required ParagraphAnnotation fields
         mock_load_ann.return_value = [
             {
-                "text": "Hello", "speaker_canonical_name": "Narrator", "paragraph_index": 0,
-                "is_dialogue": False, "emotion": "neutral", "emotion_intensity": 0.5,
+                "text": "Hello",
+                "speaker_canonical_name": "Narrator",
+                "paragraph_index": 0,
+                "is_dialogue": False,
+                "emotion": "neutral",
+                "emotion_intensity": 0.5,
                 "confidence": 0.9,
             },
             {
-                "text": "World", "speaker_canonical_name": "Character", "paragraph_index": 1,
-                "is_dialogue": True, "emotion": "happy", "emotion_intensity": 0.8,
+                "text": "World",
+                "speaker_canonical_name": "Character",
+                "paragraph_index": 1,
+                "is_dialogue": True,
+                "emotion": "happy",
+                "emotion_intensity": 0.8,
                 "confidence": 0.95,
             },
         ]
@@ -795,9 +802,13 @@ class TestPipelineTools:
             m = MagicMock()
             m.configure_mock(**kwargs)
             return m
+
         mock_result_cls.side_effect = make_result
 
-        with patch("src.audiobook_studio.agent.tools.audio_dir", return_value=MagicMock(__str__=MagicMock(return_value="/audio"))):
+        with patch(
+            "src.audiobook_studio.agent.tools.audio_dir",
+            return_value=MagicMock(__str__=MagicMock(return_value="/audio")),
+        ):
             mock_fake_port_instance = AsyncMock()
             mock_fake_port.return_value = mock_fake_port_instance
             mock_fake_port_instance.close = AsyncMock()
@@ -841,6 +852,7 @@ class TestPipelineTools:
     async def test_execute_tool_load_book_file(self):
         """execute_tool should route to load_book_file."""
         import src.audiobook_studio.agent.tools as tools_mod
+
         mock_load = AsyncMock()
         mock_load.return_value = LoadBookFileResult(status="ok", project_id=1, total_chars=100)
         with patch.dict(tools_mod.TOOL_HANDLERS, {"load_book_file": mock_load}):
@@ -858,6 +870,7 @@ class TestPipelineTools:
     async def test_execute_tool_analyze_and_split(self):
         """execute_tool should route to analyze_and_split."""
         import src.audiobook_studio.agent.tools as tools_mod
+
         mock_analyze = AsyncMock()
         mock_analyze.return_value = AnalyzeAndSplitResult(status="ok", project_id=1, characters=1000, chapters=[])
         with patch.dict(tools_mod.TOOL_HANDLERS, {"analyze_and_split": mock_analyze}):
@@ -868,6 +881,7 @@ class TestPipelineTools:
     async def test_execute_tool_generate_emotion_markup(self):
         """execute_tool should route to generate_emotion_markup."""
         import src.audiobook_studio.agent.tools as tools_mod
+
         mock_gen = AsyncMock()
         mock_gen.return_value = GenerateEmotionMarkupResult(status="ok", project_id=1, chapter_index=1, paragraphs=[])
         with patch.dict(tools_mod.TOOL_HANDLERS, {"generate_emotion_markup": mock_gen}):
@@ -878,8 +892,11 @@ class TestPipelineTools:
     async def test_execute_tool_execute_audio_synthesis(self):
         """execute_tool should route to execute_audio_synthesis."""
         import src.audiobook_studio.agent.tools as tools_mod
+
         mock_exec = AsyncMock()
-        mock_exec.return_value = ExecuteAudioSynthesisResult(status="ok", project_id=1, chapter_index=1, audio_segments=[])
+        mock_exec.return_value = ExecuteAudioSynthesisResult(
+            status="ok", project_id=1, chapter_index=1, audio_segments=[]
+        )
         with patch.dict(tools_mod.TOOL_HANDLERS, {"execute_audio_synthesis": mock_exec}):
             result = await execute_tool("execute_audio_synthesis", {"project_id": 1, "chapter_index": 1})
             assert result.status == "ok"
@@ -891,7 +908,9 @@ class TestPipelineTools:
         assert _guess_mime_type("test.pdf") == "application/pdf"
         assert _guess_mime_type("test.epub") == "application/epub+zip"
         assert _guess_mime_type("test.txt") == "text/plain"
-        assert _guess_mime_type("test.docx") == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        assert (
+            _guess_mime_type("test.docx") == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
         assert _guess_mime_type("test.png") == "image/png"
         assert _guess_mime_type("test.jpg") == "image/jpeg"
         assert _guess_mime_type("test.unknown") == "application/octet-stream"
@@ -933,8 +952,8 @@ class TestPipelineFSMEndpoints:
     @pytest.mark.asyncio
     async def test_start_pipeline_autopilot(self, mock_project):
         """POST /agent/pipeline/start should start autopilot pipeline."""
-        from src.audiobook_studio.api.agent_chat import start_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode
+        from src.audiobook_studio.api.agent_chat import start_pipeline
 
         request = PipelineStartRequest(
             project_id=1,
@@ -946,13 +965,15 @@ class TestPipelineFSMEndpoints:
         # Mock the FSM run
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
-            mock_fsm.run_until_pause_or_complete = AsyncMock(return_value={
-                "status": "completed",
-                "current_state": "completed",
-                "chapter_index": 1,
-                "paused_at": None,
-                "results": {},
-            })
+            mock_fsm.run_until_pause_or_complete = AsyncMock(
+                return_value={
+                    "status": "completed",
+                    "current_state": "completed",
+                    "chapter_index": 1,
+                    "paused_at": None,
+                    "results": {},
+                }
+            )
             mock_fsm.mode = PipelineMode.AUTOPILOT
             mock_get_fsm.return_value = mock_fsm
 
@@ -967,8 +988,8 @@ class TestPipelineFSMEndpoints:
     @pytest.mark.asyncio
     async def test_start_pipeline_interactive_pauses(self, mock_project):
         """POST /agent/pipeline/start with interactive should pause at PENDING_HUMAN_CONFIRM."""
-        from src.audiobook_studio.api.agent_chat import start_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode
+        from src.audiobook_studio.api.agent_chat import start_pipeline
 
         request = PipelineStartRequest(
             project_id=1,
@@ -978,13 +999,15 @@ class TestPipelineFSMEndpoints:
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
-            mock_fsm.run_until_pause_or_complete = AsyncMock(return_value={
-                "status": "paused",
-                "current_state": "pending_human_confirm",
-                "chapter_index": 1,
-                "paused_at": "pending_human_confirm",
-                "results": {"extract": {}, "analyze": {}, "annotate": {}},
-            })
+            mock_fsm.run_until_pause_or_complete = AsyncMock(
+                return_value={
+                    "status": "paused",
+                    "current_state": "pending_human_confirm",
+                    "chapter_index": 1,
+                    "paused_at": "pending_human_confirm",
+                    "results": {"extract": {}, "analyze": {}, "annotate": {}},
+                }
+            )
             mock_fsm.mode = PipelineMode.INTERACTIVE
             mock_get_fsm.return_value = mock_fsm
 
@@ -1016,7 +1039,7 @@ class TestPipelineFSMEndpoints:
     async def test_start_pipeline_project_not_found(self):
         """POST /agent/pipeline/start should 404 for non-existent project."""
         from src.audiobook_studio.api.agent_chat import start_pipeline
-        from fastapi import HTTPException
+        from src.audiobook_studio.exceptions import DomainError
 
         request = PipelineStartRequest(project_id=999, mode="autopilot", chapter_index=1)
 
@@ -1025,26 +1048,28 @@ class TestPipelineFSMEndpoints:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await start_pipeline(request, mock_db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_confirm_pipeline_continue(self, mock_project):
         """POST /agent/pipeline/confirm should continue pipeline after confirmation."""
-        from src.audiobook_studio.api.agent_chat import confirm_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode
+        from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
         request = PipelineConfirmRequest(project_id=1, confirmed=True)
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
             mock_fsm.mode = PipelineMode.INTERACTIVE
-            mock_fsm.continue_after_confirmation = AsyncMock(return_value={
-                "status": "completed",
-                "current_state": "completed",
-                "results": {},
-            })
+            mock_fsm.continue_after_confirmation = AsyncMock(
+                return_value={
+                    "status": "completed",
+                    "current_state": "completed",
+                    "results": {},
+                }
+            )
             mock_get_fsm.return_value = mock_fsm
 
             with patch("src.audiobook_studio.api.agent_chat.remove_fsm") as mock_remove:
@@ -1058,8 +1083,8 @@ class TestPipelineFSMEndpoints:
     @pytest.mark.asyncio
     async def test_confirm_pipeline_reject(self, mock_project):
         """POST /agent/pipeline/confirm with confirmed=False should fail pipeline."""
-        from src.audiobook_studio.api.agent_chat import confirm_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode, PipelineState
+        from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
         request = PipelineConfirmRequest(project_id=1, confirmed=False)
 
@@ -1082,9 +1107,8 @@ class TestPipelineFSMEndpoints:
     @pytest.mark.asyncio
     async def test_confirm_pipeline_not_interactive(self, mock_project):
         """POST /agent/pipeline/confirm should fail for non-interactive mode."""
-        from src.audiobook_studio.api.agent_chat import confirm_pipeline
         from src.audiobook_studio.agent.fsm import PipelineMode
-        from fastapi import HTTPException
+        from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
         request = PipelineConfirmRequest(project_id=1, confirmed=True)
 
@@ -1093,16 +1117,15 @@ class TestPipelineFSMEndpoints:
             mock_fsm.mode = PipelineMode.AUTOPILOT
             mock_get_fsm.return_value = mock_fsm
 
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DomainError) as exc_info:
                 await confirm_pipeline(request, mock_project)
-            assert exc_info.value.status_code == 400
-            assert "interactive" in str(exc_info.value.detail).lower()
+            assert exc_info.value.error_code == "VALIDATION_ERROR"
+            assert "interactive" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_get_pipeline_status_exists(self, mock_project):
         """GET /agent/pipeline/status/{project_id} should return FSM status."""
         from src.audiobook_studio.api.agent_chat import get_pipeline_status
-        from src.audiobook_studio.agent.fsm import PipelineMode, PipelineState
 
         with patch("src.audiobook_studio.api.agent_chat._fsm_instances", {1: MagicMock()}) as mock_instances:
             mock_fsm = MagicMock()
@@ -1175,6 +1198,7 @@ class TestPipelineFSMEndpoints:
 
 # Standalone test app for HTTP client tests — avoids main app's middleware
 from fastapi import FastAPI
+
 from src.audiobook_studio.api.agent_chat import router as agent_chat_router
 
 _agent_test_app = FastAPI()
@@ -1195,12 +1219,16 @@ class TestPipelineFSMHTTPClient:
         _fsm_instances.clear()
         agent_sessions.clear()
         from src.audiobook_studio.api.dependencies import get_async_db as gdb
+        from src.audiobook_studio.auth.dependencies import get_current_active_user as gcu
+
         _agent_test_app.dependency_overrides.pop(gdb, None)
+        _agent_test_app.dependency_overrides.pop(gcu, None)
 
     @pytest.fixture
     def client(self):
-        """TestClient with mock async DB session."""
+        """TestClient with mock async DB session and authenticated user."""
         from src.audiobook_studio.api.dependencies import get_async_db
+        from src.audiobook_studio.auth.dependencies import get_current_active_user
 
         async def mock_db_session():
             mock_db = AsyncMock()
@@ -1213,11 +1241,15 @@ class TestPipelineFSMHTTPClient:
             yield mock_db
 
         _agent_test_app.dependency_overrides[get_async_db] = mock_db_session
+        # Endpoints depend on get_current_active_user; the standalone test app
+        # has no auth middleware, so supply a mock authenticated user directly.
+        _agent_test_app.dependency_overrides[get_current_active_user] = lambda: MagicMock(id=1, username="testuser")
 
         with TestClient(_agent_test_app) as c:
             yield c
 
         _agent_test_app.dependency_overrides.pop(get_async_db, None)
+        _agent_test_app.dependency_overrides.pop(get_current_active_user, None)
 
     def test_start_pipeline_autopilot_endpoint(self, client):
         """Test POST /api/agent/pipeline/start via HTTP client."""
@@ -1225,13 +1257,15 @@ class TestPipelineFSMHTTPClient:
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
-            mock_fsm.run_until_pause_or_complete = AsyncMock(return_value={
-                "status": "completed",
-                "current_state": "completed",
-                "chapter_index": 1,
-                "paused_at": None,
-                "results": {},
-            })
+            mock_fsm.run_until_pause_or_complete = AsyncMock(
+                return_value={
+                    "status": "completed",
+                    "current_state": "completed",
+                    "chapter_index": 1,
+                    "paused_at": None,
+                    "results": {},
+                }
+            )
             mock_fsm.mode = PipelineMode.AUTOPILOT
             mock_get_fsm.return_value = mock_fsm
 
@@ -1252,13 +1286,15 @@ class TestPipelineFSMHTTPClient:
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
-            mock_fsm.run_until_pause_or_complete = AsyncMock(return_value={
-                "status": "paused",
-                "current_state": "pending_human_confirm",
-                "chapter_index": 1,
-                "paused_at": "pending_human_confirm",
-                "results": {"extract": {}, "analyze": {}, "annotate": {}},
-            })
+            mock_fsm.run_until_pause_or_complete = AsyncMock(
+                return_value={
+                    "status": "paused",
+                    "current_state": "pending_human_confirm",
+                    "chapter_index": 1,
+                    "paused_at": "pending_human_confirm",
+                    "results": {"extract": {}, "analyze": {}, "annotate": {}},
+                }
+            )
             mock_fsm.mode = PipelineMode.INTERACTIVE
             mock_get_fsm.return_value = mock_fsm
 
@@ -1280,11 +1316,13 @@ class TestPipelineFSMHTTPClient:
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
             mock_fsm.mode = PipelineMode.INTERACTIVE
-            mock_fsm.continue_after_confirmation = AsyncMock(return_value={
-                "status": "completed",
-                "current_state": "completed",
-                "results": {},
-            })
+            mock_fsm.continue_after_confirmation = AsyncMock(
+                return_value={
+                    "status": "completed",
+                    "current_state": "completed",
+                    "results": {},
+                }
+            )
             mock_get_fsm.return_value = mock_fsm
 
             with patch("src.audiobook_studio.api.agent_chat.remove_fsm"):

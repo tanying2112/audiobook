@@ -5,12 +5,8 @@ _load_existing_segment_from_disk, and _persist_segment_metadata."""
 from __future__ import annotations
 
 import asyncio
-
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline, _normalize_voice_id
 
@@ -196,7 +192,7 @@ class TestSimpleConcat:
         ]
         out = tmp_path / "concat.mp3"
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            duration = pipeline._simple_concat(segs, out)
+            duration = asyncio.run(pipeline._simple_concat(segs, out))
         # Fallback returns sum of segment durations
         assert duration == 500 + 700
 

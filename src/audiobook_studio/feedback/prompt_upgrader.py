@@ -227,7 +227,6 @@ def batch_upgrade(
     Returns:
         stage → new_path mapping
     """
-    from .processor import AggregateAnalysis
 
     results: Dict[str, Path] = {}
 

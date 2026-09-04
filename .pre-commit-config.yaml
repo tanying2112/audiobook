@@ -39,6 +39,16 @@ repos:
         additional_dependencies: ["pydantic>=2.7,<3.0", "pydantic-settings>=2.0", "sqlalchemy>=2.0"]
   - repo: local
     hooks:
+      - id: ban-get-event-loop
+        name: Ban asyncio.get_event_loop() (deprecated in 3.12, order-dependent; use asyncio.run / get_running_loop)
+        entry: >-
+          bash -c 'grep -rnE "asyncio\.get_event_loop\(\)" src/ --include="*.py"
+          && echo "BANNED asyncio.get_event_loop() found in src/ (use asyncio.run / get_running_loop)"
+          && exit 1 || exit 0' --
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-push]
       - id: coverage-check
         name: Coverage Check - Enforce minimum 80% coverage (unit tests only)
         entry: .venv/bin/python scripts/pre-commit-coverage.py

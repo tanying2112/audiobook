@@ -4,15 +4,12 @@ import os
 
 os.environ["MOCK_LLM"] = "true"
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.audiobook_studio.feedback.llm_analyzer import LLMFeedbackAnalyzer
 from src.audiobook_studio.feedback.processor import (
-    PATTERN_TAXONOMY,
-    AggregateAnalysis,
-    DiffAnalysisResult,
     _compute_text_similarity,
     _extract_key_differences,
     _generate_recommendations,
@@ -21,6 +18,39 @@ from src.audiobook_studio.feedback.processor import (
     analyze_single_feedback,
     get_trend_report,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fake_llm_analyzer(monkeypatch):
+    """Make feedback analysis deterministic / order-independent.
+
+    analyze_single_feedback prefers the cached LLMFeedbackAnalyzer singleton,
+    which binds its router at construction and depends on the (polluted)
+    MOCK_LLM env when first created. We inject a fake analyzer whose ``analyze``
+    delegates to the deterministic keyword-based ``analyze_mock`` path, so it
+    returns real ``pattern_tags`` AND reports ``analysis_source == "llm"`` —
+    keeping both the tag-asserting and the source-asserting tests green
+    regardless of collection order.
+    """
+
+    def _make():
+        real = LLMFeedbackAnalyzer()
+
+        def _analyze(stage, llm_output, corrected_output, rationale, key_differences=None):
+            return real.analyze_mock(
+                stage=stage,
+                llm_output=llm_output,
+                corrected_output=corrected_output,
+                rationale=rationale,
+                key_differences=key_differences,
+            )
+
+        real.analyze = _analyze
+        return real
+
+    import src.audiobook_studio.feedback.processor as _proc
+
+    monkeypatch.setattr(_proc, "_get_llm_analyzer", _make)
 
 
 class TestComputeTextSimilarity:
@@ -255,7 +285,13 @@ class TestAnalyzeBatch:
             return_value=[mock_record1, mock_record2],
         ):
             with patch("src.audiobook_studio.feedback.collector.mark_feedback_processed") as mock_mark:
-                result = analyze_batch(mock_db, limit=10)
+                # Force keyword-inference fallback so the result does not depend on
+                # the LLM analyzer's mock wiring (order-dependent singleton cache).
+                with patch(
+                    "src.audiobook_studio.feedback.processor._get_llm_analyzer",
+                    return_value=None,
+                ):
+                    result = analyze_batch(mock_db, limit=10)
 
                 assert result.total_analyzed == 2
                 assert "edit_for_tts" in result.stage_distribution

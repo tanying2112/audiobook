@@ -47,9 +47,13 @@ else
     fi
 fi
 
-# Run database migrations if needed
-if [[ -f "alembic.ini" ]]; then
-    echo "Running database migrations..."
+# Database migrations are managed EXTERNALLY (S3-4). The `migrate` service in
+# docker-compose runs `scripts/migrate.sh up` (after db is healthy) and operators
+# run `scripts/migrate.sh up` manually for zero-downtime, rollbackable deploys.
+# The app itself never runs migrations at startup. Opt in for a single-container
+# dev run with AUTO_MIGRATE=1.
+if [[ "${AUTO_MIGRATE:-0}" == "1" && -f "alembic.ini" ]]; then
+    echo "Running database migrations (AUTO_MIGRATE=1)..."
     alembic upgrade head
 fi
 

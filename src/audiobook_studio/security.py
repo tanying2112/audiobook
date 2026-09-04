@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import IO, Any, Optional, Sequence, Union
+from typing import IO, Any, Optional, Union
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
@@ -195,7 +195,7 @@ def safe_open(
     # Convert fd to file object
     try:
         return os.fdopen(fd, mode, buffering, encoding, errors, newline, closefd)
-    except Exception:
+    except (OSError, ValueError):
         # If fdopen fails, close the fd
         try:
             os.close(fd)

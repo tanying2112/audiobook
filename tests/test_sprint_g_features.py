@@ -8,7 +8,6 @@ import os
 
 os.environ["MOCK_LLM"] = "true"
 
-import sys
 
 import pytest
 

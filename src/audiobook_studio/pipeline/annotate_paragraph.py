@@ -13,8 +13,8 @@ from typing import Optional, Union, cast
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
-from ..schemas import BookAnalysisOutput, ParagraphAnnotation, ParagraphAnnotationInput
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..schemas import ParagraphAnnotation, ParagraphAnnotationInput
 from ..schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .sop_reflection import get_genre_detector, get_rule_applier
 
@@ -90,14 +90,17 @@ class AnnotateParagraphPipeline:
         # Emit stage enter
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_enter(
-                stage="annotate",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                paragraph_index=getattr(input_data, 'paragraph_index', 1),
-                total_items=1,
-            ))
+            loop.create_task(
+                emit_stage_enter(
+                    stage="annotate",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    paragraph_index=getattr(input_data, "paragraph_index", 1),
+                    total_items=1,
+                )
+            )
         except RuntimeError:
             pass
 
@@ -108,7 +111,7 @@ class AnnotateParagraphPipeline:
             rule_applier = get_rule_applier()
             input_data = rule_applier.apply_to_annotation_input(input_data, genre)
             logger.debug(f"[SOP] Applied learned rules for genre '{genre}' to paragraph {input_data.paragraph_index}")
-        except Exception as e:
+        except (ValueError, RuntimeError, OSError, ImportError, AttributeError) as e:  # noqa: B014
             logger.warning(f"[SOP] Failed to apply learned rules: {e}")
 
         # MOCK: 待真实实现
@@ -135,16 +138,19 @@ class AnnotateParagraphPipeline:
         # Emit stage progress
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_progress(
-                stage="annotate",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                paragraph_index=getattr(input_data, 'paragraph_index', 1),
-                current=1,
-                total=1,
-                message="Annotating paragraph...",
-            ))
+            loop.create_task(
+                emit_stage_progress(
+                    stage="annotate",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    paragraph_index=getattr(input_data, "paragraph_index", 1),
+                    current=1,
+                    total=1,
+                    message="Annotating paragraph...",
+                )
+            )
         except RuntimeError:
             pass
 
@@ -196,31 +202,37 @@ class AnnotateParagraphPipeline:
             # Emit stage exit (success)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="annotate",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data, 'chapter_index', 1),
-                    paragraph_index=getattr(input_data, 'paragraph_index', 1),
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="annotate",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        paragraph_index=getattr(input_data, "paragraph_index", 1),
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
             return cast(ParagraphAnnotation, result.output)
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
             # Emit stage exit (error)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="annotate",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data, 'chapter_index', 1),
-                    paragraph_index=getattr(input_data, 'paragraph_index', 1),
-                    success=False,
-                    error_message=str(e),
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="annotate",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        paragraph_index=getattr(input_data, "paragraph_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
             except RuntimeError:
                 pass
             # Record failed performance
@@ -274,7 +286,6 @@ def annotate_paragraph(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("AnnotateParagraphPipeline ready")

@@ -7,22 +7,28 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 # VoxCPM2 依赖外部可选后端包 `voxcpm`(位于 voxcpm2-pool/, 默认不安装)。
 # 该后端不可用时整体跳过, 避免 ModuleNotFoundError/ImportError 污染套件。
 # 注意: 部分环境里 voxcpm 半安装(如缺 einops, 或 huggingface_hub 与全局 httpx mock 冲突)
 # 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
+pytestmark = pytest.mark.skip_env_missing
 try:
+    # voxcpm pulls the real (environment-broken) torch into sys.modules; restore
+    # the conftest canonical torch mock so it does not leak into later tests.
+    from tests.conftest_minimal import _force_torch_mock
+
     import voxcpm  # noqa: F401
+
+    _force_torch_mock()
+    from src.audiobook_studio.tts.engine import TTSProsody, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
     from src.audiobook_studio.tts.voxcpm2_backend import (
         QUANTIZATION_MODES,
         VOXCPM2_VOICES,
         VoxCPM2Backend,
         create_voxcpm2_backend,
     )
-    from src.audiobook_studio.tts.engine import TTSProsody, TTSVoiceAnchor, TTSTaskPayload, TTSTaskResult
 except Exception:  # noqa: BLE001 - 可选后端缺失/半安装时统一跳过
     pytest.skip("voxcpm optional backend not available", allow_module_level=True)
 
@@ -49,6 +55,7 @@ class TestVoxCPM2BackendInit:
         backend = VoxCPM2Backend()
         backend.mock_mode = True
         import asyncio
+
         asyncio.run(backend.initialize())
         assert backend.is_available is True
 
@@ -185,7 +192,7 @@ class TestVoxCPM2Voices:
 
     def test_quantization_modes_have_required_keys(self):
         """Test QUANTIZATION_MODES dict has required keys."""
-        for mode, info in QUANTIZATION_MODES.items():
+        for _mode, info in QUANTIZATION_MODES.items():
             assert "dtype" in info
             assert "vram_gb" in info
             assert "min_vram_gb" in info

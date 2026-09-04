@@ -9,10 +9,10 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ..llm.circuit_breaker import CircuitBreaker
-from ..llm.health_probe import HealthProbe, HealthStatus
+from ..llm.health_probe import HealthProbe
 from ..llm.key_pool import KeyPoolManager
 from ..llm.router import LLMRouter
 from .compliance import ComplianceMonitor, get_compliance_monitor
@@ -250,6 +250,72 @@ def export_contract_version(
     return contract_data
 
 
+def _collect_db_pool_metrics() -> Dict[str, Any]:
+    """Collect SQLAlchemy connection-pool statistics (no file I/O).
+
+    Returns a dict keyed by pool name (``sync`` / ``async`` / ``primary`` /
+    ``replica_N``) with ``size`` / ``checked_in`` / ``checked_out`` /
+    ``overflow`` / ``connections``. Only real ``QueuePool`` instances are
+    sampled; other pool types (e.g. SQLite ``StaticPool``) are skipped.
+    """
+    pool_metrics: Dict[str, Any] = {}
+    try:
+        from sqlalchemy.pool import QueuePool
+
+        from ..database import engine, get_async_engine, get_routed_engine
+
+        def _sample(name: str, pool: Any) -> None:
+            if pool is None or not isinstance(pool, QueuePool):
+                return
+            try:
+                size = int(pool.size())
+                checkedin = int(pool.checkedin())
+                checkedout = int(pool.checkedout())
+                overflow = int(pool.overflow())
+            except Exception as e:  # pragma: no cover
+                logger.warning(f"Failed to sample DB pool '{name}': {e}")
+                return
+            pool_metrics[name] = {
+                "size": size,
+                "checked_in": checkedin,
+                "checked_out": checkedout,
+                "overflow": overflow,
+                "connections": checkedin + checkedout,
+            }
+
+        _sample("sync", getattr(engine, "pool", None))
+        try:
+            _sample("async", getattr(get_async_engine(), "pool", None))
+        except Exception:  # pragma: no cover
+            pass
+        try:
+            routed = get_routed_engine()
+            primary = getattr(routed, "_primary_engine", None)
+            if primary is not None:
+                _sample("primary", getattr(primary, "pool", None))
+            for i, replica in enumerate(getattr(routed, "_replica_engines", []) or []):
+                _sample(f"replica_{i}", getattr(replica, "pool", None))
+        except Exception:  # pragma: no cover
+            pass
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"DB pool metrics collection skipped: {e}")
+    return pool_metrics
+
+
+def export_db_pool_metrics(output_path: Optional[str] = None) -> Dict[str, Any]:
+    """Export SQLAlchemy connection-pool statistics to the daily metrics file.
+
+    Mirrors the Prometheus ``audiobook_db_pool_*`` gauges in JSON form for CI.
+    """
+    file_path = Path(output_path) if output_path else _get_metrics_file_path()
+    metrics = _read_existing_metrics(file_path)
+    pool_metrics = _collect_db_pool_metrics()
+    metrics["db_pool"] = pool_metrics
+    _write_metrics(file_path, metrics)
+    logger.info(f"DB pool metrics exported: {pool_metrics}")
+    return pool_metrics
+
+
 def export_all_metrics(
     router: Optional[LLMRouter] = None,
     monitor: Optional[ComplianceMonitor] = None,
@@ -293,6 +359,9 @@ def export_all_metrics(
     contract_result = export_contract_version(monitor, output_path)
     metrics["contract_version"] = contract_result
 
+    # Export database connection-pool metrics
+    metrics["db_pool"] = _collect_db_pool_metrics()
+
     # Write final consolidated metrics
     _write_metrics(file_path, metrics)
 
@@ -332,7 +401,7 @@ if __name__ == "__main__":
 
     # Add some mock compliance data
     for stage in ["extract", "analyze", "annotate", "edit", "synthesize", "quality"]:
-        for i in range(10):
+        for _ in range(10):
             monitor.record(
                 stage=stage,
                 schema_compliance=True,

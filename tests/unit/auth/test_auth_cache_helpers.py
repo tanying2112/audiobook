@@ -8,8 +8,9 @@ helpers with an in-memory async fake Redis (no new dependency — CLAUDE.md
 rule 8), asserting the real set/get/invalidate lifecycle and the
 cached-user→scope/auth-error branches.
 """
+
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -152,9 +153,7 @@ class TestGetCurrentUserCachedBranch:
             "is_superuser": False,
             "roles": [],
         }
-        await fake_redis.setex(
-            f"{dep.USER_CACHE_PREFIX}7", dep.USER_CACHE_TTL, json.dumps(user_data)
-        )
+        await fake_redis.setex(f"{dep.USER_CACHE_PREFIX}7", dep.USER_CACHE_TTL, json.dumps(user_data))
 
         # Issue a real access token for sub=7.
         from src.audiobook_studio.auth.jwt_handler import jwt_handler
@@ -185,9 +184,7 @@ class TestGetCurrentUserCachedBranch:
             "is_superuser": False,
             "roles": [],
         }
-        await fake_redis.setex(
-            f"{dep.USER_CACHE_PREFIX}8", dep.USER_CACHE_TTL, json.dumps(user_data)
-        )
+        await fake_redis.setex(f"{dep.USER_CACHE_PREFIX}8", dep.USER_CACHE_TTL, json.dumps(user_data))
 
         from src.audiobook_studio.auth.jwt_handler import jwt_handler
 
@@ -213,16 +210,14 @@ class TestGetCurrentUserCachedBranch:
             "is_superuser": False,
             "roles": [],
         }
-        await fake_redis.setex(
-            f"{dep.USER_CACHE_PREFIX}9", dep.USER_CACHE_TTL, json.dumps(user_data)
-        )
+        await fake_redis.setex(f"{dep.USER_CACHE_PREFIX}9", dep.USER_CACHE_TTL, json.dumps(user_data))
 
         from src.audiobook_studio.auth.jwt_handler import jwt_handler
 
         # permissions lack "admin"; roles lack "admin".
-        token = jwt_handler.create_token_pair(
-            user_id=9, username="e", roles=[], permissions=["project:read"]
-        )["access_token"]
+        token = jwt_handler.create_token_pair(user_id=9, username="e", roles=[], permissions=["project:read"])[
+            "access_token"
+        ]
         scopes = SecurityScopes(scopes=["admin"])
         with pytest.raises(HTTPException) as exc:
             await dep.get_current_user(security_scopes=scopes, token=token, db=MagicMock())

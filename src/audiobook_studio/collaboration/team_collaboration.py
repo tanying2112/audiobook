@@ -10,12 +10,11 @@ Audiobook Studio — 团队协作系统
 # 的源 bug。仅改注解求值时序, 不改任何业务逻辑。
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, TypedDict
@@ -213,7 +212,7 @@ class CollaborationManager:
                         if "updated_at" in member_data:
                             member_data["updated_at"] = datetime.fromisoformat(member_data["updated_at"])
                         self.team_members[member_id] = TeamMember(**member_data)
-            except Exception as e:
+            except (OSError, IOError, json.JSONDecodeError, ValueError) as e:  # noqa: B014
                 logger.warning(f"⚠️ 加载团队成员数据失败: {e}")
 
         # 可以继续加载其他数据类型...
@@ -240,7 +239,7 @@ class CollaborationManager:
             with open(members_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             logger.info(f"💾 保存了 {len(self.team_members)} 个团队成员数据")
-        except Exception as e:
+        except (OSError, IOError, json.JSONDecodeError, ValueError) as e:  # noqa: B014
             logger.warning(f"⚠️ 保存团队成员数据失败: {e}")
 
         # 可以继续保存其他数据类型...
@@ -514,9 +513,7 @@ class CollaborationManager:
         approval_status_counts = {}
         for approval_status in ApprovalStatus:
             approval_status_counts[approval_status.value] = sum(
-                1
-                for req in self.approval_requests.values()
-                if req.status == approval_status
+                1 for req in self.approval_requests.values() if req.status == approval_status
             )
 
         return {
@@ -762,7 +759,7 @@ def main():
     if success:
         approver_name = collab_manager.team_members[approver_id].name
         logger.info(f"   ✅ {approver_name} 批准了审批请求")
-        logger.info(f"      批注: '翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。'")
+        logger.info("      批注: '翻译质量很好，可以进入配音阶段。建议在配音时注意语速和停顿。'")
     else:
         logger.error("   ❌ 处理审批响应失败")
 

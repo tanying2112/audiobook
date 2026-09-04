@@ -18,7 +18,7 @@ import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..utils.secure_subprocess import get_nvidia_smi, run_command
+from ..utils.secure_subprocess import run_command
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class HardwareSpecs:
                 if "CUDA Version" in line:
                     info["cuda_version"] = line.split("CUDA Version:")[1].split()[0]
                     break
-        except Exception:
+        except subprocess.SubprocessError:
             pass
         return info
 
@@ -278,12 +278,42 @@ class HardwareProfile:
         profile_data = profiles_data[self._active_profile_name]
         self._config = self._parse_profile(self._active_profile_name, profile_data)
 
-        # Auto-detect if enabled and not explicitly set
+        # Explicit env override (HARDWARE_PROFILE) wins over both the YAML
+        # ``active_profile`` and auto-detection. This lets deployment manifests
+        # (e.g. docker-compose.gpu.yml sets HARDWARE_PROFILE=pro_studio) select
+        # the runtime tier deterministically.
+        env_profile = os.getenv("HARDWARE_PROFILE")
+        if env_profile:
+            if env_profile in profiles_data:
+                if env_profile != self._active_profile_name:
+                    logger.info(
+                        f"[HardwareProfile] Env HARDWARE_PROFILE selected: {env_profile} "
+                        f"(config: {self._active_profile_name})"
+                    )
+                self._active_profile_name = env_profile
+                profile_data = profiles_data[env_profile]
+                self._config = self._parse_profile(env_profile, profile_data)
+            else:
+                logger.warning(
+                    f"[HardwareProfile] HARDWARE_PROFILE='{env_profile}' not found in config; "
+                    f"falling back to config auto-detect. Available: {list(profiles_data.keys())}"
+                )
+                env_profile = None
+
+        # Auto-detect only when no explicit env profile was supplied.
         auto_detect = data.get("auto_detect", {})
-        if auto_detect.get("enabled", True) and not os.getenv("HARDWARE_PROFILE"):
+        if auto_detect.get("enabled", True) and not env_profile:
             recommended = self._auto_recommend_profile()
             if recommended != self._active_profile_name:
-                logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
+                # 仅当显式离线兜底（AUDIOBOOK_OFFLINE=1 → recommended=="offline"）时
+                # 真正切换 active 档，避免改变既有默认推荐行为（potato/cloud_hybrid/pro_studio）。
+                if recommended == "offline" and "offline" in profiles_data:
+                    logger.info(f"[HardwareProfile] 离线兜底生效，切换至 offline (config: {self._active_profile_name})")
+                    self._active_profile_name = recommended
+                    profile_data = profiles_data[recommended]
+                    self._config = self._parse_profile(recommended, profile_data)
+                else:
+                    logger.info(f"[HardwareProfile] Auto-detected: {recommended} (config: {self._active_profile_name})")
 
     def _parse_profile(self, name: str, data: Dict[str, Any]) -> HardwareProfileConfig:
         """Parse profile data into typed config objects."""
@@ -302,6 +332,10 @@ class HardwareProfile:
 
     def _auto_recommend_profile(self) -> str:
         """Recommend profile based on detected hardware."""
+        # 完全离线兜底档：显式开启（无网/配额耗尽/隐私）时优先选 offline，
+        # 否则维持既有的三层推荐，避免改变默认行为影响现有链路。
+        if os.environ.get("AUDIOBOOK_OFFLINE", "0") == "1":
+            return "offline"
         specs = self._hardware_specs
 
         if not specs.gpu_enabled or specs.vram_gb < 8 or specs.ram_gb < 16:
@@ -310,6 +344,11 @@ class HardwareProfile:
             return "pro_studio"
         else:
             return "cloud_hybrid"
+
+    @property
+    def is_offline(self) -> bool:
+        """当前是否处于完全离线兜底档（offline）。"""
+        return self._active_profile_name == "offline"
 
     @property
     def active_profile(self) -> str:
@@ -375,8 +414,34 @@ class HardwareProfile:
         return self._hardware_specs.ram_gb
 
     def reload(self):
-        """Reload configuration from disk."""
-        self._load()
+        """Reload configuration from disk (hot-switch without process restart).
+
+        Thread-safe. Re-reads ``hardware_profile.yaml`` and re-parses the active
+        profile in place, so every caller that resolves
+        :func:`get_hardware_profile` immediately observes the new settings.
+        """
+        with self._lock:
+            self._load()
+        logger.info(f"[HardwareProfile] Reloaded profile '{self._active_profile_name}'")
+
+    def set_active_profile(self, name: str) -> None:
+        """Hot-switch the active hardware profile at runtime.
+
+        Switches the active profile name and re-parses its configuration in place
+        without restarting the process. Raises ``ValueError`` if ``name`` is not a
+        defined profile in ``hardware_profile.yaml``.
+        """
+        if not isinstance(name, str):
+            raise ValueError(f"Profile name must be a string, got {type(name).__name__}")
+        with self._lock:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            profiles_data = data.get("profiles", {})
+            if name not in profiles_data:
+                raise ValueError(f"Profile '{name}' not found in config. " f"Available: {list(profiles_data.keys())}")
+            self._active_profile_name = name
+            self._config = self._parse_profile(name, profiles_data[name])
+        logger.info(f"[HardwareProfile] Switched active profile to '{name}'")
 
 
 # Global singleton managed by DI container
@@ -391,6 +456,23 @@ def get_hardware_profile(config_path: Optional[str] = None) -> HardwareProfile:
         if _hardware_profile_instance is None:
             _hardware_profile_instance = HardwareProfile(config_path)
         return _hardware_profile_instance
+
+
+def reload_hardware_profile() -> "HardwareProfile":
+    """Hot-reload the global :class:`HardwareProfile` singleton at runtime.
+
+    Safe to call from an admin endpoint. Reloads the singleton in place (or
+    creates it on first use) so callers immediately see the refreshed
+    configuration. Returns the refreshed singleton.
+    """
+    global _hardware_profile_instance
+    with _lock:
+        if _hardware_profile_instance is None:
+            _hardware_profile_instance = HardwareProfile()
+        else:
+            _hardware_profile_instance.reload()
+    logger.info(f"[HardwareProfile] Global reload complete (active='{_hardware_profile_instance.active_profile}')")
+    return _hardware_profile_instance
 
 
 def reset_hardware_profile():

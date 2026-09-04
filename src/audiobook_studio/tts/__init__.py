@@ -14,16 +14,14 @@ from .clone import (
 from .edge_tts_engine import EdgeTTSEngine, create_edge_tts_engine
 from .edge_tts_port import EdgeTTSPort, create_edge_tts_port
 from .engine import (
+    TTS_HEALTH_ENGINES,
     EngineRegistry,
     SynthesisResult,
     TTSEngine,
     VoiceInfo,
     cleanup_all_engines,
-    get_engine,
-    get_engine_registry,
     initialize_all_engines,
-    register_engine,
-    set_engine_registry,
+    probe_tts_engines,
 )
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
@@ -36,15 +34,16 @@ from .model_downloader import (
     get_model_paths,
     verify_models,
 )
-from .port import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, TTSVoiceAnchor
-from .port_factory import (
-    create_configured_registry,
-    create_engine,
-    engine_context,
-    get_default_engine,
-    get_engine_registry,
-    get_port,
+from .piper_backend import PiperBackend, create_piper_backend
+from .piper_models import (
+    DEFAULT_PIPER_VOICE,
+    PIPER_DEFAULT_MODEL_DIR,
+    detect_piper_availability,
+    ensure_piper_models,
+    list_piper_voices,
 )
+from .port import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, TTSVoiceAnchor
+from .port_factory import create_configured_registry, create_engine, engine_context, get_default_engine, get_port
 from .rate_limiter import (
     DEFAULT_TTS_RATE_LIMITS,
     ProviderRateLimiter,
@@ -63,12 +62,7 @@ from .remote_voxcpm2_port import (
     RemoteVoxCPM2PortConfig,
     create_remote_voxcpm2_port,
 )
-from .streaming import (
-    StreamingTTSEngine,
-    StreamingTTSConfig,
-    StreamingTTSResult,
-    create_streaming_tts_engine,
-)
+from .streaming import StreamingTTSConfig, StreamingTTSEngine, StreamingTTSResult, create_streaming_tts_engine
 from .voxcpm2_backend import VoxCPM2Backend, create_voxcpm2_backend
 from .zero_shot_clone import (
     BaseZeroShotCloneEngine,
@@ -87,12 +81,10 @@ __all__ = [
     "VoiceInfo",
     "SynthesisResult",
     "EngineRegistry",
-    "get_engine_registry",
-    "set_engine_registry",
-    "get_engine",
-    "register_engine",
     "initialize_all_engines",
     "cleanup_all_engines",
+    "probe_tts_engines",
+    "TTS_HEALTH_ENGINES",
     # Voice cloning (legacy)
     "VoiceCloner",
     "VoiceCloningManager",
@@ -113,6 +105,13 @@ __all__ = [
     # Backends
     "KokoroBackend",
     "create_kokoro_backend",
+    "PiperBackend",
+    "create_piper_backend",
+    "DEFAULT_PIPER_VOICE",
+    "PIPER_DEFAULT_MODEL_DIR",
+    "detect_piper_availability",
+    "ensure_piper_models",
+    "list_piper_voices",
     "VoxCPM2Backend",
     "create_voxcpm2_backend",
     # Streaming TTS (P2-3)
@@ -143,12 +142,6 @@ __all__ = [
     "KokoroPort",
     "create_kokoro_port",
     # New Engine Registry
-    "get_engine_registry",
-    "set_engine_registry",
-    "get_engine",
-    "register_engine",
-    "initialize_all_engines",
-    "cleanup_all_engines",
     "create_engine",
     "create_configured_registry",
     "engine_context",

@@ -9,18 +9,15 @@ Covers:
 - File validation helpers
 """
 
-import json
-import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 # Import all models FIRST to register tables with Base
 import src.audiobook_studio.models  # noqa: F401
@@ -31,6 +28,11 @@ from src.audiobook_studio.database import Base
 
 # Create test app
 test_app = FastAPI()
+
+# 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
+from src.audiobook_studio.exceptions import DomainError, register_error_handlers
+
+register_error_handlers(test_app)
 test_app.include_router(upload_router)
 
 # Override auth dependencies
@@ -69,9 +71,7 @@ def _test_db_path():
     """Create a temp SQLite file with all tables pre-created."""
     import os
 
-    from src.audiobook_studio.database import Base
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)  # noqa: E303
     tmp.close()
     db_path = tmp.name
 
@@ -89,7 +89,7 @@ def _async_run(coro):
     import concurrent.futures
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
 
@@ -164,7 +164,7 @@ def mock_redis():
     mock_redis_client = AsyncMock()
 
     # Mock the Redis connection functions
-    with patch("src.audiobook_studio.api.upload.get_redis", return_value=mock_redis_client) as mock_get_redis:
+    with patch("src.audiobook_studio.api.upload.get_redis", return_value=mock_redis_client):
         with patch(
             "src.audiobook_studio.api.upload.create_upload_session", new_callable=AsyncMock
         ) as mock_create_session:
@@ -290,7 +290,7 @@ class TestUploadInit:
         )
 
         assert response.status_code == 400
-        assert "not allowed" in response.json()["detail"].lower()
+        assert "not allowed" in response.json()["error"]["message"].lower()
 
     def test_init_upload_invalid_mime_type(self, client, mock_project, mock_redis):
         """Test upload initialization with invalid MIME type."""
@@ -304,7 +304,7 @@ class TestUploadInit:
         )
 
         assert response.status_code == 400
-        assert "not allowed" in response.json()["detail"].lower()
+        assert "not allowed" in response.json()["error"]["message"].lower()
 
     def test_init_upload_file_too_large(self, client, mock_project, mock_redis):
         """Test upload initialization with file exceeding size limit."""
@@ -495,7 +495,7 @@ class TestUploadChunk:
         )
 
         assert response.status_code == 400
-        assert "mismatch" in response.json()["detail"].lower()
+        assert "mismatch" in response.json()["error"]["message"].lower()
 
     def test_upload_chunk_total_chunks_mismatch(self, client, mock_project, mock_redis):
         """Test chunk upload with total_chunks mismatch."""
@@ -524,7 +524,7 @@ class TestUploadChunk:
         )
 
         assert response.status_code == 400
-        assert "mismatch" in response.json()["detail"].lower()
+        assert "mismatch" in response.json()["error"]["message"].lower()
 
 
 class TestSimpleUpload:
@@ -630,7 +630,7 @@ class TestExtractionJobStatus:
         response = client.get("/projects/1/extraction/test-job-id/status")
 
         assert response.status_code == 400
-        assert "mismatch" in response.json()["detail"].lower()
+        assert "mismatch" in response.json()["error"]["message"].lower()
 
     def test_list_extractions(self, client, mock_project, mock_redis):
         """Test listing all extractions for a project."""
@@ -700,7 +700,7 @@ class TestUploadStatus:
         response = client.get("/projects/1/upload/some-id/status")
 
         assert response.status_code == 400
-        assert "mismatch" in response.json()["detail"].lower()
+        assert "mismatch" in response.json()["error"]["message"].lower()
 
 
 class TestCancelUpload:
@@ -741,7 +741,7 @@ class TestCancelUpload:
         response = client.delete("/projects/1/upload/some-id")
 
         assert response.status_code == 400
-        assert "mismatch" in response.json()["detail"].lower()
+        assert "mismatch" in response.json()["error"]["message"].lower()
 
 
 class TestValidationHelpers:
@@ -801,10 +801,14 @@ class TestValidationHelpers:
         mock_file.filename = None
         mock_file.content_type = "application/pdf"
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as ei:
             validate_file(mock_file)
-        assert exc_info.value.status_code == 400
-        assert "filename" in exc_info.value.detail.lower()
+        assert ei.value.error_code == "BAD_REQUEST"
+
+        with pytest.raises(DomainError) as exc_info:
+            validate_file(mock_file)
+        assert exc_info.value.error_code == "BAD_REQUEST"
+        assert "filename" in exc_info.value.message.lower()
 
     def test_validate_file_invalid_extension(self):
         """Test validate_file with invalid extension."""
@@ -814,9 +818,9 @@ class TestValidationHelpers:
         mock_file.filename = "test.exe"
         mock_file.content_type = "application/octet-stream"
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             validate_file(mock_file)
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "BAD_REQUEST"
 
     def test_validate_file_invalid_mime_type(self):
         """Test validate_file with invalid MIME type."""
@@ -826,9 +830,9 @@ class TestValidationHelpers:
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/bad-type"
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             validate_file(mock_file)
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "BAD_REQUEST"
 
 
 class TestSaveUploadChunk:

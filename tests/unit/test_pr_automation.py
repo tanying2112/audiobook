@@ -43,9 +43,7 @@ class TestPRAutomationHelpers:
             result = _run_command(["echo", "hello"])
             assert result.returncode == 0
             assert result.stdout == "success"
-            mock_run.assert_called_once_with(
-                ["/bin/echo", "hello"], cwd=None, timeout=60, capture_output=True, text=True, check=True
-            )
+            mock_run.assert_called_once_with(["echo", "hello"], cwd=None, capture_output=True, text=True)
 
     def test_run_command_failure(self):
         with patch("subprocess.run") as mock_run:

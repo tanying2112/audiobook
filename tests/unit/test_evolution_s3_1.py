@@ -16,8 +16,6 @@ import types
 from dataclasses import dataclass
 from unittest.mock import patch
 
-import pytest
-
 import src.audiobook_studio.api.evolution as evo_mod
 from src.audiobook_studio.api import evolution as evolution_api
 
@@ -58,9 +56,7 @@ def test_compute_prompt_perplexity_is_deterministic_and_decreasing():
     b = evo_mod.compute_prompt_perplexity("the cat sat on the mat the cat sat")
     assert a == b
     repetitive = evo_mod.compute_prompt_perplexity("a a a a a a a a a a a a a a a")
-    natural = evo_mod.compute_prompt_perplexity(
-        "the quick brown fox jumps over the lazy dog while the sun sets slowly"
-    )
+    natural = evo_mod.compute_prompt_perplexity("the quick brown fox jumps over the lazy dog while the sun sets slowly")
     assert repetitive < natural
 
 

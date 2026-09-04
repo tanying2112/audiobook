@@ -23,15 +23,13 @@ import argparse
 import asyncio
 import json
 import logging
-import math
 import platform
 import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +148,13 @@ def detect_hardware() -> HardwareProfile:
             timeout=5,
         )
         hw.cpu_model = result.stdout.strip() if result.returncode == 0 else platform.processor()
-    except Exception:
+    except subprocess.SubprocessError:
         hw.cpu_model = platform.processor()
 
     try:
         result = subprocess.run(["sysctl", "-n", "hw.ncpu"], capture_output=True, text=True, timeout=5)
         hw.cpu_cores = int(result.stdout.strip()) if result.returncode == 0 else 4
-    except Exception:
+    except subprocess.SubprocessError:
         hw.cpu_cores = 4
 
     # RAM - try multiple methods for cross-platform compatibility
@@ -168,7 +166,7 @@ def detect_hardware() -> HardwareProfile:
         if result.returncode == 0 and result.stdout.strip():
             hw.ram_gb = round(int(result.stdout.strip()) / 1e9, 1)
             ram_detected = True
-    except Exception:
+    except subprocess.SubprocessError:
         pass
 
     # Method 2: /proc/meminfo (Linux)
@@ -181,7 +179,7 @@ def detect_hardware() -> HardwareProfile:
                         hw.ram_gb = round(kb / 1e6, 1)
                         ram_detected = True
                         break
-        except Exception:
+        except OSError:
             pass
 
     # Method 3: Fallback - use a reasonable default for test environments
@@ -212,7 +210,7 @@ def detect_hardware() -> HardwareProfile:
                     hw.gpu_vram_gb = val if unit == "GB" else round(val / 1024, 1)
             if "Metal" in line and "Support:" in line:
                 hw.metal_support = True
-    except Exception:
+    except subprocess.SubprocessError:
         pass
 
     # CUDA / MPS
@@ -222,9 +220,21 @@ def detect_hardware() -> HardwareProfile:
         if importlib.util.find_spec("torch") is not None:
             import torch
 
-            hw.cuda_available = torch.cuda.is_available()
-            hw.mps_available = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
-    except Exception:
+            # Coerce to bool defensively: in some environments ``torch`` is a
+            # mock whose ``.cuda.is_available`` returns a non-bool (or raises),
+            # which would otherwise leak a non-serializable value into the
+            # report dataclass. ``bool()`` keeps the field JSON-serializable
+            # under both real and mocked torch.
+            try:
+                hw.cuda_available = bool(torch.cuda.is_available())
+            except Exception:
+                hw.cuda_available = False
+            try:
+                _mps = getattr(torch.backends, "mps", None)
+                hw.mps_available = bool(_mps is not None and _mps.is_available())
+            except Exception:
+                hw.mps_available = False
+    except (ImportError, AttributeError, ValueError):
         pass
 
     # 评估是否满足 VoxCPM2 运行要求
@@ -305,7 +315,7 @@ async def _run_edge_tts_async(text: str, output_path: str) -> float:
             timeout=10,
         )
         return float(result.stdout.strip()) if result.returncode == 0 else len(text) / 5.0
-    except Exception:
+    except subprocess.SubprocessError:
         # 粗略估算：中文平均 5 字/秒
         return len(text) / 5.0
 
@@ -363,7 +373,7 @@ def benchmark_edge_tts(skip: bool = False) -> List[TtsBenchmarkResult]:
             finally:
                 try:
                     Path(tmp_path).unlink(missing_ok=True)
-                except Exception:
+                except OSError:
                     pass
 
         if rtf_list:
@@ -490,7 +500,9 @@ def compute_voxcpm2_projection(hw: HardwareProfile) -> VoxCPM2Projection:
 # ---------------------------------------------------------------------------
 
 
-def build_summary(hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]) -> Dict[str, Any]:
+def build_summary(
+    hw: HardwareProfile, proj: VoxCPM2Projection, tts_results: List[TtsBenchmarkResult]
+) -> Dict[str, Any]:
     """生成摘要字典。"""
     edge_tts_rtf = None
     if tts_results:
@@ -579,7 +591,6 @@ def render_markdown_report(report: BenchmarkReport) -> str:
     """将报告渲染为 Markdown 格式。"""
     hw = report.hardware
     proj = report.voxcpm2_projection
-    summary = report.summary
 
     met = all(report.acceptance_criteria_met.values())
     status_icon = "✅" if met else "⚠️"
@@ -796,7 +807,7 @@ def main():
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md_content)
 
-    print(f"\n📁 阶段 D：报告已生成")
+    print("\n📁 阶段 D：报告已生成")
     print(f"  JSON : {json_path}")
     if not args.json_only:
         print(f"  MD   : {output_dir / 'voxcpm2_benchmark_report.md'}")

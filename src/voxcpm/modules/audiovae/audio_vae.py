@@ -125,7 +125,7 @@ class CausalEncoder(nn.Module):
         self,
         d_model: int = 64,
         latent_dim: int = 32,
-        strides: list = [2, 4, 8, 8],
+        strides: list = [2, 4, 8, 8],  # noqa: B006
         depthwise: bool = False,
     ):
         super().__init__()

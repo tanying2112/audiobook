@@ -5,20 +5,26 @@ Tests: engine creation, registry configuration, auto-detection, context manager,
 """
 
 import os
-from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from src.audiobook_studio.di import get_app_container
+from src.audiobook_studio.tts.engine import EngineRegistry as _EngineRegistry
 from src.audiobook_studio.tts.port_factory import (
     _build_config_from_env,
-    create_configured_registry,
     create_engine,
     engine_context,
     get_default_engine,
-    get_engine_registry,
     get_port,
 )
+
+
+def get_engine_registry():
+    """Backward-compat accessor: registry now lives in the DI container."""
+    return get_app_container().get(_EngineRegistry)
+
+
 from src.audiobook_studio.tts.engine import EngineRegistry, TTSEngine
 
 
@@ -170,8 +176,8 @@ class TestEngineRegistry:
         mock_edge = Mock(spec=TTSEngine)
         mock_edge.engine_name = "edge"
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro) as mock_kokoro_factory:
-            with patch("src.audiobook_studio.tts.edge_tts_engine.create_edge_tts_engine", return_value=mock_edge) as mock_edge_factory:
+        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro):
+            with patch("src.audiobook_studio.tts.edge_tts_engine.create_edge_tts_engine", return_value=mock_edge):
                 await registry.initialize(config)
 
         assert registry.get("kokoro") == mock_kokoro
@@ -370,12 +376,15 @@ class TestBuildConfigFromEnv:
 
     def test_build_kokoro_config_enabled(self):
         """Test Kokoro config when local TTS enabled."""
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "true",
-            "AUDIO_OUTPUT_DIR": "/custom/output",
-            "KOKORO_MAX_CONCURRENT": "4",
-            "KOKORO_MODEL_PATH": "/custom/model.onnx",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "true",
+                "AUDIO_OUTPUT_DIR": "/custom/output",
+                "KOKORO_MAX_CONCURRENT": "4",
+                "KOKORO_MODEL_PATH": "/custom/model.onnx",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "kokoro" in config
@@ -391,11 +400,14 @@ class TestBuildConfigFromEnv:
 
     def test_build_edge_config_enabled(self):
         """Test Edge-TTS config when enabled."""
-        with patch.dict(os.environ, {
-            "EDGE_TTS_ENABLED": "true",
-            "EDGE_MAX_CONCURRENT": "8",
-            "EDGE_TTS_VOICE": "en-US-AriaNeural",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "EDGE_TTS_ENABLED": "true",
+                "EDGE_MAX_CONCURRENT": "8",
+                "EDGE_TTS_VOICE": "en-US-AriaNeural",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "edge" in config
@@ -413,10 +425,13 @@ class TestBuildConfigFromEnv:
 
     def test_build_voxcpm2_config(self):
         """Test VoxCPM2 config from environment."""
-        with patch.dict(os.environ, {
-            "VOXCPM2_ENDPOINT": "http://voxcpm2:8000",
-            "VOXCPM2_TIMEOUT_SEC": "120",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "VOXCPM2_ENDPOINT": "http://voxcpm2:8000",
+                "VOXCPM2_TIMEOUT_SEC": "120",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "voxcpm2" in config
@@ -429,10 +444,6 @@ class TestBackwardCompatibility:
 
     def test_get_engine_registry_singleton(self):
         """Test get_engine_registry returns same instance."""
-        # Reset global registry
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
-
         reg1 = get_engine_registry()
         reg2 = get_engine_registry()
 
@@ -442,36 +453,49 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_get_default_engine_initializes(self):
         """Test get_default_engine initializes registry if needed."""
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
+        from src.audiobook_studio.di import DIContainer, reset_app_container, set_app_container
 
+        # Create a fresh container for this test
+        container = DIContainer()
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "default"
+        mock_engine.initialize = AsyncMock()
 
-        with patch("src.audiobook_studio.tts.port_factory.get_engine_registry") as mock_get_registry:
-            mock_registry = Mock()
-            # First call returns None to trigger initialization, second returns mock_engine
-            mock_registry.get_default = Mock(side_effect=[None, mock_engine])
-            mock_registry.initialize = AsyncMock()
-            mock_get_registry.return_value = mock_registry
+        mock_registry = Mock(spec=EngineRegistry)
+        # First call returns None (not initialized), second returns engine
+        mock_registry.get_default = Mock(side_effect=[None, mock_engine])
+        mock_registry.initialize = AsyncMock()
 
+        container.register_singleton(EngineRegistry, mock_registry)
+        set_app_container(container)
+
+        try:
             engine = await get_default_engine()
-
             assert engine == mock_engine
             mock_registry.initialize.assert_called_once()
+        finally:
+            reset_app_container()
 
     @pytest.mark.asyncio
     async def test_get_port_returns_adapter(self):
         """Test get_port returns EnginePortAdapter."""
-        import src.audiobook_studio.tts.port_factory as pf
-        pf._global_registry = None
+        from src.audiobook_studio.di import DIContainer, reset_app_container, set_app_container
 
+        container = DIContainer()
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "test"
         mock_engine.output_dir = "./output"
         mock_engine.synthesize = AsyncMock()
+        mock_engine.close = AsyncMock()
 
-        with patch("src.audiobook_studio.tts.port_factory.get_default_engine", return_value=mock_engine):
+        mock_registry = Mock(spec=EngineRegistry)
+        mock_registry.get_default = Mock(return_value=mock_engine)
+        mock_registry.initialize = AsyncMock()
+
+        container.register_singleton(EngineRegistry, mock_registry)
+        set_app_container(container)
+
+        try:
             port = await get_port()
 
             assert hasattr(port, "submit")
@@ -480,6 +504,8 @@ class TestBackwardCompatibility:
             assert hasattr(port, "cancel")
             assert hasattr(port, "health_check")
             assert hasattr(port, "close")
+        finally:
+            reset_app_container()
 
 
 class TestPortFactoryEdgeCases:
@@ -496,7 +522,7 @@ class TestPortFactoryEdgeCases:
         """Test kwargs passed to engine factory."""
         with patch("src.audiobook_studio.tts.port_factory.FakeRemoteTTSPort") as mock_fake:
             mock_fake.return_value = Mock()
-            engine = create_engine("fake", custom_arg="value")
+            create_engine("fake", custom_arg="value")
 
             mock_fake.assert_called_with(custom_arg="value")
 
@@ -526,6 +552,7 @@ class TestThreadSafety:
     async def test_concurrent_register(self):
         """Test concurrent register operations."""
         import asyncio
+
         registry = EngineRegistry()
 
         async def register_engine(name):
@@ -544,6 +571,7 @@ class TestThreadSafety:
     async def test_concurrent_get_default(self):
         """Test concurrent get operations."""
         import asyncio
+
         registry = EngineRegistry()
 
         mock_engine = Mock(spec=TTSEngine)

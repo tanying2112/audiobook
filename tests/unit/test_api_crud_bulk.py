@@ -7,17 +7,21 @@ Uses the shared async DB fixture infrastructure (conftest.py).
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from tests.conftest import make_async_db_override, setup_auth_overrides
 
 from src.audiobook_studio.api.books import router as books_router
+from src.audiobook_studio.api.dependencies import get_async_db
 from src.audiobook_studio.api.paragraphs import router as paragraphs_router
 from src.audiobook_studio.api.qualities import router as qualities_router
 from src.audiobook_studio.api.routings import router as routings_router
 from src.audiobook_studio.api.tts_edits import router as tts_router
-from src.audiobook_studio.api.dependencies import get_async_db
-
-from tests.conftest import make_async_db_override, setup_auth_overrides
 
 app = FastAPI()
+
+# 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
+from src.audiobook_studio.exceptions import register_error_handlers
+
+register_error_handlers(app)
 app.include_router(books_router)
 app.include_router(paragraphs_router)
 app.include_router(tts_router)

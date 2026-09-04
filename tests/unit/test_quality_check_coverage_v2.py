@@ -12,13 +12,12 @@ Covers:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
-from src.audiobook_studio.schemas.quality import FixSuggestion
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 

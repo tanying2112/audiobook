@@ -16,39 +16,26 @@ The integration provides:
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from ..models import FeedbackRecord as FeedbackRecordModel
 from ..pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
-from ..storage import project_dir
 from .ab_test import ABTestReport, build_ab_samples, run_ab_test
-from .auto_processor import FeedbackAutoProcessor, create_auto_processor
-from .collector import (
-    capture_edit_feedback,
-    capture_feedback,
-    capture_quality_feedback,
-    list_unprocessed_feedback,
-    mark_feedback_processed,
-)
+from .auto_processor import create_auto_processor
 from .pr_automation import MergeResult, PRResult, create_prompt_upgrade_pr, monitor_and_merge_pr
-from .processor import AggregateAnalysis, analyze_batch, analyze_single_feedback
+from .processor import AggregateAnalysis
 from .promotion_gate import PromotionVerdict, _golden_to_pipeline_stage
 from .promotion_gate import _load_golden_examples
 from .promotion_gate import _load_golden_examples as load_golden_for_ab
 from .promotion_gate import _run_stage_with_prompt_version, evaluate_promotion
-from .prompt_upgrader import _load_current_prompt, batch_upgrade, upgrade_prompt
+from .prompt_upgrader import _load_current_prompt, batch_upgrade
 from .quality_enhancement import (
     FreeTierHealth,
     check_semantic_coherence,
-    get_false_positive_tracker,
     get_free_tier_health,
-    grade_difficulty,
-    validate_emotions,
 )
 
 logger = logging.getLogger(__name__)
@@ -712,7 +699,7 @@ def collect_pipeline_feedback(
         from src.audiobook_studio.feedback.integration import collect_pipeline_feedback
         from src.audiobook_studio.pipeline.feedback_collector import create_feedback_collector
 
-        collector = create_feedback_collector(project_id=1)
+        collector = create_feedback_collector(project_id=123)
 
         def run_stage(...):
             with collect_pipeline_feedback(collector, "annotate", chapter_index, paragraph_index) as capture:

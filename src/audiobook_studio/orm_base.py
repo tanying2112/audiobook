@@ -15,9 +15,7 @@ class Base(DeclarativeBase):
     """SQLAlchemy 2.0 DeclarativeBase with common helpers."""
 
     # Common columns for all models
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )

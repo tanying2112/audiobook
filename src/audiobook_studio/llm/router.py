@@ -17,47 +17,41 @@ Features:
 import json
 import logging
 import os
-import re
 import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date
 
 # Langfuse monitoring - use lazy import to avoid circular dependency
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from ..di import get_app_container
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
     FeedbackAnalysis,
-    PairwiseDimensionScore,
     PairwiseJudgment,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
-    TtsRoutingDecision,
 )
 from .circuit_breaker import CircuitBreaker
-from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from .client import LLMCallResult, LLMClient, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
-from .direct_client import DirectProviderClient, DirectProviderClientConfig, DirectProviderType, create_direct_client
-from .health_probe import HealthProbe, HealthStatus
+from .direct_client import DirectProviderClientConfig, DirectProviderType, create_direct_client
+from .health_probe import HealthProbe
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
 
 if TYPE_CHECKING:
-    from ..monitoring.langfuse_client import init_langfuse
-    from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
-    from ..monitoring.langfuse_client import observe_llm_call, span
+    pass
 
 # trace_function is imported at runtime in the lazy decorator below
 
 # Runtime imports will be done in functions
 
-from .utils import LLMParseError, validate_and_parse_llm_response
+from .utils import LLMParseError
 
 
 def _lazy_trace_function(stage: str):
@@ -72,8 +66,7 @@ def _lazy_trace_function(stage: str):
                 from ..monitoring.langfuse_client import trace_function
 
                 return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
-            except Exception:
-                # If langfuse not available or any error, run without tracing
+            except Exception:  # noqa: BLE001 — langfuse 缺失或任何错误均无痕直跑
                 return func(*args, **kwargs)
 
         return wrapper
@@ -366,7 +359,7 @@ class LLMRouter:
             cost_control = getattr(self.config, "cost_control", None)
             if cost_control and hasattr(cost_control, "daily_limit_usd"):
                 self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
-        except Exception:
+        except AttributeError:
             pass  # Use default if config doesn't have cost_control
 
         # Initialize Langfuse lazy attributes
@@ -422,7 +415,7 @@ class LLMRouter:
             cost_control = getattr(self.config, "cost_control", None)
             if cost_control and hasattr(cost_control, "daily_limit_usd"):
                 self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
-        except Exception:
+        except AttributeError:
             pass  # Use default if config doesn't have cost_control
 
         # (Re)start health probe
@@ -435,7 +428,7 @@ class LLMRouter:
             )
             try:
                 self.health_probe.start()
-            except Exception:
+            except (RuntimeError, OSError):
                 logger.warning("Failed to start health probe")
 
     def reload_config(self, config_path: Optional[str] = None) -> None:
@@ -496,7 +489,7 @@ class LLMRouter:
                 from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
 
                 self._langfuse_enabled_cached = langfuse_is_enabled()
-            except Exception:
+            except Exception:  # noqa: BLE001 — 观测组件故障不得影响主流程
                 self._langfuse_enabled_cached = False
         return self._langfuse_enabled_cached
 
@@ -538,8 +531,8 @@ class LLMRouter:
             provider_type_map = {
                 ProviderType.OPENAI: DirectProviderType.OPENAI,
                 ProviderType.ANTHROPIC: DirectProviderType.ANTHROPIC,
-                # VLLM uses OpenAI-compatible API
                 ProviderType.VLLM: DirectProviderType.OPENAI,
+                ProviderType.OLLAMA: DirectProviderType.OLLAMA,
             }
             direct_type = provider_type_map.get(provider.provider)
             if not direct_type:
@@ -1071,7 +1064,7 @@ class LLMRouter:
             # For any other response model, try to create a default instance
             try:
                 mock_output = response_model()
-            except Exception:
+            except TypeError:
                 # If we can't create an instance, return None to indicate failure
                 return None
 

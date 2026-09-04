@@ -19,13 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .utils.ffmpeg_probe import (
-    detect_silence,
-    get_audio_info,
-    get_duration,
-    get_rms_peak,
-    read_pcm_samples,
-)
+from .utils.ffmpeg_probe import detect_silence, get_audio_info, get_duration, get_rms_peak, read_pcm_samples
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +37,9 @@ CLIPPING_THRESHOLD_DB = float(__import__("os").getenv("AUDIO_CLIPPING_THRESHOLD_
 # Corruption: ffprobe decode failure
 MIN_VALID_DURATION_MS = int(__import__("os").getenv("AUDIO_MIN_VALID_DURATION_MS", "100"))
 MAX_VALID_DURATION_MS = int(__import__("os").getenv("AUDIO_MAX_VALID_DURATION_MS", "300000"))  # 5 min
+
+# UTMOS quality threshold (1-5)
+UTMOS_THRESHOLD = float(__import__("os").getenv("AUDIO_UTMOS_THRESHOLD", "3.5"))
 
 
 @dataclass
@@ -68,10 +65,11 @@ class SegmentQualityResult:
     peak_db: float = -60.0
     rms_db: float = -60.0
 
-    # ── 硬质检三件套 (P0.2) — 真实音频指标，来自 quality/metrics.py ──────────────
+    # ── 硬质检四件套 (P0.2 + UTMOS) — 真实音频指标，来自 quality/metrics.py ──────────────
     # None = 该指标未计算（依赖缺失或缺少参考输入），区别于"计算并通过"。
     # 越界（指标已计算且低于阈值）会把 issues / passed 翻转，overall_passed 随之 False。
     mos: Optional[float] = None  # DNSMOS 综合 MOS (1-5)，免费 CPU 门槛
+    utmos: Optional[float] = None  # UTMOS 语音质量评分 (1-5)，真实听感评分
     wer: Optional[float] = None  # ASR 字错误率 0-1（需 reference_text）
     voice_cosine: Optional[float] = None  # 声纹余弦相似度 0-1（需参考音频）
     metrics_status: Optional[str] = None  # 硬指标运行说明：None=全跑、含"skipped"提示降级原因
@@ -335,13 +333,14 @@ async def _run_hard_metrics_async(
         logger.warning(f"Hard metrics suite raised for {file_path}: {e}")
         return {
             "mos": None,
+            "utmos": None,
             "wer": None,
             "voice_cosine": None,
             "issues": [f"硬指标计算失败: {e}"],
             "status": f"skipped:suite-error:{type(e).__name__}",
         }
 
-    out: Dict[str, Any] = {"mos": None, "wer": None, "voice_cosine": None, "issues": []}
+    out: Dict[str, Any] = {"mos": None, "utmos": None, "wer": None, "voice_cosine": None, "issues": []}
     skipped: List[str] = []
 
     if qc_result.dnsmos is not None:
@@ -351,6 +350,14 @@ async def _run_hard_metrics_async(
             skipped.append(f"dnsmos({d.error or 'failed'})")
     else:
         skipped.append("dnsmos(dep-missing)")
+
+    if qc_result.utmos is not None:
+        u = qc_result.utmos
+        out["utmos"] = u.mos if u.success else None
+        if not u.success:
+            skipped.append(f"utmos({u.error or 'failed'})")
+    else:
+        skipped.append("utmos(dep-missing)")
 
     if qc_result.wer is not None:
         w = qc_result.wer
@@ -485,6 +492,7 @@ async def _check_segment_async(
         suite=suite,
     )
     result.mos = metrics_run.get("mos")
+    result.utmos = metrics_run.get("utmos")
     result.wer = metrics_run.get("wer")
     result.voice_cosine = metrics_run.get("voice_cosine")
     result.metrics_status = metrics_run.get("status")
@@ -639,7 +647,7 @@ async def check_all_segments(
     passed = 0
     failed = 0
 
-    for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids)):
+    for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids, strict=False)):
         ref_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
         speaker = speaker_map.get(segment_id) if speaker_map else None
 
@@ -680,8 +688,12 @@ async def check_all_segments(
             logger.info(f"Quality check failed for {segment_id}, retry {attempt}/{max_retries}")
 
             try:
-                # Call retry callback to re-synthesize
-                new_path = retry_callback(segment_id, attempt)
+                # Call retry callback to re-synthesize (supports both sync and async)
+                retry_result = retry_callback(segment_id, attempt)
+                if asyncio.iscoroutine(retry_result):
+                    new_path = await retry_result
+                else:
+                    new_path = retry_result
                 if new_path and Path(new_path).exists():
                     current_path = Path(new_path)
                     result = await _check_segment_async(
@@ -867,26 +879,6 @@ def load_quality_report(report_path: Path) -> Optional[QualityReport]:
         return None
 
 
-if __name__ == "__main__":  # pragma: no cover
-    import sys
-
-    logging.basicConfig(level=logging.INFO)
-
-    if len(sys.argv) > 1:
-        test_path = Path(sys.argv[1])
-        if test_path.exists():
-            print(f"Testing: {test_path}")
-            print(f"Duration: {get_duration_sync(test_path)}ms")
-            print(f"Silence: {check_silence(test_path)}")
-            print(f"Corruption: {check_corruption(test_path)}")
-            print(f"Clipping: {check_clipping(test_path)}")
-            print(f"Full check: {check_segment(test_path, 'test_segment')}")
-        else:
-            print(f"File not found: {test_path}")
-    else:
-        print("Usage: python -m audiobook_studio.audio_quality <audio_file>")
-
-
 def get_duration_sync(path: Path) -> int:
     """Sync wrapper for get_duration."""
     try:
@@ -902,3 +894,23 @@ def get_duration_sync(path: Path) -> int:
             return future.result()
     else:
         return asyncio.run(get_duration(path))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import sys
+
+    logging.basicConfig(level=logging.INFO)
+
+    if len(sys.argv) > 1:
+        test_path = Path(sys.argv[1])
+        if test_path.exists():
+            logger.info(f"Testing: {test_path}")
+            logger.info(f"Duration: {get_duration_sync(test_path)}ms")
+            logger.info(f"Silence: {check_silence(test_path)}")
+            logger.info(f"Corruption: {check_corruption(test_path)}")
+            logger.info(f"Clipping: {check_clipping(test_path)}")
+            logger.info(f"Full check: {check_segment(test_path, 'test_segment')}")
+        else:
+            logger.error(f"File not found: {test_path}")
+    else:
+        logger.info("Usage: python -m audiobook_studio.audio_quality <audio_file>")

@@ -1,0 +1,20 @@
+{
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "Prompt v1 not found for stage 'translate'"
+  },
+  "outputs": [
+    {
+      "error": "Prompt version 1 not found for stage translate"
+    },
+    {
+      "error": "Prompt version 1 not found for stage translate"
+    },
+    {
+      "error": "Prompt version 1 not found for stage translate"
+    }
+  ]
+}

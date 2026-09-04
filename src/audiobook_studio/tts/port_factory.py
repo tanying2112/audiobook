@@ -8,20 +8,17 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Dict, Optional
 
-from .engine import EngineRegistry, get_engine_registry, set_engine_registry
+from .engine import EngineRegistry
 from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .port import RemoteTTSPort, TTSStatus, TTSTaskPayload
 
 logger = logging.getLogger(__name__)
-
-# Global registry (lazy initialization)
-_global_registry: Optional[EngineRegistry] = None
-_registry_lock = os.threading.Lock() if hasattr(os, "threading") else None
 
 
 # Config classes for new v0.4 engines (mirroring the ones in streaming.py and zero_shot_clone.py)
@@ -73,96 +70,131 @@ class ZeroShotCloneConfig:
 
 def _get_lock():
     """Get threading lock (handles async contexts)."""
-    return os.threading.Lock() if hasattr(os, "threading") else None
+    return threading.Lock()
+
+
+def _streaming_factory(engine_name: str) -> Callable[..., Any]:
+    """Return a callable that builds the named streaming TTS engine."""
+
+    def _factory(**kwargs: Any) -> Any:
+        kwargs = dict(kwargs)
+        kwargs["engine"] = engine_name
+        # create_streaming_tts_engine strips mock_mode (a property, not a field).
+        return create_streaming_tts_engine(**kwargs)
+
+    return _factory
+
+
+def _clone_factory(engine_name: str) -> Callable[..., Any]:
+    """Return a callable that builds the named zero-shot clone engine."""
+
+    def _factory(**kwargs: Any) -> Any:
+        kwargs = dict(kwargs)
+        kwargs["engine"] = engine_name
+        # create_zero_shot_clone_engine strips mock_mode (a property, not a field).
+        return create_zero_shot_clone_engine(**kwargs)
+
+    return _factory
+
+
+def _voxcpm2_factory(**kwargs: Any) -> Any:
+    """Build a VoxCPM2 remote port (does not accept ``mock_mode``)."""
+    from .remote_voxcpm2_port import create_remote_voxcpm2_port
+
+    kwargs = dict(kwargs)
+    kwargs.pop("mock_mode", None)
+    return create_remote_voxcpm2_port(**kwargs)
+
+
+def _get_engine_factory_map() -> Dict[str, Callable[..., Any]]:
+    """Builtin + plugin-merged TTS engine factory dispatch table.
+
+    Replaces the previous hardcoded ``if/elif`` chain with a lookup table.
+    Plugin-registered engines (via ``PluginContext.register_tts_engine``) are
+    merged in at call time so ``create_engine(plugin_engine_name)`` works without
+    any core-code branch for the plugin.
+    """
+    factories: Dict[str, Callable[..., Any]] = {
+        "kokoro": create_kokoro_port,
+        "edge": create_edge_tts_port,
+        "voxcpm2": _voxcpm2_factory,
+        "cosyvoice_stream": _streaming_factory("cosyvoice_stream"),
+        "seed_tts_stream": _streaming_factory("seed_tts_stream"),
+        "melotts_stream": _streaming_factory("melotts_stream"),
+        "xtts_v2": _clone_factory("xtts_v2"),
+        "openvoice_v2": _clone_factory("openvoice_v2"),
+        "cosyvoice_clone": _clone_factory("cosyvoice_clone"),
+    }
+    # Merge plugin-registered TTS engine factories (item 11: no hardcoded factory).
+    try:
+        from ..plugins import get_plugin_manager
+
+        for engine_name, record in get_plugin_manager().get_tts_engine_factories().items():
+            factories[engine_name] = record.factory
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("Plugin TTS factories unavailable for create_engine dispatch")
+    return factories
+
+
+def _create_auto_engine(**kwargs: Any) -> Any:
+    """Resolve the ``auto`` engine from the environment (legacy behavior)."""
+    from .remote_voxcpm2_port import create_remote_voxcpm2_port
+
+    if os.environ.get("MOCK_LLM", "false").lower() == "true":
+        kwargs.pop("mock_mode", None)
+        return FakeRemoteTTSPort(**kwargs)
+    if os.environ.get("TEST_MODE", "false").lower() == "true":
+        kwargs.pop("mock_mode", None)
+        return FakeRemoteTTSPort(**kwargs)
+    if os.environ.get("VOXCPM2_ENDPOINT"):
+        return create_remote_voxcpm2_port(**kwargs)
+    enable_local = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+    if enable_local:
+        return create_kokoro_port(**kwargs)
+    return create_edge_tts_port(**kwargs)
 
 
 def create_engine(
     engine_type: str = "auto",
     **kwargs,
-) -> "TTSEngine":
+) -> Any:
     """Create a new TTS engine instance.
+
+    Engine selection is performed through a registry-backed factory table
+    (builtin engines plus any plugin-registered engines), not a hardcoded
+    ``if/elif`` chain. The ``auto`` engine resolves from the environment.
 
     Args:
         engine_type: One of "auto", "kokoro", "edge", "voxcpm2", "fake", "mock".
         Also supports v0.4 engines: "cosyvoice_stream", "seed_tts_stream", "melotts_stream",
-        "xtts_v2", "openvoice_v2", "cosyvoice_clone".
+        "xtts_v2", "openvoice_v2", "cosyvoice_clone". Plugin engines are also
+        accepted by name.
         **kwargs: Arguments passed to the engine constructor.
 
     Returns:
         New TTSEngine instance.
     """
-    from .edge_tts_engine import create_edge_tts_engine
-    from .kokoro_backend import create_kokoro_backend
-    from .remote_voxcpm2_port import create_remote_voxcpm2_port
+    impl = (engine_type or "auto").lower()
 
-    impl = engine_type.lower()
-
-    # Check for mock mode (only for engines that support it)
-    mock_mode = os.environ.get("MOCK_TTS", "false").lower() == "true"
-    if mock_mode:
-        kwargs.setdefault("mock_mode", True)
-
+    # Fake/Mock ports are environment-independent and ignore mock_mode.
     if impl == "fake":
-        # FakeRemoteTTSPort doesn't use mock_mode parameter
         kwargs.pop("mock_mode", None)
         return FakeRemoteTTSPort(**kwargs)
-    elif impl == "mock":
-        # MockRemoteTTSPort doesn't use mock_mode parameter
+    if impl == "mock":
         kwargs.pop("mock_mode", None)
         return MockRemoteTTSPort(**kwargs)
-    elif impl == "voxcpm2":
-        # voxcpm2 remote port does not support mock_mode parameter
-        kwargs.pop("mock_mode", None)
-        return create_remote_voxcpm2_port(**kwargs)
-    elif impl == "auto":
-        # Check for v0.4 streaming engines
-        if impl in ("cosyvoice_stream", "seed_tts_stream", "melotts_stream"):
-            kwargs["engine"] = impl
-            return create_streaming_tts_engine(**kwargs)
-        # Check for v0.4 zero-shot clone engines
-        if impl in ("xtts_v2", "openvoice_v2", "cosyvoice_clone"):
-            kwargs["engine"] = impl
-            return create_zero_shot_clone_engine(**kwargs)
-        # Auto-detect based on environment
-        if os.environ.get("MOCK_LLM", "false").lower() == "true":
-            kwargs.pop("mock_mode", None)
-            return FakeRemoteTTSPort(**kwargs)
-        elif os.environ.get("TEST_MODE", "false").lower() == "true":
-            kwargs.pop("mock_mode", None)
-            return FakeRemoteTTSPort(**kwargs)
-        elif os.environ.get("VOXCPM2_ENDPOINT"):
-            # Note: voxcpm2 is handled above in explicit check
-            return create_remote_voxcpm2_port(**kwargs)
-        else:
-            enable_local = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
-            if enable_local:
-                return create_kokoro_port(**kwargs)
-            else:
-                return create_edge_tts_port(**kwargs)
-    elif impl == "kokoro":
-        return create_kokoro_port(**kwargs)
-    elif impl == "edge":
-        return create_edge_tts_port(**kwargs)
-    elif impl == "cosyvoice_stream":
-        kwargs["engine"] = impl
-        return create_streaming_tts_engine(**kwargs)
-    elif impl == "seed_tts_stream":
-        kwargs["engine"] = impl
-        return create_streaming_tts_engine(**kwargs)
-    elif impl == "melotts_stream":
-        kwargs["engine"] = impl
-        return create_streaming_tts_engine(**kwargs)
-    elif impl == "xtts_v2":
-        kwargs["engine"] = impl
-        return create_zero_shot_clone_engine(**kwargs)
-    elif impl == "openvoice_v2":
-        kwargs["engine"] = impl
-        return create_zero_shot_clone_engine(**kwargs)
-    elif impl == "cosyvoice_clone":
-        kwargs["engine"] = impl
-        return create_zero_shot_clone_engine(**kwargs)
-    else:
+
+    # Inject mock_mode only for engines that genuinely support it.
+    if os.environ.get("MOCK_TTS", "false").lower() == "true":
+        kwargs.setdefault("mock_mode", True)
+
+    if impl == "auto":
+        return _create_auto_engine(**kwargs)
+
+    factory = _get_engine_factory_map().get(impl)
+    if factory is None:
         raise ValueError(f"Unknown engine type: {engine_type}")
+    return factory(**kwargs)
 
 
 def create_kokoro_port(**kwargs):
@@ -179,9 +211,10 @@ def create_edge_tts_port(**kwargs):
     return _create_edge_tts_port(**kwargs)
 
 
-def create_streaming_tts_engine(**kwargs) -> "StreamingTTSEngine":
+def create_streaming_tts_engine(**kwargs) -> Any:
     """Create a Streaming TTS engine instance."""
-    from .streaming import StreamingTTSConfig, create_streaming_tts_engine as _create_streaming_tts_engine
+    from .streaming import StreamingTTSConfig
+    from .streaming import create_streaming_tts_engine as _create_streaming_tts_engine
 
     # Build config from kwargs (remove mock_mode as it's a property, not a field)
     kwargs.pop("mock_mode", None)
@@ -189,9 +222,10 @@ def create_streaming_tts_engine(**kwargs) -> "StreamingTTSEngine":
     return _create_streaming_tts_engine(config)
 
 
-def create_zero_shot_clone_engine(**kwargs) -> "ZeroShotCloneEngine":
+def create_zero_shot_clone_engine(**kwargs) -> Any:
     """Create a Zero-Shot Voice Cloning engine instance."""
-    from .zero_shot_clone import ZeroShotCloneConfig, create_zero_shot_clone_engine as _create_zero_shot_clone_engine
+    from .zero_shot_clone import ZeroShotCloneConfig
+    from .zero_shot_clone import create_zero_shot_clone_engine as _create_zero_shot_clone_engine
 
     # Build config from kwargs (remove mock_mode as it's a property, not a field)
     kwargs.pop("mock_mode", None)
@@ -252,6 +286,12 @@ def _build_config_from_env() -> dict:
             "endpoint": os.environ["VOXCPM2_ENDPOINT"],
             "timeout_sec": int(os.environ.get("VOXCPM2_TIMEOUT_SEC", "60")),
         }
+    # VoxCPM2 remote URL (v0.4 - Modal free GPU)
+    elif os.environ.get("VOXCPM2_REMOTE_URL"):
+        config["voxcpm2"] = {
+            "endpoint": os.environ["VOXCPM2_REMOTE_URL"],
+            "timeout_sec": int(os.environ.get("VOXCPM2_TIMEOUT_SEC", "60")),
+        }
 
     # Streaming TTS configs (v0.4)
     streaming_engines = {
@@ -290,26 +330,15 @@ def _build_config_from_env() -> dict:
     return config
 
 
-def get_engine_registry() -> EngineRegistry:
-    """Get the global engine registry (lazy initialization)."""
-    global _global_registry
-    if _global_registry is None:
-        lock = _get_lock()
-        if lock:
-            with lock:
-                if _global_registry is None:
-                    _global_registry = EngineRegistry()
-        else:
-            if _global_registry is None:
-                _global_registry = EngineRegistry()
-    return _global_registry
-
-
 async def get_default_engine(
     registry: Optional[EngineRegistry] = None,
-) -> "TTSEngine":
+) -> Any:
     """Get the default TTS engine from the registry."""
-    reg = registry or get_engine_registry()
+    reg = registry
+    if reg is None:
+        from ..di import get_app_container
+
+        reg = get_app_container().get(EngineRegistry)
     if reg.get_default() is None:
         # Initialize from env if not already done
         await reg.initialize(_build_config_from_env())
@@ -322,7 +351,7 @@ async def get_port() -> RemoteTTSPort:
 
     This wraps the default engine in a RemoteTTSPort adapter.
     """
-    from .port import RemoteTTSPort, TTSTaskResult, TTSTaskStatus
+    from .port import TTSTaskResult, TTSTaskStatus
 
     class EnginePortAdapter:
         """Adapter to make TTSEngine look like RemoteTTSPort."""
@@ -413,6 +442,7 @@ async def get_port() -> RemoteTTSPort:
         async def close(self):
             await self.engine.close()
 
+    # Get engine from DI container
     engine = await get_default_engine()
     return EnginePortAdapter(engine)
 

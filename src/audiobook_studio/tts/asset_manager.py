@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import requests
 from tqdm import tqdm

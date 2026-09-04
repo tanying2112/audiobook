@@ -11,17 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-
-from .engine import (
-    BaseTTSEngine,
-    SynthesisResult,
-    TTSEngine,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
-    VoiceInfo,
-)
+from .engine import BaseTTSEngine, SynthesisResult, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +83,6 @@ class VoxCPM2Backend(BaseTTSEngine):
         max_concurrent: int = 2,
         **kwargs: Any,
     ):
-        import os
 
         super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
         self.model_path = model_path
@@ -243,13 +232,8 @@ class VoxCPM2Backend(BaseTTSEngine):
                 sample_rate=self.sample_rate,
             )
 
-        import torch
-        import torchaudio
-
-        voice_embedding = self._get_voice_embedding(voice_id, reference_audio)
-
-        # Tokenize text (placeholder)
-        tokens = torch.tensor([[ord(c) % 1000 for c in text]], device=self.device)
+        import torch  # noqa: F401
+        import torchaudio  # noqa: F401
 
         # Prepare prosody controls
         speed = prosody.get("rate", 1.0) if prosody else 1.0
@@ -274,7 +258,7 @@ class VoxCPM2Backend(BaseTTSEngine):
         torchaudio.save(str(output_path), audio.cpu(), self.sample_rate)
 
         duration_ms = int(duration_sec * 1000)
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]  # nosec B324
 
         return SynthesisResult(
             audio_path=str(output_path),
@@ -302,7 +286,6 @@ class VoxCPM2Backend(BaseTTSEngine):
         text = payload.text
         voice_anchor = payload.voice_anchor
         prosody = payload.prosody
-        metadata = payload.metadata
 
         voice_id = voice_anchor.voice_id
         reference_audio = voice_anchor.reference_audio_path

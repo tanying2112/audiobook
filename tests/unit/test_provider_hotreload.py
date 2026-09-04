@@ -83,20 +83,6 @@ def _make_loader(seq):
     return _Loader
 
 
-@pytest.fixture(autouse=True)
-def stub_health_probe(monkeypatch):
-    """Prevent real HealthProbe background threads during unit tests."""
-
-    class _Stub:
-        def __init__(self, *a, **k):
-            pass
-
-        def start(self):
-            pass
-
-    monkeypatch.setattr(router_mod, "HealthProbe", _Stub)
-
-
 @pytest.fixture
 def fake_loader(monkeypatch):
     """Install a fake LLMProvidersConfig loader that returns 1 then 2 providers."""

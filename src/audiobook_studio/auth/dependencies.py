@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -20,11 +20,14 @@ from src.audiobook_studio.models.user import User
 
 logger = logging.getLogger(__name__)
 
+
 # Extension for User model to support cached roles
 class _UserWithCache(User):
     """User class with dynamic _cached_roles attribute for cached auth."""
+
     __allow_unmapped__ = True
     _cached_roles: List[str]
+
 
 # OAuth2 scheme for token authentication (required)
 oauth2_scheme = OAuth2PasswordBearer(

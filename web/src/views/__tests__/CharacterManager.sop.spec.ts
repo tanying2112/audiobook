@@ -16,6 +16,7 @@ import CharacterManager from '../CharacterManager.vue'
 // ── Mock vue-router───────────────────────────────────────────────────────
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { projectId: '7' } }),
+  useRouter: () => ({ push: vi.fn() }),
 }))
 
 // vi.mock 工厂被提升到文件顶部，故用 vi.hoisted 在工厂作用域可见地定义 mock 函数。

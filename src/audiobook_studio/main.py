@@ -5,11 +5,14 @@ database tables on startup (for the MVP).  In production you would run Alembic
 migrations instead of ``init_db``.
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, Request
+logger = logging.getLogger(__name__)
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -29,16 +32,16 @@ from .api.export import router as export_router
 from .api.feedback import router as feedback_router
 from .api.golden import router as golden_router
 from .api.harness import router as harness_router
-from .api.llm import router as llm_router
 from .api.languages import router as languages_router
+from .api.llm import router as llm_router
 from .api.mock_router import router as mock_router
 from .api.models_market import router as models_market_router
-from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
 from .api.provider_router import router as provider_router
 from .api.publish import router as publish_router
+from .api.publish_job import router as publish_job_router
 from .api.qualities import router as qualities_router
 from .api.routings import router as routings_router
 from .api.sop_reflection import router as sop_reflection_router
@@ -75,13 +78,11 @@ async def lifespan(app: FastAPI):
     # BP-003: Startup dependency validation — fast-fail on unreachable dependencies
     await settings.validate_runtime_dependencies(timeout=settings.HEALTH_CHECK_TIMEOUT)
 
-    # P1-4: Use Alembic for DB migrations instead of create_all()
-    import sys
-    from subprocess import run
-
-    result = run([sys.executable, "-m", "alembic", "upgrade", "head"], capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Alembic migration failed: {result.stderr}")
+    # P1-4 / S3-4: DB schema is now managed EXTERNALLY via Alembic.
+    # Migrations run BEFORE the app starts (through `scripts/migrate.sh up` or
+    # the `migrate` service in docker-compose, which waits for db to be healthy),
+    # so startup NEVER runs migrations. This enables zero-downtime, rollbackable
+    # production deployments. See scripts/migrate.sh and docker-compose.yml.
 
     # Initialize RBAC with default roles and permissions
     from .auth.rbac import init_rbac
@@ -92,6 +93,23 @@ async def lifespan(app: FastAPI):
         init_rbac(db)
     finally:
         db.close()
+
+    # Load plugins (TTS engines, LLM providers, pipeline stages)
+    try:
+        from .plugins import get_plugin_manager
+
+        plugin_mgr = get_plugin_manager()
+        plugin_mgr.discover()
+        plugin_mgr.load_installed()
+        results = plugin_mgr.load_all_installed()
+        loaded = [name for name, ok in results.items() if ok]
+        failed = [name for name, ok in results.items() if not ok]
+        if loaded:
+            logger.info("Loaded plugins: %s", ", ".join(loaded))
+        if failed:
+            logger.warning("Failed to load plugins: %s", ", ".join(failed))
+    except Exception as e:
+        logger.warning("Plugin loading failed (continuing without plugins): %s", e)
 
     # Shutdown observability
     from .observability.metrics import shutdown_metrics
@@ -145,7 +163,7 @@ settings = get_settings()
 # 4. ISOTimestampMiddleware (response normalization)
 # 5. ABTestMiddleware (business routing)
 # 6. ObservabilityMiddleware (added by instrument_app, innermost for request)
-# 
+#
 # For RESPONSE, order is reversed (last added = outermost for response)
 # instrument_app already added ObservabilityMiddleware as innermost for request
 # So we add the rest in REVERSE of request order (excluding ObservabilityMiddleware)
@@ -201,32 +219,38 @@ if settings.DEBUG or settings.ENVIRONMENT == "development":
     app.include_router(mock_router, prefix="/api", dependencies=auth_dep)
 app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)
 app.include_router(publish_router, prefix="/api", dependencies=auth_dep)
+app.include_router(publish_job_router, prefix="/api", dependencies=auth_dep)
 app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
 app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
 app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep)
-app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
+app.include_router(agent_chat_router, prefix="/api")
 app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
 app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
+
+from fastapi.routing import APIWebSocketRoute
+
+from .api.agent_chat import router as _agent_chat_router
 
 # ── WebSocket Route Fix ──────────────────────────────────────────────────────
 # FastAPI's include_router doesn't properly include WebSocket routes with prefix.
 # Manually add websocket routes with combined prefix (/api + /ws = /api/ws).
 from .api.websocket import router as _websocket_router
-from fastapi.routing import APIWebSocketRoute
 
 for _route in _websocket_router.routes:
     if isinstance(_route, APIWebSocketRoute):
         _new_path = "/api" + _route.path
-        _new_route = APIWebSocketRoute(
-            path=_new_path,
-            endpoint=_route.endpoint,
-            name=_route.name
-        )
+        _new_route = APIWebSocketRoute(path=_new_path, endpoint=_route.endpoint, name=_route.name)
+        app.router.routes.append(_new_route)
+
+# agent_chat 的 WebSocket 端点同样需要手动注册（prefix /agent → /api/agent）
+for _route in _agent_chat_router.routes:
+    if isinstance(_route, APIWebSocketRoute):
+        _new_path = "/api" + _route.path
+        _new_route = APIWebSocketRoute(path=_new_path, endpoint=_route.endpoint, name=_route.name)
         app.router.routes.append(_new_route)
 
 # Clean up
-del _websocket_router, _route, _new_path, _new_route, APIWebSocketRoute
-
+del _websocket_router, _agent_chat_router, _route, _new_path, _new_route, APIWebSocketRoute
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
@@ -278,7 +302,7 @@ async def health_ready():
         import redis.asyncio as aioredis
 
         async with asyncio.timeout(timeout):
-            r = aioredis.from_url(settings.REDIS_URL)
+            r = await aioredis.from_url(settings.REDIS_URL)
             await r.ping()
             await r.aclose()
             checks["redis"] = "ok"
@@ -336,10 +360,22 @@ async def health_ready():
             return v
         return v == "ok" or v == "not_configured"
 
-    # Critical dependencies: DB and Redis must be healthy
-    # LLM keys are validated but invalid format only matters if keys are configured
+    from src.audiobook_studio.config.settings_loader import get_settings
+
+    # ... existing code ...
+    # Critical dependencies: DB must be healthy
+    # Redis is optional (controlled by REDIS_REQUIRED setting)
+    settings = get_settings()
     db_ok = _is_healthy(checks.get("database"))
-    redis_ok = _is_healthy(checks.get("redis"))
+
+    if settings.REDIS_REQUIRED:
+        # Redis is required - must be healthy
+        redis_ok = _is_healthy(checks.get("redis"))
+    else:
+        # Redis is optional - check but don't fail if unavailable
+        redis_healthy = _is_healthy(checks.get("redis"))
+        redis_ok = redis_healthy or checks.get("redis") == "not_configured"
+
     llm_ok = _is_healthy(checks.get("llm_keys"))
 
     all_ok = db_ok and redis_ok and llm_ok
@@ -350,36 +386,50 @@ async def health_ready():
     )
 
 
-# ── Global exception handler (QUAL-003: structured error responses) ────────────
+# ── Prometheus /metrics endpoint ───────────────────────────────────────────
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Catch-all exception handler returning structured JSON error responses.
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint for scraping.
 
-    AudiobookError subclasses include error_code and context details.
-    Unknown exceptions are logged with traceback and returned as INTERNAL_ERROR.
+    Returns Prometheus-formatted metrics including:
+    - HTTP request counts/durations
+    - Pipeline stage durations
+    - Queue depths
+    - TTS synthesis counts
+    - LLM token usage
+    - Cost tracking (USD/day)
+    - DB pool stats
     """
-    import logging
-    import traceback
+    from fastapi.responses import PlainTextResponse
 
-    logger = logging.getLogger("audiobook_studio.errors")
+    from .core.telemetry import get_telemetry
+
+    metrics_text = get_telemetry().export_prometheus()
+    return PlainTextResponse(content=metrics_text, media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+from .exceptions import register_error_handlers
+
+# ── Global exception handler (QUAL-003) — implementation lives in exceptions.py
+#    so that test apps mounting bare FastAPI() can reuse the identical contract.
+register_error_handlers(app)
+
+# Backward-compatible names (handler was extracted to exceptions.py; some
+# callers/tests still import these from main).
+from .exceptions import error_code_to_status as _error_code_to_status  # noqa: E402
+
+
+async def global_exception_handler(request, exc: Exception):  # noqa: ANN001
+    """Deprecated direct-call shim — the registered handler is in exceptions.py."""
+    from starlette.responses import JSONResponse
 
     if hasattr(exc, "error_code") and hasattr(exc, "to_dict"):
-        # Structured AudiobookError — return with its error_code
-        # Custom exceptions have message, error_code, to_dict(), etc.
-        custom_exc: Any = exc
-        error_dict = custom_exc.to_dict()
-        status_code = _error_code_to_status(custom_exc.error_code)
-        logger.error(
-            f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
-            extra={"error_code": custom_exc.error_code, "context": getattr(custom_exc, "context", {})},
-        )
         return JSONResponse(
-            content={"error": error_dict},
-            status_code=status_code,
+            content={"error": exc.to_dict()},
+            status_code=_error_code_to_status(exc.error_code),
         )
-    # Starlette/FastAPI HTTPException — pass through
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     if isinstance(exc, StarletteHTTPException):
@@ -387,10 +437,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             content={"error": {"code": "HTTP_ERROR", "message": exc.detail}},
             status_code=exc.status_code,
         )
-
-    # Unknown exception — log full traceback, return generic 500
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    logger.critical(f"Unhandled exception: {exc}\n{tb}")
     return JSONResponse(
         content={
             "error": {
@@ -400,21 +446,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
         status_code=500,
     )
-
-
-def _error_code_to_status(error_code: str) -> int:
-    """Map structured error codes to HTTP status codes."""
-    if error_code in ("VALIDATION_ERROR", "SCHEMA_COMPLIANCE_ERROR"):
-        return 422
-    if error_code in ("FILE_NOT_FOUND",):
-        return 404
-    if error_code in ("QUOTA_EXCEEDED", "RATE_LIMITED"):
-        return 429
-    if error_code in ("CIRCUIT_OPEN", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"):
-        return 503
-    if error_code in ("CONFIG_ERROR",):
-        return 500
-    return 500
 
 
 if __name__ == "__main__":

@@ -86,6 +86,7 @@ logs/self_iteration_self_iteration.jsonl
 
 # Secrets
 .env
+.agekey
 *.key
 *.pem
 *.secret
@@ -231,3 +232,12 @@ feeds/*.rss
 docs/git-commit-log.md
 docs/changelog/auto/
 storage/books/**/reports/
+
+# S3 / golden-scorer: generated runtime scores & voice prints — NEVER commit.
+storage/golden_audio_scores.json
+storage/metrics_summary.json
+voices/voice_prints.json
+
+# Dev runtime PIDs — written by scripts/dev/start_dev.sh (backend/frontend/redis).
+# Machine-specific and regenerated on every `./audiobook start`. Never commit.
+.dev_pids/

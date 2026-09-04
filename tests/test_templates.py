@@ -7,23 +7,20 @@ Covers:
 - Background re-run of downstream pipeline stages
 """
 
-import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from src.audiobook_studio.api.templates import _apply_template_background
-from src.audiobook_studio.database import get_db
 from src.audiobook_studio.api.dependencies import get_async_db
+from src.audiobook_studio.api.templates import _apply_template_background
 from src.audiobook_studio.auth.dependencies import get_current_active_user
 
 # Import the FastAPI app
 from src.audiobook_studio.main import app
-from src.audiobook_studio.models import Paragraph, Quality, Routing, TTSEdit
+from src.audiobook_studio.models import Paragraph, TTSEdit
 from src.audiobook_studio.models.feedback_record import FeedbackRecord as FeedbackRecordModel
 
 client = TestClient(app)
@@ -321,7 +318,10 @@ class TestApplyTemplate:
         response = client.post("/api/projects/1/templates/apply", json={"template_id": 1, "scope": "all"})
 
         assert response.status_code == 400
-        assert "not confirmed" in response.json()["detail"]
+        error_data = response.json()
+        # New error format: {"error": {"code": "...", "message": "..."}}
+        assert "error" in error_data
+        assert "not confirmed" in error_data["error"]["message"]
 
     def test_apply_template_not_found(self, mock_async_db_session):
         """Should return 404 for non-existent template."""
@@ -668,7 +668,6 @@ class TestTemplateApplyProgress:
 
     def test_progress_tracking_initialized(self):
         """Should initialize progress dict."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         # Clear any existing progress
         if hasattr(_apply_template_background, "progress"):
@@ -679,7 +678,6 @@ class TestTemplateApplyProgress:
 
     def test_progress_dict_operations(self):
         """Test progress dict basic operations."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress.clear()
@@ -735,7 +733,6 @@ class TestTemplateProgressEndpoint:
 
     def test_progress_endpoint_success(self, mock_async_db_session):
         """Should return progress for valid task_id."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         # Clear any existing progress
         if hasattr(_apply_template_background, "progress"):
@@ -766,7 +763,6 @@ class TestTemplateProgressEndpoint:
 
     def test_progress_endpoint_not_found(self, mock_async_db_session):
         """Should return 404 for unknown task_id."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress.clear()
@@ -777,11 +773,13 @@ class TestTemplateProgressEndpoint:
 
         assert response.status_code == 404
         data = response.json()
-        assert data["detail"] == "Task not found"
+        # New error format: {"error": {"error_type": "...", "error_code": "...", "message": "..."}}
+        assert "error" in data
+        assert data["error"]["error_code"] == "NOT_FOUND"
+        assert "Task not found" in data["error"]["message"]
 
     def test_progress_endpoint_completed(self, mock_async_db_session):
         """Should return completed progress."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress.clear()
@@ -807,7 +805,6 @@ class TestTemplateProgressEndpoint:
 
     def test_progress_endpoint_failed(self, mock_async_db_session):
         """Should return failed progress with error."""
-        from src.audiobook_studio.api.templates import _apply_template_background
 
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress.clear()

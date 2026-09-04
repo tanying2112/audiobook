@@ -15,6 +15,7 @@ Redis Key Schema:
 
 import json
 import os
+import sys
 import time
 import uuid
 from contextlib import contextmanager
@@ -371,7 +372,7 @@ class HermesStateStore:
                             task = TTSTask.from_hash(json.loads(raw))
                             if task.state == state:
                                 tasks.append(task)
-                        except Exception:
+                        except json.JSONDecodeError:
                             pass
             if cursor == 0:
                 break
@@ -511,7 +512,7 @@ class HermesStateStore:
                         try:
                             task = TTSTask.from_hash(json.loads(raw))
                             counts[task.state.value] += 1
-                        except Exception:
+                        except json.JSONDecodeError:
                             pass
             if cursor == 0:
                 break
@@ -534,7 +535,7 @@ def main():
     try:
         summary = store.get_task_summary()
         print(f"✅ State store connected. Task summary: {summary}")
-    except Exception as e:
+    except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError) as e:  # noqa: B014
         print(f"❌ Connection failed: {e}", file=sys.stderr)
         sys.exit(1)
 

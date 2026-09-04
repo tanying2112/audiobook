@@ -1,18 +1,13 @@
 """Tests for feedback/quality_enhancement module."""
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import datetime
 
 import pytest
 
 from src.audiobook_studio.feedback.quality_enhancement import (
-    _VALID_EMOTIONS,
     DifficultyWeights,
-    FalsePositiveIssue,
     FalsePositiveTracker,
     FreeTierHealth,
-    SemanticCoherenceResult,
-    ValidationReport,
     _cosine_similarity,
     check_semantic_coherence,
     get_false_positive_tracker,

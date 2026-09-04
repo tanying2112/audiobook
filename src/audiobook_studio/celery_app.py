@@ -8,7 +8,6 @@ import os
 from typing import Any
 
 from celery import Celery
-from celery.schedules import crontab
 
 # Redis connection
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")

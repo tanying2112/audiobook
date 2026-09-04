@@ -1,0 +1,560 @@
+# Audiobook Studio - Production Helm Values
+# Override with: helm install -f custom-values.yaml
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "standard"
+
+# Application configuration
+app:
+  name: audiobook-studio
+  version: "1.0.0"
+  environment: production
+  logLevel: INFO
+  timezone: "UTC"
+  # Python settings
+  pythonVersion: "3.11"
+  pythonPath: "/app/src"
+  # Model cache (shared volume)
+  modelCachePath: "/app/models_cache"
+
+# Web API service
+web:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: audiobook-studio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  ports:
+    http: 8000
+    metrics: 9090
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    hosts:
+      - host: audiobook.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: audiobook-studio-tls
+        hosts:
+          - audiobook.example.com
+  env:
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: PYTHONPATH
+      value: "/app/src"
+    - name: AUDIOBOOK_STUDIO_MODEL_CACHE
+      value: "/app/models_cache"
+    # Secrets will be injected from secret references
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: database-url
+    - name: JWT_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: jwt-secret
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: openai-api-key
+          optional: true
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: anthropic-api-key
+          optional: true
+    - name: REDIS_URL
+      value: "redis://redis-master:6379/0"
+    - name: CELERY_BROKER_URL
+      value: "redis://redis-master:6379/0"
+    - name: CELERY_RESULT_BACKEND
+      value: "redis://redis-master:6379/0"
+    - name: CHROMADB_HOST
+      value: "chromadb"
+    - name: CHROMADB_PORT
+      value: "8000"
+    - name: ENABLE_RAG
+      value: "true"
+    - name: RAG_TOP_K
+      value: "5"
+    - name: RAG_HYBRID_SEARCH_ALPHA
+      value: "0.5"
+  livenessProbe:
+    httpGet:
+      path: /health/live
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health/ready
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /health/ready
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  volumeMounts:
+    - name: models-cache
+      mountPath: /app/models_cache
+    - name: output
+      mountPath: /app/output
+    - name: checkpoints
+      mountPath: /app/checkpoints
+    - name: storage
+      mountPath: /app/storage
+    - name: logs
+      mountPath: /app/logs
+    - name: tmp
+      mountPath: /tmp
+    - name: var-cache
+      mountPath: /var/cache
+
+# Celery worker
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: audiobook-studio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  concurrency: 1
+  queues: "export,pipeline"
+  env:
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: PYTHONPATH
+      value: "/app/src"
+    - name: AUDIOBOOK_STUDIO_MODEL_CACHE
+      value: "/app/models_cache"
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: database-url
+    - name: JWT_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: jwt-secret
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: openai-api-key
+          optional: true
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: audiobook-secrets
+          key: anthropic-api-key
+          optional: true
+    - name: REDIS_URL
+      value: "redis://redis-master:6379/0"
+    - name: CELERY_BROKER_URL
+      value: "redis://redis-master:6379/0"
+    - name: CELERY_RESULT_BACKEND
+      value: "redis://redis-master:6379/0"
+    - name: CHROMADB_HOST
+      value: "chromadb"
+    - name: CHROMADB_PORT
+      value: "8000"
+    - name: ENABLE_RAG
+      value: "true"
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  volumeMounts:
+    - name: models-cache
+      mountPath: /app/models_cache
+    - name: output
+      mountPath: /app/output
+    - name: checkpoints
+      mountPath: /app/checkpoints
+    - name: storage
+      mountPath: /app/storage
+    - name: logs
+      mountPath: /app/logs
+    - name: tmp
+      mountPath: /tmp
+    - name: var-cache
+      mountPath: /var/cache
+
+# PostgreSQL database
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: audiobook
+    database: audiobook
+    existingSecret: audiobook-secrets
+    secretKeys:
+      adminPasswordKey: postgres-password
+      passwordKey: postgres-password
+  primary:
+    resources:
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: "standard"
+    service:
+      ports:
+        postgresql: 5432
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  shutdown:
+    enabled: true
+
+# Redis for Celery
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "standard"
+    service:
+      ports:
+        redis: 6379
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# ChromaDB for RAG
+chromadb:
+  enabled: true
+  image:
+    repository: chromadb/chroma
+    tag: "0.4.22"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+  service:
+    type: ClusterIP
+    port: 8000
+  env:
+    - name: CHROMA_SERVER_HOST
+      value: "0.0.0.0"
+    - name: CHROMA_SERVER_HTTP_PORT
+      value: "8000"
+    - name: ANONYMIZED_TELEMETRY
+      value: "False"
+    - name: ALLOW_RESET
+      value: "True"
+
+# Prometheus monitoring
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+  rules:
+    enabled: true
+    groups:
+      - name: audiobook-studio
+        rules:
+          - alert: HighErrorRate
+            expr: |
+              sum(rate(audiobook_http_errors_total[5m])) / sum(rate(audiobook_http_requests_total[5m])) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High HTTP error rate detected"
+              description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(0.95, sum(rate(audiobook_http_request_duration_ms_bucket[5m])) by (le)) > 5000
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High HTTP latency (p95)"
+              description: "p95 latency is {{ $value }}ms"
+          - alert: PipelineFailure
+            expr: |
+              increase(audiobook_pipeline_failures_total[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pipeline failure detected"
+              description: "At least one pipeline failed in the last 5 minutes"
+          - alert: FreeTierQuotaLow
+            expr: |
+              audiobook_free_tier_quota_remaining < 10
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Free tier quota running low"
+              description: "Free tier quota is at {{ $value }}%"
+
+# Grafana dashboards
+grafana:
+  enabled: true
+  dashboards:
+    audiobook-studio:
+      json: |
+        {
+          "dashboard": {
+            "title": "Audiobook Studio",
+            "tags": ["audiobook", "production"],
+            "timezone": "utc",
+            "panels": [
+              {
+                "title": "HTTP Request Rate",
+                "type": "graph",
+                "targets": [{"expr": "sum(rate(audiobook_http_requests_total[5m])) by (method, path)"}]
+              },
+              {
+                "title": "HTTP Error Rate",
+                "type": "graph",
+                "targets": [{"expr": "sum(rate(audiobook_http_errors_total[5m])) by (method, path)"}]
+              },
+              {
+                "title": "Request Latency (p50, p95, p99)",
+                "type": "graph",
+                "targets": [
+                  {"expr": "histogram_quantile(0.50, sum(rate(audiobook_http_request_duration_ms_bucket[5m])) by (le))", "legendFormat": "p50"},
+                  {"expr": "histogram_quantile(0.95, sum(rate(audiobook_http_request_duration_ms_bucket[5m])) by (le))", "legendFormat": "p95"},
+                  {"expr": "histogram_quantile(0.99, sum(rate(audiobook_http_request_duration_ms_bucket[5m])) by (le))", "legendFormat": "p99"}
+                ]
+              },
+              {
+                "title": "LLM Tokens & Cost",
+                "type": "graph",
+                "targets": [
+                  {"expr": "rate(audiobook_llm_tokens_used_total[5m])", "legendFormat": "tokens/sec"},
+                  {"expr": "rate(audiobook_llm_cost_usd_total[5m])", "legendFormat": "USD/sec"}
+                ]
+              },
+              {
+                "title": "Pipeline Stage Duration",
+                "type": "graph",
+                "targets": [{"expr": "histogram_quantile(0.95, sum(rate(audiobook_pipeline_stage_duration_ms_bucket[5m])) by (le, stage))"}]
+              },
+              {
+                "title": "TTS Synthesis Duration",
+                "type": "graph",
+                "targets": [{"expr": "histogram_quantile(0.95, sum(rate(audiobook_tts_synthesis_duration_ms_bucket[5m])) by (le, engine))"}]
+              },
+              {
+                "title": "Books/Chapters Processed",
+                "type": "stat",
+                "targets": [
+                  {"expr": "audiobook_books_processed_total", "legendFormat": "Books"},
+                  {"expr": "audiobook_chapters_synthesized_total", "legendFormat": "Chapters"}
+                ]
+              },
+              {
+                "title": "Quality Check Failures",
+                "type": "graph",
+                "targets": [{"expr": "rate(audiobook_quality_check_failures_total[5m])"}]
+              },
+              {
+                "title": "Free Tier Quota Remaining",
+                "type": "gauge",
+                "targets": [{"expr": "audiobook_free_tier_quota_remaining"}]
+              }
+            ]
+          }
+        }
+
+# Persistent volumes
+persistence:
+  modelsCache:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+  output:
+    enabled: true
+    size: 50Gi
+    storageClass: "standard"
+  checkpoints:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+  storage:
+    enabled: true
+    size: 20Gi
+    storageClass: "standard"
+  logs:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - podSelector:
+            matchLabels:
+              app: chromadb
+      ports:
+        - protocol: TCP
+          port: 8000
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Horizontal pod autoscaler
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+# Secrets (to be created separately or via external-secrets)
+secrets:
+  create: false
+  # If create: true, these will be generated (for dev only)
+  # For production, use external-secrets or sealed-secrets
+  data: {}
+
+# Service account
+serviceAccount:
+  create: true
+  name: "audiobook-studio"
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+
+# Pod security policy (deprecated in K8s 1.25+, use PodSecurity admission)
+podSecurityPolicy:
+  enabled: false
+
+# Test configuration
+test:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36"

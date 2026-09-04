@@ -1,11 +1,8 @@
 """LLM 模块综合测试 — 覆盖 circuit_breaker, key_pool, quota_registry,
 health_probe, utils, judge, router 核心逻辑。"""
 
-import json
-import threading
 import time
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -587,7 +584,7 @@ class TestLLMClient:
 
     def test_mock_mode_call(self):
         """mock_mode 下返回 mock 结果。"""
-        from src.audiobook_studio.llm.client import LLMClient, LLMClientConfig, create_client
+        from src.audiobook_studio.llm.client import create_client
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             client = create_client(model="test-model")
@@ -756,7 +753,7 @@ class TestLLMJudge:
         assert judge.router is not None
 
     def test_judge_fallback_on_error(self):
-        """judge_quality 在 router 抛出异常时返回安全默认值。"""
+        """judge_quality 在 router 抛出异常时诚实降级，不谎报敏感内容、不强制重合成。"""
         from src.audiobook_studio.llm.judge import JudgeConfig, LLMJudge
         from src.audiobook_studio.schemas import ParagraphAnnotation
 
@@ -785,7 +782,10 @@ class TestLLMJudge:
             audio_description="test",
             reference_text="ref text",
         )
-        assert result.needs_regeneration is True
+        # Transient judge failure must NOT be mislabeled as "sensitive_content"
+        # and must NOT force regeneration — it is a judge_error (honest degradation).
+        assert result.needs_regeneration is False
+        assert "judge_error" in (result.issues or [])
         assert result.overall_score == 0.0
 
 

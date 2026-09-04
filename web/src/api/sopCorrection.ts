@@ -145,10 +145,10 @@ export class SopCorrectionWebSocketClient {
     return `${protocol}//${host}/api/sop/corrections/ws/${projectId}`
   }
 
-  /** 构建默认 HTTP 回退 URL */
-  private buildDefaultHttpUrl(projectId: number): string {
+  /** 构建默认 HTTP 回退 URL（后端 POST /api/sop/corrections，project_id 在 body 中） */
+  private buildDefaultHttpUrl(_projectId: number): string {
     const base = import.meta.env.VITE_API_BASE || ''
-    return `${base}/api/sop/corrections/${projectId}`
+    return `${base}/api/sop/corrections`
   }
 
   /** 获取当前连接状态 */

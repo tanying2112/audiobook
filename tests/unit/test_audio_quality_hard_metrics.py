@@ -19,7 +19,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -60,12 +59,10 @@ if sf is None:  # pragma: no cover
 
 # 离线导入即成功证明模块翻转字段无环引用
 from src.audiobook_studio.audio_quality import (
-    QualityReport,
     SegmentQualityResult,
     _run_hard_metrics_async,
     check_all_segments,
 )
-
 
 # ── 真实音频 fixture（红线 #1：不 mock 不凑数）───────────────────────────────
 
@@ -173,7 +170,7 @@ class TestBreachFlipsPassed:
                 # 越界应翻转为不通过：段级判定用 sr0.passed（overall_passed 属聚合 QualityReport）
                 assert sr0.passed is False or any(
                     "硬质检门禁" in i or "DNSMOS" in i for i in sr0.issues
-                ), (f"breach not reflected: mos={sr0.mos}, issues={sr0.issues}")
+                ), f"breach not reflected: mos={sr0.mos}, issues={sr0.issues}"
             # 无论是否越界，mos 已成功计算即满足 DoD"指标真实生效"
         else:
             # 依赖缺失：必须诚实记录 skipped，绝不为空字符串假装全跑
@@ -306,6 +303,4 @@ class TestRealDnsmosDistinguishesBad:
             pytest.skip(f"real DNSMOS gate gracefully degraded: {out.strip()[-400:]}")
         # 额外校验脚本真的跑出了数值（杜绝脚本结构被改后悄悄假过）
         assert "ovr=" in out, f"script ran but produced no MOS output:\n{out}"
-        assert proc.returncode == 0, (
-            f"real DNSMOS gate FAILED (bad sample not recognized):\n{out}"
-        )
+        assert proc.returncode == 0, f"real DNSMOS gate FAILED (bad sample not recognized):\n{out}"

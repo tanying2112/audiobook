@@ -9,8 +9,6 @@ Verifies:
 
 import sys
 
-import pytest
-
 sys.path.insert(0, "src")
 
 from audiobook_studio.languages import (

@@ -1,7 +1,6 @@
 """Tests for config loader module with Pydantic validation - Isolated version."""
 
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest

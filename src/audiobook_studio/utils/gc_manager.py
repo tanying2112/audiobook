@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -372,11 +371,11 @@ if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     if len(sys.argv) < 2:
-        print("Usage: python -m audiobook_studio.utils.gc_manager <command> [args]")
-        print("Commands:")
-        print("  cleanup <project_id> [--dry-run] [--no-keep-final]")
-        print("  sweep [--max-age-days N] [--dry-run]")
-        print("  config")
+        logger.info("Usage: python -m audiobook_studio.utils.gc_manager <command> [args]")
+        logger.info("Commands:")
+        logger.info("  cleanup <project_id> [--dry-run] [--no-keep-final]")
+        logger.info("  sweep [--max-age-days N] [--dry-run]")
+        logger.info("  config")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -386,23 +385,23 @@ if __name__ == "__main__":  # pragma: no cover
         dry = "--dry-run" in sys.argv
         keep_final = "--no-keep-final" not in sys.argv
         result = cleanup_after_export(pid, keep_final=keep_final)
-        print(f"Deleted: {len(result['deleted_files'])} files")
-        print(f"Freed: {result['freed_mb']:.2f} MB")
+        logger.info(f"Deleted: {len(result['deleted_files'])} files")
+        logger.info(f"Freed: {result['freed_mb']:.2f} MB")
         if result["errors"]:
-            print(f"Errors: {result['errors']}")
+            logger.error(f"Errors: {result['errors']}")
 
     elif cmd == "sweep":
         max_age = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 30
         dry = "--dry-run" in sys.argv
         results = gc_sweep_all(max_age_days=max_age, dry_run=dry)
         for r in results:
-            print(f"Project {r['project_id']}: {len(r['deleted_files'])} files, {r['freed_mb']:.2f} MB")
+            logger.info(f"Project {r['project_id']}: {len(r['deleted_files'])} files, {r['freed_mb']:.2f} MB")
 
     elif cmd == "config":
-        print("GC Config:")
-        print(f"  GC_POLICY={os.getenv('GC_POLICY', 'clean_on_success')}")
-        print(f"  GC_KEEP_DAYS={os.getenv('GC_KEEP_DAYS', '7')}")
-        print(f"  GC_KEEP_FINAL={os.getenv('GC_KEEP_FINAL', 'true')}")
-        print(f"  GC_MAX_AGE_DAYS={os.getenv('GC_MAX_AGE_DAYS', '30')}")
-        print(f"  PIPELINE_OUTPUT_DIR={os.getenv('PIPELINE_OUTPUT_DIR', './output')}")
-        print(f"  STORAGE_ROOT={os.getenv('STORAGE_ROOT', './storage/books')}")
+        logger.info("GC Config:")
+        logger.info(f"  GC_POLICY={os.getenv('GC_POLICY', 'clean_on_success')}")
+        logger.info(f"  GC_KEEP_DAYS={os.getenv('GC_KEEP_DAYS', '7')}")
+        logger.info(f"  GC_KEEP_FINAL={os.getenv('GC_KEEP_FINAL', 'true')}")
+        logger.info(f"  GC_MAX_AGE_DAYS={os.getenv('GC_MAX_AGE_DAYS', '30')}")
+        logger.info(f"  PIPELINE_OUTPUT_DIR={os.getenv('PIPELINE_OUTPUT_DIR', './output')}")
+        logger.info(f"  STORAGE_ROOT={os.getenv('STORAGE_ROOT', './storage/books')}")

@@ -1,8 +1,5 @@
 """Tests for metrics.py."""
 
-import sys
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 
@@ -122,8 +119,8 @@ class TestDataClasses:
         assert embedding.sample_rate == 16000
 
         d = embedding.to_dict()
-        # Use np.testing for float32 precision issues
-        np.testing.assert_allclose(d["embedding"], [0.1, 0.2, 0.3], rtol=1e-5)
+        # to_dict() widens float32 -> Python float, so compare with tolerance
+        assert d["embedding"] == pytest.approx([0.1, 0.2, 0.3], abs=1e-6)
         assert d["model_name"] == "test_model"
         assert d["sample_rate"] == 16000
         assert d["dim"] == 3
@@ -159,7 +156,6 @@ class TestDataClasses:
     def test_quality_check_result(self):
         """Test QualityCheckResult creation and to_dict."""
         dnsmos = DNSMOSResult(4.0, 4.2, 3.8, 4.1, True)
-        asr = ASRResult("hello", [], "en", 0.9, 500.0, True)
         wer = WERResult(0.1, 0.05, 0, 0, 0, 10, 10, True)
         speaker_sim = SpeakerSimilarityResult(0.85, 0.8, True, "ref1", "tgt1", True, None)
         result = QualityCheckResult(

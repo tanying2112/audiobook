@@ -138,13 +138,15 @@ class LLMFeedbackAnalyzer:
 
         schema_json = FeedbackAnalysis.model_json_schema()
 
-        return template.render(
-            schema_json=schema_json,
-            stage=stage,
-            llm_output=llm_output,
-            corrected_output=corrected_output,
-            rationale=rationale,
-            key_differences=key_differences,
+        return str(
+            template.render(
+                schema_json=schema_json,
+                stage=stage,
+                llm_output=llm_output,
+                corrected_output=corrected_output,
+                rationale=rationale,
+                key_differences=key_differences,
+            )
         )
 
     def analyze_mock(

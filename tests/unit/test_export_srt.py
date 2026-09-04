@@ -176,7 +176,7 @@ class TestGenerateSrt:
                 SubtitleEntry(1, 0, 500, "Very short"),
             ]
 
-            result = generate_srt(entries, output_path, config)
+            generate_srt(entries, output_path, config)
             content = output_path.read_text(encoding="utf-8")
             # End time should be 1000ms (extended)
             assert "00:00:00,000 --> 00:00:01,000" in content
@@ -195,7 +195,7 @@ class TestGenerateSrt:
                 SubtitleEntry(1, 0, 6000, "This is a very long text that needs splitting"),
             ]
 
-            result = generate_srt(entries, output_path, config)
+            generate_srt(entries, output_path, config)
             content = output_path.read_text(encoding="utf-8")
 
             # Should have multiple entries now

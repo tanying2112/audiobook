@@ -1,7 +1,7 @@
 """SQLAlchemy models for Publish jobs and history."""
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SQLEnum

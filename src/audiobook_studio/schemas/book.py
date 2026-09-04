@@ -10,7 +10,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, confloat, conint
+from pydantic import BaseModel, Field, confloat
 
 
 class BookAnalysisInput(BaseModel):

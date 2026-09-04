@@ -6,19 +6,18 @@ using randomized inputs to catch edge cases deterministic tests miss.
 
 # Force numpy to load before hypothesis to avoid isinstance() issues
 # with numpy.ndarray in hypothesis internal code (hypothesis issue #3500+)
-import sys
+
 import numpy as np
+
 _ = np.ndarray  # noqa: F841
 
-import os
 import tempfile
 from pathlib import Path
 
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from hypothesis import HealthCheck
 
-from src.audiobook_studio.security import safe_join, safe_open, sanitize_filename, validate_file_path
+from src.audiobook_studio.security import safe_join, safe_open, sanitize_filename
 
 # ── sanitize_filename ──────────────────────────────────────────────────────────
 
@@ -120,8 +119,16 @@ class TestSafeJoin:
 
     @given(
         component=st.one_of(
-            st.text(alphabet="/", min_size=1, max_size=1).flatmap(lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(lambda t: s + t)),
-            st.text(alphabet="\\", min_size=1, max_size=1).flatmap(lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(lambda t: s + t)),
+            st.text(alphabet="/", min_size=1, max_size=1).flatmap(
+                lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(
+                    lambda t: s + t
+                )
+            ),
+            st.text(alphabet="\\", min_size=1, max_size=1).flatmap(
+                lambda s: st.text(alphabet=list("abcdefghijklmnopqrstuvwxyz0123456789"), min_size=1, max_size=50).map(
+                    lambda t: s + t
+                )
+            ),
         )
     )
     @settings(max_examples=100, suppress_health_check=[HealthCheck.filter_too_much])
@@ -178,8 +185,8 @@ class TestSafeOpen:
                     f.write("data")
                 with safe_open(base, filename, mode="x") as f:
                     f.write("data2")
-                assert False, "Expected FileExistsError for exclusive create"
-            except (FileExistsError, OSError):
+                raise AssertionError("Expected FileExistsError for exclusive create")
+            except (FileExistsError, OSError):  # noqa: B014
                 pass  # Expected
 
     @given(
@@ -198,5 +205,5 @@ class TestSafeOpen:
                 # If it opened, verify it's still within base
                 full = (base / traversal).resolve()
                 assert str(full).startswith(str(base)), f"Traversal escaped: {full}"
-            except (ValueError, FileNotFoundError, OSError):
+            except (ValueError, FileNotFoundError, OSError):  # noqa: B014
                 pass  # Rejection is expected

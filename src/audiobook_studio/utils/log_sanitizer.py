@@ -22,8 +22,7 @@ Or as a structlog processor:
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Set
-
+from typing import Any, Dict, List, Set
 
 # ── Sensitive field name patterns ──────────────────────────────────────────
 SENSITIVE_FIELD_PATTERNS: List[re.Pattern[str]] = [
@@ -75,7 +74,7 @@ ALLOWLIST_FIELDS: Set[str] = {
     "provider",
     "timestamp",
     "trace_id",  # OpenTelemetry
-    "span_id",   # OpenTelemetry
+    "span_id",  # OpenTelemetry
 }
 
 
@@ -122,7 +121,7 @@ def _redact_sensitive_values(value: str) -> str:
         escaped_prefix = re.escape(prefix)
         # Find pattern like "key sk-abc123" or "Token: sk-ant-xyz789"
         # Prefix preceded by a non-alphanumeric delimiter, followed by ≥12 alphanumeric chars
-        pattern = r'(?:[^A-Za-z0-9]|^)(' + escaped_prefix + r'[A-Za-z0-9]{12,})'
+        pattern = r"(?:[^A-Za-z0-9]|^)(" + escaped_prefix + r"[A-Za-z0-9]{12,})"
         match = re.search(pattern, value)
         if match:
             token = match.group(1)
@@ -130,7 +129,7 @@ def _redact_sensitive_values(value: str) -> str:
             value = value.replace(token, redacted)
     # Redact inline JWT tokens (e.g., "Token: eyJhbG...")
     inline_jwt = re.search(
-        r'(?:[^A-Za-z0-9]|^)(eyJ[A-Za-z0-9\-_=]+\.+[A-Za-z0-9\-_=]+\.+[A-Za-z0-9\-_=]+)',
+        r"(?:[^A-Za-z0-9]|^)(eyJ[A-Za-z0-9\-_=]+\.+[A-Za-z0-9\-_=]+\.+[A-Za-z0-9\-_=]+)",
         value,
     )
     if inline_jwt:

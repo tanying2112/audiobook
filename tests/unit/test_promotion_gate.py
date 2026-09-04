@@ -1,6 +1,5 @@
 """Tests for feedback/promotion_gate module."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -536,6 +535,149 @@ class TestLoadFunctions:
         assert score == 0.0
         score = _aggregate_quality_score({"output_similarity": 0.5}, "unknown")
         assert score == 0.5
+
+
+class TestSelfIterationMockMode:
+    """S2-1: SELF_ITERATION_MOCK env controls real-vs-mock LLM calls.
+
+    When SELF_ITERATION_MOCK=false the self-iteration harness must run the
+    pipeline stages against the live LLM provider (mock_mode=False) and log an
+    explicit REAL-LLM record; when true (default) it must mock.
+    """
+
+    def test_resolve_mock_mode_defaults_to_real_llm(self, monkeypatch):
+        monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
+        from src.audiobook_studio.feedback.promotion_gate import _resolve_mock_mode
+
+        # Unset → default false → mock_mode False (live LLM invoked by default).
+        assert _resolve_mock_mode(None) is False
+
+    def test_resolve_mock_mode_false_env_enables_real_llm(self, monkeypatch):
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
+        from src.audiobook_studio.feedback.promotion_gate import _resolve_mock_mode
+
+        # false → mock_mode False → live LLM provider invoked.
+        assert _resolve_mock_mode(None) is False
+
+    def test_resolve_mock_mode_explicit_arg_wins(self, monkeypatch):
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
+        from src.audiobook_studio.feedback.promotion_gate import _resolve_mock_mode
+
+        # Explicit argument must override the env resolution.
+        assert _resolve_mock_mode(True) is True
+        assert _resolve_mock_mode(False) is False
+
+    def test_run_stage_with_prompt_version_logs_real_llm_when_mock_off(self, monkeypatch, tmp_path, caplog):
+        """SELF_ITERATION_MOCK=false → pipeline gets mock_mode=False + REAL-LLM log."""
+        import logging
+
+        from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
+        from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput
+
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
+
+        # Provide prompt version files so the runner's file swap succeeds.
+        prompt_dir = tmp_path / "prompts" / "edit_for_tts"
+        prompt_dir.mkdir(parents=True)
+        (prompt_dir / "v1.j2").write_text("v1 content", encoding="utf-8")
+        (prompt_dir / "v2.j2").write_text("v2 content", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        captured = {}
+
+        def _fake_pipeline(*args, **kwargs):
+            captured["mock_mode"] = kwargs.get("mock_mode")
+            instance = MagicMock()
+            instance.run.return_value = "RAN"
+            return instance
+
+        with caplog.at_level(logging.INFO):
+            with patch(
+                "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline",
+                side_effect=_fake_pipeline,
+            ):
+                result = _run_stage_with_prompt_version(
+                    "edit",
+                    2,
+                    TtsEditInput(
+                        paragraph_text="原文保持不变。",
+                        paragraph_annotation=ParagraphAnnotation(
+                            paragraph_index=1,
+                            text="原文保持不变。",
+                            speaker_canonical_name="_narrator_",
+                            is_dialogue=False,
+                            emotion="neutral",
+                            emotion_intensity=0.5,
+                            confidence=0.9,
+                            difficulty="B",
+                        ),
+                        difficulty="B",
+                        forbid_edit=False,
+                    ),
+                )
+
+        assert result == "RAN"
+        # The live LLM path must be taken (mock_mode=False propagated to pipeline).
+        assert captured["mock_mode"] is False
+        # Explicit REAL-LLM record must be emitted.
+        assert any("REAL-LLM" in rec.message for rec in caplog.records), [rec.message for rec in caplog.records]
+
+    def test_run_stage_with_prompt_version_logs_mock_when_mock_on(self, monkeypatch, tmp_path, caplog):
+        """Explicit SELF_ITERATION_MOCK=true → mock_mode=True + MOCK log.
+
+        Note: the harness default is now real-LLM (SELF_ITERATION_MOCK unset →
+        false), so the mock path must be requested explicitly via the env var.
+        """
+        import logging
+
+        from src.audiobook_studio.feedback.promotion_gate import _run_stage_with_prompt_version
+        from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput
+
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "true")
+
+        prompt_dir = tmp_path / "prompts" / "edit_for_tts"
+        prompt_dir.mkdir(parents=True)
+        (prompt_dir / "v1.j2").write_text("v1 content", encoding="utf-8")
+        (prompt_dir / "v2.j2").write_text("v2 content", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        captured = {}
+
+        def _fake_pipeline(*args, **kwargs):
+            captured["mock_mode"] = kwargs.get("mock_mode")
+            instance = MagicMock()
+            instance.run.return_value = "RAN"
+            return instance
+
+        with caplog.at_level(logging.INFO):
+            with patch(
+                "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline",
+                side_effect=_fake_pipeline,
+            ):
+                _run_stage_with_prompt_version(
+                    "edit",
+                    2,
+                    TtsEditInput(
+                        paragraph_text="原文保持不变。",
+                        paragraph_annotation=ParagraphAnnotation(
+                            paragraph_index=1,
+                            text="原文保持不变。",
+                            speaker_canonical_name="_narrator_",
+                            is_dialogue=False,
+                            emotion="neutral",
+                            emotion_intensity=0.5,
+                            confidence=0.9,
+                            difficulty="B",
+                        ),
+                        difficulty="B",
+                        forbid_edit=False,
+                    ),
+                )
+
+        assert captured["mock_mode"] is True
+        assert any("MOCK run" in rec.message for rec in caplog.records), [rec.message for rec in caplog.records]
+        # In mock mode no REAL-LLM record should be emitted.
+        assert not any("REAL-LLM" in rec.message for rec in caplog.records)
 
 
 if __name__ == "__main__":

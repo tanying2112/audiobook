@@ -8,7 +8,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)

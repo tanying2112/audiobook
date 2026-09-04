@@ -7,15 +7,17 @@ Mocks: torch, torchaudio, transformers, huggingface_hub.
 
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
 
 def _identity_decorator(*args, **kwargs):
     """Decorator factory returning the wrapped function unchanged."""
+
     def decorator(func):
         return func
+
     return decorator
 
 
@@ -63,15 +65,15 @@ _IMPORT_MODULES = {
 for _name, _mock in _IMPORT_MODULES.items():
     sys.modules[_name] = _mock
 
+import src.audiobook_studio.tts.remote_workers.kaggle_worker as _kaggle_worker_mod
 from src.audiobook_studio.tts.remote_workers.kaggle_worker import (
     KaggleWorker,
     T4VoxCPM2Engine,
     get_device_name,
-    get_gpu_memory_used_mb,
     get_gpu_memory_total_mb,
+    get_gpu_memory_used_mb,
     main,
 )
-import src.audiobook_studio.tts.remote_workers.kaggle_worker as _kaggle_worker_mod
 
 for _name in _IMPORT_MODULES:
     sys.modules.pop(_name, None)
@@ -112,6 +114,7 @@ def _mock_runtime_deps():
         saved[_name] = sys.modules.get(_name, _MISSING)
         sys.modules[_name] = _mock
     import importlib
+
     importlib.reload(_kaggle_worker_mod)
     _rebind_worker_globals()
     try:
@@ -193,7 +196,7 @@ class TestT4VoxCPM2Engine:
         mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
 
         with patch("os.path.exists", return_value=False):
-            engine = T4VoxCPM2Engine(model_path="/tmp/model")
+            T4VoxCPM2Engine(model_path="/tmp/model")
 
         mock_hf_hub.snapshot_download.assert_called_once()
 
@@ -204,8 +207,7 @@ class TestT4VoxCPM2Engine:
         with patch("os.path.exists", return_value=True):
             engine = T4VoxCPM2Engine(model_path="/tmp/model")
 
-        import io
-        mock_buffer = Mock()
+        mock_buffer = Mock()  # noqa: E303
         mock_buffer.getvalue.return_value = b"wav_audio_data"
         with patch("io.BytesIO", return_value=mock_buffer):
             audio = engine.synthesize("测试文本", "zh_female_1", {"temperature": 0.7})
@@ -223,8 +225,7 @@ class TestT4VoxCPM2Engine:
         mock_waveform.to = Mock(return_value=mock_waveform)
         mock_torchaudio.load.return_value = (mock_waveform, 24000)
 
-        import io
-        mock_buffer = Mock()
+        mock_buffer = Mock()  # noqa: E303
         mock_buffer.getvalue.return_value = b"wav_audio_data"
         with patch("os.path.exists", return_value=True):
             engine = T4VoxCPM2Engine(model_path="/tmp/model")
@@ -242,13 +243,12 @@ class TestT4VoxCPM2Engine:
         mock_waveform = Mock()
         mock_torchaudio.load.return_value = (mock_waveform, 16000)  # Different sample rate
 
-        import io
-        mock_buffer = Mock()
+        mock_buffer = Mock()  # noqa: E303
         mock_buffer.getvalue.return_value = b"wav_audio_data"
         with patch("os.path.exists", return_value=True):
             engine = T4VoxCPM2Engine(model_path="/tmp/model")
             with patch("io.BytesIO", return_value=mock_buffer):
-                audio = engine.synthesize("测试", "zh_female_1", {}, "/path/to/ref.wav")
+                engine.synthesize("测试", "zh_female_1", {}, "/path/to/ref.wav")
 
         mock_torchaudio.functional.resample.assert_called()
 
@@ -316,10 +316,13 @@ class TestKaggleWorkerMain:
 
     def test_main_exits_when_no_cuda(self):
         main_globals = main.__globals__
-        with patch.dict(main_globals, {
-            "inject_kaggle_secrets": Mock(),
-            "verify_kaggle_env": Mock(return_value=True),
-        }):
+        with patch.dict(
+            main_globals,
+            {
+                "inject_kaggle_secrets": Mock(),
+                "verify_kaggle_env": Mock(return_value=True),
+            },
+        ):
             # Patch CUDA availability on the torch object main() actually uses
             # (avoids the double-module trap where the test's mock_torch differs).
             with patch.object(main_globals["torch"].cuda, "is_available", return_value=False):
@@ -334,11 +337,14 @@ class TestKaggleWorkerMain:
 
         mock_worker = Mock()
         mock_worker_class = Mock(return_value=mock_worker)
-        with patch.dict(main_globals, {
-            "inject_kaggle_secrets": Mock(),
-            "verify_kaggle_env": Mock(return_value=True),
-            "KaggleWorker": mock_worker_class,
-        }):
+        with patch.dict(
+            main_globals,
+            {
+                "inject_kaggle_secrets": Mock(),
+                "verify_kaggle_env": Mock(return_value=True),
+                "KaggleWorker": mock_worker_class,
+            },
+        ):
             with patch.object(main_globals["torch"].cuda, "is_available", return_value=True):
                 with patch("os.path.exists", return_value=True):
                     main()

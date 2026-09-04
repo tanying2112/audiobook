@@ -1,8 +1,5 @@
 """Tests for feedback/ab_test module."""
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from src.audiobook_studio.feedback.ab_test import (

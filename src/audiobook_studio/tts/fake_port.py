@@ -7,8 +7,6 @@ Simulates realistic async state transitions with configurable delays and failure
 from __future__ import annotations
 
 import asyncio
-import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime

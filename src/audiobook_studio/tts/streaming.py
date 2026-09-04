@@ -14,7 +14,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Generator, List, Optional
+from typing import AsyncGenerator, Generator, Optional
 
 import numpy as np
 
@@ -147,9 +147,7 @@ class BaseStreamingTTSEngine(ABC):
         chunks = list(self.synthesize_stream(text, voice_id, **kwargs))
         return b"".join(chunk.audio_data for chunk in chunks)
 
-    def _mock_stream(
-        self, text: str, voice_id: Optional[str] = None
-    ) -> Generator[StreamingTTSResult, None, None]:
+    def _mock_stream(self, text: str, voice_id: Optional[str] = None) -> Generator[StreamingTTSResult, None, None]:
         """Generate mock audio chunks for testing."""
         if not text:
             return
@@ -172,7 +170,7 @@ class BaseStreamingTTSEngine(ABC):
             end = min(start + chunk_bytes, len(audio_bytes))
             chunk_data = audio_bytes[start:end]
 
-            is_final = (i == num_chunks - 1)
+            is_final = i == num_chunks - 1
             yield StreamingTTSResult(
                 audio_data=chunk_data,
                 sample_rate=self.config.sample_rate,
@@ -226,7 +224,7 @@ class CosyVoiceStreamEngine(BaseStreamingTTSEngine):
         import httpx
 
         voice = voice_id or self.config.voice_id
-        
+
         with httpx.Client(base_url=self.config.base_url, timeout=self.config.timeout) as client:
             response = client.post(
                 "/tts/stream",
@@ -253,8 +251,9 @@ class CosyVoiceStreamEngine(BaseStreamingTTSEngine):
 
                 # Parse JSON chunk
                 import json
+
                 chunk_data = json.loads(line)
-                
+
                 audio_bytes = bytes.fromhex(chunk_data["audio_hex"])
                 is_final = chunk_data.get("is_final", False)
 
@@ -276,11 +275,10 @@ class CosyVoiceStreamEngine(BaseStreamingTTSEngine):
         self, text: str, voice_id: Optional[str] = None, **kwargs
     ) -> AsyncGenerator[StreamingTTSResult, None]:
         """Async stream synthesis via CosyVoice HTTP API."""
-        import httpx
         import json
 
-        voice = voice_id or self.config.voice_id
-        
+        voice = voice_id or self.config.voice_id  # noqa: E303
+
         async with self._client as client:
             async with client.stream(
                 "POST",
@@ -354,12 +352,13 @@ class SeedTTSStreamEngine(BaseStreamingTTSEngine):
         self, text: str, voice_id: Optional[str] = None, **kwargs
     ) -> Generator[StreamingTTSResult, None, None]:
         """Stream synthesis via Seed-TTS HTTP API."""
-        import httpx
         import json
+
+        import httpx
 
         voice = voice_id or self.config.voice_id
         reference_audio = kwargs.get("reference_audio")  # For voice cloning
-        
+
         with httpx.Client(base_url=self.config.base_url, timeout=self.config.timeout) as client:
             payload = {
                 "text": text,
@@ -404,12 +403,11 @@ class SeedTTSStreamEngine(BaseStreamingTTSEngine):
         self, text: str, voice_id: Optional[str] = None, **kwargs
     ) -> AsyncGenerator[StreamingTTSResult, None]:
         """Async stream synthesis via Seed-TTS HTTP API."""
-        import httpx
         import json
 
-        voice = voice_id or self.config.voice_id
+        voice = voice_id or self.config.voice_id  # noqa: E303
         reference_audio = kwargs.get("reference_audio")
-        
+
         async with self._client as client:
             payload = {
                 "text": text,
@@ -482,12 +480,13 @@ class MeloTTSStreamEngine(BaseStreamingTTSEngine):
         self, text: str, voice_id: Optional[str] = None, **kwargs
     ) -> Generator[StreamingTTSResult, None, None]:
         """Stream synthesis via MeloTTS HTTP API."""
-        import httpx
         import json
+
+        import httpx
 
         voice = voice_id or self.config.voice_id
         language = kwargs.get("language", "ZH")  # ZH, EN, JP, KR, ES, FR
-        
+
         with httpx.Client(base_url=self.config.base_url, timeout=self.config.timeout) as client:
             response = client.post(
                 "/tts/stream",
@@ -533,12 +532,11 @@ class MeloTTSStreamEngine(BaseStreamingTTSEngine):
         self, text: str, voice_id: Optional[str] = None, **kwargs
     ) -> AsyncGenerator[StreamingTTSResult, None]:
         """Async stream synthesis via MeloTTS HTTP API."""
-        import httpx
         import json
 
-        voice = voice_id or self.config.voice_id
+        voice = voice_id or self.config.voice_id  # noqa: E303
         language = kwargs.get("language", "ZH")
-        
+
         async with self._client as client:
             async with client.stream(
                 "POST",

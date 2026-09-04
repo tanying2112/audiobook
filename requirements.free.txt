@@ -40,3 +40,7 @@ opentelemetry-instrumentation-httpx>=0.41b0
 opentelemetry-instrumentation-requests>=0.41b0
 opentelemetry-exporter-otlp>=1.20.0
 opentelemetry-exporter-prometheus>=0.41b0
+
+# Audio quality metrics (lightweight free models)
+onnxruntime>=1.18.0
+faster-whisper>=1.0.0

@@ -1,0 +1,15 @@
+# Grafana Dashboard Provisioning Configuration
+# Place this file in /etc/grafana/provisioning/dashboards/
+
+apiVersion: 1
+
+providers:
+  - name: "Audiobook Studio Dashboards"
+    orgId: 1
+    folder: "Audiobook Studio"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,27 @@
+{
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": true,
+    "score": 1.0,
+    "threshold": 0.99,
+    "details": "全部格式检查通过"
+  },
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "无有效测试用例 (共 6 个，缺少必需字段)"
+  },
+  "outputs": [
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "1 validation error for BookAnalysisInput\nraw_text\n  Field required [type=missing, input_value={'text': 'This is a test ...lyze_structure case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+  ]
+}

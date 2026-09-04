@@ -12,7 +12,6 @@ in without changing this middleware's contract.
 
 from __future__ import annotations
 
-import time
 from collections import defaultdict
 from typing import Callable
 
@@ -23,8 +22,9 @@ from starlette.responses import JSONResponse
 from ..config import get_settings
 from ..tts.rate_limiter import TokenBucket
 
-# Endpoints that should never be rate-limited (auth, health).
-_EXEMPT_PREFIXES = ("/health", "/docs", "/openapi.json", "/redoc", "/api/auth")
+# Endpoints that should never be rate-limited (docs/health only). Auth
+# endpoints ARE rate-limited by design to blunt registration/login abuse.
+_EXEMPT_PREFIXES = ("/health", "/docs", "/openapi.json", "/redoc")
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

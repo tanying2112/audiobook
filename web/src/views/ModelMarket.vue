@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useI18n } from '../i18n'
 import { listModels, installModel, uninstallModel, type ModelCatalog, type PluginEntry } from '../api/models'
 
@@ -16,7 +17,9 @@ async function load() {
   try {
     catalog.value = await listModels()
   } catch (e: any) {
-    error.value = e?.message || '加载模型市场失败'
+    const msg = e?.message || t('model_market.load_failed')
+    error.value = msg
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }
@@ -26,9 +29,10 @@ async function install(p: PluginEntry) {
   busy.value = p.name
   try {
     await installModel(p.name)
+    ElMessage.success(t('model_market.install_success'))
     await load()
   } catch (e: any) {
-    error.value = e?.message || '安装失败'
+    ElMessage.error(e?.message || t('model_market.install_failed'))
   } finally {
     busy.value = null
   }
@@ -38,9 +42,10 @@ async function uninstall(p: PluginEntry) {
   busy.value = p.name
   try {
     await uninstallModel(p.name)
+    ElMessage.success(t('model_market.uninstall_success'))
     await load()
   } catch (e: any) {
-    error.value = e?.message || '卸载失败'
+    ElMessage.error(e?.message || t('model_market.uninstall_failed'))
   } finally {
     busy.value = null
   }
@@ -51,53 +56,81 @@ onMounted(load)
 
 <template>
   <div class="model-market">
-    <h1>{{ t('nav.model_market') }}</h1>
-    <p class="hint">免费资源模型市场:TTS 音色与可安装插件(注册式,无网络下载)。</p>
+    <div class="page-header">
+      <div>
+        <h1>{{ t('nav.model_market') }}</h1>
+        <p class="hint">{{ t('model_market.hint') }}</p>
+      </div>
+    </div>
 
-    <div v-if="loading">加载中…</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <el-skeleton v-if="loading" :rows="5" animated />
+    <el-alert v-else-if="error" :title="error" type="error" show-icon :closable="false" class="error-alert" />
+
     <template v-else-if="catalog">
       <section>
-        <h2>TTS 引擎</h2>
-        <div v-for="engine in catalog.tts_engines" :key="engine.engine" class="card">
-          <h3>{{ engine.engine }} <span v-if="engine.free" class="badge">免费</span></h3>
-          <ul>
-            <li v-for="v in engine.voices" :key="v.model_id">
-              {{ v.language }} · {{ v.voice }} <code>{{ v.model_id }}</code>
-            </li>
-          </ul>
-        </div>
+        <h2>{{ t('model_market.tts_engines') }}</h2>
+        <el-card v-for="engine in catalog.tts_engines" :key="engine.engine" class="section-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <h3>
+                {{ engine.engine }}
+                <el-tag v-if="engine.free" type="success" size="small">{{ t('model_market.free') }}</el-tag>
+              </h3>
+            </div>
+          </template>
+          <el-table :data="engine.voices" size="small">
+            <el-table-column prop="language" :label="t('model_market.language')" width="120" />
+            <el-table-column prop="voice" :label="t('model_market.voice')" min-width="140" />
+            <el-table-column prop="model_id" :label="t('model_market.model_id')" min-width="180">
+              <template #default="{ row }"><code>{{ row.model_id }}</code></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
       </section>
 
       <section>
-        <h2>插件</h2>
-        <div v-for="p in catalog.plugins" :key="p.name" class="card">
-          <h3>
-            {{ p.name }} <span class="version">v{{ p.version }}</span>
-            <span v-if="p.installed" class="badge installed">已安装</span>
-          </h3>
+        <h2>{{ t('model_market.plugins') }}</h2>
+        <el-card v-for="p in catalog.plugins" :key="p.name" class="section-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <h3>
+                {{ p.name }}
+                <span class="version">v{{ p.version }}</span>
+                <el-tag v-if="p.installed" type="primary" size="small">{{ t('model_market.installed') }}</el-tag>
+              </h3>
+            </div>
+          </template>
           <p>{{ p.description }}</p>
-          <p class="models">提供模型: {{ p.models.join(', ') }}</p>
-          <button v-if="!p.installed" :disabled="busy === p.name" @click="install(p)">
-            {{ busy === p.name ? '安装中…' : '一键安装' }}
-          </button>
-          <button v-else :disabled="busy === p.name" @click="uninstall(p)">卸载</button>
-        </div>
+          <p class="models">{{ t('model_market.models_provided') }} {{ p.models.join(', ') }}</p>
+          <el-button
+            v-if="!p.installed"
+            type="primary"
+            :loading="busy === p.name"
+            @click="install(p)"
+          >
+            {{ busy === p.name ? t('model_market.installing') : t('model_market.install') }}
+          </el-button>
+          <el-button v-else type="danger" plain :loading="busy === p.name" @click="uninstall(p)">
+            {{ t('model_market.uninstall') }}
+          </el-button>
+        </el-card>
       </section>
 
-      <p class="total">共 {{ catalog.total_models }} 个可用模型</p>
+      <p class="total">{{ t('model_market.total_models', { count: catalog.total_models }) }}</p>
     </template>
   </div>
 </template>
 
 <style scoped>
-.model-market { padding: 24px; }
-.hint { color: #888; }
-.card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
-.badge { background: #2e7d32; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
-.badge.installed { background: #1565c0; }
-.version { color: #888; font-size: 13px; }
-.models { color: #666; font-size: 13px; }
-.error { color: #c62828; }
-.total { margin-top: 16px; color: #555; }
+.model-market { padding: 24px; max-width: 1000px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-header h1 { margin: 0 0 4px; font-size: 22px; color: var(--color-text); }
+.hint { margin: 0; color: var(--color-text-secondary); font-size: 13px; }
+h2 { font-size: 17px; margin: 24px 0 12px; color: var(--color-text); }
+.section-card { margin-bottom: 12px; border: 1px solid var(--color-border); }
+.card-header h3 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.version { color: var(--color-text-muted); font-size: 13px; font-weight: 400; }
+.models { color: var(--color-text-secondary); font-size: 13px; }
+.error-alert { margin-bottom: 16px; }
+.total { margin-top: 20px; color: var(--color-text-secondary); }
 </style>

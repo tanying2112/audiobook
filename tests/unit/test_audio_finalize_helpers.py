@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.audiobook_studio.pipeline.audio_finalize import DEFAULT_SFX_LIBRARY_PATH, AudioFinalizer, finalize_audio
 from src.audiobook_studio.schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 

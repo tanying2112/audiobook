@@ -4,25 +4,24 @@ Target: 70%+ coverage of kokoro_backend.py (203 lines, ~14% coverage).
 Tests: initialization, synthesize, voice listing, error handling, mock mode, ONNX mocking.
 """
 
-import hashlib
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.tts.kokoro_backend import (
-    KOKORO_VOICES,
-    KokoroBackend,
-    create_kokoro_backend,
-)
 from src.audiobook_studio.tts.engine import (
     SynthesisResult,
+    TTSProsody,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
     TTSVoiceAnchor,
-    TTSProsody,
+)
+from src.audiobook_studio.tts.kokoro_backend import (
+    KOKORO_VOICES,
+    KokoroBackend,
+    create_kokoro_backend,
 )
 
 
@@ -32,19 +31,32 @@ class TestKOKOROVoices:
     def test_kokoro_voices_has_expected_keys(self):
         """Test that KOKORO_VOICES contains expected voice keys."""
         expected_voices = [
-            "af", "af_bella", "af_nicole", "af_sarah", "af_sky",
-            "am_adam", "am_michael",
-            "bf_emma", "bf_isabella",
-            "bm_george", "bm_lewis",
-            "zf_xiaoxiao", "zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan",
-            "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+            "af",
+            "af_bella",
+            "af_nicole",
+            "af_sarah",
+            "af_sky",
+            "am_adam",
+            "am_michael",
+            "bf_emma",
+            "bf_isabella",
+            "bm_george",
+            "bm_lewis",
+            "zf_xiaoxiao",
+            "zf_xiaobei",
+            "zf_xiaoni",
+            "zf_xiaoxuan",
+            "zm_yunjian",
+            "zm_yunxi",
+            "zm_yunxia",
+            "zm_yunyang",
         ]
         for voice in expected_voices:
             assert voice in KOKORO_VOICES, f"Missing voice: {voice}"
 
     def test_kokoro_voices_structure(self):
         """Test each voice has required metadata fields."""
-        for voice_id, info in KOKORO_VOICES.items():
+        for _voice_id, info in KOKORO_VOICES.items():
             assert "name" in info
             assert "language" in info
             assert "gender" in info
@@ -202,6 +214,7 @@ class TestKokoroBackendSynthesis:
         await mock_backend.initialize()
 
         import numpy as np
+
         custom_embedding = np.random.randn(256).astype(np.float32)
 
         output_path = tmp_path / "custom_embedding.mp3"
@@ -338,6 +351,7 @@ class TestKokoroBackendSynthesizeProtocol:
 
         # Wait for task to complete
         import asyncio
+
         await asyncio.sleep(0.2)
 
         result = await mock_backend.get_result(task_id)
@@ -387,6 +401,7 @@ class TestKokoroBackendSynthesizeProtocol:
 
         await mock_backend.submit(task_id, payload)
         import asyncio
+
         await asyncio.sleep(0.15)  # Wait for completion
 
         cancelled = await mock_backend.cancel(task_id)
@@ -561,8 +576,7 @@ class TestKokoroBackendEdgeCases:
         backend = KokoroBackend(mock_mode=True)
         # Don't call initialize explicitly
 
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: E303
             output_path = Path(tmpdir) / "auto_init.mp3"
             result = await backend._synthesize_internal(
                 text="Auto init test",

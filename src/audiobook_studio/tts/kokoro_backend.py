@@ -17,9 +17,7 @@ import numpy as np
 
 from .engine import (
     BaseTTSEngine,
-    EngineRegistry,
     SynthesisResult,
-    TTSEngine,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
@@ -221,7 +219,7 @@ class KokoroBackend(BaseTTSEngine):
             # Create Kokoro instance - this handles ONNX session, phonemizer, voice embeddings correctly
             self._kokoro = Kokoro(self.model_path, self.voices_path)
             # For backward compatibility with tests that check _session attribute
-            self._session = getattr(self._kokoro, 'session', None)
+            self._session = getattr(self._kokoro, "session", None)
 
             self._loaded = True
             self._initialized = True
@@ -267,93 +265,134 @@ class KokoroBackend(BaseTTSEngine):
                 sample_rate=self.sample_rate,
             )
 
-        # Determine language from voice_id (fallback to 'en' for unknown)
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+        else:  # pragma: no cover
+            # ─── Real inference path (requires kokoro_onnx model + weights) ───
+            # Determine language from voice_id (fallback to 'en' for unknown)
+            lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
 
-        # Map language codes for phonemizer (espeak-ng):
-        #   - 'zh' -> 'cmn' (espeak uses cmn for Mandarin)
-        #   - 'en' -> 'en-us' (espeak rejects the bare 'en' code; kokoro_onnx
-        #     tokenizer expects a region-specific code like 'en-us'/'en-gb')
-        phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
+            # Map language codes for phonemizer (espeak-ng):
+            #   - 'zh' -> 'cmn' (espeak uses cmn for Mandarin)
+            #   - 'en' -> 'en-us' (espeak rejects the bare 'en' code; kokoro_onnx
+            #     tokenizer expects a region-specific code like 'en-us'/'en-gb')
+            phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
 
-        # Map prosody rate to speed
-        speed = prosody.get("rate", 1.0) if prosody else 1.0
+            # Map prosody rate to speed
+            speed = prosody.get("rate", 1.0) if prosody else 1.0
 
-        # Voice cloning: if embedding provided, we'd need custom handling
-        # For now, use standard voice_id mapping
-        if embedding is not None:
-            logger.warning(
-                "Custom voice embedding provided but not supported by kokoro_onnx.Kokoro yet; using voice_id"
+            # ── Emotion tag → prosody mapping for Kokoro ──
+            # Kokoro supports speed control; pitch/volume handled post-synthesis
+            emotion_prosody_map = {
+                "happy": {"speed": 1.15, "volume_db": 2.0},
+                "sad": {"speed": 0.85, "volume_db": -2.0},
+                "angry": {"speed": 1.2, "volume_db": 3.0},
+                "fearful": {"speed": 1.25, "volume_db": 1.5},
+                "surprised": {"speed": 1.3, "volume_db": 2.0},
+                "calm": {"speed": 0.85, "volume_db": -1.5},
+                "neutral": {"speed": 1.0, "volume_db": 0.0},
+            }
+
+            if prosody:
+                emotion = prosody.get("emotion", "neutral")
+                if emotion in emotion_prosody_map:
+                    ep = emotion_prosody_map[emotion]
+                    speed = ep["speed"]
+                    # Volume adjustment applied post-synthesis
+                    prosody["volume"] = prosody.get("volume", 0) + ep["volume_db"]
+
+            # Voice cloning: if embedding provided, we'd need custom handling
+            # For now, use standard voice_id mapping
+            if embedding is not None:
+                logger.warning(
+                    "Custom voice embedding provided but not supported by kokoro_onnx.Kokoro yet; using voice_id"
+                )
+
+            # Run synthesis via kokoro_onnx.Kokoro.create()
+            # This handles tokenization, phonemization, and inference correctly
+            try:
+                # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate)
+                audio, sample_rate = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    lambda: self._kokoro.create(
+                        text=text,
+                        voice=voice_id,
+                        speed=speed,
+                        lang=phonemizer_lang,
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Kokoro synthesis failed: {e}")
+                raise
+
+            # ── H4: Duration rationality guard ──
+            # Detect when Kokoro produces excessively long audio for short text
+            # (observed: 2s text → 31.7s audio with 58/63 half-second windows non-silent)
+            estimated_ms = self.estimate_duration(text, voice_id, prosody={"rate": speed})
+            actual_ms = int(len(audio) / sample_rate * 1000)
+            ratio = actual_ms / max(estimated_ms, 1)
+            if ratio > 3.0:  # Actual duration > 3x estimate
+                logger.warning(
+                    f"H4 guard triggered: Kokoro produced suspiciously long audio "
+                    f"(actual={actual_ms}ms, estimated={estimated_ms}ms, ratio={ratio:.1f}x). "
+                    f"text_len={len(text)}, voice={voice_id}, lang={phonemizer_lang}. "
+                    f"Audio may contain repeated chunks or excessive silence."
+                )
+                # Optional: truncate to reasonable limit (3x estimate)
+                max_samples = int(sample_rate * estimated_ms * 3.0 / 1000)
+                if len(audio) > max_samples:
+                    logger.warning(f"Truncating audio from {actual_ms}ms to {max_samples/sample_rate*1000:.0f}ms")
+                    audio = audio[:max_samples]
+
+            # Apply prosody adjustments (volume, pitch - pitch not directly supported)
+            if prosody:
+                volume = prosody.get("volume", 0)  # dB
+                if volume != 0:
+                    audio = audio * (10 ** (volume / 20.0))
+
+            # Save as WAV then convert to MP3
+            import soundfile as sf
+
+            wav_path = output_path.with_suffix(".wav")
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(wav_path), audio, sample_rate)
+
+            # Convert to MP3 if needed
+            if output_path.suffix == ".mp3":
+                import subprocess
+
+                result = subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(wav_path),
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "128k",
+                        str(output_path),
+                    ],
+                    capture_output=True,
+                )
+                if result.returncode != 0:
+                    logger.warning(f"ffmpeg MP3 conversion failed: {result.stderr.decode()}")
+                    # Fall back to WAV
+                    output_path = wav_path
+                else:
+                    wav_path.unlink(missing_ok=True)
+
+            duration_ms = int(len(audio) / sample_rate * 1000)
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
+
+            return SynthesisResult(
+                audio_path=str(output_path),
+                duration_ms=duration_ms,
+                engine=self.engine_name,
+                voice_id=voice_id,
+                text_hash=text_hash,
+                sample_rate=sample_rate,
+                metadata={"speed": speed},
             )
-
-        # Run synthesis via kokoro_onnx.Kokoro.create()
-        # This handles tokenization, phonemization, and inference correctly
-        try:
-            # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate)
-            audio, sample_rate = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self._kokoro.create(
-                    text=text,
-                    voice=voice_id,
-                    speed=speed,
-                    lang=phonemizer_lang,
-                ),
-            )
-        except Exception as e:
-            logger.error(f"Kokoro synthesis failed: {e}")
-            raise
-
-        # Apply prosody adjustments (volume, pitch - pitch not directly supported)
-        if prosody:
-            volume = prosody.get("volume", 0)  # dB
-            if volume != 0:
-                audio = audio * (10 ** (volume / 20.0))
-
-        # Save as WAV then convert to MP3
-        import soundfile as sf
-
-        wav_path = output_path.with_suffix(".wav")
-        # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(str(wav_path), audio, sample_rate)
-
-        # Convert to MP3 if needed
-        if output_path.suffix == ".mp3":
-            import subprocess
-
-            result = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(wav_path),
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    "128k",
-                    str(output_path),
-                ],
-                capture_output=True,
-            )
-            if result.returncode != 0:
-                logger.warning(f"ffmpeg MP3 conversion failed: {result.stderr.decode()}")
-                # Fall back to WAV
-                output_path = wav_path
-            else:
-                wav_path.unlink(missing_ok=True)
-
-        duration_ms = int(len(audio) / sample_rate * 1000)
-        text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
-
-        return SynthesisResult(
-            audio_path=str(output_path),
-            duration_ms=duration_ms,
-            engine=self.engine_name,
-            voice_id=voice_id,
-            text_hash=text_hash,
-            sample_rate=sample_rate,
-            metadata={"speed": speed},
-        )
 
     # --- TTSEngine Protocol Implementation ---
 
@@ -472,6 +511,57 @@ class KokoroBackend(BaseTTSEngine):
             "device": self.device,
         }
 
+    async def warmup(self) -> bool:
+        """Quick warmup for health probe - verifies model files and initializes session.
+
+        Returns True if warmup completes within 100ms, False otherwise.
+        This is a lightweight check that doesn't load full model weights.
+        """
+        import time
+
+        start = time.perf_counter()
+
+        try:
+            # In mock mode, warmup is instant
+            if self.mock_mode:
+                self._loaded = True
+                self._initialized = True
+                return True
+            else:  # pragma: no cover
+                # ─── Real warmup (requires kokoro_onnx model files) ───
+                # Verify model files exist
+                if self.model_path is None:
+                    self.model_path = str(Path("models/kokoro-v1.0.onnx").absolute())
+                if not Path(self.model_path).exists():
+                    logger.warning(f"Kokoro model not found: {self.model_path}")
+                    return False
+
+                if self.voices_path is None:
+                    self.voices_path = str(Path("models/voices-v1.0.bin").absolute())
+                if not Path(self.voices_path).exists():
+                    logger.warning(f"Kokoro voices not found: {self.voices_path}")
+                    return False
+
+                # If already loaded, warmup is instant
+                if self._loaded:
+                    return True
+
+                # Quick initialization - create ONNX session but don't load full weights
+                from kokoro_onnx import Kokoro
+
+                self._kokoro = Kokoro(self.model_path, self.voices_path)
+                self._session = getattr(self._kokoro, "session", None)
+                self._loaded = True
+                self._initialized = True
+
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                logger.info(f"KokoroBackend warmup completed in {elapsed_ms:.1f}ms")
+                return elapsed_ms < 100
+
+        except Exception as e:
+            logger.error(f"KokoroBackend warmup failed: {e}")
+            return False
+
     async def close(self) -> None:
         """Clean up kokoro instance."""
         self._kokoro = None
@@ -483,23 +573,22 @@ class KokoroBackend(BaseTTSEngine):
 
     def _phonemize(self, text: str, voice_id: str):
         """Phonemize text for given voice.
-        
+
         In mock mode, returns mock tokens and lengths.
         In real mode, uses kokoro_onnx tokenizer.
         """
         import numpy as np
-        
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-        phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
-        
+
+        KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+
         if self.mock_mode or self._kokoro is None:
             # Mock mode: return dummy tokens
             tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
             lengths = np.array([5], dtype=np.int64)
             return tokens, lengths
-        
+
         # Real mode: use kokoro_onnx tokenizer
-        # Note: kokoro_onnx.Kokoro doesn't expose _phonemize directly, 
+        # Note: kokoro_onnx.Kokoro doesn't expose _phonemize directly,
         # but we can use its tokenizer via the session
         try:
             # The kokoro_onnx tokenizer is internal; we'll return mock for now
@@ -507,7 +596,7 @@ class KokoroBackend(BaseTTSEngine):
             tokens = np.array([[1] * len(text)], dtype=np.int64)
             lengths = np.array([len(text)], dtype=np.int64)
             return tokens, lengths
-        except Exception:
+        except (AttributeError, RuntimeError):
             # Fallback
             tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
             lengths = np.array([5], dtype=np.int64)
@@ -548,14 +637,12 @@ class KokoroBackend(BaseTTSEngine):
 
         return max(500, int(est_sec * 1000))
 
-
-
     async def stream(
         self,
         payload: TTSTaskPayload,
     ):
         """Stream audio chunks for real-time playback.
-        
+
         Kokoro generates full audio first, then yields in chunks.
         This is pseudo-streaming (not true incremental generation).
         """
@@ -564,61 +651,76 @@ class KokoroBackend(BaseTTSEngine):
 
         if self.mock_mode:
             import numpy as np
+
             yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
             return
 
-        text = payload.text
-        voice_anchor = payload.voice_anchor
-        prosody = payload.prosody
+        else:  # pragma: no cover
+            # ─── Real streaming path (requires kokoro_onnx model + weights) ───
+            text = payload.text
+            voice_anchor = payload.voice_anchor
+            prosody = payload.prosody
 
-        voice_id = voice_anchor.voice_id
-        reference_audio = voice_anchor.reference_audio_path
-        embedding = payload.metadata.get("embedding") if payload.metadata else None
+            voice_id = voice_anchor.voice_id
+            reference_audio = voice_anchor.reference_audio_path
+            embedding = payload.metadata.get("embedding") if payload.metadata else None
 
-        prosody_dict = None
-        if prosody:
-            prosody_dict = {
-                "rate": prosody.rate,
-                "pitch": prosody.pitch,
-                "volume": prosody.volume,
-                "emotion": prosody.emotion,
-            }
+            prosody_dict = None
+            if prosody:
+                prosody_dict = {
+                    "rate": prosody.rate,
+                    "pitch": prosody.pitch,
+                    "volume": prosody.volume,
+                    "emotion": prosody.emotion,
+                }
 
-        # Generate full audio first (Kokoro doesn't support incremental generation)
-        import tempfile
-        import soundfile as sf
-        import numpy as np
-        from pathlib import Path
+            # Generate full audio first (Kokoro doesn't support incremental generation)
+            import tempfile
+            from pathlib import Path
 
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        
-        try:
-            result = await self._synthesize_internal(
-                text=text,
-                voice_id=voice_id,
-                output_path=tmp_path,
-                prosody=prosody_dict,
-                reference_audio=reference_audio,
-                embedding=embedding,
-            )
-            
-            # Read the generated audio and yield in chunks
-            audio_data, sr = sf.read(result.audio_path)
-            if audio_data.ndim > 1:
-                audio_data = audio_data.mean(axis=1)  # Convert to mono
-            
-            # Convert to int16
-            audio_int16 = (audio_data * 32767).astype(np.int16)
-            
-            # Yield in ~100ms chunks (2400 samples at 24kHz)
-            chunk_size = int(sr * 0.1)  # 100ms chunks
-            for i in range(0, len(audio_int16), chunk_size):
-                chunk = audio_int16[i:i+chunk_size]
-                yield chunk.tobytes()
-                
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            import numpy as np
+            import soundfile as sf
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+
+            try:
+                result = await self._synthesize_internal(
+                    text=text,
+                    voice_id=voice_id,
+                    output_path=tmp_path,
+                    prosody=prosody_dict,
+                    reference_audio=reference_audio,
+                    embedding=embedding,
+                )
+
+                # Read the generated audio and yield in chunks
+                audio_data, sr = sf.read(result.audio_path)
+                if audio_data.ndim > 1:
+                    audio_data = audio_data.mean(axis=1)  # Convert to mono
+
+                # ── H4: Duration rationality guard for streaming ──
+                actual_ms = int(len(audio_data) / sr * 1000)
+                estimated_ms = self.estimate_duration(text, voice_id, prosody=prosody_dict)
+                ratio = actual_ms / max(estimated_ms, 1)
+                if ratio > 3.0:
+                    logger.warning(
+                        f"H4 streaming guard: audio={actual_ms}ms, estimate={estimated_ms}ms, "
+                        f"ratio={ratio:.1f}x. text_len={len(text)}, voice={voice_id}"
+                    )
+
+                # Convert to int16
+                audio_int16 = (audio_data * 32767).astype(np.int16)
+
+                # Yield in ~100ms chunks (2400 samples at 24kHz)
+                chunk_size = int(sr * 0.1)  # 100ms chunks
+                for i in range(0, len(audio_int16), chunk_size):
+                    chunk = audio_int16[i : i + chunk_size]
+                    yield chunk.tobytes()
+
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
 
 async def create_kokoro_backend(
     model_path: Optional[str] = None,

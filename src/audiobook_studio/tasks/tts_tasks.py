@@ -21,10 +21,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
-from celery import Celery
-from celery.states import FAILURE, RETRY, STARTED, SUCCESS
 from sqlalchemy import select
 
 from ..celery_app import celery_app
@@ -37,8 +35,6 @@ from ..tts import (
     TTSProsody,
     TTSStatus,
     TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
     get_port,
 )
@@ -102,8 +98,7 @@ if _redis_client is not None:
         _release_sha = _redis_client.script_load(_RELEASE_LUA)
     except Exception as e:
         logger.warning(
-            "Redis warm-up (script_load) failed, idempotency/semaphore "
-            f"degraded until broker available: {e}"
+            "Redis warm-up (script_load) failed, idempotency/semaphore " f"degraded until broker available: {e}"
         )
         _redis_client = None
         _acquire_sha = None
@@ -181,7 +176,7 @@ class TTSChapterTask(celery_app.Task):
 
     def _acquire_semaphore(self) -> bool:
         """Acquire semaphore slot for remote TTS concurrency control (max 4)."""
-        global _acquire_sha
+        global _acquire_sha  # noqa: F824
         client = _get_redis()
         if client is None:
             logger.warning("Redis unavailable, skipping semaphore acquire")
@@ -201,7 +196,7 @@ class TTSChapterTask(celery_app.Task):
 
     def _release_semaphore(self) -> None:
         """Release semaphore slot."""
-        global _release_sha
+        global _release_sha  # noqa: F824
         if not self._semaphore_acquired:
             return
         client = _get_redis()
@@ -255,7 +250,7 @@ class TTSChapterTask(celery_app.Task):
         try:
             members = client.smembers(key)
             return {int(m) for m in members}
-        except Exception:
+        except redis.exceptions.RedisError:
             return set()
 
     def _clear_failed_paragraphs(self, project_id: int, chapter_id: int) -> None:
@@ -266,7 +261,7 @@ class TTSChapterTask(celery_app.Task):
         key = f"tts:failed:{project_id}:{chapter_id}"
         try:
             client.delete(key)
-        except Exception:
+        except redis.exceptions.RedisError:
             pass
 
     def _save_checkpoint(
@@ -344,7 +339,7 @@ class TTSChapterTask(celery_app.Task):
         checkpoint_key = f"tts:checkpoint:{project_id}:{chapter_id}"
         try:
             client.delete(checkpoint_key)
-        except Exception:
+        except redis.exceptions.RedisError:
             pass
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
@@ -512,7 +507,7 @@ def _get_audio_duration(file_path: Path) -> int:
         size = file_path.stat().st_size
         estimated_sec = size / 48000
         return int(estimated_sec * 1000)
-    except Exception:
+    except OSError:
         return 0
 
 
@@ -756,7 +751,8 @@ async def _run_synthesize_chapter_async(
                 "failed_indices": list(range(len(paragraphs))),
             }
         finally:
-            pipeline.close()
+            if "pipeline" in locals() and pipeline is not None:
+                pipeline.close()
 
 
 @celery_app.task(
@@ -980,7 +976,6 @@ def stress_test_concurrent_synthesis(
             )
 
     # Verify no duplicate synthesis (idempotency check)
-    idempotency_keys = set()
     for r in results:
         if r.get("status") == "completed":
             # In a real test, we'd check Redis for duplicate idem keys
@@ -1215,7 +1210,7 @@ async def _run_synthesize_paragraph_async(
             output_path = output_dir / f"{segment_id}.wav"
 
             # Initialize pipeline for synthesis
-            pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
+            SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
             port = self._get_port()
 
             logger.info(f"[{task_id}] Submitting paragraph {para.index} for synthesis: {segment_id}")

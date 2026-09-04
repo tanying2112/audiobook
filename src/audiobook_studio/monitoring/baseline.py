@@ -5,12 +5,9 @@ Tracks key metrics over time to establish baselines and detect regressions.
 
 import json
 import logging
-import os
 import threading
 import time
-from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -50,6 +47,11 @@ class BaselineRecorder:
 
     def __init__(self, storage_dir: str = "./baselines"):
         self.storage_dir = Path(storage_dir)
+        if not self.storage_dir.is_absolute():
+            # Resolve relative paths against the repository root so the recorder
+            # keeps working regardless of the current working directory (some
+            # tests chdir into a temp dir and forget to restore it).
+            self.storage_dir = Path(__file__).resolve().parents[3] / storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
         self.performance_file = self.storage_dir / "performance.jsonl"

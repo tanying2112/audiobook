@@ -1,13 +1,10 @@
 """Tests for api/harness.py — HARNESS dashboard endpoints (320 lines, 34.7% coverage)."""
 
 import asyncio
-import json
 import os
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -15,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 # Import all models to register them with Base.metadata
 from src.audiobook_studio import models  # noqa: F401
 from src.audiobook_studio.api.dependencies import get_async_db
-from src.audiobook_studio.database import Base, get_db
+from src.audiobook_studio.database import Base
 
 
 class _TestEngine:
@@ -54,7 +51,6 @@ def _make_client():
     by project_id — we clear it per client so a stale loop from a previously
     deleted test DB is never reused.
     """
-    from src.audiobook_studio import models  # noqa: F401 - register models with Base
     from src.audiobook_studio.api.harness import _iteration_loops, router
 
     app = FastAPI()
@@ -88,7 +84,6 @@ def _make_client():
 
     # Avoid stale SelfIterationLoop reuse across tests (module-global cache).
     _iteration_loops.clear()
-
     client = TestClient(app)
     return client, _TestEngine(async_engine), db_path
 

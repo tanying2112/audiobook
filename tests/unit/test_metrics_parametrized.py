@@ -9,10 +9,8 @@ all if/elif/else branches in:
   - SpeakerSimilarityResult and SpeakerEmbedding round-trip
 """
 
-from dataclasses import fields as dc_fields
 from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest

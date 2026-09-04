@@ -11,9 +11,11 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import List, Tuple, Any
+from typing import Any, List, Tuple
 
 import numpy as np
+
+from .async_utils import run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,9 @@ async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.Complet
         raise
 
 
-async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = False) -> subprocess.CompletedProcess[str | bytes]:
+async def _run_ffmpeg(
+    args: List[str], timeout: int = 60, binary_output: bool = False
+) -> subprocess.CompletedProcess[str | bytes]:
     """Run ffmpeg asynchronously and return result.
 
     Args:
@@ -309,8 +313,12 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
 
 # Synchronous wrappers for backward compatibility
 def get_duration_sync(path: Path) -> int:
-    """Synchronous wrapper for get_duration."""
-    return asyncio.run(get_duration(path))
+    """Synchronous wrapper for get_duration.
+
+    Reentrancy-safe: works even when called from inside a running event loop
+    (e.g. from an async TTS/export pipeline) thanks to :func:`run_sync`.
+    """
+    return run_sync(get_duration(path))
 
 
 def detect_silence_sync(
@@ -319,22 +327,22 @@ def detect_silence_sync(
     min_duration_ms: int = 500,
 ) -> List[Tuple[float, float]]:
     """Synchronous wrapper for detect_silence."""
-    return asyncio.run(detect_silence(path, threshold_db, min_duration_ms))
+    return run_sync(detect_silence(path, threshold_db, min_duration_ms))
 
 
 def get_rms_peak_sync(path: Path) -> Tuple[float, float]:
     """Synchronous wrapper for get_rms_peak."""
-    return asyncio.run(get_rms_peak(path))
+    return run_sync(get_rms_peak(path))
 
 
 def get_audio_info_sync(path: Path) -> dict[str, Any]:
     """Synchronous wrapper for get_audio_info."""
-    return asyncio.run(get_audio_info(path))
+    return run_sync(get_audio_info(path))
 
 
 def read_pcm_samples_sync(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
     """Synchronous wrapper for read_pcm_samples."""
-    return asyncio.run(read_pcm_samples(path, sample_rate, channels))
+    return run_sync(read_pcm_samples(path, sample_rate, channels))
 
 
 if __name__ == "__main__":  # pragma: no cover

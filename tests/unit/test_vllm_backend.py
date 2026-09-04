@@ -4,7 +4,7 @@ P2-2: Replace Ollama with vLLM for KV cache + speculative decoding to reduce LLM
 """
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -123,10 +123,10 @@ class TestVLLMBackend:
     def test_call_mock_mode_different_models(self, vllm_config):
         """Test mock mode works for different response models."""
         from src.audiobook_studio.schemas import BookAnalysisOutput, QualityJudgment, TtsEditOutput
-        
+
         with patch.dict(os.environ, {"MOCK_LLM": "true"}):
             backend = create_vllm_backend(vllm_config)
-            
+
             for model in [ParagraphAnnotation, BookAnalysisOutput, QualityJudgment, TtsEditOutput]:
                 result = backend.call(prompt="test", response_model=model)
                 assert result.output is not None
@@ -135,17 +135,17 @@ class TestVLLMBackend:
     def test_mock_mode_via_config(self, vllm_config):
         """Test that config.mock_mode property works."""
         config = VLLMBackendConfig(model="qwen2.5:14b")
-        
+
         # Without MOCK_LLM env var, mock_mode should be False
         if "MOCK_LLM" in os.environ:
             del os.environ["MOCK_LLM"]
         assert config.mock_mode is False
-        
+
         # With MOCK_LLM env var, mock_mode should be True
         os.environ["MOCK_LLM"] = "true"
         config2 = VLLMBackendConfig(model="qwen2.5:14b")
         assert config2.mock_mode is True
-        
+
         # With MOCK_LLM=false, mock_mode should be False
         os.environ["MOCK_LLM"] = "false"
         config3 = VLLMBackendConfig(model="qwen2.5:14b")
@@ -158,7 +158,7 @@ class TestVLLMBackendIntegration:
     def test_router_can_use_vllm_backend(self):
         """Test that router can be configured to use vLLM backend."""
         from src.audiobook_studio.llm.config_loader import ProviderConfig, ProviderType, StageName
-        
+
         # Create a provider config for vLLM
         provider = ProviderConfig(
             name="vllm_local",
@@ -178,10 +178,10 @@ class TestVLLMBackendIntegration:
                     "gpu_memory_utilization": 0.9,
                     "enable_chunked_prefill": True,
                     "enable_prefix_caching": True,
-                }
+                },
             },
         )
-        
+
         # Verify the config has the vLLM flag
         assert provider.extra_params.get("use_vllm") is True
         assert "vllm_config" in provider.extra_params

@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Any, Dict
 
 from ..base import AbstractAgent, AgentCapability, AgentMessage
 from ..database import SessionLocal
@@ -48,7 +47,7 @@ class ExtractAgent(AbstractAgent):
             finally:
                 db.close()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 后台消息处理: 任何失败都必须转入 _handle_failure 而非击穿 worker
             self._handle_failure(e)
 
 
@@ -79,7 +78,7 @@ class AnalyzeAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 后台消息处理: 任何失败都必须转入 _handle_failure 而非击穿 worker
             self._handle_failure(e)
         finally:
             db.close()
@@ -113,7 +112,7 @@ class SynthesizeAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 后台消息处理: 任何失败都必须转入 _handle_failure 而非击穿 worker
             self._handle_failure(e)
         finally:
             db.close()
@@ -143,7 +142,7 @@ class QualityAgent(AbstractAgent):
             task_record.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 后台消息处理: 任何失败都必须转入 _handle_failure 而非击穿 worker
             self._handle_failure(e)
         finally:
             db.close()

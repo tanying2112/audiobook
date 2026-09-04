@@ -14,6 +14,7 @@ import pytest
 # Import the FastAPI app to generate schema
 from src.audiobook_studio.main import app
 
+
 # Load the OpenAPI spec from file
 def load_openapi_spec():
     """Load OpenAPI spec from generated file."""
@@ -134,7 +135,8 @@ def test_api_conformance_live(base_url: str = "http://localhost:8000"):
     Run with: pytest tests/contract/contract_check.py::test_api_conformance_live --base-url=http://localhost:8000 -m integration
     """
     import schemathesis
-    schema = schemathesis.openapi.from_asgi("/openapi.json", app, base_url=base_url)
+
+    schemathesis.openapi.from_asgi("/openapi.json", app, base_url=base_url)
 
     # This would be run with schemathesis pytest integration
     # @schema.parametrize()

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
-from sqlalchemy.orm import Mapped, mapped_column, relationship, raiseload
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..orm_base import Base
 
@@ -105,8 +105,12 @@ class Paragraph(Base):
         foreign_keys="AudioSegment.paragraph_id",
         lazy="selectin",
     )
-    tts_edits: Mapped[List[TTSEdit]] = relationship("TTSEdit", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin")
-    routings: Mapped[List[Routing]] = relationship("Routing", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin")
+    tts_edits: Mapped[List[TTSEdit]] = relationship(
+        "TTSEdit", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
+    )
+    routings: Mapped[List[Routing]] = relationship(
+        "Routing", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
+    )
     quality_records: Mapped[List[Quality]] = relationship(
         "Quality", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -126,6 +130,7 @@ class Paragraph(Base):
 
     # Forbid lazy loading on detail endpoints that should use selectinload explicitly
     from sqlalchemy.orm import raiseload
+
     __raised_load_attrs__ = (raiseload("*"),)
 
     def to_schema(self):
@@ -138,6 +143,51 @@ class Paragraph(Base):
             text=self.text,
             speaker=self.speaker or self.speaker_canonical_name,
         )
+
+    def to_full_dict(self) -> dict[str, Any]:
+        """Return a flat dict of all fields for frontend display.
+
+        前端 ChapterTimeline 需要扁平字段（emotion/speech_rate/edited_text 等），
+        但 to_schema() 只返回 CRUD 基础字段。此方法返回完整字段（标注 + 编辑 + 路由 + 质检），
+        供列表端点扁平化返回，避免前端做 N+1 次 detail 查询。
+        """
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "chapter_id": self.chapter_id,
+            "index": self.index,
+            "text": self.text,
+            "speaker": self.speaker,
+            # 环节③标注字段
+            "speaker_canonical_name": self.speaker_canonical_name,
+            "is_dialogue": self.is_dialogue,
+            "emotion": self.emotion,
+            "emotion_intensity": self.emotion_intensity,
+            "speech_rate": self.speech_rate,
+            "pitch_shift_semitones": self.pitch_shift_semitones,
+            "needs_sfx": self.needs_sfx,
+            "sfx_tags": self.sfx_tags or [],
+            "pause_before_ms": self.pause_before_ms,
+            "pause_after_ms": self.pause_after_ms,
+            "confidence": self.confidence,
+            "notes": self.notes,
+            # 环节④编辑后文本
+            "edited_text": self.edited_text,
+            "edit_changes_made": self.edit_changes_made or [],
+            "edit_rationale": self.edit_rationale,
+            "edit_difficulty": self.edit_difficulty,
+            # 环节⑤路由
+            "routing_engine": self.routing_engine,
+            "routing_voice_id": self.routing_voice_id,
+            # 环节⑥质检
+            "quality_overall_score": self.quality_overall_score,
+            "quality_needs_regeneration": self.quality_needs_regeneration,
+            "quality_issues": self.quality_issues or [],
+            "quality_fix_suggestions": self.quality_fix_suggestions or [],
+            # 状态
+            "status": self.status,
+            "content_rating": self.content_rating,
+        }
 
     def to_annotation_dict(self) -> dict[str, Any]:
         """Return annotation fields as a dict (aligned with ParagraphAnnotation schema)."""

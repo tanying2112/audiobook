@@ -1,19 +1,19 @@
 """RAG (Retrieval-Augmented Generation) Module for Audiobook Studio."""
 
 from .models import (
-    DocumentType,
-    RetrievalStrategy,
     CharacterProfile,
-    WorldBuildingDoc,
-    StyleGuide,
+    DocumentType,
     PlotSummary,
     ProperNouns,
+    RAGContext,
     RAGDocument,
     RetrievalResult,
-    RAGContext,
+    RetrievalStrategy,
+    StyleGuide,
+    WorldBuildingDoc,
 )
-from .vector_store import ChromaVectorStore, get_vector_store, init_vector_store_from_settings
 from .retriever import HybridRetriever, get_retriever, init_retriever_from_settings
+from .vector_store import ChromaVectorStore, get_vector_store, init_vector_store_from_settings
 
 __all__ = [
     # Models

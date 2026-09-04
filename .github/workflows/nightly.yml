@@ -80,7 +80,11 @@ jobs:
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY_NIGHTLY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Real self-iteration closed loop (S2-1): disable the mock gate so the
+          # promotion/self-iteration pipeline issues REAL LLM calls. Requires the
+          # provider credentials above to be present and valid.
           MOCK_LLM: "false"
+          SELF_ITERATION_MOCK: "false"
         run: |
           python -m pytest tests/integration/ tests/e2e/ \
             -v --tb=short --timeout=300 \
@@ -88,7 +92,8 @@ jobs:
             --junit-xml=nightly-integration-results.xml \
             --cov=src/audiobook_studio \
             --cov-report=xml \
-            --cov-report=term-missing
+            --cov-report=term-missing \
+            --cov-branch --cov-fail-under=60
 
       - name: Upload integration test results
         uses: actions/upload-artifact@v4

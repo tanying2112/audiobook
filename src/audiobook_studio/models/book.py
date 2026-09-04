@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from .processing_run import ProcessingRun
     from .project_segment import ProjectSegment
     from .publish import PublishHistory, PublishJob
-    from .user import ProjectPermission, User
+    from .user import ProjectPermission
 
 
 class Book(Base):
@@ -42,7 +42,7 @@ class Book(Base):
     language: Mapped[str] = mapped_column(String(2), nullable=False, default="en")
     isbn: Mapped[Optional[str]] = mapped_column(String, nullable=True, unique=True)
 
-    def to_schema(self) -> "BookSchema":
+    def to_schema(self) -> "BookSchema":  # noqa: F821
         from ..schemas.book import Book as BookSchema
 
         return BookSchema(
@@ -98,7 +98,9 @@ class Project(Base):
     emotion_snapshots: Mapped[List[EmotionSnapshot]] = relationship(
         "EmotionSnapshot", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
-    chapters: Mapped[List[Chapter]] = relationship("Chapter", back_populates="project", cascade="all, delete-orphan", lazy="selectin")
+    chapters: Mapped[List[Chapter]] = relationship(
+        "Chapter", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
         "FeedbackRecord", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -111,7 +113,9 @@ class Project(Base):
     processing_runs: Mapped[List[ProcessingRun]] = relationship(
         "ProcessingRun", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
-    permissions: Mapped[List[ProjectPermission]] = relationship("ProjectPermission", back_populates="project", cascade="all, delete-orphan", lazy="selectin")
+    permissions: Mapped[List[ProjectPermission]] = relationship(
+        "ProjectPermission", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
     segments: Mapped[List["ProjectSegment"]] = relationship(
         "ProjectSegment", back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )

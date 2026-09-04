@@ -1,145 +1,69 @@
-# TTS Provider Configuration - Streaming TTS + Zero-Shot Cloning (P2-3, P2-4)
-# 支持流式合成和零样本克隆的 TTS 引擎
+# TTS Provider Registry (S2-4, extended P0)
 #
-# 启动方式 (需 GPU):
-# CosyVoice-Stream: python -m cosyvoice.server --host 0.0.0.0 --port 5000
-# Seed-TTS-Stream: python -m seed_tts.server --host 0.0.0.0 --port 5001
-# MeloTTS-Stream: python -m melotts.server --host 0.0.0.0 --port 5002
-# XTTS-v2: python -m xtts.server --host 0.0.0.0 --port 5010
-# OpenVoice V2: python -m openvoice.server --host 0.0.0.0 --port 5011
-# CosyVoice Clone: python -m cosyvoice.clone_server --host 0.0.0.0 --port 5012
+# Piper is the preferred LOCAL engine (priority 0). Kokoro is the fallback
+# local engine (priority 1). Edge-TTS (free cloud) is the last-resort fallback
+# (priority 2). Lower priority number == higher precedence.
+#
+# P0 capability model: each provider now also declares `capabilities`
+# (cloning / emotion / languages / min_compute) and `license` (P2.11 honesty).
+# `select_engine()` in providers_config.py uses these to pick an engine by what
+# it can actually do and whether the host can run it (CPU vs GPU).
+#
+# GPU backend gate: GPU-only engines (F5-TTS / CosyVoice2 / Dia, added later in
+# Track B) are skipped unless a GPU tier is deployed. Default OFF so free/no-GPU
+# hosts (sandbox, CI, CPU prod) never select an engine they cannot run.
+# Override via env ENABLE_GPU_BACKENDS=true when a GPU host is available.
+
+enable_gpu_backends: false
 
 providers:
-  # ============ Streaming TTS (P2-3) ============
-  # CosyVoice-Stream - 中英双语高质量流式合成
-  # 特性: 24kHz, 低延迟流式, 支持零样本克隆(可选)
-  - name: cosyvoice_stream
-    engine: cosyvoice_stream
-    host: localhost
-    port: 5000
-    sample_rate: 24000
-    chunk_size_ms: 100
-    voice_id: "default"
-    speed: 1.0
-    timeout: 30
-    stages: [synthesize]
-    enabled: false  # 启用前需先运行 CosyVoice-Stream 服务器
-    extra_params:
-      language: "auto"
+  - name: piper
+    engine: piper
+    priority: 0
+    enabled: true
+    default_voice: zh_CN-huayan-medium
+    auto_download: true          # fetch zh_CN-huayan-medium.onnx on first use
+    model_dir: models/piper
+    # Binary resolution order: PIPER_BIN env -> `piper` on PATH -> `piper-tts`
+    # Install: `pip install piper-tts`
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      commercial_use: true
+      name: "Piper (MIT/Apache; some voices CC-BY)"
+      verified_at: "2025-01-01"
 
-  # Seed-TTS-Stream - 字节跳动零样本克隆流式合成
-  # 特性: 跨语言声纹迁移, 高质量, 支持参考音频克隆
-  - name: seed_tts_stream
-    engine: seed_tts_stream
-    host: localhost
-    port: 5001
-    sample_rate: 24000
-    chunk_size_ms: 100
-    voice_id: "default"
-    speed: 1.0
-    timeout: 30
-    stages: [synthesize, clone]
-    enabled: false
-    extra_params:
-      language: "auto"
-
-  # MeloTTS-Stream - 多语言快速流式合成
-  # 特性: 支持中英日韩西法, 资源占用低, 适合实时应用
-  - name: melotts_stream
-    engine: melotts_stream
-    host: localhost
-    port: 5002
-    sample_rate: 24000
-    chunk_size_ms: 50
-    voice_id: "ZH"
-    speed: 1.0
-    timeout: 30
-    stages: [synthesize]
-    enabled: false
-    extra_params:
-      language: "ZH"
-
-  # ============ Zero-Shot Voice Cloning (P2-4) ============
-  # XTTS-v2 (Coqui) - 17语言零样本克隆
-  # 特性: Apache 2.0, 高质量, 支持长文本, 17种语言
-  # 语言: EN, ES, FR, DE, IT, PT, PL, TR, RU, NL, CS, AR, ZH, JA, HU, KO, HI
-  - name: xtts_v2
-    engine: xtts_v2
-    host: localhost
-    port: 5010
-    sample_rate: 24000
-    language: "auto"
-    speed: 1.0
-    timeout: 60
-    stages: [clone]
-    enabled: false
-    extra_params:
-      supported_languages: ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh", "ja", "hu", "ko", "hi"]
-
-  # OpenVoice V2 (MyShell) - 快速声色克隆
-  # 特性: MIT协议, 实时推理, 音色克隆, 多语言
-  # 语言: EN, ZH, JA, KO, FR, DE, ES, IT, PT, RU
-  - name: openvoice_v2
-    engine: openvoice_v2
-    host: localhost
-    port: 5011
-    sample_rate: 24000
-    language: "auto"
-    speed: 1.0
-    timeout: 60
-    stages: [clone]
-    enabled: false
-    extra_params:
-      supported_languages: ["en", "zh", "ja", "ko", "fr", "de", "es", "it", "pt", "ru"]
-
-  # CosyVoice Clone (FunAudioLLM) - 中英双语克隆
-  # 特性: 流式克隆, In-context learning, 高质量 24kHz
-  # 语言: ZH, EN
-  - name: cosyvoice_clone
-    engine: cosyvoice_clone
-    host: localhost
-    port: 5012
-    sample_rate: 24000
-    language: "auto"
-    speed: 1.0
-    timeout: 60
-    stages: [clone]
-    enabled: false
-    extra_params:
-      supported_languages: ["zh", "en"]
-
-  # ============ Legacy Non-Streaming TTS ============
   - name: kokoro
     engine: kokoro
-    host: localhost
-    port: 8880
-    voice_id: "v1"
-    speed: 1.0
-    stages: [synthesize]
+    priority: 1
     enabled: true
+    # Fallback local engine (already bundled via model_downloader P0-2).
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      commercial_use: true
+      name: "Kokoro-82M Apache-2.0"
+      verified_at: "2025-01-01"
 
   - name: edge_tts
     engine: edge_tts
-    voice_id: "zh-CN-Xiaoxiao"
-    speed: 1.0
-    stages: [synthesize]
+    priority: 2
     enabled: true
-
-  - name: voxcpm2
-    engine: voxcpm2
-    host: localhost
-    port: 8080
-    voice_id: "default"
-    stages: [synthesize, clone]
-    enabled: false
-
-# 全局 TTS 设置
-global:
-  default_engine: "kokoro"
-  fallback_engine: "edge_tts"
-  streaming_enabled: true
-  streaming_fallback: "melotts_stream"
-  cloning_enabled: true
-  cloning_fallback: "xtts_v2"
-  sample_rate: 24000
-  output_format: "wav"
+    # Free Microsoft cloud TTS; used only when no local engine is available.
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      # Free cloud TTS but governed by Microsoft ToS (not an open license);
+      # commercial_use left None (unverified) per P2.11 honesty — warn, don't fake.
+      commercial_use: null
+      name: "Edge-TTS (Microsoft cloud, ToS-restricted)"
+      verified_at: null

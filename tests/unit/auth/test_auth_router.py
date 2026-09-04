@@ -5,12 +5,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from tests.conftest import set_sqlite_fk_off
 
-from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_superuser, require_permission
-from src.audiobook_studio.auth.models import PermissionName
+from src.audiobook_studio.auth.dependencies import (
+    get_current_active_user,
+    get_current_user_optional,
+)
 from src.audiobook_studio.auth.router import router
 from src.audiobook_studio.database import Base, get_db
 from src.audiobook_studio.models.user import User as UserModel
@@ -25,6 +28,11 @@ def test_db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,  # Critical for TestClient thread safety
     )
+    # TEST-ISOLATION: harness leaks a process-wide FK=ON Engine-class "connect"
+    # listener (storage.py). This instance listener re-asserts FK=OFF on every
+    # connection this engine opens, so register/login/audit-log inserts don't
+    # trip a spurious FOREIGN KEY constraint under --random-order.
+    event.listen(engine, "connect", set_sqlite_fk_off)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
@@ -213,7 +221,7 @@ class TestRegisterEndpoint:
             )
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register",
@@ -225,8 +233,8 @@ class TestRegisterEndpoint:
             },
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 201
         data = response.json()
@@ -245,14 +253,14 @@ class TestRegisterEndpoint:
             user.is_superuser = True
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register", json={"username": "existing", "email": "new@example.com", "password": "password123"}
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 400
         assert "Username already registered" in response.json()["detail"]
@@ -269,15 +277,15 @@ class TestRegisterEndpoint:
             user.is_superuser = True
             return user
 
-        app.dependency_overrides[get_current_superuser] = mock_superuser
+        app.dependency_overrides[get_current_user_optional] = mock_superuser
 
         response = client.post(
             "/api/auth/register",
             json={"username": "newuser", "email": "existing@example.com", "password": "password123"},
         )
 
-        if get_current_superuser in app.dependency_overrides:
-            del app.dependency_overrides[get_current_superuser]
+        if get_current_user_optional in app.dependency_overrides:
+            del app.dependency_overrides[get_current_user_optional]
 
         assert response.status_code == 400
         assert "Email already registered" in response.json()["detail"]
@@ -627,7 +635,7 @@ class TestInitRBACEndpoint:
 
         app.dependency_overrides[admin_dep] = mock_admin_user
 
-        with patch("src.audiobook_studio.auth.rbac.init_rbac") as mock_init:
+        with patch("src.audiobook_studio.auth.rbac.init_rbac"):
             response = client.post("/api/auth/init-rbac")
 
         if admin_dep in app.dependency_overrides:
@@ -1120,9 +1128,7 @@ class TestListProjectPermissions:
 
         from sqlalchemy.orm import Session
 
-        from src.audiobook_studio.models.user import ProjectPermission
-
-        mock_perm1 = MagicMock()
+        mock_perm1 = MagicMock()  # noqa: E303
         mock_perm1.user_id = 1
         mock_perm1.project_id = 1
         mock_perm1.role = "editor"

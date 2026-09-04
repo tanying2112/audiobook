@@ -7,8 +7,7 @@ Mocks: modal, torch, torchaudio, soundfile, huggingface_hub, voxcpm model.
 
 import os
 import sys
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, ANY
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -20,8 +19,10 @@ def _identity_decorator(*args, **kwargs):
     ``@app.local_entrypoint()`` do not swallow the real function body when
     the underlying objects are mocked.
     """
+
     def decorator(func):
         return func
+
     return decorator
 
 
@@ -52,11 +53,13 @@ mock_hf_hub.snapshot_download = Mock()
 
 mock_modal = Mock()
 mock_modal.Image = Mock()
-mock_modal.Image.debian_slim = Mock(return_value=Mock(
-    apt_install=Mock(return_value=Mock()),
-    pip_install=Mock(return_value=Mock()),
-    add_local_dir=Mock(return_value=Mock()),
-))
+mock_modal.Image.debian_slim = Mock(
+    return_value=Mock(
+        apt_install=Mock(return_value=Mock()),
+        pip_install=Mock(return_value=Mock()),
+        add_local_dir=Mock(return_value=Mock()),
+    )
+)
 mock_modal.Volume = Mock()
 mock_modal.Volume.from_name = Mock(return_value=Mock())
 mock_modal.App = Mock()
@@ -74,16 +77,16 @@ mock_modal.local_entrypoint = Mock()
 sys.modules["modal"] = mock_modal
 sys.modules["torch"] = mock_torch
 
+import src.audiobook_studio.tts.remote_workers.modal_worker as _modal_worker_mod
 from src.audiobook_studio.tts.remote_workers.modal_worker import (
     ModalWorker,
     VoxCPM2Engine,
-    worker_image,
-    model_vol,
     app,
-    run_modal_consumer,
     main,
+    model_vol,
+    run_modal_consumer,
+    worker_image,
 )
-import src.audiobook_studio.tts.remote_workers.modal_worker as _modal_worker_mod
 
 # Restore module-level sys.modules entries touched for import (avoid polluting
 # other test files in the same pytest session).
@@ -142,6 +145,7 @@ def _mock_runtime_deps():
         saved[_name] = sys.modules.get(_name, _MISSING)
         sys.modules[_name] = _mock
     import importlib
+
     importlib.reload(_modal_worker_mod)
     _rebind_worker_globals()
     try:
@@ -273,7 +277,7 @@ class TestModalWorker:
     def test_init_calls_parent_init(self):
         """Test worker init calls parent init with modal prefix."""
         with patch.object(ModalWorker.__mro__[1], "__init__", return_value=None) as mock_super:
-            worker = ModalWorker()
+            ModalWorker()
             mock_super.assert_called_once_with(platform_prefix="modal")
 
     def test_init_engine_returns_voxcpm2_engine(self, worker):

@@ -16,7 +16,6 @@ import pytest
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
-from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 
@@ -75,7 +74,6 @@ class TestQualityCheckPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_judge, create_router
 
         # Explicitly set mock_mode=False for deterministic test
         pipeline = QualityCheckPipeline(mock_mode=False)
@@ -606,7 +604,7 @@ class TestCheckOptionalDependencies:
         mock_result.speaker_sim = None
         mock_result.overall_message = "Partial checks passed"
         with patch.object(pipeline, "_quality_suite", mock_result):
-            result = pipeline._run_hard_quality_checks(
+            pipeline._run_hard_quality_checks(
                 audio_path=audio_path,
                 reference_text="参考文本",
             )

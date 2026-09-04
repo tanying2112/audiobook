@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_async_session
+from ..exceptions import DomainError
 from ..models.book import Project
 from ..tasks.publish_tasks import _get_job_state, _persist_job_state, _persist_job_state_db
 
@@ -135,7 +136,7 @@ async def _delete_job(job_id: str) -> None:
     try:
         import redis.asyncio as redis
 
-        from ..config.settings import get_settings
+        from ..config import get_settings
 
         settings = get_settings()
         redis_client = redis.from_url(
@@ -146,7 +147,7 @@ async def _delete_job(job_id: str) -> None:
         key = f"publish:job:{job_id}"
         await redis_client.delete(key)
         await redis_client.aclose()
-    except Exception:
+    except redis.exceptions.RedisError:
         pass
     # In-memory fallback
     _publish_jobs_fallback.pop(job_id, None)
@@ -186,12 +187,19 @@ async def publish_project(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"project_id": project_id},
+        )
 
     if project.status != "completed":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project not ready for publishing. Current status: {project.status}",
+        raise DomainError(
+            message=f"Project not ready for publishing. Current status: {project.status}",
+            error_code="VALIDATION_ERROR",
+            stage="publish",
+            context={"project_id": project_id, "current_status": project.status},
         )
 
     # Validate destinations
@@ -199,9 +207,11 @@ async def publish_project(
     requested = set(request.destinations)
     if not requested.issubset(valid_destinations):
         invalid = requested - valid_destinations
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid destinations: {invalid}. Valid: {valid_destinations}",
+        raise DomainError(
+            message=f"Invalid destinations: {invalid}. Valid: {valid_destinations}",
+            error_code="VALIDATION_ERROR",
+            stage="publish",
+            context={"invalid_destinations": list(invalid), "valid_destinations": list(valid_destinations)},
         )
 
     # Generate job ID
@@ -532,7 +542,7 @@ async def _publish_to_audiobookshelf(
         max_retries = 10
         poll_interval = 3  # seconds
 
-        for attempt in range(max_retries):
+        for _attempt in range(max_retries):
             await asyncio.sleep(poll_interval)
             async with session.get(
                 f"{server_url}/api/libraries/{library_id}/search",
@@ -684,7 +694,6 @@ async def _generate_podcast_rss(
     # Build public URL for media files
     public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
     # Media files are served under /media/{project_id}/ (to be implemented by frontend/web server)
-    media_url = f"{public_url}/media/{project_id}"
 
     # Construct the RSS feed URL (endpoint that serves the generated XML)
     rss_url = f"{public_url}/projects/{project_id}/publish/feed.xml"
@@ -701,10 +710,20 @@ async def get_publish_job(project_id: int, job_id: str):
     """Get publish job status by ID."""
     job = await _get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Publish job not found")
+        raise DomainError(
+            message="Publish job not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"job_id": job_id},
+        )
 
     if job["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Job does not belong to this project")
+        raise DomainError(
+            message="Job does not belong to this project",
+            error_code="FORBIDDEN",
+            stage="publish",
+            context={"job_id": job_id, "expected_project_id": project_id, "actual_project_id": job["project_id"]},
+        )
 
     return PublishJobOut(**job)
 
@@ -754,7 +773,12 @@ async def get_podcast_rss_feed(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="publish",
+            context={"project_id": project_id},
+        )
 
     # Get current audio segments (episodes)
     result = await db.execute(
@@ -798,9 +822,9 @@ async def get_podcast_rss_feed(
 
     # Generate RSS XML
     xml_lines = [
-        f'<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>',
         f'<rss version="{rss_version}" xmlns:itunes="{itunes_namespace}">',
-        f"  <channel>",
+        "  <channel>",
         f"    <title>{feed_title}</title>",
         f"    <description>{feed_desc}</description>",
         f"    <link>{feed_link}</link>",
@@ -845,21 +869,21 @@ async def get_podcast_rss_feed(
 
         xml_lines.extend(
             [
-                f"    <item>",
+                "    <item>",
                 f"      <title>{episode_title}</title>",
                 f"      <description>{episode_description}</description>",
                 f'      <enclosure url="{enclosure_url}" length="{seg.file_size_bytes or 0}" type="{mime_type}"/>',
                 f"      <guid>{enclosure_url}</guid>",
-                f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S %Z')}</pubDate>",
+                f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}</pubDate>",
                 f"      <itunes:duration>{seg.duration_ms // 1000 if seg.duration_ms else 0}</itunes:duration>",
-                f"    </item>",
+                "    </item>",
             ]
         )
 
     xml_lines.extend(
         [
-            f"  </channel>",
-            f"</rss>",
+            "  </channel>",
+            "</rss>",
         ]
     )
 

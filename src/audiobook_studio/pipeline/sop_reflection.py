@@ -15,13 +15,15 @@ Components:
 
 import json
 import logging
+import os
 import threading
 import time
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field as dc_field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from datetime import datetime, timezone
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from typing import Any, Callable, Dict, List, Optional, cast
 
 from src.audiobook_studio.schemas import BookMeta
@@ -292,7 +294,7 @@ class CorrectionCollector:
             self._queue.put_nowait(correction)
             logger.debug(f"[SOP] Queued correction: {correction.field} for project {correction.project_id}")
             return True
-        except Exception as e:
+        except (Full, ValueError, RuntimeError, OSError) as e:
             logger.warning(f"[SOP] Correction queue full, dropping correction: {e}")
             return False
 
@@ -335,7 +337,7 @@ class CorrectionCollector:
             if c.genre != genre:
                 try:
                     self._queue.put_nowait(c)
-                except Exception:
+                except Full:
                     pass
         return genre_corrections[:max_size]
 
@@ -641,7 +643,7 @@ class ReflectionEngine:
                 corrections_analyzed=len(corrections),
                 timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             )
-        except Exception as e:
+        except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as e:
             logger.error(f"[SOP] Reflection LLM call failed: {e}")
             return self._heuristic_reflection(genre, correction_summary, current_rules)
 
@@ -711,9 +713,7 @@ class RuleApplier:
     def __init__(self, sop_config: SOPConfig):
         self.sop_config = sop_config
 
-    def apply_to_annotation_input(
-        self, input_data: ParagraphAnnotationInput, genre: str
-    ) -> ParagraphAnnotationInput:
+    def apply_to_annotation_input(self, input_data: ParagraphAnnotationInput, genre: str) -> ParagraphAnnotationInput:
         """Enhance annotation input with learned genre rules."""
         rules = self.sop_config.get_genre_rules(genre)
         if not rules:
@@ -766,7 +766,7 @@ class RuleApplier:
             enhanced["pitch_hz"] = pitch_shifts[speaker_role] * 6.0  # semitones to Hz approx
 
         # Apply pause patterns
-        pause_patterns = rules.get("pause_patterns", {})
+        rules.get("pause_patterns", {})
         # Context-dependent, would need more info
 
         # Apply SFX rules
@@ -809,17 +809,24 @@ class SOPBackgroundThread:
         correction_collector: CorrectionCollector,
         reflection_engine: ReflectionEngine,
         check_interval: float = 30.0,
+        golden_root: Optional[Path] = None,
+        harness_scheduler: Optional[Any] = None,
     ):
         self.sop_config = sop_config
         self.collector = correction_collector
         self.engine = reflection_engine
         self.check_interval = check_interval
+        # 金标回流根目录（默认 data/golden）；测试可注入临时目录。
+        self.golden_root = golden_root or Path("data/golden")
+        # 自主迭代调度器（独立后台 worker）；不传则由 start() 按环境变量惰性构建。
+        self._harness_scheduler = harness_scheduler
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._last_reflection: Dict[str, float] = {}  # genre -> timestamp
 
     def start(self) -> None:
-        """Start the background reflection thread."""
+        """Start the background reflection thread (and, if enabled, the harness
+        autonomous-iteration worker)."""
         if self._thread and self._thread.is_alive():
             logger.warning("[SOP] Background thread already running")
             return
@@ -829,26 +836,167 @@ class SOPBackgroundThread:
         self._thread.start()
         logger.info("[SOP] Background reflection thread started")
 
+        # M-项1：自主调度层 —— 把 harness 自我迭代闭环接进独立后台 worker。
+        # 仅当 AUDIOBOOK_HARNESS_AUTONOMOUS=1 时启用；调度线程以自身 interval
+        # （默认 3600s，可由 AUDIOBOOK_HARNESS_INTERVAL 覆盖）独立驱动
+        # run_iteration_cycle，与反思链路解耦，异常绝不外溢到主链路。
+        if self._harness_autonomous_enabled():
+            try:
+                self._ensure_harness_scheduler().start()
+                logger.info("[SOP] harness 自主迭代 worker 已随后台线程启动")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[SOP] harness 自主迭代 worker 启动失败（已跳过）: {exc}")
+
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the background thread."""
+        """Stop the background thread and the harness autonomous-iteration worker."""
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=timeout)
             logger.info("[SOP] Background reflection thread stopped")
+        # 同步停止 harness 自主迭代 worker（独立后台线程），确保进程退出干净。
+        sched = self._harness_scheduler
+        if sched is not None and getattr(sched, "_thread", None) is not None and sched._thread.is_alive():
+            try:
+                sched.stop(timeout=timeout)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[SOP] harness 自主迭代 worker 停止异常（已忽略）: {exc}")
 
     def _run(self) -> None:
         """Main loop for background reflection."""
         while not self._stop_event.is_set():
             try:
                 self._check_and_reflect()
-            except Exception as e:
+            except (ValueError, RuntimeError, OSError) as e:
                 logger.error(f"[SOP] Reflection loop error: {e}")
 
             # Sleep with interruption check
             self._stop_event.wait(self.check_interval)
 
+    # ── 运行时自动回流（M0/A2）：golden feedback ───────────────────────────────
+    # 仅在环境变量 AUDIOBOOK_GOLDEN_FEEDBACK=1 时启用，默认关闭以防污染生产数据。
+    # 由本后台线程周期性驱动，使生产失败/纠错在运行时自动沉淀为金标数据集。
+
+    @staticmethod
+    def _golden_feedback_enabled() -> bool:
+        return os.environ.get("AUDIOBOOK_GOLDEN_FEEDBACK", "0") == "1"
+
+    @staticmethod
+    def _harness_autonomous_enabled() -> bool:
+        """是否启用 harness 自主迭代（接进后台 worker 的开关）。默认关闭，避免误触。"""
+        return os.environ.get("AUDIOBOOK_HARNESS_AUTONOMOUS", "0") == "1"
+
+    @staticmethod
+    def _harness_use_learned_enabled() -> bool:
+        """是否在学习型候选生成模式下跑自主迭代（DSPy/GEPA 反思变异）。
+
+        默认关闭：仅当显式设置 ``AUDIOBOOK_HARNESS_USE_LEARNED=1`` 时，调度层才在每轮
+        迭代用 DSPy/GEPA 覆盖候选 prompt；否则走规则拼接（默认路径，离线确定性更强）。
+        """
+        return os.environ.get("AUDIOBOOK_HARNESS_USE_LEARNED", "0") == "1"
+
+    @staticmethod
+    def _harness_smoke_test_enabled() -> bool:
+        """是否开启每日 dry-run 冒烟验收（接进自主迭代 worker 的定时步骤）。
+
+        默认关闭：仅当显式设置 ``AUDIOBOOK_HARNESS_SMOKE=1`` 时，调度层才会周期性
+        真实跑一轮 ``run_iteration_cycle`` 做端到端验收（候选编译/评判/门禁裁决），
+        任一验收失败即告警；不通过也绝不中断主迭代。
+        """
+        return os.environ.get("AUDIOBOOK_HARNESS_SMOKE", "0") == "1"
+
+    @staticmethod
+    def _harness_smoke_test_stage() -> str:
+        """每日冒烟验收使用的 stage（默认 ``analyze``，其在 canary 真实流水线中受支持）。"""
+        return os.environ.get("AUDIOBOOK_HARNESS_SMOKE_STAGE", "analyze")
+
+    @staticmethod
+    def _harness_smoke_test_interval_days() -> float:
+        """每日冒烟验收周期（天），默认 1；``AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS`` 覆盖。"""
+        try:
+            return float(os.environ.get("AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS", "1"))
+        except ValueError:
+            return 1.0
+
+    def _ensure_harness_scheduler(self) -> Any:
+        """惰性构建/返回 harness 自主迭代调度器（独立后台 worker）。
+
+        若构造时已注入 ``harness_scheduler`` 则直接使用；否则按环境变量构建默认
+        调度器（仅当 ``AUDIOBOOK_HARNESS_AUTONOMOUS=1`` 时会被 start 拉起）：
+        - AUDIOBOOK_HARNESS_INTERVAL: 迭代周期（秒），默认 3600
+        - AUDIOBOOK_HARNESS_AUTO_DEPLOY: 门禁通过是否自动部署，默认 0（关）
+        - AUDIOBOOK_HARNESS_USE_LEARNED: 学习型候选生成，默认 0（关）
+        - AUDIOBOOK_HARNESS_SMOKE: 每日 dry-run 冒烟验收，默认 0（关）
+        - AUDIOBOOK_HARNESS_SMOKE_STAGE: 冒烟 stage，默认 analyze
+        - AUDIOBOOK_HARNESS_SMOKE_INTERVAL_DAYS: 冒烟周期（天），默认 1
+        """
+        if self._harness_scheduler is None:
+            from audiobook_studio.harness.scheduler import HarnessScheduler
+
+            interval = float(os.environ.get("AUDIOBOOK_HARNESS_INTERVAL", "3600"))
+            auto_deploy = os.environ.get("AUDIOBOOK_HARNESS_AUTO_DEPLOY", "0") == "1"
+            use_learned = self._harness_use_learned_enabled()
+            self._harness_scheduler = HarnessScheduler(
+                interval=interval,
+                auto_deploy=auto_deploy,
+                use_learned=use_learned,
+                smoke_test_enabled=self._harness_smoke_test_enabled(),
+                smoke_test_stage=self._harness_smoke_test_stage(),
+                smoke_test_interval_days=self._harness_smoke_test_interval_days(),
+            )
+        return self._harness_scheduler
+
+    def _drain_quality_judgments_to_golden(self) -> int:
+        """A2：抽干全局质检判定收集器，回流为 judge 阶段金标（幂等去重）。"""
+        try:
+            from ..feedback.loop import quality_judgments_to_golden
+            from ..pipeline.quality_check import get_quality_judgment_collector
+
+            records = get_quality_judgment_collector().drain()
+            if not records:
+                return 0
+            added = quality_judgments_to_golden(
+                [r.judgment for r in records],
+                annotations=[r.annotation for r in records],
+                reference_texts=[r.reference_text for r in records],
+                audio_descriptions=[r.audio_description for r in records],
+                split="val",
+                stage="judge",
+                golden_root=self.golden_root,
+            )
+            if added:
+                logger.info(f"[A2 golden feedback]回流 {added} 条质检判定 -> val/judge")
+            return added
+        except Exception as e:  # 回流失败绝不应中断主链路
+            logger.warning(f"[A2 golden feedback]回流失败（已跳过）: {e}")
+            return 0
+
+    def _ingest_corrections_to_golden(self, corrections: List[UserCorrection]) -> int:
+        """M0：把一批用户修正回流为 edit 阶段金标（幂等去重）。"""
+        if not corrections:
+            return 0
+        try:
+            from ..feedback.loop import CorrectionBatch, corrections_to_golden
+
+            cb = CorrectionBatch(
+                corrections=list(corrections),
+                genre=corrections[0].genre if corrections else "default",
+                project_id=corrections[0].project_id if corrections else 0,
+                collected_at=datetime.now(timezone.utc).isoformat(),
+            )
+            added = corrections_to_golden(cb, split="val", stage="edit", golden_root=self.golden_root)
+            if added:
+                logger.info(f"[M0 golden feedback]回流 {added} 条用户修正 -> val/edit")
+            return added
+        except Exception as e:  # 回流失败绝不应中断主链路
+            logger.warning(f"[M0 golden feedback]回流失败（已跳过）: {e}")
+            return 0
+
     def _check_and_reflect(self) -> None:
         """Check for accumulated corrections and trigger reflection if threshold met."""
+        # A2：质检判定回流（独立于纠错队列，先行抽干；默认关闭防污染）。
+        if self._golden_feedback_enabled():
+            self._drain_quality_judgments_to_golden()
+
         if not self.sop_config.is_learning_enabled():
             return
 
@@ -860,6 +1008,10 @@ class SOPBackgroundThread:
         all_corrections = self.collector.get_batch(max_size=500)
         if not all_corrections:
             return
+
+        # M0：本次抽干的修正同步回流为金标（幂等，不重复落盘）。
+        if self._golden_feedback_enabled():
+            self._ingest_corrections_to_golden(all_corrections)
 
         # Group by genre
         by_genre: Dict[str, List[UserCorrection]] = {}
@@ -873,7 +1025,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except Full:
                         pass
                 continue
 
@@ -884,7 +1036,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except Full:
                         pass
                 continue
 
@@ -912,7 +1064,7 @@ class SOPBackgroundThread:
                     for c in corrections:
                         try:
                             self.collector._queue.put_nowait(c)
-                        except Exception:
+                        except Full:
                             pass
             else:
                 logger.info(
@@ -924,7 +1076,7 @@ class SOPBackgroundThread:
                 for c in corrections:
                     try:
                         self.collector._queue.put_nowait(c)
-                    except Exception:
+                    except Full:
                         pass
 
             self._last_reflection[genre] = now

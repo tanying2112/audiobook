@@ -1,7 +1,6 @@
 """Comprehensive tests for publish/audiobookshelf_integration.py."""
 
 import asyncio
-import json
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch

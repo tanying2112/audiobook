@@ -24,10 +24,7 @@
       <div class="form-group">
         <label>{{ t('voice_clone.language_label') }}</label>
         <select v-model="form.language" class="select">
-          <option value="zh-CN">中文 (zh-CN)</option>
-          <option value="en-US">English (en-US)</option>
-          <option value="ja-JP">日本語 (ja-JP)</option>
-          <option value="ko-KR">한국어 (ko-KR)</option>
+          <option v-for="lang in languageOptions" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
         </select>
       </div>
 
@@ -218,6 +215,14 @@ import { cloneVoice, previewVoice, getPreviewAudioUrl } from '../api'
 
 const { t } = useI18n()
 
+// Language options for i18n
+const languageOptions = [
+  { value: 'zh-CN', label: '中文 (zh-CN)' },
+  { value: 'en-US', label: 'English (en-US)' },
+  { value: 'ja-JP', label: '日本語 (ja-JP)' },
+  { value: 'ko-KR', label: '한국어 (ko-KR)' },
+]
+
 // State
 const step = ref(1)
 const form = ref({
@@ -245,7 +250,7 @@ const cloneResult = ref<{
 } | null>(null)
 
 // Preview state
-const previewText = ref('这是一个语音试听样本。')
+const previewText = ref(t('voice_clone.preview_text_placeholder'))
 const previewAudioUrl = ref<string | null>(null)
 const previewGenerating = ref(false)
 const previewPlaying = ref(false)
@@ -447,7 +452,7 @@ function cloneAnother() {
 
 function viewClonedList() {
   // Navigate to a future page or open modal
-  alert(t('voice_clone.view_cloned_list') + ' - 待实现')
+  alert(t('voice_clone.view_cloned_list') + ' - ' + t('voice_clone.not_implemented'))
 }
 
 // Watch WaveSurfer ready state for metadata

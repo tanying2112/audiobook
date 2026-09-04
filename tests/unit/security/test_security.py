@@ -4,8 +4,6 @@ Tests path traversal attack vectors, symlink attacks, null byte injection,
 and other edge cases to achieve 85%+ coverage.
 """
 
-import os
-import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,12 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from audiobook_studio.security import (
-    sanitize_filename,
-    sanitize_path_component,
     safe_join,
     safe_open,
-    validate_file_path,
     safe_subprocess_args,
+    sanitize_filename,
+    sanitize_path_component,
+    validate_file_path,
 )
 
 
@@ -576,7 +574,7 @@ class TestSafeSubprocessArgs:
 
     def test_double_quote_rejected(self):
         with pytest.raises(ValueError, match="shell metacharacter"):
-            safe_subprocess_args(['ffmpeg', '-i', 'input"'])
+            safe_subprocess_args(["ffmpeg", "-i", 'input"'])
 
     # Command substitution patterns
     def test_dollar_paren_substitution_rejected_on_metachar(self):
@@ -669,7 +667,7 @@ class TestIntegrationScenarios:
         malicious = "../evil\x00.php"
         safe = sanitize_filename(malicious)
         path = Path("uploads") / safe
-        result = validate_file_path(path, allowed_extensions={".php", ".txt"})
+        validate_file_path(path, allowed_extensions={".php", ".txt"})
         assert safe != malicious
 
     def test_full_workflow_upload(self, temp_base):

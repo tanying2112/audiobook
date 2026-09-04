@@ -3,8 +3,6 @@
 import logging
 import threading
 
-import pytest
-
 from src.audiobook_studio.base import AbstractAgent, AgentCapability, AgentContext, AgentMessage, ErrorSeverity
 
 

@@ -1,9 +1,7 @@
 """Tests for bench_cost module."""
 
 import json
-import statistics
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -11,7 +9,6 @@ from src.audiobook_studio.benchmarks.bench_cost import (
     _get_test_data_for_stage,
     load_baseline,
     measure_stage_cost,
-    parse_args,
     save_baseline,
 )
 
@@ -224,11 +221,11 @@ class TestGetTestDataForStage:
         #     def test_main_with_baseline_pass(self, mock_save, mock_load, mock_measure):
         #         """Test main with baseline, cost within threshold."""
         #         pass
-        sys.stdout = StringIO()
+        sys.stdout = StringIO()  # noqa: F821
         try:
             from src.audiobook_studio.benchmarks.bench_cost import main
 
-            sys.argv = [
+            sys.argv = [  # noqa: F821
                 "bench_cost.py",
                 "--baseline",
                 "baseline.json",
@@ -241,8 +238,8 @@ class TestGetTestDataForStage:
             except SystemExit:
                 pass
         finally:
-            output = sys.stdout.getvalue()
-            sys.stdout = old_stdout
+            output = sys.stdout.getvalue()  # noqa: F821
+            sys.stdout = old_stdout  # noqa: F821
 
         assert "成本在阈值范围内" in output or "基准" in output
 

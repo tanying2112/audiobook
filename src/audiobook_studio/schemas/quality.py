@@ -21,7 +21,7 @@
 
 from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 
 Score = Annotated[float, Field(ge=0.0, le=1.0)]
 
@@ -72,6 +72,7 @@ class QualityJudgment(BaseModel):
             "sensitive_content",
             "wrong_speed",
             "wrong_pitch",
+            "judge_error",
         ]
     ] = Field(default_factory=list, description="检出的问题列表")
 

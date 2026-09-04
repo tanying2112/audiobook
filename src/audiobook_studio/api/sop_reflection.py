@@ -10,23 +10,21 @@ Provides REST and WebSocket endpoints for:
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from src.audiobook_studio.pipeline.sop_reflection import (
-    SOPBackgroundThread,
-    UserCorrection,
     apply_learned_rules_on_import,
     get_correction_collector,
-    get_genre_detector,
     get_reflection_engine,
-    get_rule_applier,
     get_sop_config,
     handle_user_correction_websocket,
     start_sop_background_thread,
     stop_sop_background_thread,
 )
 from src.audiobook_studio.schemas import BookMeta
+
+from ..exceptions import DomainError
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +150,12 @@ async def trigger_reflection(genre: str, max_corrections: int = 100):
 
     corrections = collector.get_corrections_by_genre(genre, max_size=max_corrections)
     if not corrections:
-        raise HTTPException(status_code=404, detail=f"No corrections found for genre '{genre}'")
+        raise DomainError(
+            message=f"No corrections found for genre '{genre}'",
+            error_code="NOT_FOUND",
+            stage="reflect",
+            context={"genre": genre},
+        )
 
     result = engine.reflect(genre, corrections)
 
@@ -179,7 +182,7 @@ async def trigger_reflection(genre: str, max_corrections: int = 100):
 @router.get("/background/status", response_model=BackgroundThreadStatus)
 async def get_background_status():
     """Get background reflection thread status."""
-    global _background_thread
+    global _background_thread  # noqa: F824
     from src.audiobook_studio.pipeline.sop_reflection import _background_thread as bg_thread
 
     if bg_thread and bg_thread._thread and bg_thread._thread.is_alive():
@@ -226,10 +229,12 @@ async def get_queue_size():
 
 
 # ── WebSocket Endpoint for Real-time Corrections ─────────────────────────────
+# P0.1 Fix: Frontend expects /api/sop/corrections/ws/{projectId} but we had /corrections/ws
+# Match frontend: ws://host/api/sop/corrections/ws/{projectId}
 
 
-@router.websocket("/corrections/ws")
-async def sop_corrections_websocket(websocket: WebSocket):
+@router.websocket("/corrections/ws/{project_id}")
+async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
     """
     WebSocket endpoint for real-time user corrections from frontend.
 
@@ -254,7 +259,7 @@ async def sop_corrections_websocket(websocket: WebSocket):
     }
     """
     await websocket.accept()
-    collector = get_correction_collector()
+    get_correction_collector()
 
     try:
         while True:
@@ -264,6 +269,8 @@ async def sop_corrections_websocket(websocket: WebSocket):
             message = json.loads(data)
 
             if message.get("type") == "correction":
+                # Ensure project_id matches path param
+                message["project_id"] = project_id
                 result = await handle_user_correction_websocket(message)
                 await websocket.send_text(
                     json.dumps(
@@ -285,10 +292,10 @@ async def sop_corrections_websocket(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        logger.info("SOP corrections WebSocket disconnected")
+        logger.info(f"SOP corrections WebSocket disconnected for project {project_id}")
     except Exception as e:
-        logger.error(f"SOP corrections WebSocket error: {e}")
+        logger.error(f"SOP corrections WebSocket error for project {project_id}: {e}")
         try:
             await websocket.send_text(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False))
-        except Exception:
+        except RuntimeError:
             pass

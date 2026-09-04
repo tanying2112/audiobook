@@ -46,17 +46,12 @@ from .collaboration import (
 )
 from .emotion_snapshot import EmotionSnapshot
 from .feedback_record import FeedbackRecord
-from .legacy import (
-    LegacyBook,
-    LegacyParagraph,
-    LegacyTTSEdit,
-    LegacyRouting,
-    LegacyQuality,
-)
+from .legacy import LegacyBook, LegacyParagraph, LegacyQuality, LegacyRouting, LegacyTTSEdit
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
 from .project_segment import ProjectSegment
 from .publish import PublishHistory, PublishJob
+from .publish_job import PublishJobState
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
@@ -83,6 +78,7 @@ __all__ = [
     "ProjectSegment",
     "PublishHistory",
     "PublishJob",
+    "PublishJobState",
     "LegacyBook",
     "LegacyParagraph",
     "LegacyTTSEdit",

@@ -8,10 +8,12 @@ Audiobook Studio — 语义连贯性检查器
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import yaml
+
+# Use UnifiedConfig for centralized configuration loading
+from ..config.unified import get_unified_config
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +26,22 @@ class SemanticCoherenceChecker:
         初始化语义连贯性检查器.
 
         Args:
-            config_path: 配置文件路径
+            config_path: 配置文件路径（兼容性参数，实际使用 UnifiedConfig）
         """
         self.config_path = Path(config_path)
         self.config = self._load_config()
         self._init_models()
 
     def _load_config(self) -> Dict[str, Any]:
-        """加载质量阈值配置."""
+        """加载质量阈值配置 (通过 UnifiedConfig 统一管理)."""
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                config: Dict[str, Any] = yaml.safe_load(f) or {}
-            logger.info(f"✅ 已加载质量阈值配置: {self.config_path}")
+            unified = get_unified_config()
+            config: Dict[str, Any] = unified.load_yaml_config("quality_thresholds")
+            if not config:
+                logger.warning(f"⚠️ 配置文件未找到: {self.config_path}，使用默认值")
+                return self._get_default_config()
+            logger.info("✅ 已加载质量阈值配置 (via UnifiedConfig)")
             return config
-        except FileNotFoundError:
-            logger.warning(f"⚠️ 配置文件未找到: {self.config_path}，使用默认值")
-            return self._get_default_config()
         except Exception as e:
             logger.error(f"❌ 加载配置文件失败: {e}，使用默认值")
             return self._get_default_config()
@@ -91,7 +93,8 @@ class SemanticCoherenceChecker:
                 "passed": True,
                 "score": 1.0,
                 "semantic_score": 1.0,
-                "emotional_score": 1.0,
+                # 契约：未启用的检查项如实返回 None（未检查 ≠ 满分）
+                "emotional_score": 1.0 if check_emotional_curve else None,
                 "issues": ["段落数量不足，无法进行连贯性检查"],
             }
 
@@ -99,297 +102,144 @@ class SemanticCoherenceChecker:
         semantic_scores = []
         emotional_scores = []
 
-        # 1. 检查相邻段落的语义连贯性
+        # 获取阈值
+        audio_config = self.config.get("audio", {})
+        semantic_threshold = audio_config.get("semantic_coherence_threshold", 0.75)
+        emotional_threshold = audio_config.get("emotional_coherence_threshold", 0.80)
+
+        # 计算相邻段落语义相似度
         for i in range(len(paragraphs) - 1):
-            para1 = paragraphs[i]
-            para2 = paragraphs[i + 1]
+            semantic_score = self._compute_semantic_similarity(paragraphs[i], paragraphs[i + 1])
+            semantic_scores.append(semantic_score)
 
-            if not para1.strip() or not para2.strip():
-                semantic_scores.append(1.0)  # 空段落视为连贯
-                continue
+            if semantic_score < semantic_threshold:
+                issues.append(f"段落 {i+1}-{i+2} 语义连贯性低: {semantic_score:.3f} < {semantic_threshold}")
 
-            semantic_similarity = self._calculate_semantic_similarity(para1, para2)
-            semantic_scores.append(semantic_similarity)
-
-            # 检查是否低于阈值
-            threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
-            if semantic_similarity < threshold:
-                issues.append(f"段落 {i+1}-{i+2} 语义连贯性不足: {semantic_similarity:.3f} < {threshold}")
-
-        # 2. 如果需要，检查情感强度曲线连续性
+        # 情感连贯性检查
         if check_emotional_curve:
-            emotional_scores = self._check_emotional_curve_continuity(paragraphs)
+            emotional_scores = self._compute_emotional_curve(paragraphs)
             for i, score in enumerate(emotional_scores):
-                if score < 1.0:  # 情感曲线不连续
-                    threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
-                    issues.append(f"段落 {i+1}-{i+2} 情感强度曲线不连续: {score:.3f} < {threshold}")
+                if score < emotional_threshold:
+                    issues.append(f"段落 {i+1} 情感连贯性低: {score:.3f} < {emotional_threshold}")
 
-        # 3. 如果有参考段落，检查翻译前后的一致性
-        if reference_paragraphs and len(reference_paragraphs) == len(paragraphs):
-            translation_scores = []
-            for i, (orig, trans) in enumerate(zip(reference_paragraphs, paragraphs)):
-                if not orig.strip() or not trans.strip():
-                    translation_scores.append(1.0)
-                    continue
-
-                similarity = self._calculate_semantic_similarity(orig, trans)
-                translation_scores.append(similarity)
-
-                # 检查翻译语义保持度
-                threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
-                if similarity < threshold:
-                    issues.append(f"段落 {i+1} 翻译语义保持度不足: {similarity:.3f} < {threshold}")
-
-            # 翻译质量得分是所有段落的平均 similarity
-            if translation_scores:
-                translation_quality: Optional[float] = float(np.mean(translation_scores))
-            else:
-                translation_quality = 1.0
-        else:
-            translation_quality = None
-
-        # 计算总体得分
-        semantic_score = np.mean(semantic_scores) if semantic_scores else 1.0
-        emotional_score = np.mean(emotional_scores) if emotional_scores and check_emotional_curve else 1.0
-
-        # 综合得分（可以根据需要调整权重）
+        # 计算总体得分（未启用的维度不计入总分，避免虚高）
+        avg_semantic = np.mean(semantic_scores) if semantic_scores else 1.0
         if check_emotional_curve:
-            overall_score = (semantic_score * 0.6) + (emotional_score * 0.4)
+            avg_emotional = np.mean(emotional_scores) if emotional_scores else 1.0
+            overall_score = (avg_semantic + avg_emotional) / 2
+            emotional_out: Optional[float] = float(avg_emotional)
         else:
-            overall_score = semantic_score
+            avg_emotional = None
+            overall_score = avg_semantic
+            emotional_out = None
 
-        # 检查是否通过所有阈值
-        semantic_threshold = self.config.get("audio", {}).get("semantic_coherence_threshold", 0.75)
-        emotional_threshold = self.config.get("audio", {}).get("emotional_coherence_threshold", 0.80)
-
-        passed = semantic_score >= semantic_threshold and (
-            not check_emotional_curve or emotional_score >= emotional_threshold
-        )
+        # 翻译质量（兑现 reference_paragraphs 参数承诺）：逐段原文/译文相似度均值；
+        # 引用缺失或长度不一致时如实返回 None。
+        translation_quality: Optional[float] = None
+        if reference_paragraphs is not None:
+            if len(reference_paragraphs) == len(paragraphs) and paragraphs:
+                tq_scores = [
+                    self._compute_semantic_similarity(para, ref)
+                    for para, ref in zip(paragraphs, reference_paragraphs, strict=False)
+                ]
+                translation_quality = float(np.mean(tq_scores)) if tq_scores else None
 
         result = {
-            "passed": passed,
+            "passed": len(issues) == 0,
             "score": float(overall_score),
-            "semantic_score": float(semantic_score),
-            "emotional_score": (float(emotional_score) if check_emotional_curve else None),
-            "translation_quality": (float(translation_quality) if translation_quality is not None else None),
+            "semantic_score": float(avg_semantic),
+            "emotional_score": emotional_out,
             "issues": issues,
+            "semantic_scores": [float(s) for s in semantic_scores],
         }
-
-        if passed:
-            logger.info(f"✅ 语义连贯性检查通过: 得分 {overall_score:.3f}")
-        else:
-            logger.warning(f"⚠️ 语义连贯性检查失败: 得分 {overall_score:.3f}, 问题 {len(issues)} 个")
-
+        if check_emotional_curve:
+            result["emotional_scores"] = [float(s) for s in emotional_scores]
+        if translation_quality is not None or reference_paragraphs is not None:
+            result["translation_quality"] = translation_quality
         return result
 
-    def _calculate_semantic_similarity(self, text1: str, text2: str) -> float:
-        """
-        计算两个文本的语义相似度.
+    def _compute_semantic_similarity(self, text1: str, text2: str) -> float:
+        """计算两段文本的语义相似度."""
+        if self.semantic_model is None:
+            # 简化的词汇重叠相似度作为降级
+            return self._lexical_overlap(text1, text2)
 
-        Args:
-            text1: 第一个文本
-            text2: 第二个文本
+        try:
+            embeddings = self.semantic_model.encode([text1, text2], convert_to_numpy=True)
+            from numpy.linalg import norm
 
-        Returns:
-            相似度分数 (0-1, 1表示完全相似)
-        """
-        if self.semantic_model is not None:
-            try:
-                # 使用Sentence-BERT计算嵌入向量
-                embeddings = self.semantic_model.encode([text1, text2])
-                # 计算余弦相似度
-                similarity = np.dot(embeddings[0], embeddings[1]) / (
-                    np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
-                )
-                return float(similarity)
-            except Exception as e:
-                logger.error(f"❌ 计算语义相似度失败: {e}")
-                # 回退到简化方法
-                return self._fallback_similarity(text1, text2)
-        else:
-            # 使用简化的语义相似度计算
-            return self._fallback_similarity(text1, text2)
+            sim = np.dot(embeddings[0], embeddings[1]) / (norm(embeddings[0]) * norm(embeddings[1]))
+            return float(np.clip(sim, 0.0, 1.0))
+        except Exception as e:
+            logger.warning(f"语义相似度计算失败: {e}，使用词汇重叠降级")
+            return self._lexical_overlap(text1, text2)
 
-    def _fallback_similarity(self, text1: str, text2: str) -> float:
-        """
-        简化的语义相似度计算（当无法使用Sentence-BERT时）.
-
-        Args:
-            text1: 第一个文本
-            text2: 第二个文本
-
-        Returns:
-            相似度分数 (0-1)
-        """
-        # 简单的基于字符的相似度作为后备
-        if not text1 and not text2:
-            return 1.0
-        if not text1 or not text2:
-            return 0.0
-
-        # 使用Jaccard相似度的字符级版本
-        set1 = set(text1.lower())
-        set2 = set(text2.lower())
-
-        intersection = len(set1 & set2)
-        union = len(set1 | set2)
-
-        if union == 0:
-            return 1.0
-        return intersection / union
-
-    def _check_emotional_curve_continuity(self, paragraphs: List[str]) -> List[float]:
-        """
-        检查情感强度曲线的连续性.
-
-        Args:
-            paragraphs: 段落列表
-
-        Returns:
-            每对相邻段落的情感曲线连续性得分列表 (0-1, 1表示完全连续)
-        """
-        # 在实际实现中，这里会使用情感分析模型来提取每个段落的情感向量
-        # 在实际实现中，这里会使用情感分析模型来提取每个段落的情感向量
-        # 然后计算相邻情感向量之间的差异
-        # 由于这是一个简化实现,我们使用启发式方法
-        scores = []
-        for i in range(len(paragraphs) - 1):
-            para1 = paragraphs[i]
-            para2 = paragraphs[i + 1]
-
-            # 简化的情感强度估计：基于感叹号、问号和某些情感词汇
-            emotion1 = self._estimate_emotion_intensity(para1)
-            emotion2 = self._estimate_emotion_intensity(para2)
-
-            # 计算情感强度差异（归一化到0-1范围，1表示完全相同）
-            diff = abs(emotion1 - emotion2)
-            score = max(0.0, 1.0 - diff)  # 差异越小，得分越高
-            scores.append(score)
-
-        return scores
-
-    def _estimate_emotion_intensity(self, text: str) -> float:
-        """
-        估算文本的情感强度（简化版）.
-
-        Args:
-            text: 输入文本
-
-        Returns:
-            情感强度得分 (0-1, 1表示最强情感)
-        """
-        if not text:
-            return 0.0
-
-        # 简单的基于标点和情感词的启发式方法
-        emotion_words = {
-            "positive": [
-                "高兴",
-                "快乐",
-                "愉快",
-                "兴奋",
-                "喜悦",
-                "欢乐",
-                "happy",
-                "joy",
-                "excited",
-                "pleased",
-            ],
-            "negative": [
-                "悲伤",
-                "难过",
-                "痛苦",
-                "愤怒",
-                "生气",
-                "害怕",
-                "恐惧",
-                "sad",
-                "angry",
-                "afraid",
-                "fear",
-            ],
-            "intense": [
-                "非常",
-                "极其",
-                "特别",
-                "十分",
-                "巨く",
-                "very",
-                "extremely",
-                "really",
-                "so",
-            ],
-        }
-
-        text_lower = text.lower()
-        score = 0.0
-
-        # 检查感叹号和问号（表示强烈情感）
-        exclamation_count = text.count("!") + text.count("！")
-        question_count = text.count("?") + text.count("？")
-        score += min(0.3, (exclamation_count + question_count) * 0.1)
-
-        # 检查情感词汇
-        for category, words in emotion_words.items():
-            for word in words:
-                if word in text_lower:
-                    if category == "intense":
-                        score += 0.2
-                    else:
-                        score += 0.15
-
-        # 检查重复字符或夸张表达
+    def _lexical_overlap(self, text1: str, text2: str) -> float:
+        """基于词汇重叠的简化相似度 (降级方案)."""
+        # 剥离中英文标点后再分词，使 "world!" 与 "world" 视为同一词
         import re
 
-        repeated_chars = len(re.findall(r"(.)\1{2,}", text))  # 如aaa、hhh等
-        score += min(0.2, repeated_chars * 0.05)
+        strip = lambda t: re.sub(r"[\s。，！？：；、,.!?;:'\"“”‘’()（）\[\]{}<>《》—…\-]+", " ", t)  # noqa: E731
+        words1 = set(strip(text1).split())
+        words2 = set(strip(text2).split())
+        if not words1 and not words2:
+            # 两个空串视为完全一致
+            return 1.0
+        if not words1 or not words2:
+            return 0.0
+        intersection = words1 & words2
+        union = words1 | words2
+        return len(intersection) / len(union)
 
-        # 归一化到0-1范围
-        return min(1.0, score)
+    def _estimate_emotion_intensity(self, text: str) -> float:
+        """估计单段文本的情感强度 (0..1, 0=平稳).
+
+        启发式信号：极性情感词占比 + 感叹号密度 + 重复字符。
+        """
+        emotional_keywords = {
+            "positive": ["开心", "高兴", "快乐", "兴奋", "喜悦", "满意", "幸福", "温暖", "甜蜜", "欢笑"],
+            "negative": ["悲伤", "痛苦", "愤怒", "恐惧", "绝望", "孤独", "失望", "心酸", "委屈", "哭泣"],
+            "neutral": ["平静", "冷静", "思考", "观察", "描述", "叙述", "说明", "解释"],
+        }
+        pos_count = sum(1 for kw in emotional_keywords["positive"] if kw in text)
+        neg_count = sum(1 for kw in emotional_keywords["negative"] if kw in text)
+        neu_count = sum(1 for kw in emotional_keywords["neutral"] if kw in text)
+
+        total = pos_count + neg_count + neu_count
+        polarity = (pos_count + neg_count) / max(total, 1) if total else 0.0
+
+        # 感叹号密度（每个感叹号贡献 0.2，封顶 0.6）
+        bangs = min(text.count("！") + text.count("!"), 3) * 0.2
+
+        # 重复字符（如"啊啊啊啊啊"）：连续同字符 ≥3 记为强情绪信号
+        repeated = 0.4 if any(text[i] == text[i + 1] == text[i + 2] for i in range(len(text) - 2)) else 0.0
+
+        intensity = polarity * 0.6 + max(bangs, repeated if not polarity else 0.0)
+        return float(min(max(intensity, 0.0), 1.0))
+
+    def _compute_emotional_curve(self, paragraphs: List[str]) -> List[float]:
+        """计算情感强度曲线 (连贯性得分：情感越强烈越难保持连贯)."""
+        return [1.0 - self._estimate_emotion_intensity(para) * 0.5 for para in paragraphs]
 
 
-def main() -> None:
-    """主函数 - 演示语义连贯性检查器."""
-    logger.info("=== Audiobook Studio 语义连贯性检查器演示 ===\n")
-
-    # 创建检查器
-    checker = SemanticCoherenceChecker()
-
-    # 示例段落
-    paragraphs = [
-        "今天真是个美好的日子！阳光明媚，鸟儿歌唱。",
-        "我决定去公园散步，享受这难得的好天气。",
-        "突然，天空变得阴沉起来，远处传来雷声。",
-        "我急忙跑回家，躲进了屋子里等待雨停。",
-    ]
-
-    logger.info("📋 输入段落:")
-    for i, para in enumerate(paragraphs, 1):
-        logger.info(f"   {i}. {para}")
-
-    logger.info("\n" + "=" * 50)
-
-    # 检查语义连贯性
-    logger.info("\n🔍 检查语义连贯性...")
-    result = checker.check_coherence(paragraphs, check_emotional_curve=True)
-
-    logger.info(f"   总体得分: {result['score']:.3f}")
-    logger.info(f"   语义得分: {result['semantic_score']:.3f}")
-    logger.info(f"   情感得分: {result['emotional_score']:.3f}")
-    logger.info(f"   是否通过: {'✅ 是' if result['passed'] else '❌ 否'}")
-
-    if result["issues"]:
-        logger.info(f"   发现问题 ({len(result['issues'])} 个):")
-        for issue in result["issues"][:5]:  # 只显示前5个问题
-            logger.info(f"     - {issue}")
-        if len(result["issues"]) > 5:
-            logger.info(f"     - 以及其他 {len(result['issues']) - 5} 个问题...")
-    else:
-        logger.info("   未发现问题")
-
-    logger.info("\n" + "=" * 50)
-    logger.info("🎉 演示完成")
+# Backward-compatible convenience function
+def check_semantic_coherence(
+    paragraphs: List[str],
+    config_path: str = "config/quality_thresholds.yaml",
+    **kwargs,
+) -> Dict[str, Any]:
+    """便捷函数：检查语义连贯性."""
+    checker = SemanticCoherenceChecker(config_path)
+    return checker.check_coherence(paragraphs, **kwargs)
 
 
 if __name__ == "__main__":
-    main()
+    # 简单测试
+    test_paragraphs = [
+        "第一章 少年独自站在山巅，望着远方的云海发呆。",
+        "微风拂过他的发梢，带来一丝凉意，却吹不散心头的愁绪。",
+        "突然，一道剑光划破长空，打破了山巅的宁静。",
+    ]
+
+    result = check_semantic_coherence(test_paragraphs)
+    logger.info(f"语义连贯性检查结果: {result}")

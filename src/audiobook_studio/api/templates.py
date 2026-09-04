@@ -1,22 +1,19 @@
 """Template management API endpoints for Golden Sample hub."""
 
-import json
 import logging
-import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..database import create_async_session
+from ..exceptions import BadRequestError, NotFoundError
 from ..models import Paragraph, Quality, Routing, TTSEdit
 from ..models.feedback_record import FeedbackRecord as FeedbackRecordModel
-from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
 
 logger = logging.getLogger(__name__)
 
@@ -140,10 +137,10 @@ async def list_templates(
 
     if pending_only:
         # Show unprocessed feedback for confirmation
-        query = query.where(FeedbackRecordModel.processed == False)
+        query = query.where(not FeedbackRecordModel.processed)
     else:
         # Show confirmed templates
-        query = query.where(FeedbackRecordModel.processed == True, FeedbackRecordModel.promoted == True)
+        query = query.where(FeedbackRecordModel.processed, FeedbackRecordModel.promoted)
 
     query = query.order_by(FeedbackRecordModel.created_at.desc()).limit(100)
     result = await db.execute(query)
@@ -157,7 +154,7 @@ async def list_templates(
         .select_from(FeedbackRecordModel)
         .where(
             FeedbackRecordModel.project_id == project_id,
-            FeedbackRecordModel.processed == False,
+            not FeedbackRecordModel.processed,
         )
     )
     pending_result = await db.execute(pending_count_query)
@@ -192,7 +189,7 @@ async def confirm_template(
     record = result.scalar_one_or_none()
 
     if not record:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise NotFoundError(resource="Template", identifier=str(template_id))
 
     if request.action == "confirm":
         record.processed = True
@@ -205,7 +202,7 @@ async def confirm_template(
         record.promoted = False
         logger.info(f"Template {template_id} rejected for project {project_id}")
     else:
-        raise HTTPException(status_code=400, detail=f"Invalid action: {request.action}")
+        raise BadRequestError(message=f"Invalid action: {request.action}", field="action")
 
     await db.commit()
     await db.refresh(record)
@@ -245,13 +242,10 @@ async def apply_template(
     template = result.scalar_one_or_none()
 
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise NotFoundError(resource="Template", identifier=str(request.template_id))
 
     if not template.processed or not template.promoted:
-        raise HTTPException(
-            status_code=400,
-            detail="Template not confirmed. Please confirm template first.",
-        )
+        raise BadRequestError(message="Template not confirmed. Please confirm template first.")
 
     task_id = f"apply_{project_id}_{request.template_id}_{int(datetime.now().timestamp())}"
 
@@ -291,12 +285,10 @@ async def _apply_template_background(
        Quality for quality) using the template's corrected_output.
     3. Track progress in a global dictionary.
     """
-    from datetime import datetime
 
     # Import models
     from ..models import FeedbackRecord as FeedbackRecordModel
-    from ..models import Paragraph, Quality, Routing, TTSEdit
-    from ..schemas import ParagraphAnnotation, QualityJudgment, TtsEditOutput, TtsRoutingDecision
+    from ..models import Paragraph
 
     # Simple in-memory progress tracking (shared across tasks)
     if not hasattr(_apply_template_background, "progress"):
@@ -631,7 +623,9 @@ async def get_apply_progress(
 
     Returns progress from in-memory tracking.
     """
+    if not hasattr(_apply_template_background, "progress"):
+        _apply_template_background.progress = {}
     progress = _apply_template_background.progress.get(task_id)
     if not progress:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise NotFoundError(resource="Task", identifier=task_id)
     return TemplateApplyProgress(**progress)

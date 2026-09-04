@@ -14,17 +14,12 @@ Black-box integration test following 3-phase strategy:
 """
 
 import asyncio
-import hashlib
-import json
 import logging
 import os
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 import httpx
-import pytest
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S")
@@ -100,7 +95,7 @@ class E2ETestClient:
 
     async def upload_text(self, project_id: int, text: str) -> dict:
         """上传原始文本文件"""
-        files = {"file": ("test.txt", text.encode("utf-8"), "text/plain")}
+        {"file": ("test.txt", text.encode("utf-8"), "text/plain")}  # noqa: B018
         resp = await self.client.post(
             f"http://localhost:8000/projects/{project_id}/upload",
             files={"file": ("test.txt", text.encode("utf-8"), "text/plain")},
@@ -233,7 +228,7 @@ async def assert_physical_audio_exists(project_id: int) -> bool:
             logger.error(f"音频文件大小为 0: {f}")
             return False
 
-    logger.info(f"✅ 物理音频文件存在且大小 > 0: {len(list(Path(f'./output/project_')).glob('*'))} 个文件")
+    logger.info(f"✅ 物理音频文件存在且大小 > 0: {len(list(Path('./output/project_')).glob('*'))} 个文件")
     return True
 
 
@@ -254,7 +249,7 @@ async def assert_rtf_valid(metrics: dict) -> bool:
 
 async def assert_reviewer_fixes_positive(metrics: dict) -> bool:
     """验证 Reviewer 自愈计数器 > 0"""
-    resilience = metrics.get("resilience_metrics", {})
+    metrics.get("resilience_metrics", {})
     fixes = metrics.get("reviewer_fixes_total", 0) or metrics.get("reviewer", {}).get("fixes_total", 0)
 
     reviewer_metrics_present = any(k for k in metrics.keys() if "reviewer" in k.lower() or "fix" in k.lower())
@@ -266,9 +261,9 @@ async def assert_reviewer_fixes_positive(metrics: dict) -> bool:
 
 async def assert_cost_recorded(metrics: dict) -> bool:
     cost = metrics.get("cost_accounting", {}).get("total_cost_usd", 0)
-    providers = metrics.get("cost_accounting", {}).get("providers", {})
+    metrics.get("cost_accounting", {}).get("providers", {})
 
-    has_cost = cost > 0 or len(metrics.get("cost_accounting", {}).get("providers", {})) > 0
+    cost > 0 or len(metrics.get("cost_accounting", {}).get("providers", {})) > 0
     logger.info(
         f"成本记录: total_cost=${metrics.get('cost_accounting', {}).get('total_cost_usd', 0):.6f}, providers={len(metrics.get('cost_accounting', {}).get('providers', {}))}"
     )

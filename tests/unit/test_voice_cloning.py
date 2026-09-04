@@ -1,13 +1,8 @@
 """Tests for voice_cloning module."""
 
 import json
-import sys
-import tempfile
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
+from unittest.mock import mock_open, patch
 
 # Add project path for imports
 
@@ -305,7 +300,7 @@ class TestVoiceCloningManagerMore:
 
     def test_load_voice_prints_file_exists(self, tmp_path):
         """Test _load_voice_prints when file exists."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager
 
         # Create a temporary voice_prints.json
         voice_prints_dir = tmp_path / "voices"
@@ -370,7 +365,7 @@ class TestVoiceCloningManagerMore:
 
     def test_update_voice_print_new(self):
         """Test _update_voice_print when creating new fingerprint."""
-        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoiceSample
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         # Clear existing prints but keep the manager's internal state consistent

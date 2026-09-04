@@ -4,14 +4,12 @@ Tests cover CRUD operations for projects, chapters, and paragraphs
 with proper authentication and authorization.
 """
 
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.audiobook_studio.exceptions import DomainError
 
 
 class TestProjectsAuth:
@@ -19,9 +17,7 @@ class TestProjectsAuth:
 
     def test_auth_imports_work(self):
         """Verify imports work."""
-        from src.audiobook_studio.api.dependencies import get_async_db
         from src.audiobook_studio.api.projects import router
-        from src.audiobook_studio.auth.dependencies import get_current_active_user
 
         assert router is not None
 
@@ -102,8 +98,7 @@ class TestProjectEndpoints:
     async def test_create_project(self):
         """Test creating a project."""
         from src.audiobook_studio.api.projects import create_project
-        from src.audiobook_studio.auth.models import RoleName
-        from src.audiobook_studio.models import Project, ProjectPermission, User
+        from src.audiobook_studio.models import User
 
         db = AsyncMock()
         db.add = AsyncMock()
@@ -162,9 +157,9 @@ class TestProjectEndpoints:
         db = AsyncMock()
         _setup_execute_result(db, None)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_project(project_id=999, db=db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_update_project(self):
@@ -310,9 +305,9 @@ class TestQualityReportEndpoint:
         with patch("src.audiobook_studio.api.projects.reports_dir") as mock_reports_dir:
             mock_reports_dir.return_value = Path("/nonexistent")
 
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DomainError) as exc_info:
                 await get_quality_report(project_id=1, chapter_index=0)
-            assert exc_info.value.status_code == 404
+            assert exc_info.value.error_code == "NOT_FOUND"
 
 
 class TestRegenerateParagraphEndpoint:
@@ -326,9 +321,9 @@ class TestRegenerateParagraphEndpoint:
         db = AsyncMock()
         _setup_execute_result(db, None)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await regenerate_paragraph(project_id=1, chapter_id=1, paragraph_id=1, db=db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_regenerate_paragraph_no_audio_segment(self):
@@ -340,10 +335,10 @@ class TestRegenerateParagraphEndpoint:
         paragraph.audio_segment = None
         _setup_execute_result(db, paragraph)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await regenerate_paragraph(project_id=1, chapter_id=1, paragraph_id=1, db=db)
-        assert exc_info.value.status_code == 400
-        assert "No audio segment" in exc_info.value.detail
+        assert exc_info.value.error_code == "VALIDATION_ERROR"
+        assert "No audio segment" in exc_info.value.message
 
     @pytest.mark.asyncio
     async def test_regenerate_paragraph_success(self):
@@ -377,9 +372,9 @@ class TestLegacyRegenerateEndpoint:
         db = AsyncMock()
         _setup_execute_result(db, None)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await regenerate_paragraph_legacy(project_id=1, paragraph_id=1, db=db)
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
 
 if __name__ == "__main__":

@@ -9,6 +9,14 @@ from ..feedback.quality_enhancement import (
     grade_difficulty,
     validate_emotions,
 )
+from .audio_metrics import (
+    AudioQualityReport,
+    check_audio_quality,
+    compute_wer,
+    get_available_metrics,
+    predict_mos,
+    voice_cosine,
+)
 from .metrics import (
     ASRResult,
     ASRWerMetric,
@@ -49,4 +57,11 @@ __all__ = [
     "grade_difficulty",
     "get_free_tier_health",
     "get_false_positive_tracker",
+    # P0.2 Audio Quality Metrics
+    "AudioQualityReport",
+    "check_audio_quality",
+    "compute_wer",
+    "get_available_metrics",
+    "predict_mos",
+    "voice_cosine",
 ]

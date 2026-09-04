@@ -5,11 +5,10 @@ Exports processed audiobook to final formats (M4B, MP3, etc.) with optional BGM 
 
 import argparse
 import asyncio
-from typing import List, Optional
 
 from sqlalchemy import select
 
-from src.audiobook_studio.database import AsyncSessionLocal, create_async_session
+from src.audiobook_studio.database import AsyncSessionLocal
 from src.audiobook_studio.export import ExportFormat, ExportJob
 from src.audiobook_studio.export.audio_ducking import MixConfig
 from src.audiobook_studio.export.batch_exporter import export_project
@@ -127,7 +126,7 @@ async def export_command(args: argparse.Namespace) -> int:
             result_job = await export_project(project.id, db, job)
 
             if result_job.progress.value == "complete":
-                print(f"✅ Export complete!")
+                print("✅ Export complete!")
                 for fmt, path in result_job.output_paths.items():
                     print(f"   {fmt}: {path}")
 

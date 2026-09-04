@@ -4,10 +4,9 @@ Target: 70%+ coverage of voxcpm2_backend.py (216 lines, ~13% coverage).
 Tests: initialization, synthesize, voice listing, reference audio, error handling, mock mode.
 """
 
-import hashlib
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -15,21 +14,28 @@ import pytest
 # 该后端不可用时整体跳过, 避免 ModuleNotFoundError/ImportError 污染套件。
 # 注意: 部分环境里 voxcpm 半安装(如缺 einops, 或 huggingface_hub 与全局 httpx mock 冲突)
 # 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
+pytestmark = pytest.mark.skip_env_missing
 try:
+    # voxcpm pulls the real (environment-broken) torch into sys.modules; restore
+    # the conftest canonical torch mock so it does not leak into later tests.
+    from tests.conftest_minimal import _force_torch_mock
+
     import voxcpm  # noqa: F401
+
+    _force_torch_mock()
+    from src.audiobook_studio.tts.engine import (
+        SynthesisResult,
+        TTSProsody,
+        TTSTaskPayload,
+        TTSTaskResult,
+        TTSTaskStatus,
+        TTSVoiceAnchor,
+    )
     from src.audiobook_studio.tts.voxcpm2_backend import (
         QUANTIZATION_MODES,
         VOXCPM2_VOICES,
         VoxCPM2Backend,
         create_voxcpm2_backend,
-    )
-    from src.audiobook_studio.tts.engine import (
-        SynthesisResult,
-        TTSTaskPayload,
-        TTSTaskResult,
-        TTSTaskStatus,
-        TTSVoiceAnchor,
-        TTSProsody,
     )
 except Exception:  # noqa: BLE001 - 可选后端缺失/半安装时统一跳过
     pytest.skip("voxcpm optional backend not available", allow_module_level=True)
@@ -51,14 +57,17 @@ class TestVOXCPM2Constants:
     def test_voxcpm2_voices_structure(self):
         """Test VOXCPM2_VOICES has expected voices."""
         expected_voices = [
-            "zh_female_1", "zh_female_2",
-            "zh_male_1", "zh_male_2",
-            "en_female_1", "en_male_1",
+            "zh_female_1",
+            "zh_female_2",
+            "zh_male_1",
+            "zh_male_2",
+            "en_female_1",
+            "en_male_1",
         ]
         for voice in expected_voices:
             assert voice in VOXCPM2_VOICES
 
-        for voice_id, info in VOXCPM2_VOICES.items():
+        for _voice_id, info in VOXCPM2_VOICES.items():
             assert "name" in info
             assert "language" in info
             assert "gender" in info
@@ -151,7 +160,9 @@ class TestVoxCPM2BackendInitialization:
         monkeypatch.delenv("MOCK_LLM", raising=False)
         backend = VoxCPM2Backend(device="cuda", mock_mode=False)
 
-        with patch.dict("sys.modules", {"torch": Mock(cuda=Mock(is_available=Mock(return_value=False))), "torchaudio": Mock()}):
+        with patch.dict(
+            "sys.modules", {"torch": Mock(cuda=Mock(is_available=Mock(return_value=False))), "torchaudio": Mock()}
+        ):
             with pytest.raises(RuntimeError, match="CUDA not available"):
                 await backend.initialize()
 
@@ -226,7 +237,7 @@ class TestVoxCPM2BackendSynthesis:
         await backend.initialize()
 
         output_path = tmp_path / "prosody_test.mp3"
-        result = await backend._synthesize_internal(
+        await backend._synthesize_internal(
             text="测试韵律控制",
             voice_id="zh_female_1",
             output_path=output_path,
@@ -359,6 +370,7 @@ class TestVoxCPM2BackendSynthesizeProtocol:
         await mock_backend.submit(task_id, payload)
 
         import asyncio
+
         await asyncio.sleep(0.2)
 
         result = await mock_backend.get_result(task_id)
@@ -407,6 +419,7 @@ class TestVoxCPM2BackendSynthesizeProtocol:
 
         await mock_backend.submit(task_id, payload)
         import asyncio
+
         await asyncio.sleep(0.15)
 
         cancelled = await mock_backend.cancel(task_id)

@@ -8,11 +8,9 @@ Audiobook Studio — 离线监控降级机制
 
 import json
 import logging
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +106,7 @@ class OfflineMonitor:
                             synced_count += 1
                         else:
                             remaining_lines.append(line)
-                    except Exception:
+                    except json.JSONDecodeError:
                         # 如果解析失败，保留该行以防数据丢失
                         remaining_lines.append(line)
 

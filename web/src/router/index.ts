@@ -22,6 +22,11 @@ const router = createRouter({
       component: () => import('../views/Projects.vue'),
     },
     {
+      path: '/projects',
+      name: 'project-management',
+      component: () => import('../views/ProjectManagement.vue'),
+    },
+    {
       path: '/projects/:id',
       name: 'project-detail',
       component: () => import('../views/ProjectDetail.vue'),
@@ -85,6 +90,11 @@ const router = createRouter({
       path: '/monitoring',
       name: 'monitoring-dashboard',
       component: () => import('../views/MonitoringDashboard.vue'),
+    },
+    {
+      path: '/providers',
+      name: 'provider-manager',
+      component: () => import('../views/ProviderManager.vue'),
     },
     {
       path: '/model-market',

@@ -6,13 +6,11 @@ Target coverage: >= 75%
 """
 
 import os
-import sys
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
-from audiobook_studio.pipeline import analyze_structure
-from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline
+from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from audiobook_studio.schemas import BookAnalysisInput, BookAnalysisOutput
 
 

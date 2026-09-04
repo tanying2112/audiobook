@@ -8,16 +8,14 @@ D4 — FastAPI 导出路由 (async SQLAlchemy 2.0)
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..celery_app import celery_app
-from ..export import ExportFormat, ExportJob, ExportProgress
+from ..export import ExportFormat
 from ..models import Project
 from ..tasks.export_tasks import export_chapter_async, export_project_async, get_export_status
 from .dependencies import get_async_db
@@ -139,20 +137,18 @@ async def start_export(
             )
 
     # Build subtitle config
-    subtitle_config = None
     if payload.max_chars_per_line:
         from ..export.srt import SubtitleConfig
 
-        subtitle_config = SubtitleConfig(
+        SubtitleConfig(
             max_chars_per_line=payload.max_chars_per_line,
         )
 
     # Build mix config
-    mix_config = None
     if payload.mix_config:
         from ..export.audio_ducking import MixConfig
 
-        mix_config = MixConfig(**payload.mix_config)
+        MixConfig(**payload.mix_config)
 
     # Create job config for Celery task
     job_config = {

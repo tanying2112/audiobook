@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from . import plugins
-from .languages import SUPPORTED_LANGUAGES, tts_engine_for
+from .languages import SUPPORTED_LANGUAGES
 
 
 def _tts_engine_catalog() -> List[Dict[str, Any]]:
@@ -43,19 +43,15 @@ def _tts_engine_catalog() -> List[Dict[str, Any]]:
                     "engine": "kokoro",
                 }
             )
-    engines.append(
-        {"engine": "edge", "free": True, "voices": edge_voices}
-    )
-    engines.append(
-        {"engine": "kokoro", "free": True, "voices": kokoro_voices}
-    )
+    engines.append({"engine": "edge", "free": True, "voices": edge_voices})
+    engines.append({"engine": "kokoro", "free": True, "voices": kokoro_voices})
     return engines
 
 
 def build_model_catalog() -> Dict[str, Any]:
     """Return the aggregated model marketplace catalog (S3.5)."""
     discovered = plugins.discover_plugins()
-    installed = set(plugins.list_installed_plugins())
+    installed = set(plugins.read_installed_names())
     plugin_entries: List[Dict[str, Any]] = []
     for m in discovered:
         plugin_entries.append(
@@ -72,7 +68,6 @@ def build_model_catalog() -> Dict[str, Any]:
         "tts_engines": _tts_engine_catalog(),
         "plugins": plugin_entries,
         "total_models": (
-            sum(len(e["voices"]) for e in _tts_engine_catalog())
-            + sum(len(p["models"]) for p in plugin_entries)
+            sum(len(e["voices"]) for e in _tts_engine_catalog()) + sum(len(p["models"]) for p in plugin_entries)
         ),
     }

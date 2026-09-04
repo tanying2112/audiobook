@@ -1,7 +1,8 @@
 """Unit tests for observability tracing to boost coverage."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.observability import tracing
 
@@ -9,6 +10,7 @@ from src.audiobook_studio.observability import tracing
 # app imports them lazily (graceful degradation), but the patches below require
 # the modules to be importable. Skip when the extras aren't installed (e.g. a
 # minimal dev environment) — CI installs them and runs the tests normally.
+pytestmark = pytest.mark.skip_env_missing
 pytest.importorskip("opentelemetry.instrumentation")
 
 
@@ -37,10 +39,10 @@ def _mock_instrumentations():
 def test_init_tracing_minimal():
     """Test init_tracing with minimal config (no OTLP, no console)."""
     with (
-        _mock_instrumentations()[0] as mock_fastapi,
-        _mock_instrumentations()[1] as mock_sqlalchemy,
-        _mock_instrumentations()[2] as mock_httpx,
-        _mock_instrumentations()[3] as mock_requests,
+        _mock_instrumentations()[0],
+        _mock_instrumentations()[1],
+        _mock_instrumentations()[2],
+        _mock_instrumentations()[3],
     ):
 
         provider = tracing.init_tracing(
@@ -120,7 +122,7 @@ def test_shutdown_tracing():
         _mock_instrumentations()[3],
     ):
 
-        provider = tracing.init_tracing(
+        tracing.init_tracing(
             service_name="test-service",
             service_version="1.0.0",
         )

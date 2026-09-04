@@ -167,9 +167,7 @@ class TranslateAndDubPipeline:
             try:
                 # 这里我们需要提取文本进行语义连贯性检查
                 # 在实际实现中，这会更复杂
-                source_texts: List[str] = [
-                    getattr(s, "text", "") for s in segments if hasattr(s, "text")
-                ]
+                source_texts: List[str] = [getattr(s, "text", "") for s in segments if hasattr(s, "text")]
                 dubbed_texts: List[str] = [
                     getattr(s, "text", "")
                     for s in dubbed_segments
@@ -292,12 +290,14 @@ class TranslateAndDubPipeline:
             # router.call 依据 response_model 动态构造 LLMCallResult.output, 静态返回 Any, 按 TranslationResult 收窄
             translated = cast(TranslationResult, result.output)
             return translated.translated_text.strip()
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
             logger.error(f"LLM translation failed: {e}")
             # Fallback to a simple placeholder if translation fails
             return f"[{target_language}] {text}"
 
-    def _apply_voice_characteristics(self, annotation: ParagraphAnnotation, voice_config: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_voice_characteristics(
+        self, annotation: ParagraphAnnotation, voice_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Convert emotion to speech_rate and pitch_shift_semitones adjustments."""
         emotion_adjustments = {
             "neutral": (1.0, 0.0, 1.0),
@@ -414,5 +414,5 @@ class TranslateAndDubPipeline:
             prosody_overrides=None,
         )
         # Add text attribute for test compatibility (ORM 模型未声明 text 列, 以动态属性承载)
-        setattr(new_segment, "text", translated_text)
+        new_segment.text = translated_text
         return new_segment

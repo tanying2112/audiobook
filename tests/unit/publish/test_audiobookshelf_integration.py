@@ -1,10 +1,8 @@
 """Tests for Audiobookshelf integration module."""
 
 import base64
-import json
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -92,9 +90,7 @@ class TestAudiobookshelfConfig:
     """Tests for AudiobookshelfConfig dataclass."""
 
     def test_default_values(self):
-        config = AudiobookshelfConfig(
-            api_url="http://localhost:8080", api_key="test_key", library_id="lib1"
-        )
+        config = AudiobookshelfConfig(api_url="http://localhost:8080", api_key="test_key", library_id="lib1")
         assert config.supported_formats == ["m4b", "mp3"]
         assert config.auto_convert is True
         assert config.preferred_format == "m4b"
@@ -118,9 +114,7 @@ class TestAudiobookshelfIntegrator:
 
     @pytest.fixture
     def config(self):
-        return AudiobookshelfConfig(
-            api_url="http://localhost:8080", api_key="test_api_key", library_id="test_library"
-        )
+        return AudiobookshelfConfig(api_url="http://localhost:8080", api_key="test_api_key", library_id="test_library")
 
     @pytest.fixture
     def integrator(self, config):

@@ -14,7 +14,8 @@ export const useChapterStore = defineStore('chapters', () => {
   async function loadChapters(projectId: number) {
     loading.value = true
     try {
-      chapters.value = await api.fetchChapters(projectId)
+      const data = await api.fetchChapters(projectId)
+      chapters.value = Array.isArray(data) ? data : []
     } finally {
       loading.value = false
     }

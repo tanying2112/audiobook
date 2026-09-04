@@ -60,6 +60,61 @@ profiles:
       budget_enforcement: "strict"
 
   # ---------------------------------------------------------
+  # 零档：完全离线兜底 - 本地 GGUF (llama.cpp) 承担全部 LLM + 自迭代教练
+  # 用于无网/配额耗尽/隐私场景；self-iteration 闭环在本地零成本运行。
+  # 模型：qwen2.5-3b-instruct Q4 GGUF（生产主路由也走本地，质量优先可调高）。
+  # ---------------------------------------------------------
+  offline:
+    description: "完全离线兜底：llama.cpp + Qwen2.5-3B GGUF 承担全部 LLM 与自迭代教练，零网络零成本"
+    hardware:
+      gpu_enabled: false
+      min_ram_gb: 8
+      recommended_ram_gb: 16
+      cpu_cores_min: 4
+    llm:
+      # 全部文本阶段 + 自迭代教练（归因/改写/判分）均走本地 GGUF
+      backend: "llama_cpp"
+      models:
+        extract: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        analyze: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        annotate: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        edit: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        judge: "qwen2.5-3b-instruct-q4_k_m.gguf"
+        self_iteration_coach: "qwen2.5-3b-instruct-q4_k_m.gguf"
+      context_window: 8192
+      n_threads: 4
+      n_batch: 512
+      temperature: 0.3
+      max_tokens: 2048
+    tts:
+      engine: "kokoro_onnx"
+      model_path: "models/kokoro-v1.0.onnx"
+      voices_path: "models/voices-v1.0.bin"
+      voice_design_enabled: false
+      reference_audio_enabled: false
+      sample_rate: 24000
+      providers: ["CPUExecutionProvider"]
+      session_options:
+        intra_op_num_threads: 4
+        inter_op_num_threads: 2
+    quality_check:
+      # 离线兜底：仅轻量规则 + 本地可跑的硬指标（如本地 DNSMOS/ASR 不可用则 rules_only）
+      dnsmos_enabled: false
+      asr_enabled: false
+      speaker_similarity_enabled: false
+      rules_enabled: true
+      checks:
+        - silence_detection
+        - clipping_detection
+        - duration_check
+    routing:
+      strategy: "local_only"
+      fallback_enabled: false
+    cost_control:
+      max_cost_per_chapter_usd: 0.0
+      budget_enforcement: "strict"
+
+  # ---------------------------------------------------------
   # 二档：云端白嫖模式 - 默认档，免费API做大脑，本地TTS做嘴巴
   # ---------------------------------------------------------
   cloud_hybrid:

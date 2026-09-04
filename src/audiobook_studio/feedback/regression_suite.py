@@ -35,12 +35,12 @@ logger = logging.getLogger(__name__)
 class KnownFailure:
     """一个已知历史坏例（不可变）。"""
 
-    failure_id: str               # 内容指纹生成的稳定 id
+    failure_id: str  # 内容指纹生成的稳定 id
     stage: str
     description: str
-    payload: Mapping[str, Any]   # 触发坏例的输入/上下文（冻结只读）
+    payload: Mapping[str, Any]  # 触发坏例的输入/上下文（冻结只读）
     producer_id: Optional[str] = None  # 产出该坏例的候选配置 id
-    added_at: str = ""           # ISO 时间戳（上层注入）
+    added_at: str = ""  # ISO 时间戳（上层注入）
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -109,7 +109,8 @@ class RegressionSuite:
     def _digest(stage: str, description: str, payload: Mapping[str, Any]) -> str:
         body = json.dumps(
             {"stage": stage, "description": description, "payload": dict(payload)},
-            sort_keys=True, ensure_ascii=False,
+            sort_keys=True,
+            ensure_ascii=False,
         )
         return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
@@ -188,7 +189,9 @@ class RegressionSuite:
                 # 评估崩溃视作"未能确定无复发"→ 安全侧：保守拒绝并记新失败
                 logger.warning(
                     "RegressionSuite check raised on %s (%s): %s — 保守拒绝并记新失败",
-                    case.failure_id, type(ex).__name__, ex,
+                    case.failure_id,
+                    type(ex).__name__,
+                    ex,
                 )
                 regressed, new_failure = True, None
                 if new_failure is None:
@@ -232,7 +235,9 @@ class RegressionSuite:
         if verdict.rejected:
             logger.warning(
                 "RegressionSuite REJECT candidate %s: regressed_on=%s new=%s",
-                candidate_id, verdict.regressed_on, new_added,
+                candidate_id,
+                verdict.regressed_on,
+                new_added,
             )
         return verdict
 

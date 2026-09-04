@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from datetime import datetime, timedelta
 
@@ -265,7 +264,7 @@ class TestTelemetryCollector:
         """Test getting records with limit."""
         collector = TelemetryCollector()
 
-        for i in range(5):
+        for _ in range(5):
             collector.record_llm_usage(ProviderType.GROQ, "llama-3.1-70b", 100, 200, 100.0)
 
         records = collector.get_records(limit=2)
@@ -484,6 +483,27 @@ class TestPrometheusExport:
 
         assert "llm_tokens_total" in _prom_metrics
         assert "llm_cost_usd_total" in _prom_metrics
+
+    def test_db_pool_prometheus_export(self):
+        """L-05: DB connection-pool stats must be exported to Prometheus."""
+        from src.audiobook_studio.core.telemetry import update_db_pool_metrics
+
+        collector = TelemetryCollector()
+        output = collector.export_prometheus()
+
+        # The five pool gauges are present and labelled per engine/pool
+        for metric in (
+            "audiobook_db_pool_size",
+            "audiobook_db_pool_checked_in",
+            "audiobook_db_pool_checked_out",
+            "audiobook_db_pool_overflow",
+            "audiobook_db_pool_connections",
+        ):
+            assert metric in output, f"missing Prometheus metric: {metric}"
+
+        # Sampling runs without error and sets at least the async pool gauge
+        update_db_pool_metrics()
+        assert "audiobook_db_pool_size{pool=" in output
 
 
 if __name__ == "__main__":

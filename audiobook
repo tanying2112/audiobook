@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Audiobook Studio - 一键开发环境启动器
+# 用法: ./audiobook {start|stop|restart|status}
+
+set -eu
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "$ROOT/scripts/dev/start_dev.sh" "$@"

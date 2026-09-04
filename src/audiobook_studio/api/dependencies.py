@@ -9,7 +9,7 @@ from typing import AsyncGenerator, Generator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ..database import AsyncSessionLocal, SessionLocal, get_async_session
+from ..database import SessionLocal, get_async_session
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -17,9 +17,9 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...llm import LLMRouter
-from ...quality.metrics import ASRWerMetric, DNSMOSMetric, QualityCheckSuite, SpeakerSimilarityMetric
+from ...quality.metrics import QualityCheckSuite
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
-from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
+from .base import BaseCritic, CriticResult, CriticType
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class ObjectiveCritic(BaseCritic):
             tags=tags,
         )
 
-    def _compute_objective_metrics(
+    def _compute_objective_metrics(  # pragma: no cover - requires real DNSMOS/ASR/Speaker models
         self,
         audio_path: Path,
         reference_text: str,

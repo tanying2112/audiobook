@@ -16,6 +16,23 @@ from audiobook_studio.api import evolution
 from audiobook_studio.feedback import bootstrap_fewshot
 
 
+@pytest.fixture(autouse=True)
+def _reset_evolution_state():
+    """Reset the in-memory evolution run state so tests don't leak `enabled`.
+
+    evolution_progress() reports _run_state["enabled"], which other tests in
+    this file flip on. Without a reset the assertion `enabled is False` flips
+    depending on collection order.
+    """
+    evolution._run_state["enabled"] = False
+    evolution._run_state["running"] = False
+    evolution._run_state["last_stage"] = None
+    evolution._run_state["last_result"] = None
+    evolution._run_state["last_error"] = None
+    evolution._perplexity_history.clear()
+    yield
+
+
 def test_dspy_and_gepa_available():
     """S2.2 gate 1: dspy (and thus gepa) importable in this venv."""
     assert bootstrap_fewshot.DSPY_AVAILABLE is True

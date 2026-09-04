@@ -13,7 +13,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class ABTestManager:
         test_config = ABTestConfig(
             test_id=str(uuid.uuid4()),
             name=test_name,
-            description=f"A/B test comparing current vs proposed prompts",
+            description="A/B test comparing current vs proposed prompts",
             variant_a_prompt=current_prompt,
             variant_b_prompt=proposed_prompt,
             test_segments=test_segments,

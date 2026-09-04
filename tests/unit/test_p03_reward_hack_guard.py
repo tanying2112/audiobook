@@ -13,8 +13,6 @@
 
 from __future__ import annotations
 
-import importlib
-
 import pytest
 
 from audiobook_studio.feedback import constitution as constitution_mod
@@ -38,6 +36,7 @@ def _reset_singletons():
 # ① P0.3.1 冻结留出集：调参者无法修改
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestHeldOutImmutable:
     def _dataset(self):
         return held_mod.HeldOutDataset("edit_for_tts")
@@ -51,12 +50,12 @@ class TestHeldOutImmutable:
     def test_reassign_private_frozen(self):
         ds = self._dataset()
         with pytest.raises(TypeError):
-            setattr(ds, "_cases", (ds.cases[0],) if ds.cases else ())
+            ds._cases = (ds.cases[0],) if ds.cases else ()
 
     def test_reassign_public_attr_rejected(self):
         ds = self._dataset()
         with pytest.raises((TypeError, AttributeError)):
-            setattr(ds, "cases", ())
+            ds.cases = ()
 
     def test_by_id_readonly_mapping(self):
         ds = self._dataset()
@@ -77,6 +76,7 @@ class TestHeldOutImmutable:
 # ② P0.3.2 双裁判 + 互不提议（双不同 provider 各打分；proposer 排除在裁判外）
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestDualJudge:
     def test_proposer_excluded_from_judges(self):
         dj = pg.DualJudgeEvaluator(
@@ -90,7 +90,8 @@ class TestDualJudge:
 
     def test_disagreement_blocks_promotable_score(self):
         dj = pg.DualJudgeEvaluator(
-            judge_pool=["a", "b"], disagreement_delta=0.25,
+            judge_pool=["a", "b"],
+            disagreement_delta=0.25,
         )
         res = dj.evaluate(lambda jm, payload: 0.95 if jm == "a" else 0.30, {})
         assert res.mean is not None
@@ -106,10 +107,12 @@ class TestDualJudge:
     def test_unavailable_judge_no_fake_pass(self):
         """一位裁判抛错 → 全程不假通过（mean=None）。"""
         dj = pg.DualJudgeEvaluator(judge_pool=["a", "b"])
+
         def bad_fn(jm, payload):
             if jm == "a":
                 raise RuntimeError("LLM down")
             return 0.9
+
         res = dj.evaluate(bad_fn, {})
         assert res.mean is None
         assert res.promotable_score is None
@@ -118,6 +121,7 @@ class TestDualJudge:
 # ─────────────────────────────────────────────────────────────────────────────
 # ③ P0.3.3 ≥0.25 效应量晋升（+0.1 不晋升、+0.3 晋升）
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestEffectSizeGate:
     def test_baseline_plus_025_boundary_promotes(self):
@@ -142,6 +146,7 @@ class TestEffectSizeGate:
 # ─────────────────────────────────────────────────────────────────────────────
 # ④ P0.3.4 constitution：高分但 WER 越界被宪法拒（先于打分）
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestConstitutionHardRules:
     def _adj(self):
@@ -189,6 +194,7 @@ class TestConstitutionHardRules:
 # ⑤ P0.3.5 kill-switch 升级为"回滚+剪枝"（连续 2 格退化 → 回滚基线 + 删后代）
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestEvolutionGuardRollbackPrune:
     def test_consecutive_regression_triggers_rollback_and_prune(self):
         g = ev_mod.EvolutionGuard(regression_streak=2, min_effect_to_promote=0.25)
@@ -218,6 +224,7 @@ class TestEvolutionGuardRollbackPrune:
 # ⑥ P0.3.6 regression_suite：新失败入库后能拒绝其 producer
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestRegressionSuite:
     def test_new_failure_added_then_rejects_its_producer(self):
         """DoD：新失败入库后能拒绝其 producer。
@@ -230,7 +237,9 @@ class TestRegressionSuite:
         nf = rs_mod.KnownFailure("", "edit_for_tts", "破音复现", {"audio": "x"}, producer_id="cand_x")
         # check_candidate 在历史坏例上下文里让 cand_x 暴露该新失败
         verdict = s.check_candidate(
-            "cand_x", lambda case: (False, nf), auto_add_new=True,
+            "cand_x",
+            lambda case: (False, nf),
+            auto_add_new=True,
         )
         assert verdict.rejected
         assert len(verdict.new_failures_added) == 1
@@ -245,7 +254,8 @@ class TestRegressionSuite:
         s = rs_mod.RegressionSuite()
         f = s.add_failure("edit_for_tts", "读错引号", {"text": "x"}, producer_id="prev")
         verdict = s.check_candidate(
-            "cand", lambda case: (case.failure_id == f.failure_id, None),
+            "cand",
+            lambda case: (case.failure_id == f.failure_id, None),
         )
         assert verdict.rejected
         assert f.failure_id in verdict.regressed_on
@@ -261,6 +271,7 @@ class TestRegressionSuite:
 # ⑦ P0.3.7 元门禁 verify_meta_guard：尺度文件对进化循环只读
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestMetaGuard:
     def test_clean_change_set(self):
         result = pg.verify_meta_guard(["src/elsewhere/foo.py", "docs/bar.md", "README.md"])
@@ -268,12 +279,14 @@ class TestMetaGuard:
         assert result["touched"] == []
 
     def test_touching_scale_file_flagged_not_auto_pass(self):
-        result = pg.verify_meta_guard([
-            "src/main.py",
-            "src/audiobook_studio/feedback/constitution.py",  # 宪法
-            "tests/golden/edit_for_tts/case_1.json",          # 评估集
-            "src/audiobook_studio/quality/metrics.py",         # 指标定义
-        ])
+        result = pg.verify_meta_guard(
+            [
+                "src/main.py",
+                "src/audiobook_studio/feedback/constitution.py",  # 宪法
+                "tests/golden/edit_for_tts/case_1.json",  # 评估集
+                "src/audiobook_studio/quality/metrics.py",  # 指标定义
+            ]
+        )
         assert result["clean"] is False
         assert len(result["touched"]) == 3
 
@@ -294,11 +307,13 @@ class TestMetaGuard:
 # 主 DoD：evaluate_promotion_anti_hack —— 一个 reward-hack 候选被拒绝/回滚而非晋升
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestEvaluatePromotionAntiHack:
     @staticmethod
     def _kwargs(**override):
         base = dict(
-            stage="edit_for_tts", candidate_id="c",
+            stage="edit_for_tts",
+            candidate_id="c",
             candidate_output_text="逐字朗读参考文本 这是一段样例",
             reference_text="逐字朗读参考文本 这是一段样例",
             audio_metrics={"mos": 4.5, "wer": 0.05, "issues": [], "status": "all-ran"},
@@ -308,7 +323,9 @@ class TestEvaluatePromotionAntiHack:
             candidate_eval_fn=lambda case: 0.80,
             proposer_model="gpt-4o-mini",
             regression_fn=lambda case: (False, None),
-            promoted_at="t", config_digest="d", new_version=2,
+            promoted_at="t",
+            config_digest="d",
+            new_version=2,
         )
         base.update(override)
         return base
@@ -317,7 +334,7 @@ class TestEvaluatePromotionAntiHack:
         """核心 DoD：LLM 自评分很高但 WER 变差 → 被拒绝而非晋升。"""
         v = pg.evaluate_promotion_anti_hack(
             **self._kwargs(
-                judge_fn=lambda jm, payload: 0.95,   # LLM 自评高分
+                judge_fn=lambda jm, payload: 0.95,  # LLM 自评高分
                 audio_metrics={"mos": 2.0, "wer": 0.80, "issues": [], "status": "all-ran"},  # 真指标差
                 candidate_eval_fn=lambda case: 0.95,
             )
@@ -335,9 +352,7 @@ class TestEvaluatePromotionAntiHack:
         assert v.promoted_node_id is not None
 
     def test_marginal_010_effect_not_promote(self):
-        v = pg.evaluate_promotion_anti_hack(
-            **self._kwargs(candidate_eval_fn=lambda case: 0.60)
-        )
+        v = pg.evaluate_promotion_anti_hack(**self._kwargs(candidate_eval_fn=lambda case: 0.60))
         assert v.passed is False
         assert v.beat_baseline_by_025 is False
         assert v.effect_size == pytest.approx(0.10, abs=1e-6)

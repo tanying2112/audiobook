@@ -10,10 +10,11 @@ Provides endpoints for:
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import BadRequestError, NotFoundError
 from .dependencies import get_async_db
 
 router = APIRouter(prefix="/audio-segments", tags=["audio-segments"])
@@ -84,7 +85,7 @@ async def get_audio_segment(segment_id: str, book_id: str, db: AsyncSession = De
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"
 
     if not storage_path.exists():
-        raise HTTPException(status_code=404, detail="Segment not found")
+        raise NotFoundError(resource="Segment", identifier=segment_id)
 
     return AudioSegmentResponse(
         id=segment_id,
@@ -131,7 +132,7 @@ async def trim_segment(
         Trimmed segment metadata
     """
     if request.start_ms >= request.end_ms:
-        raise HTTPException(status_code=400, detail="start_ms must be less than end_ms")
+        raise BadRequestError(message="start_ms must be less than end_ms", field="start_ms")
 
     # In production: run ffmpeg -ss {start} -to {end} -i input -c copy output
     trimmed_duration = request.end_ms - request.start_ms
@@ -161,7 +162,7 @@ async def merge_segments(
         Merged segment metadata
     """
     if len(request.segment_ids) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 segments required for merge")
+        raise BadRequestError(message="At least 2 segments required for merge", field="segment_ids")
 
     output_path = request.output_path or f"storage/books/{book_id}/audio/merged.mp3"
 
@@ -184,7 +185,7 @@ async def delete_audio_segment(
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"
 
     if not storage_path.exists():
-        raise HTTPException(status_code=404, detail="Segment not found")
+        raise NotFoundError(resource="Segment", identifier=segment_id)
 
     # In production: os.remove(storage_path)
     return None

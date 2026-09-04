@@ -4,7 +4,7 @@ P2-4: Cross-lingual voice transfer with zero-shot cloning.
 """
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,7 +14,6 @@ from src.audiobook_studio.tts.zero_shot_clone import (
     ZeroShotCloneResult,
     create_zero_shot_clone_engine,
 )
-from src.audiobook_studio.tts.port import RemoteTTSPort
 
 
 class TestZeroShotCloneConfig:
@@ -113,12 +112,12 @@ class TestZeroShotCloneEngine:
         """Test zero-shot cloning in mock mode."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_zero_shot_clone_engine(xtts_config)
-            
+
             result = engine.clone(
                 text="这是零样本克隆测试文本。",
                 reference_audio=b"fake_reference_audio_data",
             )
-            
+
             assert isinstance(result, ZeroShotCloneResult)
             assert result.audio_data is not None
             assert len(result.audio_data) > 0
@@ -129,13 +128,13 @@ class TestZeroShotCloneEngine:
         """Test cloning with specific language."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_zero_shot_clone_engine(openvoice_config)
-            
+
             result = engine.clone(
                 text="This is English text for cloning.",
                 reference_audio=b"fake_reference_audio_data",
                 language="en",
             )
-            
+
             assert isinstance(result, ZeroShotCloneResult)
             assert result.audio_data is not None
 
@@ -143,12 +142,14 @@ class TestZeroShotCloneEngine:
         """Test streaming cloning in mock mode."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_zero_shot_clone_engine(xtts_config)
-            
-            chunks = list(engine.clone_stream(
-                text="流式零样本克隆测试。",
-                reference_audio=b"fake_reference_audio_data",
-            ))
-            
+
+            chunks = list(
+                engine.clone_stream(
+                    text="流式零样本克隆测试。",
+                    reference_audio=b"fake_reference_audio_data",
+                )
+            )
+
             assert len(chunks) > 0
             for chunk in chunks:
                 assert isinstance(chunk, ZeroShotCloneResult)
@@ -158,23 +159,23 @@ class TestZeroShotCloneEngine:
         """Test cloning with empty text."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_zero_shot_clone_engine(xtts_config)
-            
+
             result = engine.clone(
                 text="",
                 reference_audio=b"fake_reference_audio_data",
             )
-            
+
             # Should handle gracefully
             assert isinstance(result, ZeroShotCloneResult)
 
     def test_mock_mode_via_config(self, xtts_config):
         """Test that config.mock_mode property works."""
         config = ZeroShotCloneConfig(engine="xtts_v2")
-        
+
         if "MOCK_TTS" in os.environ:
             del os.environ["MOCK_TTS"]
         assert config.mock_mode is False
-        
+
         os.environ["MOCK_TTS"] = "true"
         config2 = ZeroShotCloneConfig(engine="xtts_v2")
         assert config2.mock_mode is True
@@ -196,12 +197,12 @@ class TestZeroShotCloneEngineAsync:
         """Test async zero-shot cloning."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_zero_shot_clone_engine(xtts_config)
-            
+
             result = await engine.clone_async(
                 text="异步零样本克隆测试。",
                 reference_audio=b"fake_reference_audio_data",
             )
-            
+
             assert isinstance(result, ZeroShotCloneResult)
             assert result.audio_data is not None
 
@@ -212,7 +213,7 @@ class TestZeroShotClonePort:
     def test_implements_clone_interface(self):
         """Test that ZeroShotCloneEngine has required clone methods."""
         from src.audiobook_studio.tts.zero_shot_clone import ZeroShotCloneEngine
-        
+
         assert hasattr(ZeroShotCloneEngine, "clone")
         assert hasattr(ZeroShotCloneEngine, "clone_async")
         assert hasattr(ZeroShotCloneEngine, "clone_stream")

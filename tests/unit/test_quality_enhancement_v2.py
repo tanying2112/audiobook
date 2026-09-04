@@ -1,24 +1,13 @@
 """Comprehensive tests for feedback/quality_enhancement.py."""
 
-import math
-from collections import Counter
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from src.audiobook_studio.feedback.quality_enhancement import (
-    _DEFAULT_DIFFICULTY_WEIGHTS,
-    _VALID_EMOTIONS,
+from src.audiobook_studio.feedback.quality_enhancement import (  # noqa: E303
     DifficultyWeights,
     FalsePositiveIssue,
     FalsePositiveTracker,
     FreeTierHealth,
     SemanticCoherenceResult,
-    ValidationReport,
     _compute_text_difficulty,
     _cosine_similarity,
-    _fp_tracker,
     check_semantic_coherence,
     get_false_positive_tracker,
     get_free_tier_health,

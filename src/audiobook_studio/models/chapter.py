@@ -76,4 +76,5 @@ class Chapter(Base):
 
     # Forbid lazy loading on detail endpoints that should use selectinload explicitly
     from sqlalchemy.orm import raiseload
+
     __raised_load_attrs__ = (raiseload("*"),)

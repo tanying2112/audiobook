@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from ..exceptions import NotFoundError
 from ..languages import (
     SUPPORTED_BCP47_CODES,
     SUPPORTED_ISO_CODES,
@@ -59,7 +60,7 @@ def list_languages() -> Dict[str, Any]:
 def get_language(code: str) -> Dict[str, Any]:
     """Return per-language TTS / free-API config, or 404 if unsupported."""
     if not is_supported(code):
-        raise HTTPException(status_code=404, detail=f"Unsupported language: {code}")
+        raise NotFoundError(resource="Language", identifier=code)
     iso = normalize_language(code)
     info = get_language_info(iso)
     return {
@@ -85,7 +86,9 @@ def translate_required(source: str = Query(...), target: str = Query(...)) -> Di
 
 
 @router.post("/sop/migrate")
-def migrate_sop(source_lang: str = Query(...), target_lang: str = Query(...), rules: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def migrate_sop(
+    source_lang: str = Query(...), target_lang: str = Query(...), rules: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """Cross-language SOP rule migration (S3.4).
 
     Adapts the provided SOP rules (genre/rules) from ``source_lang`` to

@@ -199,7 +199,7 @@ class BaseWorker(abc.ABC):
         }
         try:
             self.redis.setex(self.heartbeat_key, self.idle_timeout + 60, json.dumps(payload))
-        except Exception as e:
+        except (redis.exceptions.RedisError, json.JSONDecodeError, TypeError, ValueError) as e:
             print(f"❌ [{self.worker_id}] Heartbeat publish dropped: {e}", file=sys.stderr)
 
     def _process_single_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,7 +227,17 @@ class BaseWorker(abc.ABC):
                 "studio_id": self.studio_id,
                 "duration_ms": len(audio_bytes) * 1000 // 48000,  # rough estimate for 24kHz mono
             }
-        except Exception as e:
+        except (  # noqa: B014
+            ValueError,
+            RuntimeError,
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            MemoryError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as e:
             print(f"💥 [{self.worker_id}] Task {task_id} suffered pipeline hardware crash: {e}", file=sys.stderr)
             return {
                 "id": task_id,
@@ -245,7 +255,7 @@ class BaseWorker(abc.ABC):
         while self.running:
             try:
                 queue_depth = self.redis.llen("tts:tasks")
-            except Exception:
+            except redis.exceptions.RedisError:
                 queue_depth = 0
 
             self._send_heartbeat("idle" if empty_polls > 0 else "processing", queue_depth)
@@ -253,7 +263,7 @@ class BaseWorker(abc.ABC):
             try:
                 # Long-poll unified queue (5 min blocking)
                 task_data = self.redis.blpop("tts:tasks", timeout=300)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 print(f"🔌 [{self.worker_id}] Connection severed during blocking poll: {e}", file=sys.stderr)
                 time.sleep(5)
                 continue
@@ -273,7 +283,7 @@ class BaseWorker(abc.ABC):
                 # Push result back
                 try:
                     self._execute_network_call_with_retry(self.redis.rpush, "tts:results", json.dumps(result))
-                except Exception as e:
+                except (redis.exceptions.RedisError, json.JSONDecodeError, TypeError, ValueError) as e:
                     print(f"❌ [{self.worker_id}] Result packet lost: {e}", file=sys.stderr)
 
                 # At-least-once: safe rollback on failure
@@ -281,7 +291,7 @@ class BaseWorker(abc.ABC):
                     try:
                         self.redis.rpush("tts:tasks", payload)
                         print(f"🔄 [{self.worker_id}] Task {task['id']} safely re-queued.")
-                    except Exception as e:
+                    except redis.exceptions.RedisError as e:
                         print(f"🚨 [{self.worker_id}] Critical failure. Task rollback lost: {e}", file=sys.stderr)
             else:
                 if not self.running:
@@ -297,7 +307,7 @@ class BaseWorker(abc.ABC):
                             )
                             self._send_heartbeat("exiting", 0)
                             break
-                    except Exception:
+                    except redis.exceptions.RedisError:
                         pass
 
         print(f"🛑 [{self.worker_id}] Process shutdown sequence complete.")

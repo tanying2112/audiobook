@@ -1,9 +1,6 @@
 """Tests for tts_voices module."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
-from fastapi import HTTPException
 
 from src.audiobook_studio.api.tts_voices import (
     AZURE_VOICES,
@@ -415,8 +412,8 @@ class TestPreviewVoice:
         assert result["text"] == text
         assert "preview_url" in result
         assert "note" in result
-        assert result["preview_url"] == f"/api/tts/preview/{voice_id}.mp3"
-        assert "placeholder" in result["note"].lower()
+        assert "/api/tts/stream" in result["preview_url"]
+        assert "live preview" in result["note"].lower()
 
     @pytest.mark.asyncio
     async def test_preview_voice_default_text(self):

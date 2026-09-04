@@ -2,7 +2,7 @@
 
 import os
 from contextlib import contextmanager
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -174,7 +174,6 @@ class TestTraceContextManager:
 
     def test_trace_marks_end_time_on_exit(self):
         """trace should set end_time when context exits normally."""
-        import time
 
         from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 
@@ -348,7 +347,6 @@ class TestTraceFunctionDecorator:
 
     def test_trace_function_returns_original_when_disabled(self):
         """trace_function should return original function when disabled."""
-        from contextlib import contextmanager
 
         from src.audiobook_studio.observability.langfuse_client import trace_llm_call
 
@@ -393,8 +391,6 @@ class TestTraceFunctionDecorator:
                 import src.audiobook_studio.observability.langfuse_client as lfc_module
                 from src.audiobook_studio.observability.langfuse_client import (
                     LangfuseClient,
-                    _langfuse_client,
-                    get_langfuse_client,
                     trace_llm_call,
                 )
 
@@ -490,7 +486,6 @@ class TestCostSummary:
 
     def test_get_cost_summary_aggregates_costs(self):
         """get_cost_summary should aggregate costs from traces."""
-        import time
 
         from src.audiobook_studio.observability.langfuse_client import LangfuseClient
 

@@ -71,7 +71,11 @@ const availableVoices = computed(() => {
 })
 
 const canStart = computed(() => {
-  return !autoRunStatus.value || autoRunStatus.value.status === 'not_started' || autoRunStatus.value.status === 'completed' || autoRunStatus.value.status === 'failed' || autoRunStatus.value.status === 'cancelled'
+  return !autoRunStatus.value ||
+    autoRunStatus.value.status === 'not_started' ||
+    autoRunStatus.value.status === 'completed' ||
+    autoRunStatus.value.status === 'failed' ||
+    autoRunStatus.value.status === 'cancelled'
 })
 
 const progressPercent = computed(() => {
@@ -79,13 +83,13 @@ const progressPercent = computed(() => {
 })
 
 const stageLabels: Record<string, string> = {
-  extract: '文本提取',
-  analyze: '结构分析',
-  annotate: '段落标注',
-  edit: 'TTS 编辑',
-  audio_postprocess: '声学后处理',
-  synthesize: '语音合成',
-  quality: '质量检测',
+  extract: t('pipeline.stages.extract'),
+  analyze: t('pipeline.stages.analyze'),
+  annotate: t('pipeline.stages.annotate'),
+  edit: t('pipeline.stages.edit'),
+  audio_postprocess: t('pipeline.stages.audio_postprocess'),
+  synthesize: t('pipeline.stages.synthesize'),
+  quality: t('pipeline.stages.quality'),
 }
 
 // Load TTS status and voices on mount
@@ -115,12 +119,11 @@ async function loadTTSInfo() {
     loading.value = true
     const [status, voices] = await Promise.all([
       fetchTTSStatus(),
-      fetchTTSVoices(true), // include unavailable for admin view
+      fetchTTSVoices(true),
     ])
     ttsStatus.value = status
     ttsVoices.value = voices
 
-    // Auto-select recommended engine/voice
     if (status.recommended_engine && !selectedEngine.value) {
       selectedEngine.value = status.recommended_engine
     }
@@ -146,17 +149,14 @@ async function loadAutoRunStatus() {
 async function handleStartAutoRun() {
   starting.value = true
   try {
-    // Update config with selected engine/voice if provided
     const startConfig = { ...config.value }
     if (selectedEngine.value) {
-      // Map engine ID to preference
       if (selectedEngine.value === 'kokoro' || selectedEngine.value === 'voxcpm2') {
         startConfig.primary_voice_preference = 'local'
       } else {
         startConfig.primary_voice_preference = 'cloud'
       }
     }
-
     await startAutoRun(projectId, startConfig)
     await loadAutoRunStatus()
   } catch (error: any) {
@@ -243,7 +243,6 @@ function getDifficultyLabel(difficulty: string): string {
 
 // Watch for engine selection changes
 watch(selectedEngine, () => {
-  // Reset voice selection when engine changes
   if (ttsVoices.value && ttsVoices.value.engines[selectedEngine.value]) {
     const engine = ttsVoices.value.engines[selectedEngine.value]
     if (engine.voices.length > 0) {
@@ -258,56 +257,54 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="auto-run-view max-w-4xl mx-auto p-6">
+  <div class="page-container auto-run-view">
     <!-- Header -->
-    <div class="page-header mb-8">
-      <button class="btn btn-ghost mb-4" @click="goBack">
+    <header class="page-header">
+      <button class="btn btn-ghost touch-target" @click="goBack">
         <Icon icon="mdi:arrow-left" width="18" height="18" />
-        {{ t('common.back') }}
+        <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
-      <h1 class="text-2xl font-semibold text-gray-800">{{ t('auto_run.title') }}</h1>
-      <p class="text-gray-500 mt-1">{{ t('auto_run.subtitle') }}</p>
-    </div>
+      <div class="flex-1">
+        <h1>{{ t('auto_run.title') }}</h1>
+        <p class="page-subtitle">{{ t('auto_run.subtitle') }}</p>
+      </div>
+    </header>
 
     <!-- TTS Status Banner -->
-    <div v-if="ttsStatus" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <Icon
-            :icon="ttsStatus.enable_local_tts_env ? 'mdi:cpu-64-bit' : 'mdi:cloud'"
-            width="24"
-            height="24"
-            class="text-blue-600"
-          />
-          <div>
-            <p class="font-medium text-blue-800">
-              {{ ttsStatus.enable_local_tts_env ? t('auto_run.local_mode_active') : t('auto_run.cloud_mode_active') }}
-            </p>
-            <p class="text-sm text-blue-600">
-              {{ ttsStatus.recommended_engine === 'kokoro'
-                ? t('auto_run.using_kokoro')
-                : t('auto_run.using_edge_tts') }}
-            </p>
-          </div>
+    <div v-if="ttsStatus" class="alert alert-info section" style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <div class="flex items-center gap-3">
+        <Icon
+          :icon="ttsStatus.enable_local_tts_env ? 'mdi:cpu-64-bit' : 'mdi:cloud'"
+          width="24"
+          height="24"
+          class="text-primary"
+        />
+        <div>
+          <p class="font-medium" style="color: var(--color-primary);">
+            {{ ttsStatus.enable_local_tts_env ? t('auto_run.local_mode_active') : t('auto_run.cloud_mode_active') }}
+          </p>
+          <p class="text-sm text-secondary">
+            {{ ttsStatus.recommended_engine === 'kokoro'
+              ? t('auto_run.using_kokoro')
+              : t('auto_run.using_edge_tts') }}
+          </p>
         </div>
-        <span class="px-3 py-1 text-xs font-medium rounded-full"
-          :class="ttsStatus.local_engines_available ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'">
-          {{ ttsStatus.local_engines_available
-            ? t('auto_run.local_engines_available')
-            : t('auto_run.local_engines_unavailable') }}
-        </span>
       </div>
+      <span class="badge" :class="ttsStatus.local_engines_available ? 'badge-success' : 'badge-muted'">
+        {{ ttsStatus.local_engines_available
+          ? t('auto_run.local_engines_available')
+          : t('auto_run.local_engines_unavailable') }}
+      </span>
     </div>
 
     <!-- Configuration Form -->
-    <div class="card bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">{{ t('auto_run.configuration') }}</h2>
+    <div class="card card-hover section">
+      <h2 class="card-title">{{ t('auto_run.configuration') }}</h2>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Target Difficulty -->
+      <div class="grid grid-auto-fill gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.target_difficulty') }}</label>
-          <select v-model="config.target_difficulty" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="form-label">{{ t('auto_run.target_difficulty') }}</label>
+          <select v-model="config.target_difficulty" class="form-control">
             <option value="A">{{ t('auto_run.difficulty_a') }}</option>
             <option value="B">{{ t('auto_run.difficulty_b') }}</option>
             <option value="C">{{ t('auto_run.difficulty_c') }}</option>
@@ -315,10 +312,9 @@ onUnmounted(() => {
           </select>
         </div>
 
-        <!-- Voice Preference -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.voice_preference') }}</label>
-          <select v-model="config.primary_voice_preference" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="form-label">{{ t('auto_run.voice_preference') }}</label>
+          <select v-model="config.primary_voice_preference" class="form-control">
             <option value="female">{{ t('auto_run.voice_female') }}</option>
             <option value="male">{{ t('auto_run.voice_male') }}</option>
             <option value="neutral">{{ t('auto_run.voice_neutral') }}</option>
@@ -327,95 +323,90 @@ onUnmounted(() => {
           </select>
         </div>
 
-        <!-- Speech Rate -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.speech_rate') }}</label>
-          <select v-model="config.speech_rate_preference" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="form-label">{{ t('auto_run.speech_rate') }}</label>
+          <select v-model="config.speech_rate_preference" class="form-control">
             <option value="slow">{{ t('auto_run.rate_slow') }}</option>
             <option value="standard">{{ t('auto_run.rate_standard') }}</option>
             <option value="fast">{{ t('auto_run.rate_fast') }}</option>
           </select>
         </div>
 
-        <!-- Cost Limit -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.cost_limit') }}</label>
+          <label class="form-label">{{ t('auto_run.cost_limit') }}</label>
           <input
             type="number"
             v-model.number="config.cost_limit_usd"
             step="0.1"
             min="0"
             placeholder="10.00"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            class="form-control"
           />
         </div>
 
-        <!-- Quality Threshold -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.quality_threshold') }}</label>
+          <label class="form-label">{{ t('auto_run.quality_threshold') }}</label>
           <input
             type="number"
             v-model.number="config.quality_threshold"
             step="0.1"
             min="0"
             max="1"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            class="form-control"
           />
         </div>
 
-        <!-- Max Regeneration Attempts -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.max_regen_attempts') }}</label>
+          <label class="form-label">{{ t('auto_run.max_regen_attempts') }}</label>
           <input
             type="number"
             v-model.number="config.max_regeneration_attempts"
             min="1"
             max="5"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            class="form-control"
           />
         </div>
 
-        <!-- Enable Background Music -->
-        <div class="flex items-center">
+        <div class="flex items-center gap-2">
           <input
             type="checkbox"
             id="bgm"
             v-model="config.enable_background_music"
-            class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            class="h-4 w-4"
+            style="accent-color: var(--color-primary);"
           />
-          <label for="bgm" class="ml-2 text-sm text-gray-700">{{ t('auto_run.enable_bgm') }}</label>
+          <label for="bgm" class="form-label" style="margin: 0; font-size: 14px;">{{ t('auto_run.enable_bgm') }}</label>
         </div>
 
-        <!-- Enable SFX -->
-        <div class="flex items-center">
+        <div class="flex items-center gap-2">
           <input
             type="checkbox"
             id="sfx"
             v-model="config.enable_sfx"
-            class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            class="h-4 w-4"
+            style="accent-color: var(--color-primary);"
           />
-          <label for="sfx" class="ml-2 text-sm text-gray-700">{{ t('auto_run.enable_sfx') }}</label>
+          <label for="sfx" class="form-label" style="margin: 0; font-size: 14px;">{{ t('auto_run.enable_sfx') }}</label>
         </div>
       </div>
 
       <!-- Engine Selection (Dynamic based on TTS Status) -->
-      <div v-if="ttsVoices" class="mt-6 pt-6 border-t border-gray-200">
-        <h3 class="text-md font-medium text-gray-800 mb-3">{{ t('auto_run.engine_selection') }}</h3>
+      <div v-if="ttsVoices" class="mt-4 pt-4 border-t" style="border-color: var(--color-border);">
+        <h3 class="text-secondary" style="font-size: 14px; font-weight: 500; margin-bottom: 12px;">{{ t('auto_run.engine_selection') }}</h3>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-auto-fill gap-4">
           <!-- Engine Selector -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.select_engine') }}</label>
+            <label class="form-label">{{ t('auto_run.select_engine') }}</label>
             <select
               v-model="selectedEngine"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              class="form-control"
               :disabled="loading"
             >
               <option v-for="engine in availableEngines" :key="engine.id" :value="engine.id">
                 {{ engine.name }} ({{ engine.voices.length }} {{ t('auto_run.voices') }})
               </option>
-              <!-- Show unavailable engines when include_unavailable -->
-              <optgroup v-if="ttsVoices" :label="t('auto_run.unavailable_engines')">
+              <optgroup :label="t('auto_run.unavailable_engines')">
                 <option
                   v-for="engine in Object.values(ttsVoices.engines).filter(e => !e.available)"
                   :key="engine.id"
@@ -426,55 +417,55 @@ onUnmounted(() => {
                 </option>
               </optgroup>
             </select>
-            <p class="mt-1 text-xs text-gray-500">
+            <p class="text-muted" style="font-size: 12px; margin-top: 4px;">
               {{ t('auto_run.engine_hint', { recommended: ttsStatus?.recommended_engine || 'kokoro' }) }}
             </p>
           </div>
 
           <!-- Voice Selector -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('auto_run.select_voice') }}</label>
+            <label class="form-label">{{ t('auto_run.select_voice') }}</label>
             <select
               v-model="selectedVoice"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              class="form-control"
               :disabled="loading || availableVoices.length === 0"
             >
               <option v-for="voice in availableVoices" :key="voice.id" :value="voice.id">
                 {{ voice.name }} ({{ voice.language }}, {{ voice.gender }})
               </option>
             </select>
-            <p class="mt-1 text-xs text-gray-500" v-if="availableVoices.length > 0">
+            <p class="text-muted" style="font-size: 12px; margin-top: 4px;" v-if="availableVoices.length > 0">
               {{ t('auto_run.voice_hint', { count: availableVoices.length }) }}
             </p>
-            <p class="mt-1 text-xs text-gray-400" v-else>
+            <p class="text-muted" style="font-size: 12px; margin-top: 4px;" v-else>
               {{ t('auto_run.no_voices_available') }}
             </p>
           </div>
         </div>
 
         <!-- Engine Details -->
-        <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-          <h4 class="text-sm font-medium text-gray-700 mb-2">{{ t('auto_run.engine_details') }}</h4>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div class="mt-4 p-3 rounded" style="background: var(--color-bg-tertiary);">
+          <h4 class="text-secondary" style="font-size: 13px; font-weight: 500; margin-bottom: 12px;">{{ t('auto_run.engine_details') }}</h4>
+          <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); font-size: 13px;">
             <div v-if="ttsStatus">
-              <span class="text-gray-500">{{ t('auto_run.local_tts_env') }}</span>
+              <span class="text-muted">{{ t('auto_run.local_tts_env') }}</span>
               <p class="font-medium">{{ ttsStatus.enable_local_tts_env ? t('common.enabled') : t('common.disabled') }}</p>
             </div>
             <div v-if="ttsStatus">
-              <span class="text-gray-500">{{ t('auto_run.kokoro_status') }}</span>
-              <p class="font-medium" :class="ttsStatus.kokoro_available ? 'text-green-600' : 'text-red-600'">
+              <span class="text-muted">{{ t('auto_run.kokoro_status') }}</span>
+              <p class="font-medium" :class="ttsStatus.kokoro_available ? 'text-success' : 'text-danger'">
                 {{ ttsStatus.kokoro_available ? t('common.available') : t('common.unavailable') }}
               </p>
             </div>
             <div v-if="ttsStatus">
-              <span class="text-gray-500">{{ t('auto_run.edge_tts_status') }}</span>
-              <p class="font-medium" :class="ttsStatus.edge_tts_available ? 'text-green-600' : 'text-red-600'">
+              <span class="text-muted">{{ t('auto_run.edge_tts_status') }}</span>
+              <p class="font-medium" :class="ttsStatus.edge_tts_available ? 'text-success' : 'text-danger'">
                 {{ ttsStatus.edge_tts_available ? t('common.available') : t('common.unavailable') }}
               </p>
             </div>
             <div v-if="ttsStatus">
-              <span class="text-gray-500">{{ t('auto_run.recommended') }}</span>
-              <p class="font-medium text-indigo-600">{{ ttsStatus.recommended_engine }} / {{ ttsStatus.recommended_voice }}</p>
+              <span class="text-muted">{{ t('auto_run.recommended') }}</span>
+              <p class="font-medium text-primary">{{ ttsStatus.recommended_engine }} / {{ ttsStatus.recommended_voice }}</p>
             </div>
           </div>
         </div>
@@ -482,19 +473,18 @@ onUnmounted(() => {
     </div>
 
     <!-- Status Display -->
-    <div class="card bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6" v-if="autoRunStatus">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-800">{{ t('auto_run.status') }}</h2>
+    <div class="card card-hover section" v-if="autoRunStatus">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="card-title">{{ t('auto_run.status') }}</h2>
         <span
-          class="px-3 py-1 text-sm font-medium rounded-full"
+          class="badge"
           :class="[
-            autoRunStatus.status === 'running' && 'bg-blue-100 text-blue-800',
-            autoRunStatus.status === 'paused' && 'bg-yellow-100 text-yellow-800',
-            autoRunStatus.status === 'completed' && 'bg-green-100 text-green-800',
-            autoRunStatus.status === 'failed' && 'bg-red-100 text-red-800',
-            autoRunStatus.status === 'cancelled' && 'bg-gray-100 text-gray-600',
-            autoRunStatus.status === 'not_started' && 'bg-gray-100 text-gray-500',
-            autoRunStatus.status === 'pending' && 'bg-gray-100 text-gray-500',
+            autoRunStatus.status === 'running' && 'badge-info',
+            autoRunStatus.status === 'paused' && 'badge-warning',
+            autoRunStatus.status === 'completed' && 'badge-success',
+            autoRunStatus.status === 'failed' && 'badge-danger',
+            autoRunStatus.status === 'cancelled' && 'badge-muted',
+            (autoRunStatus.status === 'not_started' || autoRunStatus.status === 'pending') && 'badge-muted',
           ]"
         >
           {{ t('auto_run.status_' + autoRunStatus.status) }}
@@ -504,31 +494,32 @@ onUnmounted(() => {
       <!-- Progress Bar -->
       <div class="mb-4">
         <div class="flex justify-between text-sm mb-1">
-          <span>{{ t('auto_run.progress') }}</span>
-          <span>{{ progressPercent }}%</span>
+          <span class="text-secondary">{{ t('auto_run.progress') }}</span>
+          <span class="font-medium">{{ progressPercent }}%</span>
         </div>
-        <div class="w-full bg-gray-200 rounded-full h-2">
+        <div class="w-full rounded-full h-2" style="background: var(--color-border); overflow: hidden;">
           <div
-            class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+            class="h-full rounded-full transition-all duration-300"
             :style="{ width: progressPercent + '%' }"
+            style="background: var(--color-primary);"
           ></div>
         </div>
       </div>
 
       <!-- Current Stage -->
-      <div v-if="autoRunStatus.current_stage" class="mb-4 p-3 bg-gray-50 rounded-lg">
-        <p class="text-sm text-gray-600">{{ t('auto_run.current_stage') }}</p>
-        <p class="font-medium text-gray-800">{{ getStageLabel(autoRunStatus.current_stage) }}</p>
+      <div v-if="autoRunStatus.current_stage" class="mb-4 p-3 rounded" style="background: var(--color-bg-tertiary);">
+        <p class="text-secondary text-sm">{{ t('auto_run.current_stage') }}</p>
+        <p class="font-medium">{{ getStageLabel(autoRunStatus.current_stage) }}</p>
       </div>
 
       <!-- Completed Stages -->
       <div v-if="autoRunStatus.completed_stages && autoRunStatus.completed_stages.length > 0" class="mb-4">
-        <p class="text-sm text-gray-600 mb-2">{{ t('auto_run.completed_stages') }}</p>
+        <p class="text-secondary text-sm mb-2">{{ t('auto_run.completed_stages') }}</p>
         <div class="flex flex-wrap gap-2">
           <span
             v-for="stage in autoRunStatus.completed_stages"
             :key="stage"
-            class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded"
+            class="badge badge-success"
           >
             {{ getStageLabel(stage) }}
           </span>
@@ -536,25 +527,25 @@ onUnmounted(() => {
       </div>
 
       <!-- Error Message -->
-      <div v-if="autoRunStatus.error_message" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+      <div v-if="autoRunStatus.error_message" class="alert alert-error mb-4" style="font-size: 13px;">
         {{ autoRunStatus.error_message }}
       </div>
 
       <!-- Cost Info -->
-      <div v-if="autoRunStatus.cost_usd > 0" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <p class="text-sm text-blue-700">{{ t('auto_run.current_cost', { cost: autoRunStatus.cost_usd.toFixed(4) }) }}</p>
+      <div v-if="autoRunStatus.cost_usd > 0" class="alert alert-info mb-4" style="font-size: 13px;">
+        {{ t('auto_run.current_cost', { cost: autoRunStatus.cost_usd.toFixed(4) }) }}
       </div>
     </div>
 
     <!-- Action Buttons -->
-    <div class="flex gap-3" v-if="autoRunStatus">
+    <div class="flex gap-2 flex-wrap section" v-if="autoRunStatus">
       <button
         v-if="canStart"
         @click="handleStartAutoRun"
         :disabled="starting"
-        class="btn btn-primary flex-1"
+        class="btn btn-primary btn-lg flex-1 min-w-[140px]"
       >
-        <Icon v-if="starting" icon="mdi:loading" width="18" height="18" class="animate-spin mr-2" />
+        <Icon v-if="starting" icon="mdi:loading" width="18" height="18" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff" />
         {{ starting ? t('auto_run.starting') : t('auto_run.start') }}
       </button>
 
@@ -562,47 +553,47 @@ onUnmounted(() => {
         v-if="canStart"
         @click="handleAutopilotPreview"
         :disabled="starting || autopilotStarting || previewLoading"
-        class="btn btn-accent"
+        class="btn btn-outline btn-lg"
         :title="t('auto_run.autopilot_tooltip')"
       >
-        <Icon v-if="autopilotStarting || previewLoading" icon="mdi:loading" width="18" height="18" class="animate-spin mr-2" />
-        <Icon icon="mdi:robot-outline" width="18" height="18" class="mr-2" />
+        <Icon v-if="autopilotStarting || previewLoading" icon="mdi:loading" width="18" height="18" class="spinner" style="border-color: var(--color-primary-alpha); border-top-color: var(--color-primary)" />
+        <Icon icon="mdi:robot-outline" width="18" height="18" class="gap-2" />
         {{ t('auto_run.autopilot') }}
       </button>
 
       <button
         v-else-if="autoRunStatus.status === 'running' && autoRunStatus.can_pause"
         @click="handlePause"
-        class="btn btn-warning"
+        class="btn btn-warning btn-lg"
       >
-        <Icon icon="mdi:pause" width="18" height="18" class="mr-2" />
+        <Icon icon="mdi:pause" width="18" height="18" class="gap-2" />
         {{ t('auto_run.pause') }}
       </button>
 
       <button
         v-else-if="autoRunStatus.status === 'paused' && autoRunStatus.can_resume"
         @click="handleResume"
-        class="btn btn-primary"
+        class="btn btn-primary btn-lg"
       >
-        <Icon icon="mdi:play" width="18" height="18" class="mr-2" />
+        <Icon icon="mdi:play" width="18" height="18" class="gap-2" />
         {{ t('auto_run.resume') }}
       </button>
 
       <button
         v-if="autoRunStatus.can_cancel"
         @click="handleCancel"
-        class="btn btn-danger"
+        class="btn btn-danger btn-lg"
       >
-        <Icon icon="mdi:stop" width="18" height="18" class="mr-2" />
+        <Icon icon="mdi:stop" width="18" height="18" class="gap-2" />
         {{ t('auto_run.cancel') }}
       </button>
 
       <button
         v-if="autoRunStatus.status === 'completed' || autoRunStatus.status === 'failed' || autoRunStatus.status === 'cancelled'"
         @click="loadAutoRunStatus"
-        class="btn btn-outline"
+        class="btn btn-outline btn-lg"
       >
-        <Icon icon="mdi:refresh" width="18" height="18" class="mr-2" />
+        <Icon icon="mdi:refresh" width="18" height="18" class="gap-2" />
         {{ t('auto_run.refresh') }}
       </button>
     </div>
@@ -612,127 +603,112 @@ onUnmounted(() => {
   <teleport to="body">
     <div v-if="showAutopilotPreview" class="modal-overlay" @click="showAutopilotPreview = false">
       <div class="modal-content" @click.stop>
-          <div class="modal-header">
-            <h3 class="text-lg font-semibold text-gray-800">
-              <Icon icon="mdi:robot-outline" width="20" height="20" class="mr-2 text-indigo-600" />
-              {{ t('auto_run.autopilot_preview_title') }}
-            </h3>
-            <button class="btn btn-ghost text-gray-400 hover:text-gray-600" @click="showAutopilotPreview = false">
-              <Icon icon="mdi:close" width="20" height="20" />
-            </button>
+        <div class="modal-header">
+          <h3 class="modal-title">
+            <Icon icon="mdi:robot-outline" width="20" height="20" class="text-primary gap-2" />
+            {{ t('auto_run.autopilot_preview_title') }}
+          </h3>
+          <button class="btn btn-ghost" @click="showAutopilotPreview = false" aria-label="Close">
+            <Icon icon="mdi:close" width="20" height="20" />
+          </button>
+        </div>
+
+        <div class="modal-body p-4 max-h-[70vh] overflow-y-auto">
+          <div v-if="previewLoading" class="loading-state">
+            <Icon icon="mdi:loading" width="32" height="32" class="spinner" style="border-color: var(--color-primary-alpha); border-top-color: var(--color-primary)" />
+            <span>{{ t('auto_run.loading_preview') }}</span>
           </div>
 
-          <div class="modal-body p-6 max-h-[70vh] overflow-y-auto">
-            <div v-if="previewLoading" class="flex items-center justify-center py-12">
-              <Icon icon="mdi:loading" width="32" height="32" class="animate-spin text-indigo-600 mr-3" />
-              <span class="text-gray-600">{{ t('auto_run.loading_preview') }}</span>
-            </div>
+          <template v-else-if="autopilotPreview">
+            <div class="space-y-4">
+              <div class="alert alert-info">
+                <p class="text-sm">{{ autopilotPreview.reasoning }}</p>
+              </div>
 
-            <template v-else-if="autopilotPreview">
-              <div class="space-y-4">
-                <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                  <p class="text-sm text-indigo-800">{{ autopilotPreview.reasoning }}</p>
+              <div class="grid grid-auto-fill gap-4">
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.target_difficulty') }}</label>
+                  <p class="font-medium">{{ getDifficultyLabel(autopilotPreview.target_difficulty) }}</p>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.target_difficulty') }}
-                    </label>
-                    <p class="font-medium text-gray-800">{{ getDifficultyLabel(autopilotPreview.target_difficulty) }}</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.voice_preference') }}
-                    </label>
-                    <p class="font-medium text-gray-800 capitalize">{{ autopilotPreview.primary_voice_preference }}</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.speech_rate') }}
-                    </label>
-                    <p class="font-medium text-gray-800 capitalize">{{ autopilotPreview.speech_rate_preference }}</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.cost_limit') }}
-                    </label>
-                    <p class="font-medium text-gray-800">${{ autopilotPreview.cost_limit_usd?.toFixed(2) || '—' }}</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.quality_threshold') }}
-                    </label>
-                    <p class="font-medium text-gray-800">{{ (autopilotPreview.quality_threshold * 100).toFixed(0) }}%</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.max_regen_attempts') }}
-                    </label>
-                    <p class="font-medium text-gray-800">{{ autopilotPreview.max_regeneration_attempts }}</p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.enable_bgm') }}
-                    </label>
-                    <p class="font-medium text-gray-800">
-                      <span :class="autopilotPreview.enable_background_music ? 'text-green-600' : 'text-red-600'">
-                        {{ autopilotPreview.enable_background_music ? t('common.enabled') : t('common.disabled') }}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div class="config-item">
-                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                      {{ t('auto_run.enable_sfx') }}
-                    </label>
-                    <p class="font-medium text-gray-800">
-                      <span :class="autopilotPreview.enable_sfx ? 'text-green-600' : 'text-red-600'">
-                        {{ autopilotPreview.enable_sfx ? t('common.enabled') : t('common.disabled') }}
-                      </span>
-                    </p>
-                  </div>
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.voice_preference') }}</label>
+                  <p class="font-medium capitalize">{{ autopilotPreview.primary_voice_preference }}</p>
                 </div>
 
-                <div class="pt-4 border-t border-gray-200">
-                  <p class="text-xs text-gray-500 mb-2">{{ t('auto_run.confidence') }}: <span class="font-medium text-gray-700">{{ (autopilotPreview.confidence * 100).toFixed(0) }}%</span></p>
-                  <div class="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                      :style="{ width: (autopilotPreview.confidence * 100) + '%' }"
-                    ></div>
-                  </div>
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.speech_rate') }}</label>
+                  <p class="font-medium capitalize">{{ autopilotPreview.speech_rate_preference }}</p>
+                </div>
+
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.cost_limit') }}</label>
+                  <p class="font-medium">${{ autopilotPreview.cost_limit_usd?.toFixed(2) || '—' }}</p>
+                </div>
+
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.quality_threshold') }}</label>
+                  <p class="font-medium">{{ (autopilotPreview.quality_threshold * 100).toFixed(0) }}%</p>
+                </div>
+
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.max_regen_attempts') }}</label>
+                  <p class="font-medium">{{ autopilotPreview.max_regeneration_attempts }}</p>
+                </div>
+
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.enable_bgm') }}</label>
+                  <p class="font-medium">
+                    <span :class="autopilotPreview.enable_background_music ? 'text-success' : 'text-danger'">
+                      {{ autopilotPreview.enable_background_music ? t('common.enabled') : t('common.disabled') }}
+                    </span>
+                  </p>
+                </div>
+
+                <div class="config-item p-3 rounded" style="background: var(--color-bg-tertiary);">
+                  <label class="text-muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ t('auto_run.enable_sfx') }}</label>
+                  <p class="font-medium">
+                    <span :class="autopilotPreview.enable_sfx ? 'text-success' : 'text-danger'">
+                      {{ autopilotPreview.enable_sfx ? t('common.enabled') : t('common.disabled') }}
+                    </span>
+                  </p>
                 </div>
               </div>
-            </template>
-          </div>
 
-          <div class="modal-footer p-4 border-t border-gray-200 flex justify-end gap-3">
-            <button
-              class="btn btn-outline"
-              @click="showAutopilotPreview = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              class="btn btn-accent"
-              @click="handleStartAutopilot"
-              :disabled="autopilotStarting"
-            >
-              <Icon v-if="autopilotStarting" icon="mdi:loading" width="18" height="18" class="animate-spin mr-2" />
-              <Icon icon="mdi:rocket-launch" width="18" height="18" class="mr-2" />
-              {{ t('auto_run.launch_autopilot') }}
-            </button>
-          </div>
+              <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <p class="text-muted text-xs mb-2">{{ t('auto_run.confidence') }}: <span class="font-medium text-secondary">{{ (autopilotPreview.confidence * 100).toFixed(0) }}%</span></p>
+                <div class="w-full rounded-full h-2" style="background: var(--color-border); overflow: hidden;">
+                  <div
+                    class="h-full rounded-full transition-all duration-300"
+                    :style="{ width: (autopilotPreview.confidence * 100) + '%' }"
+                    style="background: var(--color-primary);"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="modal-footer flex justify-end gap-2 p-4 border-t" style="border-color: var(--color-border);">
+          <button
+            class="btn btn-outline"
+            @click="showAutopilotPreview = false"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            class="btn btn-primary"
+            @click="handleStartAutopilot"
+            :disabled="autopilotStarting"
+          >
+            <Icon v-if="autopilotStarting" icon="mdi:loading" width="18" height="18" class="spinner gap-2" style="border-color: rgba(255,255,255,.35); border-top-color: #fff" />
+            <Icon icon="mdi:rocket-launch" width="18" height="18" class="gap-2" />
+            {{ t('auto_run.launch_autopilot') }}
+          </button>
         </div>
       </div>
-    </teleport>
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
@@ -740,15 +716,9 @@ onUnmounted(() => {
   max-width: 960px;
 }
 
-.card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-}
-
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
   margin-bottom: 24px;
   flex-wrap: wrap;
@@ -760,249 +730,64 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: #4f46e5;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #4338ca;
-}
-
-.btn-warning {
-  background: #f59e0b;
-  color: white;
-}
-
-.btn-warning:hover:not(:disabled) {
-  background: #d97706;
-}
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #dc2626;
-}
-
-.btn-outline {
-  background: white;
-  color: #4f46e5;
-  border: 1px solid #4f46e5;
-}
-
-.btn-outline:hover:not(:disabled) {
-  background: #eef2ff;
-}
-
-.btn-ghost {
-  background: transparent;
-  color: #64748b;
-  padding: 8px 12px;
-}
-
-.btn-ghost:hover {
-  background: #f1f5f9;
-}
-
-.select, .input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.select:focus, .input:focus {
-  outline: none;
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-}
-
-.select:disabled, .input:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
-  cursor: not-allowed;
-}
-
-label {
-  display: block;
+.page-subtitle {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
   font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 6px;
 }
 
-h2, h3, h4 {
-  margin: 0;
+.section {
+  margin-bottom: 20px;
 }
 
-.text-sm { font-size: 14px; }
-.text-xs { font-size: 12px; }
-.text-gray-400 { color: #9ca3af; }
-.text-gray-500 { color: #6b7280; }
-.text-gray-600 { color: #4b5563; }
-.text-gray-700 { color: #374151; }
-.text-gray-800 { color: #1f2937; }
-.text-blue-600 { color: #2563eb; }
-.text-blue-800 { color: #1e40af; }
-.text-green-600 { color: #16a34a; }
-.text-green-800 { color: #166534; }
-.text-yellow-800 { color: #854d0e; }
-.text-red-600 { color: #dc2626; }
-.text-red-700 { color: #b91c1c; }
-.text-indigo-600 { color: #4f46e5; }
-
-.bg-blue-50 { background-color: #eff6ff; }
-.bg-blue-100 { background-color: #dbeafe; }
-.bg-blue-200 { background-color: #bfdbfe; }
-.bg-green-100 { background-color: #dcfce7; }
-.bg-green-200 { background-color: #bbf7d0; }
-.bg-yellow-100 { background-color: #fef9c3; }
-.bg-red-50 { background-color: #fef2f2; }
-.bg-red-100 { background-color: #fee2e2; }
-.bg-red-200 { background-color: #fecaca; }
-.bg-gray-50 { background-color: #f9fafb; }
-.bg-gray-100 { background-color: #f3f4f6; }
-.bg-gray-200 { background-color: #e5e7eb; }
-
-.border { border-width: 1px; }
-.border-blue-200 { border-color: #bfdbfe; }
-.border-gray-200 { border-color: #e5e7eb; }
-.border-gray-300 { border-color: #d1d5db; }
-
-.rounded { border-radius: 0.375rem; }
-.rounded-lg { border-radius: 0.5rem; }
-.rounded-full { border-radius: 9999px; }
-
-.p-3 { padding: 0.75rem; }
-.p-4 { padding: 1rem; }
-.p-6 { padding: 1.5rem; }
-.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
-.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
-.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.mb-1 { margin-bottom: 0.25rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.mb-3 { margin-bottom: 0.75rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-6 { margin-bottom: 1.5rem; }
-.mb-8 { margin-bottom: 2rem; }
-.mt-1 { margin-top: 0.25rem; }
-.mt-2 { margin-top: 0.5rem; }
-.mt-3 { margin-top: 0.75rem; }
-.mt-4 { margin-top: 1rem; }
-.ml-2 { margin-left: 0.5rem; }
-.mr-2 { margin-right: 0.5rem; }
-.gap-2 { gap: 0.5rem; }
-.gap-3 { gap: 0.75rem; }
-.gap-4 { gap: 1rem; }
-.gap-6 { gap: 1.5rem; }
 .flex { display: flex; }
 .flex-1 { flex: 1 1 0%; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 .flex-wrap { flex-wrap: wrap; }
+.gap-2 { gap: 8px; }
+.gap-4 { gap: 16px; }
 .grid { display: grid; }
-.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-auto-fill { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
-@media (min-width: 768px) {
-  .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .md\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
-.w-full { width: 100%; }
-.h-2 { height: 0.5rem; }
-.h-4 { height: 1rem; }
-.w-4 { width: 1rem; }
-
-.transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-.duration-300 { transition-duration: 300ms; }
-
-.animate-spin { animation: spin 1s linear infinite; }
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Autopilot Modal Styles */
+/* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn var(--transition) ease-out;
 }
 
 .modal-content {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  background: var(--color-card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
   width: 100%;
   max-width: 640px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.2s ease-out;
+  animation: slideUp var(--transition) ease-out;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.modal-header h3 {
+.modal-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
-}
-
-.modal-header button {
-  background: none;
-  border: none;
-  padding: 8px;
-  border-radius: 8px;
-  color: #9ca3af;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.modal-header button:hover {
-  background: #f3f4f6;
-  color: #374151;
+  color: var(--color-text);
 }
 
 .modal-body {
@@ -1011,7 +796,15 @@ h2, h3, h4 {
 }
 
 .config-item {
-  padding: 12px 0;
+  min-width: 0;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-border);
 }
 
 @keyframes fadeIn {
@@ -1022,5 +815,16 @@ h2, h3, h4 {
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .modal-content {
+    margin: 12px;
+    max-height: calc(100vh - 24px);
+  }
+  .grid-auto-fill {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -16,15 +16,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from ..analyzer import DEFAULT_EFFECTS_LIBRARY_PATH, SceneTagMapper
-from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
+from ..export.pool import run_ffmpeg
 from ..schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from ..security import safe_subprocess_args
-from ..utils.ffmpeg_probe import get_duration_sync
+from ..utils.async_utils import run_async_safe
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +191,7 @@ class AudioFinalizer:
                 filter_complex = f"[0:a]{filter_complex}[main]"
                 for i in range(len(sfx_inputs)):
                     filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
-                filter_complex += f";[main]" + "".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
+                filter_complex += ";[main]" + "".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
                 filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
 
         # Add scene tags (environmental effects) if requested
@@ -215,7 +214,7 @@ class AudioFinalizer:
                     num_scene_inputs = len(scene_inputs)
                     for i in range(num_scene_inputs):
                         filter_complex += f";[{1 + len(sfx_inputs) + i}:a]volume={params.sfx_gain_db/20:.4f}[scene{i}]"
-                    filter_complex += f";[main]" + "".join(f"[scene{i}]" for i in range(num_scene_inputs))
+                    filter_complex += ";[main]" + "".join(f"[scene{i}]" for i in range(num_scene_inputs))
                     num_inputs = 1 + len(sfx_inputs) + num_scene_inputs
                     filter_complex = filter_complex.replace(
                         f"amix=inputs={1 + len(sfx_inputs)}:duration=first:dropout_transition=2",
@@ -228,7 +227,7 @@ class AudioFinalizer:
                     filter_complex = f"[0:a]{filter_complex}[main]"
                     for i in range(len(scene_inputs)):
                         filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[scene{i}]"
-                    filter_complex += f";[main]" + "".join(f"[scene{i}]" for i in range(len(scene_inputs)))
+                    filter_complex += ";[main]" + "".join(f"[scene{i}]" for i in range(len(scene_inputs)))
                     filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
 
         # Apply filter and set output format
@@ -257,10 +256,14 @@ class AudioFinalizer:
             # Validate command args for security
             cmd = safe_subprocess_args(cmd)
             # Run under global semaphore with timeout
-            result = asyncio.run(run_ffmpeg(cmd, timeout=120))
+            result = run_async_safe(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
-                stderr_str = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else str(result.stderr)
+                stderr_str = (
+                    result.stderr.decode("utf-8", errors="replace")
+                    if isinstance(result.stderr, bytes)
+                    else str(result.stderr)
+                )
                 errors.append(f"ffmpeg failed: {stderr_str}")
                 # Fallback: copy input to output
                 import shutil
@@ -397,13 +400,15 @@ class AudioFinalizer:
             # Validate command args for security
             cmd = safe_subprocess_args(cmd)
             # Run under global semaphore with timeout
-            result = asyncio.run(run_ffmpeg(cmd, timeout=60))
+            result = run_async_safe(run_ffmpeg(cmd, timeout=60))
             if result.returncode == 0:
                 temp_path.replace(audio_path)
                 logger.info(f"Embedded metadata into {audio_path.name}")
                 return True
             else:
-                logger.warning(f"Failed to embed metadata: {result.stderr.decode('utf-8', errors='replace') if isinstance(result.stderr, bytes) else str(result.stderr)}")
+                logger.warning(
+                    f"Failed to embed metadata: {result.stderr.decode('utf-8', errors='replace') if isinstance(result.stderr, bytes) else str(result.stderr)}"
+                )
                 if temp_path.exists():
                     temp_path.unlink()
                 return False
@@ -433,8 +438,12 @@ class AudioFinalizer:
             # Validate command args for security
             cmd = safe_subprocess_args(cmd)
             # Run under global semaphore with timeout
-            result = asyncio.run(run_ffmpeg(cmd, timeout=60))
-            stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else str(result.stderr)
+            result = run_async_safe(run_ffmpeg(cmd, timeout=60))
+            stderr = (
+                result.stderr.decode("utf-8", errors="replace")
+                if isinstance(result.stderr, bytes)
+                else str(result.stderr)
+            )
 
             # Parse ebur128 output
             # Look for: I: -20.0 LUFS, LRA: 7.0 LU, Peak: -2.0 dBFS, Threshold: -40.0 LUFS
@@ -473,7 +482,7 @@ class AudioFinalizer:
             # Validate command args for security
             cmd = safe_subprocess_args(cmd)
             # Run under global semaphore with timeout
-            result = asyncio.run(run_ffmpeg(cmd, timeout=10))
+            result = run_async_safe(run_ffmpeg(cmd, timeout=10))
             return int(float(result.stdout.strip()) * 1000)
         except Exception as e:
             logger.warning(f"Failed to get duration: {e}")

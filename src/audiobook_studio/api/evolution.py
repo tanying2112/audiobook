@@ -29,10 +29,10 @@ import math
 import re
 import threading
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -123,9 +123,7 @@ class EvolutionRunRequest(BaseModel):
     """Trigger a GEPA BootstrapFewShot optimization run."""
 
     stage: str = Field("annotate_paragraph", description="Pipeline stage to optimize")
-    few_shot_path: Optional[str] = Field(
-        None, description="Optional path to few-shot training examples"
-    )
+    few_shot_path: Optional[str] = Field(None, description="Optional path to few-shot training examples")
     seed_from_sop: bool = Field(
         True,
         description="Seed the initial prompt from current SOP genre rules",
@@ -152,7 +150,7 @@ class EvolutionProgressResponse(BaseModel):
 def _seed_prompt_from_sop(stage: str) -> Optional[str]:
     """Pull the current SOP genre rules to seed GEPA's initial prompt."""
     try:
-        from src.audiobook_studio.feedback.sop_reflection import get_sop_config
+        from src.audiobook_studio.pipeline.sop_reflection import get_sop_config
 
         cfg = get_sop_config()
         # Use the global genre rules as a textual seed prompt.
@@ -168,7 +166,7 @@ def _seed_prompt_from_sop(stage: str) -> Optional[str]:
 
 
 def _run_optimization(stage: str, few_shot_path: Optional[str], seed_from_sop: bool) -> None:
-    global _run_state
+    global _run_state  # noqa: F824
     try:
         bootstrap = _bootstrap_fewshot()
         # Optionally seed from SOP before compiling.
@@ -200,7 +198,7 @@ def _persist_optimized_prompt_to_sop(stage: str, result: Any) -> None:
     try:
         if not getattr(result, "optimized_prompt", None):
             return
-        from src.audiobook_studio.feedback.sop_reflection import get_sop_config
+        from src.audiobook_studio.pipeline.sop_reflection import get_sop_config
 
         cfg = get_sop_config()
         # Store under a dedicated evolution key so SOP reflection can pick it up.
@@ -248,7 +246,7 @@ async def evolution_run(req: EvolutionRunRequest, background_tasks: BackgroundTa
     for results. Coordinated with the SOP reflection system (seeded from and
     persisted back to the SOP config store).
     """
-    bootstrap = _bootstrap_fewshot()  # raises 501 if dspy missing
+    _bootstrap_fewshot()  # raises 501 if dspy missing
     with _run_lock:
         if _run_state["running"]:
             raise HTTPException(status_code=409, detail="An evolution run is already in progress")
@@ -259,8 +257,7 @@ async def evolution_run(req: EvolutionRunRequest, background_tasks: BackgroundTa
     return {"status": "started", "stage": req.stage}
 
 
-@router.get("/evolution/progress", response_model=EvolutionProgressResponse,
-            summary="GEPA evolution progress / status")
+@router.get("/evolution/progress", response_model=EvolutionProgressResponse, summary="GEPA evolution progress / status")
 async def evolution_progress():
     """Return the current GEPA evolution status and last run progress.
 
@@ -292,7 +289,7 @@ async def evolution_enable_loop(req: Optional[EvolutionEnableRequest] = None):
     admin UI can flip the loop on with a single request and immediately read
     its status. Accepts the same body as ``/evolution/enable``.
     """
-    bootstrap = _bootstrap_fewshot()  # raises 501 if dspy missing
+    _bootstrap_fewshot()  # raises 501 if dspy missing
     enabled = req.enabled if req else True
     with _run_lock:
         _run_state["enabled"] = enabled

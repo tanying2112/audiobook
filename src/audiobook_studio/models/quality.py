@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.sqlite import JSON

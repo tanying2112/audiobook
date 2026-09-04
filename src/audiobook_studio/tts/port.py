@@ -34,6 +34,10 @@ class TTSVoiceAnchor:
     speaker_name: Optional[str] = None
     language: str = "zh-CN"
     reference_audio_path: Optional[str] = None
+    # Transcript of the reference sample. Zero-shot cloning backends (CosyVoice2's
+    # inference_zero_shot, VoxCPM's prompt_text) use it as the prompt transcript and
+    # similarity degrades measurably without it, so it travels with the anchor.
+    reference_text: Optional[str] = None
 
     def __post_init__(self):
         if not self.voice_id or not self.voice_id.strip():

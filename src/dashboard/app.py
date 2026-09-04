@@ -123,7 +123,7 @@ def get_queue_depth(redis_client: redis.Redis) -> int:
     """Get pending task queue depth."""
     try:
         return redis_client.llen("tts:tasks")
-    except Exception:
+    except redis.exceptions.RedisError:
         return -1
 
 
@@ -131,7 +131,7 @@ def get_results_count(redis_client: redis.Redis) -> int:
     """Get completed results count."""
     try:
         return redis_client.llen("tts:results")
-    except Exception:
+    except redis.exceptions.RedisError:
         return -1
 
 
@@ -152,7 +152,7 @@ def get_task_states(redis_client: redis.Redis, limit: int = 200) -> Dict[str, in
                         state = data.get("state", "UNKNOWN")
                         if state in states:
                             states[state] += 1
-                    except Exception:
+                    except json.JSONDecodeError:
                         pass
             scanned += len(keys)
 
@@ -197,7 +197,7 @@ def compute_fleet_metrics(workers: List[Dict], now: float) -> Dict[str, Any]:
             stale += 1
 
     # Compute utilization per platform
-    for p, data in by_platform.items():
+    for p, data in by_platform.items():  # noqa: B007
         if data["total_gpu_mb"] > 0:
             data["gpu_utilization"] = data["used_gpu_mb"] / data["total_gpu_mb"]
         else:
@@ -376,7 +376,10 @@ def render_gpu_heatmap(workers: List[Dict]):
         return
 
     # Prepare data for heatmap
-    platforms = sorted(set(w["platform"] for w in workers), key=lambda p: PLATFORM_ORDER.get(p, 99))
+    platforms = sorted(
+        set(w["platform"] for w in workers),
+        key=lambda p: PLATFORM_ORDER.index(p) if p in PLATFORM_ORDER else 99,
+    )
 
     fig = go.Figure()
 
@@ -469,7 +472,7 @@ def render_task_queue_preview(redis_client: redis.Redis):
                             "Worker": td.get("worker_id", "unassigned"),
                         }
                     )
-            except Exception:
+            except (json.JSONDecodeError, redis.exceptions.RedisError):
                 pass
 
         if rows:
@@ -477,7 +480,7 @@ def render_task_queue_preview(redis_client: redis.Redis):
         else:
             st.info("Queue has tasks but details unavailable")
 
-    except Exception as e:
+    except (redis.exceptions.RedisError, ConnectionError, TimeoutError, OSError, ValueError, KeyError) as e:  # noqa: B014
         st.error(f"Failed to read queue: {e}")
 
 

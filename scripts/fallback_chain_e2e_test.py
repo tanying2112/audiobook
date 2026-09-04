@@ -21,6 +21,7 @@ VoxCPM2 → Kokoro → Edge-TTS 三级降级链路真验证（方案 A）
 
 退出码：0=全绿；非0=有层级未通过真断言。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,6 +30,10 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
 
 # 让脚本能直接从仓库根目录跑
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,9 +47,90 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
+# 真实 TTS 依赖自愈（关键：避免被 conftest 的全局 mock 污染）
+# ---------------------------------------------------------------------------
+# conftest_minimal 会在会话开始、对尚未 import 的重依赖（含 kokoro_onnx /
+# edge_tts / torch）往 sys.modules 塞一个裸 MagicMock，避免它们在 sandbox 里被真实加载。
+# 但本测试是**真资源**验证（红线#2：禁伪造真音频），必须用到真实的
+# kokoro_onnx.Kokoro.create / edge_tts.Communicate。sys.modules 是进程级全局的，
+# 所以即便本脚本在 tests/ 树之外，也会继承那个 mock。
+#
+# 关键陷阱：kokoro_onnx 在推理路径上**依赖 torch**（传递依赖）。当 torch 被
+# conftest 换成 MagicMock 时，Kokoro.create() 会**非确定性**地返回 ()/全零音频
+# （MagicMock 在数值运算里行为随机），导致真音频合成时好时坏。
+#
+# 决定性约束：torch 的 C 扩展（torch._C）**无法在进程内被重新导入** —— 一旦
+# 它被裸 MagicMock 占位，再去 import 真实 torch 会稳定报 `name '_C' is not
+# defined`。因此「弹出 mock → 重导真实 torch」的自愈路径在 hermetic 全套里不可行。
+# 正确做法是：一旦探测到 torch 被 hermetic mock 替换，**直接跳过**本测试
+# （红线#2：跳过而非伪造成功），不冒重新导入 torch 的风险。只有在本脚本单独
+# 运行（torch 本就是真实包、未受 conftest 污染）时，才会真正落下真实音频。
+#
+# 做法：合成前把 kokoro_onnx / edge_tts 的 mock 影子弹出并导入真实包（并把
+# edge_tts_engine 在模块加载时绑定的 `import edge_tts` 也重定向到真实包）；
+# torch 则只探测、不重导。结束后把影子还原，把对整套其余测试的波及降到最低。
+_TTS_REAL_DEPS = ("kokoro_onnx", "edge_tts")
+
+
+def _require_real_tts_modules() -> dict[str, Any]:
+    """确保 kokoro_onnx / edge_tts 是真实包；返回原始 sys.modules 快照以便还原。
+
+    若 torch 被 hermetic mock 替换（Kokoro ONNX 推理依赖真实 torch），或任一真实
+    包无法导入，抛出 RuntimeError —— 调用方应据此**跳过**测试而非伪造成功（红线#2）。
+    """
+    import importlib
+    import sys
+
+    # torch 只探测不重导：真实 torch 的 C 扩展无法在进程内重新加载，重导必报
+    # `name '_C' is not defined`。探测到 mock 的 torch 即意味着 hermetic 环境，
+    # 真实 ONNX 推理不可行 → 跳过。
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is not None and type(torch_mod).__name__ == "MagicMock":
+        raise RuntimeError(
+            "torch 被 hermetic mock 替换，无法加载真实 ONNX 推理依赖"
+            "（红线#2：跳过而非伪造；torch._C 不可在进程内重新导入）"
+        )
+
+    saved: dict[str, Any] = {}
+    for mod in _TTS_REAL_DEPS:
+        orig = sys.modules.get(mod)
+        saved[mod] = orig
+        is_mock = orig is not None and type(orig).__name__ == "MagicMock"
+        if is_mock:
+            sys.modules.pop(mod, None)
+            try:
+                sys.modules[mod] = importlib.import_module(mod)
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"e2e 需要真实的 {mod}（红线#2：禁止伪造真音频），但导入失败: {e}") from e
+        # 若本来就是真实模块，保持不动。
+    # edge_tts_engine 在模块加载时执行了 `import edge_tts`（try/except 包成 MagicMock
+    # 或 None），需把它的模块级绑定重定向到真实 edge_tts，否则 Communicate 仍是 mock。
+    try:
+        import audiobook_studio.tts.edge_tts_engine as _ete
+
+        _ete_edge = getattr(_ete, "edge_tts", None)
+        if _ete_edge is None or type(_ete_edge).__name__ == "MagicMock":
+            _ete.edge_tts = importlib.import_module("edge_tts")
+    except Exception:  # noqa: BLE001
+        pass
+    return saved
+
+
+def _restore_tts_modules(saved: dict[str, Any]) -> None:
+    """把 sys.modules 还原到合成前的状态（含 conftest 的 mock 影子）。"""
+    import sys
+
+    for mod, orig in saved.items():
+        if orig is None:
+            sys.modules.pop(mod, None)
+        else:
+            sys.modules[mod] = orig
+
+
+# ---------------------------------------------------------------------------
 # 工具：真音频时长校验（复用项目内 ffmpeg_probe，不另造轮子 §8）
 # ---------------------------------------------------------------------------
-async def probe_audio(path: Path) -> dict:
+async def probe_audio(path: Path) -> dict[str, Any]:
     """用项目自带 ffmpeg_probe 拿真实音频元数据（不猜 ffprobe 结构 §10）。"""
     from audiobook_studio.utils.ffmpeg_probe import get_audio_info, get_duration
 
@@ -60,7 +146,7 @@ async def probe_audio(path: Path) -> dict:
     return {"duration_ms": dur_ms, "duration_s": dur_ms / 1000.0, "sample_rate": sr}
 
 
-async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dict:
+async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dict[str, Any]:
     """对最终产物做深度断言（红线#2：禁空断言）。"""
     assert path.exists(), f"[{tier}] 产物不存在: {path}"
     size = path.stat().st_size
@@ -76,7 +162,7 @@ async def assert_real_audio(path: Path, min_duration_s: float, tier: str) -> dic
 # ---------------------------------------------------------------------------
 # Part 1: 选路逻辑测试（无音频，快）—— 验证 auto 路由的 4 个分支
 # ---------------------------------------------------------------------------
-def test_routing():
+def test_routing() -> list[tuple[str, str, str]]:
     cases = []
     saved = {
         k: os.environ.get(k)
@@ -89,7 +175,7 @@ def test_routing():
         )
     }
 
-    def env_set(patch: dict):
+    def env_set(patch: dict[str, Any]) -> None:
         for k in ("VOXCPM2_ENDPOINT", "ENABLE_LOCAL_TTS", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
             os.environ.pop(k, None)
         for k, v in patch.items():
@@ -97,7 +183,7 @@ def test_routing():
                 continue
             os.environ[k] = v
 
-    def restore():
+    def restore() -> None:
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -146,7 +232,10 @@ def test_routing():
 # ---------------------------------------------------------------------------
 # Part 2: Tier2 Kokoro 真音频 —— auto 默认分支 → submit/poll/真WAV断言
 # ---------------------------------------------------------------------------
-async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str) -> Path:
+@pytest.mark.asyncio
+async def _synthesize_tier(
+    port: Any, task_id: str, text: str, voice_id: str, prosody: TTSProsody | None, name: str
+) -> Path:
     payload = TTSTaskPayload(
         text=text,
         voice_anchor=TTSVoiceAnchor(voice_id=voice_id, language="zh-CN"),
@@ -174,45 +263,70 @@ async def _synthesize_tier(port, task_id: str, text: str, voice_id: str, prosody
     return Path(res.audio_path)
 
 
-async def test_tier2_kokoro_real_audio():
+@pytest.mark.asyncio
+async def test_tier2_kokoro_real_audio() -> dict[str, Any]:
     print("\n── Part 2: Tier 2 Kokoro 真音频 ────")
     # 关键：确保 auto 选到 Kokoro 且不带 mock
     for k in ("VOXCPM2_ENDPOINT", "MOCK_LLM", "TEST_MODE", "MOCK_TTS"):
         os.environ.pop(k, None)
     os.environ["ENABLE_LOCAL_TTS"] = "true"
-    # 显式按引擎类型构造，避免 factory kwargs 透传不一致问题（技术债，见末尾汇总）
-    port = create_engine("kokoro", output_dir=str(OUT))
-    assert type(port).__name__ == "KokoroPort", f"期望 KokoroPort，得到 {type(port).__name__}"
-    tid = f"fb_kokoro_{uuid.uuid4().hex[:6]}"
-    text = "三级降级链路验证：这是 Kokoro 本地引擎生成的真实中文音频。"
-    out = await _synthesize_tier(
-        port, tid, text, voice_id="zf_xiaoxiao", prosody=TTSProsody(rate=1.0, emotion="neutral"), name="Tier2-Kokoro"
-    )
-    return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
+    # 自愈：conftest 可能把 kokoro_onnx / torch 全局 mock 了，这里还原真实包（红线#2）
+    saved: dict[str, Any] = {}
+    try:
+        saved = _require_real_tts_modules()
+    except RuntimeError as e:
+        pytest.skip(f"真实 TTS 依赖不可用，跳过而非伪造（红线#2）: {e}")
+    try:
+        # 显式按引擎类型构造，避免 factory kwargs 透传不一致问题（技术债，见末尾汇总）
+        port = create_engine("kokoro", output_dir=str(OUT))
+        assert type(port).__name__ == "KokoroPort", f"期望 KokoroPort，得到 {type(port).__name__}"
+        tid = f"fb_kokoro_{uuid.uuid4().hex[:6]}"
+        text = "三级降级链路验证：这是 Kokoro 本地引擎生成的真实中文音频。"
+        out = await _synthesize_tier(
+            port,
+            tid,
+            text,
+            voice_id="zf_xiaoxiao",
+            prosody=TTSProsody(rate=1.0, emotion="neutral"),
+            name="Tier2-Kokoro",
+        )
+        return await assert_real_audio(out, min_duration_s=1.5, tier="Tier2-Kokoro")
+    finally:
+        _restore_tts_modules(saved)
 
 
-async def test_tier3_edge_real_audio():
+@pytest.mark.asyncio
+async def test_tier3_edge_real_audio() -> dict[str, Any]:
     print("\n── Part 3: Tier 3 Edge-TTS 真音频 ────")
-    # 显式构造 edge port（避免 Kokoro 默认抢占）
-    port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
-    assert type(port).__name__ == "EdgeTTSPort", f"期望 EdgeTTSPort，得到 {type(port).__name__}"
-    tid = f"fb_edge_{uuid.uuid4().hex[:6]}"
-    text = "三级降级链路验证：这是 Edge-TTS 云端引擎生成的真实中文兜底音频。"
-    out = await _synthesize_tier(
-        port,
-        tid,
-        text,
-        voice_id="zh-CN-XiaoxiaoNeural",
-        prosody=TTSProsody(rate=1.0, emotion="neutral"),
-        name="Tier3-Edge",
-    )
-    return await assert_real_audio(out, min_duration_s=1.5, tier="Tier3-Edge")
+    # 自愈：conftest 可能把 edge_tts / torch 全局 mock 了，这里还原真实包（红线#2）
+    saved: dict[str, Any] = {}
+    try:
+        saved = _require_real_tts_modules()
+    except RuntimeError as e:
+        pytest.skip(f"真实 TTS 依赖不可用，跳过而非伪造（红线#2）: {e}")
+    try:
+        # 显式构造 edge port（避免 Kokoro 默认抢占）
+        port = create_engine("edge", output_dir=str(OUT), mock_mode=False)
+        assert type(port).__name__ == "EdgeTTSPort", f"期望 EdgeTTSPort，得到 {type(port).__name__}"
+        tid = f"fb_edge_{uuid.uuid4().hex[:6]}"
+        text = "三级降级链路验证：这是 Edge-TTS 云端引擎生成的真实中文兜底音频。"
+        out = await _synthesize_tier(
+            port,
+            tid,
+            text,
+            voice_id="zh-CN-XiaoxiaoNeural",
+            prosody=TTSProsody(rate=1.0, emotion="neutral"),
+            name="Tier3-Edge",
+        )
+        return await assert_real_audio(out, min_duration_s=1.5, tier="Tier3-Edge")
+    finally:
+        _restore_tts_modules(saved)
 
 
 # ---------------------------------------------------------------------------
 # Part 4: Tier1 VoxCPM2 预留 seam ── 仅验证选路可达 + circuit breaker 存在
 # ---------------------------------------------------------------------------
-def test_tier1_voxcpm2_reserved():
+def test_tier1_voxcpm2_reserved() -> dict[str, Any]:
     print("\n── Part 4: Tier 1 VoxCPM2 预留 seam（仅选路验证，无真音频）────")
     saved = os.environ.get("VOXCPM2_ENDPOINT")
     try:
@@ -224,7 +338,7 @@ def test_tier1_voxcpm2_reserved():
         from audiobook_studio.tts.remote_voxcpm2_port import PortCircuitOpenError
 
         print(f"    [Tier1-VoxCPM2] ✅ 选路可达: {cls}（endpoint={os.environ['VOXCPM2_ENDPOINT']}）")
-        print(f"    [Tier1-VoxCPM2] ✅ 运行时 failover seam 存在: PortCircuitOpenError")
+        print("    [Tier1-VoxCPM2] ✅ 运行时 failover seam 存在: PortCircuitOpenError")
         print("    [Tier1-VoxCPM2] ⏸ 真实音频：voxcpm2-pool/ 远端 worker 处于 ADR-2026-07-19 PENDING")
         print("                       门禁内（pass 桩 + 0 输出 notebook），不伪造成功（红线#1）。")
         print("                       待人类架构师 sign-off + 对齐真实推理 API 后再补真音频测试。")
@@ -239,7 +353,7 @@ def test_tier1_voxcpm2_reserved():
 # ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
-async def main():
+async def main() -> None:
     print("=" * 72)
     print(" VoxCPM2 → Kokoro → Edge-TTS 三级降级链路 — 方案 A 真验证")
     print("=" * 72)
@@ -265,7 +379,7 @@ async def main():
     chain_json.write_text(
         json.dumps(
             {
-                "routing_cases": [{"label": l, "got": g, "want": w} for l, g, w in routing],
+                "routing_cases": [{"label": line, "got": g, "want": w} for line, g, w in routing],
                 "tier1_voxcpm2": vox,
                 "tier2_kokoro": kokoro,
                 "tier3_edge": edge,

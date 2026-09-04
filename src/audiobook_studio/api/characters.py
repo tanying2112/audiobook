@@ -7,15 +7,16 @@ Provides character management endpoints:
 """
 
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Use UnifiedConfig for centralized configuration loading
+from ..config.unified import get_unified_config
+from ..exceptions import DomainError
 from ..models import Character, Project
 from .dependencies import get_async_db
 
@@ -28,13 +29,12 @@ VOICE_MAPPING_CACHE: Optional[Dict[str, Any]] = None
 
 
 def load_voice_mapping() -> Dict[str, Any]:
-    """Load voice mapping configuration from YAML file."""
+    """Load voice mapping configuration from YAML file via UnifiedConfig."""
     global VOICE_MAPPING_CACHE
     if VOICE_MAPPING_CACHE is None:
         try:
-            config_path = Path(__file__).parent.parent.parent.parent / "config" / "voice_mapping.yaml"
-            with open(config_path, "r", encoding="utf-8") as f:
-                VOICE_MAPPING_CACHE = yaml.safe_load(f)
+            unified = get_unified_config()
+            VOICE_MAPPING_CACHE = unified.load_yaml_config("voice_mapping") or {}
         except Exception as e:
             logger.warning(f"Failed to load voice mapping config: {e}")
             VOICE_MAPPING_CACHE = {}
@@ -91,7 +91,12 @@ async def fetch_characters(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id},
+        )
 
     result = await db.execute(select(Character).where(Character.project_id == project_id))
     characters = result.scalars().all()
@@ -109,40 +114,48 @@ async def create_character(
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id},
+        )
 
-    # Check if canonical_name already exists in this project
+    # Check for duplicate name within the same project
     result = await db.execute(
         select(Character).where(
             Character.project_id == project_id,
             Character.canonical_name == character.canonical_name,
         )
     )
-    existing = result.scalar_one_or_none()
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Character with canonical_name '{character.canonical_name}' already exists in this project",
+    if result.scalar_one_or_none():
+        raise DomainError(
+            message="Character with this name already exists in the project",
+            error_code="DUPLICATE_NAME",
+            stage="characters",
+            context={"project_id": project_id, "canonical_name": character.canonical_name},
         )
 
-    db_character = Character(project_id=project_id, **character.model_dump())
+    db_character = Character(**character.model_dump(), project_id=project_id)
     db.add(db_character)
     await db.commit()
     await db.refresh(db_character)
-    logger.info(f"Created character {db_character.id} for project {project_id}")
     return db_character
 
 
 @router.get("/voice-mapping", response_model=VoiceMappingResponse)
-async def get_voice_mapping(
-    project_id: int,
-):
-    """获取声音映射配置."""
-    mapping = load_voice_mapping()
+async def get_voice_mapping(project_id: int):
+    """获取声音映射配置 (全局配置，不依赖项目)."""
+    voice_mapping = load_voice_mapping()
     return VoiceMappingResponse(
-        voice_mapping=mapping.get("voice_mapping", {}),
-        voice_mapping_en=mapping.get("voice_mapping_en", {}),
+        voice_mapping=voice_mapping.get("voice_mapping", {}),
+        voice_mapping_en=voice_mapping.get("voice_mapping_en", {}),
     )
+
+
+# Note: The /voice-mapping endpoint is under /projects/{project_id}/characters/voice-mapping
+# due to the router prefix. For a global endpoint, consider a separate router.
+# This is kept for backward compatibility.
 
 
 @router.get("/{character_id}", response_model=CharacterResponse)
@@ -151,52 +164,44 @@ async def fetch_character(
     character_id: int,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """获取特定角色."""
-    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
+    """获取单个角色详情."""
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
     character = result.scalar_one_or_none()
     if not character:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
+        )
     return character
 
 
-@router.put("/{character_id}", response_model=CharacterResponse)
+@router.patch("/{character_id}", response_model=CharacterResponse)
 async def update_character(
     project_id: int,
     character_id: int,
-    character_update: CharacterUpdate,
+    character: CharacterUpdate,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """更新角色."""
-    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
-    character = result.scalar_one_or_none()
-    if not character:
-        raise HTTPException(status_code=404, detail="Character not found")
-
-    # If canonical_name is being updated, check for conflicts
-    if character_update.canonical_name is not None:
-        result = await db.execute(
-            select(Character).where(
-                Character.project_id == project_id,
-                Character.canonical_name == character_update.canonical_name,
-                Character.id != character_id,  # Exclude current character
-            )
+    """更新角色信息."""
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
+    db_character = result.scalar_one_or_none()
+    if not db_character:
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
         )
-        existing = result.scalar_one_or_none()
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Character with canonical_name '{character_update.canonical_name}' already exists in this project",
-            )
 
-    # Update fields
-    update_data = character_update.model_dump(exclude_unset=True)
+    update_data = character.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(character, field, value)
+        setattr(db_character, field, value)
 
     await db.commit()
-    await db.refresh(character)
-    logger.info(f"Updated character {character_id} for project {project_id}")
-    return character
+    await db.refresh(db_character)
+    return db_character
 
 
 @router.delete("/{character_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -206,12 +211,18 @@ async def delete_character(
     db: AsyncSession = Depends(get_async_db),
 ):
     """删除角色."""
-    result = await db.execute(select(Character).where(Character.project_id == project_id, Character.id == character_id))
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
     character = result.scalar_one_or_none()
     if not character:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise DomainError(
+            message="Character not found",
+            error_code="NOT_FOUND",
+            stage="characters",
+            context={"project_id": project_id, "character_id": character_id},
+        )
 
     await db.delete(character)
     await db.commit()
-    logger.info(f"Deleted character {character_id} from project {project_id}")
-    return None
+
+
+# ── Voice Mapping Endpoint (no project_id in path) ───────────────────────────

@@ -14,7 +14,6 @@ for paragraph-level stages. These tests lock the new behaviour in.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
