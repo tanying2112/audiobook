@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -562,6 +562,7 @@ async def upload_chunk(
 @router.post("/{project_id}/upload", response_model=UploadCompleteResponse)
 async def upload_file(
     project_id: int,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: AsyncSession = Depends(get_async_db),
