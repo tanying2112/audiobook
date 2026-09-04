@@ -351,8 +351,7 @@ async def get_port() -> RemoteTTSPort:
 
     This wraps the default engine in a RemoteTTSPort adapter.
     """
-    from ..di import get_app_container
-    from .port import RemoteTTSPort, TTSTaskResult, TTSTaskStatus
+    from .port import TTSTaskResult, TTSTaskStatus
 
     class EnginePortAdapter:
         """Adapter to make TTSEngine look like RemoteTTSPort."""

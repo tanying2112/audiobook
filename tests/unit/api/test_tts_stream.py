@@ -20,8 +20,8 @@ from src.audiobook_studio.api import tts_voices
 from src.audiobook_studio.api.tts_voices import (
     _mock_stream_generator,
     _mock_wav_bytes,
-    router as tts_router,
 )
+from src.audiobook_studio.api.tts_voices import router as tts_router
 
 app = FastAPI()
 app.include_router(tts_router)
@@ -55,9 +55,7 @@ def test_mock_stream_generator_yields_multiple_chunks():
 
 
 def test_tts_stream_post_mock_returns_audio(client):
-    with client.stream(
-        "POST", "/tts/stream", json={"text": "这是一个流式语音合成测试。", "engine": "mock"}
-    ) as r:
+    with client.stream("POST", "/tts/stream", json={"text": "这是一个流式语音合成测试。", "engine": "mock"}) as r:
         assert r.status_code == 200
         assert r.headers.get("content-type", "").startswith("audio/")
         data = b"".join(r.iter_bytes())
@@ -66,9 +64,7 @@ def test_tts_stream_post_mock_returns_audio(client):
 
 
 def test_tts_stream_get_mock_returns_audio(client):
-    with client.stream(
-        "GET", "/tts/stream", params={"text": "hello streaming", "engine": "mock"}
-    ) as r:
+    with client.stream("GET", "/tts/stream", params={"text": "hello streaming", "engine": "mock"}) as r:
         assert r.status_code == 200
         data = b"".join(r.iter_bytes())
     assert data[:4] == b"RIFF"
@@ -110,13 +106,9 @@ def test_tts_stream_edge_path_streams_mp3(client, monkeypatch):
         _fake_stream,
     )
     # Force the real (non-mock) branch regardless of the MOCK_TTS env value.
-    monkeypatch.setattr(
-        tts_voices, "_tts_stream_use_mock", lambda engine: False if engine == "edge_tts" else True
-    )
+    monkeypatch.setattr(tts_voices, "_tts_stream_use_mock", lambda engine: False if engine == "edge_tts" else True)
 
-    with client.stream(
-        "POST", "/tts/stream", json={"text": "edge path test", "engine": "edge_tts"}
-    ) as r:
+    with client.stream("POST", "/tts/stream", json={"text": "edge path test", "engine": "edge_tts"}) as r:
         assert r.status_code == 200
         assert r.headers.get("content-type", "").startswith("audio/mpeg")
         data = b"".join(r.iter_bytes())

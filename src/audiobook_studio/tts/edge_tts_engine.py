@@ -7,8 +7,6 @@ No GPU required, works via HTTP to Microsoft's TTS endpoints.
 import asyncio
 import hashlib
 import logging
-import uuid
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -17,7 +15,7 @@ try:
 except ImportError:
     edge_tts = None
 
-from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
+from .engine import BaseTTSEngine, SynthesisResult, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -214,19 +212,19 @@ class EdgeTTSEngine(BaseTTSEngine):
 
         # Validate voice
         if voice_id not in EDGE_VOICES:
-            available = list(EDGE_VOICES.keys())
+            list(EDGE_VOICES.keys())
             logger.warning(f"Voice {voice_id} not in Edge voice map, using default 'zh-CN-XiaoxiaoNeural'")
             voice_id = "zh-CN-XiaoxiaoNeural"
 
-        # Build SSML for prosody control
-        ssml = self._build_ssml(text, voice_id, prosody)
-
-        # Synthesize
-        communicate = edge_tts.Communicate(ssml, voice_id)
+        # NOTE(H4 fix): the edge-tts library does NOT accept raw SSML — it
+        # speaks the markup literally (a 2s sentence came out as 31.7s of
+        # spoken tags). Prosody must be passed via Communicate kwargs instead.
+        comm_kwargs = self._communicate_kwargs(prosody)
+        communicate = edge_tts.Communicate(text, voice_id, **comm_kwargs)
         await communicate.save(str(output_path))
 
-        # Calculate duration (approximate)
-        duration_ms = len(text) * 80
+        # Measure the real duration instead of the old len(text) * 80 guess.
+        duration_ms = self._measure_duration_ms(output_path, fallback_text=text)
         text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
         return SynthesisResult(
@@ -238,6 +236,45 @@ class EdgeTTSEngine(BaseTTSEngine):
             sample_rate=self.sample_rate,
             metadata={"prosody": prosody},
         )
+
+    @staticmethod
+    def _communicate_kwargs(prosody: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        """Convert our prosody dict into edge_tts.Communicate kwargs.
+
+        edge-tts accepts relative rate/volume percentages and pitch in Hz.
+        Emotion styles (mstts:express-as) are NOT supported by the free
+        endpoint, so emotion is intentionally dropped here (logged upstream).
+        """
+        if not prosody:
+            return {}
+        rate = float(prosody.get("rate", 1.0) or 1.0)
+        pitch_st = float(prosody.get("pitch", 0.0) or 0.0)
+        volume_db = float(prosody.get("volume", 0.0) or 0.0)
+        rate_pct = int(round((rate - 1.0) * 100))
+        rate_pct = max(-50, min(50, rate_pct))
+        # rough semitone -> Hz mapping (1st ~= 6Hz, clamped to edge limits)
+        pitch_hz = max(-50, min(50, int(round(pitch_st * 6))))
+        # dB -> linear amplitude percent: pct = (10^(dB/20) - 1) * 100
+        import math as _math
+
+        vol_pct = int(round((_math.pow(10.0, volume_db / 20.0) - 1.0) * 100))
+        vol_pct = max(-100, min(100, vol_pct))
+        return {
+            "rate": f"{rate_pct:+d}%",
+            "pitch": f"{pitch_hz:+d}Hz",
+            "volume": f"{vol_pct:+d}%",
+        }
+
+    @staticmethod
+    def _measure_duration_ms(output_path: Path, fallback_text: str = "") -> int:
+        """Measure real audio duration (mutagen); fall back to text heuristic."""
+        try:
+            from mutagen.mp3 import MP3
+
+            audio = MP3(str(output_path))
+            return int(audio.info.length * 1000)
+        except Exception:
+            return max(1000, len(fallback_text) * 80)
 
     def _build_ssml(self, text: str, voice_id: str, prosody: Optional[Dict]) -> str:
         """Build SSML with prosody controls and emotion support."""
@@ -382,7 +419,6 @@ class EdgeTTSEngine(BaseTTSEngine):
         if task_id in self._tasks:
             return False
         self._tasks[task_id] = {"status": "PENDING", "payload": payload}
-        import asyncio
 
         asyncio.create_task(self._run_task(task_id, payload))
         return True
@@ -498,10 +534,9 @@ class EdgeTTSEngine(BaseTTSEngine):
                 "volume": prosody.volume,
                 "emotion": prosody.emotion,
             }
-        ssml = self._build_ssml(text, voice_id, prosody_dict) if prosody_dict else text
-
-        # Stream audio chunks
-        communicate = edge_tts.Communicate(ssml, voice_id)
+        # H4 fix: plain text + Communicate kwargs (never raw SSML, see above).
+        comm_kwargs = self._communicate_kwargs(prosody_dict)
+        communicate = edge_tts.Communicate(text, voice_id, **comm_kwargs)
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 yield chunk["data"]

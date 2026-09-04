@@ -25,7 +25,7 @@ which is the standard trade-off).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, Sequence, Tuple
 
 import numpy as np
 

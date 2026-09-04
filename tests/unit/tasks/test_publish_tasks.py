@@ -32,8 +32,6 @@ from src.audiobook_studio.tasks import publish_tasks
 if getattr(publish_tasks, "PENDING", None) is not None and not isinstance(publish_tasks.PENDING, str):
     importlib.reload(publish_tasks)
 
-import asyncio
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -61,14 +59,21 @@ class TestGetRedis:
         """Test _get_redis returns a Redis client."""
         with patch("src.audiobook_studio.config.settings_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(REDIS_URL="redis://localhost:6379/0", REDIS_MAX_CONNECTIONS=10)
-            with patch("redis.asyncio.from_url") as mock_from_url:
+            # conftest mocks `redis` and `redis.asyncio` as separate bare MagicMocks
+            # in sys.modules. `publish_tasks._get_redis` does `import redis.asyncio as
+            # redis`, which (under the mocked parent) resolves to the parent's
+            # `.asyncio` attribute, NOT the registered sys.modules["redis.asyncio"].
+            # Patch that attribute so `from_url` is the one actually called.
+            import redis as redis_lib
+
+            with patch.object(redis_lib, "asyncio") as mock_asyncio:
                 mock_client = AsyncMock()
-                mock_from_url.return_value = mock_client
+                mock_asyncio.from_url.return_value = mock_client
 
                 client = await publish_tasks._get_redis()
 
                 assert client == mock_client
-                mock_from_url.assert_called_once()
+                mock_asyncio.from_url.assert_called_once()
 
 
 class TestPersistJobState:
@@ -204,7 +209,7 @@ class TestRunPublishAsync:
         destinations = ["audiobookshelf"]
 
         with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state") as mock_persist:
-            with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state_db") as mock_persist_db:
+            with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state_db"):
                 with patch("src.audiobook_studio.api.publish._publish_to_audiobookshelf") as mock_publish:
                     mock_publish.return_value = {"book_url": "http://example.com/book", "item_id": "123"}
 
@@ -227,8 +232,8 @@ class TestRunPublishAsync:
         project_id = 1
         destinations = ["audiobookshelf"]
 
-        with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state") as mock_persist:
-            with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state_db") as mock_persist_db:
+        with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state"):
+            with patch("src.audiobook_studio.tasks.publish_tasks._persist_job_state_db"):
                 with patch("src.audiobook_studio.api.publish._publish_to_audiobookshelf") as mock_publish:
                     mock_publish.side_effect = Exception("Connection refused")
 
@@ -315,7 +320,7 @@ class TestPublishProjectAsync:
         with patch("asyncio.run") as mock_run:
             mock_run.side_effect = test_exception
 
-            with pytest.raises(Exception):
+            with pytest.raises(Exception):  # noqa: B017
                 publish_tasks.publish_project_async(
                     mock_self,
                     project_id=1,
@@ -391,7 +396,6 @@ class TestGeneratePodcastRssAsync:
         mock_self.max_retries = 3
 
         # Mock the broken import from ..publish.podcast
-        import sys
         from types import ModuleType
 
         fake_podcast = ModuleType("src.audiobook_studio.publish.podcast")

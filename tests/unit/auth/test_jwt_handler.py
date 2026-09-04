@@ -6,6 +6,7 @@ and refresh-token rotation. Covers the lines uncovered by the auth-router
 suite: expires_delta branches, verify/decode/expire/get-payload error paths,
 and refresh_access_token happy/sad paths.
 """
+
 # tests/conftest_minimal.py (wildcard-imported by tests/conftest.py at session
 # start) replaces `bcrypt` with a MagicMock in sys.modules so heavy optional
 # deps don't load. jwt_handler does `import bcrypt` at module load, so it would
@@ -14,13 +15,13 @@ and refresh_access_token happy/sad paths.
 # drop the stub, re-import the genuine bcrypt module, AND rebind jwt_handler.bcrypt
 # (other auth test files may have imported jwt_handler earlier and bound the mock).
 # Local to this file only; other test files keep their mock.
-import importlib
 import sys
 
 if "bcrypt" in sys.modules:
     del sys.modules["bcrypt"]
 
 import bcrypt  # noqa: E402  (real module, stub dropped above)
+
 _jh_name = "src.audiobook_studio.auth.jwt_handler"
 if _jh_name in sys.modules:
     sys.modules[_jh_name].bcrypt = bcrypt  # rebind if jwt_handler already loaded
@@ -32,9 +33,9 @@ from src.audiobook_studio.auth.jwt_handler import (  # noqa: E402
     JWTHandler,
     TokenPayload,
     _get_jwt_handler,
-    decode_token,
     create_access_token,
     create_refresh_token,
+    decode_token,
     hash_password,
     verify_password,
     verify_token,
@@ -86,14 +87,11 @@ class TestCreateAccessToken:
         assert payload["roles"] == []
         assert payload["permissions"] == []
         # Expiry must be in the future (≈ ACCESS_TOKEN_EXPIRE_MINUTES from now).
-        now = 1758547200  # a fixed reference; token.exp must exceed any plausible now
         assert payload["exp"] > 0
         assert handler.verify_token(tok) is True
 
     def test_custom_expires_delta_used(self, handler):
-        tok = handler.create_access_token(
-            user_id=1, username="bob", expires_delta=timedelta(seconds=1)
-        )
+        tok = handler.create_access_token(user_id=1, username="bob", expires_delta=timedelta(seconds=1))
         payload = handler.decode_token(tok)
         # Delta of 1s: exp must be ~1s in the future, well under default 30min.
         # We assert it decodes and is access-type — exact second drift avoided.
@@ -102,9 +100,7 @@ class TestCreateAccessToken:
         assert handler.is_token_expired(tok) is False
 
     def test_roles_and_permissions_encoded(self, handler):
-        tok = handler.create_access_token(
-            user_id=1, username="carol", roles=["admin"], permissions=["project:read"]
-        )
+        tok = handler.create_access_token(user_id=1, username="carol", roles=["admin"], permissions=["project:read"])
         payload = handler.decode_token(tok)
         assert payload["roles"] == ["admin"]
         assert payload["permissions"] == ["project:read"]
@@ -121,9 +117,7 @@ class TestCreateRefreshToken:
         assert "permissions" not in payload
 
     def test_refresh_custom_expires_delta(self, handler):
-        tok = handler.create_refresh_token(
-            user_id=1, username="erin", expires_delta=timedelta(days=1)
-        )
+        tok = handler.create_refresh_token(user_id=1, username="erin", expires_delta=timedelta(days=1))
         assert handler.is_refresh_token(tok) is True
 
     def test_is_refresh_token_rejects_access_token(self, handler):
@@ -159,9 +153,7 @@ class TestDecodeVerifyPayload:
         assert handler.is_token_expired("garbage") is True
 
     def test_is_token_expired_true_for_expired_token(self, handler):
-        tok = handler.create_access_token(
-            user_id=1, username="heidi", expires_delta=timedelta(seconds=-10)
-        )
+        tok = handler.create_access_token(user_id=1, username="heidi", expires_delta=timedelta(seconds=-10))
         # expiry set 10s in the past -> expired
         assert handler.is_token_expired(tok) is True
 

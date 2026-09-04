@@ -9,10 +9,8 @@ so we run the tests to keep the self-iteration claim honest (M4).
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-
-class TestCollectPipelineFeedback:
+class TestCollectPipelineFeedback:  # noqa: E303
     def test_collects_with_all_fields(self):
         from src.audiobook_studio.feedback.integration import collect_pipeline_feedback
 
@@ -146,7 +144,6 @@ class TestSelfIterationLoop:
         loop.stop()
 
     def test_log_event(self):
-        import json
         import tempfile
         from pathlib import Path
 

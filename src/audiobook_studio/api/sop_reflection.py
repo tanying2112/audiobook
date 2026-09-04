@@ -10,25 +10,21 @@ Provides REST and WebSocket endpoints for:
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-
-from ..exceptions import DomainError
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from src.audiobook_studio.pipeline.sop_reflection import (
-    SOPBackgroundThread,
-    UserCorrection,
     apply_learned_rules_on_import,
     get_correction_collector,
-    get_genre_detector,
     get_reflection_engine,
-    get_rule_applier,
     get_sop_config,
     handle_user_correction_websocket,
     start_sop_background_thread,
     stop_sop_background_thread,
 )
 from src.audiobook_studio.schemas import BookMeta
+
+from ..exceptions import DomainError
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +182,7 @@ async def trigger_reflection(genre: str, max_corrections: int = 100):
 @router.get("/background/status", response_model=BackgroundThreadStatus)
 async def get_background_status():
     """Get background reflection thread status."""
-    global _background_thread
+    global _background_thread  # noqa: F824
     from src.audiobook_studio.pipeline.sop_reflection import _background_thread as bg_thread
 
     if bg_thread and bg_thread._thread and bg_thread._thread.is_alive():
@@ -236,6 +232,7 @@ async def get_queue_size():
 # P0.1 Fix: Frontend expects /api/sop/corrections/ws/{projectId} but we had /corrections/ws
 # Match frontend: ws://host/api/sop/corrections/ws/{projectId}
 
+
 @router.websocket("/corrections/ws/{project_id}")
 async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
     """
@@ -262,7 +259,7 @@ async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
     }
     """
     await websocket.accept()
-    collector = get_correction_collector()
+    get_correction_collector()
 
     try:
         while True:
@@ -302,4 +299,3 @@ async def sop_corrections_websocket(websocket: WebSocket, project_id: int):
             await websocket.send_text(json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False))
         except RuntimeError:
             pass
-

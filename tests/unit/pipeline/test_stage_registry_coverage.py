@@ -10,38 +10,30 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import src.audiobook_studio.models as _models_mod
 import src.audiobook_studio.pipeline.persistence as _persistence_mod
 import src.audiobook_studio.pipeline.stage_registry as sr
 from src.audiobook_studio.pipeline.stage_registry import (
-    AudioPostprocessStage,
     AnalyzeStage,
     AnnotateStage,
+    AudioPostprocessStage,
     EditStage,
     ExtractStage,
     QualityStage,
     ReviewStage,
+    SegmentStage,
     StageHandler,
     StageRegistry,
-    SegmentStage,
     SynthesizeStage,
     TranslateStage,
     register_stage,
 )
-from src.audiobook_studio.schemas import (
-    ParagraphAnnotation,
-    ReviewerInput,
-    ReviewerJudgment,
-    TtsEditInput,
-)
+from src.audiobook_studio.schemas import ParagraphAnnotation, ReviewerInput, ReviewerJudgment
 from src.audiobook_studio.schemas.review import FixCommand
-
 
 # ── Lightweight fakes for the engine pipelines ──────────────────────────────
 
@@ -357,9 +349,7 @@ def test_stage_handler_persist_default_noop() -> None:
 
 
 def test_extract_stage_run(patch_pipelines) -> None:
-    res = asyncio.run(
-        ExtractStage().run(file_path="book.txt", mime_type="text/plain", detect_language=True)
-    )
+    res = asyncio.run(ExtractStage().run(file_path="book.txt", mime_type="text/plain", detect_language=True))
     assert res.raw_text == "Para one.\n\nPara two."
 
 
@@ -368,6 +358,7 @@ def test_extract_stage_persist(patch_pipelines, patch_persistence) -> None:
     # ``chapter_result`` and raised NameError). It now bridges to apersist via
     # a reentrancy-safe run_sync, so the real persist logic executes offline.
     db = AsyncMock()
+    db.__class__ = AsyncSession  # _is_async keys on isinstance(_, AsyncSession)
     db.execute.return_value.scalar_one_or_none.return_value = None
     handler = ExtractStage()
     handler.persist(
@@ -386,6 +377,7 @@ def test_extract_stage_apersist(patch_pipelines, patch_persistence) -> None:
     # ``Paragraph`` is the real mapped model; apersist constructs it and runs
     # a select() against it via the (monkeypatched) persistence writers.
     db = AsyncMock()
+    db.__class__ = AsyncSession  # _is_async keys on isinstance(_, AsyncSession)
     db.execute.return_value.scalar_one_or_none.return_value = None
     handler = ExtractStage()
     asyncio.run(
@@ -404,9 +396,7 @@ def test_extract_stage_apersist(patch_pipelines, patch_persistence) -> None:
 
 
 def test_analyze_stage_run(patch_pipelines) -> None:
-    res = asyncio.run(
-        AnalyzeStage().run(raw_text="Some text.", title_hint="T", author_hint="A")
-    )
+    res = asyncio.run(AnalyzeStage().run(raw_text="Some text.", title_hint="T", author_hint="A"))
     assert res is not None
 
 
@@ -479,16 +469,12 @@ def test_annotate_stage_run_with_chapter(patch_pipelines) -> None:
                     "sample_quote": "hi",
                 }
             ],
-            "emotion_snapshots": [
-                {"chapter": 1, "dominant_emotion": "happy", "intensity": 0.8, "notes": "joy"}
-            ],
+            "emotion_snapshots": [{"chapter": 1, "dominant_emotion": "happy", "intensity": 0.8, "notes": "joy"}],
             "story_line_summary": "A sufficiently long real story line summary that exceeds the one hundred character minimum required by the paragraph annotation input schema for proper validation.",
             "global_style_notes": "Style notes.",
         }
 
-    res = asyncio.run(
-        AnnotateStage().run(chapter=FakeChapter(), paragraph=FakePara())
-    )
+    res = asyncio.run(AnnotateStage().run(chapter=FakeChapter(), paragraph=FakePara()))
     assert res is not None
 
 
@@ -535,9 +521,7 @@ def test_edit_stage_run_with_para(patch_pipelines) -> None:
 
 def test_edit_stage_run_without_para(patch_pipelines) -> None:
     # no paragraph record -> synthesizes a default annotation
-    res = asyncio.run(
-        EditStage().run(paragraph_text="Standalone text to edit.", paragraph_index=4)
-    )
+    res = asyncio.run(EditStage().run(paragraph_text="Standalone text to edit.", paragraph_index=4))
     assert res is not None
 
 
@@ -574,9 +558,7 @@ def test_audio_postprocess_run_no_next(patch_pipelines) -> None:
         emotion_intensity = 0.5
 
     res = asyncio.run(
-        AudioPostprocessStage().run(
-            paragraph=FakePara(), project_id=1, chapter_index=1, paragraph_index=1
-        )
+        AudioPostprocessStage().run(paragraph=FakePara(), project_id=1, chapter_index=1, paragraph_index=1)
     )
     assert isinstance(res, dict)
     assert res["text"] == "Post process this."
@@ -609,9 +591,7 @@ def test_audio_postprocess_run_with_next_para(patch_pipelines) -> None:
 
 def test_audio_postprocess_persist(patch_pipelines) -> None:
     para = MagicMock()
-    AudioPostprocessStage().persist(
-        db=MagicMock(), project_id=1, chapter=FakeChapter(), paragraph=para, result={}
-    )
+    AudioPostprocessStage().persist(db=MagicMock(), project_id=1, chapter=FakeChapter(), paragraph=para, result={})
 
 
 def test_audio_postprocess_apersist(patch_pipelines, patch_persistence, monkeypatch) -> None:
@@ -638,9 +618,7 @@ def test_review_stage_no_paragraphs(patch_pipelines, monkeypatch) -> None:
     chapter.index = 1
     chapter.paragraphs = []
     chapter.analyzed_json = None
-    res = asyncio.run(
-        ReviewStage().run(chapter=chapter, project_id=1)
-    )
+    res = asyncio.run(ReviewStage().run(chapter=chapter, project_id=1))
     assert res.overall_passed is True
 
 
@@ -677,9 +655,7 @@ def test_review_stage_pass(patch_pipelines, monkeypatch) -> None:
             }
         ]
     }
-    res = asyncio.run(
-        ReviewStage().run(chapter=chapter, project_id=1)
-    )
+    asyncio.run(ReviewStage().run(chapter=chapter, project_id=1))
     # judgment stored on chapter
     assert chapter.reviewer_judgment["overall_passed"] is True
 
@@ -719,9 +695,7 @@ def test_review_stage_blocked(patch_pipelines, monkeypatch) -> None:
             }
         ]
     }
-    res = asyncio.run(
-        ReviewStage().run(chapter=chapter, project_id=1)
-    )
+    res = asyncio.run(ReviewStage().run(chapter=chapter, project_id=1))
     assert res.overall_passed is False
     assert res.blocking_issues == 1
 
@@ -751,17 +725,13 @@ def test_review_stage_no_analyzed_json_fallback(patch_pipelines, monkeypatch) ->
     chapter.index = 1
     chapter.paragraphs = [FakePara()]
     chapter.analyzed_json = None  # no voice_map source -> default narrator fallback
-    res = asyncio.run(
-        ReviewStage().run(chapter=chapter, project_id=1)
-    )
+    res = asyncio.run(ReviewStage().run(chapter=chapter, project_id=1))
     assert res.overall_passed is True
 
 
 def test_review_stage_persist_noop() -> None:
     ReviewStage().persist(db=MagicMock(), project_id=1, chapter=None, paragraph=None, result=MagicMock())
-    asyncio.run(
-        ReviewStage().apersist(db=AsyncMock(), project_id=1, chapter=None, paragraph=None, result=MagicMock())
-    )
+    asyncio.run(ReviewStage().apersist(db=AsyncMock(), project_id=1, chapter=None, paragraph=None, result=MagicMock()))
 
 
 # ── SynthesizeStage ─────────────────────────────────────────────────────────
@@ -802,11 +772,7 @@ def test_synthesize_stage_persist(patch_persistence, monkeypatch) -> None:
     # with identifiers -> apersist delegates to write_synthesize (spied)
     spy = AsyncMock()
     monkeypatch.setattr(_persistence_mod, "write_synthesize", spy)
-    asyncio.run(
-        SynthesizeStage().apersist(
-            db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=[seg]
-        )
-    )
+    asyncio.run(SynthesizeStage().apersist(db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=[seg]))
     assert spy.await_count >= 1
 
 
@@ -815,7 +781,7 @@ def test_synthesize_stage_persist(patch_persistence, monkeypatch) -> None:
 
 def test_quality_stage_run(patch_pipelines, monkeypatch) -> None:
     monkeypatch.setattr(sr, "QualityCheckPipeline", lambda: FakeQualityPipeline(results=[MagicMock()]))
-    ann = ParagraphAnnotation(
+    ParagraphAnnotation(
         paragraph_index=1,
         speaker_canonical_name="_narrator_",
         is_dialogue=False,
@@ -840,9 +806,7 @@ def test_quality_stage_persist(patch_persistence, monkeypatch) -> None:
     para = FakeParagraph()
     QualityStage().persist(db=MagicMock(), project_id=1, chapter=FakeChapter(), paragraph=para, result=MagicMock())
     db = AsyncMock()
-    asyncio.run(
-        QualityStage().apersist(db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=MagicMock())
-    )
+    asyncio.run(QualityStage().apersist(db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=MagicMock()))
     assert spy.await_count >= 1
 
 
@@ -850,9 +814,7 @@ def test_quality_stage_persist(patch_persistence, monkeypatch) -> None:
 
 
 def test_translate_stage_run(patch_pipelines) -> None:
-    res = asyncio.run(
-        TranslateStage().run(segments=["hello"], target_language="en-US", book_title="B", author="A")
-    )
+    res = asyncio.run(TranslateStage().run(segments=["hello"], target_language="en-US", book_title="B", author="A"))
     assert isinstance(res, tuple)
     dubbed, report = res
     assert report == {"ok": True}
@@ -877,9 +839,7 @@ def test_translate_stage_persist(patch_persistence, monkeypatch) -> None:
     para = FakeParagraph()
     db = AsyncMock()
     asyncio.run(
-        TranslateStage().apersist(
-            db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=([seg], {})
-        )
+        TranslateStage().apersist(db=db, project_id=1, chapter=FakeChapter(), paragraph=para, result=([seg], {}))
     )
     assert spy.await_count >= 1
 
@@ -895,14 +855,12 @@ def test_synthesize_stage_run(patch_pipelines, monkeypatch) -> None:
     chapter = FakeChapter()
     chapter.analyzed_json = {"character_voice_map": []}
     para = FakeParagraph(text="你好世界这是一段用于合成的测试文本。")
-    res = asyncio.run(
-        SynthesizeStage().run(project_id=1, chapter=chapter, paragraph=para)
-    )
+    res = asyncio.run(SynthesizeStage().run(project_id=1, chapter=chapter, paragraph=para))
     assert res == []
     fake_pipe.run.assert_called_once()
 
-@pytest.mark.skip(reason="Test isolation issue - flaky in full suite")
 
+@pytest.mark.skip(reason="Test isolation issue - flaky in full suite")
 def test_synthesize_stage_run_default_voice_map(patch_pipelines, monkeypatch) -> None:
     # No analyzed_json -> default narrator voice map branch.
     fake_pipe = MagicMock()
@@ -910,17 +868,13 @@ def test_synthesize_stage_run_default_voice_map(patch_pipelines, monkeypatch) ->
     monkeypatch.setattr(sr, "SynthesizePipeline", lambda *a, **k: fake_pipe)
 
     para = FakeParagraph(text="另一段合成测试文本用于覆盖默认语音映射分支。")
-    res = asyncio.run(
-        SynthesizeStage().run(project_id=2, chapter=None, paragraph=para)
-    )
+    res = asyncio.run(SynthesizeStage().run(project_id=2, chapter=None, paragraph=para))
     assert len(res) == 1
     fake_pipe.run.assert_called_once()
 
 
 def test_segment_stage_run(patch_pipelines) -> None:
-    res = asyncio.run(
-        SegmentStage().run(text="第一段内容。\n\n第二段内容。")
-    )
+    res = asyncio.run(SegmentStage().run(text="第一段内容。\n\n第二段内容。"))
     assert len(res.segments) >= 1
 
 
@@ -937,9 +891,6 @@ def test_review_stage_run_with_paragraphs(patch_pipelines) -> None:
         "scene_tags": ["battle"],
         "book_meta": {"title": "Test Book"},
     }
-    res = asyncio.run(
-        ReviewStage().run(project_id=1, chapter=chapter)
-    )
+    res = asyncio.run(ReviewStage().run(project_id=1, chapter=chapter))
     assert res.overall_passed is True
     assert chapter.reviewer_judgment is not None
-

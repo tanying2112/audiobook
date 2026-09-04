@@ -647,7 +647,7 @@ async def check_all_segments(
     passed = 0
     failed = 0
 
-    for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids)):
+    for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids, strict=False)):
         ref_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
         speaker = speaker_map.get(segment_id) if speaker_map else None
 

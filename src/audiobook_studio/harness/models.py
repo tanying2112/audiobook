@@ -11,23 +11,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Table, Text
-from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
 # Harness 独立 ORM 基类：与主应用 orm_base.Base 解耦，避免同名类（AuditLog/FeedbackRecord 等）
 # 处于同一 declarative registry 导致 mapper 未注册 / 表无法创建。
 HarnessBase = declarative_base()
 
-from ..models.user import AuditLog as AuditLogModel
-from ..models.user import Permission, ProjectPermission, Role, User, role_permissions, user_roles
+from ..models.user import Permission, ProjectPermission, Role, User
 
 # 使用主应用的 Base，避免多 metadata 冲突
 from ..orm_base import Base

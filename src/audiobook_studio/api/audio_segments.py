@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..exceptions import NotFoundError, BadRequestError
+from ..exceptions import BadRequestError, NotFoundError
 from .dependencies import get_async_db
 
 router = APIRouter(prefix="/audio-segments", tags=["audio-segments"])

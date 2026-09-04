@@ -5,10 +5,10 @@ import pytest
 from src.audiobook_studio.tts.port import (
     RemoteTTSPort,
     TTSProsody,
+    TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
-    TTSStatus,
     TTSVoiceAnchor,
 )
 
@@ -87,9 +87,7 @@ def test_task_payload_wrong_anchor_type_raises():
 def test_task_payload_with_prosody_and_metadata():
     anchor = TTSVoiceAnchor(voice_id="v1")
     prosody = TTSProsody(rate=1.2)
-    payload = TTSTaskPayload(
-        text="x", voice_anchor=anchor, prosody=prosody, metadata={"k": "v"}
-    )
+    payload = TTSTaskPayload(text="x", voice_anchor=anchor, prosody=prosody, metadata={"k": "v"})
     assert payload.prosody is prosody
     assert payload.metadata == {"k": "v"}
 

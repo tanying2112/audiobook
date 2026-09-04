@@ -23,7 +23,6 @@ v0.5 新增:
 from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field
-from typing_extensions import Annotated as AnnotatedExt
 
 from .book import CharacterVoiceBinding
 from .paragraph import ParagraphAnnotation

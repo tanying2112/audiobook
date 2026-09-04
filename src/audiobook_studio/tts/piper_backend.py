@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
+from .engine import BaseTTSEngine, SynthesisResult, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 from .piper_models import (
     DEFAULT_PIPER_VOICE,
     PIPER_DEFAULT_MODEL_DIR,
@@ -47,7 +47,6 @@ def _write_silence_wav(path: Path, sample_rate: int, seconds: float = 1.0) -> No
 
         sf.write(str(path), np.zeros(int(sample_rate * seconds), dtype=np.float32), sample_rate)
     except Exception:  # pragma: no cover - fallback path
-        import math
         import struct
         import wave
 

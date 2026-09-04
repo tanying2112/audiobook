@@ -9,11 +9,7 @@ Tests cover:
 - Error handling
 """
 
-import asyncio
-import json
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -69,15 +65,15 @@ def synthesize_pipeline(mock_router, temp_output_dir):
 def tts_routing_inputs():
     """Create sample TtsRoutingInput objects."""
     from src.audiobook_studio.schemas import (
-        ParagraphAnnotation,
-        TtsRoutingInput,
+        BookMeta,
         CharacterVoiceBinding,
         EmotionSnapshot,
-        BookMeta,
+        ParagraphAnnotation,
+        TtsRoutingInput,
     )
     from src.audiobook_studio.schemas.book import BookMeta
 
-    book_meta = BookMeta(
+    BookMeta(
         title="测试书籍",
         author="测试作者",
         genre="小说",
@@ -87,7 +83,7 @@ def tts_routing_inputs():
         total_chapters_estimated=10,
     )
 
-    emotion_snapshot = EmotionSnapshot(
+    EmotionSnapshot(
         chapter=1,
         dominant_emotion="neutral",
         intensity=0.5,
@@ -218,7 +214,7 @@ class TestSynthesizePipelineRun:
         # Both should return same segments (from cache)
         assert len(result1) == len(result2)
         # The segment objects should be the cached ones (same file paths)
-        for s1, s2 in zip(result1, result2):
+        for s1, s2 in zip(result1, result2, strict=False):
             assert s1.file_path == s2.file_path
             assert s1.text_hash == s2.text_hash
 
@@ -250,16 +246,20 @@ class TestSynthesizePipelineRun:
         from src.audiobook_studio.audio_quality import QualityReport, SegmentQualityResult
 
         def _fake_quality_report(
-            segment_files, segment_ids, project_id, chapter_index,
-            max_retries, retry_callback, speaker_map, **kwargs,
+            segment_files,
+            segment_ids,
+            project_id,
+            chapter_index,
+            max_retries,
+            retry_callback,
+            speaker_map,
+            **kwargs,
         ):
             # Build a passing report without invoking the network/model-heavy
             # DNSMOS/ASR/SpeakerSim metrics — keeps this unit test fast & CI-robust.
             results = [
-                SegmentQualityResult(
-                    segment_id=sid, file_path=str(fp), duration_ms=1000, passed=True
-                )
-                for sid, fp in zip(segment_ids, segment_files)
+                SegmentQualityResult(segment_id=sid, file_path=str(fp), duration_ms=1000, passed=True)
+                for sid, fp in zip(segment_ids, segment_files, strict=False)
             ]
             return QualityReport(
                 project_id=project_id,
@@ -279,7 +279,7 @@ class TestSynthesizePipelineRun:
             new=AsyncMock(side_effect=_fake_quality_report),
         ):
             # First run
-            result1 = await synthesize_pipeline.run(tts_routing_inputs)
+            await synthesize_pipeline.run(tts_routing_inputs)
 
             # Modify text in inputs
             for inp in tts_routing_inputs:
@@ -612,12 +612,13 @@ class TestSynthesizePipelineAsyncPort:
         # Get the port - should be FakeRemoteTTSPort instance
         port = await pipeline._get_port()
         from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+
         assert isinstance(port, FakeRemoteTTSPort)
 
     @pytest.mark.asyncio
     async def test_synthesize_via_port_success(self, synthesize_pipeline):
         """Test successful synthesis via port."""
-        from src.audiobook_studio.tts import TTSTaskResult, TTSStatus
+        from src.audiobook_studio.tts import TTSStatus, TTSTaskResult
 
         port = synthesize_pipeline._port
         port.get_status = AsyncMock()
@@ -677,8 +678,12 @@ class TestSynthesizePipelineSimpleConcat:
         from src.audiobook_studio.pipeline.synthesize import AudioSegment
 
         segments = [
-            AudioSegment(segment_id="a", file_path="/tmp/a.wav", duration_ms=500, engine="kokoro", voice_id="v", text_hash="h1"),
-            AudioSegment(segment_id="b", file_path="/tmp/b.wav", duration_ms=700, engine="kokoro", voice_id="v", text_hash="h2"),
+            AudioSegment(
+                segment_id="a", file_path="/tmp/a.wav", duration_ms=500, engine="kokoro", voice_id="v", text_hash="h1"
+            ),
+            AudioSegment(
+                segment_id="b", file_path="/tmp/b.wav", duration_ms=700, engine="kokoro", voice_id="v", text_hash="h2"
+            ),
         ]
 
         output_path = synthesize_pipeline.output_dir / "concat.mp3"
@@ -695,7 +700,6 @@ class TestConvenienceFunction:
     def test_synthesize_paragraphs_function(self, temp_output_dir, tts_routing_inputs):
         """Test the convenience function."""
         from src.audiobook_studio.pipeline.synthesize import synthesize_paragraphs
-        from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
         with patch("src.audiobook_studio.pipeline.synthesize.SynthesizePipeline") as mock_pipeline_class:
             mock_pipeline = MagicMock()
@@ -704,7 +708,7 @@ class TestConvenienceFunction:
             ]
             mock_pipeline_class.return_value = mock_pipeline
 
-            result = synthesize_paragraphs(tts_routing_inputs, output_dir=str(temp_output_dir), mock_mode=True)
+            synthesize_paragraphs(tts_routing_inputs, output_dir=str(temp_output_dir), mock_mode=True)
             mock_pipeline.run.assert_called_once_with(tts_routing_inputs)
             mock_pipeline.close.assert_called_once()
 

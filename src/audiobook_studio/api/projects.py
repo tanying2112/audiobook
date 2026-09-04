@@ -12,12 +12,9 @@ Provides full CRUD for the HARNESS-aligned entity tree:
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, status
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from ..auth.dependencies import get_current_active_user
 from ..auth.models import RoleName
+from ..exceptions import DomainError
 from ..models import Chapter, Paragraph, Project, ProjectPermission, User
 from ..storage import reports_dir
 from .dependencies import get_async_db
@@ -88,17 +86,27 @@ class ChapterOut(BaseModel):
 
 class ParagraphOut(BaseModel):
     id: int
-    project_id: int
-    chapter_id: int
-    chapter_index: int
+    project_id: Optional[int] = None
+    chapter_id: Optional[int] = None
+    chapter_index: Optional[int] = None
     index: int
     text: Optional[str] = None
     speaker: Optional[str] = None
     speaker_canonical_name: Optional[str] = None
     is_dialogue: Optional[bool] = None
     emotion: Optional[str] = None
+    emotion_intensity: Optional[float] = None
+    speech_rate: Optional[float] = None
+    pitch_shift_semitones: Optional[int] = None
+    needs_sfx: Optional[bool] = None
+    sfx_tags: Optional[list] = None
+    pause_before_ms: Optional[int] = None
+    pause_after_ms: Optional[int] = None
+    confidence: Optional[float] = None
+    notes: Optional[str] = None
     edited_text: Optional[str] = None
-    status: str
+    status: str = "pending"
+    content_rating: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -539,7 +547,7 @@ async def regenerate_paragraph_legacy(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Legacy endpoint - redirects to new chapter-aware endpoint."""
-    from ..models import Chapter, Paragraph
+    from ..models import Paragraph
 
     result = await db.execute(
         select(Paragraph).where(

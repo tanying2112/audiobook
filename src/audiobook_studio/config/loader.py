@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, cast
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # Import UnifiedConfig for centralized configuration
 from .unified import get_unified_config
@@ -846,6 +846,7 @@ def load_rules(
 # =============================================================================
 # New: UnifiedConfig Integration Helpers
 # =============================================================================
+
 
 def get_unified_database_config() -> Dict[str, Any]:
     """Get database configuration from UnifiedConfig."""

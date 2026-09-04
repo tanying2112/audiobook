@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..orm_base import Base
@@ -15,7 +15,7 @@ def utc_now() -> datetime:
 
 
 if TYPE_CHECKING:
-    from .user import User
+    pass
 
 
 class Provider(Base):

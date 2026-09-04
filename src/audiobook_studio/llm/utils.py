@@ -5,7 +5,7 @@ to avoid circular imports.
 """
 
 import json
-from typing import Any, Dict, Protocol, Type, TypeVar
+from typing import Any, Protocol, TypeVar
 
 T = TypeVar("T")
 
@@ -20,7 +20,7 @@ class SupportsModelValidate(Protocol):
 class LLMParseError(Exception):
     """Raised when LLM response cannot be parsed as valid JSON or fails schema validation."""
 
-    def __init__(self, message: str, raw_response: str = "", stage: str = ""):
+    def __init__(self, message: str, raw_response: str = "", stage: str = ""):  # noqa: B042
         super().__init__(message)
         self.raw_response = raw_response
         self.stage = stage

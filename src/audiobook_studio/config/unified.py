@@ -12,10 +12,9 @@ Provides a single source of truth for all configuration.
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
 
 from .settings import Settings
 
@@ -137,7 +136,8 @@ class UnifiedConfig:
         # Parse using the existing LLMProvidersConfig logic
         providers = []
         for p in data.get("providers", []):
-            from ..llm.config_loader import ProviderConfig, StageName, ProviderType
+            from ..llm.config_loader import ProviderConfig, ProviderType, StageName
+
             providers.append(
                 ProviderConfig(
                     name=p["name"],
@@ -250,6 +250,7 @@ class UnifiedConfig:
 
     def _interpolate_env(self, value: str) -> str:
         """Interpolate ${VAR} and $VAR references with environment values."""
+
         # ${VAR} format
         def replace_var(match):
             var_name = match.group(1)
@@ -404,7 +405,7 @@ class UnifiedConfig:
 
         # From docker-compose (service env)
         docker_configs = self.load_all_docker_compose()
-        for compose_name, compose in docker_configs.items():
+        for _compose_name, compose in docker_configs.items():
             services = compose.get("services", {})
             for svc_name, svc_config in services.items():
                 if section.lower() in svc_name.lower():
@@ -461,9 +462,13 @@ class UnifiedConfig:
 
         # Provider API keys from settings
         providers = [
-            "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-            "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY",
-            "NVIDIA_API_KEY"
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GEMINI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "OPENROUTER_API_KEY",
+            "NVIDIA_API_KEY",
         ]
         for provider in providers:
             key = getattr(self.settings, provider, None)
@@ -552,9 +557,7 @@ class UnifiedConfig:
             masked = {}
             for k, v in data.items():
                 key_lower = k.lower()
-                if any(sensitive in key_lower for sensitive in [
-                    "key", "secret", "password", "token", "api_key"
-                ]):
+                if any(sensitive in key_lower for sensitive in ["key", "secret", "password", "token", "api_key"]):
                     if isinstance(v, str) and v:
                         masked[k] = v[:4] + "****" + v[-4:] if len(v) > 8 else "****"
                     else:
@@ -569,6 +572,7 @@ class UnifiedConfig:
 
     def _get_logger(self):
         import logging
+
         return logging.getLogger("audiobook_studio.config.unified")
 
 

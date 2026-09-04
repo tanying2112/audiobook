@@ -18,10 +18,10 @@ from __future__ import annotations
 
 from .aggregator import Aggregator, FedAvgAggregator, fedavg_count_models, fedavg_vectors
 from .engine import (
-    FLConfig,
     ClientResult,
     FederatedClient,
     FederatedServer,
+    FLConfig,
     create_federated_n_gram_server,
     is_federated_enabled,
 )

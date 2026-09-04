@@ -1,22 +1,18 @@
 """Tests for provider_router to boost coverage."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
+import pytest
 
 from src.audiobook_studio.api.provider_router import (
-    router,
+    _ALL_STAGES,
+    _DB_TYPE_TO_ENUM,
     _db_provider_to_config,
     build_provider_configs_from_db,
+    router,
     sync_router_from_db,
     trigger_router_reload,
-    _DB_TYPE_TO_ENUM,
-    _ALL_STAGES,
 )
-from src.audiobook_studio.models.provider import Provider, Model as ModelModel
-from src.audiobook_studio.llm.config_loader import ProviderConfig, ProviderType
 from src.audiobook_studio.llm.router import StageName
 
 
@@ -144,8 +140,9 @@ class TestDBProviderToConfig:
         provider.models = []
 
         with patch.dict("os.environ", {}, clear=True):
-            config = _db_provider_to_config(provider)
+            _db_provider_to_config(provider)
             import os
+
             assert os.environ.get("PROVIDER_DB_TEST_ANTHROPIC_KEY") == "sk-test-key"
 
     def test_no_models_fallback_to_name(self):
@@ -212,7 +209,7 @@ class TestSyncRouterFromDB:
     @pytest.mark.asyncio
     async def test_sync_router_from_db_success(self):
         """Test successful router sync."""
-        db = AsyncMock()
+        AsyncMock()
 
         with (
             patch("src.audiobook_studio.api.provider_router.build_provider_configs_from_db") as mock_build,
@@ -237,7 +234,10 @@ class TestSyncRouterFromDB:
         db = MagicMock()
 
         with (
-            patch("src.audiobook_studio.api.provider_router.build_provider_configs_from_db", side_effect=Exception("DB error")),
+            patch(
+                "src.audiobook_studio.api.provider_router.build_provider_configs_from_db",
+                side_effect=Exception("DB error"),
+            ),
             patch("src.audiobook_studio.api.provider_router.logger") as mock_logger,
         ):
             # Should not raise
@@ -304,7 +304,7 @@ class TestProviderCRUD:
         payload.sort_priority = 10
 
         db = AsyncMock()
-        
+
         # First call: check if provider exists (returns None)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -315,7 +315,8 @@ class TestProviderCRUD:
 
         with patch("src.audiobook_studio.api.provider_router.sync_router_from_db") as mock_sync:
             from src.audiobook_studio.api.provider_router import create_provider
-            result = await create_provider(payload, db)
+
+            await create_provider(payload, db)
 
             db.add.assert_called_once()
             db.commit.assert_called_once()
@@ -349,7 +350,7 @@ class TestModelCRUD:
         # Provider lookup
         mock_prov_result = MagicMock()
         mock_prov_result.scalar_one_or_none.return_value = provider
-        
+
         # Model conflict check
         mock_model_result = MagicMock()
         mock_model_result.scalar_one_or_none.return_value = None
@@ -357,14 +358,17 @@ class TestModelCRUD:
         db.execute = AsyncMock(side_effect=[mock_prov_result, mock_model_result])
         db.add = MagicMock()
         db.commit = AsyncMock()
+
         # refresh should set the id on the model
         def mock_refresh(model):
             model.id = 1
+
         db.refresh = AsyncMock(side_effect=mock_refresh)
 
         with patch("src.audiobook_studio.api.provider_router.sync_router_from_db") as mock_sync:
             from src.audiobook_studio.api.provider_router import create_model
-            result = await create_model(1, payload, db)
+
+            await create_model(1, payload, db)
 
             db.add.assert_called_once()
             db.commit.assert_called_once()
@@ -387,6 +391,7 @@ class TestHotReload:
             mock_reload.return_value = None
 
             from src.audiobook_studio.api.provider_router import reload_providers
+
             result = await reload_providers(db)
 
             assert result["db_sync"] == "ok"
@@ -402,9 +407,12 @@ class TestHotReload:
 
         with (
             patch("src.audiobook_studio.api.provider_router.sync_router_from_db", side_effect=Exception("DB error")),
-            patch("src.audiobook_studio.api.provider_router.trigger_router_reload", side_effect=Exception("YAML error")),
+            patch(
+                "src.audiobook_studio.api.provider_router.trigger_router_reload", side_effect=Exception("YAML error")
+            ),
         ):
             from src.audiobook_studio.api.provider_router import reload_providers
+
             result = await reload_providers(db)
 
             assert result["db_sync"] == "failed"
@@ -418,12 +426,31 @@ class TestRouterConstants:
     def test_db_type_to_enum_completeness(self):
         """Test that common provider types are mapped."""
         expected_keys = [
-            "openai", "anthropic", "groq", "deepseek", "openrouter",
-            "ollama", "gemini", "cerebras", "alibaba", "zhipu",
-            "siliconcloud", "mistral", "volcengine", "tencent", "cohere",
-            "together", "huggingface", "baidu_qianfan", "cloudflare",
-            "github", "duck2api", "nvidia_nemotron", "fcc_gateway",
-            "fcc", "nemotron",
+            "openai",
+            "anthropic",
+            "groq",
+            "deepseek",
+            "openrouter",
+            "ollama",
+            "gemini",
+            "cerebras",
+            "alibaba",
+            "zhipu",
+            "siliconcloud",
+            "mistral",
+            "volcengine",
+            "tencent",
+            "cohere",
+            "together",
+            "huggingface",
+            "baidu_qianfan",
+            "cloudflare",
+            "github",
+            "duck2api",
+            "nvidia_nemotron",
+            "fcc_gateway",
+            "fcc",
+            "nemotron",
         ]
         for key in expected_keys:
             assert key in _DB_TYPE_TO_ENUM, f"Missing mapping for {key}"
@@ -433,6 +460,7 @@ class TestRouterConstants:
         assert len(_ALL_STAGES) > 0
         # Should contain all StageName enum values
         from src.audiobook_studio.llm.router import StageName
+
         assert len(_ALL_STAGES) == len(list(StageName))
 
 

@@ -8,7 +8,6 @@ record_cost_event helpers (including their exception paths).
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta
 
 import pytest

@@ -88,7 +88,6 @@ class TestAnalyzeStructurePipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = AnalyzeStructurePipeline()
         assert pipeline.router is not None
@@ -263,9 +262,7 @@ class TestAnalyzeStructureConvenienceFunction:
         mock_result.latency_ms = 800
         mock_result.schema_compliance = True
 
-        from src.audiobook_studio.llm.router import create_router
-
-        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:
+        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:  # noqa: E303
             mock_router = MagicMock()
             mock_router.call.return_value = mock_result
             mock_create_router.return_value = mock_router

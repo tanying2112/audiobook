@@ -8,9 +8,8 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from redis.asyncio import ConnectionPool, Redis
-    from redis import ConnectionPool as SyncConnectionPool
     from redis import Redis as SyncRedis
+    from redis.asyncio import ConnectionPool, Redis
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +27,7 @@ def get_redis_pool() -> "ConnectionPool":
         return _pool
 
     from redis.asyncio import ConnectionPool
+
     from ..config import get_unified_redis_config
 
     redis_config = get_unified_redis_config()

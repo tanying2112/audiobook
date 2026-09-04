@@ -12,12 +12,12 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Import promotion_gate module to allow tests to patch functions
 # Functions are accessed via promotion_gate.module_function to ensure patches work
 from . import promotion_gate
-from .regression_suite import RegressionSuite, get_regression_suite
+from .regression_suite import get_regression_suite
 
 logger = logging.getLogger(__name__)
 

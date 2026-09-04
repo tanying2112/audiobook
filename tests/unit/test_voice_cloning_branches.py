@@ -1,11 +1,10 @@
 """Tests for voice_cloning module - covering missing branches."""
 
-import tempfile
-import json
 import asyncio
-from datetime import datetime
+import json
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open, AsyncMock
+from unittest.mock import mock_open, patch
 
 import numpy as np
 import pytest
@@ -35,30 +34,36 @@ class TestVoiceCloningManagerBranches:
     @pytest.fixture
     def manager(self, config):
         """Create a VoiceCloningManager instance with mocked persistence."""
-        with patch.object(VoiceCloningManager, "_load_voice_prints"), \
-             patch.object(VoiceCloningManager, "_save_voice_prints"):
+        with (
+            patch.object(VoiceCloningManager, "_load_voice_prints"),
+            patch.object(VoiceCloningManager, "_save_voice_prints"),
+        ):
             manager = VoiceCloningManager(config)
             yield manager
 
     def test_load_voice_prints_file_not_exists(self, manager):
         """Test _load_voice_prints when file does not exist - covers line 89-90."""
-        with patch('pathlib.Path.exists', return_value=False):
+        with patch("pathlib.Path.exists", return_value=False):
             manager._load_voice_prints()
             assert True
 
     def test_load_voice_prints_json_decode_error(self, manager):
         """Test _load_voice_prints with JSON decode error - covers lines 100-101."""
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data='invalid json')), \
-             patch('json.load', side_effect=json.JSONDecodeError("Expecting value", "", 0)):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="invalid json")),
+            patch("json.load", side_effect=json.JSONDecodeError("Expecting value", "", 0)),
+        ):
             manager._load_voice_prints()
             assert True
 
     def test_load_voice_prints_general_exception(self, manager):
         """Test _load_voice_prints with general exception - covers lines 100-101."""
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data='{"key": "value"}')), \
-             patch('json.load', side_effect=Exception("General error")):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data='{"key": "value"}')),
+            patch("json.load", side_effect=Exception("General error")),
+        ):
             manager._load_voice_prints()
             assert True
 
@@ -74,18 +79,19 @@ class TestVoiceCloningManagerBranches:
             created_at="2024-01-01T00:00:00",
             updated_at="2024-01-01T00:00:00",
         )
-        
-        with patch('builtins.open', side_effect=Exception("Write error")):
+
+        with patch("builtins.open", side_effect=Exception("Write error")):
             manager._save_voice_prints()
             assert True
 
     def test_extract_real_embedding_resampling(self, manager):
         """Test _extract_real_embedding with resampling - covers lines 141-148."""
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             import soundfile as sf
+
             audio_data = np.sin(np.linspace(0, 100, 48000)).astype(np.float32)
             sf.write(tmp.name, audio_data, 48000)
-            
+
             try:
                 sample = VoiceSample(
                     id="test",
@@ -104,11 +110,12 @@ class TestVoiceCloningManagerBranches:
 
     def test_extract_real_embedding_short_audio(self, manager):
         """Test _extract_real_embedding with short audio - covers line 157."""
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             import soundfile as sf
+
             audio_data = np.zeros(50, dtype=np.float32)
             sf.write(tmp.name, audio_data, 24000)
-            
+
             try:
                 sample = VoiceSample(
                     id="test",
@@ -127,11 +134,12 @@ class TestVoiceCloningManagerBranches:
 
     def test_extract_real_embedding_zero_magnitudes(self, manager):
         """Test _extract_real_embedding with zero magnitudes - covers line 165."""
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             import soundfile as sf
+
             audio_data = np.zeros(24000, dtype=np.float32)
             sf.write(tmp.name, audio_data, 24000)
-            
+
             try:
                 sample = VoiceSample(
                     id="test",
@@ -150,9 +158,9 @@ class TestVoiceCloningManagerBranches:
 
     def test_extract_real_embedding_exception_handler(self, manager):
         """Test _extract_real_embedding exception handler - covers lines 192-194."""
-        with patch('soundfile.read') as mock_read:
+        with patch("soundfile.read") as mock_read:
             mock_read.side_effect = Exception("Mocked read error")
-            
+
             sample = VoiceSample(
                 id="test",
                 file_path=Path("dummy.wav"),
@@ -171,10 +179,10 @@ class TestVoiceCloningManagerBranches:
         """Test _calculate_audio_hash - covers lines 196-211."""
         audio_data = np.random.rand(48000)
         sample_rate = 24000
-        
+
         hash1 = manager._calculate_audio_hash(audio_data, sample_rate)
         hash2 = manager._calculate_audio_hash(audio_data, sample_rate)
-        
+
         assert hash1 == hash2
         assert len(hash1) == 64
 
@@ -274,14 +282,14 @@ class TestVoiceCloningManagerBranches:
                 speaker_id="test_speaker",
             )
             manager.voice_samples["test_speaker"] = [sample]
-        
+
         success, message = manager._update_voice_print("test_speaker")
         assert not success
         assert "没有符合要求的有效样本" in message
 
     def test_update_voice_print_exception_handler(self, manager):
         """Test _update_voice_print exception handler - covers lines 349-350."""
-        with patch.object(manager, '_extract_real_embedding', side_effect=Exception("Embedding error")):
+        with patch.object(manager, "_extract_real_embedding", side_effect=Exception("Embedding error")):
             sample = VoiceSample(
                 id="test",
                 file_path=Path("test.wav"),
@@ -293,7 +301,7 @@ class TestVoiceCloningManagerBranches:
                 speaker_id="test_speaker",
             )
             manager.voice_samples["test_speaker"] = [sample]
-            
+
             success, message = manager._update_voice_print("test_speaker")
             assert not success
             assert "处理声音样本时出错" in message
@@ -328,20 +336,22 @@ class TestVoiceCloningManagerBranches:
         # The function imports KokoroBackend inside the try block
         # We need to mock it at the module level where the function is defined
         import sys
-        
+
         # Create a mock module
         mock_module = type(sys)("mock_kokoro_backend")
         mock_module.KokoroBackend = lambda *args, **kwargs: (_ for _ in ()).throw(ImportError("No module"))
-        
+
         self._register_speaker(manager)
         with patch.dict("sys.modules", {"src.audiobook_studio.tts.kokoro_backend": mock_module}):
-            result = asyncio.run(manager._async_synthesize_with_kokoro(
-                text="Test",
-                speaker_id="test",
-                language="zh-CN",
-                emotion="neutral",
-                output_path=Path("/tmp/test.wav"),
-            ))
+            result = asyncio.run(
+                manager._async_synthesize_with_kokoro(
+                    text="Test",
+                    speaker_id="test",
+                    language="zh-CN",
+                    emotion="neutral",
+                    output_path=Path("/tmp/test.wav"),
+                )
+            )
             success, message, audio_file = result
             assert not success
             assert "依赖缺失" in message
@@ -349,24 +359,26 @@ class TestVoiceCloningManagerBranches:
     def test_async_synthesize_file_not_found(self, manager):
         """Test _async_synthesize_with_kokoro FileNotFoundError - covers lines 428-430."""
         import sys
-        
+
         # Create a mock module with KokoroBackend that raises FileNotFoundError
         mock_module = type(sys)("mock_kokoro_backend")
-        
+
         def raise_file_not_found(*args, **kwargs):
             raise FileNotFoundError("Model not found")
-        
+
         mock_module.KokoroBackend = raise_file_not_found
-        
+
         self._register_speaker(manager)
         with patch.dict("sys.modules", {"src.audiobook_studio.tts.kokoro_backend": mock_module}):
-            result = asyncio.run(manager._async_synthesize_with_kokoro(
-                text="Test",
-                speaker_id="test",
-                language="zh-CN",
-                emotion="neutral",
-                output_path=Path("/tmp/test.wav"),
-            ))
+            result = asyncio.run(
+                manager._async_synthesize_with_kokoro(
+                    text="Test",
+                    speaker_id="test",
+                    language="zh-CN",
+                    emotion="neutral",
+                    output_path=Path("/tmp/test.wav"),
+                )
+            )
             success, message, audio_file = result
             assert not success
             assert "模型文件缺失" in message
@@ -374,29 +386,34 @@ class TestVoiceCloningManagerBranches:
     def test_async_synthesize_general_exception(self, manager):
         """Test _async_synthesize_with_kokoro general exception - covers lines 431-433."""
         import sys
-        
+
         mock_module = type(sys)("mock_kokoro_backend")
-        
+
         class MockKokoro:
             def __init__(self, *args, **kwargs):
                 pass
+
             async def initialize(self):
                 pass
+
             async def synthesize(self, *args, **kwargs):
                 raise Exception("Synthesis error")
+
             async def cleanup(self):
                 pass
-        
+
         mock_module.KokoroBackend = MockKokoro
-        
+
         with patch.dict("sys.modules", {"src.audiobook_studio.tts.kokoro_backend": mock_module}):
-            result = asyncio.run(manager._async_synthesize_with_kokoro(
-                text="Test",
-                speaker_id="test",
-                language="zh-CN",
-                emotion="neutral",
-                output_path=Path("/tmp/test.wav"),
-            ))
+            result = asyncio.run(
+                manager._async_synthesize_with_kokoro(
+                    text="Test",
+                    speaker_id="test",
+                    language="zh-CN",
+                    emotion="neutral",
+                    output_path=Path("/tmp/test.wav"),
+                )
+            )
             success, message, audio_file = result
             assert not success
             assert "合成失败" in message
@@ -424,7 +441,7 @@ class TestVoiceCloningManagerBranches:
             created_at="2024-01-01T00:00:00",
             updated_at="2024-01-01T00:00:00",
         )
-        
+
         success, message, audio_file = manager.synthesize_speech(
             text="Test",
             speaker_id="poor_speaker",
@@ -458,11 +475,12 @@ class TestVoiceCloningManagerBranches:
                 speaker_id="test_speaker",
             )
         ]
-        
+
         async def mock_async_synthesize(*args, **kwargs):
             return True, "Success", Path("/tmp/output.wav")
-        
-        with patch.object(manager, '_async_synthesize_with_kokoro', mock_async_synthesize):
+
+        with patch.object(manager, "_async_synthesize_with_kokoro", mock_async_synthesize):
+
             async def run_in_loop():
                 return manager.synthesize_speech(
                     text="Test",
@@ -470,7 +488,7 @@ class TestVoiceCloningManagerBranches:
                     language="zh-CN",
                     emotion="neutral",
                 )
-            
+
             result = asyncio.run(run_in_loop())
             success, message, audio_file = result
             assert success
@@ -487,8 +505,8 @@ class TestVoiceCloningManagerBranches:
             created_at="2024-01-01T00:00:00",
             updated_at="2024-01-01T00:00:00",
         )
-        
-        with patch.object(manager, '_async_synthesize_with_kokoro', side_effect=Exception("General error")):
+
+        with patch.object(manager, "_async_synthesize_with_kokoro", side_effect=Exception("General error")):
             try:
                 manager.synthesize_speech(
                     text="Test",
@@ -496,7 +514,7 @@ class TestVoiceCloningManagerBranches:
                     language="zh-CN",
                     emotion="neutral",
                 )
-                assert False, "Should have raised RuntimeError"
+                raise AssertionError("Should have raised RuntimeError")
             except RuntimeError as e:
                 assert "语音合成失败" in str(e)
 
@@ -519,11 +537,15 @@ class TestVoiceCloningManagerBranches:
                 embedding=[0.1] * 256,
                 quality=quality,
                 sample_count=1,
-                avg_snr=25.0 if quality == AudioQuality.EXCELLENT else 22.0 if quality == AudioQuality.GOOD else 18.0 if quality == AudioQuality.FAIR else 10.0,
+                avg_snr=(
+                    25.0
+                    if quality == AudioQuality.EXCELLENT
+                    else 22.0 if quality == AudioQuality.GOOD else 18.0 if quality == AudioQuality.FAIR else 10.0
+                ),
                 created_at="2024-01-01T00:00:00",
                 updated_at="2024-01-01T00:00:00",
             )
-            
+
             info = manager.get_voice_info(f"speaker_{quality.value}")
             assert info is not None
             assert info["is_available_for_cloning"] == expected

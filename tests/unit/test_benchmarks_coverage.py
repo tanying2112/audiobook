@@ -1,10 +1,6 @@
 """Tests for benchmarks module coverage."""
 
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 # Add src to path
 
@@ -95,7 +91,7 @@ class TestBenchCost:
         from src.audiobook_studio.benchmarks.bench_cost import main
 
         with patch("sys.argv", ["test", "--mock", "--stages", "extract"]):
-            with patch("sys.exit") as mock_exit:
+            with patch("sys.exit"):
                 with patch("time.sleep"):
                     main()
 
@@ -124,7 +120,7 @@ class TestBenchLatency:
         from src.audiobook_studio.benchmarks.bench_latency import main
 
         with patch("sys.argv", ["test", "--mock"]):
-            with patch("sys.exit") as mock_exit:
+            with patch("sys.exit"):
                 with patch("time.sleep"):
                     main()
 
@@ -253,7 +249,7 @@ class TestBenchVoxcpm2:
         from src.audiobook_studio.benchmarks.bench_voxcpm2 import main
 
         with patch("sys.argv", ["test", "--skip-tts", "--json-only"]):
-            with patch("sys.exit") as mock_exit:
+            with patch("sys.exit"):
                 with patch("time.sleep"):
                     with patch("pathlib.Path.mkdir"):
                         with patch("builtins.open", create=True):

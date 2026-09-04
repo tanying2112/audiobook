@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from .mastering import MasteringConfig
+
 logger = logging.getLogger(__name__)
 
 

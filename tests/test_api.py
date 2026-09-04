@@ -27,28 +27,20 @@ from typing import Generator
 # Set ALLOWED_HOSTS BEFORE importing main app to configure TrustedHostMiddleware correctly
 os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
-import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.audiobook_studio.api.dependencies import get_db, get_async_db
-from src.audiobook_studio.auth.dependencies import get_current_active_user, get_current_user
-from src.audiobook_studio.models.user import User
-
-# Import legacy models so they are registered with Base.metadata
-from src.audiobook_studio.models.legacy import (
-    LegacyBook,
-    LegacyParagraph,
-    LegacyTTSEdit,
-    LegacyRouting,
-    LegacyQuality,
-)
+from src.audiobook_studio.api.dependencies import get_async_db, get_db
+from src.audiobook_studio.auth.dependencies import get_current_user
 
 # ``get_db`` is defined in the API dependencies module. Import it from there.
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.main import app
+
+# Import legacy models so they are registered with Base.metadata
+from src.audiobook_studio.models.user import User
 
 # ---------------------------------------------------------------------------
 # Dependency override utilities
@@ -81,6 +73,7 @@ def db_engine() -> Generator["Engine", None, None]:
 def db_session(db_engine) -> Generator["Session", None, None]:
     """Provide a SQLAlchemy session bound to the test engine."""
     from src.audiobook_studio.models.user import User
+
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     session = SessionLocal()
     try:
@@ -119,11 +112,13 @@ async def async_client(db_engine):
 
     # Override settings to allow testserver host FIRST (before reset_settings)
     import os
+
     os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
     # Override the global async engine/session factory to use the test engine
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
     import src.audiobook_studio.database as database_module
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
     # Convert the sync test engine URL to async
     test_async_url = str(db_engine.url).replace("sqlite:///", "sqlite+aiosqlite:///")
@@ -167,7 +162,7 @@ async def async_client(db_engine):
             yield session
 
     # Override settings to allow testserver host
-    from audiobook_studio.config.loader import get_settings, reset_settings
+    from audiobook_studio.config.loader import reset_settings
 
     reset_settings()
 
@@ -193,6 +188,7 @@ async def async_client(db_engine):
         # We need to query from an async session (same DB file, just async driver)
         async with test_async_session_factory() as session:
             from sqlalchemy import select
+
             result = await session.execute(select(User).where(User.id == 1))
             return result.scalar_one_or_none()
 
@@ -491,7 +487,7 @@ async def test_project_crud(async_client: AsyncClient):
 async def test_project_list_pagination(async_client: AsyncClient):
     """Test project pagination."""
     # Create multiple projects
-    for i in range(5):
+    for _i in range(5):
         await create_project(async_client)
 
     # Test pagination
@@ -532,7 +528,7 @@ async def test_paragraph_endpoints_via_projects(async_client: AsyncClient):
     assert resp.status_code == 404
 
     # List paragraphs for non-existent project
-    resp = await async_client.get(f"/api/projects/999/chapters/1/paragraphs")
+    resp = await async_client.get("/api/projects/999/chapters/1/paragraphs")
     assert resp.status_code == 404
 
 

@@ -173,7 +173,10 @@ def test_suite_defaults_to_faster_whisper_tiny(quality, tmp_path):
 # ─────────────────────────────────────────────────────────────────────────────
 # (4) The pipeline's resynthesis gate uses the REAL metric, not the LLM-Judge
 # ─────────────────────────────────────────────────────────────────────────────
-def test_pipeline_hard_gate_driven_by_real_metric(quality, tmp_path):
+def test_pipeline_hard_gate_driven_by_real_metric(quality, tmp_path, monkeypatch):
+    # This test explicitly exercises REAL hard metrics (DNSMOS) — opt out of the
+    # unit-test safety gate that disables heavy audio-metric models.
+    monkeypatch.setenv("AUDIO_HARD_METRICS_DISABLED", "0")
     """Even with a pass-always judge, a real-metric failure forces regeneration."""
     m, np, sf = quality
     from unittest.mock import MagicMock

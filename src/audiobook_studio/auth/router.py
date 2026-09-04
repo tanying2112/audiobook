@@ -1,3 +1,5 @@
+from ..config.settings import Settings
+
 """Authentication API router for Audiobook Studio.
 
 Provides endpoints for login, registration, token refresh, and user management.
@@ -10,18 +12,15 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 # Auth dependencies
 from src.audiobook_studio.auth.dependencies import (
     _invalidate_user_cache,
-    authenticate_user,
     get_current_active_user,
-    get_current_superuser,
     get_current_user_optional,
     require_permission,
-    require_role,
 )
 
 # Rate limiting (in-memory, simple implementation)
@@ -83,20 +82,17 @@ from src.audiobook_studio.auth.models import (
     ProjectPermissionOut,
     ResendVerificationRequest,
     RoleName,
-    Token,
     UserCreate,
     UserOut,
     UserUpdate,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
-from src.audiobook_studio.auth.rbac import RBACManager, get_rbac_manager
-from src.audiobook_studio.config import get_settings
+from src.audiobook_studio.auth.rbac import get_rbac_manager
 from src.audiobook_studio.database import get_db
 
 # SQLAlchemy models
 from src.audiobook_studio.models.user import AuditLog as AuditLogModel
-from src.audiobook_studio.models.user import ProjectPermission as ProjectPermissionModel
 from src.audiobook_studio.models.user import User as UserModel
 
 
@@ -233,8 +229,8 @@ async def refresh_token(
     payload = jwt_handler.decode_token(request.refresh_token)
     user_id = int(payload.get("sub", 0))
     username = payload.get("username", "")
-    roles = payload.get("roles", [])
-    permissions = payload.get("permissions", [])
+    payload.get("roles", [])
+    payload.get("permissions", [])
 
     new_refresh_token = jwt_handler.create_refresh_token(user_id, username)
 
@@ -275,7 +271,6 @@ def _registration_allowed(
 
 
 import secrets
-from datetime import timedelta
 
 # ... (keep existing imports)
 
@@ -318,7 +313,7 @@ async def register(
 
     # Generate email verification token (expires in 24 hours)
     verification_token = generate_verification_token()
-    token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    datetime.now(timezone.utc) + timedelta(hours=24)
 
     user = rbac.create_user(
         email=user_data.email,
@@ -346,7 +341,7 @@ async def verify_email(
     db: Session = Depends(get_db),
 ):
     """Verify user's email address with token."""
-    rbac = get_rbac_manager(db)
+    get_rbac_manager(db)
     user = db.query(UserModel).filter(UserModel.email_verification_token == request.token).first()
 
     if not user:
@@ -386,7 +381,7 @@ async def resend_verification(
         return VerifyEmailResponse(message="Email already verified", verified=True)
 
     # Generate new token
-    verification_token = generate_verification_token()
+    generate_verification_token()
     user.email_verification_token = generate_verification_token()
     user.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     db.commit()
@@ -404,7 +399,7 @@ async def read_current_user(
 ):
     """Get current user profile."""
     rbac = get_rbac_manager(db)
-    permissions = rbac.get_user_permissions(current_user)
+    rbac.get_user_permissions(current_user)
     roles = [role.name for role in current_user.roles]
     project_perms = rbac.get_user_project_permissions(current_user.id)
 

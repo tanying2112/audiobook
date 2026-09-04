@@ -360,7 +360,7 @@ class AudiobookOrchestrator:
         submitted = 0
         for chunk in all_chunks:
             try:
-                tts_task = self.state_store.create_task(
+                tts_task = self.state_store.create_task(  # noqa: F841
                     text=chunk.text,
                     voice_id=chunk.voice_id,
                     prosody=chunk.prosody,
@@ -368,7 +368,7 @@ class AudiobookOrchestrator:
                     idempotency_key=chunk.idempotency_key,
                 )
                 submitted += 1
-            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError) as e:
+            except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError) as e:  # noqa: B014
                 print(f"❌ [{self.worker_id}] Failed to submit chunk {chunk.chunk_id}: {e}", file=sys.stderr)
 
         print(f"✅ [{self.worker_id}] Submitted {submitted}/{len(all_chunks)} chunks for book {book_id}")
@@ -510,7 +510,7 @@ class AudiobookOrchestrator:
             combined_audio = []
             sample_rate = None
 
-            for idx, url in sorted_chunks:
+            for idx, url in sorted_chunks:  # noqa: B007
                 # Download chunk from R2
                 # Extract key from URL
                 key = url.replace(self.r2.public_url_base + "/", "")
@@ -547,7 +547,7 @@ class AudiobookOrchestrator:
             # Trigger callback if provided
             # TODO: Implement webhook callback
 
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError, AttributeError) as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, KeyError, TypeError, AttributeError) as e:  # noqa: B014
             self._update_progress(book_id, status="FAILED", error=str(e))
             print(f"💥 [{self.worker_id}] Finalization failed: {e}", file=sys.stderr)
 

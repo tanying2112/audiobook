@@ -4,7 +4,6 @@ Base classes for SynticCritic 三元架构 - 异构批评网络.
 定义批评器的基础接口、结果结构和集成逻辑。
 """
 
-import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -12,10 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import numpy as np
-
 from ...llm import LLMRouter, create_router
-from ...schemas import FeedbackAnalysis
 
 if TYPE_CHECKING:
     from .objective_critic import ObjectiveCritic
@@ -262,7 +258,7 @@ class CriticEnsembleEvaluator:
             verdicts[result.verdict] += 1
 
         final_score = weighted_score / total_weight if total_weight > 0 else 0.0
-        final_confidence = weighted_confidence / total_weight if total_weight > 0 else 0.0
+        weighted_confidence / total_weight if total_weight > 0 else 0.0
 
         # 确定最终裁决
         if verdicts[CriticVerdict.FAIL] > 0 and final_score < 0.5:

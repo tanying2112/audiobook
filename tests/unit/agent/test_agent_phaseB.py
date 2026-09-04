@@ -8,8 +8,6 @@ mime-type helpers. Heavy LLM/DB paths are mocked or exercised in mock_mode.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,7 +24,7 @@ from src.audiobook_studio.agent.fsm import (
     remove_fsm,
 )
 from src.audiobook_studio.agent.tools import _guess_mime_type, execute_tool
-from src.audiobook_studio.schemas.review import FixCommand, ReviewerInput, ReviewerJudgment
+from src.audiobook_studio.schemas.review import FixCommand, ReviewerInput
 
 # ── FSM: enums & context ────────────────────────────────────────────────────
 
@@ -842,7 +840,7 @@ def test_execute_tool_dispatch_and_validate() -> None:
 
 def test_execute_tool_validation_error() -> None:
     # Missing required field 'file_path' -> pydantic validation error surfaces
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(execute_tool("load_book_file", {"project_id": 5}))
 
 

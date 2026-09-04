@@ -1,11 +1,8 @@
 """LLM 模块综合测试 — 覆盖 circuit_breaker, key_pool, quota_registry,
 health_probe, utils, judge, router 核心逻辑。"""
 
-import json
-import threading
 import time
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -587,7 +584,7 @@ class TestLLMClient:
 
     def test_mock_mode_call(self):
         """mock_mode 下返回 mock 结果。"""
-        from src.audiobook_studio.llm.client import LLMClient, LLMClientConfig, create_client
+        from src.audiobook_studio.llm.client import create_client
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
             client = create_client(model="test-model")

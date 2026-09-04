@@ -9,17 +9,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 
-from ..harness.config import get_harness_settings
-from ..harness.models import RoutingWeight, RoutingWeightUpdate
+from ..harness.models import RoutingWeight
 from ..harness.storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -106,7 +104,6 @@ class RoutingEvolutionEngine:
         """获取当前权重配置。"""
         storage = get_storage()
         with storage.db.session() as session:
-            from ..harness.models import RoutingWeight as RoutingWeightModel
 
             rw = (
                 session.execute(
@@ -144,9 +141,7 @@ class RoutingEvolutionEngine:
         with storage.db.session() as session:
             from sqlalchemy import select
 
-            from ..harness.models import RoutingWeight as RoutingWeightModel
-
-            stmt = select(RoutingWeight).where(RoutingWeight.is_active.is_(True))
+            stmt = select(RoutingWeight).where(RoutingWeight.is_active.is_(True))  # noqa: E303
             if character_name:
                 stmt = stmt.where(RoutingWeight.character_name == character_name)
             results = session.execute(stmt).scalars().all()
@@ -184,9 +179,7 @@ class RoutingEvolutionEngine:
         with storage.db.session() as session:
             from sqlalchemy import select
 
-            from ..harness.models import RoutingWeight as RoutingWeightModel
-
-            stmt = select(RoutingWeight).where(
+            stmt = select(RoutingWeight).where(  # noqa: E303
                 RoutingWeight.character_name == character_name,
                 RoutingWeight.voice_id == voice_id,
             )
@@ -196,7 +189,6 @@ class RoutingEvolutionEngine:
                 return self._rw_to_dict(rw)
 
             # 创建新权重记录
-            import uuid
 
             rw = RoutingWeight(
                 weight_id=f"rw_{character_name}_{voice_id}_{int(datetime.now(timezone.utc).timestamp())}",

@@ -11,10 +11,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -731,7 +730,7 @@ _global_lock = threading.Lock()
 
 def get_telemetry_collector() -> Optional[TelemetryCollector]:
     """Get the global telemetry collector instance."""
-    global _global_collector
+    global _global_collector  # noqa: F824
     with _global_lock:
         return _global_collector
 

@@ -10,10 +10,7 @@ downloading any ASR/TTS models.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock
-
-import pytest
+from typing import Any, Dict, List
 
 from audiobook_studio.quality.audio_quality import AudioQualityScorer
 from audiobook_studio.quality.metrics import ASRBackend, ASRResult, FunASRBackend
@@ -138,7 +135,6 @@ def test_build_samples_skips_crosslingual_wer_and_anchors_intraspeaker():
     """Import the script module and exercise build_samples against the committed
     golden dataset (reference WAVs exist; no model download needed)."""
     import importlib.util
-    import sys
 
     spec = importlib.util.spec_from_file_location(
         "score_golden_audio",

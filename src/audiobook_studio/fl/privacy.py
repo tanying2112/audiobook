@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, List, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 

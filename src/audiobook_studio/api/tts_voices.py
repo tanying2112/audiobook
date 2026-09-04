@@ -15,10 +15,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..exceptions import DomainError
-from ..tts.clone import AudioQuality, VoiceCloningManager, VoiceSample
+from ..tts.clone import VoiceCloningManager, VoiceSample
 from ..tts.engine import TTSProsody, TTSTaskPayload, TTSVoiceAnchor
-from ..tts.kokoro_backend import create_kokoro_backend
-from ..tts.piper_models import detect_piper_availability, list_piper_voices
+from ..tts.piper_models import detect_piper_availability
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +390,6 @@ async def get_tts_status():
     Returns:
         TTSStatusResponse with engine availability and recommendations
     """
-    import asyncio
     import os
 
     def _check_kokoro_model_available() -> tuple[bool, bool]:
@@ -565,6 +563,18 @@ async def preview_voice(voice_id: str, text: str = "这是一个语音试听样�
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+@router.get("/preview/{voice_id}.mp3")
+async def preview_voice_audio(
+    voice_id: str,
+    text: str = "这是一个语音试听样本。",
+    engine: str = "edge_tts",
+):
+    """Direct audio preview for a voice (C5 fix). Synthesizes a short sample
+    through the real TTS engine so preview links are no longer dead."""
+    req = TTSStreamRequest(text=text, voice_id=voice_id, engine=engine)
+    return await stream_tts(req)
+
+
 # Streaming TTS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -778,7 +788,7 @@ async def clone_voice(
     - mode: 'clone' (real) or 'preset' (no-GPU fallback)
     - clone_available: whether a real clone backend served this request
     """
-    from ..tts.clone import AudioQuality, clone_mode, real_clone_available
+    from ..tts.clone import clone_mode, real_clone_available
 
     # P2.11 合规: 克隆前强制授权核实 (红线#1A: 不勾 → 422 诚实拒, 不假装处理)
     if not consent:

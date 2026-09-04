@@ -8,11 +8,10 @@ beyond the registration calls themselves).
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Protocol, Type
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Protocol, Type
 
-from .manifest import PluginManifest, PluginType
+from .manifest import PluginManifest
 
 logger = logging.getLogger(__name__)
 

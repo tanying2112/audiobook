@@ -5,7 +5,6 @@ E1 — FeedbackRecord 全面采集器
 支持人工编辑 (Web UI)、质量检测 (Quality Judge)、用户评分等来源。
 """
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone

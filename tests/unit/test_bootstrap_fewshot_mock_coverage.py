@@ -16,15 +16,11 @@ import pytest
 
 from src.audiobook_studio.feedback import bootstrap_fewshot as bf
 from src.audiobook_studio.feedback.bootstrap_fewshot import (
-    BUDGET_LIMIT,
     BootstrapFewShotOptimizer,
     CharacterRecognitionModule,
-    EarlyStoppingStopper,
-    MultiObjectiveLoss,
     OptimizationMetrics,
     VoiceDesignModule,
     configure_dspy_optimizer,
-    create_multi_objective_metric,
     extract_paragraphs_from_text,
     load_long_novel_data,
     load_training_examples,

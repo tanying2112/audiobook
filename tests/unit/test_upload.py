@@ -9,18 +9,15 @@ Covers:
 - File validation helpers
 """
 
-import json
-import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 # Import all models FIRST to register tables with Base
 import src.audiobook_studio.models  # noqa: F401
@@ -34,6 +31,7 @@ test_app = FastAPI()
 
 # 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
 from src.audiobook_studio.exceptions import DomainError, register_error_handlers
+
 register_error_handlers(test_app)
 test_app.include_router(upload_router)
 
@@ -73,9 +71,7 @@ def _test_db_path():
     """Create a temp SQLite file with all tables pre-created."""
     import os
 
-    from src.audiobook_studio.database import Base
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)  # noqa: E303
     tmp.close()
     db_path = tmp.name
 
@@ -93,7 +89,7 @@ def _async_run(coro):
     import concurrent.futures
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
 
@@ -168,7 +164,7 @@ def mock_redis():
     mock_redis_client = AsyncMock()
 
     # Mock the Redis connection functions
-    with patch("src.audiobook_studio.api.upload.get_redis", return_value=mock_redis_client) as mock_get_redis:
+    with patch("src.audiobook_studio.api.upload.get_redis", return_value=mock_redis_client):
         with patch(
             "src.audiobook_studio.api.upload.create_upload_session", new_callable=AsyncMock
         ) as mock_create_session:

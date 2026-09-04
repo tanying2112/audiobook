@@ -16,8 +16,8 @@ import pytest
 
 from src.audiobook_studio.api import harness as harness_mod
 
-
 # ── Fake DB ──────────────────────────────────────────────────────────────────
+
 
 class _DBResult:
     def __init__(self, scalar=0, records=None):
@@ -62,6 +62,7 @@ class FakeParagraph:
 
 
 # ── Fake global state ────────────────────────────────────────────────────────
+
 
 class FakeVersionStore:
     def __init__(self, base_path, current_versions, rollback_history=None):
@@ -136,6 +137,7 @@ def _setup_version_store(tmp_path, monkeypatch, versions=None, rollback=None):
 
 # ── /status ──────────────────────────────────────────────────────────────────
 
+
 def test_status_no_project():
     out = asyncio.run(harness_mod.get_harness_status(db=FakeAsyncDB(scalar=0)))
     assert out.running is False
@@ -158,6 +160,7 @@ def test_status_with_project_no_loop(monkeypatch):
 
 # ── /feedback-funnel ──────────────────────────────────────────────────────────
 
+
 def test_feedback_funnel_empty():
     out = asyncio.run(harness_mod.get_feedback_funnel(db=FakeAsyncDB(records=[])))
     assert out.total_feedback == 0
@@ -178,6 +181,7 @@ def test_feedback_funnel_with_data():
 
 # ── /pattern-heatmap ─────────────────────────────────────────────────────────
 
+
 def test_pattern_heatmap_empty():
     out = asyncio.run(harness_mod.get_pattern_heatmap(db=FakeAsyncDB(records=[])))
     assert out.patterns == []
@@ -197,6 +201,7 @@ def test_pattern_heatmap_with_data():
 
 
 # ── /prompt-timeline ──────────────────────────────────────────────────────────
+
 
 def test_prompt_timeline_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(harness_mod, "_version_store", FakeVersionStore(tmp_path, {}))
@@ -221,7 +226,8 @@ def test_prompt_timeline_single_stage(tmp_path, monkeypatch):
 
 def test_prompt_timeline_rolled_back(tmp_path, monkeypatch):
     _setup_version_store(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         rollback=[{"to_version": 1, "action": "rollback"}],
     )
     out = asyncio.run(harness_mod.get_prompt_timeline())
@@ -230,6 +236,7 @@ def test_prompt_timeline_rolled_back(tmp_path, monkeypatch):
 
 
 # ── /promotion-gate ───────────────────────────────────────────────────────────
+
 
 def test_promotion_gate_empty(monkeypatch):
     monkeypatch.setattr(harness_mod, "_version_store", FakeVersionStore(Path("/tmp"), {}))
@@ -254,6 +261,7 @@ def test_promotion_gate_failed(tmp_path, monkeypatch):
 
 
 # ── /canaries ─────────────────────────────────────────────────────────────────
+
 
 def test_canaries_empty(monkeypatch):
     mgr = MagicMock()
@@ -283,6 +291,7 @@ def test_canaries_active(monkeypatch):
 
 # ── /ab-tests ─────────────────────────────────────────────────────────────────
 
+
 def test_ab_tests_empty(monkeypatch):
     monkeypatch.setattr(harness_mod, "_version_store", FakeVersionStore(Path("/tmp"), {}))
     out = asyncio.run(harness_mod.get_ab_tests(db=FakeAsyncDB(records=[])))
@@ -298,6 +307,7 @@ def test_ab_tests_with_versions(tmp_path, monkeypatch):
 
 
 # ── /critics/latest ───────────────────────────────────────────────────────────
+
 
 def test_critics_no_paragraph():
     out = asyncio.run(harness_mod.get_latest_critic_results(db=FakeAsyncDB(records=[])))
@@ -326,9 +336,10 @@ def test_critics_reject():
 
 # ── /trigger-iteration ────────────────────────────────────────────────────────
 
+
 def test_trigger_iteration_no_loop(monkeypatch):
     monkeypatch.setattr(harness_mod, "get_iteration_loop", lambda pid: None)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.trigger_iteration(project_id=1, background_tasks=FakeBackgroundTasks()))
 
 
@@ -356,6 +367,7 @@ def test_trigger_iteration_error(monkeypatch):
 
 # ── /dashboard ────────────────────────────────────────────────────────────────
 
+
 def test_full_dashboard(tmp_path, monkeypatch):
     _setup_version_store(tmp_path, monkeypatch)
     monkeypatch.setattr(harness_mod, "get_iteration_loop", lambda pid: None)
@@ -374,11 +386,12 @@ def test_full_dashboard(tmp_path, monkeypatch):
 
 # ── /rollback/{stage}/{version} ───────────────────────────────────────────────
 
+
 def test_rollback_invalid_version(monkeypatch):
     vs = MagicMock()
     vs.get_current_version.return_value = 3
     monkeypatch.setattr(harness_mod, "_version_store", vs)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.rollback_version("extract", "abc"))
 
 
@@ -386,7 +399,7 @@ def test_rollback_no_history(monkeypatch):
     vs = MagicMock()
     vs.get_current_version.return_value = 0
     monkeypatch.setattr(harness_mod, "_version_store", vs)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.rollback_version("extract", "v1"))
 
 
@@ -394,7 +407,7 @@ def test_rollback_target_ge_current(monkeypatch):
     vs = MagicMock()
     vs.get_current_version.return_value = 3
     monkeypatch.setattr(harness_mod, "_version_store", vs)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.rollback_version("extract", "v3"))
 
 
@@ -402,7 +415,7 @@ def test_rollback_target_lt_one(monkeypatch):
     vs = MagicMock()
     vs.get_current_version.return_value = 3
     monkeypatch.setattr(harness_mod, "_version_store", vs)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.rollback_version("extract", "v0"))
 
 
@@ -420,5 +433,5 @@ def test_rollback_failure(monkeypatch):
     vs.get_current_version.return_value = 3
     vs.rollback_version.return_value = False
     monkeypatch.setattr(harness_mod, "_version_store", vs)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         asyncio.run(harness_mod.rollback_version("extract", "v2"))

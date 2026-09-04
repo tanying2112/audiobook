@@ -16,25 +16,15 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.audiobook_studio.llm import create_router
-from src.audiobook_studio.schemas import (
-    BookAnalysisOutput,
-    ExtractionInput,
-    ParagraphAnnotation,
-    QualityJudgment,
-    TtsEditOutput,
-    TtsRoutingDecision,
-)
 
-
-def parse_args() -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:  # noqa: E303
     parser = argparse.ArgumentParser(description="Audiobook Studio 性能基准测试：成本")
     parser.add_argument(
         "--baseline",
@@ -96,14 +86,14 @@ def save_baseline(data: Dict[str, float], output_path: str) -> None:
 def measure_stage_cost(stage: str, mock: bool = False) -> float:
     """测量单个管线阶段的平均成本（美元）。"""
     # 创建测试数据
-    test_data = _get_test_data_for_stage(stage)
+    _get_test_data_for_stage(stage)
 
     # 测量成本
     costs = []
     num_iterations = 5  # 进行5次测量取平均值
 
     for _ in range(num_iterations):
-        start_time = time.perf_counter()
+        time.perf_counter()
 
         try:
             # 这里我们通过测量延迟来估算成本

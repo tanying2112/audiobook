@@ -2,10 +2,9 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
-from src.audiobook_studio.main import app, lifespan
+from src.audiobook_studio.main import app
 
 
 def test_app_creation():

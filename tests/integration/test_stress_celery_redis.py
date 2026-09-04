@@ -12,10 +12,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
 
 # Set REDIS_URL to test database BEFORE importing tts_tasks
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/1")
@@ -26,9 +24,7 @@ import redis
 from audiobook_studio.tasks.tts_tasks import (
     _ACQUIRE_LUA,
     _RELEASE_LUA,
-    TTSChapterTask,
     _get_redis,
-    synthesize_chapter_task,
 )
 from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
@@ -54,13 +50,11 @@ def reset_port_fixture():
     """Reset port factory for each test."""
     # Reset registry
     import audiobook_studio.tts.engine as engine_module
-    from audiobook_studio.tts.engine import get_engine_registry, set_engine_registry
-    from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+    from audiobook_studio.tts.engine import set_engine_registry
 
     engine_module._global_registry = None
 
     # Use fake registry for testing
-    from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
     fake_port = FakeRemoteTTSPort(synthesis_delay=0.01, failure_rate=0.0)
 
@@ -310,7 +304,7 @@ class TestConcurrentSynthesis:
 
         # Simulate 5 tasks trying to acquire
         acquired = 0
-        for i in range(6):
+        for _i in range(6):
             result = client.evalsha(acquire_sha, 1, "tts:remote:sem", TTS_CONCURRENCY, 3600)
             if result == 1:
                 acquired += 1

@@ -17,7 +17,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 # ── Optional dspy dependency (P0.4 Route B — honesty) ───────────────────────
 # dspy is NOT a declared dependency (absent from requirements / pyproject). It
@@ -60,8 +60,8 @@ dspy: Any = None
 try:  # pragma: no cover - exercised in test_feedback_import_safety with dspy blocked
     import dspy  # noqa: F811  (TYPE_CHECKING import is for static typing only)
     from dspy import Example  # noqa: F401,F811  (kept for API parity)
-    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
     from dspy import Prediction  # noqa: F401,F811  (kept for API parity)
+    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
     from dspy.teleprompt.gepa import GEPA  # noqa: F401,F811
     from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401,F811
 
@@ -384,7 +384,6 @@ def extract_paragraphs_from_text(text: str, max_paragraphs: Optional[int] = None
         List of paragraph dicts with text and index
     """
     # Remove Project Gutenberg header/footer
-    import re
 
     # Remove Gutenberg header (everything before "START OF THE PROJECT GUTENBERG")
     start_markers = [

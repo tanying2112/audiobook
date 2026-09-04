@@ -287,3 +287,60 @@ ls -la .env.encrypted  # → 存在
 ---
 
 *审计基于 2026-08-27 代码快照 + P0/P1/S1/Sprint1 完成确认信息 + 实地全栈测试验证。所有发现均可通过上述复现命令在当前代码库验证。*
+
+---
+
+## 🔄 v4.1 复审补充 (2026-09-03) — C1-C5 / H1-H4 / M1-M4 逐条实地核验与处置
+
+### Critical 级
+
+| 编号 | 状态 | 核验/处置证据 |
+|------|------|----------------|
+| **C1** 自我迭代学习信号全为桩 | ✅ **已修复并实测** | `pipeline/self_iteration.py` 新增真实 LLM 客户端：直连免费 FCC 网关 (`ANTHROPIC_BASE_URL=http://localhost:8082`, `anthropic/kilo/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`)，Anthropic /v1/messages 协议，JSON 结构校验 + 一次纠错重试 + 置信度门禁。实测：3+3 条相似修正 → 模型输出 confidence=0.8 → SOP 真实更新 (voice_bindings narrator→zh-CN-YunxiNeural, speech_rate narrator→0.9, UPDATED=True)；数据不足时模型主动 confidence=0.0 拒绝更新（真实推理、保守门禁正确生效） |
+| **C2** Redis 硬依赖 | ✅ 已修复 (工作树) | `settings.py:92` `REDIS_REQUIRED=False` 默认 + `SKIP_RUNTIME_DEPS` 开关，Redis 失败降级 warning 不再拒绝启动 |
+| **C3** 覆盖率剧场 | ✅ 测量链修复，⚠️ 门禁恢复遗留 | 修复 2 处 native crash（faster-whisper/ctranslate2 在 `test_audio_quality_smoke` 与 `test_quality_check` 中真实加载模型导致整进程 abort）+ 插件加载 FileNotFoundError（sample_tts_voice 缺 plugin.py + loader 未捕获 OSError）→ 全量带覆盖率运行首次完整通过：**7236 passed / 0 failed / TOTAL 81.47% 分支覆盖**。新增 `AUDIO_HARD_METRICS_DISABLED` 安全门禁（单测默认关，真实度测试显式 opt-in）。**遗留**：omit 核心模块补测以恢复 85 门禁（T-C3） |
+| **C4** 翻译测试模块级跳过 | ✅ 已修复并实测 | 模块级 skip 已移除，`pytest tests/test_translate.py` → **20 passed** |
+| **C5** 试听端点死链 | ✅ 已修复并实测 | 新增 `GET /api/tts/preview/{voice_id}.mp3` 真实合成端点。实测：HTTP 200, 14976 bytes, 2.496s 真实音频 |
+
+### High 级
+
+| 编号 | 状态 | 核验/处置证据 |
+|------|------|----------------|
+| **H1** 安全默认薄弱 | ✅ 已修复 (工作树) | `RATE_LIMITED_ENABLED=True`、`AUTH_REGISTRATION_MODE=invite` 均为默认；`rate_limit_middleware.py` 全端点令牌桶（认证主体优先、IP 兜底），注册/登录不豁免 |
+| **H2** Judge 异常误标敏感内容 | ✅ 已修复 (工作树) | `llm/judge.py:96-118` 异常路径返回 `issues=["judge_error"]`、`needs_regeneration=False`，不再编造内容结论；schema 已含 `judge_error` 字面量 |
+| **H3** 测试非 hermetic | ✅ 已修复并实测 | conftest 使用 per-PID 临时 DB (`audiobook_test_{pid}.db`)；`pytest -n 4` 连续两轮 **417 passed / 0 failed**；根目录残留 *.db 未入库且被 gitignore |
+| **H4** 短句合成 31.7s 异常 | ✅ **根因定位并修复，实测验证** | 根因：`edge_tts_engine.py` 把 SSML 原文传给 edge-tts `Communicate`（该库不支持 SSML，标记被逐字朗读）。修复：改传纯文本 + `rate/pitch/volume` kwargs（dB→%、st→Hz 换算），时长改用 mutagen 实测。实测同一句话：**31.7s → 3.24s**，190KB→19KB；`tests/unit/tts/` 695 passed 无回归 |
+
+### Medium 级
+
+| 编号 | 状态 | 核验/处置证据 |
+|------|------|----------------|
+| **M1** echarts 877KB 未分包 | ✅ 已修复并实测 | `vite.config.ts` rolldown codeSplitting 分组（zrender/echarts-core/charts/components/renderers/element-plus 三分组/ep-date/vue-core/vendor）；构建**无 >500KB 警告**，最大 chunk echarts-charts 392KB |
+| **M2** 前端硬编码 project id=1 | ✅ 已修复 (工作树) | `getSupportedLanguages` 改调全局 `/api/v1/languages` 并映射 bcp47，无硬编码 |
+| **M3** Kokoro 克隆能力存疑 | ✅ 已澄清 | `clone.py` 文档字符串明确能力边界：固定音色架构仅做 preset 映射，`real_clone_available()` 探测真实克隆，零样本克隆归 GPU 后端（Track B） |
+| **M4** 158 个跳过测试 | ✅ 已分类核验 | 跳过原因统计：环境条件类（ffmpeg/OCR/redis/GPU）+ opt-in（--integration/--e2e）+ 已知 flaky 标注；自我迭代/翻译/进化相关阻断性 skip 已清零 |
+
+### Sprint 2/3 复核
+
+- **Sprint 2** 六项全部存在并抽测通过（piper/canary/ab_test/llm_judge/regression/mastering，feedback+pipeline+quality **651 passed**；tts **695 passed**）
+- **Sprint 3** 全部六项已落地：S3-1 `api/publish_job.py`（Celery 派发 + 状态轮询端点）、S3-2 `monitoring/alerts.yml` + `docker-compose.monitoring.yml` + Grafana dashboards、S3-3 `.env.encrypted` + `scripts/decrypt_env.sh`、S3-4 `scripts/migrate.sh`、S3-5 `web/src/i18n.js` + locales（Element Plus locale 联动）、S3-6 `scripts/demo_full_pipeline.sh`
+
+### 新增发现（本轮实测）
+
+1. **FCC 网关 Anthropic-only**：`/v1/chat/completions` 404，仅支持 `/v1/messages`——已在 C1 客户端中适配，文档需同步
+2. **免费模型间歇性 404**（kilo 路由模型暂不可用）：自我迭代客户端已带异常上抛+上游启发式降级，但建议增加备选模型重试列表（见 T-C1b）
+3. **真实 LLM 输出 schema 漂移**：模型会把 confidence/reasoning 嵌进 proposed_rules——已通过形状校验+纠错重试缓解，长期建议 function-calling 约束输出
+### 本轮修复提交清单 (v4.1)
+
+| 文件 | 变更 |
+|------|------|
+| `tts/edge_tts_engine.py` | H4：弃用 SSML 传参（edge-tts 不支持），改 kwargs + mutagen 实测时长 |
+| `api/tts_voices.py` | C5：新增 GET /api/tts/preview/{voice_id}.mp3 真实试听端点 |
+| `pipeline/self_iteration.py` | C1：make_real_llm_client 直连 FCC 网关 (Anthropic /v1/messages)，JSON 形状校验 + 纠错重试 + 置信度门禁 |
+| `pipeline/quality_check.py` + `tests/conftest_minimal.py` | AUDIO_HARD_METRICS_DISABLED 安全门禁（修复 2 处整进程崩溃） |
+| `tests/unit/test_audio_quality_smoke.py` / `test_quality_gate_real_metrics.py` | 单测不加载 500MB whisper；真实度测试显式 opt-in |
+| `plugins/sample_tts_voice/plugin.py` + `plugins/registry.py` | 补齐语音包插件入口；loader 捕获 OSError 防崩溃 |
+| `web/vite.config.ts` | M1：element-plus 按 form/date/data/overlay 分包 + vue-core/vendor，全部 chunk <500KB |
+| `tts/clone.py` | M3：能力边界文档澄清 |
+
+**最终验收**：`pytest tests/unit/ --cov --cov-branch` → 7236 passed / 0 failed / TOTAL 81.47%；`npm run build` → 无 >500KB chunk 警告；实测 /api/tts/stream 2 秒文本 → 3.24s 音频；SELF_ITERATION_MOCK=false 真实 LLM 闭环 → SOP 规则真实更新。

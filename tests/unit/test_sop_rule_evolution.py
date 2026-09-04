@@ -8,8 +8,6 @@ alert fires to prevent rule regression.
 
 import sys
 
-import pytest
-
 sys.path.insert(0, "src")
 
 from audiobook_studio.feedback.sop_verification import (
@@ -59,8 +57,10 @@ def test_measure_quality_baseline():
 def test_improving_rule_increases_quality():
     """Applying a rule that adds more voice bindings must improve quality."""
     report = verify_rule_evolution(
-        genre="玄幻", baseline_rules=BASELINE_RULES,
-        candidate_rules=IMPROVING_RULES, paragraphs=SAMPLE_PARAGRAPHS,
+        genre="玄幻",
+        baseline_rules=BASELINE_RULES,
+        candidate_rules=IMPROVING_RULES,
+        paragraphs=SAMPLE_PARAGRAPHS,
     )
     assert report.delta_overall > 0, report.as_dict()
     assert report.improved is True
@@ -72,8 +72,10 @@ def test_improving_rule_increases_quality():
 def test_degrading_rule_is_blocked_by_guard():
     """A rule that drops the narrator binding must be blocked + alerted."""
     report = verify_rule_evolution(
-        genre="玄幻", baseline_rules=BASELINE_RULES,
-        candidate_rules=DEGRADING_RULES, paragraphs=SAMPLE_PARAGRAPHS,
+        genre="玄幻",
+        baseline_rules=BASELINE_RULES,
+        candidate_rules=DEGRADING_RULES,
+        paragraphs=SAMPLE_PARAGRAPHS,
     )
     assert report.degraded is True
     assert report.delta_overall < 0
@@ -86,8 +88,10 @@ def test_guard_floor_ratio_respected():
     """Guard respects a custom floor ratio."""
     guard = RuleRegressionGuard(floor_ratio=0.99)
     report = guard.evaluate(
-        genre="玄幻", baseline_rules=BASELINE_RULES,
-        candidate_rules=IMPROVING_RULES, paragraphs=SAMPLE_PARAGRAPHS,
+        genre="玄幻",
+        baseline_rules=BASELINE_RULES,
+        candidate_rules=IMPROVING_RULES,
+        paragraphs=SAMPLE_PARAGRAPHS,
     )
     # Improving rule still raises overall above 0.99 * baseline typically;
     # this asserts the guard ran and produced a deterministic report.

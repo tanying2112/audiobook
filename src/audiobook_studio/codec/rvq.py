@@ -117,7 +117,7 @@ class ResidualVectorQuantizer:
     def decode(self, tokens: list[np.ndarray[Any, Any]]) -> np.ndarray[Any, Any]:
         """Reconstruct the latent from a list of token arrays."""
         out = np.zeros((len(tokens[0]), self.cfg.dim), dtype=np.float64)
-        for cb, idx in zip(self.codebooks, tokens):
+        for cb, idx in zip(self.codebooks, tokens, strict=False):
             out += cb[idx]
         return out
 

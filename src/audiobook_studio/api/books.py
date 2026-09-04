@@ -4,13 +4,12 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, status
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..exceptions import DomainError
 from ..models.legacy import LegacyBook
 from ..schemas.legacy import Book as BookSchema
 from .dependencies import get_async_db
@@ -72,9 +71,7 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get a single book by ID."""
     # S2.6 — eager-load paragraphs to avoid lazy N+1 on serialization.
     result = await db.execute(
-        select(LegacyBook)
-        .where(LegacyBook.id == book_id)
-        .options(selectinload(LegacyBook.paragraphs))
+        select(LegacyBook).where(LegacyBook.id == book_id).options(selectinload(LegacyBook.paragraphs))
     )
     book = result.scalar_one_or_none()
     if not book:

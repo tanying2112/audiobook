@@ -11,10 +11,11 @@ Hermes-AgentMesh Core Architecture Integration:
 
 import os
 import sys
+
 import torch
 import torchaudio
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import snapshot_download
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .base_worker import BaseWorker
 
@@ -123,12 +124,14 @@ class T4VoxCPM2Engine:
         waveform = self.model.decode_audio(audio_tokens)
 
         import io
+
         buffer = io.BytesIO()
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
     def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
         import os
+
         if reference_audio and os.path.exists(reference_audio):
             waveform, sr = torchaudio.load(reference_audio)
             if sr != 24000:

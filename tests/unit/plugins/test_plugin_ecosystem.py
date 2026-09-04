@@ -12,31 +12,34 @@ from src.audiobook_studio.plugins import (
     PluginContext,
     PluginManager,
     PluginManifest,
-    PluginRegistry,
     discover_plugins,
     get_plugin_manager,
     parse_manifest,
     read_installed_names,
 )
 
-
 # ======================================================================
 # Manifest parsing tests
 # ======================================================================
+
 
 def test_parse_manifest_valid(tmp_path: Path) -> None:
     """Parse a valid manifest.json."""
     manifest_dir = tmp_path / "test_plugin"
     manifest_dir.mkdir()
     manifest_file = manifest_dir / "manifest.json"
-    manifest_file.write_text(json.dumps({
-        "name": "test_plugin",
-        "version": "1.0.0",
-        "type": "tts_engine",
-        "description": "Test plugin",
-        "models": ["voice1", "voice2"],
-        "entry_point": "plugin:register",
-    }))
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "name": "test_plugin",
+                "version": "1.0.0",
+                "type": "tts_engine",
+                "description": "Test plugin",
+                "models": ["voice1", "voice2"],
+                "entry_point": "plugin:register",
+            }
+        )
+    )
 
     parsed = parse_manifest(manifest_file)
     assert parsed is not None
@@ -68,13 +71,13 @@ def test_parse_manifest_missing(tmp_path: Path) -> None:
 def test_discover_plugins(tmp_path: Path) -> None:
     """Discover multiple plugins in a directory."""
     (tmp_path / "plugin_a").mkdir()
-    (tmp_path / "plugin_a" / "manifest.json").write_text(json.dumps({
-        "name": "plugin_a", "version": "1.0.0", "type": "tts_engine", "entry_point": "a:register"
-    }))
+    (tmp_path / "plugin_a" / "manifest.json").write_text(
+        json.dumps({"name": "plugin_a", "version": "1.0.0", "type": "tts_engine", "entry_point": "a:register"})
+    )
     (tmp_path / "plugin_b").mkdir()
-    (tmp_path / "plugin_b" / "manifest.json").write_text(json.dumps({
-        "name": "plugin_b", "version": "2.0.0", "type": "llm_provider", "entry_point": "b:register"
-    }))
+    (tmp_path / "plugin_b" / "manifest.json").write_text(
+        json.dumps({"name": "plugin_b", "version": "2.0.0", "type": "llm_provider", "entry_point": "b:register"})
+    )
     (tmp_path / "not_a_plugin").mkdir()  # no manifest, should be skipped
 
     manifests = discover_plugins(tmp_path)
@@ -101,13 +104,12 @@ def test_read_installed_names_missing(tmp_path: Path) -> None:
 # PluginContext tests
 # ======================================================================
 
+
 def test_plugin_context_tts_registration() -> None:
     """PluginContext.register_tts_engine delegates to manager."""
     # We can't easily test the full delegation without a real manager,
     # but we can verify the method exists and has correct signature.
-    manifest = PluginManifest(
-        name="test", version="1.0.0", type="tts_engine", entry_point="x:y", directory="/tmp"
-    )
+    manifest = PluginManifest(name="test", version="1.0.0", type="tts_engine", entry_point="x:y", directory="/tmp")
     ctx = PluginContext(manifest=manifest)
     assert hasattr(ctx, "register_tts_engine")
     assert hasattr(ctx, "register_llm_provider")
@@ -117,6 +119,7 @@ def test_plugin_context_tts_registration() -> None:
 # ======================================================================
 # PluginManager / PluginRegistry tests
 # ======================================================================
+
 
 def test_plugin_manager_singleton() -> None:
     """PluginManager is a singleton."""
@@ -152,12 +155,16 @@ def test_plugin_manager_register_and_lookup() -> None:
 def test_plugin_manager_override_warning(caplog) -> None:
     """Registering same engine twice logs warning."""
     import logging
+
     caplog.set_level(logging.WARNING)
 
     mgr = PluginManager()
 
-    def factory1(): pass
-    def factory2(): pass
+    def factory1():
+        pass
+
+    def factory2():
+        pass
 
     mgr.register_tts_engine_factory("plugin_a", "dup_engine", factory1)
     mgr.register_tts_engine_factory("plugin_b", "dup_engine", factory2)
@@ -172,9 +179,7 @@ def test_plugin_manager_load_plugin_no_entry() -> None:
     """Plugin without entry point is not an error."""
     mgr = PluginManager()
     # Create manifest without entry (type tts_voice is not loadable)
-    manifest = PluginManifest(
-        name="no_entry", version="1.0.0", type="tts_voice", entry="", directory="/tmp"
-    )
+    manifest = PluginManifest(name="no_entry", version="1.0.0", type="tts_voice", entry="", directory="/tmp")
     mgr._manifests["no_entry"] = manifest
     mgr._installed_names = ["no_entry"]
 
@@ -185,7 +190,7 @@ def test_plugin_manager_load_plugin_no_entry() -> None:
 
 def test_plugin_manager_load_plugin_import_error() -> None:
     """Plugin with missing entry module logs error."""
-    import tempfile
+
     mgr = PluginManager()
 
     # Create a temp directory with a plugin.py that has no register() function
@@ -194,8 +199,7 @@ def test_plugin_manager_load_plugin_import_error() -> None:
         plugin_file.write_text("# no register function here\n")
 
         manifest = PluginManifest(
-            name="bad_plugin", version="1.0.0", type="tts_engine",
-            entry_point="plugin:register", directory=tmpdir
+            name="bad_plugin", version="1.0.0", type="tts_engine", entry_point="plugin:register", directory=tmpdir
         )
         mgr._manifests["bad_plugin"] = manifest
         mgr._installed_names = ["bad_plugin"]
@@ -208,6 +212,7 @@ def test_plugin_manager_load_plugin_import_error() -> None:
 # ======================================================================
 # Integration: EngineRegistry picks up plugin factories
 # ======================================================================
+
 
 @pytest.mark.asyncio
 async def test_engine_registry_plugin_integration():
@@ -240,6 +245,7 @@ async def test_engine_registry_plugin_integration():
 # ======================================================================
 # Integration: LLMProvidersConfig picks up plugin factories
 # ======================================================================
+
 
 def test_llm_providers_config_plugin_integration():
     """Test that PluginManager can register LLM provider factories (integration test via registry)."""
@@ -281,6 +287,7 @@ def test_llm_providers_config_plugin_integration():
 # ======================================================================
 # Example plugin sanity checks
 # ======================================================================
+
 
 def test_example_tts_manifest_exists():
     """Example TTS plugin manifest is valid."""

@@ -1,5 +1,4 @@
 import json
-import os
 from unittest import mock
 
 import pytest
@@ -62,6 +61,14 @@ def worker(monkeypatch):
     exc = mock.MagicMock()
     exc.Boto3Error = Exception
     monkeypatch.setattr(W.boto3, "exceptions", exc)
+    # conftest mocks the redis module as a bare MagicMock, so redis exceptions are
+    # not real classes. Give the worker real ones (redis.RedisError and
+    # redis.exceptions.RedisError alias the same class) so both the retry logic's
+    # `except redis.RedisError` and the run loop's `except redis.exceptions.RedisError`
+    # can raise and catch them.
+    redis_err = Exception
+    monkeypatch.setattr(W.redis, "RedisError", redis_err)
+    monkeypatch.setattr(W.redis, "exceptions", mock.MagicMock(RedisError=redis_err))
     w = ConcreteWorker("modal")
     return w
 

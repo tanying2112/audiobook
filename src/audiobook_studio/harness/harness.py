@@ -18,13 +18,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ..feedback.deploy import promote_candidate, rollback_prompt, served_version
+from ..feedback.deploy import promote_candidate
 from ..feedback.offline_judge import OfflineJudge
 from ..feedback.prompt_compiler import write_candidate_prompt
 from ..harness.config import HARNESS_PROMPTS_DIR, get_harness_settings
-from ..harness.golden import GoldenDatasetManager, evaluate_on_harness_golden
+from ..harness.golden import evaluate_on_harness_golden
 from ..harness.models import PipelineStage
-from ..harness.sop_store import SOPRuleStore
 from ..harness.spotcheck import human_preference_score_for
 from ..harness.storage import get_storage
 

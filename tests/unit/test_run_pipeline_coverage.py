@@ -890,7 +890,7 @@ def test_book_config_keys(mock_rp):
 
 def test_book_config_fields(mock_rp):
     """Test BOOK_CONFIG entries have required fields."""
-    for name, cfg in mock_rp.BOOK_CONFIG.items():
+    for _name, cfg in mock_rp.BOOK_CONFIG.items():
         assert cfg["title"]
         assert cfg["author"]
         assert isinstance(cfg["language"], str) and cfg["language"]

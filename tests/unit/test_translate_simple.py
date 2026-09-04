@@ -1,6 +1,6 @@
 """Simple test for translate.py to increase coverage."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 

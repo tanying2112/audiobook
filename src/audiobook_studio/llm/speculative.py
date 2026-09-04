@@ -42,7 +42,7 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
@@ -123,9 +123,10 @@ class LocalARModel:
 
     def distributions(self, context: TokenSeq) -> List[np.ndarray]:
         """Next-token log-probs after every prefix position of ``context``."""
-        return [_log_softmax(self.counts.get(self._key(context[: i + 1]),
-                                               np.full(self.vocab_size, 0.1, dtype=np.float64)))
-                for i in range(len(context))]
+        return [
+            _log_softmax(self.counts.get(self._key(context[: i + 1]), np.full(self.vocab_size, 0.1, dtype=np.float64)))
+            for i in range(len(context))
+        ]
 
     def argmax(self, context: TokenSeq) -> int:
         return int(np.argmax(self.logits(context)))
@@ -343,7 +344,9 @@ async def continuous_batch(fn: Callable[[Any], Any], items: Sequence[Any], max_c
 
 def continuous_batch_sync(fn: Callable[[Any], Any], items: Sequence[Any], max_concurrency: int = 8) -> List[Any]:
     """Synchronous wrapper around :func:`continuous_batch`."""
-    return asyncio.run(continuous_batch(fn, items, max_concurrency))
+    from ..utils.async_utils import run_async_safe
+
+    return run_async_safe(continuous_batch(fn, items, max_concurrency))
 
 
 def speculative_map_sync(
@@ -379,8 +382,7 @@ class SpeculativeHead(Protocol):
     Provided as the integration point for those frontier methods.
     """
 
-    def propose(self, context: TokenSeq, k: int) -> List[TokenSeq]:
-        ...
+    def propose(self, context: TokenSeq, k: int) -> List[TokenSeq]: ...
 
 
 # ---------------------------------------------------------------------------

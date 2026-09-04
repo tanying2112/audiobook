@@ -5,12 +5,8 @@ _load_existing_segment_from_disk, and _persist_segment_metadata."""
 from __future__ import annotations
 
 import asyncio
-
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline, _normalize_voice_id
 

@@ -9,11 +9,9 @@ filesystem are mocked/faked for determinism.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-import src.audiobook_studio.config.unified as uc_mod
 from src.audiobook_studio.config.unified import (
     UnifiedConfig,
     dump_config,
@@ -104,6 +102,7 @@ def patched_llm_config():
     mod.LLMProvidersConfig = orig_llm
     mod.ProviderConfig = orig_pc
 
+
 def test_interpolate_brace_format(cfg, monkeypatch) -> None:
     monkeypatch.setenv("MY_VAR", "value123")
     assert cfg._interpolate_env("prefix-${MY_VAR}-suffix") == "prefix-value123-suffix"
@@ -126,6 +125,7 @@ def test_interpolate_escaped_dollar(cfg, monkeypatch) -> None:
 
 # ── nested get ──────────────────────────────────────────────────────────────
 
+
 def test_get_nested_found() -> None:
     data = {"a": {"b": {"c": 42}}}
     assert UnifiedConfig()._get_nested(data, ["a", "b", "c"]) == 42
@@ -142,6 +142,7 @@ def test_get_nested_non_dict() -> None:
 
 
 # ── get priority resolution ────────────────────────────────────────────────
+
 
 def test_get_env_highest_priority(cfg, monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "env-override")
@@ -163,6 +164,7 @@ def test_get_default(cfg) -> None:
 
 
 # ── YAML loading ────────────────────────────────────────────────────────────
+
 
 def test_load_yaml_config_present(cfg, tmp_path) -> None:
     (tmp_path / "config").mkdir()
@@ -216,6 +218,7 @@ def test_load_all_yaml_configs_excludes(cfg, tmp_path) -> None:
 
 # ── LLM providers ───────────────────────────────────────────────────────────
 
+
 def test_load_llm_providers_empty_returns_defaults(cfg, tmp_path, patched_llm_config) -> None:
     (tmp_path / "config").mkdir()
     result = cfg.load_llm_providers()
@@ -248,10 +251,9 @@ def test_load_llm_providers_cached(cfg, tmp_path, patched_llm_config) -> None:
 
 # ── docker compose ──────────────────────────────────────────────────────────
 
+
 def test_load_docker_compose_present(cfg, tmp_path) -> None:
-    (tmp_path / "docker-compose.yml").write_text(
-        "services:\n  api:\n    image: x\n"
-    )
+    (tmp_path / "docker-compose.yml").write_text("services:\n  api:\n    image: x\n")
     assert cfg.load_docker_compose()["services"]["api"]["image"] == "x"
 
 
@@ -276,11 +278,7 @@ def test_load_all_docker_compose(cfg, tmp_path) -> None:
 def test_get_service_env_dict(cfg, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("SERVICE_SECRET", "shh")
     (tmp_path / "docker-compose.yml").write_text(
-        "services:\n"
-        "  api:\n"
-        "    environment:\n"
-        "      KEY1: value1\n"
-        "      KEY2: ${SERVICE_SECRET}\n"
+        "services:\n" "  api:\n" "    environment:\n" "      KEY1: value1\n" "      KEY2: ${SERVICE_SECRET}\n"
     )
     env = cfg.get_service_env("api")
     assert env["KEY1"] == "value1"
@@ -290,11 +288,7 @@ def test_get_service_env_dict(cfg, tmp_path, monkeypatch) -> None:
 def test_get_service_env_list(cfg, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("SVC_TOKEN", "tok")
     (tmp_path / "docker-compose.yml").write_text(
-        "services:\n"
-        "  worker:\n"
-        "    environment:\n"
-        "      - FOO=bar\n"
-        "      - TOKEN=${SVC_TOKEN}\n"
+        "services:\n" "  worker:\n" "    environment:\n" "      - FOO=bar\n" "      - TOKEN=${SVC_TOKEN}\n"
     )
     env = cfg.get_service_env("worker")
     assert env["FOO"] == "bar"
@@ -303,10 +297,9 @@ def test_get_service_env_list(cfg, tmp_path, monkeypatch) -> None:
 
 # ── pyproject ───────────────────────────────────────────────────────────────
 
+
 def test_load_pyproject_present(cfg, tmp_path) -> None:
-    (tmp_path / "pyproject.toml").write_text(
-        "[tool.pytest]\naddopts = '-q'\n[project]\nname = 'x'\n"
-    )
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest]\naddopts = '-q'\n[project]\nname = 'x'\n")
     data = cfg.load_pyproject()
     assert data["project"]["name"] == "x"
 
@@ -321,9 +314,7 @@ def test_load_pyproject_cached(cfg, tmp_path) -> None:
 
 
 def test_get_tool_config(cfg, tmp_path) -> None:
-    (tmp_path / "pyproject.toml").write_text(
-        "[tool.ruff]\nline-length = 100\n"
-    )
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 100\n")
     assert cfg.get_tool_config("ruff", "line-length") == 100
 
 
@@ -334,12 +325,11 @@ def test_get_tool_config_missing(cfg, tmp_path) -> None:
 
 # ── sections ────────────────────────────────────────────────────────────────
 
+
 def test_get_section_combines(cfg, tmp_path) -> None:
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "pipeline.yaml").write_text("steps: [a]\n")
-    (tmp_path / "docker-compose.yml").write_text(
-        "services:\n  redis:\n    environment:\n      REDIS_HOST: localhost\n"
-    )
+    (tmp_path / "docker-compose.yml").write_text("services:\n  redis:\n    environment:\n      REDIS_HOST: localhost\n")
     section = cfg.get_section("redis")
     assert "REDIS_URL" in section
     assert "redis.REDIS_HOST" in section
@@ -351,6 +341,7 @@ def test_get_section_settings_match(cfg) -> None:
 
 
 # ── consolidated config getters ─────────────────────────────────────────────
+
 
 def test_get_database_config(cfg) -> None:
     db = cfg.get_database_config()
@@ -401,6 +392,7 @@ def test_get_hardware_profile(cfg, tmp_path) -> None:
 
 # ── validation ──────────────────────────────────────────────────────────────
 
+
 def test_validate_all_with_issues(cfg, tmp_path) -> None:
     cfg._settings = FakeSettings(CORS_ORIGINS="*")
     issues = cfg.validate_all()
@@ -418,6 +410,7 @@ def test_validate_all_clean(cfg, tmp_path) -> None:
 
 
 # ── dump / masking ──────────────────────────────────────────────────────────
+
 
 def test_mask_sensitive_dict(cfg) -> None:
     data = {"api_key": "abcdefghij", "name": "ok"}
@@ -446,6 +439,7 @@ def test_dump_all(cfg, tmp_path) -> None:
 
 
 # ── global singleton + convenience functions ────────────────────────────────
+
 
 def test_get_unified_config_singleton(tmp_path) -> None:
     reset_unified_config()

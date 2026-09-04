@@ -1,13 +1,12 @@
 """Tests for S2-4 PiperBackend (TTSEngine implementation)."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from audiobook_studio.tts.engine import TTSTaskPayload, TTSVoiceAnchor
 from audiobook_studio.tts.piper_backend import PiperBackend, create_piper_backend
-from audiobook_studio.tts.piper_models import detect_piper_availability
 
 
 @pytest.fixture

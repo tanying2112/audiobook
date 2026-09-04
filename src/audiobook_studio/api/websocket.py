@@ -6,8 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -145,10 +144,9 @@ manager = ConnectionManager()
 # Event Schema (Versioned)
 # ─────────────────────────────────────────────────────────────────────────────
 
-from datetime import datetime
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class BaseEvent(BaseModel):
@@ -280,7 +278,6 @@ WS_EVENT_SCHEMAS = {
         "stage_progress": V1PipelineEvent,
         "chapter_complete": V1PipelineEvent,
         "paragraph_complete": V1PipelineEvent,
-        "error": V1ErrorEvent,
         "paused": V1PipelineEvent,
         "resumed": V1PipelineEvent,
         "completed": V1PipelineEvent,

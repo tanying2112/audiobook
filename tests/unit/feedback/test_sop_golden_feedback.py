@@ -13,9 +13,6 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
-from audiobook_studio.feedback.loop import quality_judgments_to_golden
 from audiobook_studio.pipeline.quality_check import QualityCheckPipeline, get_quality_judgment_collector
 from audiobook_studio.pipeline.sop_reflection import CorrectionCollector, SOPBackgroundThread, UserCorrection
 

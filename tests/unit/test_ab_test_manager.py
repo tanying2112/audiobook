@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import mock_open, patch
 
 import pytest
 
@@ -86,7 +84,7 @@ class TestABTestManager:
             custom_segments = ["segment1", "segment2"]
             custom_criteria = ["criteria1", "criteria2"]
 
-            result = manager.run_comparison_test(
+            manager.run_comparison_test(
                 current_prompt="current",
                 proposed_prompt="proposed",
                 test_name="test",
@@ -483,7 +481,6 @@ class TestMainFunction:
 
 
 # Helper to mock open for file writing
-from unittest.mock import mock_open
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

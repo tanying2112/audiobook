@@ -12,7 +12,7 @@
 import math
 from collections import Counter
 from difflib import SequenceMatcher
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 def _char_ngram_similarity(text_a: str, text_b: str, n: int = 2) -> float:
@@ -43,7 +43,7 @@ def _compute_output_similarity(actual: Dict[str, Any], expected: Dict[str, Any])
     """
 
     def compare_values(a: Any, b: Any) -> float:
-        if type(a) != type(b):
+        if type(a) != type(b):  # noqa: E721
             return 0.0
 
         if isinstance(a, dict):

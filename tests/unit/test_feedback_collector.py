@@ -58,7 +58,7 @@ class TestCaptureFeedback:
         with patch("src.audiobook_studio.feedback.collector.FeedbackRecordModel") as mock_model:
             mock_model.return_value = mock_record
 
-            result = capture_feedback(
+            capture_feedback(
                 db=mock_db,
                 project_id=1,
                 source="human_edit",
@@ -84,7 +84,7 @@ class TestCaptureFeedback:
         with patch("src.audiobook_studio.feedback.collector.FeedbackRecordModel") as mock_model:
             mock_model.return_value = mock_record
 
-            result = capture_feedback(
+            capture_feedback(
                 db=mock_db,
                 project_id=1,
                 source="quality_judge",

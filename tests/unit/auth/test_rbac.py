@@ -3,7 +3,6 @@
 All tests use mocked DB sessions and model objects. No real database connections.
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -83,7 +82,7 @@ class TestCreateUser:
     @patch("src.audiobook_studio.auth.rbac.hash_password", return_value="hashed_pw")
     def test_create_user_success(self, mock_hash):
         rbac = _make_rbac()
-        user = rbac.create_user("a@b.com", "alice", "password123", full_name="Alice")
+        rbac.create_user("a@b.com", "alice", "password123", full_name="Alice")
         rbac.db.add.assert_called_once()
         rbac.db.commit.assert_called_once()
         rbac.db.refresh.assert_called_once()
@@ -92,7 +91,7 @@ class TestCreateUser:
     @patch("src.audiobook_studio.auth.rbac.hash_password", return_value="hashed_pw")
     def test_create_superuser(self, mock_hash):
         rbac = _make_rbac()
-        user = rbac.create_user("a@b.com", "admin", "pw", is_superuser=True)
+        rbac.create_user("a@b.com", "admin", "pw", is_superuser=True)
         added_user = rbac.db.add.call_args[0][0]
         assert added_user.is_superuser is True
 
@@ -199,7 +198,7 @@ class TestDeleteUser:
 class TestRoleManagement:
     def test_create_role(self):
         rbac = _make_rbac()
-        role = rbac.create_role(RoleName.ADMIN, description="Admin")
+        rbac.create_role(RoleName.ADMIN, description="Admin")
         rbac.db.add.assert_called_once()
         rbac.db.commit.assert_called_once()
 
@@ -239,7 +238,7 @@ class TestRoleManagement:
 class TestPermissionManagement:
     def test_create_permission(self):
         rbac = _make_rbac()
-        perm = rbac.create_permission(PermissionName.PROJECT_READ)
+        rbac.create_permission(PermissionName.PROJECT_READ)
         rbac.db.add.assert_called_once()
         rbac.db.commit.assert_called_once()
 
@@ -504,7 +503,7 @@ class TestGrantProjectPermission:
     def test_grant_new(self):
         rbac = _make_rbac()
         rbac.db.query.return_value.filter.return_value.first.return_value = None
-        perm = rbac.grant_project_permission(1, 10, RoleName.EDITOR)
+        rbac.grant_project_permission(1, 10, RoleName.EDITOR)
         rbac.db.add.assert_called_once()
         rbac.db.commit.assert_called_once()
 
@@ -512,7 +511,7 @@ class TestGrantProjectPermission:
         rbac = _make_rbac()
         existing = _make_project_permission(role="viewer")
         rbac.db.query.return_value.filter.return_value.first.return_value = existing
-        perm = rbac.grant_project_permission(1, 10, RoleName.EDITOR)
+        rbac.grant_project_permission(1, 10, RoleName.EDITOR)
         assert existing.role == RoleName.EDITOR.value
         rbac.db.commit.assert_called_once()
 

@@ -696,7 +696,10 @@ class TestEvaluatePromotionAntiHackMatrix:
         judge_fn = lambda m, p: 0.85  # noqa: E731 — both judges agree
         baseline_fn = lambda c: 0.4  # noqa: E731
         candidate_eval_fn = lambda c: 0.9  # noqa: E731
-        regression_fn = lambda c: (True, MagicMock())
+
+        def regression_fn(c):  # noqa: E306
+            return (True, MagicMock())
+
         return judge_fn, baseline_fn, candidate_eval_fn, regression_fn
 
     def test_all_gates_green_promotes(self):

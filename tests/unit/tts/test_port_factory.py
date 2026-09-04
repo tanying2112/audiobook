@@ -5,7 +5,6 @@ Tests: engine creation, registry configuration, auto-detection, context manager,
 """
 
 import os
-from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -14,7 +13,6 @@ from src.audiobook_studio.di import get_app_container
 from src.audiobook_studio.tts.engine import EngineRegistry as _EngineRegistry
 from src.audiobook_studio.tts.port_factory import (
     _build_config_from_env,
-    create_configured_registry,
     create_engine,
     engine_context,
     get_default_engine,
@@ -25,6 +23,8 @@ from src.audiobook_studio.tts.port_factory import (
 def get_engine_registry():
     """Backward-compat accessor: registry now lives in the DI container."""
     return get_app_container().get(_EngineRegistry)
+
+
 from src.audiobook_studio.tts.engine import EngineRegistry, TTSEngine
 
 
@@ -176,8 +176,8 @@ class TestEngineRegistry:
         mock_edge = Mock(spec=TTSEngine)
         mock_edge.engine_name = "edge"
 
-        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro) as mock_kokoro_factory:
-            with patch("src.audiobook_studio.tts.edge_tts_engine.create_edge_tts_engine", return_value=mock_edge) as mock_edge_factory:
+        with patch("src.audiobook_studio.tts.kokoro_backend.create_kokoro_backend", return_value=mock_kokoro):
+            with patch("src.audiobook_studio.tts.edge_tts_engine.create_edge_tts_engine", return_value=mock_edge):
                 await registry.initialize(config)
 
         assert registry.get("kokoro") == mock_kokoro
@@ -376,12 +376,15 @@ class TestBuildConfigFromEnv:
 
     def test_build_kokoro_config_enabled(self):
         """Test Kokoro config when local TTS enabled."""
-        with patch.dict(os.environ, {
-            "ENABLE_LOCAL_TTS": "true",
-            "AUDIO_OUTPUT_DIR": "/custom/output",
-            "KOKORO_MAX_CONCURRENT": "4",
-            "KOKORO_MODEL_PATH": "/custom/model.onnx",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_LOCAL_TTS": "true",
+                "AUDIO_OUTPUT_DIR": "/custom/output",
+                "KOKORO_MAX_CONCURRENT": "4",
+                "KOKORO_MODEL_PATH": "/custom/model.onnx",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "kokoro" in config
@@ -397,11 +400,14 @@ class TestBuildConfigFromEnv:
 
     def test_build_edge_config_enabled(self):
         """Test Edge-TTS config when enabled."""
-        with patch.dict(os.environ, {
-            "EDGE_TTS_ENABLED": "true",
-            "EDGE_MAX_CONCURRENT": "8",
-            "EDGE_TTS_VOICE": "en-US-AriaNeural",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "EDGE_TTS_ENABLED": "true",
+                "EDGE_MAX_CONCURRENT": "8",
+                "EDGE_TTS_VOICE": "en-US-AriaNeural",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "edge" in config
@@ -419,10 +425,13 @@ class TestBuildConfigFromEnv:
 
     def test_build_voxcpm2_config(self):
         """Test VoxCPM2 config from environment."""
-        with patch.dict(os.environ, {
-            "VOXCPM2_ENDPOINT": "http://voxcpm2:8000",
-            "VOXCPM2_TIMEOUT_SEC": "120",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "VOXCPM2_ENDPOINT": "http://voxcpm2:8000",
+                "VOXCPM2_TIMEOUT_SEC": "120",
+            },
+        ):
             config = _build_config_from_env()
 
             assert "voxcpm2" in config
@@ -444,7 +453,7 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_get_default_engine_initializes(self):
         """Test get_default_engine initializes registry if needed."""
-        from src.audiobook_studio.di import DIContainer, set_app_container, reset_app_container
+        from src.audiobook_studio.di import DIContainer, reset_app_container, set_app_container
 
         # Create a fresh container for this test
         container = DIContainer()
@@ -470,7 +479,7 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_get_port_returns_adapter(self):
         """Test get_port returns EnginePortAdapter."""
-        from src.audiobook_studio.di import DIContainer, set_app_container, reset_app_container
+        from src.audiobook_studio.di import DIContainer, reset_app_container, set_app_container
 
         container = DIContainer()
         mock_engine = Mock(spec=TTSEngine)
@@ -513,7 +522,7 @@ class TestPortFactoryEdgeCases:
         """Test kwargs passed to engine factory."""
         with patch("src.audiobook_studio.tts.port_factory.FakeRemoteTTSPort") as mock_fake:
             mock_fake.return_value = Mock()
-            engine = create_engine("fake", custom_arg="value")
+            create_engine("fake", custom_arg="value")
 
             mock_fake.assert_called_with(custom_arg="value")
 
@@ -543,6 +552,7 @@ class TestThreadSafety:
     async def test_concurrent_register(self):
         """Test concurrent register operations."""
         import asyncio
+
         registry = EngineRegistry()
 
         async def register_engine(name):
@@ -561,6 +571,7 @@ class TestThreadSafety:
     async def test_concurrent_get_default(self):
         """Test concurrent get operations."""
         import asyncio
+
         registry = EngineRegistry()
 
         mock_engine = Mock(spec=TTSEngine)

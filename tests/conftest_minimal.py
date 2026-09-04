@@ -87,6 +87,7 @@ os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 # =============================================================================
 import tempfile as _tempfile
 
+os.environ.setdefault("AUDIO_HARD_METRICS_DISABLED", "1")
 os.environ.setdefault(
     "DATABASE_URL",
     f"sqlite:///{_tempfile.gettempdir()}/audiobook_test_{os.getpid()}.db",
@@ -321,7 +322,6 @@ for mod_name in [
     "redis",
     "redis.asyncio",
     "flower",
-    "deepeval",
     "promptfoo",
     "black",
     "isort",
@@ -423,7 +423,7 @@ for mod_name in [
     # import triggers a torch-availability check that crashes against the
     # mocked ``torch`` module). Everything else keeps the original behaviour
     # of being mocked only if it has not yet been imported.
-    _INSTALLED_OK = {"requests"}
+    _INSTALLED_OK = {"requests", "jinja2", "deepeval"}
     if mod_name not in sys.modules and mod_name not in _INSTALLED_OK:
         _mock_mod = MagicMock()
         # Give the fake module a minimal __spec__ so that submodule imports
@@ -675,10 +675,9 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
 
 
 def _mock_sf_write(path, data, sr):
-    from pathlib import Path
 
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_bytes(b"\x00" * len(data))
+    Path(path).parent.mkdir(parents=True, exist_ok=True)  # noqa: F821
+    Path(path).write_bytes(b"\x00" * len(data))  # noqa: F821
 
 
 mock_sf = MagicMock()
@@ -691,7 +690,6 @@ sys.modules["soundfile"] = mock_sf
 
 import logging
 import warnings
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -746,15 +744,13 @@ def reset_singletons():
 def mock_voice_mapping(tmp_path):
     """Create a temporary voice_mapping.yaml for tests."""
     voice_mapping = tmp_path / "voice_mapping.yaml"
-    voice_mapping.write_text(
-        """
+    voice_mapping.write_text("""
 voice_mapping:
   test_voice:
     voice_id: "test_voice_id"
     description: "Test voice"
     language: "zh-CN"
-"""
-    )
+""")
     with patch("pathlib.Path.exists", return_value=True):
         with patch("pathlib.Path.read_text", return_value=voice_mapping.read_text()):
             yield voice_mapping

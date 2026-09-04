@@ -5,9 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from audiobook_studio.feedback.loop import (
-    GoldenSample,
     _load_samples,
-    append_golden_sample,
     quality_judgment_to_sample,
     quality_judgments_to_golden,
 )

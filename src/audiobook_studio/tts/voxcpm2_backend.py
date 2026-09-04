@@ -11,9 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-
-from .engine import BaseTTSEngine, SynthesisResult, TTSEngine, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
+from .engine import BaseTTSEngine, SynthesisResult, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, VoiceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +83,6 @@ class VoxCPM2Backend(BaseTTSEngine):
         max_concurrent: int = 2,
         **kwargs: Any,
     ):
-        import os
 
         super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
         self.model_path = model_path

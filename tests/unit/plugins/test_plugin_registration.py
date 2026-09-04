@@ -8,7 +8,6 @@ of only landing in the plugin manager's bookkeeping dict.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 
 import pytest

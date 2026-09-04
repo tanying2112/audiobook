@@ -1,6 +1,5 @@
 """Phase B structural tests for audio_quality.py (mocking audio/ffmpeg/quality boundaries)."""
 
-import asyncio
 import json
 import subprocess
 import sys
@@ -16,7 +15,6 @@ from src.audiobook_studio.audio_quality import (
     SegmentQualityResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake quality package (injected into sys.modules so _run_hard_metrics_async
 # can run its main path without onnxruntime/whisper/torch).
@@ -24,8 +22,9 @@ from src.audiobook_studio.audio_quality import (
 
 
 class _Metric:
-    def __init__(self, success=True, mos_ovr=None, wer=None, similarity=None,
-                 error=None, is_same_speaker=True, threshold=0.8):
+    def __init__(
+        self, success=True, mos_ovr=None, wer=None, similarity=None, error=None, is_same_speaker=True, threshold=0.8
+    ):
         self.success = success
         self.mos_ovr = mos_ovr
         self.wer = wer
@@ -36,8 +35,7 @@ class _Metric:
 
 
 class _QCResult:
-    def __init__(self, dnsmos=None, wer=None, speaker_sim=None,
-                 passed=True, overall_message=""):
+    def __init__(self, dnsmos=None, wer=None, speaker_sim=None, passed=True, overall_message=""):
         self.dnsmos = dnsmos
         self.wer = wer
         self.speaker_sim = speaker_sim
@@ -130,8 +128,14 @@ def test_quality_report_defaults_and_to_dict():
 def test_quality_report_to_json_roundtrip():
     r = SegmentQualityResult(segment_id="s1", file_path="/a.wav", duration_ms=100)
     rep = QualityReport(
-        project_id="p", chapter_index=0, total_segments=1, passed_segments=1,
-        failed_segments=0, segment_results=[r], overall_passed=True, generated_at="now",
+        project_id="p",
+        chapter_index=0,
+        total_segments=1,
+        passed_segments=1,
+        failed_segments=0,
+        segment_results=[r],
+        overall_passed=True,
+        generated_at="now",
     )
     s = rep.to_json()
     loaded = json.loads(s)
@@ -153,8 +157,14 @@ def test_thresholds_are_floats():
 def test_save_and_load_quality_report(tmp_path):
     r = SegmentQualityResult(segment_id="s1", file_path="/a.wav", duration_ms=100)
     rep = QualityReport(
-        project_id="p", chapter_index=2, total_segments=1, passed_segments=1,
-        failed_segments=0, segment_results=[r], overall_passed=True, generated_at="now",
+        project_id="p",
+        chapter_index=2,
+        total_segments=1,
+        passed_segments=1,
+        failed_segments=0,
+        segment_results=[r],
+        overall_passed=True,
+        generated_at="now",
     )
     out = tmp_path / "report.json"
     aq.save_quality_report(rep, out)
@@ -183,8 +193,7 @@ def test_load_invalid_json_returns_none(tmp_path):
 
 @pytest.mark.asyncio
 async def test_silence_zero_duration():
-    _patch = None
-    import unittest.mock as um
+    _patch = None  # noqa: F841
 
     aq.get_duration = AsyncMock(return_value=0)
     res = await aq._check_silence_async(Path("/x.wav"))
@@ -217,9 +226,7 @@ async def test_silence_exception_path():
 
 @pytest.mark.asyncio
 async def test_corruption_valid():
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]})
     aq.read_pcm_samples = AsyncMock(return_value=None)
     res = await aq._check_corruption_async(Path("/x.wav"))
     assert res["corruption_detected"] is False
@@ -236,9 +243,7 @@ async def test_corruption_no_format():
 
 @pytest.mark.asyncio
 async def test_corruption_no_duration():
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": None}, "streams": [{"codec_type": "audio"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": None}, "streams": [{"codec_type": "audio"}]})
     res = await aq._check_corruption_async(Path("/x.wav"))
     assert res["corruption_detected"] is True
     assert "No duration" in res["corruption_error"]
@@ -246,18 +251,14 @@ async def test_corruption_no_duration():
 
 @pytest.mark.asyncio
 async def test_corruption_duration_out_of_range():
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": "0.01"}, "streams": [{"codec_type": "audio"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": "0.01"}, "streams": [{"codec_type": "audio"}]})
     res = await aq._check_corruption_async(Path("/x.wav"))
     assert res["corruption_detected"] is True
 
 
 @pytest.mark.asyncio
 async def test_corruption_no_audio_stream():
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "video"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "video"}]})
     res = await aq._check_corruption_async(Path("/x.wav"))
     assert res["corruption_detected"] is True
     assert "No audio stream" in res["corruption_error"]
@@ -265,9 +266,7 @@ async def test_corruption_no_audio_stream():
 
 @pytest.mark.asyncio
 async def test_corruption_pcm_decode_fails():
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]})
     aq.read_pcm_samples = AsyncMock(side_effect=RuntimeError("decode failed"))
     res = await aq._check_corruption_async(Path("/x.wav"))
     assert res["corruption_detected"] is True
@@ -354,7 +353,9 @@ async def test_hard_metrics_all_ran(fake_quality):
 @pytest.mark.asyncio
 async def test_hard_metrics_partial_skipped(fake_quality):
     fake_quality._current = _QCResult(
-        dnsmos=None, wer=None, speaker_sim=None,
+        dnsmos=None,
+        wer=None,
+        speaker_sim=None,
     )
     res = await aq._run_hard_metrics_async(Path("/x.wav"))
     assert res["status"].startswith("skipped:")
@@ -394,9 +395,7 @@ async def test_hard_metrics_suite_error(fake_quality):
 async def _segment_passing_mocks():
     aq.get_duration = AsyncMock(return_value=1000.0)
     aq.detect_silence = AsyncMock(return_value=[])
-    aq.get_audio_info = AsyncMock(
-        return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]}
-    )
+    aq.get_audio_info = AsyncMock(return_value={"format": {"duration": "1.0"}, "streams": [{"codec_type": "audio"}]})
     aq.read_pcm_samples = AsyncMock(return_value=None)
     aq.get_rms_peak = AsyncMock(return_value=(-20.0, -10.0))
 
@@ -478,7 +477,10 @@ async def test_check_all_segments_missing_file(monkeypatch, fake_voice_anchor):
     )
     missing = Path("/does/not/exist.wav")
     report = await aq.check_all_segments(
-        [missing], ["s1"], "proj", 1,
+        [missing],
+        ["s1"],
+        "proj",
+        1,
     )
     assert report.total_segments == 1
     assert report.failed_segments == 1
@@ -512,9 +514,7 @@ async def test_check_all_segments_passing(monkeypatch, fake_quality, fake_voice_
 
 
 @pytest.mark.asyncio
-async def test_check_all_segments_retry_then_manual_review(
-    monkeypatch, fake_quality, fake_voice_anchor, tmp_path
-):
+async def test_check_all_segments_retry_then_manual_review(monkeypatch, fake_quality, fake_voice_anchor, tmp_path):
     _patch_ffmpeg(
         monkeypatch,
         get_duration=1000.0,
@@ -536,9 +536,7 @@ async def test_check_all_segments_retry_then_manual_review(
         calls["n"] += 1
         return str(second)
 
-    report = await aq.check_all_segments(
-        [first], ["s1"], "proj", 1, max_retries=1, retry_callback=retry_cb
-    )
+    report = await aq.check_all_segments([first], ["s1"], "proj", 1, max_retries=1, retry_callback=retry_cb)
     assert calls["n"] == 1
     seg = report.segment_results[0]
     assert seg.passed is False
@@ -641,9 +639,7 @@ def fake_voice_anchor_enabled(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_check_segment_voice_anchor_enabled(
-    fake_quality, fake_voice_anchor_enabled, monkeypatch
-):
+async def test_check_segment_voice_anchor_enabled(fake_quality, fake_voice_anchor_enabled, monkeypatch):
     await _segment_passing_mocks()
     fake_quality._current = _QCResult(
         dnsmos=_Metric(success=True, mos_ovr=4.0),
@@ -651,17 +647,19 @@ async def test_check_segment_voice_anchor_enabled(
         speaker_sim=_Metric(success=True, similarity=0.5, is_same_speaker=False, threshold=0.8),
     )
     res = await aq._check_segment_async(
-        Path("/x.wav"), "seg1", reference_text="hi", speaker="Narrator",
-        chapter_index=2, book_id="b",
+        Path("/x.wav"),
+        "seg1",
+        reference_text="hi",
+        speaker="Narrator",
+        chapter_index=2,
+        book_id="b",
     )
     # drift gate: not same speaker -> drift alert recorded
     assert res.voice_cosine == 0.5
 
 
 @pytest.mark.asyncio
-async def test_check_all_segments_drift_aggregation(
-    monkeypatch, fake_quality, fake_voice_anchor_enabled, tmp_path
-):
+async def test_check_all_segments_drift_aggregation(monkeypatch, fake_quality, fake_voice_anchor_enabled, tmp_path):
     _patch_ffmpeg(
         monkeypatch,
         get_duration=1000.0,

@@ -18,9 +18,6 @@ import pytest
 
 from src.audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline, edit_for_tts
 from src.audiobook_studio.schemas import (
-    BookMeta,
-    CharacterVoiceBinding,
-    EmotionSnapshot,
     ParagraphAnnotation,
     TtsEditInput,
     TtsEditOutput,
@@ -86,7 +83,6 @@ class TestEditForTtsPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = EditForTtsPipeline()
         assert pipeline.router is not None

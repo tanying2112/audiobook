@@ -5,12 +5,10 @@ Supports structured output via instructor-compatible parsing.
 """
 
 import asyncio
-import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
@@ -22,7 +20,6 @@ logger = logging.getLogger(__name__)
 from .semantic_cache import cached_llm_lookup, cached_llm_store, get_semantic_cache
 
 # Import shared validation utilities
-from .utils import LLMParseError, validate_and_parse_llm_response
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -250,15 +247,34 @@ class DirectProviderClient:
 
             start = time.time()
             try:
-                # Run async call in event loop
+                # Run async call in a fresh event loop.
+                # When the caller is already inside a running event loop (e.g. an
+                # async pipeline stage), asyncio.run() raises "cannot be called
+                # from a running event loop". Detect that case and run the async
+                # call in a dedicated worker thread so the sync `call()` remains
+                # safe from both sync and async contexts.
                 if self.config.provider == DirectProviderType.OPENAI:
-                    result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
+                    coro = self._call_openai(messages, response_model, temp, max_tok, **kwargs)
                 elif self.config.provider == DirectProviderType.ANTHROPIC:
-                    result = asyncio.run(self._call_anthropic(messages, response_model, temp, max_tok, **kwargs))
+                    coro = self._call_anthropic(messages, response_model, temp, max_tok, **kwargs)
                 elif self.config.provider == DirectProviderType.OLLAMA:
-                    result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
+                    coro = self._call_openai(messages, response_model, temp, max_tok, **kwargs)
                 else:
                     raise ValueError(f"Unsupported provider: {self.config.provider}")
+
+                try:
+                    asyncio.get_running_loop()
+                    # Already inside a running loop — run the coroutine in a new thread.
+                    import concurrent.futures
+
+                    def _run():
+                        return asyncio.run(coro)
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        result = pool.submit(_run).result()
+                except RuntimeError:
+                    # No running loop — safe to use asyncio.run directly.
+                    result = asyncio.run(coro)
 
                 latency_ms = int((time.time() - start) * 1000)
 
@@ -379,8 +395,8 @@ class DirectProviderClient:
         **kwargs: Any,
     ) -> T:
         """Call OpenAI API with structured output."""
-        # Use instructor's parse method for structured output
-        result = await self._client.chat.completions.parse(
+        # instructor 1.x: use `create` + `response_model` (NOT the legacy `parse`).
+        result = await self._client.chat.completions.create(
             model=self.config.model,
             messages=messages,
             response_model=response_model,
@@ -408,7 +424,7 @@ class DirectProviderClient:
             else:
                 user_messages.append(msg)
 
-        # Use instructor's parse method for structured output
+        # Use instructor's create method for structured output (NOT legacy `parse`).
         result = await self._client.messages.create(
             model=self.config.model,
             system=system_msg if system_msg else None,

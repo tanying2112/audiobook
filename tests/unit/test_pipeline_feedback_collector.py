@@ -5,8 +5,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from src.audiobook_studio.pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 
 

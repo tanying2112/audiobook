@@ -4,9 +4,6 @@ Focuses on testable aspects: data classes, mock mode setup, and branch
 coverage of compute function pathways without requiring actual audio files.
 """
 
-import sys
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 
@@ -39,7 +36,7 @@ class TestDNSMOSMetricMockMode:
     def test_compute_mock_returns_fixed_scores(self):
         """DNSMOS compute in mock mode returns fixed scores."""
         # Mock mode doesn't need audio files - just returns fixed values
-        result = self.metric.compute.__wrapped__ if hasattr(self.metric.compute, '__wrapped__') else None
+        self.metric.compute.__wrapped__ if hasattr(self.metric.compute, "__wrapped__") else None
         # Just verify mock mode is set up correctly
         assert self.metric._mock_scores is not None
 
@@ -61,8 +58,8 @@ class TestASRWerMetricMockMode:
 
     def test_compute_wer_mock_mode_no_crash(self):
         """ASR WER compute in mock mode doesn't crash."""
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
@@ -70,7 +67,7 @@ class TestASRWerMetricMockMode:
             # In mock mode, compute_wer should work without actual transcription
             result = self.metric.compute_wer(tmp_path)
             # Result should be a WERResult or float
-            assert hasattr(result, 'wer') or isinstance(result, float)
+            assert hasattr(result, "wer") or isinstance(result, float)
         finally:
             os.unlink(tmp_path)
 
@@ -331,8 +328,8 @@ class TestQualityCheckResult:
         """QualityCheckResult with all three metrics."""
         from audiobook_studio.quality.metrics import (
             DNSMOSResult,
-            WERResult,
             SpeakerSimilarityResult,
+            WERResult,
         )
 
         dnsmos = DNSMOSResult(4.0, 4.2, 3.8, 4.1, True)

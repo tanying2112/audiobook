@@ -8,15 +8,13 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import instructor
 from litellm import completion
 from pydantic import BaseModel
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..schemas import (
     BookAnalysisOutput,
@@ -31,15 +29,15 @@ logger = logging.getLogger(__name__)
 
 from .constitutional_rules import apply_constitutional_rules
 
-# Import shared validation utilities
-from .utils import LLMParseError, validate_and_parse_llm_response
-
 # LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
 from .semantic_cache import (
     cached_llm_lookup,
     cached_llm_store,
     get_semantic_cache,
 )
+
+# Import shared validation utilities
+from .utils import LLMParseError, validate_and_parse_llm_response
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -165,7 +163,6 @@ class LLMClient:
 
     def _load_mock_data(self):
         """Load mock data for testing."""
-        import json
 
         mock_dir = Path(self.config.mock_data_dir)
         if mock_dir.exists():
@@ -379,7 +376,6 @@ class LLMClient:
 
     def _mock_call(self, prompt: str, response_model: Type[T]) -> LLMCallResult:
         """Mock LLM call for testing."""
-        import copy
 
         # Return mock data if available
         for key, data in self._mock_cache.items():
@@ -395,17 +391,9 @@ class LLMClient:
                     raw_response=data,
                 )
         # Return minimal valid mock based on response_model type
-        from ..schemas import (
-            BookAnalysisOutput,
-            ExtractionResult,
-            ParagraphAnnotation,
-            QualityJudgment,
-            TtsEditOutput,
-            TtsRoutingDecision,
-        )
 
         if response_model == BookAnalysisOutput:
-            from ..schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
+            from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
             mock_output = BookAnalysisOutput(
                 book_meta=BookMeta(
@@ -447,7 +435,6 @@ class LLMClient:
                 global_style_notes="测试全局文风备注：保持平实叙述风格，对话自然流畅。",
             )
         elif response_model == ExtractionResult:
-            from ..schemas import ExtractionResult
 
             mock_output = ExtractionResult(
                 raw_text="Mock extracted text",
@@ -458,7 +445,6 @@ class LLMClient:
                 warnings=[],
             )
         elif response_model == ParagraphAnnotation:
-            from ..schemas import ParagraphAnnotation
 
             mock_output = ParagraphAnnotation(
                 paragraph_index=0,
@@ -477,7 +463,6 @@ class LLMClient:
                 notes="heuristic_fallback_no_llm_available",
             )
         elif response_model == QualityJudgment:
-            from ..schemas import QualityJudgment
 
             mock_output = QualityJudgment(
                 segment_id="mock_seg",
@@ -491,7 +476,6 @@ class LLMClient:
                 needs_regeneration=False,
             )
         elif response_model == TtsEditOutput:
-            from ..schemas import TtsEditOutput
 
             mock_output = TtsEditOutput(
                 edited_text="这是模拟编辑后的文本，用于测试。",
@@ -501,7 +485,6 @@ class LLMClient:
                 rationale="LLM unavailable, using heuristic fallback",
             )
         elif response_model == TtsRoutingDecision:
-            from ..schemas import TtsRoutingDecision
 
             mock_output = TtsRoutingDecision(
                 segment_id="mock_seg",
@@ -528,7 +511,7 @@ class LLMClient:
             # Try to create a default instance, but handle list types gracefully
             try:
                 mock_output = response_model()
-            except (TypeError, Exception):
+            except (TypeError, Exception):  # noqa: B014
                 # For types that can't be instantiated without arguments (like list),
                 # or Pydantic models with required fields, return None
                 mock_output = None

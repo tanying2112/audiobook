@@ -1,5 +1,9 @@
 """本地声音克隆模块 - TTS 声音克隆引擎.
-实现基于 kokoro-onnx 的本地声音克隆，支持 15s 样本门控 SNR≥20dB。
+
+能力边界（M3 澄清）：
+- Kokoro-ONNX / Piper 为固定音色架构，不支持零样本克隆；无 GPU 克隆后端时仅做参考音频存档 + 最近邻音色映射（preset），并经 real_clone_available() 显式探测真实克隆能力，绝不谎报克隆成功。
+- 真正的零样本声纹克隆需要 GPU 后端（F5-TTS / CosyVoice2 / VoxCPM2，Track B 免费 GPU 池）。
+- 15s 样本门控 SNR>=20dB 是输入质量门槛，不代表输出为克隆音色。
 """
 
 # Defer annotation evaluation: VoiceCloner (line 146) annotates its __init__ with
@@ -22,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from .kokoro_backend import KokoroBackend
@@ -802,7 +806,7 @@ class VoiceCloningEngine:
             # 导入 KokoroBackend
             import asyncio
 
-            from .kokoro_backend import KokoroBackend, create_kokoro_backend
+            from .kokoro_backend import KokoroBackend
 
             # 创建 Kokoro backend 实例
             kokoro = KokoroBackend(

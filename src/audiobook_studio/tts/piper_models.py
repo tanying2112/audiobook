@@ -128,7 +128,7 @@ def build_piper_files_spec(
     voices = voices or [DEFAULT_PIPER_VOICE]
     spec: Dict[str, Dict[str, object]] = {}
     for voice_id in voices:
-        info = PIPER_VOICE_MODELS.get(voice_id, {})
+        PIPER_VOICE_MODELS.get(voice_id, {})
         # size_mb intentionally left as None: Piper model sizes vary by quality and
         # we only enforce *existence* in verify_model_files (no false size rejections).
         url = _voice_url(voice_id)
@@ -169,7 +169,6 @@ def ensure_piper_models(
     if issues:
         logger.info(f"Piper model verification issues: {issues}")
 
-    success = True
     for filename, spec in files_spec.items():
         filepath = target_dir / filename
         if filepath.exists() and not force:
@@ -181,7 +180,6 @@ def ensure_piper_models(
         )
         if not ok:
             logger.error(f"Failed to download Piper model file {filename}: {err}")
-            success = False
 
     valid, issues = verify_model_files(target_dir, files_spec)
     if valid:

@@ -1,9 +1,6 @@
 """Tests for tts_voices module."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
-from fastapi import HTTPException
 
 from src.audiobook_studio.api.tts_voices import (
     AZURE_VOICES,

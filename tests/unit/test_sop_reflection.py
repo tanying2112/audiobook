@@ -1,9 +1,7 @@
 """Tests for Module 4.2: SOP Reflection Self-Evolution System."""
 
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,7 +9,6 @@ from src.audiobook_studio.pipeline.sop_reflection import (
     CorrectionCollector,
     GenreDetector,
     ReflectionEngine,
-    ReflectionResult,
     RuleApplier,
     SOPBackgroundThread,
     SOPConfig,
@@ -20,10 +17,7 @@ from src.audiobook_studio.pipeline.sop_reflection import (
     get_genre_detector,
     get_rule_applier,
     get_sop_config,
-    start_sop_background_thread,
-    stop_sop_background_thread,
 )
-
 
 # SOPConfig.DEFAULT_CONFIG_PATH is cwd-relative ("config/agent_sop.json"), so any
 # test that changes the working directory would make SOPConfig() silently fall

@@ -12,11 +12,8 @@ from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.auth.dependencies import (
     get_current_active_user,
-    get_current_superuser,
     get_current_user_optional,
-    require_permission,
 )
-from src.audiobook_studio.auth.models import PermissionName
 from src.audiobook_studio.auth.router import router
 from src.audiobook_studio.database import Base, get_db
 from src.audiobook_studio.models.user import User as UserModel
@@ -1131,9 +1128,7 @@ class TestListProjectPermissions:
 
         from sqlalchemy.orm import Session
 
-        from src.audiobook_studio.models.user import ProjectPermission
-
-        mock_perm1 = MagicMock()
+        mock_perm1 = MagicMock()  # noqa: E303
         mock_perm1.user_id = 1
         mock_perm1.project_id = 1
         mock_perm1.role = "editor"

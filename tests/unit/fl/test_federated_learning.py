@@ -9,23 +9,19 @@ Acceptance target: model aggregation under multi-user data-privacy protection.
 """
 
 import numpy as np
-import pytest
 
 from src.audiobook_studio.fl import (
     DpConfig,
-    FLConfig,
     FedAvgAggregator,
     FederatedClient,
-    FederatedServer,
+    FLConfig,
     LocalARModelAdapter,
     MembershipInferenceEstimator,
     ModelParameters,
     SecAggSession,
     create_federated_n_gram_server,
-    dequantize,
     gaussian_dp_epsilon,
     is_federated_enabled,
-    quantize,
 )
 
 
@@ -36,7 +32,9 @@ def _corpus(off, n=300):
 def _make_clients(n, config, seed=1):
     data = [_corpus(off) for off in range(0, n * 11, 11)]
     return [
-        FederatedClient(f"u:{i}", d, LocalARModelAdapter(order=3, vocab_size=40), config, np.random.default_rng(seed + i))
+        FederatedClient(
+            f"u:{i}", d, LocalARModelAdapter(order=3, vocab_size=40), config, np.random.default_rng(seed + i)
+        )
         for i, d in enumerate(data)
     ]
 
@@ -54,7 +52,7 @@ def test_raw_data_never_transmitted():
     results = [c.build_update(server.key_order if cfg.mode == "secagg" else None) for c in clients]
     # Server never stores any client's private data.
     assert not hasattr(server, "private_data")
-    for c, r in zip(clients, results):
+    for c, r in zip(clients, results, strict=False):
         # The client keeps its OWN raw data locally.
         assert r is not None
         # The exact comma-joined training sequence must NOT appear in the upload.
@@ -190,30 +188,22 @@ def test_dp_reduces_membership_inference():
     all_seqs = member_seqs + nonmember_seqs
     lp_b = [score(before, s) for s in all_seqs]
     lp_a = [score(after, s) for s in all_seqs]
-    acc_no_dp = MembershipInferenceEstimator.attack_accuracy(
-        lp_b, lp_a, list(range(5)), list(range(5, 10))
-    )
+    acc_no_dp = MembershipInferenceEstimator.attack_accuracy(lp_b, lp_a, list(range(5)), list(range(5, 10)))
     assert acc_no_dp >= 0.7  # membership clearly visible without protection
 
     # With DP: the client clips + heavily noises its upload before aggregation.
-    from src.audiobook_studio.fl.privacy import clip_to_norm, add_gaussian_noise
+    from src.audiobook_studio.fl.privacy import add_gaussian_noise, clip_to_norm
 
     local = LocalARModelAdapter(order, vocab)
     local.train(member_seqs[0])
-    flat = np.array(
-        [x for v in local.get_parameters().counts.values() for x in v], dtype=np.float64
-    )
+    flat = np.array([x for v in local.get_parameters().counts.values() for x in v], dtype=np.float64)
     flat = clip_to_norm(flat, 5.0)
     flat = add_gaussian_noise(flat, 5.0 * 3.0, rng)  # strong noise
-    noisy = ModelParameters.from_flat(
-        flat, list(local.get_parameters().counts.keys()), vocab, order
-    )
+    noisy = ModelParameters.from_flat(flat, list(local.get_parameters().counts.keys()), vocab, order)
     after_dp = LocalARModelAdapter(order, vocab)
     after_dp.set_parameters(noisy)
     lp_a_dp = [score(after_dp, s) for s in all_seqs]
-    acc_dp = MembershipInferenceEstimator.attack_accuracy(
-        lp_b, lp_a_dp, list(range(5)), list(range(5, 10))
-    )
+    acc_dp = MembershipInferenceEstimator.attack_accuracy(lp_b, lp_a_dp, list(range(5)), list(range(5, 10)))
     assert acc_dp < acc_no_dp  # DP meaningfully lowers the attacker's accuracy
 
 

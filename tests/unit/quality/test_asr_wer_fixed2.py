@@ -28,7 +28,7 @@ mock_litellm.completion = MagicMock()
 sys.modules["litellm"] = mock_litellm
 
 # Now we can import the module
-from src.audiobook_studio.quality.metrics import ASRResult, ASRWerMetric, WERResult
+from src.audiobook_studio.quality.metrics import ASRResult, ASRWerMetric
 
 
 class TestASRWerMetric(unittest.TestCase):

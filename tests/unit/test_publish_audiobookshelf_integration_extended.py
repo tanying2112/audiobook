@@ -1,14 +1,11 @@
 """publish/audiobookshelf_integration.py 扩展测试 — 覆盖 AudiobookshelfIntegrator 核心路径。"""
 
 import tempfile
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
-class TestAudiobookshelfIntegratorExtended:
+class TestAudiobookshelfIntegratorExtended:  # noqa: E303
     """AudiobookshelfIntegrator 扩展覆盖。"""
 
     def _make_config(self):

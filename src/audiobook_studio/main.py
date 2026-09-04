@@ -12,7 +12,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -36,7 +36,6 @@ from .api.languages import router as languages_router
 from .api.llm import router as llm_router
 from .api.mock_router import router as mock_router
 from .api.models_market import router as models_market_router
-from .api.monitoring import router as monitoring_router
 from .api.paragraphs import router as paragraphs_router
 from .api.pipeline import router as pipeline_router
 from .api.projects import router as projects_router
@@ -224,11 +223,13 @@ app.include_router(publish_job_router, prefix="/api", dependencies=auth_dep)
 app.include_router(upload_router, prefix="/api")  # Has own per-endpoint project auth
 app.include_router(pipeline_router, prefix="/api", dependencies=auth_dep)
 app.include_router(models_market_router, prefix="/api/v1", dependencies=auth_dep)
-app.include_router(agent_chat_router, prefix="/api", dependencies=auth_dep)
+app.include_router(agent_chat_router, prefix="/api")
 app.include_router(admin_router, prefix="/api", dependencies=auth_dep)
 app.include_router(sop_reflection_router, prefix="/api", dependencies=auth_dep)
 
 from fastapi.routing import APIWebSocketRoute
+
+from .api.agent_chat import router as _agent_chat_router
 
 # ── WebSocket Route Fix ──────────────────────────────────────────────────────
 # FastAPI's include_router doesn't properly include WebSocket routes with prefix.
@@ -241,8 +242,15 @@ for _route in _websocket_router.routes:
         _new_route = APIWebSocketRoute(path=_new_path, endpoint=_route.endpoint, name=_route.name)
         app.router.routes.append(_new_route)
 
+# agent_chat 的 WebSocket 端点同样需要手动注册（prefix /agent → /api/agent）
+for _route in _agent_chat_router.routes:
+    if isinstance(_route, APIWebSocketRoute):
+        _new_path = "/api" + _route.path
+        _new_route = APIWebSocketRoute(path=_new_path, endpoint=_route.endpoint, name=_route.name)
+        app.router.routes.append(_new_route)
+
 # Clean up
-del _websocket_router, _route, _new_path, _new_route, APIWebSocketRoute
+del _websocket_router, _agent_chat_router, _route, _new_path, _new_route, APIWebSocketRoute
 
 
 # ── Health endpoints (BP-003: liveness vs readiness) ────────────────────────
@@ -402,7 +410,7 @@ async def metrics():
     return PlainTextResponse(content=metrics_text, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
-from .exceptions import AudiobookError, register_error_handlers
+from .exceptions import register_error_handlers
 
 # ── Global exception handler (QUAL-003) — implementation lives in exceptions.py
 #    so that test apps mounting bare FastAPI() can reuse the identical contract.

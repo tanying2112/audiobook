@@ -7,7 +7,6 @@ Response (innermost→outermost): Observability → ABTest → ISOTimestamp → 
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from datetime import datetime, timezone
@@ -364,7 +363,7 @@ class TestISOTimestampMiddlewareIntegration:
 
     def test_iso_timestamp_converts_numeric_epochs(self, client: TestClient) -> None:
         """Middleware converts numeric epoch timestamps to ISO 8601."""
-        from fastapi import APIRouter, Response
+        from fastapi import APIRouter
         from fastapi.responses import JSONResponse
 
         test_router = APIRouter()
@@ -391,7 +390,7 @@ class TestISOTimestampMiddlewareIntegration:
 
     def test_iso_timestamp_preserves_existing_strings(self, client: TestClient) -> None:
         """Middleware doesn't modify already-formatted ISO strings."""
-        from fastapi import APIRouter, Response
+        from fastapi import APIRouter
         from fastapi.responses import JSONResponse
 
         test_router = APIRouter()
@@ -416,7 +415,7 @@ class TestISOTimestampMiddlewareIntegration:
 
     def test_iso_timestamp_handles_nested_structures(self, client: TestClient) -> None:
         """Middleware recursively normalizes nested dicts and lists with numeric epochs."""
-        from fastapi import APIRouter, Response
+        from fastapi import APIRouter
         from fastapi.responses import JSONResponse
 
         test_router = APIRouter()

@@ -1,7 +1,6 @@
 """Phase C structural tests for database_async.py (async engine/session + Base helpers)."""
 
 import asyncio
-import os
 
 import pytest
 from sqlalchemy import Column, Integer, String

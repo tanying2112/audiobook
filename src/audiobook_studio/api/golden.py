@@ -12,14 +12,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..database import get_async_session
-from ..exceptions import NotFoundError, BadRequestError
+from ..exceptions import BadRequestError, NotFoundError
 from ..models.feedback_record import FeedbackRecord
 
 router = APIRouter(prefix="/golden", tags=["golden"])
@@ -425,7 +425,6 @@ async def run_golden_regression(
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from ..models.book import Project
     from ..pipeline.orchestrator import run_stage
 
     run_id = f"regression_{int(datetime.now().timestamp())}"
@@ -648,6 +647,7 @@ async def bootstrap_fewshot(
     dspy_available = False
     try:
         import dspy  # noqa: F401
+
         dspy_available = True
     except ModuleNotFoundError:
         dspy_available = False

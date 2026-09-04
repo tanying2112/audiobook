@@ -8,9 +8,6 @@ Tests the full TTS pipeline from text to audio using real TTS services:
 5. Full synthesis pipeline
 """
 
-import asyncio
-from pathlib import Path
-
 import pytest
 from tests.e2e.conftest import E2ETestConfig
 
@@ -28,7 +25,7 @@ class TestKokoroTTS:
 
     def test_kokoro_synthesize_short_text(self, temp_output_dir):
         """Test Kokoro TTS synthesis with short text."""
-        from src.audiobook_studio.tts.engine import EngineRegistry, TTSEngine
+        from src.audiobook_studio.tts.engine import TTSEngine
 
         engine = TTSEngine.get_engine("kokoro")
         if engine is None:

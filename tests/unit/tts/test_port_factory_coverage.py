@@ -8,25 +8,24 @@ logic inside ``create_engine`` and friends is fully exercised.
 
 import asyncio
 import threading
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.audiobook_studio.tts import port_factory as pf
-from src.audiobook_studio.tts.port_factory import (
-    StreamingTTSConfig,
-    ZeroShotCloneConfig,
-)
 from src.audiobook_studio.tts import TTSVoiceAnchor
+from src.audiobook_studio.tts import port_factory as pf
 from src.audiobook_studio.tts.port import (
     TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
 )
-
+from src.audiobook_studio.tts.port_factory import (
+    StreamingTTSConfig,
+    ZeroShotCloneConfig,
+)
 
 # ── _get_lock ──────────────────────────────────────────────────────────────
+
 
 def test_get_lock_returns_real_lock():
     lock = pf._get_lock()
@@ -38,6 +37,7 @@ def test_get_lock_returns_real_lock():
 
 
 # ── StreamingTTSConfig / ZeroShotCloneConfig properties ────────────────────
+
 
 def test_streaming_config_properties(monkeypatch):
     monkeypatch.setenv("MOCK_TTS", "false")
@@ -67,6 +67,7 @@ def test_zero_shot_config_mock_mode(monkeypatch):
 
 
 # ── create_engine dispatch branches ────────────────────────────────────────
+
 
 def test_create_engine_fake():
     eng = pf.create_engine("fake")
@@ -180,11 +181,19 @@ def test_create_engine_unknown_raises():
 
 # ── _build_config_from_env ─────────────────────────────────────────────────
 
+
 def test_build_config_default_kokoro_only(monkeypatch):
-    for k in ("EDGE_TTS_ENABLED", "VOXCPM2_ENDPOINT", "KOKORO_MODEL_PATH",
-              "COSYVOICE_STREAM_ENDPOINT", "SEED_TTS_STREAM_ENDPOINT",
-              "MELOTTS_STREAM_ENDPOINT", "XTTS_V2_ENDPOINT",
-              "OPENVOICE_V2_ENDPOINT", "COSYVOICE_CLONE_ENDPOINT"):
+    for k in (
+        "EDGE_TTS_ENABLED",
+        "VOXCPM2_ENDPOINT",
+        "KOKORO_MODEL_PATH",
+        "COSYVOICE_STREAM_ENDPOINT",
+        "SEED_TTS_STREAM_ENDPOINT",
+        "MELOTTS_STREAM_ENDPOINT",
+        "XTTS_V2_ENDPOINT",
+        "OPENVOICE_V2_ENDPOINT",
+        "COSYVOICE_CLONE_ENDPOINT",
+    ):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("ENABLE_LOCAL_TTS", "true")
     cfg = pf._build_config_from_env()
@@ -241,6 +250,7 @@ def test_build_config_clone_endpoints(monkeypatch):
 
 # ── create_configured_registry ─────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_create_configured_registry(monkeypatch):
     captured = {}
@@ -278,6 +288,7 @@ async def test_create_configured_registry_explicit_config(monkeypatch):
 
 # ── get_default_engine ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_default_engine_passed_registry(monkeypatch):
     fake_engine = object()
@@ -297,6 +308,7 @@ async def test_get_default_engine_passed_registry_none_default(monkeypatch):
 
 
 # ── get_port (EnginePortAdapter) ──────────────────────────────────────────
+
 
 class _FakeResult:
     def __init__(self, status, audio_path=None, duration_ms=100, error_message=None):

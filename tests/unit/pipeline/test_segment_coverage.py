@@ -10,13 +10,10 @@ is reachable.
 from __future__ import annotations
 
 import builtins
-import os
 import re
 import sys
 import types
 from pathlib import Path
-from typing import List
-from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
@@ -25,14 +22,13 @@ from src.audiobook_studio.pipeline.segment import (
     LLMSegmenter,
     RuleSegmenter,
     Segment,
-    SegmentConfig,
     SegmentationResult,
+    SegmentConfig,
     SegmentPipeline,
     SegmentStrategy,
     SemanticSegmenter,
     segment_text,
 )
-
 
 # ── Fakes for the optional NLP dependencies ────────────────────────────────
 
@@ -231,7 +227,6 @@ def test_semantic_get_model_success(fake_sentence_transformers) -> None:
     assert len(result.segments) >= 1
 
 
-
 # ── LLM schema + router injection (so the structured-LLM branch is reachable)
 
 
@@ -268,7 +263,7 @@ def fake_llm(monkeypatch):
 
     monkeypatch.setattr(_seg, "create_router", lambda *a, **k: _FakeRouter())
     yield
-    delattr(_schemas, "Segment")
+    delattr(_schemas, "Segment")  # noqa: B043
 
 
 # ── RuleSegmenter ───────────────────────────────────────────────────────────
@@ -328,9 +323,7 @@ def test_segment_with_spacy_direct(fake_spacy) -> None:
     cfg = SegmentConfig(strategy=SegmentStrategy.RULE)
     seg = RuleSegmenter(cfg)
     seg._nlp = _FakeNLP()
-    result = seg._segment_with_spacy(
-        "第一段第一句。第一段第二句。\n\n第二段只有一句。", seg._nlp
-    )
+    result = seg._segment_with_spacy("第一段第一句。第一段第二句。\n\n第二段只有一句。", seg._nlp)
     assert result.strategy_used == SegmentStrategy.RULE
     assert len(result.segments) >= 2
 
@@ -348,7 +341,13 @@ def test_post_process_merge_short_header() -> None:
     seg = RuleSegmenter(cfg)
     segs = [
         Segment(text="小标题", index=0, start_char=0, end_char=3, metadata={"sentence_count": 1}),
-        Segment(text="这是紧随其后的正文内容比较长比较长。", index=1, start_char=4, end_char=20, metadata={"sentence_count": 3}),
+        Segment(
+            text="这是紧随其后的正文内容比较长比较长。",
+            index=1,
+            start_char=4,
+            end_char=20,
+            metadata={"sentence_count": 3},
+        ),
     ]
     merged = seg._post_process_segments(segs, "小标题这是紧随其后的正文内容比较长比较长。")
     assert len(merged) == 1
@@ -515,7 +514,6 @@ def test_llm_segmenter_none_response_falls_back(fake_llm, monkeypatch) -> None:
     result = seg.segment("第一段。\n\n第二段。")
     assert result.strategy_used == SegmentStrategy.LLM
     assert result.stats.get("fallback") == "rule"
-
 
 
 # ── SegmentPipeline orchestration ───────────────────────────────────────────

@@ -1,6 +1,5 @@
 """Phase B structural tests for feedback/ab_test.py (mocking LLM boundaries)."""
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,18 +9,16 @@ from src.audiobook_studio.feedback.ab_test import (
     ABTestResult,
     ABTestSample,
     PairwiseABTestReport,
-    PairwiseABTestResult,
     _compute_paired_ttest,
     _compute_statistical_significance,
     _score_output,
-    build_ab_samples,
     blind_evaluate,
+    build_ab_samples,
     create_llm_judge_fn,
     create_pairwise_judge_fn,
     run_ab_test,
     run_ab_test_pairwise,
 )
-
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -30,9 +27,13 @@ from src.audiobook_studio.feedback.ab_test import (
 
 def test_abtest_sample_fields():
     s = ABTestSample(
-        sample_id="s1", stage="edit_for_tts", input_data={"x": 1},
-        output_a={"edited_text": "a"}, output_b={"edited_text": "b"},
-        version_a=1, version_b=2,
+        sample_id="s1",
+        stage="edit_for_tts",
+        input_data={"x": 1},
+        output_a={"edited_text": "a"},
+        output_b={"edited_text": "b"},
+        version_a=1,
+        version_b=2,
     )
     assert s.sample_id == "s1"
     assert s.version_a == 1
@@ -80,7 +81,9 @@ def test_score_output_quality_judge():
 
 def test_score_output_annotate_paragraph():
     out = {
-        "emotion": "happy", "speaker_canonical_name": "n", "is_dialogue": True,
+        "emotion": "happy",
+        "speaker_canonical_name": "n",
+        "is_dialogue": True,
         "emotion_intensity": 0.5,
     }
     s = _score_output(out, "annotate_paragraph")
@@ -168,8 +171,13 @@ def test_build_ab_samples():
 
 def _make_sample(stage="edit_for_tts", a=None, b=None):
     return ABTestSample(
-        sample_id="s1", stage=stage, input_data={},
-        output_a=a or {}, output_b=b or {}, version_a=1, version_b=2,
+        sample_id="s1",
+        stage=stage,
+        input_data={},
+        output_a=a or {},
+        output_b=b or {},
+        version_a=1,
+        version_b=2,
     )
 
 
@@ -180,7 +188,9 @@ def test_run_ab_test_empty():
 
 
 def test_run_ab_test_heuristic_fallback():
-    samples = [_make_sample(a={"edited_text": "short"}, b={"edited_text": "x" * 300, "forbidden_content_removed": True})]
+    samples = [
+        _make_sample(a={"edited_text": "short"}, b={"edited_text": "x" * 300, "forbidden_content_removed": True})
+    ]
     rep = run_ab_test("edit_for_tts", samples)
     assert rep.num_samples == 1
     assert rep.results[0].score_b > rep.results[0].score_a
@@ -288,18 +298,23 @@ def test_create_llm_judge_fn_fallback(monkeypatch):
 
     monkeypatch.setattr("src.audiobook_studio.llm.create_client", fake_create_client)
     judge_fn = create_llm_judge_fn("edit_for_tts")
-    score_a, score_b, rationale = judge_fn(
-        {"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300}
-    )
+    score_a, score_b, rationale = judge_fn({"text": "hi"}, {"edited_text": "a"}, {"edited_text": "b" * 300})
     assert 0.0 <= score_a <= 1.0
     assert 0.0 <= score_b <= 1.0
     assert "heuristic" in rationale
 
 
-@pytest.mark.parametrize("stage", [
-    "edit_for_tts", "annotate_paragraph", "analyze_structure",
-    "quality_judge", "synthesize", "other_stage",
-])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "edit_for_tts",
+        "annotate_paragraph",
+        "analyze_structure",
+        "quality_judge",
+        "synthesize",
+        "other_stage",
+    ],
+)
 def test_create_llm_judge_fn_all_stages(monkeypatch, stage):
     def fake_create_client(**kwargs):
         client = MagicMock()
@@ -314,7 +329,8 @@ def test_create_llm_judge_fn_all_stages(monkeypatch, stage):
     judge_fn = create_llm_judge_fn(stage)
     score_a, score_b, rationale = judge_fn(
         {"text": "hi", "book_text": "b", "expected_text": "e"},
-        {"edited_text": "a"}, {"edited_text": "b" * 300},
+        {"edited_text": "a"},
+        {"edited_text": "b" * 300},
     )
     assert 0.0 <= score_a <= 1.0
     assert 0.0 <= score_b <= 1.0
@@ -347,7 +363,6 @@ def test_create_pairwise_judge_fn_success(fake_llm_judge):
 
 
 def test_create_pairwise_judge_fn_fallback(fake_llm_judge):
-    import sys
     import types
 
     mod = types.ModuleType("src.audiobook_studio.llm.judge")
@@ -391,9 +406,7 @@ def test_run_ab_test_pairwise_use_llm_judge(monkeypatch):
 
         return j
 
-    monkeypatch.setattr(
-        "src.audiobook_studio.feedback.ab_test.create_pairwise_judge_fn", fake_pairwise_judge
-    )
+    monkeypatch.setattr("src.audiobook_studio.feedback.ab_test.create_pairwise_judge_fn", fake_pairwise_judge)
     samples = [_make_sample() for _ in range(3)]
     rep = run_ab_test_pairwise("edit_for_tts", samples, use_llm_judge=True)
     assert rep.b_wins == 3
@@ -406,7 +419,10 @@ def test_run_ab_test_pairwise_use_llm_judge(monkeypatch):
 
 def test_blind_evaluate_no_ratings():
     rep = ABTestReport(
-        stage="x", version_a=1, version_b=2, num_samples=1,
+        stage="x",
+        version_a=1,
+        version_b=2,
+        num_samples=1,
         results=[ABTestResult("s1", "A", 0.5, 0.4)],
     )
     out = blind_evaluate(rep, None)
@@ -416,8 +432,13 @@ def test_blind_evaluate_no_ratings():
 def test_blind_evaluate_merges_ratings():
     res = [ABTestResult("s1", "A", 0.5, 0.4), ABTestResult("s2", "B", 0.3, 0.6)]
     rep = ABTestReport(
-        stage="x", version_a=1, version_b=2, num_samples=2,
-        results=res, a_wins=1, b_wins=1,
+        stage="x",
+        version_a=1,
+        version_b=2,
+        num_samples=2,
+        results=res,
+        a_wins=1,
+        b_wins=1,
     )
     ratings = [{"sample_id": "s1", "score_a": 0.9, "score_b": 0.2, "rationale": "human ok"}]
     out = blind_evaluate(rep, ratings)

@@ -8,11 +8,10 @@ Provides high-performance local LLM inference using vLLM with:
 - OpenAI-compatible API for easy integration
 """
 
-import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
@@ -20,7 +19,6 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 # Import shared validation utilities
-from .utils import LLMParseError, validate_and_parse_llm_response
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -123,9 +121,11 @@ class VLLMBackend:
             # Wrap with instructor for structured output parsing
             self._client = instructor.from_openai(base_client, mode=instructor.Mode.JSON)
             logger.info(f"Initialized vLLM backend for model: {self.config.model} at {self.config.base_url}")
-            logger.info(f"vLLM features: chunked_prefill={self.config.enable_chunked_prefill}, "
-                       f"prefix_caching={self.config.enable_prefix_caching}, "
-                       f"speculative={self.config.speculative_model is not None}")
+            logger.info(
+                f"vLLM features: chunked_prefill={self.config.enable_chunked_prefill}, "
+                f"prefix_caching={self.config.enable_prefix_caching}, "
+                f"speculative={self.config.speculative_model is not None}"
+            )
         except ImportError as e:
             logger.error(f"OpenAI SDK or instructor not installed: {e}")
             raise
@@ -176,9 +176,10 @@ class VLLMBackend:
 
         start = time.time()
         try:
-            # Run async call in event loop
-            import asyncio
-            result = asyncio.run(self._call_async(messages, response_model, temp, max_tok, **kwargs))
+            # Run async call safely (works both inside and outside a running loop)
+            from ..utils.async_utils import run_async_safe
+
+            result = run_async_safe(self._call_async(messages, response_model, temp, max_tok, **kwargs))
 
             latency_ms = int((time.time() - start) * 1000)
 
@@ -227,8 +228,8 @@ class VLLMBackend:
         **kwargs: Any,
     ) -> T:
         """Call vLLM API with structured output."""
-        # Use instructor's parse method for structured output
-        result = await self._client.chat.completions.parse(
+        # instructor 1.x: use `create` + `response_model` (NOT the legacy `parse`).
+        result = await self._client.chat.completions.create(
             model=self.config.model,
             messages=messages,
             response_model=response_model,

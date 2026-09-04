@@ -21,7 +21,7 @@
 
 from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 
 Score = Annotated[float, Field(ge=0.0, le=1.0)]
 

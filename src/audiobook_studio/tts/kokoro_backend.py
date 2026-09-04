@@ -17,9 +17,7 @@ import numpy as np
 
 from .engine import (
     BaseTTSEngine,
-    EngineRegistry,
     SynthesisResult,
-    TTSEngine,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
@@ -581,8 +579,7 @@ class KokoroBackend(BaseTTSEngine):
         """
         import numpy as np
 
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-        phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
+        KOKORO_VOICES.get(voice_id, {}).get("language", "en")
 
         if self.mock_mode or self._kokoro is None:
             # Mock mode: return dummy tokens

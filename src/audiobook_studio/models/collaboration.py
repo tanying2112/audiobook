@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..orm_base import Base
 
 if TYPE_CHECKING:
-    from .user import User
+    pass
 
 
 # Association table for task dependencies (many-to-many)

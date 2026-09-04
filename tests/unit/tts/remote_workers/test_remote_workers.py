@@ -5,9 +5,8 @@ Tests for src/audiobook_studio/tts/remote_workers/
 Target: 70%+ coverage
 """
 
-import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,17 +17,34 @@ import pytest
 #  classes. The 4 worker test files reload their target module per-test with
 #  proper mocks; leaving MagicMocks here would leak into those reloads.)
 _IMPORT_MODULES = [
-    'torch', 'torchaudio', 'torch.cuda', 'torch.cuda.amp', 'torchaudio.functional',
-    'lightning', 'lightning.pytorch', 'modal', 'kaggle',
-    'boto3', 'requests', 'transformers', 'transformers.models',
-    'transformers.models.voxcpm2', 'paddle', 'paddlepaddle',
-    'paddlenlp', 'paddlenlp.transformers', 'paddlenlp.transformers.auto',
-    'paddlenlp.transformers.AutoModelForCausalLM',
-    'paddlenlp.transformers.AutoTokenizer',
-    'paddlenlp.transformers.AutoConfig',
-    'paddlenlp.transformers.AutoModel',
-    'paddle.device', 'paddle.device.cuda',
-    'pytesseract', 'soundfile', 'paddlaudio',
+    "torch",
+    "torchaudio",
+    "torch.cuda",
+    "torch.cuda.amp",
+    "torchaudio.functional",
+    "lightning",
+    "lightning.pytorch",
+    "modal",
+    "kaggle",
+    "boto3",
+    "requests",
+    "transformers",
+    "transformers.models",
+    "transformers.models.voxcpm2",
+    "paddle",
+    "paddlepaddle",
+    "paddlenlp",
+    "paddlenlp.transformers",
+    "paddlenlp.transformers.auto",
+    "paddlenlp.transformers.AutoModelForCausalLM",
+    "paddlenlp.transformers.AutoTokenizer",
+    "paddlenlp.transformers.AutoConfig",
+    "paddlenlp.transformers.AutoModel",
+    "paddle.device",
+    "paddle.device.cuda",
+    "pytesseract",
+    "soundfile",
+    "paddlaudio",
 ]
 
 _saved_modules = {}
@@ -38,7 +54,6 @@ for _mod in _IMPORT_MODULES:
         sys.modules[_mod] = MagicMock()
 
 # Now import the modules after mocking
-from src.audiobook_studio.tts.remote_workers import BaseWorker
 from src.audiobook_studio.tts.remote_workers.baidu_worker import BaiduWorker
 from src.audiobook_studio.tts.remote_workers.kaggle_worker import KaggleWorker
 
@@ -54,15 +69,15 @@ class TestBaiduWorker:
     def test_worker_attributes(self):
         """Test worker initialization attributes."""
         worker = BaiduWorker.__new__(BaiduWorker)
-        worker.worker_id = 'baidu-001'
-        worker.status = 'idle'
+        worker.worker_id = "baidu-001"
+        worker.status = "idle"
         worker.current_job = None
         # Note: prefer_paddle is set in __init__, which we're not calling
         worker.prefer_paddle = True
         worker.backend = None
         worker.engine = None
-        assert worker.worker_id == 'baidu-001'
-        assert worker.status == 'idle'
+        assert worker.worker_id == "baidu-001"
+        assert worker.status == "idle"
         assert worker.current_job is None
 
     def test_crossfade_ms_fixed(self):
@@ -78,10 +93,10 @@ class TestKaggleWorker:
     def test_initialization(self):
         """Test worker initialization."""
         worker = KaggleWorker.__new__(KaggleWorker)
-        worker.worker_id = 'kaggle-001'
-        worker.status = 'idle'
-        assert worker.worker_id == 'kaggle-001'
-        assert worker.status == 'idle'
+        worker.worker_id = "kaggle-001"
+        worker.status = "idle"
+        assert worker.worker_id == "kaggle-001"
+        assert worker.status == "idle"
 
 
 class TestBaseWorker:
@@ -91,10 +106,10 @@ class TestBaseWorker:
         """Test that base worker defines required abstract methods."""
         from src.audiobook_studio.tts.remote_workers.base_worker import BaseWorker
 
-        assert '_init_engine' in BaseWorker.__abstractmethods__
-        assert '_execute_smoke_test' in BaseWorker.__abstractmethods__
-        assert '_synthesize' in BaseWorker.__abstractmethods__
-        assert '_get_platform_gpu_metrics' in BaseWorker.__abstractmethods__
+        assert "_init_engine" in BaseWorker.__abstractmethods__
+        assert "_execute_smoke_test" in BaseWorker.__abstractmethods__
+        assert "_synthesize" in BaseWorker.__abstractmethods__
+        assert "_get_platform_gpu_metrics" in BaseWorker.__abstractmethods__
 
 
 if __name__ == "__main__":

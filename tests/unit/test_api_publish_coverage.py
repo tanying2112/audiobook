@@ -4,11 +4,9 @@ These tests use async SQLAlchemy 2.0 patterns with AsyncSessionLocal.
 """
 
 import asyncio
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-import aiohttp
 import pytest
 
 

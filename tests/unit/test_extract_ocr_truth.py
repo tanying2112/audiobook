@@ -53,10 +53,21 @@ _ORIGINAL_EXTRACT_MODULE = sys.modules.get(_EXTRACT_MODULE_NAME)
 def _restore_original_extract_module():
     """Put the original extract module back in sys.modules after each test."""
     yield
+    import src.audiobook_studio.pipeline as _pipeline
+
     if _ORIGINAL_EXTRACT_MODULE is not None:
         sys.modules[_EXTRACT_MODULE_NAME] = _ORIGINAL_EXTRACT_MODULE
+        # The re-import above sets the parent package's ``extract`` attribute to
+        # the fresh module object. Restoring only ``sys.modules`` is not enough:
+        # ``from src.audiobook_studio.pipeline import extract`` resolves via
+        # ``getattr`` on the parent and would still return the reloaded module,
+        # breaking module identity for later tests (e.g. test_vision patching
+        # ``OCR_AVAILABLE`` on a different copy than ``_extract_image`` reads).
+        setattr(_pipeline, "extract", _ORIGINAL_EXTRACT_MODULE)
     else:
         sys.modules.pop(_EXTRACT_MODULE_NAME, None)
+        if hasattr(_pipeline, "extract"):
+            delattr(_pipeline, "extract")
 
 
 def _have_py_modules() -> bool:

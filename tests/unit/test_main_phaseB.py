@@ -39,9 +39,7 @@ def test_global_exception_handler_unknown():
 def test_global_exception_handler_http():
     async def go():
         req = MagicMock()
-        resp = await main_mod.global_exception_handler(
-            req, StarletteHTTPException(detail="x", status_code=418)
-        )
+        resp = await main_mod.global_exception_handler(req, StarletteHTTPException(detail="x", status_code=418))
         assert resp.status_code == 418
 
     _run(go())
@@ -99,14 +97,10 @@ def _patch_health_deps(monkeypatch, redis_ping_ok=True, registry=None):
     async def _probe(timeout, registry=None):
         return {"engines": {"kokoro": True}, "details": {}}
 
-    monkeypatch.setattr(
-        "src.audiobook_studio.tts.engine.probe_tts_engines", _probe
-    )
+    monkeypatch.setattr("src.audiobook_studio.tts.engine.probe_tts_engines", _probe)
     container = MagicMock()
     container.get_or_none.return_value = registry
-    monkeypatch.setattr(
-        "src.audiobook_studio.di.get_app_container", lambda: container
-    )
+    monkeypatch.setattr("src.audiobook_studio.di.get_app_container", lambda: container)
 
 
 def test_health_ready_ok_with_registry(monkeypatch):
@@ -157,14 +151,10 @@ def test_health_ready_tts_probe_error_and_llm_error(monkeypatch):
     async def _probe(timeout, registry=None):
         raise RuntimeError("tts probe boom")
 
-    monkeypatch.setattr(
-        "src.audiobook_studio.tts.engine.probe_tts_engines", _probe
-    )
+    monkeypatch.setattr("src.audiobook_studio.tts.engine.probe_tts_engines", _probe)
     container = MagicMock()
     container.get_or_none.return_value = None
-    monkeypatch.setattr(
-        "src.audiobook_studio.di.get_app_container", lambda: container
-    )
+    monkeypatch.setattr("src.audiobook_studio.di.get_app_container", lambda: container)
 
     resp = _run(main_mod.health_ready())
     # db + redis healthy, but llm key invalid -> 503 (llm is critical)
@@ -183,9 +173,7 @@ def test_lifespan_startup_and_shutdown(monkeypatch):
     fake_settings.validate_cors_security = MagicMock()
     fake_settings.validate_runtime_dependencies = AsyncMock()
 
-    monkeypatch.setattr(
-        "src.audiobook_studio.config.get_settings", lambda: fake_settings
-    )
+    monkeypatch.setattr("src.audiobook_studio.config.get_settings", lambda: fake_settings)
 
     fake_result = MagicMock()
     fake_result.returncode = 0
@@ -193,23 +181,15 @@ def test_lifespan_startup_and_shutdown(monkeypatch):
     monkeypatch.setattr("subprocess.run", lambda *a, **k: fake_result)
 
     fake_db = MagicMock()
-    monkeypatch.setattr(
-        "src.audiobook_studio.database.SessionLocal", lambda: fake_db
-    )
+    monkeypatch.setattr("src.audiobook_studio.database.SessionLocal", lambda: fake_db)
     monkeypatch.setattr("src.audiobook_studio.auth.rbac.init_rbac", MagicMock())
 
     fake_pm = MagicMock()
     fake_pm.load_all_installed.return_value = {"p1": True}
-    monkeypatch.setattr(
-        "src.audiobook_studio.plugins.get_plugin_manager", lambda: fake_pm
-    )
+    monkeypatch.setattr("src.audiobook_studio.plugins.get_plugin_manager", lambda: fake_pm)
 
-    monkeypatch.setattr(
-        "src.audiobook_studio.observability.tracing.shutdown_tracing", MagicMock()
-    )
-    monkeypatch.setattr(
-        "src.audiobook_studio.observability.metrics.shutdown_metrics", MagicMock()
-    )
+    monkeypatch.setattr("src.audiobook_studio.observability.tracing.shutdown_tracing", MagicMock())
+    monkeypatch.setattr("src.audiobook_studio.observability.metrics.shutdown_metrics", MagicMock())
 
     async def go():
         async with main_mod.lifespan(MagicMock()):

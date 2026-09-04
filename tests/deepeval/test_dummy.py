@@ -1,6 +1,7 @@
 """DeepEval integration smoke test.
 Verifies the DeepEval library is importable and provides expected public API.
 """
+
 import pytest
 
 
@@ -23,7 +24,7 @@ def test_deepeval_importable():
 
 def test_deepeval_metrics_registry():
     """Verify core metrics are accessible when deepeval is installed."""
-    deepeval = pytest.importorskip("deepeval")
+    pytest.importorskip("deepeval")
     # HallucinationMetric, AnswerRelevancyMetric, FaithfulnessMetric are core
     from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, HallucinationMetric
 

@@ -8,7 +8,7 @@ All functions support both sync (Session) and async (AsyncSession) callers.
 
 import json
 import logging
-from typing import Any, Dict, Optional, Union, cast, Awaitable
+from typing import Any, Dict, Optional, Union, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,6 @@ from ..schemas import (
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
-    TtsRoutingDecision,
 )
 from .segment import SegmentationResult
 
@@ -95,7 +94,7 @@ async def _aflush(db: Union[Session, AsyncSession]) -> None:
 
 async def _aexecute(db: Union[Session, AsyncSession], stmt: Any) -> Any:
     """Execute statement. Returns Result for both session types.
-    
+
     Call with await in async context - works for both sync and async sessions.
     """
     if _is_async(db):
@@ -106,10 +105,12 @@ async def _aexecute(db: Union[Session, AsyncSession], stmt: Any) -> Any:
         # Wrap in a coroutine so caller can await it uniformly.
         async def _sync_execute():
             return db.execute(stmt)
+
         return await _sync_execute()
 
 
 # ── Sync write functions (for sync Session callers) ─────────────────────────────
+
 
 def write_extract_sync(
     db: Session,
@@ -130,7 +131,7 @@ def write_extract_sync(
             select(Chapter).filter(
                 Chapter.project_id == project_id,
                 Chapter.index == chapter_index,
-            )
+            ),
         )
         chapter = result_q.scalar_one_or_none()
     if not chapter:
@@ -155,13 +156,15 @@ def write_segment_sync(
     """Update Chapter with segmentation results (sync version)."""
     segments_data = []
     for seg in result.segments:
-        segments_data.append({
-            "index": seg.index,
-            "text": seg.text,
-            "start_char": seg.start_char,
-            "end_char": seg.end_char,
-            "metadata": seg.metadata,
-        })
+        segments_data.append(
+            {
+                "index": seg.index,
+                "text": seg.text,
+                "start_char": seg.start_char,
+                "end_char": seg.end_char,
+                "metadata": seg.metadata,
+            }
+        )
 
     chapter.segment_data = segments_data
     chapter.segment_strategy = result.strategy_used.value
@@ -197,7 +200,7 @@ def write_annotate_sync(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter.id,
             Paragraph.index == paragraph_index,
-        )
+        ),
     )
     para: Optional[Paragraph] = result_q.scalar_one_or_none()
     if not para:
@@ -272,7 +275,7 @@ def write_synthesize_sync(
         select(AudioSegmentModel)
         .filter(AudioSegmentModel.paragraph_id == para.id)
         .order_by(AudioSegmentModel.version.desc())
-        .limit(1)
+        .limit(1),
     )
     existing: Optional[AudioSegmentModel] = result_q.scalar_one_or_none()
 
@@ -330,8 +333,7 @@ def write_quality_sync(
 ) -> Quality:
     """Create a Quality record and update Paragraph with quality scores (sync version)."""
     result_q = _execute(
-        db,
-        select(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).limit(1)
+        db, select(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).limit(1)
     )
     tts_edit: Optional[TTSEdit] = result_q.scalar_one_or_none()
 
@@ -446,6 +448,7 @@ def write_audio_postprocess_sync(
 
 # ── Async write functions (for AsyncSession callers, always await) ──────────────
 
+
 async def write_extract(
     db: Union[Session, AsyncSession],
     project_id: int,
@@ -469,7 +472,7 @@ async def write_extract(
             select(Chapter).filter(
                 Chapter.project_id == project_id,
                 Chapter.index == chapter_index,
-            )
+            ),
         )
         chapter = result_q.scalar_one_or_none()
     if not chapter:
@@ -494,13 +497,15 @@ async def write_segment(
     """Update Chapter with segmentation results (async version)."""
     segments_data = []
     for seg in result.segments:
-        segments_data.append({
-            "index": seg.index,
-            "text": seg.text,
-            "start_char": seg.start_char,
-            "end_char": seg.end_char,
-            "metadata": seg.metadata,
-        })
+        segments_data.append(
+            {
+                "index": seg.index,
+                "text": seg.text,
+                "start_char": seg.start_char,
+                "end_char": seg.end_char,
+                "metadata": seg.metadata,
+            }
+        )
 
     chapter.segment_data = segments_data
     chapter.segment_strategy = result.strategy_used.value
@@ -536,7 +541,7 @@ async def write_annotate(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter.id,
             Paragraph.index == paragraph_index,
-        )
+        ),
     )
     para: Optional[Paragraph] = result_q.scalar_one_or_none()
     if not para:
@@ -611,7 +616,7 @@ async def write_synthesize(
         select(AudioSegmentModel)
         .filter(AudioSegmentModel.paragraph_id == para.id)
         .order_by(AudioSegmentModel.version.desc())
-        .limit(1)
+        .limit(1),
     )
     existing: Optional[AudioSegmentModel] = result_q.scalar_one_or_none()
 
@@ -669,8 +674,7 @@ async def write_quality(
 ) -> Quality:
     """Create a Quality record and update Paragraph with quality scores (async version)."""
     result_q = await _aexecute(
-        db,
-        select(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).limit(1)
+        db, select(TTSEdit).filter(TTSEdit.paragraph_id == para.id).order_by(TTSEdit.version.desc()).limit(1)
     )
     tts_edit: Optional[TTSEdit] = result_q.scalar_one_or_none()
 

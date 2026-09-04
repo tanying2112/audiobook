@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 
 from src.audiobook_studio.config.hardware_profile import get_hardware_profile, reset_hardware_profile
 from src.audiobook_studio.llm import LLMRouter
-from src.audiobook_studio.llm.config_loader import StageName
 from src.audiobook_studio.pipeline.quality_check import QualityCheckPipeline
 from src.audiobook_studio.schemas import ParagraphAnnotation
 

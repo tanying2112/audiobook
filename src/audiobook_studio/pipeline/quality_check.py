@@ -6,7 +6,6 @@ Triggers regeneration on failure.
 """
 
 import base64
-import json
 import logging
 import os
 import queue
@@ -21,9 +20,9 @@ import numpy as np
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
-from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
+from ..monitoring.langfuse_client import observe_quality_check, trace_function
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
-from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
+from ..quality import QualityCheckResult, QualityCheckSuite
 from ..quality.audio_quality import fuse_audio_scores
 from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 from ..schemas.quality import FixSuggestion
@@ -148,6 +147,15 @@ class QualityCheckPipeline:
         # This enables graceful degradation: missing deps skip their metric
         # instead of forcing the entire pipeline into mock mode.
         self._available_features = self._check_optional_dependencies()
+        # Safety gate: heavy native audio-metric models (faster-whisper/ctranslate2)
+        # can hard-crash the whole process on some hosts. Unit tests and other
+        # constrained environments set AUDIO_HARD_METRICS_DISABLED=1 to force
+        # graceful skip of DNSMOS/ASR/SpeakerSim hard checks.
+        import os as _os
+
+        if _os.environ.get("AUDIO_HARD_METRICS_DISABLED", "").lower() in ("1", "true", "yes"):
+            for _k in ("dnsmos", "asr", "speaker_sim"):
+                self._available_features[_k] = False
 
         # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
@@ -226,7 +234,7 @@ class QualityCheckPipeline:
                 features["asr"] = True
             except Exception:
                 try:
-                    import whisper  # openai-whisper fallback
+                    import whisper  # noqa: F401
 
                     features["asr"] = True
                 except Exception:
@@ -1040,7 +1048,6 @@ def quality_check(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("QualityCheckPipeline ready")

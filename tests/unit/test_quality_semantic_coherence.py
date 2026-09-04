@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 
 

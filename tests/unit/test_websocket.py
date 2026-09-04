@@ -13,7 +13,6 @@ from src.audiobook_studio.api.websocket import (
     PipelineEventType,
     emit_pipeline_event,
     handle_client_message,
-    manager,
     pipeline_websocket,
 )
 

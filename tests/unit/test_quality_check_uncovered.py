@@ -4,7 +4,6 @@ Uncovered lines: 88, 102, 156, 163, 167, 171, 178-179, 188, 199-201,
 234, 263-264, 317-388, 400, 615-617, 651
 """
 
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -15,7 +14,7 @@ import numpy as np
 import pytest
 
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
-from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
+from src.audiobook_studio.schemas import ParagraphAnnotation
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision
 
 

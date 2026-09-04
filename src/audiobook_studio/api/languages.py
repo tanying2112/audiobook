@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query
 
 from ..exceptions import NotFoundError
-
 from ..languages import (
     SUPPORTED_BCP47_CODES,
     SUPPORTED_ISO_CODES,
@@ -87,7 +86,9 @@ def translate_required(source: str = Query(...), target: str = Query(...)) -> Di
 
 
 @router.post("/sop/migrate")
-def migrate_sop(source_lang: str = Query(...), target_lang: str = Query(...), rules: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def migrate_sop(
+    source_lang: str = Query(...), target_lang: str = Query(...), rules: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """Cross-language SOP rule migration (S3.4).
 
     Adapts the provided SOP rules (genre/rules) from ``source_lang`` to

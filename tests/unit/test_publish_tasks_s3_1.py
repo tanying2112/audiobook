@@ -4,8 +4,7 @@ Focus: exponential backoff policy and the durable state-machine transitions
 (PENDING -> PROCESSING -> SUCCESS / FAILED) around a single publish attempt.
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -104,7 +103,7 @@ def test_publish_project_async_uses_exponential_backoff_on_retry():
 
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             publish_tasks.publish_project_async(mock_self, project_id=1, destinations=["audiobookshelf"])
         assert mock_self.retry.called
         # retries=1 -> countdown = 5 * 2**1 = 10
@@ -127,7 +126,7 @@ def test_publish_audiobookshelf_async_uses_exponential_backoff_on_retry():
     mock_self.retry.side_effect = _retry
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             publish_tasks.publish_audiobookshelf_async(mock_self, project_id=1, config={"server_url": "x"})
         assert mock_self.retry.called
         # retries=2 -> countdown = 5 * 2**2 = 20
@@ -149,7 +148,7 @@ def test_generate_podcast_rss_async_uses_exponential_backoff_on_retry():
     mock_self.retry.side_effect = _retry
     with patch("asyncio.run") as mock_run:
         mock_run.side_effect = test_exception
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             publish_tasks.generate_podcast_rss_async(mock_self, project_id=1, config={"title": "x"})
         assert mock_self.retry.called
         assert captured.get("countdown") == 5

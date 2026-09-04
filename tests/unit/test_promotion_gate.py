@@ -1,6 +1,5 @@
 """Tests for feedback/promotion_gate module."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -8,7 +8,6 @@ Audiobook Studio — 本地声音克隆系统
 import hashlib
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -316,7 +315,7 @@ class VoiceCloningManager:
         try:
             # 在实际实现中，这里 zou 提取音频特征并平均
             # 为演示目的，我们使用哈希和简单统计
-            total_duration = sum(s.duration for s in valid_samples)
+            sum(s.duration for s in valid_samples)
             avg_snr = sum(s.snr_db for s in valid_samples) / len(valid_samples)
 
             # 生成声音哈希（基于所有样本的组合特征）
@@ -395,7 +394,7 @@ class VoiceCloningManager:
 
             # Map language to kokoro voice format
             # For voice cloning, we use the speaker embedding directly
-            voice_print = self.voice_prints[speaker_id]
+            self.voice_prints[speaker_id]
 
             # Determine kokoro voice based on language
             # Note: kokoro-onnx uses preset voices, for cloning we pass reference_audio
@@ -441,7 +440,7 @@ class VoiceCloningManager:
                     output_path,
                 )
             else:
-                return False, f"合成失败: 输出文件为空", None
+                return False, "合成失败: 输出文件为空", None
 
         except ImportError as e:
             logger.warning(f"onnxruntime/kokoro-onnx 未安装: {e}")
@@ -493,7 +492,7 @@ class VoiceCloningManager:
 
             # Check if we're already in an event loop
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We're in an async context, can't use asyncio.run()
                 # Run the async synthesis in a new thread or use run_coroutine_threadsafe
                 import concurrent.futures

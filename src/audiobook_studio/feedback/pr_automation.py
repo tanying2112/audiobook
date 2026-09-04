@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -334,7 +333,7 @@ def create_prompt_upgrade_pr(
         "",
         "### Changes",
         f"- Upgraded prompt `{stage}` to version `v{version}`",
-        f"- Updated CHANGELOG.md with change summary",
+        "- Updated CHANGELOG.md with change summary",
         "",
         "### Validation Results",
     ]
@@ -447,7 +446,6 @@ def list_open_prompt_prs() -> List[Dict[str, Any]]:
 
 def close_stale_prompt_prs(days: int = 7) -> int:
     """Close prompt upgrade PRs older than specified days."""
-    import time
 
     prs = list_open_prompt_prs()
     closed_count = 0

@@ -1,6 +1,5 @@
 """Tests for S2-4 Piper integration into the TTS readiness probe & EngineRegistry."""
 
-import asyncio
 from unittest.mock import patch
 
 import pytest

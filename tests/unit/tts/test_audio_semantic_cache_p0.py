@@ -337,8 +337,10 @@ class TestRedisBackend:
         failing = MagicMock()
         failing.ping.side_effect = RuntimeError("connection refused")
         c = enabled_cache(backend="redis")
-        with patch("redis.from_url", return_value=failing), \
-             patch.object(AudioSemanticCache, "_put_redis", return_value=None):
+        with (
+            patch("redis.from_url", return_value=failing),
+            patch.object(AudioSemanticCache, "_put_redis", return_value=None),
+        ):
             first = c._get_redis_client()
             second = c._get_redis_client()
         assert first is None

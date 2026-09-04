@@ -8,8 +8,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.audiobook_studio.export.batch_exporter import (
     ExportFormat,
     ExportJob,

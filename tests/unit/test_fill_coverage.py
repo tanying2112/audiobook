@@ -1,8 +1,6 @@
 import asyncio
 from unittest import mock
 
-import pytest
-
 import audiobook_studio.tasks.publish_tasks as PT
 import audiobook_studio.utils.redis_pool as RP
 

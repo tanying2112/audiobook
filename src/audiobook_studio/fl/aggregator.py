@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, List, Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 import numpy as np
 
@@ -42,7 +42,7 @@ def fedavg_count_models(
     out = ModelParameters(vocab_size=vocab, order=order)
     for k in sorted(union):
         acc = np.zeros(vocab, dtype=np.float64)
-        for p, w in zip(params_list, weights):
+        for p, w in zip(params_list, weights, strict=False):
             v = p.counts.get(k)
             if v is not None:
                 acc += np.asarray(v, dtype=np.float64) * w
@@ -59,7 +59,7 @@ def fedavg_vectors(
         raise ValueError("vectors is empty")
     total_w = float(sum(weights)) or 1.0
     acc = np.zeros_like(np.asarray(vectors[0], dtype=np.float64))
-    for v, w in zip(vectors, weights):
+    for v, w in zip(vectors, weights, strict=False):
         acc += np.asarray(v, dtype=np.float64) * w
     return acc / total_w
 

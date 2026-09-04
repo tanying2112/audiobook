@@ -1,9 +1,6 @@
 """M-项1/项2/项3 收尾测试：调度开关、晋升门禁、看板真实计数。"""
 
-import os
 from typing import Any, Dict
-
-import pytest
 
 from audiobook_studio.feedback.prompt_compiler import stage_to_prompt_dir
 from audiobook_studio.harness.dashboard import get_harness_dashboard
@@ -108,7 +105,6 @@ def test_promotion_gate_format_missing_file_fails(tmp_path):
 def test_promotion_gate_deploy_forwards_human_preference(tmp_path, monkeypatch):
     """promote_candidate 把 human_preference_score 如实透传给真引擎（feedback/deploy）。"""
     import audiobook_studio.feedback.deploy as deploy_mod
-    import audiobook_studio.harness.promotion_gate as pg_mod
 
     _write_candidate(tmp_path, "judge", 1)
 

@@ -12,14 +12,14 @@ Hermes-AgentMesh Core Architecture Integration:
 
 import os
 import sys
+import types
+
 import torch
 import torchaudio
-import types
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import snapshot_download
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .base_worker import BaseWorker
-
 
 # ==========================================
 # SSL VERIFICATION BYPASS & HF MIRROR
@@ -33,35 +33,40 @@ os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 # Force torch.load default to weights_only=False for legacy model files
 _REAL_ORIGINAL_TORCH_LOAD = torch.load
 
+
 def _patched_torch_load(*args, **kwargs):
-    if 'weights_only' not in kwargs:
-        kwargs['weights_only'] = False
+    if "weights_only" not in kwargs:
+        kwargs["weights_only"] = False
     return _REAL_ORIGINAL_TORCH_LOAD(*args, **kwargs)
+
+
 _patched_torch_load._patched_weights_only = True
 
 torch.load = _patched_torch_load
-sys.modules['torch'].load = _patched_torch_load
+sys.modules["torch"].load = _patched_torch_load
 
 # ==========================================
 # BlockMask TYPE HINT FIX (transformers compat)
 # ==========================================
 try:
-    if not hasattr(torch.nn, 'attention'):
-        torch.nn.attention = types.ModuleType('attention')
-        sys.modules['torch.nn.attention'] = torch.nn.attention
+    if not hasattr(torch.nn, "attention"):
+        torch.nn.attention = types.ModuleType("attention")
+        sys.modules["torch.nn.attention"] = torch.nn.attention
 
     try:
         import torch.nn.attention.flex_attention as flex_module
     except ImportError:
-        flex_module = types.ModuleType('flex_attention')
+        flex_module = types.ModuleType("flex_attention")
         torch.nn.attention.flex_attention = flex_module
-        sys.modules['torch.nn.attention.flex_attention'] = flex_module
+        sys.modules["torch.nn.attention.flex_attention"] = flex_module
 
-    if not hasattr(flex_module, 'BlockMask') or not isinstance(getattr(flex_module, 'BlockMask', None), type):
+    if not hasattr(flex_module, "BlockMask") or not isinstance(getattr(flex_module, "BlockMask", None), type):
+
         class DummyBlockMask:
             pass
+
         flex_module.BlockMask = DummyBlockMask
-        sys.modules['torch.nn.attention.flex_attention.BlockMask'] = DummyBlockMask
+        sys.modules["torch.nn.attention.flex_attention.BlockMask"] = DummyBlockMask
 except ImportError:
     pass
 
@@ -117,6 +122,7 @@ def verify_kaggle_env():
         return False
     try:
         import torch
+
         if not torch.cuda.is_available():
             print("⚠️ CUDA 不可用，请在 Kaggle 启用 T4 GPU")
             return False
@@ -131,6 +137,8 @@ if __name__ == "__main__":
     inject_kaggle_secrets()
     print("\n=== 环境检查 ===")
     verify_kaggle_env()
+
+
 def get_gpu_memory_used_mb() -> int:
     try:
         if torch.cuda.is_available():
@@ -238,12 +246,14 @@ class T4VoxCPM2Engine:
         waveform = self.model.decode_audio(audio_tokens)
 
         import io
+
         buffer = io.BytesIO()
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
     def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
         import os
+
         if reference_audio and os.path.exists(reference_audio):
             waveform, sr = torchaudio.load(reference_audio)
             if sr != 24000:

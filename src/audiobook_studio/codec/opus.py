@@ -12,7 +12,6 @@ Uses the system ``ffmpeg`` binary (already a hard dependency of the project).
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess

@@ -1,7 +1,4 @@
-from pathlib import Path
 from unittest import mock
-
-import pytest
 
 from audiobook_studio.tts import license_guard as LG
 from audiobook_studio.tts import pronunciation_dict as PD

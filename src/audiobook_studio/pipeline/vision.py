@@ -120,9 +120,7 @@ class MultimodalVisionClient:
         from ..llm.config_loader import LLMProvidersConfig
 
         self.config = LLMProvidersConfig.load(config_path)
-        self.providers: List = [
-            p for p in self.config.get_all_enabled() if p.extra_params.get("vision")
-        ]
+        self.providers: List = [p for p in self.config.get_all_enabled() if p.extra_params.get("vision")]
 
     @property
     def available(self) -> bool:
@@ -147,9 +145,7 @@ class MultimodalVisionClient:
             prompt: 自定义提示词，缺省用内置 JSON 契约提示。
         """
         if self.mock_mode:
-            return VisualElement(
-                kind="other", caption="[mock] 多模态视觉理解", extracted_text="Mock vision text"
-            )
+            return VisualElement(kind="other", caption="[mock] 多模态视觉理解", extracted_text="Mock vision text")
         if not self.available:
             logger.warning(
                 "Vision unavailable: no vision-capable provider configured "
@@ -213,6 +209,104 @@ class MultimodalVisionClient:
         if not content:
             return None
         return _parse_visual_element(content)
+
+    # ── OCR 文本增强（多模态对比原图修正 OCR 误识）──────────────────────────
+
+    _OCR_ENHANCE_PROMPT = (
+        "你是一名专业的 OCR 文本校对员。下面是 OCR 引擎从书籍页面识别出的文本，"
+        "可能包含识别错误（字符误识、断行错误、漏字、错字、标点错误、段落粘连）。\n\n"
+        "请对照图片逐字校对，输出修正后的完整文本：\n"
+        "1) 修正所有字符误识（如 andl→and、Engh→England、litt→little）；\n"
+        "2) 恢复正确的段落、标点、换行和大小写；\n"
+        "3) 补全 OCR 漏识的字词（依据图片内容）；\n"
+        "4) 保持原文语义，绝不臆造或改写内容；\n"
+        "5) 直接输出修正后的纯文本，不要任何解释、标题或代码块标记。\n\n"
+        "OCR 原始文本如下：\n{ocr_text}"
+    )
+
+    def enhance_ocr_text(
+        self,
+        image_bytes: bytes,
+        ocr_text: str,
+        media_type: Optional[str] = None,
+    ) -> Optional[str]:
+        """用多模态模型对照原图修正 OCR 文本，返回修正后文本；失败返回 None。
+
+        Args:
+            image_bytes: 页面原始图像字节。
+            ocr_text: tesseract OCR 提取的（可能有误识的）文本。
+            media_type: 图像 MIME，缺省从字节嗅探。
+
+        Returns:
+            修正后的纯文本；无可用增强提供方或全部失败时返回 None（诚实降级）。
+        """
+        if not ocr_text or not ocr_text.strip():
+            return None
+
+        # 筛选 extra_params.ocr_enhance=true 的提供方
+        enhancers = [p for p in self.providers if p.extra_params.get("ocr_enhance")]
+        if not enhancers:
+            logger.warning(
+                "OCR enhance unavailable: no provider with extra_params.ocr_enhance=true "
+                "in config/llm_providers.yaml. Falling back to raw OCR text."
+            )
+            return None
+
+        media_type = media_type or _sniff_media_type(image_bytes)
+        data_uri = f"data:{media_type};base64," + base64.b64encode(image_bytes).decode("ascii")
+        prompt = self._OCR_ENHANCE_PROMPT.format(ocr_text=ocr_text)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": data_uri}},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+
+        last_err: Optional[Exception] = None
+        for prov in enhancers:
+            start = time.time()
+            try:
+                corrected = self._call_ocr_enhance(prov, messages)
+                latency_ms = int((time.time() - start) * 1000)
+                if corrected:
+                    logger.info(
+                        f"[ocr-enhance] provider={prov.name} model={prov.model} "
+                        f"chars={len(corrected)} latency={latency_ms}ms"
+                    )
+                    return corrected
+                last_err = RuntimeError(f"{prov.name} returned empty correction")
+            except Exception as e:  # noqa: BLE001 — 任一提供方失败都降级到下一个
+                last_err = e
+                logger.warning(f"[ocr-enhance] provider {prov.name} failed: {e}")
+
+        logger.warning(f"[ocr-enhance] all providers failed (last: {last_err}); falling back to raw OCR")
+        return None
+
+    def _call_ocr_enhance(self, prov, messages: list) -> Optional[str]:
+        """对单个提供方发起 OCR 增强调用，返回修正后纯文本。"""
+        try:
+            from openai import OpenAI
+        except ImportError:
+            logger.error("openai SDK not installed; cannot run OCR enhance")
+            return None
+
+        api_key = prov.get_api_key() or os.getenv(prov.api_key_env or "")
+        timeout = (prov.timeout_seconds or 120) or None
+        client = OpenAI(api_key=api_key or "", base_url=prov.base_url, timeout=timeout, max_retries=1)
+
+        resp = client.chat.completions.create(
+            model=prov.model,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        content = resp.choices[0].message.content if resp.choices else None
+        if not content:
+            return None
+        return content.strip()
 
 
 # ── Module-level singleton (与 LLMRouter 同构) ────────────────────────────────

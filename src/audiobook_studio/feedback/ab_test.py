@@ -5,17 +5,14 @@ E5 — A/B 测试框架
 包含统计显著性检验、自动化触发、CLI 工具等。
 """
 
-import json
 import logging
 import math
-import random
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from ..schemas import ParagraphAnnotation, QualityJudgment
+from ..schemas import ParagraphAnnotation
 from ..schemas.judge import PairwiseJudgment
 
 if TYPE_CHECKING:

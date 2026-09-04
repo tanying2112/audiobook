@@ -256,8 +256,8 @@ class TestMultipleProjects:
         save_raw_file(1, 1, b"project 1")
         save_raw_file(2, 1, b"project 2")
 
-        p1 = load_extracted_text(1, 1) is None  # raw not extracted
-        p2 = load_extracted_text(2, 1) is None
+        load_extracted_text(1, 1) is None  # raw not extracted  # noqa: B015
+        load_extracted_text(2, 1) is None  # noqa: B015
         # Just verify both dirs exist independently
         assert (temp_storage / "books" / "1").exists()
         assert (temp_storage / "books" / "2").exists()

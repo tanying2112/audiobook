@@ -11,19 +11,14 @@ Quality Metrics — 硬质检三件套 (DNSMOS + ASR WER + Speaker Sim)
 所有实现基于免费/开源模型，支持离线运行 (potato/cloud_hybrid 模式)。
 """
 
-import json
 import logging
 import os
-import subprocess
-import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-
-from ..utils.ffmpeg_probe import get_audio_info_sync, read_pcm_samples_sync
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +480,8 @@ class DNSMOSMetric(QualityMetric):
         """ffmpeg 重采样到 16kHz mono float32 的回退路径。"""
         import asyncio
 
+        from ..utils.async_utils import run_async_safe
+
         async def _resample() -> np.ndarray:
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
@@ -510,7 +507,7 @@ class DNSMOSMetric(QualityMetric):
                 raise RuntimeError(f"ffmpeg resample failed: {stderr.decode()}")
             return np.frombuffer(stdout, dtype=np.float32)
 
-        return asyncio.run(_resample())
+        return run_async_safe(_resample())
 
     def _prepare_input_frames(self, audio: np.ndarray) -> np.ndarray:
         """准备 DNSMOS 模型输入帧.
@@ -755,7 +752,7 @@ class UTMOSMetric(QualityMetric):
         """ffmpeg 重采样到 16kHz mono float32 的回退路径."""
         import asyncio
 
-        import torch
+        from ..utils.async_utils import run_async_safe  # noqa: E303
 
         async def _resample() -> np.ndarray:
             proc = await asyncio.create_subprocess_exec(
@@ -782,7 +779,7 @@ class UTMOSMetric(QualityMetric):
                 raise RuntimeError(f"ffmpeg resample failed: {stderr.decode()}")
             return np.frombuffer(stdout, dtype=np.float32)
 
-        return asyncio.run(_resample())
+        return run_async_safe(_resample())
 
     def _compute_utmos(self, audio: "torch.Tensor") -> float:
         """计算 UTMOS MOS 分数.
@@ -1304,7 +1301,6 @@ class WhisperBackend(ASRBackend):
                 language = info.language
                 duration_ms = info.duration * 1000
             else:
-                import whisper
 
                 result = self._model.transcribe(str(audio_path))
                 text = result["text"].strip()

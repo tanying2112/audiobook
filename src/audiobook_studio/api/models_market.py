@@ -13,9 +13,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Query
 
-from ..exceptions import NotFoundError
-
 from .. import plugins
+from ..exceptions import NotFoundError
 from ..models_catalog import build_model_catalog
 
 router = APIRouter(prefix="/models", tags=["model-market"])

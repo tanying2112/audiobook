@@ -8,7 +8,7 @@ Audiobook Studio — 语义连贯性检查器
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -139,7 +139,8 @@ class SemanticCoherenceChecker:
         if reference_paragraphs is not None:
             if len(reference_paragraphs) == len(paragraphs) and paragraphs:
                 tq_scores = [
-                    self._compute_semantic_similarity(para, ref) for para, ref in zip(paragraphs, reference_paragraphs)
+                    self._compute_semantic_similarity(para, ref)
+                    for para, ref in zip(paragraphs, reference_paragraphs, strict=False)
                 ]
                 translation_quality = float(np.mean(tq_scores)) if tq_scores else None
 

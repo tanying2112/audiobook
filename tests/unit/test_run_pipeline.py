@@ -6,7 +6,6 @@ pipeline.orchestrator.run_pipeline) are patched via monkeypatch on the module
 object after import, avoiding sys.modules pollution.
 """
 
-import argparse
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

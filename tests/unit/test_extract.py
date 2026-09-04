@@ -9,9 +9,7 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/extract.py:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock, patch
 
 from src.audiobook_studio.pipeline.extract import ExtractPipeline, extract_text
 from src.audiobook_studio.schemas import ExtractionInput, ExtractionResult
@@ -56,7 +54,6 @@ class TestExtractPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = ExtractPipeline()
         assert pipeline.router is not None
@@ -396,7 +393,7 @@ class TestExtractPipelineRealLogic:
 
     def test_run_unsupported_mime_raises(self):
         """Test run() with unsupported MIME type raises ValueError."""
-        input_data = ExtractionInput(
+        ExtractionInput(
             file_path="/fake/test.xyz",
             mime_type="application/pdf",  # Valid for schema, but will raise in run()
             detect_language=True,

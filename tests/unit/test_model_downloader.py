@@ -6,8 +6,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.audiobook_studio.tts.model_downloader import (
     CHUNK_SIZE,
     DEFAULT_MODEL_DIR,
@@ -42,7 +40,7 @@ class TestConstants:
 
     def test_required_files_structure(self):
         assert isinstance(REQUIRED_FILES, dict)
-        for name, spec in REQUIRED_FILES.items():
+        for _name, spec in REQUIRED_FILES.items():
             assert "url" in spec
             assert "size_mb" in spec
 

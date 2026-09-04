@@ -542,7 +542,7 @@ async def _publish_to_audiobookshelf(
         max_retries = 10
         poll_interval = 3  # seconds
 
-        for attempt in range(max_retries):
+        for _attempt in range(max_retries):
             await asyncio.sleep(poll_interval)
             async with session.get(
                 f"{server_url}/api/libraries/{library_id}/search",
@@ -694,7 +694,6 @@ async def _generate_podcast_rss(
     # Build public URL for media files
     public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
     # Media files are served under /media/{project_id}/ (to be implemented by frontend/web server)
-    media_url = f"{public_url}/media/{project_id}"
 
     # Construct the RSS feed URL (endpoint that serves the generated XML)
     rss_url = f"{public_url}/projects/{project_id}/publish/feed.xml"
@@ -823,9 +822,9 @@ async def get_podcast_rss_feed(
 
     # Generate RSS XML
     xml_lines = [
-        f'<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>',
         f'<rss version="{rss_version}" xmlns:itunes="{itunes_namespace}">',
-        f"  <channel>",
+        "  <channel>",
         f"    <title>{feed_title}</title>",
         f"    <description>{feed_desc}</description>",
         f"    <link>{feed_link}</link>",
@@ -870,21 +869,21 @@ async def get_podcast_rss_feed(
 
         xml_lines.extend(
             [
-                f"    <item>",
+                "    <item>",
                 f"      <title>{episode_title}</title>",
                 f"      <description>{episode_description}</description>",
                 f'      <enclosure url="{enclosure_url}" length="{seg.file_size_bytes or 0}" type="{mime_type}"/>',
                 f"      <guid>{enclosure_url}</guid>",
                 f"      <pubDate>{datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}</pubDate>",
                 f"      <itunes:duration>{seg.duration_ms // 1000 if seg.duration_ms else 0}</itunes:duration>",
-                f"    </item>",
+                "    </item>",
             ]
         )
 
     xml_lines.extend(
         [
-            f"  </channel>",
-            f"</rss>",
+            "  </channel>",
+            "</rss>",
         ]
     )
 

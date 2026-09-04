@@ -1,22 +1,16 @@
 """Comprehensive tests for feedback/bootstrap_fewshot.py."""
 
 import json
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from src.audiobook_studio.feedback.bootstrap_fewshot import (
     BUDGET_LIMIT,
     DEFAULT_EARLY_STOP_PATIENCE,
     BootstrapFewShotOptimizer,
-    CharacterRecognitionModule,
     EarlyStoppingStopper,
     MultiObjectiveLoss,
     OptimizationMetrics,
     OptimizationResult,
-    VoiceDesignModule,
     create_multi_objective_metric,
     load_training_examples,
     run_bootstrap_optimization,
@@ -187,7 +181,7 @@ class TestEarlyStoppingStopper:
 
 class TestCreateMetric:
     def test_metric_returns_score_with_feedback(self):
-        from dspy import Example, Prediction
+        from dspy import Example
         from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
 
         metric = create_multi_objective_metric(char_weight=0.5, voice_weight=0.5)

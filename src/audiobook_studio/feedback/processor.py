@@ -5,14 +5,11 @@ E2 — 差异分析 Agent
 提取 pattern_tags，生成可操作的改进建议。
 """
 
-import json
 import logging
-import re
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session

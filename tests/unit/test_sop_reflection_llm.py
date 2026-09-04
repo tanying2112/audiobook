@@ -40,8 +40,7 @@ def make_config(tmp_path):
     return SOPConfig(tmp_path / "agent_sop.json")
 
 
-def corr(field="emotion", original="neutral", corrected="intense", genre="玄幻",
-         index=0, context=None):
+def corr(field="emotion", original="neutral", corrected="intense", genre="玄幻", index=0, context=None):
     return UserCorrection(
         timestamp=f"2026-08-26T10:{index:02d}:00Z",
         project_id=1,
@@ -57,9 +56,11 @@ def corr(field="emotion", original="neutral", corrected="intense", genre="玄幻
 
 def llm_payload(rules=None, confidence=0.9, reasoning="LLM said so"):
     return jsonlib.dumps(
-        {"proposed_rules": rules or {"emotion_defaults": {"战斗": "intense"}},
-         "confidence": confidence,
-         "reasoning": reasoning},
+        {
+            "proposed_rules": rules or {"emotion_defaults": {"战斗": "intense"}},
+            "confidence": confidence,
+            "reasoning": reasoning,
+        },
         ensure_ascii=False,
     )
 
@@ -149,10 +150,16 @@ class TestCorrectionCollectorEdges:
 
     def test_add_correction_dict_defaults(self):
         c = CorrectionCollector()
-        ok = c.add_correction_dict({
-            "project_id": 2, "chapter_index": 1, "paragraph_index": 5,
-            "field": "speech_rate", "original_value": 1.0, "corrected_value": 1.2,
-        })
+        ok = c.add_correction_dict(
+            {
+                "project_id": 2,
+                "chapter_index": 1,
+                "paragraph_index": 5,
+                "field": "speech_rate",
+                "original_value": 1.0,
+                "corrected_value": 1.2,
+            }
+        )
         assert ok is True
         batch = c.get_batch(timeout=0.2)
         assert batch[0].genre == "default"
@@ -358,9 +365,14 @@ class TestBackgroundReflectionLoop:
 
     def test_low_confidence_retains_corrections(self, tmp_path):
         t = self._thread(tmp_path, CorrectionCollector())
-        low = ReflectionResult(genre="玄幻", proposed_rules={"emotion_defaults": {"a": "b"}},
-                               confidence=0.30, reasoning="weak", corrections_analyzed=3,
-                               timestamp="now")
+        low = ReflectionResult(
+            genre="玄幻",
+            proposed_rules={"emotion_defaults": {"a": "b"}},
+            confidence=0.30,
+            reasoning="weak",
+            corrections_analyzed=3,
+            timestamp="now",
+        )
         t.engine.reflect = MagicMock(return_value=low)
         for i in range(3):
             t.collector.add_correction(corr(index=i))
@@ -371,10 +383,14 @@ class TestBackgroundReflectionLoop:
 
     def test_successful_reflection_applies_and_counts(self, tmp_path):
         t = self._thread(tmp_path, CorrectionCollector())
-        good = ReflectionResult(genre="玄幻",
-                                proposed_rules={"emotion_defaults": {"战斗": "intense"}},
-                                confidence=0.9, reasoning="clear pattern", corrections_analyzed=3,
-                                timestamp="now")
+        good = ReflectionResult(
+            genre="玄幻",
+            proposed_rules={"emotion_defaults": {"战斗": "intense"}},
+            confidence=0.9,
+            reasoning="clear pattern",
+            corrections_analyzed=3,
+            timestamp="now",
+        )
         t.engine.reflect = MagicMock(return_value=good)
         for i in range(3):
             t.collector.add_correction(corr(index=i))
@@ -386,9 +402,14 @@ class TestBackgroundReflectionLoop:
 
     def test_save_failure_puts_corrections_back(self, tmp_path):
         t = self._thread(tmp_path, CorrectionCollector())
-        good = ReflectionResult(genre="玄幻", proposed_rules={"emotion_defaults": {"x": "y"}},
-                                confidence=0.9, reasoning="ok", corrections_analyzed=3,
-                                timestamp="now")
+        good = ReflectionResult(
+            genre="玄幻",
+            proposed_rules={"emotion_defaults": {"x": "y"}},
+            confidence=0.9,
+            reasoning="ok",
+            corrections_analyzed=3,
+            timestamp="now",
+        )
         t.engine.reflect = MagicMock(return_value=good)
         with patch.object(t.sop_config, "update_genre_rules", return_value=False):
             for i in range(3):
@@ -423,9 +444,14 @@ class TestBackgroundReflectionLoop:
 
     def test_mixed_genres_processed_independently(self, tmp_path):
         t = self._thread(tmp_path, CorrectionCollector())
-        good = ReflectionResult(genre="都市", proposed_rules={"speech_rate": {"narrator": 1.1}},
-                                confidence=0.9, reasoning="ok", corrections_analyzed=3,
-                                timestamp="now")
+        good = ReflectionResult(
+            genre="都市",
+            proposed_rules={"speech_rate": {"narrator": 1.1}},
+            confidence=0.9,
+            reasoning="ok",
+            corrections_analyzed=3,
+            timestamp="now",
+        )
         t.engine.reflect = MagicMock(return_value=good)
         for i in range(3):
             t.collector.add_correction(corr(genre="玄幻", index=i))
@@ -448,7 +474,9 @@ class TestRuleApplierBranches:
     def _applier_with_rules(self, tmp_path, rules):
         cfg = make_config(tmp_path)
         cfg._config["genres"]["custom_test"] = {
-            "name": "custom_test", "aliases": [], "rules": rules,
+            "name": "custom_test",
+            "aliases": [],
+            "rules": rules,
             "learning_stats": {"corrections_received": 0},
         }
         return RuleApplier(cfg)
@@ -510,8 +538,9 @@ class TestRuleApplierBranches:
             paragraph_text="这是一段足够长的测试段落文本内容，用于满足最小长度校验要求。",
             paragraph_index=1,
             chapter_index=1,
-            book_meta=BookMeta(title="t", author="a", genre="小说", difficulty="B",
-                               language="zh", total_chapters_estimated=1),
+            book_meta=BookMeta(
+                title="t", author="a", genre="小说", difficulty="B", language="zh", total_chapters_estimated=1
+            ),
             character_voice_map=[
                 CharacterVoiceBinding(
                     canonical_name="藏经阁长老",
@@ -522,8 +551,7 @@ class TestRuleApplierBranches:
                     sample_quote="文本",
                 )
             ],
-            emotion_snapshot=EmotionSnapshot(chapter=1, dominant_emotion="neutral",
-                                             intensity=0.5, notes="n"),
+            emotion_snapshot=EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="n"),
             story_line_summary="摘要内容，" * 30,
             global_style_notes="风格",
         )
@@ -575,10 +603,12 @@ class TestGenreDetectorBranches:
     def test_detect_from_meta_broad_mapping(self):
         from src.audiobook_studio.schemas import BookMeta
 
-        meta_hist = BookMeta(title="t", author="a", genre="历史", difficulty="B",
-                             language="zh", total_chapters_estimated=1)
-        meta_other = BookMeta(title="t", author="a", genre="其他", difficulty="B",
-                              language="zh", total_chapters_estimated=1)
+        meta_hist = BookMeta(
+            title="t", author="a", genre="历史", difficulty="B", language="zh", total_chapters_estimated=1
+        )
+        meta_other = BookMeta(
+            title="t", author="a", genre="其他", difficulty="B", language="zh", total_chapters_estimated=1
+        )
         assert self.detector.detect_from_meta(meta_hist) == "历史"
         assert self.detector.detect_from_meta(meta_other) == "default"
 
@@ -594,14 +624,18 @@ class TestGenreDetectorBranches:
 class TestIntegrationHelpers:
     @pytest.mark.asyncio
     async def test_websocket_accept_and_cache(self):
-        with (
-            patch(f"{MODULE}.get_correction_collector", return_value=CorrectionCollector()),
-        ):
-            resp = await handle_user_correction_websocket({
-                "project_id": 7, "chapter_index": 1, "paragraph_index": 2,
-                "field": "emotion", "original_value": "n", "corrected_value": "i",
-                "genre": "玄幻",
-            })
+        with (patch(f"{MODULE}.get_correction_collector", return_value=CorrectionCollector()),):
+            resp = await handle_user_correction_websocket(
+                {
+                    "project_id": 7,
+                    "chapter_index": 1,
+                    "paragraph_index": 2,
+                    "field": "emotion",
+                    "original_value": "n",
+                    "corrected_value": "i",
+                    "genre": "玄幻",
+                }
+            )
         assert resp["status"] == "accepted"
 
     @pytest.mark.asyncio
@@ -609,11 +643,17 @@ class TestIntegrationHelpers:
         tiny = CorrectionCollector(max_size=1)
         tiny.add_correction(corr(index=1))
         with patch(f"{MODULE}.get_correction_collector", return_value=tiny):
-            resp = await handle_user_correction_websocket({
-                "project_id": 7, "chapter_index": 1, "paragraph_index": 2,
-                "field": "emotion", "original_value": "n", "corrected_value": "i",
-                "genre": "玄幻",
-            })
+            resp = await handle_user_correction_websocket(
+                {
+                    "project_id": 7,
+                    "chapter_index": 1,
+                    "paragraph_index": 2,
+                    "field": "emotion",
+                    "original_value": "n",
+                    "corrected_value": "i",
+                    "genre": "玄幻",
+                }
+            )
         assert resp["status"] == "queue_full"
 
     def test_apply_learned_rules_on_import_analysis_hit(self):
@@ -629,8 +669,7 @@ class TestIntegrationHelpers:
     def test_apply_learned_rules_falls_back_to_broad_meta(self):
         from src.audiobook_studio.schemas import BookMeta
 
-        meta = BookMeta(title="t", author="a", genre="历史", difficulty="B",
-                        language="zh", total_chapters_estimated=1)
+        meta = BookMeta(title="t", author="a", genre="历史", difficulty="B", language="zh", total_chapters_estimated=1)
         with (
             patch(f"{MODULE}.get_genre_detector", return_value=GenreDetector(SOPConfig(REPO_CONFIG))),
             patch(f"{MODULE}.get_sop_config", return_value=SOPConfig(REPO_CONFIG)),

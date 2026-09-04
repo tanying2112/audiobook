@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..harness.models import CorrectionRecord
-from ..harness.models import FeedbackRecord as FeedbackRecordModel
 from ..harness.models import FeedbackSource, PipelineStage
 from ..harness.storage import get_storage
 
@@ -188,7 +185,6 @@ class CorrectionCollector:
         storage = get_storage()
         with storage.db.session() as session:
             from sqlalchemy import select
-            from sqlalchemy.orm import Session
 
             from ..harness.models import FeedbackRecord as FeedbackRecordModel
 

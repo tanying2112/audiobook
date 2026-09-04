@@ -1,7 +1,6 @@
 """Tests for quality/metrics.py data models."""
 
 import numpy as np
-import pytest
 
 
 class TestDNSMOSResult:

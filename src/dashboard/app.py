@@ -197,7 +197,7 @@ def compute_fleet_metrics(workers: List[Dict], now: float) -> Dict[str, Any]:
             stale += 1
 
     # Compute utilization per platform
-    for p, data in by_platform.items():
+    for p, data in by_platform.items():  # noqa: B007
         if data["total_gpu_mb"] > 0:
             data["gpu_utilization"] = data["used_gpu_mb"] / data["total_gpu_mb"]
         else:
@@ -480,7 +480,7 @@ def render_task_queue_preview(redis_client: redis.Redis):
         else:
             st.info("Queue has tasks but details unavailable")
 
-    except (redis.exceptions.RedisError, ConnectionError, TimeoutError, OSError, ValueError, KeyError) as e:
+    except (redis.exceptions.RedisError, ConnectionError, TimeoutError, OSError, ValueError, KeyError) as e:  # noqa: B014
         st.error(f"Failed to read queue: {e}")
 
 

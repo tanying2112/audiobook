@@ -4,16 +4,17 @@ Targets the pure dataclasses and TelemetryCollector hook surface that were
 previously excluded by the broad coverage omit.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 from audiobook_studio.monitoring.telemetry import (
     PipelineTelemetry,
     ProviderMetrics,
     StageTiming,
-    TTSMetrics,
     TelemetryCollector,
+    TTSMetrics,
 )
 
 
@@ -77,7 +78,9 @@ def test_telemetry_collector_hooks_and_summary(tmp_path: Path):
     )
     collector.on_stage_enter("stage_enter", "tts", {})
     collector.on_stage_exit("stage_exit", "tts", {}, result=None, error=None)
-    collector.record_llm_call(provider="openai", model="gpt-4o", tokens_in=10, tokens_out=5, cost_usd=0.01, latency_ms=50.0, success=True)
+    collector.record_llm_call(
+        provider="openai", model="gpt-4o", tokens_in=10, tokens_out=5, cost_usd=0.01, latency_ms=50.0, success=True
+    )
     collector.record_tts_segment(duration_ms=1000.0, latency_ms=100.0, success=True, provider="openai")
     collector.on_pipeline_end("pipeline_end", {"project_id": "123"})
     # summary file written to the configured output_dir (no on_pipeline_start redirect)

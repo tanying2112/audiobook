@@ -9,7 +9,7 @@ Two tracks:
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -110,11 +110,27 @@ def install_mock_mutagen(monkeypatch, existing_tags=None):
     audio = MagicMock()
     audio.tags = tags
 
-    frame_classes = SimpleNamespace(**{
-        name: MagicMock(name=name)
-        for name in ["TIT2", "TPE1", "TALB", "TDRC", "TCON", "TRCK", "TPOS",
-                     "APIC", "CHAP", "CTOC", "USLT", "SYLT", "COMM", "TXXX"]
-    })
+    frame_classes = SimpleNamespace(
+        **{
+            name: MagicMock(name=name)
+            for name in [
+                "TIT2",
+                "TPE1",
+                "TALB",
+                "TDRC",
+                "TCON",
+                "TRCK",
+                "TPOS",
+                "APIC",
+                "CHAP",
+                "CTOC",
+                "USLT",
+                "SYLT",
+                "COMM",
+                "TXXX",
+            ]
+        }
+    )
 
     mp3_cls = MagicMock(return_value=audio)
     monkeypatch.setattr(mp3mod, "MUTAGEN_AVAILABLE", True, raising=False)
@@ -158,9 +174,7 @@ class TestWriteId3FullPath:
 
     def test_existing_duplicate_frames_cleared_first(self, tmp_path, monkeypatch):
         f = make_mp3_like(tmp_path)
-        audio, tags, frames = install_mock_mutagen(
-            monkeypatch, existing_tags={"TIT2": "old", "APIC": "old-cover"}
-        )
+        audio, tags, frames = install_mock_mutagen(monkeypatch, existing_tags={"TIT2": "old", "APIC": "old-cover"})
         write_id3_tags(f, self._meta())
         assert "TIT2" not in tags or tags.get("TIT2") != "old"
 

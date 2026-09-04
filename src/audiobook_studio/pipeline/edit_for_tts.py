@@ -13,8 +13,8 @@ from typing import Literal, Optional, Union, cast
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
-from ..schemas import ParagraphAnnotation, TtsEditInput, TtsEditOutput
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..schemas import ParagraphAnnotation, TtsEditInput, TtsEditOutput
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +86,17 @@ class EditForTtsPipeline:
         # Emit stage enter
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_enter(
-                stage="edit",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
-                paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
-                total_items=1,
-            ))
+            loop.create_task(
+                emit_stage_enter(
+                    stage="edit",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                    total_items=1,
+                )
+            )
         except RuntimeError:
             pass
 
@@ -121,16 +124,19 @@ class EditForTtsPipeline:
         # Emit stage progress
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_progress(
-                stage="edit",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
-                paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
-                current=1,
-                total=1,
-                message="Editing text for TTS...",
-            ))
+            loop.create_task(
+                emit_stage_progress(
+                    stage="edit",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                    current=1,
+                    total=1,
+                    message="Editing text for TTS...",
+                )
+            )
         except RuntimeError:
             pass
 
@@ -175,14 +181,17 @@ class EditForTtsPipeline:
             # Emit stage exit (success)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="edit",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
-                    paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="edit",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                        paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -191,15 +200,18 @@ class EditForTtsPipeline:
             # Emit stage exit (error)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="edit",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data.paragraph_annotation, 'chapter_index', 1),
-                    paragraph_index=getattr(input_data.paragraph_annotation, 'paragraph_index', 1),
-                    success=False,
-                    error_message=str(e),
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="edit",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                        paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
             except RuntimeError:
                 pass
             # Record failed performance
@@ -239,7 +251,6 @@ def edit_for_tts(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("EditForTtsPipeline ready")

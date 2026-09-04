@@ -8,7 +8,6 @@ from functools import wraps
 from typing import Any, Callable, Optional
 
 from fastapi import FastAPI
-from opentelemetry import metrics, trace
 from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
 
@@ -49,7 +48,6 @@ class ObservabilityMiddleware:
 
         # Parse request from scope without slow body consumption
         from starlette.datastructures import Headers as _Headers
-        from starlette.requests import Request as _Request
 
         # Build a lightweight request representation for path/method/header access
         scope_headers = _Headers(scope=scope)

@@ -1,6 +1,5 @@
 """audiobookshelf_integration.py async 方法测试。"""
 
-import asyncio
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

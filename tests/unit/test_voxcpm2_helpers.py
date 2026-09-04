@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 # VoxCPM2 依赖外部可选后端包 `voxcpm`(位于 voxcpm2-pool/, 默认不安装)。
@@ -16,10 +15,11 @@ import pytest
 # 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
 pytestmark = pytest.mark.skip_env_missing
 try:
-    import voxcpm  # noqa: F401
     # voxcpm pulls the real (environment-broken) torch into sys.modules; restore
     # the conftest canonical torch mock so it does not leak into later tests.
     from tests.conftest_minimal import _force_torch_mock
+
+    import voxcpm  # noqa: F401
 
     _force_torch_mock()
     from src.audiobook_studio.tts.engine import TTSProsody, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
@@ -192,7 +192,7 @@ class TestVoxCPM2Voices:
 
     def test_quantization_modes_have_required_keys(self):
         """Test QUANTIZATION_MODES dict has required keys."""
-        for mode, info in QUANTIZATION_MODES.items():
+        for _mode, info in QUANTIZATION_MODES.items():
             assert "dtype" in info
             assert "vram_gb" in info
             assert "min_vram_gb" in info

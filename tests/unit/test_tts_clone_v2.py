@@ -1,10 +1,8 @@
 """Comprehensive tests for tts/clone.py."""
 
-import hashlib
 import json
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -453,7 +451,6 @@ class TestSaveLoadVoicePrints:
         )
         with patch.object(Path, "__truediv__", wraps=Path.__truediv__):
             # Redirect the save path
-            original_save = engine._save_voice_prints.__func__
             with patch.object(engine, "_save_voice_prints") as mock_save:
                 mock_save.return_value = None
                 engine._save_voice_prints()

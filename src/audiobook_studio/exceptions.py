@@ -43,7 +43,7 @@ class ExportErrorCode(IntEnum):
 class AudiobookError(Exception):
     """所有自定义异常的基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         error_code: str,
@@ -84,7 +84,7 @@ class AudiobookError(Exception):
 class DomainError(AudiobookError):
     """业务逻辑错误基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         error_code: str,
@@ -104,7 +104,7 @@ class DomainError(AudiobookError):
 class ValidationError(DomainError):
     """数据验证失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         field: Optional[str] = None,
@@ -123,7 +123,7 @@ class ValidationError(DomainError):
 class SchemaComplianceError(DomainError):
     """LLM 输出不符合契约 Schema."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         stage: Optional[str] = None,
@@ -146,7 +146,7 @@ class SchemaComplianceError(DomainError):
 class FallbackUsedError(DomainError):
     """触发了兜底逻辑."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         stage: Optional[str] = None,
@@ -170,7 +170,7 @@ class FallbackUsedError(DomainError):
 class ProviderError(AudiobookError):
     """外部提供商相关错误基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         provider: str,
@@ -192,7 +192,7 @@ class ProviderError(AudiobookError):
 class QuotaExceededError(ProviderError):
     """配额耗尽."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         provider: str,
         quota_type: str,
@@ -218,7 +218,7 @@ class QuotaExceededError(ProviderError):
 class RateLimitError(ProviderError):
     """请求速率超限."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         provider: str,
         retry_after: Optional[int] = None,
@@ -236,7 +236,7 @@ class RateLimitError(ProviderError):
 class CircuitOpenError(ProviderError):
     """熔断器打开，拒绝请求."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         provider: str,
         stage: Optional[str] = None,
@@ -255,7 +255,7 @@ class CircuitOpenError(ProviderError):
 class ProviderUnavailableError(ProviderError):
     """提供商服务不可用."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         provider: str,
         stage: Optional[str] = None,
@@ -273,7 +273,7 @@ class ProviderUnavailableError(ProviderError):
 class ProviderTimeoutError(ProviderError):
     """提供商请求超时."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         provider: str,
         timeout_s: float,
@@ -295,7 +295,7 @@ class ProviderTimeoutError(ProviderError):
 class InfrastructureError(AudiobookError):
     """基础设施层错误基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         error_code: str,
@@ -317,7 +317,7 @@ class InfrastructureError(AudiobookError):
 class DatabaseError(InfrastructureError):
     """数据库操作失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         operation: Optional[str] = None,
@@ -336,7 +336,7 @@ class DatabaseError(InfrastructureError):
 class FileNotFoundError(InfrastructureError):
     """文件不存在."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         path: str,
         operation: Optional[str] = None,
@@ -352,7 +352,7 @@ class FileNotFoundError(InfrastructureError):
 class FileWriteError(InfrastructureError):
     """文件写入失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         path: str,
         reason: Optional[str] = None,
@@ -370,7 +370,7 @@ class FileWriteError(InfrastructureError):
 class ConfigError(InfrastructureError):
     """配置加载或验证失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         config_path: Optional[str] = None,
@@ -391,7 +391,7 @@ class ConfigError(InfrastructureError):
 class PipelineError(AudiobookError):
     """Pipeline 执行错误基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         stage: str,
@@ -411,7 +411,7 @@ class PipelineError(AudiobookError):
 class StageExecutionError(PipelineError):
     """阶段执行失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         stage: str,
         reason: str,
@@ -429,7 +429,7 @@ class StageExecutionError(PipelineError):
 class StageHookError(PipelineError):
     """Hook 执行失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         stage: str,
         hook_name: str,
@@ -447,7 +447,7 @@ class StageHookError(PipelineError):
 class DataLoadError(PipelineError):
     """数据加载失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         stage: str,
         source: str,
@@ -465,7 +465,7 @@ class DataLoadError(PipelineError):
 class DataPersistError(PipelineError):
     """数据持久化失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         stage: str,
         target: str,
@@ -486,7 +486,7 @@ class DataPersistError(PipelineError):
 class TTSError(AudiobookError):
     """TTS 合成错误基类."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         engine: str,
@@ -506,7 +506,7 @@ class TTSError(AudiobookError):
 class TTSModelLoadError(TTSError):
     """TTS 模型加载失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         engine: str,
         model_name: str,
@@ -524,7 +524,7 @@ class TTSModelLoadError(TTSError):
 class TTSSynthesisError(TTSError):
     """TTS 合成失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         engine: str,
         text: str,
@@ -543,7 +543,7 @@ class TTSSynthesisError(TTSError):
 class TTSAudioExportError(TTSError):
     """音频导出失败."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         engine: str,
         output_path: str,
@@ -558,13 +558,14 @@ class TTSAudioExportError(TTSError):
             original_error=original_error,
         )
 
+
 # ==================== Additional Domain Errors ====================
 
 
 class NotFoundError(DomainError):
     """资源未找到 (404)."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         resource: str,
         identifier: Optional[str] = None,
@@ -584,7 +585,7 @@ class NotFoundError(DomainError):
 class ConflictError(DomainError):
     """资源冲突 (409)."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         resource: Optional[str] = None,
@@ -605,7 +606,7 @@ class ConflictError(DomainError):
 class BadRequestError(DomainError):
     """错误的请求 (400)."""
 
-    def __init__(
+    def __init__(  # noqa: B042
         self,
         message: str,
         field: Optional[str] = None,
@@ -621,7 +622,6 @@ class BadRequestError(DomainError):
             stage=stage,
             context=ctx,
         )
-
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -672,8 +672,7 @@ def register_error_handlers(app) -> None:
             status_code = error_code_to_status(custom_exc.error_code)
             lg.error(
                 f"Structured error: code={custom_exc.error_code} message={custom_exc.message}",
-                extra={"error_code": custom_exc.error_code,
-                       "context": getattr(custom_exc, "context", {})},
+                extra={"error_code": custom_exc.error_code, "context": getattr(custom_exc, "context", {})},
             )
             return JSONResponse(content={"error": error_dict}, status_code=status_code)
 

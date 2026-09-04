@@ -9,28 +9,21 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from ..harness.config import get_harness_settings
 from ..harness.golden import GoldenDatasetManager
 from ..harness.models import (
-    AuditLog,
     AuditLogEntry,
     CanaryTest,
-    FeedbackRecord,
     GoldenDatasetStats,
     GoldenSample,
     HealthCheckResponse,
     PromptVersion,
-    QualityThreshold,
-    RoutingWeight,
-    SOPRule,
     WeeklyReportResponse,
 )
 from ..harness.sop_store import get_sop_store
@@ -81,7 +74,6 @@ class HarnessDashboard:
 
     def get_status(self) -> DashboardStats:
         """获取实时仪表盘快照。"""
-        from ..harness.storage import get_storage
 
         storage = get_storage()
 
@@ -89,7 +81,6 @@ class HarnessDashboard:
             from sqlalchemy import func, select
 
             from ..harness.models import (
-                AuditLog,
                 CanaryTest,
                 FeedbackRecord,
                 GoldenSample,
@@ -177,7 +168,6 @@ class HarnessDashboard:
         """健康检查。"""
         from sqlalchemy import func, select
 
-        from ..harness.models import CanaryTest, GoldenSample, PromptVersion
         from ..harness.storage import get_storage
 
         storage = get_storage()
@@ -236,14 +226,11 @@ class HarnessDashboard:
 
         week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
-        from ..harness.storage import get_storage
-
-        storage = get_storage()
+        storage = get_storage()  # noqa: E303
         with storage.db.session() as session:
-            from sqlalchemy import and_, func, select
+            from sqlalchemy import func, select
 
             from ..harness.models import (
-                AuditLog,
                 CanaryTest,
                 GoldenSample,
                 PromptVersion,
@@ -392,11 +379,10 @@ class HarnessDashboard:
         offset: int = 0,
     ) -> List[AuditLogEntry]:
         """查询审计日志。"""
-        from ..harness.storage import get_storage
 
         storage = get_storage()
         with storage.db.session() as session:
-            from sqlalchemy import and_, desc, select
+            from sqlalchemy import desc, select
 
             from ..harness.models import AuditLog
 

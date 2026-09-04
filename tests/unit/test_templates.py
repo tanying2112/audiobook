@@ -2,7 +2,7 @@
 apply 模板辅助函数、以及 API 端点核心逻辑。"""
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -559,7 +559,7 @@ class TestConfirmTemplateLogic:
         db.execute.return_value = mock_result
 
         req = TemplateConfirmRequest(action="confirm", pattern_tags=["new_tag"])
-        result = await confirm_template(project_id=1, template_id=1, request=req, db=db)
+        await confirm_template(project_id=1, template_id=1, request=req, db=db)
         assert record.pattern_tags == ["new_tag"]
 
 
@@ -572,7 +572,6 @@ class TestApplyTemplateLogic:
     @pytest.mark.asyncio
     async def test_apply_not_confirmed(self):
         """apply_template 未确认模板返回 400。"""
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.templates import TemplateApplyRequest, apply_template
 
@@ -595,7 +594,6 @@ class TestApplyTemplateLogic:
     @pytest.mark.asyncio
     async def test_apply_not_found(self):
         """apply_template 模板不存在返回 404。"""
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.templates import TemplateApplyRequest, apply_template
 
@@ -644,7 +642,6 @@ class TestGetApplyProgressLogic:
     @pytest.mark.asyncio
     async def test_progress_not_found(self):
         """查询不存在任务返回 404。"""
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.templates import get_apply_progress
 

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from audiobook_studio.harness.scheduler import HarnessScheduler
 from audiobook_studio.harness.smoke_test import run_smoke_test
 

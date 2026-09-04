@@ -12,7 +12,6 @@ import os
 import time
 
 import numpy as np
-import pytest
 from pydantic import BaseModel
 
 from src.audiobook_studio.llm import speculative as S
@@ -50,7 +49,9 @@ def test_local_ar_model_predicts_next_token():
 def test_speculative_greedy_matches_naive_greedy():
     target, draft, prompt = _make_models()
     K = 5
-    r = S.speculative_decode(target.distributions, lambda c, k: draft.draft(c, k), prompt, max_tokens=300, k=K, greedy=True)
+    r = S.speculative_decode(
+        target.distributions, lambda c, k: draft.draft(c, k), prompt, max_tokens=300, k=K, greedy=True
+    )
     # reference: naive autoregressive greedy decode (one target call per token)
     out = list(prompt)
     for _ in range(300):
@@ -67,7 +68,9 @@ def test_speculative_greedy_matches_naive_greedy():
 def test_speculative_forward_pass_speedup_ge_2x():
     target, draft, prompt = _make_models()
     K = 5
-    r = S.speculative_decode(target.distributions, lambda c, k: draft.draft(c, k), prompt, max_tokens=300, k=K, greedy=True)
+    r = S.speculative_decode(
+        target.distributions, lambda c, k: draft.draft(c, k), prompt, max_tokens=300, k=K, greedy=True
+    )
     assert r.metrics.speedup >= 2.0, r.metrics
     assert r.metrics.acceptance_rate > 0.8
 
@@ -76,7 +79,9 @@ def test_weak_drafter_degrades_to_baseline():
     """A poor drafter (repeats the last token) is mostly rejected -> ~1x speedup."""
     target, _, prompt = _make_models()
     K = 5
-    r = S.speculative_decode(target.distributions, lambda c, k: S.heuristic_draft(c, k), prompt, max_tokens=200, k=K, greedy=True)
+    r = S.speculative_decode(
+        target.distributions, lambda c, k: S.heuristic_draft(c, k), prompt, max_tokens=200, k=K, greedy=True
+    )
     assert r.metrics.acceptance_rate < 0.2
     assert 0.8 <= r.metrics.speedup <= 1.3
 
@@ -180,7 +185,6 @@ def test_speculative_map_sync_speedup(monkeypatch):
 
     client = LLMClient(LLMClientConfig(model="test-model"))
     calls = {"n": 0}
-    orig = client._mock_call
 
     def slow_mock(prompt, rm):
         calls["n"] += 1

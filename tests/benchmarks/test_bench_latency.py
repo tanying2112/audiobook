@@ -1,16 +1,13 @@
 """Tests for bench_latency module."""
 
 import json
-import statistics
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.audiobook_studio.benchmarks.bench_latency import (
     _get_test_data_for_stage,
     evaluate_performance,
     load_baseline,
     measure_stage_latency,
-    parse_args,
     save_baseline,
 )
 

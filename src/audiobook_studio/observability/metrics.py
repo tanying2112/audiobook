@@ -2,14 +2,12 @@
 
 import logging
 import os
-import time
 from typing import Any, Dict, Optional
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
-from opentelemetry.metrics import Counter, Histogram, ObservableGauge, UpDownCounter
+from opentelemetry.metrics import Counter, Histogram, ObservableGauge
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 
 logger = logging.getLogger(__name__)
@@ -310,7 +308,7 @@ def get_core_metrics() -> Dict[str, Any]:
 # Queue depth management functions
 def increment_queue_depth(queue_name: str, delta: int = 1) -> None:
     """Increment queue depth gauge."""
-    global _queue_depth_gauges
+    global _queue_depth_gauges  # noqa: F824
     _queue_depth_gauges[queue_name] = _queue_depth_gauges.get(queue_name, 0) + delta
     metrics = _get_core_metrics()
     metrics["queue_depth"].add(delta, attributes={"queue": queue_name})
@@ -318,7 +316,7 @@ def increment_queue_depth(queue_name: str, delta: int = 1) -> None:
 
 def decrement_queue_depth(queue_name: str, delta: int = 1) -> None:
     """Decrement queue depth gauge."""
-    global _queue_depth_gauges
+    global _queue_depth_gauges  # noqa: F824
     _queue_depth_gauges[queue_name] = max(0, _queue_depth_gauges.get(queue_name, 0) - delta)
     metrics = _get_core_metrics()
     metrics["queue_depth"].add(-delta, attributes={"queue": queue_name})

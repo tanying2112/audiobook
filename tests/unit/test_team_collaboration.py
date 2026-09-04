@@ -1,11 +1,6 @@
 """Tests for team_collaboration module."""
 
-import sys
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Add project path for imports
 

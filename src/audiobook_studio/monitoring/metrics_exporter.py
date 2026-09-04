@@ -9,10 +9,10 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ..llm.circuit_breaker import CircuitBreaker
-from ..llm.health_probe import HealthProbe, HealthStatus
+from ..llm.health_probe import HealthProbe
 from ..llm.key_pool import KeyPoolManager
 from ..llm.router import LLMRouter
 from .compliance import ComplianceMonitor, get_compliance_monitor

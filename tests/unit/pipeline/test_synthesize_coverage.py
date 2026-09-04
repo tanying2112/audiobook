@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,7 +31,6 @@ from src.audiobook_studio.schemas import (
     TtsRoutingInput,
 )
 from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
-
 
 # ── _normalize_voice_id ─────────────────────────────────────────────────────
 
@@ -344,9 +342,7 @@ def test_download_audio_remote_not_implemented(tmp_path: Path) -> None:
     import asyncio
 
     with pytest.raises(NotImplementedError):
-        asyncio.run(
-            p._download_audio("/no/such/remote/key", dest)
-        )
+        asyncio.run(p._download_audio("/no/such/remote/key", dest))
 
 
 # ── close ───────────────────────────────────────────────────────────────────
@@ -457,9 +453,7 @@ def test_routing_decision_character_binding_honoured(monkeypatch) -> None:
         sample_quote="hi",
     )
     p = SynthesizePipeline(mock_mode=True, router=MagicMock())
-    dec = p._make_routing_decision(
-        _make_input(speaker="alice", char_map=[binding])
-    )
+    dec = p._make_routing_decision(_make_input(speaker="alice", char_map=[binding]))
     # explicit binding matched -> strict pass-through of the Edge id (mapped to kokoro)
     assert dec.voice_id == "zf_xiaoxiao"
 
@@ -538,9 +532,7 @@ def test_crossfade_replace_segment_main(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000), (1000, 2000)]
-    res = asyncio.run(
-        pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
-    )
+    res = asyncio.run(pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries))
     assert isinstance(res, int)
     assert res == 5000
 
@@ -553,9 +545,7 @@ def test_crossfade_replace_segment_no_chapter(monkeypatch, tmp_path) -> None:
     out = tmp_path / "out.wav"
     new.write_bytes(b"data")
     boundaries = [(0, 1000)]
-    res = asyncio.run(
-        pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
-    )
+    res = asyncio.run(pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries))
     assert isinstance(res, int)
     assert out.exists()
 
@@ -569,9 +559,7 @@ def test_crossfade_replace_segment_out_of_bounds(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000)]  # index 5 is out of bounds
-    res = asyncio.run(
-        pipe.crossfade_replace_segment(chapter, 5, new, out, boundaries)
-    )
+    res = asyncio.run(pipe.crossfade_replace_segment(chapter, 5, new, out, boundaries))
     assert isinstance(res, int)
 
 
@@ -586,9 +574,7 @@ def test_crossfade_replace_segment_ffmpeg_fails(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     boundaries = [(0, 1000), (1000, 2000)]
-    res = asyncio.run(
-        pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries)
-    )
+    res = asyncio.run(pipe.crossfade_replace_segment(chapter, 0, new, out, boundaries))
     # The fallback (_simple_replace_segment) is invoked. NOTE: the source is
     # missing an `await` here (returns a coroutine) -- a pre-existing bug; we
     # assert the failure was handled rather than propagated.
@@ -604,9 +590,7 @@ def test_simple_replace_segment_full(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     # start_ms=500>0 -> pre extracted; end_ms=3000 < total(5000) -> post extracted
-    res = asyncio.run(
-        pipe._simple_replace_segment(chapter, 0, new, out, [(500, 3000)])
-    )
+    res = asyncio.run(pipe._simple_replace_segment(chapter, 0, new, out, [(500, 3000)]))
     assert isinstance(res, int)
 
 
@@ -619,9 +603,7 @@ def test_simple_replace_segment_no_pre_post(monkeypatch, tmp_path) -> None:
     chapter.write_bytes(b"data")
     new.write_bytes(b"data")
     # start_ms=0 -> no pre; end_ms=9000 >= total(5000) -> no post
-    res = asyncio.run(
-        pipe._simple_replace_segment(chapter, 0, new, out, [(0, 9000)])
-    )
+    res = asyncio.run(pipe._simple_replace_segment(chapter, 0, new, out, [(0, 9000)]))
     assert isinstance(res, int)
 
 
@@ -660,11 +642,14 @@ def _mock_run_pipeline(monkeypatch, pipe) -> None:
     monkeypatch.setattr(syn, "safe_subprocess_args", lambda cmd, **kw: cmd)
     # Locally-imported helpers -> patch at their source modules
     import src.audiobook_studio.monitoring as _monitoring
+
     monkeypatch.setattr(_monitoring, "record_stage_performance", lambda *a, **k: None)
     import src.audiobook_studio.tts.pronunciation_dict as _pdict
+
     monkeypatch.setattr(_pdict, "load_pronunciation_dict", lambda *a, **k: {})
     monkeypatch.setattr(_pdict, "apply_pronunciation_dict", lambda text, reg: text)
     import src.audiobook_studio.pipeline.voice_anchor as _va_mod
+
     _fake_va = MagicMock()
     _fake_va.config.enabled = False
     _fake_va.has_anchor = lambda *a, **k: False
@@ -728,8 +713,14 @@ def test_synthesize_streaming_disabled_uses_port(monkeypatch, tmp_path) -> None:
     out = tmp_path / "seg.wav"
     res = asyncio.run(
         pipe._synthesize_streaming(
-            "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
-            project_id=1, chapter_index=1, paragraph_index=1,
+            "Hi.",
+            "zf_xiaoxiao",
+            {},
+            out,
+            "b1_ch1_p1",
+            project_id=1,
+            chapter_index=1,
+            paragraph_index=1,
         )
     )
     assert res == (1000, "kokoro")
@@ -751,8 +742,14 @@ def test_synthesize_streaming_success(monkeypatch, tmp_path) -> None:
 
     res = asyncio.run(
         pipe._synthesize_streaming(
-            "Hello stream.", "zf_xiaoxiao", {"rate": 1.0, "emotion": "neutral"}, out,
-            "b1_ch1_p1", project_id=1, chapter_index=1, paragraph_index=1,
+            "Hello stream.",
+            "zf_xiaoxiao",
+            {"rate": 1.0, "emotion": "neutral"},
+            out,
+            "b1_ch1_p1",
+            project_id=1,
+            chapter_index=1,
+            paragraph_index=1,
             progress_callback=_cb,
         )
     )
@@ -773,8 +770,14 @@ def test_synthesize_streaming_engine_creation_fails(monkeypatch, tmp_path) -> No
     out = tmp_path / "seg.wav"
     res = asyncio.run(
         pipe._synthesize_streaming(
-            "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
-            project_id=1, chapter_index=1, paragraph_index=1,
+            "Hi.",
+            "zf_xiaoxiao",
+            {},
+            out,
+            "b1_ch1_p1",
+            project_id=1,
+            chapter_index=1,
+            paragraph_index=1,
         )
     )
     assert res == (1000, "kokoro")
@@ -789,8 +792,14 @@ def test_synthesize_streaming_synthesis_fails_falls_back(monkeypatch, tmp_path) 
     out = tmp_path / "seg.wav"
     res = asyncio.run(
         pipe._synthesize_streaming(
-            "Hi.", "zf_xiaoxiao", {}, out, "b1_ch1_p1",
-            project_id=1, chapter_index=1, paragraph_index=1,
+            "Hi.",
+            "zf_xiaoxiao",
+            {},
+            out,
+            "b1_ch1_p1",
+            project_id=1,
+            chapter_index=1,
+            paragraph_index=1,
         )
     )
     assert res == (1000, "kokoro")
@@ -804,12 +813,20 @@ def test_crossfade_stitch_direct(monkeypatch, tmp_path) -> None:
     a.write_bytes(b"x")
     b.write_bytes(b"x")
     s1 = AudioSegment(
-        segment_id="a", file_path=str(a), duration_ms=1000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h1",
+        segment_id="a",
+        file_path=str(a),
+        duration_ms=1000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h1",
     )
     s2 = AudioSegment(
-        segment_id="b", file_path=str(b), duration_ms=1000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h2",
+        segment_id="b",
+        file_path=str(b),
+        duration_ms=1000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h2",
     )
     out = tmp_path / "out.mp3"
     res = asyncio.run(pipe._crossfade_stitch([s1, s2], out))
@@ -848,12 +865,20 @@ def test_simple_concat_success(monkeypatch, tmp_path) -> None:
     a.write_bytes(b"x")
     b.write_bytes(b"x")
     s1 = AudioSegment(
-        segment_id="a", file_path=str(a), duration_ms=1000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h1",
+        segment_id="a",
+        file_path=str(a),
+        duration_ms=1000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h1",
     )
     s2 = AudioSegment(
-        segment_id="b", file_path=str(b), duration_ms=1000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h2",
+        segment_id="b",
+        file_path=str(b),
+        duration_ms=1000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h2",
     )
     out = tmp_path / "out.wav"
     res = asyncio.run(pipe._simple_concat([s1, s2], out))
@@ -869,12 +894,20 @@ def test_simple_concat_ffmpeg_fails(monkeypatch, tmp_path) -> None:
     a.write_bytes(b"x")
     b.write_bytes(b"x")
     s1 = AudioSegment(
-        segment_id="a", file_path=str(a), duration_ms=1000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h1",
+        segment_id="a",
+        file_path=str(a),
+        duration_ms=1000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h1",
     )
     s2 = AudioSegment(
-        segment_id="b", file_path=str(b), duration_ms=2000,
-        engine="kokoro", voice_id="zf_xiaoxiao", text_hash="h2",
+        segment_id="b",
+        file_path=str(b),
+        duration_ms=2000,
+        engine="kokoro",
+        voice_id="zf_xiaoxiao",
+        text_hash="h2",
     )
     out = tmp_path / "out.wav"
     # ffmpeg failure -> fallback returns sum of segment durations
@@ -914,9 +947,7 @@ def test_synthesize_via_port_cache_hit(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(syn, "get_audio_semantic_cache", lambda: _HitCache())
     pipe = _make_pipe()
     out = tmp_path / "seg.wav"
-    res = asyncio.run(
-        pipe._synthesize_via_port("Hit this sentence.", "zf_xiaoxiao", {"rate": 1.0}, out, "b1_ch1_p1")
-    )
+    res = asyncio.run(pipe._synthesize_via_port("Hit this sentence.", "zf_xiaoxiao", {"rate": 1.0}, out, "b1_ch1_p1"))
     assert res == (1234, "cache")
 
 

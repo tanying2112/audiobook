@@ -11,8 +11,7 @@ ReviewerAgent 单元测试 - Module 4.1 质量门禁测试
 运行方式: python -m pytest tests/unit/pipeline/test_reviewer_agent.py -v
 """
 
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

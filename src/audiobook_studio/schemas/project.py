@@ -5,7 +5,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 
 ProgressType = Annotated[float, Field(ge=0.0, le=1.0)]
 CostType = Annotated[float, Field(ge=0.0)]

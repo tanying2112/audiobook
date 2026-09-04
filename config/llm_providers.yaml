@@ -91,6 +91,58 @@ providers:
       use_direct_sdk: true
       vision: true
 
+  # ── OCR 文本增强（多模态对比原图修正 OCR 误识）──────────────
+  # 在 tesseract OCR 提取后，用更强的多模态模型对照原图修正识别错误。
+  # extra_params.ocr_enhance=true 标记：由 enhance_ocr_text() 专用，按 priority 顺序
+  # 依次尝试；全部失败则诚实回退到纯 OCR 结果（不阻塞主流程）。
+  - name: nvidia_ocr_enhance_11b
+    provider: openai
+    model: meta/llama-3.2-11b-vision-instruct
+    api_key_env: NVIDIA_API_KEY
+    base_url: https://integrate.api.nvidia.com/v1
+    priority: 5
+    max_tokens_per_minute: 6000
+    max_requests_per_minute: 20
+    timeout_seconds: 60
+    stages: [extract]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+      vision: true
+      ocr_enhance: true
+
+  - name: nvidia_ocr_enhance_vision90b
+    provider: openai
+    model: meta/llama-3.2-90b-vision-instruct
+    api_key_env: NVIDIA_API_KEY
+    base_url: https://integrate.api.nvidia.com/v1
+    priority: 6
+    max_tokens_per_minute: 4000
+    max_requests_per_minute: 10
+    timeout_seconds: 120
+    stages: [extract]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+      vision: true
+      ocr_enhance: true
+
+  - name: nvidia_ocr_enhance_omni
+    provider: openai
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    api_key_env: NVIDIA_API_KEY
+    base_url: https://integrate.api.nvidia.com/v1
+    priority: 7
+    max_tokens_per_minute: 4000
+    max_requests_per_minute: 10
+    timeout_seconds: 120
+    stages: [extract]
+    enabled: true
+    extra_params:
+      use_direct_sdk: true
+      vision: true
+      ocr_enhance: true
+
   # Kilo (api.kilo.ai, model: tencent/hy3:free 开源中文模型) - 用户 key 已注入, 2026-08 直连可达✅ → 设为主路由
   # 网关真实模型 id 为 bare "tencent/hy3:free"; 带 openai/ 前缀会被原样发往网关
   # 导致 404。provider 为 openai (OpenAI 兼容网关) 时本就不加前缀, 故 model 必须

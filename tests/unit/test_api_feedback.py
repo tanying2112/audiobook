@@ -1,7 +1,6 @@
 """Tests for feedback API endpoints - covers src/audiobook_studio/api/feedback.py"""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -432,7 +431,6 @@ class TestFeedbackAPIModels:
 
     def test_feedback_response_model(self):
         """Test FeedbackResponse model."""
-        from datetime import UTC, datetime
 
         from src.audiobook_studio.api.feedback import FeedbackResponse
 
@@ -456,7 +454,6 @@ class TestFeedbackAPIModels:
 
     def test_feedback_list_response_model(self):
         """Test FeedbackListResponse model."""
-        from datetime import UTC, datetime
 
         from src.audiobook_studio.api.feedback import FeedbackListResponse, FeedbackResponse
 

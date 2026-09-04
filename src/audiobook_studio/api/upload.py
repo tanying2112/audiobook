@@ -6,26 +6,22 @@ with async text extraction and WebSocket progress updates.
 Uses Redis for distributed upload sessions and extraction job tracking.
 """
 
-import asyncio
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, status
-
-from ..exceptions import DomainError
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
+from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..auth.dependencies import get_current_active_user, require_project_permission
 from ..auth.models import RoleName
-from ..database import get_async_session
+from ..exceptions import DomainError
 from ..models import Chapter, Project, ProjectSegment
 from ..models.user import User
 from ..pipeline.extract import extract_text

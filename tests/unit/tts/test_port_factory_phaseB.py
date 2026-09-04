@@ -1,13 +1,11 @@
 """Phase B structural tests for tts/port_factory.py."""
 
-import os
 import threading
 
 import pytest
 
 from src.audiobook_studio.tts import port_factory as pf
 from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
-
 
 # ---------------------------------------------------------------------------
 # Config dataclasses

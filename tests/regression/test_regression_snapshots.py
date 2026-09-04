@@ -21,15 +21,11 @@ from src.audiobook_studio.feedback.canary import (
     _run_stage_with_prompt_version,
 )
 from src.audiobook_studio.feedback.promotion import (
-    GateResult,
     check_format_compliance,
     check_golden_dataset,
-    check_human_sample,
     check_quality_improvement,
-    check_regression_suite,
     evaluate_promotion,
 )
-from src.audiobook_studio.feedback.similarity import _compute_output_similarity
 
 SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 UPDATE_SNAPSHOTS = os.getenv("UPDATE_SNAPSHOTS", "false").lower() in ("true", "1", "yes")
@@ -140,7 +136,6 @@ class TestRegressionSnapshots:
 
         result = check_format_compliance(prompt)
 
-        snapshot_key = f"{stage}_v{version}_format"
         snapshot = load_snapshot(stage, version).get("format_compliance", {})
 
         current = {
@@ -316,7 +311,7 @@ class TestRegressionSuiteDiff:
                 producer_id="test_candidate",
             )
 
-        verdict = suite.check_candidate("test_candidate", new_failure_eval_fn, auto_add_new=True)
+        suite.check_candidate("test_candidate", new_failure_eval_fn, auto_add_new=True)
 
         # Should have added the new failure (in addition to the original)
         assert suite.active_cases == initial_count + 1

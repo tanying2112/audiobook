@@ -17,9 +17,9 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...llm import LLMRouter
-from ...quality.metrics import ASRWerMetric, DNSMOSMetric, QualityCheckSuite, SpeakerSimilarityMetric
+from ...quality.metrics import QualityCheckSuite
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
-from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
+from .base import BaseCritic, CriticResult, CriticType
 
 logger = logging.getLogger(__name__)
 

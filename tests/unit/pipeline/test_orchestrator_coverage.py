@@ -8,8 +8,6 @@ no real database or socket is touched.
 """
 
 import asyncio
-from collections import Counter
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,8 +15,8 @@ import pytest
 from src.audiobook_studio.exceptions import AudiobookError, StageExecutionError
 from src.audiobook_studio.pipeline import orchestrator as orch
 
-
 # ── autouse: keep module-level hook registries & telemetry isolated ──────────
+
 
 @pytest.fixture(autouse=True)
 def _restore_state():
@@ -41,6 +39,7 @@ def _restore_state():
 
 
 # ── Fake DB sessions ──────────────────────────────────────────────────────────
+
 
 class FakeRow:
     id = 5
@@ -80,6 +79,7 @@ class FakeSyncSession:
 
 
 # ── Fake stage handler / registry ─────────────────────────────────────────────
+
 
 class FakeHandler:
     def __init__(self, result=None, raise_exc=None):
@@ -141,6 +141,7 @@ class FakeCapture:
 
 # ── Hook registration ────────────────────────────────────────────────────────
 
+
 def test_register_stage_hook_dedup():
     def h(*a, **k):
         pass
@@ -154,6 +155,7 @@ def test_register_stage_hook_dedup():
 def test_register_async_stage_hook():
     async def h(*a, **k):
         pass
+
     orch.register_async_stage_hook(h)
     assert h in orch._async_stage_hooks
 
@@ -161,6 +163,7 @@ def test_register_async_stage_hook():
 def test_register_pipeline_hook():
     def h(*a, **k):
         pass
+
     orch.register_pipeline_hook(h)
     assert h in orch._pipeline_hooks
 
@@ -168,11 +171,13 @@ def test_register_pipeline_hook():
 def test_register_async_pipeline_hook():
     async def h(*a, **k):
         pass
+
     orch.register_async_pipeline_hook(h)
     assert h in orch._async_pipeline_hooks
 
 
 # ── Sync emitters ─────────────────────────────────────────────────────────────
+
 
 def test_emit_stage_enter():
     calls = []
@@ -185,6 +190,7 @@ def test_emit_stage_enter():
 def test_emit_stage_enter_hook_error():
     def boom(*a, **k):
         raise RuntimeError("x")
+
     orch._stage_hooks.clear()
     orch._stage_hooks.append(boom)
     orch._emit_stage_enter("extract", {})  # must not raise
@@ -217,6 +223,7 @@ def test_emit_pipeline_start():
 def test_emit_pipeline_start_error():
     def boom(*a, **k):
         raise RuntimeError("x")
+
     orch._pipeline_hooks.clear()
     orch._pipeline_hooks.append(boom)
     orch._emit_pipeline_start({})
@@ -239,6 +246,7 @@ def test_emit_pipeline_end_error():
 
 
 # ── Async emitters ───────────────────────────────────────────────────────────
+
 
 def test_async_stage_emitters():
     async def good(event, stage, ctx, result=None, error=None):
@@ -263,6 +271,7 @@ def test_async_pipeline_emitters():
 def test_async_emitters_error_branch():
     async def bad(*a, **k):
         raise RuntimeError("x")
+
     orch._async_stage_hooks.clear()
     orch._async_stage_hooks.append(bad)
     orch._async_pipeline_hooks.clear()
@@ -272,6 +281,7 @@ def test_async_emitters_error_branch():
 
 
 # ── Default + websocket hooks ─────────────────────────────────────────────────
+
 
 def test_default_stage_hook_logs():
     orch._default_stage_hook("stage_enter", "extract", {"project_id": 1}, None, None)
@@ -285,8 +295,14 @@ def test_websocket_hook_no_project():
 def test_websocket_hook_enter(monkeypatch):
     emit = AsyncMock()
     monkeypatch.setattr(orch, "emit_stage_enter", emit)
-    ctx = {"project_id": 1, "chapter_index": 1, "chapter_id": 5,
-           "paragraph_index": 2, "paragraph_id": 7, "kwargs": {"total_items": 3}}
+    ctx = {
+        "project_id": 1,
+        "chapter_index": 1,
+        "chapter_id": 5,
+        "paragraph_index": 2,
+        "paragraph_id": 7,
+        "kwargs": {"total_items": 3},
+    }
     asyncio.run(orch._websocket_stage_hook("stage_enter", "extract", ctx))
     assert emit.await_count == 1
 
@@ -294,8 +310,7 @@ def test_websocket_hook_enter(monkeypatch):
 def test_websocket_hook_exit(monkeypatch):
     emit = AsyncMock()
     monkeypatch.setattr(orch, "emit_stage_exit", emit)
-    ctx = {"project_id": 1, "chapter_index": 1, "chapter_id": 5,
-           "paragraph_index": 2, "paragraph_id": 7}
+    ctx = {"project_id": 1, "chapter_index": 1, "chapter_id": 5, "paragraph_index": 2, "paragraph_id": 7}
     asyncio.run(orch._websocket_stage_hook("stage_exit", "extract", ctx, error=None))
     assert emit.await_count == 1
 
@@ -303,12 +318,14 @@ def test_websocket_hook_exit(monkeypatch):
 def test_websocket_hook_error(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("x")
+
     monkeypatch.setattr(orch, "emit_stage_enter", boom)
     ctx = {"project_id": 1}
     asyncio.run(orch._websocket_stage_hook("stage_enter", "extract", ctx))
 
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
+
 
 class FakeTelemetry:
     def __init__(self, **kw):
@@ -358,16 +375,19 @@ def test_init_telemetry_and_shutdown(monkeypatch):
 
 # ── _sanitize_kwargs ──────────────────────────────────────────────────────────
 
+
 def test_sanitize_kwargs_pydantic():
     class M:
         def model_dump(self):
             return {"a": 1}
+
     assert orch._sanitize_kwargs({"m": M()}) == {"m": {"a": 1}}
 
 
 def test_sanitize_kwargs_object():
-    class O:
+    class O:  # noqa: E742
         pass
+
     o = O()
     assert orch._sanitize_kwargs({"o": o}) == {"o": str(o)}
 
@@ -377,6 +397,7 @@ def test_sanitize_kwargs_plain():
 
 
 # ── run_stage ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def fake_registry(monkeypatch):
@@ -458,6 +479,7 @@ async def test_run_stage_analyze_injects_raw_text(fake_registry, monkeypatch):
     async def run(**ctx):
         captured.update(ctx)
         return {"ok": True}
+
     handler = FakeHandler()
     handler.run = run
     monkeypatch.setattr(orch.StageRegistry, "get", lambda stage: handler)
@@ -473,6 +495,7 @@ async def test_run_stage_analyze_raw_text_present(fake_registry, monkeypatch):
     async def run(**ctx):
         captured.update(ctx)
         return {"ok": True}
+
     handler = FakeHandler()
     handler.run = run
     monkeypatch.setattr(orch.StageRegistry, "get", lambda stage: handler)
@@ -543,6 +566,7 @@ async def test_run_stage_generic_error(monkeypatch):
 
 # ── run_pipeline ──────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def fake_pipeline(monkeypatch):
     mock = AsyncMock(side_effect=lambda stage, db, **kw: f"result:{stage}")
@@ -588,8 +612,9 @@ async def test_run_pipeline_paused(fake_pipeline):
 @pytest.mark.asyncio
 async def test_run_pipeline_checkpoint_skip(fake_pipeline):
     cp = FakeCheckpoint(done_map={"a": True})
-    results = await orch.run_pipeline(["a", "b"], FakeAsyncSession(), project_id=1, chapter_index=1,
-                                      checkpoint_manager=cp)
+    results = await orch.run_pipeline(
+        ["a", "b"], FakeAsyncSession(), project_id=1, chapter_index=1, checkpoint_manager=cp
+    )
     assert results == [None, "result:b"]
     assert "b" in cp.started and "b" in cp.done
 
@@ -597,8 +622,9 @@ async def test_run_pipeline_checkpoint_skip(fake_pipeline):
 @pytest.mark.asyncio
 async def test_run_pipeline_checkpoint_all_done(fake_pipeline):
     cp = FakeCheckpoint(done_map={"a": True, "b": True})
-    results = await orch.run_pipeline(["a", "b"], FakeAsyncSession(), project_id=1, chapter_index=1,
-                                      checkpoint_manager=cp)
+    results = await orch.run_pipeline(
+        ["a", "b"], FakeAsyncSession(), project_id=1, chapter_index=1, checkpoint_manager=cp
+    )
     assert results == []
 
 

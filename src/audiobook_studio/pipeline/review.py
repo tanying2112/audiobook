@@ -15,8 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from ..schemas.review import (
     FixCommand,

@@ -225,8 +225,8 @@ class Settings(BaseSettings):
                 raise ValueError("Decoded length < 32 bytes")
         except Exception as e:
             raise RuntimeError(
-                f"Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
-                f"Generate a secure key with: python scripts/generate_secrets.py --format env"
+                "Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
+                "Generate a secure key with: python scripts/generate_secrets.py --format env"
             ) from e
 
     def validate_cors_security(self) -> None:
@@ -337,7 +337,6 @@ class Settings(BaseSettings):
         Performs basic format validation on known LLM provider API keys.
         Does not validate actual API access (too slow for startup).
         """
-        import re
 
         logger = logging.getLogger("audiobook_studio.startup")
 

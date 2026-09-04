@@ -18,22 +18,25 @@ The plugin manager discovers plugins in:
 
 Installation is via the marketplace API (config/installed_plugins.json).
 """
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .context import PluginContext
 from .manifest import (
     DEFAULT_INSTALLED_PATH,
     DEFAULT_PLUGINS_DIR,
     PluginManifest,
     PluginType,
     discover_plugins,
+)
+from .manifest import list_installed_plugins as _list_installed_plugins_detail
+from .manifest import (
     parse_manifest,
     read_installed_names,
-    list_installed_plugins as _list_installed_plugins_detail,
 )
-from .context import PluginContext
-from .registry import PluginRegistry, PluginManager, get_plugin_manager
+from .registry import PluginManager, PluginRegistry, get_plugin_manager
 
 __all__ = [
     "PluginManifest",
@@ -72,8 +75,9 @@ def _write_installed_names(names: List[str], installed_path: Optional[Path] = No
     )
 
 
-def install_plugin(name: str, *, plugins_dir: Optional[Path] = None,
-                   installed_path: Optional[Path] = None) -> Dict[str, Any]:
+def install_plugin(
+    name: str, *, plugins_dir: Optional[Path] = None, installed_path: Optional[Path] = None
+) -> Dict[str, Any]:
     """Registration-only install: record *name* into the installed registry.
 
     Raises KeyError if the plugin is not discoverable under PLUGINS_DIR.

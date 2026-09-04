@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...llm import LLMRouter
-from ...schemas import FeedbackAnalysis, ParagraphAnnotation, TtsRoutingDecision
-from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
+from ...schemas import ParagraphAnnotation, TtsRoutingDecision
+from .base import BaseCritic, CriticResult, CriticType
 
 logger = logging.getLogger(__name__)
 

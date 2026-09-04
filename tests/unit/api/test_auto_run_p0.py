@@ -11,11 +11,12 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import BackgroundTasks
 
 from src.audiobook_studio.api.auto_run import (
+    AutopilotConfig,
     AutoRunConfig,
     AutoRunStartRequest,
-    AutopilotConfig,
     StagePausePoint,
     _active_runs,
     _create_paragraphs_from_chapters,
@@ -31,7 +32,6 @@ from src.audiobook_studio.api.auto_run import (
     start_auto_run,
     start_autopilot,
 )
-from fastapi import BackgroundTasks
 from src.audiobook_studio.exceptions import DomainError
 
 
@@ -125,10 +125,12 @@ class TestCreateParagraphsFromChapters:
     @pytest.mark.asyncio
     async def test_existing_paragraphs_are_skipped(self):
         project = make_project(chapters=[make_chapter()])
-        db = make_db([
-            make_result(scalar=project),   # Project lookup
-            make_result(items=[MagicMock()]),  # existing paragraphs
-        ])
+        db = make_db(
+            [
+                make_result(scalar=project),  # Project lookup
+                make_result(items=[MagicMock()]),  # existing paragraphs
+            ]
+        )
         await _create_paragraphs_from_chapters(db, 1)
         db.add.assert_not_called()
 
@@ -136,10 +138,12 @@ class TestCreateParagraphsFromChapters:
     async def test_creates_paragraphs_and_empty_text_chapter(self):
         ch = make_chapter(index=3, raw_text="para one.\n\n para two. \n\n\n\n")
         project = make_project(chapters=[ch])
-        db = make_db([
-            make_result(scalar=project),
-            make_result(items=[]),  # no existing paragraphs
-        ])
+        db = make_db(
+            [
+                make_result(scalar=project),
+                make_result(items=[]),  # no existing paragraphs
+            ]
+        )
         with (
             patch(f"{MODULE}.Paragraph") as mock_para_cls,
             patch(f"{MODULE}.select"),  # avoid real coercion of mocked models
@@ -184,9 +188,7 @@ class TestRunAutoPipeline:
             patch(f"{MODULE}._run_single_stage", new_callable=AsyncMock),
             patch(f"{MODULE}._get_checkpoint_manager"),
         ):
-            task = asyncio.create_task(
-                _run_auto_pipeline(2, "run-2", config, pause_points=[pp])
-            )
+            task = asyncio.create_task(_run_auto_pipeline(2, "run-2", config, pause_points=[pp]))
             # Wait until pipeline reaches paused state at 'analyze'
             for _ in range(200):
                 await asyncio.sleep(0.01)
@@ -210,9 +212,7 @@ class TestRunAutoPipeline:
             patch(f"{MODULE}._run_single_stage", new_callable=AsyncMock),
             patch(f"{MODULE}._get_checkpoint_manager"),
         ):
-            await asyncio.wait_for(
-                _run_auto_pipeline(3, "run-3", config, pause_points=[pp]), timeout=5
-            )
+            await asyncio.wait_for(_run_auto_pipeline(3, "run-3", config, pause_points=[pp]), timeout=5)
         assert _active_runs[3]["status"] == "completed"
 
     @pytest.mark.asyncio
@@ -231,9 +231,7 @@ class TestRunAutoPipeline:
 
         assert _active_runs[4]["status"] == "failed"
         assert "boom" in _active_runs[4]["error_message"]
-        error_events = [
-            c for c in ev.await_args_list if c.kwargs.get("event_type") == "error"
-        ]
+        error_events = [c for c in ev.await_args_list if c.kwargs.get("event_type") == "error"]
         assert error_events, "expected an ERROR pipeline event"
 
 
@@ -246,19 +244,19 @@ class TestRunSingleStage:
     @pytest.mark.asyncio
     async def test_missing_project_raises_value_error(self):
         db = make_db([make_result(scalar=None)])
-        with patch(f"{MODULE}.create_async_session", return_value=db), patch(
-            f"{MODULE}.CheckpointManager"
-        ):
+        with patch(f"{MODULE}.create_async_session", return_value=db), patch(f"{MODULE}.CheckpointManager"):
             with pytest.raises(ValueError, match="not found"):
                 await _run_single_stage(404, "extract", AutoRunConfig())
         db.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_extract_no_chapters_emits_full_progress(self):
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(items=[]),  # chapters
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(items=[]),  # chapters
+            ]
+        )
         with (
             patch(f"{MODULE}.create_async_session", return_value=db),
             patch(f"{MODULE}.CheckpointManager") as cm,
@@ -267,19 +265,19 @@ class TestRunSingleStage:
         ):
             await _run_single_stage(1, "extract", AutoRunConfig())
         rs.assert_not_awaited()
-        progress_calls = [
-            c for c in ev.await_args_list if c.kwargs.get("event_type") == "stage_progress"
-        ]
+        progress_calls = [c for c in ev.await_args_list if c.kwargs.get("event_type") == "stage_progress"]
         assert progress_calls and progress_calls[-1].kwargs["progress"] == 1.0
         cm.return_value.mark_stage_done.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_extract_skipped_when_all_chapters_extracted(self):
         chapters = [make_chapter(i, extract_status="completed", raw_text=f"t{i}") for i in range(1, 3)]
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(items=chapters),
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(items=chapters),
+            ]
+        )
         with (
             patch(f"{MODULE}.create_async_session", return_value=db),
             patch(f"{MODULE}.CheckpointManager") as cm,
@@ -293,10 +291,12 @@ class TestRunSingleStage:
     @pytest.mark.asyncio
     async def test_extract_checkpoint_skip_per_chapter(self):
         chapters = [make_chapter(1), make_chapter(2)]
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(items=chapters),
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(items=chapters),
+            ]
+        )
         ckpt = MagicMock()
         ckpt.is_stage_done.side_effect = [True, False]  # ch1 done, ch2 pending
         with (
@@ -311,10 +311,12 @@ class TestRunSingleStage:
     @pytest.mark.asyncio
     async def test_analyze_creates_paragraphs_afterwards(self):
         chapters = [make_chapter(1)]
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(items=chapters),
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(items=chapters),
+            ]
+        )
         with (
             patch(f"{MODULE}.create_async_session", return_value=db),
             patch(f"{MODULE}.CheckpointManager"),
@@ -327,10 +329,12 @@ class TestRunSingleStage:
 
     @pytest.mark.asyncio
     async def test_paragraph_stage_no_paragraphs(self):
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(items=[]),  # paragraphs
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(items=[]),  # paragraphs
+            ]
+        )
         with (
             patch(f"{MODULE}.create_async_session", return_value=db),
             patch(f"{MODULE}.CheckpointManager"),
@@ -601,9 +605,7 @@ class TestAutopilotEndpoints:
             confidence=0.85,
         )
         bt = BackgroundTasks()
-        with patch(
-            f"{MODULE}._generate_autopilot_config", new_callable=AsyncMock, return_value=fake_cfg
-        ) as gen:
+        with patch(f"{MODULE}._generate_autopilot_config", new_callable=AsyncMock, return_value=fake_cfg) as gen:
             resp = await start_autopilot(5, bt, db)
         gen.assert_awaited_once()
         assert resp.run_id.startswith("autorun_5_")
@@ -631,9 +633,7 @@ class TestAutopilotEndpoints:
             reasoning="auto",
             confidence=0.85,
         )
-        with patch(
-            f"{MODULE}._generate_autopilot_config", new_callable=AsyncMock, return_value=fake_cfg
-        ):
+        with patch(f"{MODULE}._generate_autopilot_config", new_callable=AsyncMock, return_value=fake_cfg):
             resp = await preview_autopilot_config(77, db)
         assert resp.target_difficulty == "D"
 
@@ -762,10 +762,12 @@ class TestIntermediateProduct:
 
     @pytest.mark.asyncio
     async def test_explicit_chapter_not_in_project_404(self):
-        db = make_db([
-            make_result(scalar=make_project()),
-            make_result(scalar=None),  # chapter lookup misses
-        ])
+        db = make_db(
+            [
+                make_result(scalar=make_project()),
+                make_result(scalar=None),  # chapter lookup misses
+            ]
+        )
         with pytest.raises(DomainError) as ei:
             await get_intermediate_product(1, "extract", chapter_id=555, db=db)
         assert _code(ei.value) == "NOT_FOUND"
@@ -798,9 +800,7 @@ class TestIntermediateProduct:
     async def test_annotate_product(self):
         p = make_paragraph(1, speaker_canonical_name="narrator", is_dialogue=False)
         ch = make_chapter(1)
-        prod = await self.call(
-            [make_result(first=ch), make_result(items=[p])], "annotate"
-        )
+        prod = await self.call([make_result(first=ch), make_result(items=[p])], "annotate")
         ann = prod.data["annotations"][0]
         assert ann["paragraph_id"] == 1
         assert ann["speaker_canonical_name"] == "narrator"
@@ -817,17 +817,16 @@ class TestIntermediateProduct:
     async def test_audio_postprocess_product(self):
         p = make_paragraph(3, needs_sfx=True, sfx_tags=["boom"])
         ch = make_chapter(1)
-        prod = await self.call(
-            [make_result(first=ch), make_result(items=[p])], "audio_postprocess"
-        )
+        prod = await self.call([make_result(first=ch), make_result(items=[p])], "audio_postprocess")
         params = prod.data["audio_postprocess_params"][0]
         assert params["needs_sfx"] is True
         assert params["sfx_tags"] == ["boom"]
 
     @pytest.mark.asyncio
     async def test_synthesize_product_audio_type(self):
-        seg = MagicMock(id=900, file_path="/tmp/a.wav", format="wav", duration_ms=1200,
-                        engine="edge", voice_id="v1", status="DONE")
+        seg = MagicMock(
+            id=900, file_path="/tmp/a.wav", format="wav", duration_ms=1200, engine="edge", voice_id="v1", status="DONE"
+        )
         p = make_paragraph(4, audio_segment_id=900)
         ch = make_chapter(1)
         prod = await self.call(
@@ -845,16 +844,21 @@ class TestIntermediateProduct:
     async def test_synthesize_skips_paragraph_without_segment(self):
         p = make_paragraph(5, audio_segment_id=None)
         ch = make_chapter(1)
-        prod = await self.call(
-            [make_result(first=ch), make_result(items=[p])], "synthesize"
-        )
+        prod = await self.call([make_result(first=ch), make_result(items=[p])], "synthesize")
         assert prod.data["audio_segments"] == []
 
     @pytest.mark.asyncio
     async def test_quality_product(self):
-        qual = MagicMock(id=70, speaker_clarity=0.9, emotion_match=0.8,
-                         text_audio_alignment=0.95, overall_score=0.88,
-                         issues=[], fix_suggestions=[], needs_regeneration=False)
+        qual = MagicMock(
+            id=70,
+            speaker_clarity=0.9,
+            emotion_match=0.8,
+            text_audio_alignment=0.95,
+            overall_score=0.88,
+            issues=[],
+            fix_suggestions=[],
+            needs_regeneration=False,
+        )
         p = make_paragraph(6)
         ch = make_chapter(1)
         prod = await self.call(

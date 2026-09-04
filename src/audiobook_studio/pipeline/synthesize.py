@@ -16,47 +16,34 @@ import hashlib
 import json
 import logging
 import os
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Coroutine, Dict, List, Literal, Optional, Tuple, TypeVar, cast
+from typing import Any, Coroutine, Dict, List, Optional, cast
 
-from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
+from ..api.websocket import emit_pipeline_event
+from ..audio_quality import QualityReport, check_all_segments, save_quality_report
 from ..config.acoustic_mapping import get_emotion_map
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
-from ..di import get_app_container
-from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
+from ..export.pool import run_ffmpeg
 from ..llm import LLMRouter, create_router
-from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
-from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
-from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress, emit_paragraph_complete
-from ..api.websocket import emit_pipeline_event
-from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
-from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
+from ..monitoring.langfuse_client import is_enabled, observe_tts_synthesis, trace_function
+from ..monitoring.telemetry import record_tts_quality_check, record_tts_retry, record_tts_segment
+from ..pipeline.progress_emitter import emit_paragraph_complete, emit_stage_exit, emit_stage_progress
+from ..schemas import TtsRoutingDecision, TtsRoutingInput
 from ..security import safe_subprocess_args
 from ..tts import (
-    EngineRegistry,
     RemoteTTSPort,
-    SynthesisResult,
-    TTSEngine,
     TTSProsody,
     TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
-    VoiceInfo,
 )
-from ..di import get_app_container
-from ..tts.streaming import (
-    StreamingTTSConfig,
-    StreamingTTSResult,
-    StreamingTTSEngine,
-    create_streaming_tts_engine,
-)
-from ..tts.fake_port import FakeRemoteTTSPort
+from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
 from ..tts.clone import CloningConfig, VoiceCloningManager
+from ..tts.fake_port import FakeRemoteTTSPort
+from ..tts.streaming import StreamingTTSConfig, create_streaming_tts_engine
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
@@ -288,7 +275,6 @@ class SynthesizePipeline:
         else:
             self.crossfade_ms = self.get_crossfade_ms()
 
-
         # Audio semantic cache for TTS segment caching
         self._audio_cache: Optional[AudioSemanticCache] = None
         self._cache_enabled = os.environ.get("AUDIO_SEMANTIC_CACHE_ENABLED", "false").lower() == "true"
@@ -303,6 +289,7 @@ class SynthesizePipeline:
     async def _create_port(self) -> RemoteTTSPort:
         """Create a new port instance via DI container."""
         from ..tts.port_factory import get_port
+
         return await get_port()
 
     async def _get_port(self) -> RemoteTTSPort:
@@ -455,6 +442,7 @@ class SynthesizePipeline:
                 )
                 # Copy cached audio to output path
                 import shutil
+
                 shutil.copy2(cached_audio_path, output_path)
                 engine = cache_meta.get("engine", "cache")
                 return cached_duration_ms, engine
@@ -621,8 +609,8 @@ class SynthesizePipeline:
 
         # Stream synthesis with WebSocket progress
         import io
+
         audio_buffer = io.BytesIO()
-        total_duration_ms = 0
         first_chunk = True
         first_byte_latency_ms = 0
         start_time = time.time()
@@ -630,9 +618,7 @@ class SynthesizePipeline:
         try:
             # Use async streaming for real-time WebSocket updates
             chunk_index = 0
-            async for chunk in streaming_engine_instance.synthesize_stream_async(
-                text, voice_id=voice_id, **prosody
-            ):
+            async for chunk in streaming_engine_instance.synthesize_stream_async(text, voice_id=voice_id, **prosody):
                 # Write chunk to buffer
                 audio_buffer.write(chunk.audio_data)
 
@@ -645,17 +631,19 @@ class SynthesizePipeline:
                     # Emit first-byte event
                     try:
                         loop = asyncio.get_running_loop()
-                        loop.create_task(emit_pipeline_event(
-                            project_id=project_id,
-                            event_type="first_byte",
-                            chapter_id=chapter_index,
-                            paragraph_index=paragraph_index,
-                            data={
-                                "segment_id": segment_id,
-                                "latency_ms": first_byte_latency_ms,
-                                "engine": streaming_engine,
-                            },
-                        ))
+                        loop.create_task(
+                            emit_pipeline_event(
+                                project_id=project_id,
+                                event_type="first_byte",
+                                chapter_id=chapter_index,
+                                paragraph_index=paragraph_index,
+                                data={
+                                    "segment_id": segment_id,
+                                    "latency_ms": first_byte_latency_ms,
+                                    "engine": streaming_engine,
+                                },
+                            )
+                        )
                     except RuntimeError:
                         pass
 
@@ -669,19 +657,21 @@ class SynthesizePipeline:
                 # Emit WebSocket event for real-time progress
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(emit_pipeline_event(
-                        project_id=project_id,
-                        event_type="stream_chunk",
-                        chapter_id=chapter_index,
-                        paragraph_index=paragraph_index,
-                        progress=0.5 if not chunk.is_final else 1.0,
-                        data={
-                            "segment_id": segment_id,
-                            "chunk_index": chunk_index,
-                            "is_final": chunk.is_final,
-                            "latency_ms": chunk.latency_ms,
-                        },
-                    ))
+                    loop.create_task(
+                        emit_pipeline_event(
+                            project_id=project_id,
+                            event_type="stream_chunk",
+                            chapter_id=chapter_index,
+                            paragraph_index=paragraph_index,
+                            progress=0.5 if not chunk.is_final else 1.0,
+                            data={
+                                "segment_id": segment_id,
+                                "chunk_index": chunk_index,
+                                "is_final": chunk.is_final,
+                                "latency_ms": chunk.latency_ms,
+                            },
+                        )
+                    )
                 except RuntimeError:
                     pass
 
@@ -755,14 +745,16 @@ class SynthesizePipeline:
                 chapter_index = inputs[0].chapter_index
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(emit_stage_progress(
-                        stage="synthesize",
-                        project_id=project_id,
-                        chapter_index=chapter_index,
-                        current=i + 1,
-                        total=len(inputs),
-                        message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
-                    ))
+                    loop.create_task(
+                        emit_stage_progress(
+                            stage="synthesize",
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            current=i + 1,
+                            total=len(inputs),
+                            message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
+                        )
+                    )
                 except RuntimeError:
                     pass  # Silently skip if no event loop
 
@@ -778,12 +770,14 @@ class SynthesizePipeline:
                         chapter_index = inputs[0].chapter_index
                         try:
                             loop = asyncio.get_running_loop()
-                            loop.create_task(emit_paragraph_complete(
-                                project_id=project_id,
-                                chapter_index=chapter_index,
-                                paragraph_index=inp.paragraph_index,
-                                total_paragraphs=len(inputs),
-                            ))
+                            loop.create_task(
+                                emit_paragraph_complete(
+                                    project_id=project_id,
+                                    chapter_index=chapter_index,
+                                    paragraph_index=inp.paragraph_index,
+                                    total_paragraphs=len(inputs),
+                                )
+                            )
                         except RuntimeError:
                             pass
                     continue
@@ -800,12 +794,14 @@ class SynthesizePipeline:
                     chapter_index = inputs[0].chapter_index
                     try:
                         loop = asyncio.get_running_loop()
-                        loop.create_task(emit_paragraph_complete(
-                            project_id=project_id,
-                            chapter_index=chapter_index,
-                            paragraph_index=inp.paragraph_index,
-                            total_paragraphs=len(inputs),
-                        ))
+                        loop.create_task(
+                            emit_paragraph_complete(
+                                project_id=project_id,
+                                chapter_index=chapter_index,
+                                paragraph_index=inp.paragraph_index,
+                                total_paragraphs=len(inputs),
+                            )
+                        )
                     except RuntimeError:
                         pass
                 continue
@@ -830,7 +826,7 @@ class SynthesizePipeline:
 
                 # Check if streaming TTS is enabled for first-byte latency optimization
                 enable_streaming = os.getenv("ENABLE_STREAMING_TTS", "false").lower() == "true"
-                
+
                 if enable_streaming:
                     # Run streaming synthesis with WebSocket progress
                     duration, engine = await self._synthesize_streaming(
@@ -966,12 +962,14 @@ class SynthesizePipeline:
                 chapter_index = inputs[0].chapter_index
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(emit_paragraph_complete(
-                        project_id=project_id,
-                        chapter_index=chapter_index,
-                        paragraph_index=inp.paragraph_index,
-                        total_paragraphs=len(inputs),
-                    ))
+                    loop.create_task(
+                        emit_paragraph_complete(
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            paragraph_index=inp.paragraph_index,
+                            total_paragraphs=len(inputs),
+                        )
+                    )
                 except RuntimeError:
                     pass
 
@@ -998,12 +996,12 @@ class SynthesizePipeline:
                 try:
                     logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
                     retry_duration, retry_engine = await self._synthesize_via_port(
-                            seg_input.text,
-                            decision.voice_id,
-                            decision.prosody_overrides or {},
-                            retry_output,
-                            f"{seg_id}_retry{attempt}",
-                        )
+                        seg_input.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        retry_output,
+                        f"{seg_id}_retry{attempt}",
+                    )
                     # Record retry telemetry
                     record_tts_retry(fallback_from=decision.engine_choice)
 
@@ -1075,12 +1073,14 @@ class SynthesizePipeline:
             chapter_index = inputs[0].chapter_index
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="synthesize",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="synthesize",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -1476,8 +1476,8 @@ class SynthesizePipeline:
         # Respect ENABLE_LOCAL_TTS environment variable for engine selection
         enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
 
-        engine_choice: EngineChoice
-        fallback_engine: EngineChoice
+        engine_choice: EngineChoice  # noqa: F821
+        fallback_engine: EngineChoice  # noqa: F821
         if enable_local_tts:
             # Prefer local engine (Kokoro) when enabled
             engine_choice = "kokoro"
@@ -1594,15 +1594,16 @@ def synthesize_paragraphs(
     """Convenience function to synthesize paragraphs."""
     pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode, port=port)
     try:
-        import asyncio
-        return cast(List[AudioSegment], asyncio.run(pipeline.run(inputs)))
+        from ..utils.async_utils import run_async_safe
+
+        return cast(List[AudioSegment], run_async_safe(pipeline.run(inputs)))
     finally:
-        asyncio.run(pipeline.close())
+        from ..utils.async_utils import run_async_safe
+
+        run_async_safe(pipeline.close())
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("SynthesizePipeline ready")
-

@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -34,7 +33,7 @@ from ..feedback.prompt_compiler import stage_to_prompt_dir
 from . import storage as _storage_module
 from .golden import GoldenDatasetManager
 from .harness import IterationReport, run_iteration_cycle
-from .storage import Storage, get_storage
+from .storage import Storage
 
 
 class _Patch:

@@ -1,5 +1,3 @@
-import os
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -186,7 +184,7 @@ class TestSpeakerSimilarityMetric(unittest.TestCase):
             # Register the reference
             self.metric.register_reference("test_ref", Path("ref.wav"))
             # Now compute with the reference_id
-            result = self.metric.compute(Path("target.wav"), reference_id="test_ref")
+            self.metric.compute(Path("target.wav"), reference_id="test_ref")
             # Should call extract_embedding twice: once for ref (in register), once for target
             self.assertEqual(mock_extract.call_count, 2)
 
@@ -308,7 +306,7 @@ class TestWavLMBackend(unittest.TestCase):
 
 class ASRResultTests(unittest.TestCase):
     def test_to_dict(self):
-        result = MagicMock()
+        MagicMock()
         # Test ASRResult dataclass-like behavior
         from audiobook_studio.quality.metrics import ASRResult
 

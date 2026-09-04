@@ -17,47 +17,41 @@ Features:
 import json
 import logging
 import os
-import re
 import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date
 
 # Langfuse monitoring - use lazy import to avoid circular dependency
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from ..di import get_app_container
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
     FeedbackAnalysis,
-    PairwiseDimensionScore,
     PairwiseJudgment,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
-    TtsRoutingDecision,
 )
 from .circuit_breaker import CircuitBreaker
-from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from .client import LLMCallResult, LLMClient, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
-from .direct_client import DirectProviderClient, DirectProviderClientConfig, DirectProviderType, create_direct_client
-from .health_probe import HealthProbe, HealthStatus
+from .direct_client import DirectProviderClientConfig, DirectProviderType, create_direct_client
+from .health_probe import HealthProbe
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
 
 if TYPE_CHECKING:
-    from ..monitoring.langfuse_client import init_langfuse
-    from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
-    from ..monitoring.langfuse_client import observe_llm_call, span
+    pass
 
 # trace_function is imported at runtime in the lazy decorator below
 
 # Runtime imports will be done in functions
 
-from .utils import LLMParseError, validate_and_parse_llm_response
+from .utils import LLMParseError
 
 
 def _lazy_trace_function(stage: str):

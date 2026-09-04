@@ -7,7 +7,6 @@ API keys, or real model weights are required.
 """
 
 import json
-import os
 import sys
 import types
 from unittest.mock import MagicMock

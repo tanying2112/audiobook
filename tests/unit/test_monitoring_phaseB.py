@@ -23,8 +23,12 @@ reset_collector = mon.reset_collector
 
 def test_stage_performance_record_defaults():
     r = StagePerformanceRecord(
-        stage="edit_for_tts", latency_ms=1.0, tokens_in=1,
-        tokens_out=0, cost_usd=0.0, success=True,
+        stage="edit_for_tts",
+        latency_ms=1.0,
+        tokens_in=1,
+        tokens_out=0,
+        cost_usd=0.0,
+        success=True,
     )
     assert r.provider == "unknown"
     assert r.model == "unknown"
@@ -33,12 +37,19 @@ def test_stage_performance_record_defaults():
 
 def test_collector_record_and_stats(tmp_path):
     c = PerformanceCollector(log_dir=tmp_path)
-    c.record(stage="edit_for_tts", latency_ms=100.0, tokens_in=10, tokens_out=5,
-             cost_usd=0.01, success=True, quality_score=0.9)
-    c.record(stage="edit_for_tts", latency_ms=200.0, tokens_in=20, tokens_out=10,
-             cost_usd=0.02, success=False)
-    c.record(stage="annotate", latency_ms=50.0, tokens_in=5, tokens_out=2,
-             cost_usd=0.005, success=True, quality_score=0.8)
+    c.record(
+        stage="edit_for_tts",
+        latency_ms=100.0,
+        tokens_in=10,
+        tokens_out=5,
+        cost_usd=0.01,
+        success=True,
+        quality_score=0.9,
+    )
+    c.record(stage="edit_for_tts", latency_ms=200.0, tokens_in=20, tokens_out=10, cost_usd=0.02, success=False)
+    c.record(
+        stage="annotate", latency_ms=50.0, tokens_in=5, tokens_out=2, cost_usd=0.005, success=True, quality_score=0.8
+    )
 
     stats = c.get_stage_stats("edit_for_tts")
     assert stats["count"] == 2
@@ -76,8 +87,14 @@ def test_get_collector_and_reset():
 def test_record_stage_performance_global():
     reset_collector()
     rec = record_stage_performance(
-        stage="edit_for_tts", latency_ms=10, tokens_in=1, tokens_out=1,
-        cost_usd=0.0, success=True, quality_score=0.7, provider="openrouter",
+        stage="edit_for_tts",
+        latency_ms=10,
+        tokens_in=1,
+        tokens_out=1,
+        cost_usd=0.0,
+        success=True,
+        quality_score=0.7,
+        provider="openrouter",
     )
     assert rec.stage == "edit_for_tts"
     assert len(get_collector().records) == 1

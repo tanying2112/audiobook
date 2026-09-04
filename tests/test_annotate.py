@@ -5,8 +5,6 @@ Target coverage: >= 60%.
 """
 
 import os
-import sys
-from pathlib import Path
 
 import pytest
 

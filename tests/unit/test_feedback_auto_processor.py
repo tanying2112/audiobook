@@ -186,7 +186,7 @@ class TestFeedbackAutoProcessor:
         with patch(
             "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
             return_value=[1, 2, 3],  # 3 items
-        ) as mock_list:
+        ):
             processor._check_and_trigger()
             # Should not call _trigger_analysis
             # We can't directly assert on _trigger_analysis because it's called via db session,
@@ -210,7 +210,7 @@ class TestFeedbackAutoProcessor:
             patch(
                 "src.audiobook_studio.feedback.auto_processor.list_unprocessed_feedback",
                 return_value=fake_feedback,
-            ) as mock_list,
+            ),
             patch.object(processor, "_trigger_analysis", return_value="result") as mock_trigger,
         ):
             processor._check_and_trigger()

@@ -4,7 +4,6 @@ import os
 
 os.environ["MOCK_LLM"] = "true"
 
-import sys
 
 import pytest
 
@@ -15,17 +14,13 @@ from audiobook_studio.pipeline.extract import extract_text
 from audiobook_studio.pipeline.quality_check import quality_check
 from audiobook_studio.pipeline.synthesize import synthesize_paragraphs
 from audiobook_studio.schemas import (
-    BookAnalysisInput,
     BookAnalysisOutput,
     BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
-    ExtractionInput,
     ExtractionResult,
     ParagraphAnnotation,
-    ParagraphAnnotationInput,
     QualityJudgment,
-    TtsEditInput,
     TtsEditOutput,
     TtsRoutingDecision,
     TtsRoutingInput,
@@ -173,7 +168,7 @@ def test_synthesize_mock():
 
 
 def test_quality_check_mock():
-    from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision
+    from audiobook_studio.schemas import ParagraphAnnotation
 
     annotation = ParagraphAnnotation(
         paragraph_index=0,
@@ -267,7 +262,6 @@ def test_full_pipeline_mock():
     assert len(segments) == 1
 
     # 6. Quality check
-    from audiobook_studio.schemas import TtsRoutingDecision
 
     routing_decision = TtsRoutingDecision(
         segment_id="test_ch1_p0",

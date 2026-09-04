@@ -12,7 +12,6 @@ in without changing this middleware's contract.
 
 from __future__ import annotations
 
-import time
 from collections import defaultdict
 from typing import Callable
 

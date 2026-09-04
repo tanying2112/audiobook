@@ -100,8 +100,6 @@ def merge_documents(
         elif key in remote and key not in local:
             merged[key] = rv
         else:
-            value, _ = resolve_field_conflict(
-                lv, local_rev, local_site, rv, remote_rev, remote_site
-            )
+            value, _ = resolve_field_conflict(lv, local_rev, local_site, rv, remote_rev, remote_site)
             merged[key] = value
     return merged

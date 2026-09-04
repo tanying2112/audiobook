@@ -7,7 +7,6 @@ soundfile reads and the Kokoro backend are mocked.
 
 import asyncio
 import builtins
-import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,6 +60,7 @@ def _make_manager(tmp_path, model_files=False):
 
 # ── _extract_real_embedding ──
 
+
 def test_extract_real_embedding_normal(vc_env, monkeypatch):
     f = vc_env / "a.wav"
     f.write_bytes(b"RIFF")
@@ -102,6 +102,7 @@ def test_extract_real_embedding_exception(vc_env, monkeypatch):
 
 # ── hash / snr / validation / quality ──
 
+
 def test_calculate_audio_hash(vc_env):
     mgr = _make_manager(vc_env)
     arr = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], dtype=np.float32)
@@ -138,16 +139,26 @@ def test_assess_quality(vc_env):
 
 # ── _load / _save voice prints ──
 
+
 def test_load_voice_prints_success(vc_env):
     voices = vc_env / "voices"
     voices.mkdir()
-    (voices / "voice_prints.json").write_text(json.dumps({
-        "s": {
-            "speaker_id": "s", "voice_hash": "h", "embedding": [0.5],
-            "quality": "good", "sample_count": 1, "avg_snr": 25.0,
-            "created_at": "t", "updated_at": "t",
-        }
-    }))
+    (voices / "voice_prints.json").write_text(
+        json.dumps(
+            {
+                "s": {
+                    "speaker_id": "s",
+                    "voice_hash": "h",
+                    "embedding": [0.5],
+                    "quality": "good",
+                    "sample_count": 1,
+                    "avg_snr": 25.0,
+                    "created_at": "t",
+                    "updated_at": "t",
+                }
+            }
+        )
+    )
     mgr = _make_manager(vc_env)
     assert "s" in mgr.voice_prints
     assert mgr.voice_prints["s"].quality == AudioQuality.GOOD
@@ -175,6 +186,7 @@ def test_save_voice_prints_error(vc_env, monkeypatch):
 
 
 # ── add_voice_sample / _update_voice_print ──
+
 
 def test_add_voice_sample_invalid(vc_env):
     mgr = _make_manager(vc_env)
@@ -231,6 +243,7 @@ def test_update_voice_print_exception(vc_env, monkeypatch):
 
 # ── get_voice_info ──
 
+
 def test_get_voice_info_missing(vc_env):
     mgr = _make_manager(vc_env)
     assert mgr.get_voice_info("ghost") is None
@@ -239,9 +252,14 @@ def test_get_voice_info_missing(vc_env):
 def test_get_voice_info_poor_not_clonable(vc_env):
     mgr = _make_manager(vc_env)
     mgr.voice_prints["s"] = VoicePrint(
-        speaker_id="s", voice_hash="h", embedding=[0.5] * 256,
-        quality=AudioQuality.POOR, sample_count=1, avg_snr=10.0,
-        created_at="t", updated_at="t",
+        speaker_id="s",
+        voice_hash="h",
+        embedding=[0.5] * 256,
+        quality=AudioQuality.POOR,
+        sample_count=1,
+        avg_snr=10.0,
+        created_at="t",
+        updated_at="t",
     )
     info = mgr.get_voice_info("s")
     assert info["quality"] == "poor"
@@ -249,6 +267,7 @@ def test_get_voice_info_poor_not_clonable(vc_env):
 
 
 # ── async kokoro synthesis ──
+
 
 class _FakeKokoroWrite:
     def __init__(self, *a, **k):
@@ -366,6 +385,7 @@ def test_async_synthesize_import_error(vc_env, monkeypatch):
 
 # ── synthesize_speech ──
 
+
 def test_synthesize_speaker_not_found(vc_env):
     mgr = _make_manager(vc_env)
     ok, msg, path = mgr.synthesize_speech("hi", "ghost")
@@ -377,9 +397,14 @@ def test_synthesize_speaker_not_found(vc_env):
 def test_synthesize_poor(vc_env):
     mgr = _make_manager(vc_env)
     mgr.voice_prints["s"] = VoicePrint(
-        speaker_id="s", voice_hash="h", embedding=[0.5] * 256,
-        quality=AudioQuality.POOR, sample_count=1, avg_snr=10.0,
-        created_at="t", updated_at="t",
+        speaker_id="s",
+        voice_hash="h",
+        embedding=[0.5] * 256,
+        quality=AudioQuality.POOR,
+        sample_count=1,
+        avg_snr=10.0,
+        created_at="t",
+        updated_at="t",
     )
     ok, msg, path = mgr.synthesize_speech("hi", "s")
     assert ok is False
@@ -405,6 +430,7 @@ def test_synthesize_raises_on_failure(vc_env, monkeypatch):
 
 
 # ── main() demo ──
+
 
 def test_main_runs(vc_env, monkeypatch):
     monkeypatch.setattr(kokoro_backend_mod, "KokoroBackend", _FakeKokoroWrite)

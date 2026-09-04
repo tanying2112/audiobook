@@ -12,8 +12,8 @@
 """
 
 import os
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, Tuple
 
 
 @dataclass(frozen=True)
@@ -107,7 +107,7 @@ def load_emotion_map_from_env() -> Dict[str, EmotionAcousticProfile]:
                 pitch_hz=params.get("pitch_hz", 0.0),
             )
         return result
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, KeyError, TypeError):
         # 静默失败，使用默认配置
         return {}
 

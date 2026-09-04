@@ -1,7 +1,4 @@
 import json
-import os
-import sys
-from contextlib import contextmanager
 from unittest import mock
 
 import pytest

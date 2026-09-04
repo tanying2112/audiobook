@@ -1,12 +1,7 @@
 """Tests for quality/semantic_coherence.py — SemanticCoherenceChecker (146 miss lines)."""
 
-from unittest.mock import MagicMock, patch
 
-import numpy as np
-import pytest
-
-
-class TestSemanticCoherenceCheckerInit:
+class TestSemanticCoherenceCheckerInit:  # noqa: E303
     def test_init_with_default_config(self):
         from src.audiobook_studio.quality.semantic_coherence import SemanticCoherenceChecker
 

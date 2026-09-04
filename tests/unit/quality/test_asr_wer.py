@@ -23,7 +23,7 @@ sys.modules["onnxruntime"] = MagicMock()
 sys.modules["speechbrain"] = MagicMock()
 
 # Now we can import the module
-from src.audiobook_studio.quality.metrics import ASRResult, ASRWerMetric, WERResult
+from src.audiobook_studio.quality.metrics import ASRResult, ASRWerMetric
 
 
 class TestASRWerMetric(unittest.TestCase):

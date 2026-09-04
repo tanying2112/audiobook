@@ -119,8 +119,12 @@ class TestTriggerReflection:
         collector.get_corrections_by_genre.return_value = corrections
         engine = MagicMock()
         engine.reflect.return_value = ReflectionResult(
-            genre="玄幻", proposed_rules={"a": 1}, confidence=0.2,
-            reasoning="weak", corrections_analyzed=2, timestamp="now",
+            genre="玄幻",
+            proposed_rules={"a": 1},
+            confidence=0.2,
+            reasoning="weak",
+            corrections_analyzed=2,
+            timestamp="now",
         )
         cfg = MagicMock()
         cfg.get_confidence_threshold.return_value = 0.65
@@ -141,8 +145,12 @@ class TestTriggerReflection:
         collector.get_corrections_by_genre.return_value = [MagicMock() for _ in range(4)]
         engine = MagicMock()
         engine.reflect.return_value = ReflectionResult(
-            genre="玄幻", proposed_rules={"emotion_defaults": {"战斗": "intense"}},
-            confidence=0.9, reasoning="strong", corrections_analyzed=4, timestamp="now",
+            genre="玄幻",
+            proposed_rules={"emotion_defaults": {"战斗": "intense"}},
+            confidence=0.9,
+            reasoning="strong",
+            corrections_analyzed=4,
+            timestamp="now",
         )
         cfg = MagicMock()
         cfg.get_confidence_threshold.return_value = 0.65
@@ -165,8 +173,12 @@ class TestTriggerReflection:
         collector.get_corrections_by_genre.return_value = [MagicMock()]
         engine = MagicMock()
         engine.reflect.return_value = ReflectionResult(
-            genre="玄幻", proposed_rules={}, confidence=0.99,
-            reasoning="", corrections_analyzed=1, timestamp="now",
+            genre="玄幻",
+            proposed_rules={},
+            confidence=0.99,
+            reasoning="",
+            corrections_analyzed=1,
+            timestamp="now",
         )
         cfg = MagicMock()
         cfg.get_confidence_threshold.return_value = 0.65
@@ -219,13 +231,18 @@ class TestImportAndDiagnostics:
     async def test_apply_rules_on_import(self):
         payload = ApplyRulesOnImportRequest(
             project_id=1,
-            book_meta={"title": "t", "author": "a", "genre": "小说", "difficulty": "B",
-                       "language": "zh", "total_chapters_estimated": 3},
+            book_meta={
+                "title": "t",
+                "author": "a",
+                "genre": "小说",
+                "difficulty": "B",
+                "language": "zh",
+                "total_chapters_estimated": 3,
+            },
             analyzed_json={"scene_tags": ["宗门"]},
         )
         with patch(f"{MODULE_API}.apply_learned_rules_on_import") as fn:
-            fn.return_value = {"genre": "玄幻", "rules_applied": True,
-                               "confidence": 0.7, "rules": {"a": 1}}
+            fn.return_value = {"genre": "玄幻", "rules_applied": True, "confidence": 0.7, "rules": {"a": 1}}
             resp = await apply_rules_on_import(payload)
         assert resp.genre == "玄幻"
         assert resp.rules_applied is True
@@ -288,12 +305,17 @@ class TestSopCorrectionsWebsocket:
     @pytest.mark.asyncio
     async def test_accept_ack_ping_unknown_disconnect(self):
         msg = {
-            "type": "correction", "chapter_index": 1, "paragraph_index": 1,
-            "field": "emotion", "original_value": "n", "corrected_value": "t",
+            "type": "correction",
+            "chapter_index": 1,
+            "paragraph_index": 1,
+            "field": "emotion",
+            "original_value": "n",
+            "corrected_value": "t",
             "genre": "悬疑",
         }
-        ws = await self.run_ws([json.dumps(msg), json.dumps({"type": "ping"}),
-                                json.dumps({"type": "mystery"}), "not-json-at-all"])
+        ws = await self.run_ws(
+            [json.dumps(msg), json.dumps({"type": "ping"}), json.dumps({"type": "mystery"}), "not-json-at-all"]
+        )
         types = [m["type"] for m in ws.sent]
         assert ws.accepted is True
         assert types[0] == "ack"
@@ -304,15 +326,21 @@ class TestSopCorrectionsWebsocket:
     @pytest.mark.asyncio
     async def test_generic_error_path_attempts_error_frame(self):
         msg = {
-            "type": "correction", "project_id": 5, "chapter_index": 1,
-            "paragraph_index": 1, "field": "emotion",
+            "type": "correction",
+            "project_id": 5,
+            "chapter_index": 1,
+            "paragraph_index": 1,
+            "field": "emotion",
             "original_value": {},  # unhashable weirdness downstream? keep simple: valid
-            "corrected_value": "t", "genre": "悬疑",
+            "corrected_value": "t",
+            "genre": "悬疑",
         }
         # Force handler failure by making handle_user_correction_websocket raise
         ws = FakeWebSocket([json.dumps(msg)])
-        with patch(f"{MODULE_API}.get_correction_collector", return_value=MagicMock()), \
-             patch(f"{MODULE_API}.handle_user_correction_websocket", side_effect=RuntimeError("boom")):
+        with (
+            patch(f"{MODULE_API}.get_correction_collector", return_value=MagicMock()),
+            patch(f"{MODULE_API}.handle_user_correction_websocket", side_effect=RuntimeError("boom")),
+        ):
             from src.audiobook_studio.api.sop_reflection import sop_corrections_websocket
 
             await sop_corrections_websocket(ws, 1)
@@ -321,13 +349,20 @@ class TestSopCorrectionsWebsocket:
     @pytest.mark.asyncio
     async def test_error_frame_suppressed_when_socket_dead(self):
         msg = {
-            "type": "correction", "project_id": 5, "chapter_index": 1,
-            "paragraph_index": 1, "field": "emotion",
-            "original_value": "n", "corrected_value": "t", "genre": "悬疑",
+            "type": "correction",
+            "project_id": 5,
+            "chapter_index": 1,
+            "paragraph_index": 1,
+            "field": "emotion",
+            "original_value": "n",
+            "corrected_value": "t",
+            "genre": "悬疑",
         }
         ws = FakeWebSocket([json.dumps(msg)], fail_send=True)
-        with patch(f"{MODULE_API}.get_correction_collector", return_value=MagicMock()), \
-             patch(f"{MODULE_API}.handle_user_correction_websocket", side_effect=RuntimeError("boom")):
+        with (
+            patch(f"{MODULE_API}.get_correction_collector", return_value=MagicMock()),
+            patch(f"{MODULE_API}.handle_user_correction_websocket", side_effect=RuntimeError("boom")),
+        ):
             from src.audiobook_studio.api.sop_reflection import sop_corrections_websocket
 
             await sop_corrections_websocket(ws, 5)  # RuntimeError on send swallowed

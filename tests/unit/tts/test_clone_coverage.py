@@ -6,7 +6,6 @@ the gating/SNR/quality assessment + voice-print update logic is fully
 exercised. Heavy global state (model-availability flags) is reset per test.
 """
 
-import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -65,6 +64,7 @@ def _make_engine(tmp_path, model_ready=False, model_files=False):
 
 # ── check_kokoro_model_availability / get_kokoro_model_path / is_kokoro_available ──
 
+
 def test_kokoro_availability_present(clone_env):
     models = clone_env / "models"
     models.mkdir()
@@ -93,6 +93,7 @@ def test_kokoro_availability_absent(clone_env):
 
 # ── extract_voice_features ──
 
+
 def test_extract_voice_features_normal(monkeypatch):
     arr = np.zeros(4000, dtype=np.float32)
     arr[200:600] = 1.0
@@ -118,6 +119,7 @@ def test_extract_voice_features_error(monkeypatch):
 
 
 # ── VoiceCloner ──
+
 
 def test_clone_voice_missing_file(clone_env):
     ok, msg, sid = VoiceCloner().clone_voice(Path("nope.wav"), "spk")
@@ -147,6 +149,7 @@ def test_get_cloned_voices(clone_env):
 
 
 # ── VoiceCloningEngine: hash / snr / validation / quality ──
+
 
 def test_calculate_audio_hash(clone_env):
     eng = _make_engine(clone_env)
@@ -184,6 +187,7 @@ def test_assess_quality(clone_env):
 
 
 # ── add_voice_sample / _update_voice_print ──
+
 
 def test_add_voice_sample_invalid(clone_env):
     eng = _make_engine(clone_env)
@@ -259,6 +263,7 @@ def test_update_voice_print_exception(clone_env, monkeypatch):
 
 # ── get_voice_info ──
 
+
 def test_get_voice_info_missing(clone_env):
     eng = _make_engine(clone_env)
     assert eng.get_voice_info("ghost") is None
@@ -267,9 +272,14 @@ def test_get_voice_info_missing(clone_env):
 def test_get_voice_info_poor_not_clonable(clone_env):
     eng = _make_engine(clone_env)
     eng.voice_prints["s"] = VoicePrint(
-        speaker_id="s", voice_hash="h", embedding=[0.5] * 256,
-        quality=AudioQuality.POOR, sample_count=1, avg_snr=10.0,
-        created_at="t", updated_at="t",
+        speaker_id="s",
+        voice_hash="h",
+        embedding=[0.5] * 256,
+        quality=AudioQuality.POOR,
+        sample_count=1,
+        avg_snr=10.0,
+        created_at="t",
+        updated_at="t",
     )
     info = eng.get_voice_info("s")
     assert info["quality"] == "poor"
@@ -278,17 +288,25 @@ def test_get_voice_info_poor_not_clonable(clone_env):
 
 # ── _select_closest_voice ──
 
+
 def test_select_closest_voice(clone_env):
     eng = _make_engine(clone_env)
     vp = VoicePrint(
-        speaker_id="s", voice_hash="h", embedding=[0.5] * 256, quality=AudioQuality.GOOD,
-        sample_count=1, avg_snr=25.0, created_at="t", updated_at="t",
+        speaker_id="s",
+        voice_hash="h",
+        embedding=[0.5] * 256,
+        quality=AudioQuality.GOOD,
+        sample_count=1,
+        avg_snr=25.0,
+        created_at="t",
+        updated_at="t",
     )
     assert eng._select_closest_voice(vp, "zh-CN") == "zf_xiaoxiao"
     assert eng._select_closest_voice(vp, "en-US") == "af"
 
 
 # ── synthesize_speech ──
+
 
 def test_synthesize_speaker_not_found(clone_env):
     eng = _make_engine(clone_env)
@@ -301,9 +319,14 @@ def test_synthesize_speaker_not_found(clone_env):
 def test_synthesize_poor_quality(clone_env):
     eng = _make_engine(clone_env)
     eng.voice_prints["s"] = VoicePrint(
-        speaker_id="s", voice_hash="h", embedding=[0.5] * 256,
-        quality=AudioQuality.POOR, sample_count=1, avg_snr=10.0,
-        created_at="t", updated_at="t",
+        speaker_id="s",
+        voice_hash="h",
+        embedding=[0.5] * 256,
+        quality=AudioQuality.POOR,
+        sample_count=1,
+        avg_snr=10.0,
+        created_at="t",
+        updated_at="t",
     )
     ok, msg, path = eng.synthesize_speech("hi", "s")
     assert ok is False
@@ -334,6 +357,7 @@ class _FakeKokoro:
 
 def test_synthesize_success(clone_env, monkeypatch):
     import src.audiobook_studio.tts.kokoro_backend as kmod
+
     monkeypatch.setattr(kmod, "KokoroBackend", _FakeKokoro)
     eng = _make_engine(clone_env, model_ready=True)
     f = clone_env / "a.wav"
@@ -347,6 +371,7 @@ def test_synthesize_success(clone_env, monkeypatch):
 
 def test_synthesize_success_with_reference(clone_env, monkeypatch):
     import src.audiobook_studio.tts.kokoro_backend as kmod
+
     monkeypatch.setattr(kmod, "KokoroBackend", _FakeKokoro)
     eng = _make_engine(clone_env, model_ready=True)
     f = clone_env / "a.wav"
@@ -360,6 +385,7 @@ def test_synthesize_success_with_reference(clone_env, monkeypatch):
 
 
 # ── _load_voice_prints success branch ──
+
 
 def test_load_voice_prints_from_disk(clone_env):
     voices_dir = clone_env / "voices"
@@ -376,6 +402,7 @@ def test_load_voice_prints_from_disk(clone_env):
 
 # ── _save_voice_prints error branch ──
 
+
 def test_save_voice_prints_error(clone_env, monkeypatch):
     eng = _make_engine(clone_env)
     monkeypatch.setattr("builtins.open", lambda *a, **k: (_ for _ in ()).throw(OSError("no write")))
@@ -384,6 +411,7 @@ def test_save_voice_prints_error(clone_env, monkeypatch):
 
 
 # ── module-level convenience helpers ──
+
 
 def test_clone_voice_module_func(clone_env, monkeypatch):
     sample = clone_env / "sample.wav"
@@ -401,8 +429,10 @@ def test_load_voice_print_module_func(clone_env):
 
 # ── main() demo ──
 
+
 def test_main_runs(clone_env, monkeypatch):
     import src.audiobook_studio.tts.kokoro_backend as kmod
+
     monkeypatch.setattr(kmod, "KokoroBackend", _FakeKokoro)
     monkeypatch.setattr(clone, "check_kokoro_model_availability", lambda *a, **k: True)
     # main() synthesizes with a (faked) ready model → completes without error

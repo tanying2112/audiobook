@@ -7,21 +7,18 @@ Provides character management endpoints:
 """
 
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query, status
-
-from ..exceptions import DomainError
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Character, Project
-from .dependencies import get_async_db
-
 # Use UnifiedConfig for centralized configuration loading
 from ..config.unified import get_unified_config
+from ..exceptions import DomainError
+from ..models import Character, Project
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -168,9 +165,7 @@ async def fetch_character(
     db: AsyncSession = Depends(get_async_db),
 ):
     """获取单个角色详情."""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id, Character.project_id == project_id)
-    )
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
     character = result.scalar_one_or_none()
     if not character:
         raise DomainError(
@@ -190,9 +185,7 @@ async def update_character(
     db: AsyncSession = Depends(get_async_db),
 ):
     """更新角色信息."""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id, Character.project_id == project_id)
-    )
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
     db_character = result.scalar_one_or_none()
     if not db_character:
         raise DomainError(
@@ -218,9 +211,7 @@ async def delete_character(
     db: AsyncSession = Depends(get_async_db),
 ):
     """删除角色."""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id, Character.project_id == project_id)
-    )
+    result = await db.execute(select(Character).where(Character.id == character_id, Character.project_id == project_id))
     character = result.scalar_one_or_none()
     if not character:
         raise DomainError(
@@ -235,6 +226,3 @@ async def delete_character(
 
 
 # ── Voice Mapping Endpoint (no project_id in path) ───────────────────────────
-
-
-

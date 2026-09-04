@@ -12,7 +12,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 # Load .env file from project root (before any pipeline imports)
 from dotenv import load_dotenv
@@ -35,14 +35,9 @@ from audiobook_studio.pipeline import (
     synthesize_paragraphs,
 )
 from audiobook_studio.schemas import (
-    BookAnalysisInput,
-    BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
-    ExtractionInput,
     ParagraphAnnotation,
-    QualityJudgment,
-    TtsEditInput,
     TtsRoutingDecision,
     TtsRoutingInput,
 )
@@ -227,7 +222,9 @@ def run_edit_for_tts(
     edited_results = []
     total_chars = 0
 
-    for i, (para_text, annotation) in enumerate(zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs])):
+    for i, (para_text, annotation) in enumerate(
+        zip(paragraphs[:max_paragraphs], annotations[:max_paragraphs], strict=False)
+    ):
         try:
             result = edit_for_tts(
                 paragraph_text=para_text,
@@ -278,7 +275,9 @@ def run_synth(
     )
 
     tts_inputs = []
-    for i, (annotation, edited_result) in enumerate(zip(annotations[:max_paragraphs], edited_results[:max_paragraphs])):
+    for i, (annotation, edited_result) in enumerate(
+        zip(annotations[:max_paragraphs], edited_results[:max_paragraphs], strict=False)
+    ):
         tts_input = TtsRoutingInput(
             paragraph_annotation=annotation,
             text=(edited_result.edited_text if hasattr(edited_result, "edited_text") else ""),
@@ -325,6 +324,7 @@ def run_quality(
             annotations[:max_paragraphs],
             edited_results[:max_paragraphs],
             synthesis[:max_paragraphs],
+            strict=False,
         )
     ):
         reference_text = edited_result.edited_text if hasattr(edited_result, "edited_text") else ""
@@ -546,7 +546,7 @@ def run_e2e_long_book(
 
     # Prepare routing decisions for quality check
     routing_decisions = []
-    for i, annotation in enumerate(annotations[:max_paragraphs]):
+    for i, _annotation in enumerate(annotations[:max_paragraphs]):
         routing = TtsRoutingDecision(
             segment_id=f"{book_id}_ch1_p{i}",
             engine_choice="kokoro",
@@ -632,7 +632,7 @@ def print_summary(report: PipelineReport):
 
     if report.quality_summary:
         qs = report.quality_summary
-        print(f"\n🎯 Quality Summary:")
+        print("\n🎯 Quality Summary:")
         print(f"   Overall Score: {qs['avg_overall_score']:.3f}")
         print(f"   Total Issues: {qs['total_issues']}")
         print(f"   Needs Regeneration: {qs['needs_regeneration_count']}")
@@ -644,7 +644,7 @@ def print_summary(report: PipelineReport):
     # Performance insights
     if report.stages:
         slowest = max(report.stages, key=lambda m: m.duration_ms)
-        print(f"\n💡 Insights:")
+        print("\n💡 Insights:")
         print(f"   Slowest stage: {slowest.stage_name} ({slowest.duration_ms:.1f}ms)")
 
         # Check if any stage took suspiciously long

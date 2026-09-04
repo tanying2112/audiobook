@@ -1,7 +1,7 @@
 """User and RBAC models for Audiobook Studio."""
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import JSON, Boolean, Column, DateTime
 from sqlalchemy import Enum as SQLEnum

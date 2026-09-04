@@ -418,7 +418,6 @@ class TestTranslateAndDub:
     def test_segment_with_default_annotation_path(self, pipeline):
         """When annotation is None, pipeline creates a default ParagraphAnnotation
         with speaker_canonical_name='旁白' and emotion='neutral'."""
-        from src.audiobook_studio.schemas import ParagraphAnnotation
 
         seg = self._make_segment(1, "没有标注的文本")
         # Ensure annotation not set
@@ -485,7 +484,6 @@ class TestSemanticCoherence:
     def test_full_coherence_check_exercised(self):
         """Inject a real SemanticCoherenceChecker via patch and trace coherence
         enforcement: success + failed semantic coherence + exception path."""
-        from src.audiobook_studio.models.audio_segment import AudioSegment
         from src.audiobook_studio.pipeline import translate as tr_mod
 
         # Build pipeline with synth configured

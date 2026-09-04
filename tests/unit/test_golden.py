@@ -12,12 +12,9 @@ Covers:
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from src.audiobook_studio.exceptions import DomainError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -31,6 +28,7 @@ test_app = FastAPI()
 
 # 与主应用一致的错误契约：AudiobookError → HTTP 状态码映射
 from src.audiobook_studio.exceptions import register_error_handlers
+
 register_error_handlers(test_app)
 test_app.include_router(golden_router)
 
@@ -69,7 +67,7 @@ def golden_temp_dir(tmp_path):
         "quality": "quality_check",
     }
 
-    for stage_key, stage_dir in stages.items():
+    for _stage_key, stage_dir in stages.items():
         stage_path = golden_dir / stage_dir
         stage_path.mkdir(parents=True)
 
@@ -187,7 +185,6 @@ class TestGoldenContribution:
     async def test_contribute_from_feedback_record(self, client, golden_temp_dir):
         """Test contributing a template from FeedbackRecord to golden dataset."""
         # Mock the database to return a FeedbackRecord
-        from src.audiobook_studio.api.golden import router
 
         # Get the test db from dependency override
         test_db = AsyncMock()

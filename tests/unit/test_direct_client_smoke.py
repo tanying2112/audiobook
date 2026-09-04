@@ -14,9 +14,7 @@ from audiobook_studio.schemas import ParagraphAnnotation
 @pytest.fixture
 def mock_llm(monkeypatch):
     monkeypatch.setenv("MOCK_LLM", "true")
-    monkeypatch.setattr(
-        "audiobook_studio.llm.direct_client.get_semantic_cache", lambda: None
-    )
+    monkeypatch.setattr("audiobook_studio.llm.direct_client.get_semantic_cache", lambda: None)
 
 
 def test_mock_mode_build_messages_and_cost(mock_llm):
@@ -26,9 +24,7 @@ def test_mock_mode_build_messages_and_cost(mock_llm):
     assert client._client is None
     # pure helpers
     assert client._build_messages("hi") == [{"role": "user", "content": "hi"}]
-    assert client._build_messages([{"role": "a", "content": "b"}]) == [
-        {"role": "a", "content": "b"}
-    ]
+    assert client._build_messages([{"role": "a", "content": "b"}]) == [{"role": "a", "content": "b"}]
     cost = client._calculate_cost(1_000_000, 1_000_000)
     assert isinstance(cost, float)
     assert cost >= 0.0

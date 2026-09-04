@@ -150,7 +150,7 @@ def _hash_embed(text: str, dim: int = EMBED_DIM) -> List[float]:
 def _cosine(a: List[float], b: List[float]) -> float:
     if len(a) != len(b) or len(a) == 0:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0.0 or nb == 0.0:
@@ -267,10 +267,14 @@ class AudioSemanticCache:
             self._stats["semantic_hits"] += 1
             similarity = _cosine(_hash_embed(normalize_audio_text(text, voice_id, prosody)), semantic_entry.embedding)
             logger.debug(f"Audio cache semantic hit: {exact_key[:32]}... similarity={similarity:.3f}")
-            return semantic_entry.audio_path, semantic_entry.duration_ms, {
-                "cache_type": "semantic",
-                "similarity": similarity,
-            }
+            return (
+                semantic_entry.audio_path,
+                semantic_entry.duration_ms,
+                {
+                    "cache_type": "semantic",
+                    "similarity": similarity,
+                },
+            )
 
         self._stats["misses"] += 1
         return None
@@ -397,7 +401,9 @@ class AudioSemanticCache:
                 self._remove_entry(exact_key)
         return None
 
-    def _get_semantic(self, text: str, voice_id: str, prosody: Dict[str, Any], namespace: str) -> Optional[_AudioCacheEntry]:
+    def _get_semantic(
+        self, text: str, voice_id: str, prosody: Dict[str, Any], namespace: str
+    ) -> Optional[_AudioCacheEntry]:
         """Find semantically similar entry in the same namespace (Tier 2)."""
         if namespace not in self._namespace_index:
             return None
@@ -429,6 +435,7 @@ class AudioSemanticCache:
 
         if source.exists() and not cache_path.exists():
             import shutil
+
             shutil.copy2(source, cache_path)
 
         return str(cache_path)
@@ -456,6 +463,7 @@ class AudioSemanticCache:
         if not self._redis_ready:
             try:
                 import redis
+
                 self._redis = redis.from_url(
                     os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                     decode_responses=True,

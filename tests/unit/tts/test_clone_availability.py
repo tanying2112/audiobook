@@ -6,7 +6,6 @@ is configured AND answers its ``/health`` probe. We never claim a usable clone
 was produced when no real backend is actually serving requests.
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest

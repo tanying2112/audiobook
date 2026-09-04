@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ..config.loader import load_pipeline_config
 from ..llm import LLMRouter, create_router
@@ -200,7 +200,7 @@ class RuleSegmenter(BaseSegmenter):
         segment_index = 0
         total_sentence_count = 0
 
-        for _, (start, end) in enumerate(zip(para_starts, para_ends)):
+        for _, (start, end) in enumerate(zip(para_starts, para_ends, strict=False)):
             para = text[start:end]
             if not para.strip():
                 continue
@@ -302,7 +302,7 @@ class RuleSegmenter(BaseSegmenter):
         segments = []
         segment_index = 0
 
-        for _, (start, end) in enumerate(zip(para_starts, para_ends)):
+        for _, (start, end) in enumerate(zip(para_starts, para_ends, strict=False)):
             para = text[start:end].strip()
             if not para:
                 continue
@@ -733,7 +733,6 @@ def segment_text(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
 

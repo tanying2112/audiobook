@@ -196,6 +196,15 @@ def test_redis_backend_exact_hit():
 def test_redis_backend_falls_back_to_memory_when_unreachable(monkeypatch):
     # Force an unreachable Redis URL; the cache must degrade to memory.
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
+    # conftest mocks redis as a bare MagicMock, so `Redis.from_url(...).ping()`
+    # silently succeeds instead of raising on the unreachable URL. Make it fail
+    # deterministically so the memory-fallback branch is genuinely exercised.
+    import redis as _redis_lib
+
+    def _unreachable(*a, **k):
+        raise ConnectionError("redis unreachable")
+
+    monkeypatch.setattr(_redis_lib.Redis, "from_url", _unreachable)
     cache = SemanticCache(backend="redis")
     assert cache.backend == "memory"
     cache.put("x", _make_result("y"), response_model=_M, model="m", temperature=0.1, max_tokens=10)
@@ -241,7 +250,6 @@ def test_acceptance_repeated_request_under_100ms():
 
 def test_llm_client_cache_hit_fast(monkeypatch):
     """LLMClient.call() serves a repeated request from cache in < 100 ms."""
-    import os
 
     monkeypatch.setenv("MOCK_LLM", "true")
     monkeypatch.setenv("LLM_SEMANTIC_CACHE_ENABLED", "true")

@@ -12,7 +12,6 @@ Usage::
 """
 
 import asyncio
-import json
 import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -20,54 +19,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ..api.websocket import PipelineEventType, emit_pipeline_event, get_pause_event, is_paused, pause_check
-from ..exceptions import AudiobookError, DataLoadError, DataPersistError, StageExecutionError
-from ..models import AudioSegment as AudioSegmentModel
-from ..models import Chapter, Paragraph, Quality, TTSEdit
+from ..api.websocket import is_paused, pause_check
+from ..exceptions import AudiobookError, StageExecutionError
+from ..models import Chapter, Paragraph
 from ..pipeline.progress_emitter import (
     emit_chapter_complete,
     emit_error,
-    emit_paragraph_complete,
     emit_pipeline_completed,
     emit_stage_enter,
     emit_stage_exit,
-    emit_stage_progress,
 )
-from ..schemas import (
-    AudioPostProcessParams,
-    BookAnalysisOutput,
-    ExtractionResult,
-    ParagraphAnnotation,
-    QualityJudgment,
-    TtsEditOutput,
-    TtsRoutingDecision,
-)
-from .analyze_structure import AnalyzeStructurePipeline
-from .annotate_paragraph import AnnotateParagraphPipeline
-from .audio_postprocess import AudioPostProcessor
 from .checkpoint import CheckpointManager
-from .edit_for_tts import EditForTtsPipeline
-from .extract import ExtractPipeline
 from .feedback_collector import FeedbackCollector, StageCapture
 from .persistence import (
-    write_analyze,
     write_analyze_sync,
-    write_annotate,
     write_annotate_sync,
-    write_audio_postprocess,
     write_audio_postprocess_sync,
-    write_edit,
     write_edit_sync,
-    write_extract,
     write_extract_sync,
-    write_quality,
     write_quality_sync,
-    write_synthesize,
     write_synthesize_sync,
 )
-from .quality_check import QualityCheckPipeline
 from .stage_registry import StageRegistry
-from .synthesize import SynthesizePipeline
 
 # Backward compatibility aliases for tests (sync versions)
 _write_extract = write_extract_sync
@@ -386,8 +359,8 @@ def shutdown_telemetry() -> Optional[Dict[str, Any]]:
     if _telemetry_collector:
         summary = _telemetry_collector.get_summary()
         # Unregister hooks - use indices to avoid bound method identity issues
-        global _pipeline_hooks, _stage_hooks
-        global _async_pipeline_hooks, _async_stage_hooks
+        global _pipeline_hooks, _stage_hooks  # noqa: F824
+        global _async_pipeline_hooks, _async_stage_hooks  # noqa: F824
         _pipeline_hooks[:] = [
             h
             for h in _pipeline_hooks

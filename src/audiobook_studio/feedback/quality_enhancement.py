@@ -9,13 +9,11 @@ E7 — 质量增强模块
 5. 误报质量问题追踪
 """
 
-import json
 import logging
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)

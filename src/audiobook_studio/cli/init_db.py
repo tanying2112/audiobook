@@ -6,9 +6,8 @@ Initializes database schema and optionally seeds project records.
 import argparse
 import asyncio
 
-from ..database import AsyncSessionLocal, drop_async_db, init_async_db
-from ..models import Project
-from ..run_pipeline import BOOK_CONFIG, initialize_database
+from ..database import drop_async_db, init_async_db
+from ..run_pipeline import initialize_database
 
 
 def add_init_db_parser(subparsers: argparse._SubParsersAction) -> None:

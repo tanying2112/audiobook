@@ -15,15 +15,14 @@ SyntheticCritic — 异构三元批评网络 (Issue 2.1)
     - 权重自适应: 通过校准集表现调整三派权重
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .base import BaseCritic, CriticEnsemble, CriticEnsembleEvaluator, CriticResult, CriticType, CriticVerdict
+from .base import CriticEnsemble, CriticEnsembleEvaluator, CriticResult, CriticType, CriticVerdict
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +346,7 @@ class CalibrationResult:
 def _compute_confusion_matrix(y_true: List[str], y_pred: List[str], labels: List[str]) -> Dict[str, Dict[str, int]]:
     """计算混淆矩阵."""
     matrix = {lt: {lp: 0 for lp in labels} for lt in labels}
-    for true, pred in zip(y_true, y_pred):
+    for true, pred in zip(y_true, y_pred, strict=False):
         matrix[true][pred] += 1
     return matrix
 
@@ -523,12 +522,12 @@ class SyntheticCritic:
         recall_macro = round(sum(recall_scores) / len(recall_scores), 4)
 
         # Accuracy
-        correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
+        correct = sum(1 for t, p in zip(y_true, y_pred, strict=False) if t == p)
         accuracy = round(correct / len(y_true), 4) if y_true else 0.0
 
         # 构建预测详情
         predictions = []
-        for sample, pred in zip(samples, y_pred):
+        for sample, pred in zip(samples, y_pred, strict=False):
             predictions.append(
                 {
                     "sample_id": sample.sample_id,

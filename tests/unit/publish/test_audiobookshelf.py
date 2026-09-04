@@ -4,8 +4,6 @@ import base64
 import hashlib
 import os
 import sys
-import tempfile
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -398,7 +396,9 @@ class TestAudiobookshelfPublisher:
     @patch("pathlib.Path.is_file")
     @patch("pathlib.Path.stat")
     @patch("mimetypes.guess_type")
-    def test_validate_audio_file_invalid_mime_type(self, mock_guess, mock_stat, mock_is_file, mock_exists, publisher, tmp_path):
+    def test_validate_audio_file_invalid_mime_type(
+        self, mock_guess, mock_stat, mock_is_file, mock_exists, publisher, tmp_path
+    ):
         mock_exists.return_value = True
         mock_is_file.return_value = True
         audio_path = tmp_path / "test.m4b"
@@ -768,7 +768,9 @@ class TestAudiobookshelfPublisherRealMode:
         expected_path = tmp_path / "Test Author" / "Test Book" / audio_file.file_path.name
         assert expected_path.exists()
 
-    def test_real_api_call_local_upload_dir_creation_failure(self, publisher, metadata, audio_file, mock_client, tmp_path):
+    def test_real_api_call_local_upload_dir_creation_failure(
+        self, publisher, metadata, audio_file, mock_client, tmp_path
+    ):
         publisher.config.base_path = "/nonexistent/path"  # Cannot create
 
         mock_lib_response = MagicMock()
@@ -838,9 +840,7 @@ class TestAudiobookshelfPublisherRealMode:
 
         mock_search_response2 = MagicMock()
         mock_search_response2.status_code = 200
-        mock_search_response2.json.return_value = [
-            {"id": "item1", "media": {"metadata": {"title": "Test Book"}}}
-        ]
+        mock_search_response2.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "Test Book"}}}]
 
         mock_patch_response = MagicMock()
         mock_patch_response.status_code = 200
@@ -896,9 +896,7 @@ class TestAudiobookshelfPublisherRealMode:
 
         mock_search_response = MagicMock()
         mock_search_response.status_code = 200
-        mock_search_response.json.return_value = [
-            {"id": "item1", "media": {"metadata": {"title": "Test Book"}}}
-        ]
+        mock_search_response.json.return_value = [{"id": "item1", "media": {"metadata": {"title": "Test Book"}}}]
 
         mock_patch_response = MagicMock()
         mock_patch_response.status_code = 500

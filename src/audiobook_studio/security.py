@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import IO, Any, Optional, Sequence, Union
+from typing import IO, Any, Optional, Union
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:

@@ -22,8 +22,6 @@ from datetime import datetime
 import pytest
 
 from src.audiobook_studio.collaboration.team_collaboration import (
-    ApprovalRequest,
-    ApprovalResponse,
     ApprovalStatus,
     ChangeType,
     CollaborationManager,
@@ -176,7 +174,7 @@ class TestQueryMethods:
 
     def test_get_approval_requests_for_task_filters(self, populated):
         a1 = populated.create_approval_request("r", "d", "u1", ["u2"], task_id="t1")
-        a2 = populated.create_approval_request("r", "d", "u1", ["u2"], task_id="t2")
+        populated.create_approval_request("r", "d", "u1", ["u2"], task_id="t2")
         got = populated.get_approval_requests_for_task("t1")
         assert [r.id for r in got] == [a1]
         assert populated.get_approval_requests_for_task("nope") == []

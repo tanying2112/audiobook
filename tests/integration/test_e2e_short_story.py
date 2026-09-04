@@ -5,11 +5,8 @@ quality_check using a short piece of text and verifies that each stage produces
 expected outputs and that the final quality judgment is obtained.
 """
 
-import sys
 import tempfile
 from pathlib import Path
-
-import pytest
 
 # Import stage functions via submodule paths so they are order-independent:
 # a prior test that does ``import audiobook_studio.pipeline.<submodule>`` shadows
@@ -24,8 +21,6 @@ from audiobook_studio.pipeline.quality_check import quality_check
 from audiobook_studio.pipeline.synthesize import synthesize_paragraphs
 from audiobook_studio.schemas import (
     BookAnalysisOutput,
-    BookMeta,
-    CharacterVoiceBinding,
     EmotionSnapshot,
     ExtractionResult,
     ParagraphAnnotation,

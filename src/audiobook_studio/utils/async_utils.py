@@ -14,15 +14,22 @@ does not call ``asyncio.run`` / ``set_event_loop`` / ``get_running_loop`` on the
 calling thread), it is also safe under pytest-asyncio's strict loop policy: a
 sync test that calls :func:`run_sync` cannot accidentally unset the main-thread
 loop that later event-loop lookups rely on.
+
+兼容别名
+--------
+``run_async_safe`` 是 :func:`run_sync` 的别名，供既有/新增调用方统一使用。
 """
 
 from __future__ import annotations
 
 import asyncio
 import threading
+from typing import Any, Coroutine, TypeVar
+
+T = TypeVar("T")
 
 
-def run_sync(coro) -> Any:  # noqa: ANN001
+def run_sync(coro: Coroutine[Any, Any, T]) -> T:
     """Run ``coro`` to completion and return its result.
 
     The coroutine is executed in a dedicated worker thread that owns a brand-new
@@ -42,7 +49,7 @@ def run_sync(coro) -> Any:  # noqa: ANN001
         loop = asyncio.new_event_loop()
         try:
             store["value"] = loop.run_until_complete(coro)
-        except BaseException as exc:  # noqa: BLE001 - propagate to caller
+        except BaseException as exc:  # noqa: BLE001,B036 - propagate to caller thread
             errors.append(exc)
         finally:
             loop.close()
@@ -54,3 +61,11 @@ def run_sync(coro) -> Any:  # noqa: ANN001
     if errors:
         raise errors[0]
     return store["value"]
+
+
+def run_async_safe(coro: Coroutine[Any, Any, T]) -> T:
+    """Alias of :func:`run_sync` for call sites that prefer the clearer name."""
+    return run_sync(coro)
+
+
+__all__ = ["run_sync", "run_async_safe"]

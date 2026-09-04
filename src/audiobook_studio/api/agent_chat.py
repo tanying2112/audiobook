@@ -14,17 +14,17 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..agent.fsm import PipelineFSM, PipelineMode, PipelineState, _fsm_instances, get_fsm, remove_fsm
-from ..agent.tools import TOOL_DEFINITIONS, TOOL_HANDLERS, execute_tool
+from ..agent.fsm import PipelineMode, PipelineState, _fsm_instances, get_fsm, remove_fsm
+from ..agent.tools import TOOL_DEFINITIONS
 from ..api.dependencies import get_async_db
-from ..api.websocket import manager as ws_manager
+from ..auth.dependencies import get_current_active_user
 from ..database import create_async_session
 from ..exceptions import DomainError
 from ..models import Project
@@ -245,76 +245,28 @@ async def _process_agent_message(
     messages.extend([{"role": m["role"], "content": m["content"]} for m in history])
     messages.append({"role": "user", "content": user_message})
 
-    # Call LLM with tools
+    # Call LLM with tools (free-text conversation via litellm acompletion)
     try:
-        from ..llm.router import LLMRouter, LLMStage
+        import os
 
-        router = LLMRouter()
-        # Use the analyze stage for tool calling (has function calling capability)
-        result = await router.call_stage(
-            stage=LLMStage.ANALYZE,
+        from litellm import acompletion
+
+        # Resolve the chat model: prefer SELF_ITERATION_LLM (harness) or fall back
+        # to the local Ollama default, so the agent works fully offline.
+        model = os.getenv("SELF_ITERATION_LLM", "ollama/qwen3.5:2b")
+        api_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+        resp = await acompletion(
+            model=model,
             messages=messages,
-            functions=TOOL_DEFINITIONS,
-            function_call="auto",
+            api_base=api_base,
             temperature=0.1,
             max_tokens=2048,
         )
-
-        # Check if LLM returned tool calls
-        tool_calls = result.get("tool_calls", [])
-        if tool_calls:
-            # Execute tools
-            actions = []
-            tool_results = []
-
-            for tool_call in tool_calls:
-                tool_name = tool_call["name"]
-                tool_args = tool_call["arguments"]
-
-                try:
-                    tool_result = await execute_tool(tool_name, tool_args)
-                    tool_results.append(tool_result)
-                    actions.append(
-                        {
-                            "tool": tool_name,
-                            "args": tool_args,
-                            "result": tool_result,
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Tool {tool_name} failed: {e}")
-                    tool_results.append({"error": str(e)})
-                    actions.append(
-                        {
-                            "tool": tool_name,
-                            "args": tool_args,
-                            "error": str(e),
-                        }
-                    )
-
-            # Generate response based on tool results
-            response_messages = messages + [
-                {"role": "assistant", "content": None, "tool_calls": tool_calls},
-                *[
-                    {"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(tr, ensure_ascii=False)}
-                    for tc, tr in zip(tool_calls, tool_results)
-                ],
-            ]
-
-            final_result = await router.call_stage(
-                stage=LLMStage.ANALYZE,
-                messages=response_messages,
-                temperature=0.3,
-                max_tokens=1024,
-            )
-            response_text = final_result.get("content", "工具执行完成。")
-            agent_type = "tool_executor"
-
-        else:
-            # No tool calls, use direct response
-            response_text = result.get("content", "我明白了。请告诉我具体想做什么？")
-            agent_type = "general"
-            actions = []
+        content = resp.choices[0].message.content or ""
+        response_text = content.strip() or "我明白了。请告诉我具体想做什么？"
+        agent_type = "general"
+        actions = []
 
     except Exception as e:
         logger.error(f"Agent processing error: {e}")
@@ -552,7 +504,11 @@ async def agent_chat_websocket(websocket: WebSocket, project_id: int):
 
 
 @router.post("/chat", response_model=AgentChatResponse)
-async def agent_chat_http(request: AgentChatRequest, db: AsyncSession = Depends(get_async_db)):
+async def agent_chat_http(
+    request: AgentChatRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """
     HTTP endpoint for agent chat (polling fallback).
 
@@ -584,7 +540,12 @@ async def agent_chat_http(request: AgentChatRequest, db: AsyncSession = Depends(
 
 
 @router.get("/chat/{project_id}/history")
-async def get_chat_history(project_id: int, session_id: str, db: AsyncSession = Depends(get_async_db)):
+async def get_chat_history(
+    project_id: int,
+    session_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """Get chat history for a session."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -623,7 +584,9 @@ async def get_chat_history(project_id: int, session_id: str, db: AsyncSession = 
 
 
 @router.get("/chat/{project_id}/sessions")
-async def list_chat_sessions(project_id: int, db: AsyncSession = Depends(get_async_db)):
+async def list_chat_sessions(
+    project_id: int, db: AsyncSession = Depends(get_async_db), current_user=Depends(get_current_active_user)
+):
     """List all chat sessions for a project."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -650,7 +613,12 @@ async def list_chat_sessions(project_id: int, db: AsyncSession = Depends(get_asy
 
 
 @router.delete("/chat/{project_id}/sessions/{session_id}")
-async def delete_chat_session(project_id: int, session_id: str, db: AsyncSession = Depends(get_async_db)):
+async def delete_chat_session(
+    project_id: int,
+    session_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """Delete a chat session."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -684,7 +652,9 @@ async def delete_chat_session(project_id: int, session_id: str, db: AsyncSession
 
 
 @router.get("/status/{project_id}", response_model=AgentStatusResponse)
-async def get_agent_status(project_id: int, db: AsyncSession = Depends(get_async_db)):
+async def get_agent_status(
+    project_id: int, db: AsyncSession = Depends(get_async_db), current_user=Depends(get_current_active_user)
+):
     """Get agent status for a project."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -719,6 +689,7 @@ async def add_knowledge(
     source_agent: str = "user",
     confidence: float = 1.0,
     db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
 ):
     """Add knowledge to the agent knowledge base."""
     result = await db.execute(select(Project).where(Project.id == project_id))
@@ -759,7 +730,12 @@ async def add_knowledge(
 
 
 @router.get("/knowledge/{project_id}")
-async def list_knowledge(project_id: int, topic: Optional[str] = None, db: AsyncSession = Depends(get_async_db)):
+async def list_knowledge(
+    project_id: int,
+    topic: Optional[str] = None,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """List knowledge entries for a project."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -801,7 +777,11 @@ async def list_knowledge(project_id: int, topic: Optional[str] = None, db: Async
 
 
 @router.post("/pipeline/start", response_model=PipelineStartResponse)
-async def start_pipeline(request: PipelineStartRequest, db: AsyncSession = Depends(get_async_db)):
+async def start_pipeline(
+    request: PipelineStartRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """Start pipeline execution (Autopilot or Interactive mode).
 
     - Autopilot: runs all stages sequentially to completion
@@ -850,7 +830,11 @@ async def start_pipeline(request: PipelineStartRequest, db: AsyncSession = Depen
 
 
 @router.post("/pipeline/confirm", response_model=PipelineConfirmResponse)
-async def confirm_pipeline(request: PipelineConfirmRequest, db: AsyncSession = Depends(get_async_db)):
+async def confirm_pipeline(
+    request: PipelineConfirmRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user=Depends(get_current_active_user),
+):
     """Confirm human review and continue pipeline (Interactive mode only)."""
     result = await db.execute(select(Project).where(Project.id == request.project_id))
     project = result.scalar_one_or_none()
@@ -899,7 +883,9 @@ async def confirm_pipeline(request: PipelineConfirmRequest, db: AsyncSession = D
 
 
 @router.get("/pipeline/status/{project_id}", response_model=PipelineStatusResponse)
-async def get_pipeline_status(project_id: int, db: AsyncSession = Depends(get_async_db)):
+async def get_pipeline_status(
+    project_id: int, db: AsyncSession = Depends(get_async_db), current_user=Depends(get_current_active_user)
+):
     """Get current pipeline FSM status."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -936,7 +922,9 @@ async def get_pipeline_status(project_id: int, db: AsyncSession = Depends(get_as
 
 
 @router.post("/pipeline/stop/{project_id}")
-async def stop_pipeline(project_id: int, db: AsyncSession = Depends(get_async_db)):
+async def stop_pipeline(
+    project_id: int, db: AsyncSession = Depends(get_async_db), current_user=Depends(get_current_active_user)
+):
     """Stop and cleanup pipeline FSM."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -957,4 +945,3 @@ async def stop_pipeline(project_id: int, db: AsyncSession = Depends(get_async_db
 
 
 # Need to expose _fsm_instances for the endpoints
-from ..agent.fsm import _fsm_instances as _agent_fsm_instances

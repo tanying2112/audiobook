@@ -78,7 +78,7 @@ def test_get_unknown_raises() -> None:
     """Test get() raises ValueError for unknown stage."""
     try:
         StageRegistry.get("does_not_exist_xyz")
-        assert False, "Should have raised ValueError"
+        raise AssertionError("Should have raised ValueError")
     except ValueError as e:
         assert "does_not_exist_xyz" in str(e)
 
@@ -129,6 +129,7 @@ def test_snapshot_model_dump() -> None:
 
 def test_snapshot_dict_attr() -> None:
     """Test get_result_snapshot with dict-like attr access."""
+
     class Plain:
         def __init__(self):
             self.a = 1
@@ -183,7 +184,15 @@ def test_stage_handler_persist_default_noop() -> None:
 def test_builtin_stages_registered() -> None:
     """Test all built-in stages remain registered."""
     for name in [
-        "extract", "segment", "analyze", "annotate", "edit",
-        "audio_postprocess", "review", "synthesize", "quality", "translate",
+        "extract",
+        "segment",
+        "analyze",
+        "annotate",
+        "edit",
+        "audio_postprocess",
+        "review",
+        "synthesize",
+        "quality",
+        "translate",
     ]:
         assert StageRegistry.has(name), name

@@ -18,7 +18,7 @@ the file extremely small while remaining a genuine learned compression scheme.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -102,7 +102,7 @@ class NumpyNeuralCodec(NeuralAudioCodec):
                 fs = r.choice([120, 200, 300, 450, 600, 900], size=r.integers(2, 4), replace=False)
                 amps = r.uniform(0.3, 1.0, size=len(fs))
                 amps = amps / amps.sum()
-                sig = sum(a * np.sin(2 * np.pi * f * tloc) for a, f in zip(amps, fs))
+                sig = sum(a * np.sin(2 * np.pi * f * tloc) for a, f in zip(amps, fs, strict=False))
             else:  # voiced harmonic stack (dominant)
                 f0 = r.uniform(90, 280)
                 formants = [r.uniform(400, 900), r.uniform(900, 2200)]

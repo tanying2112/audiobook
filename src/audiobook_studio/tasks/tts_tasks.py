@@ -21,10 +21,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
-from celery import Celery
-from celery.states import FAILURE, RETRY, STARTED, SUCCESS
 from sqlalchemy import select
 
 from ..celery_app import celery_app
@@ -37,8 +35,6 @@ from ..tts import (
     TTSProsody,
     TTSStatus,
     TTSTaskPayload,
-    TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
     get_port,
 )
@@ -102,8 +98,7 @@ if _redis_client is not None:
         _release_sha = _redis_client.script_load(_RELEASE_LUA)
     except Exception as e:
         logger.warning(
-            "Redis warm-up (script_load) failed, idempotency/semaphore "
-            f"degraded until broker available: {e}"
+            "Redis warm-up (script_load) failed, idempotency/semaphore " f"degraded until broker available: {e}"
         )
         _redis_client = None
         _acquire_sha = None
@@ -181,7 +176,7 @@ class TTSChapterTask(celery_app.Task):
 
     def _acquire_semaphore(self) -> bool:
         """Acquire semaphore slot for remote TTS concurrency control (max 4)."""
-        global _acquire_sha
+        global _acquire_sha  # noqa: F824
         client = _get_redis()
         if client is None:
             logger.warning("Redis unavailable, skipping semaphore acquire")
@@ -201,7 +196,7 @@ class TTSChapterTask(celery_app.Task):
 
     def _release_semaphore(self) -> None:
         """Release semaphore slot."""
-        global _release_sha
+        global _release_sha  # noqa: F824
         if not self._semaphore_acquired:
             return
         client = _get_redis()
@@ -981,7 +976,6 @@ def stress_test_concurrent_synthesis(
             )
 
     # Verify no duplicate synthesis (idempotency check)
-    idempotency_keys = set()
     for r in results:
         if r.get("status") == "completed":
             # In a real test, we'd check Redis for duplicate idem keys
@@ -1216,7 +1210,7 @@ async def _run_synthesize_paragraph_async(
             output_path = output_dir / f"{segment_id}.wav"
 
             # Initialize pipeline for synthesis
-            pipeline = SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
+            SynthesizePipeline(output_dir=str(output_dir), port=self._get_port())
             port = self._get_port()
 
             logger.info(f"[{task_id}] Submitting paragraph {para.index} for synthesis: {segment_id}")

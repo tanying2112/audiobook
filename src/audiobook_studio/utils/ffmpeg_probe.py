@@ -11,7 +11,7 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import List, Tuple, Any
+from typing import Any, List, Tuple
 
 import numpy as np
 
@@ -42,7 +42,9 @@ async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.Complet
         raise
 
 
-async def _run_ffmpeg(args: List[str], timeout: int = 60, binary_output: bool = False) -> subprocess.CompletedProcess[str | bytes]:
+async def _run_ffmpeg(
+    args: List[str], timeout: int = 60, binary_output: bool = False
+) -> subprocess.CompletedProcess[str | bytes]:
     """Run ffmpeg asynchronously and return result.
 
     Args:

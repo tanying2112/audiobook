@@ -1,10 +1,6 @@
 """P0 capability-aware provider model — pure logic tests (mock mode, no GPU)."""
 
-import importlib
-
-import pytest
-
-from audiobook_studio.tts import providers_config as pc
+from audiobook_studio.tts import providers_config as pc  # noqa: E303
 
 
 def test_gpu_backends_disabled_by_default(monkeypatch):

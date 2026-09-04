@@ -1,7 +1,5 @@
 """Simple test for auto_run.py to increase coverage."""
 
-from unittest.mock import MagicMock
-
 from src.audiobook_studio.api.auto_run import (
     AutoRunConfig,
     AutoRunStatusResponse,

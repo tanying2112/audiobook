@@ -1,12 +1,9 @@
 """Comprehensive tests for publish/audiobookshelf.py sync publisher."""
 
 import base64
-import hashlib
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.publish.audiobookshelf import (
     AudiobookFile,

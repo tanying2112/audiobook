@@ -112,7 +112,7 @@ class CheckpointManager:
         # v2 → v3 migration: drop paragraph-level stages from chapter-level list,
         # carry forward only chapter-level stages (extract/analyze/review).
         chapters = data.get("chapters", {})
-        for ch_key, ch_data in chapters.items():
+        for _ch_key, ch_data in chapters.items():
             old_stage_list = ch_data.get("stages_done", [])
             # Keep only genuine chapter-level stages; drop the buggy
             # per-paragraph stage entries that v2 mistakenly stored here.
@@ -216,7 +216,9 @@ class CheckpointManager:
                 self._flush()
                 logger.info(
                     "Checkpoint: ch%d p%d stage '%s' completed",
-                    chapter_index, paragraph_index, stage,
+                    chapter_index,
+                    paragraph_index,
+                    stage,
                 )
             return
         ch = self._chapter(chapter_index)

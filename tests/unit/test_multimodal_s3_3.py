@@ -48,9 +48,7 @@ def test_mix_with_bg_music(tmp_path: Path):
 def test_mux_audio_subtitle_to_mp4(tmp_path: Path):
     audio = _tone_wav(tmp_path / "a.wav")
     srt = tmp_path / "sub.srt"
-    srt.write_text(
-        "1\n00:00:00,000 --> 00:00:01,000\n你好，世界\n", encoding="utf-8"
-    )
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好，世界\n", encoding="utf-8")
     out = mm.mux_audio_subtitle_to_mp4(audio, srt, tmp_path / "out.mp4")
     assert out.exists() and out.stat().st_size > 0
 

@@ -18,7 +18,7 @@ import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..utils.secure_subprocess import get_nvidia_smi, run_command
+from ..utils.secure_subprocess import run_command
 
 logger = logging.getLogger(__name__)
 

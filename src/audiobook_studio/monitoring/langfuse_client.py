@@ -10,7 +10,7 @@ import os
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, Generator, Optional, Union
+from typing import Any, Callable, Dict, Generator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ def observe_llm_call(
         cost_details={"total": cost_usd} if cost_usd > 0 else None,
     )
     # We need to enter and exit the context manager to record the observation
-    obs = cm.__enter__()
+    cm.__enter__()
     try:
         pass
     finally:
@@ -302,7 +302,7 @@ def observe_tts_synthesis(
             **(metadata or {}),
         },
     )
-    obs = cm.__enter__()
+    cm.__enter__()
     try:
         pass
     finally:
@@ -344,7 +344,7 @@ def observe_quality_check(
         },
         level="INFO" if passed else "WARNING",
     )
-    obs = cm.__enter__()
+    cm.__enter__()
     try:
         pass
     finally:
@@ -367,6 +367,7 @@ def trace_function(
         def analyze_chapter(text):
             ...
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -387,6 +388,7 @@ def trace_function(
             # Manual span creation (lazy - no decorator at import time)
             try:
                 from langfuse import Langfuse
+
                 # Use the existing client to create a span
                 start = datetime.now()
                 span_obj = _langfuse_client.start_as_current_observation(

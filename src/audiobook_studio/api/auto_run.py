@@ -4,29 +4,24 @@ Provides one-click full automation from text to audiobook.
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
-from ..config import get_settings
 from ..database import create_async_session
+from ..exceptions import DomainError
 from ..models.audio_segment import AudioSegment
 from ..models.book import Project
 from ..models.chapter import Chapter
 from ..models.paragraph import Paragraph
 from ..models.quality import Quality
-from ..models.tts_edit import TTSEdit
 from ..pipeline.checkpoint import CheckpointManager
 from ..pipeline.orchestrator import run_stage
 
@@ -226,7 +221,7 @@ async def _run_auto_pipeline(
             data={"run_id": run_id, "config": config.model_dump()},
         )
 
-        checkpoint_mgr = _get_checkpoint_manager(project_id)
+        _get_checkpoint_manager(project_id)
 
         for stage in _stage_order:
             # Update current stage
@@ -333,7 +328,7 @@ async def _run_single_stage(
             if stage == "extract":
                 all_extracted = all(ch.extract_status == "completed" and ch.raw_text for ch in chapters)
                 if all_extracted:
-                    logger.info(f"All chapters already extracted, skipping extract stage")
+                    logger.info("All chapters already extracted, skipping extract stage")
                     for idx, chapter in enumerate(chapters, start=1):
                         checkpoint_mgr.mark_stage_done(stage, chapter.index)
                         progress = idx / total
@@ -424,9 +419,7 @@ async def _run_single_stage(
                 # this stage completed.
                 chapter_row = None
                 if para.chapter_id:
-                    result = await db.execute(
-                        select(Chapter).where(Chapter.id == para.chapter_id)
-                    )
+                    result = await db.execute(select(Chapter).where(Chapter.id == para.chapter_id))
                     chapter_row = result.scalar_one_or_none()
 
                 # Skip placeholder rows with no text: annotate/edit/synthesize
@@ -437,12 +430,12 @@ async def _run_single_stage(
                     logger.info("ch%s p%d has empty text, skipping stage '%s'", ch_idx, para.index, stage)
                     continue
 
-                if chapter_row is not None and checkpoint_mgr.is_stage_done(
-                    stage, chapter_row.index, para.index
-                ):
+                if chapter_row is not None and checkpoint_mgr.is_stage_done(stage, chapter_row.index, para.index):
                     logger.info(
                         "Checkpoint: ch%d p%d stage '%s' already done, skipping",
-                        chapter_row.index, para.index, stage,
+                        chapter_row.index,
+                        para.index,
+                        stage,
                     )
                     progress = idx / total
                     await emit_pipeline_event(

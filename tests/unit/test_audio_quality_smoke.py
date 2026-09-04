@@ -1,5 +1,4 @@
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 import pytest
@@ -90,7 +89,11 @@ def test_get_available_metrics():
     assert isinstance(avail, dict)
 
 
-def test_check_audio_quality(wav):
+def test_check_audio_quality(wav, monkeypatch):
+    # Unit tests must not load the real faster-whisper model: on some hosts
+    # ctranslate2 aborts the whole process (native crash, not an exception).
+    # The WER path itself is covered by integration/e2e suites.
+    monkeypatch.setattr(AM, "_whisper_available", False)
     rep = AM.check_audio_quality(str(wav), "参考文本")
     assert rep is not None
 

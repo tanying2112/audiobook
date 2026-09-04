@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -477,7 +477,7 @@ class TestVoiceAnchorManager:
 
             with patch.object(self.manager._similarity_metric, "compute", return_value=mock_result):
                 # Trigger drift checks up to the limit + 1
-                for i in range(4):  # 0, 1, 2, 3
+                for _i in range(4):  # 0, 1, 2, 3
                     self.manager.check_drift("narrator", gen_path, chapter_index=3)
 
                 # Check that we have more than the limit number of alerts (since we append before checking)

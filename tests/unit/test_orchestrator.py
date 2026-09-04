@@ -7,21 +7,18 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - Mock mode behavior for testing without external APIs
 - FeedbackCollector integration for self-iteration
 """
+
 import os
 
 os.environ["MOCK_LLM"] = "true"
 
-import json
 import sqlite3
 import tempfile
-from datetime import datetime
-from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import create_engine, delete, event, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 
@@ -31,6 +28,11 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=OFF")
         cursor.close()
 
+
+# Async SQLite database (per-test temp file) for testing
+import warnings
+
+from sqlalchemy.exc import SAWarning
 
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.models import AudioSegment, Chapter, Paragraph, Project, Quality, TTSEdit
@@ -46,11 +48,6 @@ from src.audiobook_studio.pipeline.orchestrator import (
     run_stage,
 )
 
-# Async SQLite database (per-test temp file) for testing
-import warnings
-
-from sqlalchemy.exc import SAWarning
-
 warnings.filterwarnings(
     "ignore",
     message="Can't sort tables for DROP; an unresolvable foreign key dependency exists between tables",
@@ -58,35 +55,27 @@ warnings.filterwarnings(
 )
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session():
-    """Create a fresh async database session for each test."""
+@pytest.fixture(scope="function")
+def db_session():
+    """Create a fresh sync database session for each test."""
     import src.audiobook_studio.models  # noqa: F401 — register all ORM models
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
     db_path = tmp.name
-    sync_engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
+    sync_engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     event.listen(sync_engine, "connect", _set_sqlite_pragma)
     Base.metadata.create_all(sync_engine)
-    sync_engine.dispose()
 
-    async_engine = create_async_engine(
-        f"sqlite+aiosqlite:///{db_path}",
-        connect_args={"check_same_thread": False},
-    )
-    event.listen(async_engine.sync_engine, "connect", _set_sqlite_pragma)
-    factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as session:
+    factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
+    with factory() as session:
         yield session
-    await async_engine.dispose()
+    sync_engine.dispose()
     os.unlink(db_path)
 
 
 @pytest_asyncio.fixture
-async def sample_project(db_session):
+def sample_project(db_session):
     """Create a sample project."""
     project = Project(
         title="Test Book",
@@ -96,13 +85,13 @@ async def sample_project(db_session):
         difficulty="B",
     )
     db_session.add(project)
-    await db_session.commit()
-    await db_session.refresh(project)
+    db_session.commit()
+    db_session.refresh(project)
     return project
 
 
 @pytest_asyncio.fixture
-async def sample_chapter(db_session, sample_project):
+def sample_chapter(db_session, sample_project):
     """Create a sample chapter."""
     chapter = Chapter(
         project_id=sample_project.id,
@@ -111,13 +100,13 @@ async def sample_chapter(db_session, sample_project):
         extract_status="completed",
     )
     db_session.add(chapter)
-    await db_session.commit()
-    await db_session.refresh(chapter)
+    db_session.commit()
+    db_session.refresh(chapter)
     return chapter
 
 
 @pytest_asyncio.fixture
-async def sample_paragraph(db_session, sample_project, sample_chapter):
+def sample_paragraph(db_session, sample_project, sample_chapter):
     """Create a sample paragraph."""
     para = Paragraph(
         project_id=sample_project.id,
@@ -132,13 +121,13 @@ async def sample_paragraph(db_session, sample_project, sample_chapter):
         status="annotated",
     )
     db_session.add(para)
-    await db_session.commit()
-    await db_session.refresh(para)
+    db_session.commit()
+    db_session.refresh(para)
     return para
 
 
 @pytest_asyncio.fixture
-async def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
+def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
     """Create a sample paragraph with edited_text for quality testing."""
     para = Paragraph(
         project_id=sample_project.id,
@@ -157,8 +146,8 @@ async def sample_paragraph_with_edit(db_session, sample_project, sample_chapter)
         edit_forbid_edit=False,
     )
     db_session.add(para)
-    await db_session.commit()
-    await db_session.refresh(para)
+    db_session.commit()
+    db_session.refresh(para)
     return para
 
 
@@ -256,7 +245,6 @@ def mock_tts_edit_output():
 def mock_quality_judgment():
     """Create a valid QualityJudgment for testing."""
     from src.audiobook_studio.schemas import QualityJudgment
-    from src.audiobook_studio.schemas.quality import FixSuggestion
 
     return QualityJudgment(
         segment_id="test_book_ch1_p0",
@@ -291,10 +279,9 @@ class TestWriteExtract:
     """Test _write_extract function."""
 
     @pytest.mark.asyncio
-
     async def test_write_extract_creates_new_chapter(self, db_session, sample_project, mock_extraction_result):
         """Test _write_extract creates a new chapter when none exists."""
-        chapter = await _write_extract(
+        chapter = _write_extract(
             db_session,
             project_id=sample_project.id,
             chapter_index=1,
@@ -308,7 +295,6 @@ class TestWriteExtract:
         assert chapter.extract_status == "completed"
 
     @pytest.mark.asyncio
-
     async def test_write_extract_updates_existing_chapter_by_id(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
@@ -316,9 +302,9 @@ class TestWriteExtract:
         # Modify the existing chapter
         sample_chapter.raw_text = "Old text"
         sample_chapter.extract_status = "pending"
-        await db_session.commit()
+        db_session.commit()
 
-        chapter = await _write_extract(
+        chapter = _write_extract(
             db_session,
             project_id=sample_project.id,
             chapter_index=1,
@@ -331,16 +317,15 @@ class TestWriteExtract:
         assert chapter.extract_status == "completed"
 
     @pytest.mark.asyncio
-
     async def test_write_extract_uses_existing_chapter_by_index(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
         """Test _write_extract finds existing chapter by project_id and index."""
         sample_chapter.raw_text = "Old text"
         sample_chapter.extract_status = "pending"
-        await db_session.commit()
+        db_session.commit()
 
-        chapter = await _write_extract(
+        chapter = _write_extract(
             db_session,
             project_id=sample_project.id,
             chapter_index=1,
@@ -355,12 +340,11 @@ class TestWriteAnalyze:
     """Test _write_analyze function."""
 
     @pytest.mark.asyncio
-
     async def test_write_analyze_updates_chapter(self, db_session, sample_chapter, mock_book_analysis_output):
         """Test _write_analyze updates chapter with analysis output."""
-        await _write_analyze(db_session, sample_chapter, mock_book_analysis_output)
+        _write_analyze(db_session, sample_chapter, mock_book_analysis_output)
 
-        await db_session.refresh(sample_chapter)
+        db_session.refresh(sample_chapter)
         assert sample_chapter.analyzed_json is not None
         assert "book_meta" in sample_chapter.analyzed_json
         assert sample_chapter.analyze_status == "completed"
@@ -371,7 +355,6 @@ class TestWriteAnnotate:
     """Test _write_annotate function."""
 
     @pytest.mark.asyncio
-
     async def test_write_annotate_creates_new_paragraph(
         self,
         db_session,
@@ -381,7 +364,7 @@ class TestWriteAnnotate:
         mock_paragraph_annotation,
     ):
         """Test _write_annotate updates existing paragraph (requires text field)."""
-        para = await _write_annotate(
+        para = _write_annotate(
             db_session,
             project_id=sample_project.id,
             chapter=sample_chapter,
@@ -400,7 +383,6 @@ class TestWriteAnnotate:
         assert para.status == "annotated"
 
     @pytest.mark.asyncio
-
     async def test_write_annotate_updates_existing_paragraph(
         self,
         db_session,
@@ -413,9 +395,9 @@ class TestWriteAnnotate:
         sample_paragraph.speaker_canonical_name = "旧说话人"
         sample_paragraph.emotion = "happy"
         sample_paragraph.status = "pending"
-        await db_session.commit()
+        db_session.commit()
 
-        para = await _write_annotate(
+        para = _write_annotate(
             db_session,
             project_id=sample_project.id,
             chapter=sample_chapter,
@@ -433,7 +415,6 @@ class TestWriteEdit:
     """Test _write_edit function."""
 
     @pytest.mark.asyncio
-
     async def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
         """Test _write_edit creates TTSEdit record and updates paragraph."""
         # Create a mock result with string list for changes_made (matches TtsEditOutput schema)
@@ -446,7 +427,7 @@ class TestWriteEdit:
         mock_result.difficulty = "B"
         mock_result.forbid_edit = False
 
-        tts_edit = await _write_edit(db_session, sample_paragraph, mock_result)
+        tts_edit = _write_edit(db_session, sample_paragraph, mock_result)
         assert tts_edit is not None
 
         assert tts_edit is not None
@@ -455,7 +436,7 @@ class TestWriteEdit:
         assert tts_edit.confidence == 0.9
 
         # Check paragraph was updated
-        await db_session.refresh(sample_paragraph)
+        db_session.refresh(sample_paragraph)
         assert sample_paragraph.edited_text == "这是编辑后的文本内容。"
         assert sample_paragraph.edit_confidence == 0.9
         assert sample_paragraph.status == "edited"
@@ -465,8 +446,9 @@ class TestWriteSynthesize:
     """Test _write_synthesize function."""
 
     @pytest.mark.asyncio
-
-    async def test_write_synthesize_creates_audio_segment(self, db_session, sample_project, sample_chapter, sample_paragraph):
+    async def test_write_synthesize_creates_audio_segment(
+        self, db_session, sample_project, sample_chapter, sample_paragraph
+    ):
         """Test _write_synthesize creates AudioSegment record."""
         seg_dict = {
             "file_path": "/tmp/test_synthesis.mp3",
@@ -476,7 +458,7 @@ class TestWriteSynthesize:
             "format": "mp3",
         }
 
-        audio = await _write_synthesize(db_session, sample_project.id, sample_chapter, sample_paragraph, seg_dict)
+        audio = _write_synthesize(db_session, sample_project.id, sample_chapter, sample_paragraph, seg_dict)
 
         assert audio is not None
         assert audio.project_id == sample_project.id
@@ -489,7 +471,7 @@ class TestWriteSynthesize:
         assert audio.status == "completed"
 
         # Check paragraph was linked
-        await db_session.refresh(sample_paragraph)
+        db_session.refresh(sample_paragraph)
         assert sample_paragraph.audio_segment_id == audio.id
         assert sample_paragraph.status == "synthesized"
 
@@ -498,7 +480,6 @@ class TestWriteQuality:
     """Test _write_quality function."""
 
     @pytest.mark.asyncio
-
     async def test_write_quality_creates_quality_record_with_existing_tts_edit(
         self,
         db_session,
@@ -518,10 +499,10 @@ class TestWriteQuality:
             confidence=0.9,
         )
         db_session.add(tts_edit)
-        await db_session.commit()
-        await db_session.refresh(tts_edit)
+        db_session.commit()
+        db_session.refresh(tts_edit)
 
-        quality = await _write_quality(
+        quality = _write_quality(
             db_session,
             sample_project.id,
             sample_chapter,
@@ -534,12 +515,11 @@ class TestWriteQuality:
         assert quality.overall_score == 0.9
 
         # Check paragraph was updated
-        await db_session.refresh(sample_paragraph)
+        db_session.refresh(sample_paragraph)
         assert sample_paragraph.quality_overall_score == 0.9
         assert sample_paragraph.status == "quality_checked"
 
     @pytest.mark.asyncio
-
     async def test_write_quality_creates_tts_edit_if_missing(
         self,
         db_session,
@@ -550,10 +530,10 @@ class TestWriteQuality:
     ):
         """Test _write_quality auto-creates TTSEdit when none exists but paragraph has edited_text."""
         # Ensure no TTSEdit exists
-        await db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph_with_edit.id))
-        await db_session.commit()
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph_with_edit.id))
+        db_session.commit()
 
-        quality = await _write_quality(
+        quality = _write_quality(
             db_session,
             sample_project.id,
             sample_chapter,
@@ -565,19 +545,18 @@ class TestWriteQuality:
         assert quality.tts_edit_id is not None
 
         # Verify a TTSEdit was created
-        created_res = await db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
         created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
         assert created_tts_edit.rationale == "Auto-created for quality check (no prior edit)"
 
         # Check paragraph was updated
-        await db_session.refresh(sample_paragraph_with_edit)
+        db_session.refresh(sample_paragraph_with_edit)
         assert sample_paragraph_with_edit.quality_overall_score == 0.9
         assert sample_paragraph_with_edit.status == "quality_checked"
 
     @pytest.mark.asyncio
-
     async def test_write_quality_handles_missing_edited_text(
         self,
         db_session,
@@ -588,11 +567,11 @@ class TestWriteQuality:
     ):
         """Test _write_quality creates dummy TTSEdit even when no edited_text exists."""
         # Ensure no TTSEdit exists and paragraph has no edited_text
-        await db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph.id))
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph.id))
         sample_paragraph.edited_text = None
-        await db_session.commit()
+        db_session.commit()
 
-        quality = await _write_quality(
+        quality = _write_quality(
             db_session,
             sample_project.id,
             sample_chapter,
@@ -604,13 +583,13 @@ class TestWriteQuality:
         assert quality.tts_edit_id is not None  # Should create dummy TTSEdit
 
         # Verify a TTSEdit was created with empty edited_text
-        created_res = await db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
         created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == ""
 
         # Check paragraph was still updated
-        await db_session.refresh(sample_paragraph)
+        db_session.refresh(sample_paragraph)
         assert sample_paragraph.quality_overall_score == 0.9
         assert sample_paragraph.status == "quality_checked"
 
@@ -619,7 +598,6 @@ class TestWriteAudioPostProcess:
     """Test _write_audio_postprocess function."""
 
     @pytest.mark.asyncio
-
     async def test_write_audio_postprocess_updates_paragraph(self, db_session, sample_paragraph):
         """Test _write_audio_postprocess updates paragraph with audio params."""
         from src.audiobook_studio.schemas import AudioPostProcessParams
@@ -631,9 +609,9 @@ class TestWriteAudioPostProcess:
             sfx_tags=["door_creak", "wind"],
         )
 
-        await _write_audio_postprocess(db_session, sample_paragraph, params)
+        _write_audio_postprocess(db_session, sample_paragraph, params)
 
-        await db_session.refresh(sample_paragraph)
+        db_session.refresh(sample_paragraph)
         assert sample_paragraph.speech_rate == 1.1
         assert sample_paragraph.pitch_shift_semitones == 2
         assert sample_paragraph.needs_sfx is True
@@ -665,7 +643,7 @@ class TestRunStageExtract:
             mock_pipeline.run.assert_called_once()
 
             # Check chapter was created
-            result = await db_session.execute(
+            result = db_session.execute(
                 select(Chapter).filter(
                     Chapter.project_id == sample_project.id,
                     Chapter.index == 1,
@@ -701,7 +679,7 @@ class TestRunStageAnalyze:
             mock_pipeline.run.assert_called_once()
 
             # Check chapter was updated
-            await db_session.refresh(sample_chapter)
+            db_session.refresh(sample_chapter)
             assert sample_chapter.analyze_status == "completed"
             assert sample_chapter.analyzed_json["book_meta"]["title"] == "Mock Title"
 
@@ -772,7 +750,7 @@ class TestRunStageAnnotate:
             mock_pipeline.run.assert_called_once()
 
             # Check paragraph was updated (using existing fixture with text)
-            await db_session.refresh(sample_paragraph)
+            db_session.refresh(sample_paragraph)
             assert sample_paragraph.speaker_canonical_name == "旁白"
 
 
@@ -830,7 +808,7 @@ class TestRunStageEdit:
             mock_pipeline.run.assert_called_once()
 
             # Check paragraph was updated
-            await db_session.refresh(sample_paragraph)
+            db_session.refresh(sample_paragraph)
             assert sample_paragraph.edited_text == "这是编辑后的文本内容。"
             assert sample_paragraph.edit_confidence == 0.9
             assert sample_paragraph.status == "edited"
@@ -855,7 +833,7 @@ class TestRunStageAudioPostProcess:
                 }
             ]
         }
-        await db_session.commit()
+        db_session.commit()
 
         with patch("src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor") as MockProcessor:
             mock_processor = MockProcessor.return_value
@@ -888,7 +866,7 @@ class TestRunStageAudioPostProcess:
             assert result["paragraph_type"] == "narration"
 
             # Check paragraph was updated
-            await db_session.refresh(sample_paragraph)
+            db_session.refresh(sample_paragraph)
             assert sample_paragraph.speech_rate == 1.0
             assert sample_paragraph.status == "audio_processed"
 
@@ -946,7 +924,7 @@ class TestRunStageSynthesize:
             mock_pipeline.run.assert_called_once()
 
             # Check audio segment was created
-            result = await db_session.execute(
+            result = db_session.execute(
                 select(AudioSegment).filter(
                     AudioSegment.project_id == sample_project.id,
                     AudioSegment.chapter_id == sample_chapter.id,
@@ -999,7 +977,7 @@ class TestRunStageQuality:
             mock_pipeline.run.assert_called_once()
 
             # Check quality record was created
-            result = await db_session.execute(
+            result = db_session.execute(
                 select(Quality).filter(
                     Quality.project_id == sample_project.id,
                     Quality.chapter_id == sample_chapter.id,
@@ -1014,7 +992,7 @@ class TestRunStageQuality:
             # Should be set since paragraph has edited_text
 
             # Check paragraph was updated
-            await db_session.refresh(sample_paragraph_with_edit)
+            db_session.refresh(sample_paragraph_with_edit)
             assert sample_paragraph_with_edit.quality_overall_score == 0.9
             assert sample_paragraph_with_edit.status == "quality_checked"
 
@@ -1257,7 +1235,7 @@ class TestRunStageWithFeedbackCollector:
                 }
             ]
         }
-        await db_session.commit()
+        db_session.commit()
 
         with patch("src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor") as MockProcessor:
             mock_processor = MockProcessor.return_value
@@ -1374,7 +1352,7 @@ class TestRunStageWithFeedbackCollector:
                 )
             ]
 
-            result = await run_stage(
+            await run_stage(
                 "quality",
                 db_session,
                 project_id=sample_project.id,

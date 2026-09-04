@@ -11,13 +11,13 @@ StructuralCritic (结构派) - 文档结构、章节边界、段落流程、成�
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...llm import LLMRouter
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
-from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
+from .base import BaseCritic, CriticResult, CriticType
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..celery_app import celery_app
 from ..database import AsyncSessionLocal
-from ..models.book import Project
 from .publish_job_repo import create_publish_job, mark_failure, mark_processing, mark_success, register_retry
 
 logger = logging.getLogger(__name__)

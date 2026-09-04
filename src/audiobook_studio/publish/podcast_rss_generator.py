@@ -6,7 +6,6 @@ Audiobook Studio — Podcast RSS Feed 生成器
 """
 
 import hashlib
-import json
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -310,7 +309,7 @@ async def generate_podcast_rss(project_id: int, config: Dict[str, Any]) -> Dict[
     from ..models.book import Project
 
     settings = get_settings()
-    public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
+    public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")  # noqa: F821
     media_url = f"{public_url}/media/{project_id}"
 
     mime_by_ext = {
@@ -492,7 +491,7 @@ def main() -> None:
 
         generator.add_episode(episode)
         logger.info(f"   第{i+1}集: {chapter_data['title']}")
-        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")
+        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")  # noqa: E228
         logger.info(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
 
     logger.info("\n" + "=" * 60)
@@ -539,7 +538,9 @@ def main() -> None:
     logger.info("\n📈 Feed统计信息:")
     logger.info(f"   节目总数: {len(generator.feed.episodes)} 集")
     total_duration = sum(ep.duration_seconds for ep in generator.feed.episodes)
-    logger.info(f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}")
+    logger.info(
+        f"   时长总计: {total_duration // 3600:02d}:{(total_duration % 3600) // 60:02d}:{total_duration % 60:02d}"
+    )
     logger.info(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
     logger.info(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
 

@@ -16,26 +16,15 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.audiobook_studio.llm import create_router
-from src.audiobook_studio.schemas import (
-    BookAnalysisOutput,
-    ExtractionInput,
-    ExtractionResult,
-    ParagraphAnnotation,
-    QualityJudgment,
-    TtsEditOutput,
-    TtsRoutingDecision,
-)
 
-
-def parse_args() -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:  # noqa: E303
     parser = argparse.ArgumentParser(description="Audiobook Studio 性能基准测试：延迟")
     parser.add_argument(
         "--baseline",
@@ -97,7 +86,7 @@ def save_baseline(data: Dict[str, float], output_path: str) -> None:
 def measure_stage_latency(stage: str, mock: bool = False) -> float:
     """测量单个管线阶段的平均延迟（毫秒）。"""
     # 创建测试数据
-    test_data = _get_test_data_for_stage(stage)
+    _get_test_data_for_stage(stage)
 
     # 测量延迟
     latencies = []

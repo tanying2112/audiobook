@@ -22,7 +22,6 @@ from src.audiobook_studio.pipeline.vision import (
 )
 from src.audiobook_studio.schemas import VisualElement
 
-
 # ── _parse_visual_element ─────────────────────────────────────────────────────
 
 
@@ -95,6 +94,7 @@ def _client(providers=None, mock_mode=False):
 def _mock_prov(name: str):
     """Create a mock provider with name attribute."""
     from unittest.mock import MagicMock
+
     prov = MagicMock()
     prov.name = name
     return prov
@@ -128,7 +128,9 @@ class TestMultimodalVisionClient:
 
     def test_success_returns_element(self):
         c = _client(providers=[_mock_prov("test-prov")])
-        with patch.object(c, "_call_provider", return_value=VisualElement(kind="figure", caption="c", extracted_text="t")):
+        with patch.object(
+            c, "_call_provider", return_value=VisualElement(kind="figure", caption="c", extracted_text="t")
+        ):
             el = c.understand_image(b"\x89PNG")
         assert el is not None
         assert el.kind == "figure"

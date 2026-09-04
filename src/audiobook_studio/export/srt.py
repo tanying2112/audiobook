@@ -7,7 +7,7 @@ D2 — SRT 字幕导出模块
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -195,7 +195,6 @@ def build_subtitle_entries_from_paragraphs(
     """
     # Build paragraph_id → duration mapping
     para_duration: dict[int, int] = {}
-    current_offset = 0
     para_order: List[int] = []
 
     for seg in audio_segments:

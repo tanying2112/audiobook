@@ -6,17 +6,14 @@ that are not covered by the existing test suite.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-import json
-import tempfile
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Ensure real celery module is available
-if 'celery' in sys.modules:
-    del sys.modules['celery']
+if "celery" in sys.modules:
+    del sys.modules["celery"]
 import celery  # noqa: F401 - ensure real celery is loaded
 
 # Set TEST_MODE before any imports to use fake TTS port
@@ -36,7 +33,7 @@ class TestTTSChapterTaskPortInit:
         # Mock get_port to return a synchronous value
         mock_port = MagicMock()
 
-        with patch('src.audiobook_studio.tasks.tts_tasks.get_port', new=lambda: mock_port):
+        with patch("src.audiobook_studio.tasks.tts_tasks.get_port", new=lambda: mock_port):
             port = task._get_port()
             assert port == mock_port
 
@@ -51,14 +48,12 @@ class TestTTSChapterTaskPortInit:
         task = TTSChapterTask()
 
         call_count = 0
-        mock_port_get = MagicMock(side_effect=lambda: (
-            MagicMock() if call_count < 2 else None
-        ))
+        mock_port_get = MagicMock(side_effect=lambda: (MagicMock() if call_count < 2 else None))
 
-        with patch('src.audiobook_studio.tasks.tts_tasks.get_port', side_effect=mock_port_get):
-            port1 = task._get_port()
+        with patch("src.audiobook_studio.tasks.tts_tasks.get_port", side_effect=mock_port_get):
+            task._get_port()
             call_count += 1
-            port2 = task._get_port()
+            task._get_port()
             # Port should be cached after first call
             assert call_count == 1  # Only first call triggers get_port
 
@@ -68,8 +63,9 @@ class TestTTSChapterTaskCrossfade:
 
     def test_get_crossfade_ms_positive_env(self):
         """Test _get_crossfade_ms reads positive value from env."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import os
+
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
@@ -79,8 +75,9 @@ class TestTTSChapterTaskCrossfade:
 
     def test_get_crossfade_ms_zero_env(self):
         """Test _get_crossfade_ms handles zero env value."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import os
+
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
@@ -90,8 +87,9 @@ class TestTTSChapterTaskCrossfade:
 
     def test_get_crossfade_ms_large_env(self):
         """Test _get_crossfade_ms handles large env value."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import os
+
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
@@ -105,13 +103,13 @@ class TestTTSChapterTaskSemaphoreDetailed:
 
     def test_acquire_semaphore_first_call(self):
         """Test semaphore acquire on first call."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import src.audiobook_studio.tasks.tts_tasks as tts_mod
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
         # First call should acquire
-        with patch.object(tts_mod, '_get_redis') as mock_get_redis:
+        with patch.object(tts_mod, "_get_redis") as mock_get_redis:
             mock_client = MagicMock()
             mock_client.script_load.return_value = "sha1"
             mock_client.evalsha.return_value = 1
@@ -123,12 +121,12 @@ class TestTTSChapterTaskSemaphoreDetailed:
 
     def test_acquire_semaphore_limit_reached(self):
         """Test semaphore acquire when limit is reached."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import src.audiobook_studio.tasks.tts_tasks as tts_mod
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
-        with patch.object(tts_mod, '_get_redis') as mock_get_redis:
+        with patch.object(tts_mod, "_get_redis") as mock_get_redis:
             mock_client = MagicMock()
             mock_client.script_load.return_value = "sha1"
             # Always return 0 (limit reached)
@@ -178,10 +176,7 @@ class TestTTSChapterTaskIdempotencyDetailed:
             {"volume": 0.0, "rate": 1.0, "pitch": 0.0},
         ]
 
-        keys = [
-            task._idem_key("test text", "voice_1", prosody)
-            for prosody in prosody_orders
-        ]
+        keys = [task._idem_key("test text", "voice_1", prosody) for prosody in prosody_orders]
 
         # All keys should be identical despite different order
         assert keys[0] == keys[1] == keys[2]
@@ -196,8 +191,10 @@ class TestTTSChapterTaskCallbacksDetailed:
 
         task = TTSChapterTask()
 
-        with patch.object(task, '_release_semaphore') as mock_release, \
-             patch.object(task, '_cleanup_port') as mock_cleanup:
+        with (
+            patch.object(task, "_release_semaphore") as mock_release,
+            patch.object(task, "_cleanup_port") as mock_cleanup,
+        ):
             # Manually call on_failure which should trigger cleanup
             task.on_failure(Exception("test"), "task_id", (), {}, None)
             # on_failure calls _release_semaphore and _cleanup_port
@@ -210,8 +207,10 @@ class TestTTSChapterTaskCallbacksDetailed:
 
         task = TTSChapterTask()
 
-        with patch.object(task, '_release_semaphore') as mock_release, \
-             patch.object(task, '_cleanup_port') as mock_cleanup:
+        with (
+            patch.object(task, "_release_semaphore") as mock_release,
+            patch.object(task, "_cleanup_port") as mock_cleanup,
+        ):
             task.on_success("result", "task_id", (), {})
             mock_release.assert_called_once()
             mock_cleanup.assert_called_once()
@@ -222,12 +221,12 @@ class TestTTSChapterTaskCheckpointDetailed:
 
     def test_save_load_clear_checkpoint_cycle(self):
         """Test save -> load -> clear checkpoint cycle."""
-        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
         import src.audiobook_studio.tasks.tts_tasks as tts_mod
+        from src.audiobook_studio.tasks.tts_tasks import TTSChapterTask
 
         task = TTSChapterTask()
 
-        with patch.object(tts_mod, '_get_redis') as mock_get_redis:
+        with patch.object(tts_mod, "_get_redis") as mock_get_redis:
             mock_client = MagicMock()
 
             # Setup mock client to be returned by _get_redis
@@ -236,7 +235,8 @@ class TestTTSChapterTaskCheckpointDetailed:
             # Save checkpoint - use direct set call
             checkpoint_key = "tts:checkpoint:99999:99999001"
             task._save_checkpoint(
-                project_id=99999, chapter_id=99999001,
+                project_id=99999,
+                chapter_id=99999001,
                 completed_paragraphs=[1, 2, 3],
                 failed_paragraphs=[4],
                 chapter_audio_path="/tmp/chapter.mp3",
@@ -250,15 +250,17 @@ class TestTTSChapterTaskCheckpointDetailed:
             assert set_call_args[0][0] == checkpoint_key
 
             # Load checkpoint
-            mock_client.get.return_value = json.dumps({
-                "project_id": 99999,
-                "chapter_id": 99999001,
-                "completed_paragraphs": [1, 2, 3],
-                "failed_paragraphs": [4],
-                "chapter_audio_path": "/tmp/chapter.mp3",
-                "segments": [{"segment_id": "test1"}],
-                "updated_at": 1234567890.0,
-            })
+            mock_client.get.return_value = json.dumps(
+                {
+                    "project_id": 99999,
+                    "chapter_id": 99999001,
+                    "completed_paragraphs": [1, 2, 3],
+                    "failed_paragraphs": [4],
+                    "chapter_audio_path": "/tmp/chapter.mp3",
+                    "segments": [{"segment_id": "test1"}],
+                    "updated_at": 1234567890.0,
+                }
+            )
 
             loaded = task._load_checkpoint(99999, 99999001)
             assert loaded is not None

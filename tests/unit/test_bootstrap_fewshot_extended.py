@@ -6,20 +6,16 @@ that are not covered by the existing test suite.
 
 from __future__ import annotations
 
-import json
-import tempfile
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock, patch
 
 from src.audiobook_studio.feedback.bootstrap_fewshot import (
     BUDGET_LIMIT,
     BootstrapFewShotOptimizer,
-    configure_dspy_optimizer,
     EarlyStoppingStopper,
     MultiObjectiveLoss,
     OptimizationMetrics,
     OptimizationResult,
+    configure_dspy_optimizer,
     create_multi_objective_metric,
     run_bootstrap_optimization,
 )
@@ -36,7 +32,7 @@ class TestEarlyStoppingStopperExtended:
         # Equal score - no_improve_count increments (equal is not improvement)
         assert stopper([0.8]) is False  # no_improve_count = 1
         assert stopper([0.8]) is False  # no_improve_count = 2
-        assert stopper([0.8]) is True   # no_improve_count = 3, patience reached
+        assert stopper([0.8]) is True  # no_improve_count = 3, patience reached
         assert stopper.no_improve_count == 3
 
     def test_stop_at_patience_with_decreasing(self):
@@ -47,7 +43,7 @@ class TestEarlyStoppingStopperExtended:
         # decrease but still within patience
         assert stopper([0.5]) is False  # no_improve=1, not yet patience
         # another decrease
-        assert stopper([0.4]) is True   # no_improve=2 >= patience=2
+        assert stopper([0.4]) is True  # no_improve=2 >= patience=2
 
 
 class TestMultiObjectiveLossExtended:
@@ -135,6 +131,7 @@ class TestCreateMultiObjectiveMetricExtended:
         metric = create_multi_objective_metric()
 
         from unittest.mock import Mock
+
         gold = Mock()
         gold.character = "张三"
         gold.voice = "narrator_male"
@@ -196,7 +193,7 @@ class TestBootstrapFewShotOptimizerExtended:
             mock_gepa.compile.return_value = mock_module
             mock_gepa_class.return_value = mock_gepa
 
-            result = optimizer.optimize("initial prompt", [("text", {"character": "c", "voice": "v"}) for _ in range(10)])
+            optimizer.optimize("initial prompt", [("text", {"character": "c", "voice": "v"}) for _ in range(10)])
 
             # Should have been called with budget_limit=5
             mock_gepa_class.assert_called_once()
@@ -240,12 +237,12 @@ class TestConfigureDSPyOptimizer:
 
     def test_configure_with_mock(self):
         """Configure DSPy with mock LM."""
-        result = configure_dspy_optimizer(use_mock=True)
+        configure_dspy_optimizer(use_mock=True)
 
     def test_configure_without_mock(self):
         """Configure DSPy without mock (dspy may not be installed)."""
         try:
-            result = configure_dspy_optimizer(use_mock=False)
+            configure_dspy_optimizer(use_mock=False)
         except RuntimeError:
             # dspy not available - expected
             pass

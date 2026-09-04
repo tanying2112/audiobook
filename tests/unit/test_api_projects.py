@@ -4,15 +4,12 @@ Tests cover CRUD operations for projects, chapters, and paragraphs
 with proper authentication and authorization.
 """
 
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+
 from src.audiobook_studio.exceptions import DomainError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TestProjectsAuth:
@@ -20,9 +17,7 @@ class TestProjectsAuth:
 
     def test_auth_imports_work(self):
         """Verify imports work."""
-        from src.audiobook_studio.api.dependencies import get_async_db
         from src.audiobook_studio.api.projects import router
-        from src.audiobook_studio.auth.dependencies import get_current_active_user
 
         assert router is not None
 
@@ -103,8 +98,7 @@ class TestProjectEndpoints:
     async def test_create_project(self):
         """Test creating a project."""
         from src.audiobook_studio.api.projects import create_project
-        from src.audiobook_studio.auth.models import RoleName
-        from src.audiobook_studio.models import Project, ProjectPermission, User
+        from src.audiobook_studio.models import User
 
         db = AsyncMock()
         db.add = AsyncMock()

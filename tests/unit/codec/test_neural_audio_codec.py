@@ -37,17 +37,14 @@ import pytest
 from src.audiobook_studio.codec.base import (
     CodecBackendUnavailable,
     CodecContainer,
-    CodecResult,
-)
-from src.audiobook_studio.codec.engine import (
-    compress_audio_file,
-    decompress_audio_file,
-    get_numpy_codec,
-    is_codec_enabled,
 )
 from src.audiobook_studio.codec.encodec_backend import (
     EncodecAdapter,
     HubertSemanticTokenizer,
+)
+from src.audiobook_studio.codec.engine import (
+    compress_audio_file,
+    is_codec_enabled,
 )
 from src.audiobook_studio.codec.numpy_codec import NumpyNeuralCodec
 from src.audiobook_studio.codec.opus import OpusCompressor
@@ -83,7 +80,7 @@ def codec():
 def _snr(orig, dec):
     n = min(len(orig), len(dec))
     o, d = orig[:n], dec[:n]
-    return 10.0 * np.log10(np.sum(o ** 2) / (np.sum((o - d) ** 2) + 1e-12))
+    return 10.0 * np.log10(np.sum(o**2) / (np.sum((o - d) ** 2) + 1e-12))
 
 
 # --------------------------------------------------------------------------- #
@@ -133,13 +130,12 @@ def test_compress_file_reduces_size_by_half(tmp_path):
 def test_container_roundtrip(codec):
     rng = np.random.default_rng(7)
     t = np.arange(16000 * 3) / 16000.0
-    sig = (0.6 * np.sin(2 * np.pi * 200 * t) + 0.3 * np.sin(2 * np.pi * 520 * t)
-           + 0.1 * rng.standard_normal(t.shape))
+    sig = 0.6 * np.sin(2 * np.pi * 200 * t) + 0.3 * np.sin(2 * np.pi * 520 * t) + 0.1 * rng.standard_normal(t.shape)
     res = codec.encode(sig, 16000)
     data = CodecContainer(res).to_bytes()
     restored = CodecContainer.from_bytes(data)
     assert len(restored.result.tokens) == res.n_codebooks
-    for a, b in zip(restored.result.tokens, res.tokens):
+    for a, b in zip(restored.result.tokens, res.tokens, strict=False):
         assert np.array_equal(a, b)
     dec = codec.decode(restored)
     assert len(dec) == res.original_length
@@ -166,14 +162,12 @@ def test_rms_level_is_restored(codec):
     """The decoder restores the exact original RMS (scale invariance)."""
     rng = np.random.default_rng(5)
     base = np.sin(2 * np.pi * 250 * np.arange(16000 * 2) / 16000.0)
-    base = base / np.sqrt(np.mean(base ** 2))  # unit-RMS reference
+    base = base / np.sqrt(np.mean(base**2))  # unit-RMS reference
     for target_rms in (0.2, 0.75, 1.0, 3.0):
         sig = target_rms * base + 0.05 * rng.standard_normal(len(base))
         dec = codec.decode(codec.encode(sig, 16000))
-        got = float(np.sqrt(np.mean(dec ** 2)))
-        assert got == pytest.approx(target_rms, rel=0.05), (
-            f"rms {target_rms} restored as {got}"
-        )
+        got = float(np.sqrt(np.mean(dec**2)))
+        assert got == pytest.approx(target_rms, rel=0.05), f"rms {target_rms} restored as {got}"
 
 
 def test_peak_within_reasonable_bound(codec):
@@ -183,15 +177,13 @@ def test_peak_within_reasonable_bound(codec):
     guarantee is the RMS restoration tested separately."""
     rng = np.random.default_rng(5)
     base = np.sin(2 * np.pi * 250 * np.arange(16000 * 2) / 16000.0)
-    base = base / np.sqrt(np.mean(base ** 2))  # unit-RMS reference
+    base = base / np.sqrt(np.mean(base**2))  # unit-RMS reference
     for target_peak in (0.2, 0.75, 1.0, 3.0):
         sig = target_peak * base + 0.05 * rng.standard_normal(len(base))
         dec = codec.decode(codec.encode(sig, 16000))
         got = float(np.max(np.abs(dec)))
         # peak is in the right ballpark (signal-dependent due to VQ spikes)
-        assert 0.15 * target_peak <= got <= 5.0 * target_peak, (
-            f"peak {target_peak} restored as {got}"
-        )
+        assert 0.15 * target_peak <= got <= 5.0 * target_peak, f"peak {target_peak} restored as {got}"
 
 
 # --------------------------------------------------------------------------- #
@@ -234,9 +226,7 @@ def test_compress_decompress_file_roundtrip(tmp_path):
         rec = rec.mean(axis=1)
     assert len(rec) == len(orig)
     # RMS level is restored exactly; peak may carry a small VQ impulse spike
-    assert np.sqrt(np.mean(rec ** 2)) == pytest.approx(
-        np.sqrt(np.mean(orig ** 2)), rel=0.1
-    )
+    assert np.sqrt(np.mean(rec**2)) == pytest.approx(np.sqrt(np.mean(orig**2)), rel=0.1)
 
 
 # --------------------------------------------------------------------------- #

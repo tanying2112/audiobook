@@ -9,15 +9,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import shutil
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..feedback.offline_judge import OfflineJudge
 from ..feedback.prompt_compiler import write_candidate_prompt
@@ -25,11 +21,8 @@ from ..harness.config import get_harness_settings
 from ..harness.golden import (
     DEFAULT_PROMPTS_DIR,
     DEFAULT_TEST_GOLDEN_ROOT,
-    GoldenDatasetManager,
     evaluate_on_harness_golden,
 )
-from ..harness.models import PipelineStage, PromptCompileRequest, PromptCompileResponse, PromptStatus, PromptVersion
-from ..harness.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +85,6 @@ class PromptEvolutionEngine:
         （``feedback.bootstrap_fewshot.run_bootstrap_optimization``）做学习型变异；
         若优化不可用或无训练样本，安全回退到规则拼接（默认路径不变）。
         """
-        from ..feedback.prompt_compiler import write_candidate_prompt
 
         prompts_root = Path(prompts_root) if prompts_root else DEFAULT_PROMPTS_DIR
         cp = write_candidate_prompt(stage, k=k, prompts_root=prompts_root)
@@ -167,7 +159,6 @@ class PromptEvolutionEngine:
             golden_root: 预留覆盖项；当前 harness 金标固定为 ``data/golden/harness``，
                 故该参数不影响读取（仅保留 API 兼容）。
         """
-        from ..feedback.offline_judge import OfflineJudge
 
         j = judge or OfflineJudge()
 
@@ -276,7 +267,6 @@ class PromptEvolutionEngine:
         调用 PromotionGate 进行 4 项门禁裁决。
         """
         from ..feedback.promotion_gate import promote_candidate
-        from ..harness.config import get_harness_settings
 
         get_harness_settings()
         Path("prompts")
@@ -388,7 +378,6 @@ def run_prompt_evolution_cycle(
 
 def compile_candidate_prompt(stage: str, k: int = 3) -> Dict[str, Any]:
     """便捷入口：仅编译候选 Prompt。"""
-    from ..feedback.prompt_compiler import write_candidate_prompt
 
     cp = write_candidate_prompt(stage, k=k, prompts_root=DEFAULT_PROMPTS_DIR)
     return {

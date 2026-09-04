@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from audiobook_studio.tts import piper_models as pm
 
 

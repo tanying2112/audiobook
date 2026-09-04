@@ -97,7 +97,7 @@ class TestBaselineRecorder:
         """Test that storage directory is created."""
         with tempfile.TemporaryDirectory() as tmpdir:
             storage_path = Path(tmpdir) / "baselines"
-            recorder = BaselineRecorder(storage_dir=str(storage_path))
+            BaselineRecorder(storage_dir=str(storage_path))
             assert storage_path.exists()
 
     def test_record_performance(self):

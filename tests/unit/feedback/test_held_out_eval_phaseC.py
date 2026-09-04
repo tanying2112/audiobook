@@ -1,7 +1,6 @@
 """Phase C structural tests for feedback/held_out_eval.py (frozen held-out set)."""
 
 import json
-import math
 from pathlib import Path
 
 import pytest
@@ -50,8 +49,13 @@ def test_held_out_case_signature_and_to_dict():
 
 def test_dataset_manifest_to_dict():
     man = DatasetManifest(
-        stage="s", case_count=2, signatures=("aa", "bb"), dataset_signature="ds",
-        golden_root="/x", origin_status="loaded", held_out_commit_note="note",
+        stage="s",
+        case_count=2,
+        signatures=("aa", "bb"),
+        dataset_signature="ds",
+        golden_root="/x",
+        origin_status="loaded",
+        held_out_commit_note="note",
     )
     d = man.to_dict()
     assert d["case_count"] == 2
@@ -61,21 +65,35 @@ def test_dataset_manifest_to_dict():
 
 def test_candidate_result_beat_baseline():
     r = CandidateEvalResult(
-        candidate_id="x", baseline_id="b", case_count=2, scores=(0.9, 0.9),
-        mean_score=0.9, baseline_mean=0.5, effect_size=0.4,
+        candidate_id="x",
+        baseline_id="b",
+        case_count=2,
+        scores=(0.9, 0.9),
+        mean_score=0.9,
+        baseline_mean=0.5,
+        effect_size=0.4,
     )
     assert r.beat_baseline_by_025 is True
     d = r.to_dict()
     assert d["beat_baseline_by_025"] is True
 
     r2 = CandidateEvalResult(
-        candidate_id="x", baseline_id="b", case_count=2, scores=(0.9, 0.9),
-        mean_score=0.9, baseline_mean=0.8, effect_size=0.1,
+        candidate_id="x",
+        baseline_id="b",
+        case_count=2,
+        scores=(0.9, 0.9),
+        mean_score=0.9,
+        baseline_mean=0.8,
+        effect_size=0.1,
     )
     assert r2.beat_baseline_by_025 is False  # effect < 0.25
 
     r3 = CandidateEvalResult(
-        candidate_id="x", baseline_id="b", case_count=2, scores=(0.9, 0.9), mean_score=0.9,
+        candidate_id="x",
+        baseline_id="b",
+        case_count=2,
+        scores=(0.9, 0.9),
+        mean_score=0.9,
     )
     assert r3.beat_baseline_by_025 is False  # effect None
 
@@ -84,7 +102,7 @@ def test_candidate_result_beat_baseline():
 
 
 def test_dataset_loads_from_golden(tmp_path):
-    golden = _make_golden(tmp_path, "extract", [_row("c1"), _row("c2")])
+    _make_golden(tmp_path, "extract", [_row("c1"), _row("c2")])
     ds = HeldOutDataset("extract", golden_root=tmp_path)
     assert ds.stage == "extract"
     assert ds.case_count == 2
@@ -121,14 +139,14 @@ def test_parse_row_generates_id_when_missing():
 
 
 def test_immutable_private_field_reassign(tmp_path):
-    golden = _make_golden(tmp_path, "extract", [_row("c1")])
+    _make_golden(tmp_path, "extract", [_row("c1")])
     ds = HeldOutDataset("extract", golden_root=tmp_path)
     with pytest.raises(TypeError):
         ds._cases = ()  # type: ignore[misc]
 
 
 def test_immutable_non_private_attr(tmp_path):
-    golden = _make_golden(tmp_path, "extract", [_row("c1")])
+    _make_golden(tmp_path, "extract", [_row("c1")])
     ds = HeldOutDataset("extract", golden_root=tmp_path)
     with pytest.raises(TypeError):
         ds.foo = 1  # type: ignore[attr-defined]
@@ -147,10 +165,13 @@ def test_evaluate_candidate_empty_set(tmp_path):
 
 
 def test_evaluate_candidate_with_baseline(tmp_path):
-    golden = _make_golden(tmp_path, "extract", [_row("c1"), _row("c2")])
+    _make_golden(tmp_path, "extract", [_row("c1"), _row("c2")])
     ds = HeldOutDataset("extract", golden_root=tmp_path)
     res = ds.evaluate_candidate(
-        lambda c: 0.9, candidate_id="C", baseline_fn=lambda c: 0.5, baseline_id="B",
+        lambda c: 0.9,
+        candidate_id="C",
+        baseline_fn=lambda c: 0.5,
+        baseline_id="B",
     )
     assert res.case_count == 2
     assert res.mean_score == 0.9

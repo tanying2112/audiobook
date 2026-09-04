@@ -7,7 +7,6 @@ _original_mock = os.environ.get("MOCK_LLM", "false")
 # Set mock mode for tests that need it
 os.environ["MOCK_LLM"] = "true"
 import tempfile
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -197,7 +196,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
             mock_open.return_value.__enter__.return_value = mock_pdf
 
             # Also mock fitz to avoid any import issues
-            with patch("src.audiobook_studio.pipeline.extract.fitz.open") as mock_fitz:
+            with patch("src.audiobook_studio.pipeline.extract.fitz.open"):
                 text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_pdf("test.pdf")
 
                 assert page_count == 2
@@ -476,7 +475,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
         ):
             with patch.object(self.pipeline, "_extract_txt", return_value=("Short", 1, False, 0.0, [])):
                 input_data = ExtractionInput(file_path="test.txt", mime_type="text/plain", detect_language=True)
-                result = self.pipeline.run(input_data)
+                self.pipeline.run(input_data)
 
                 assert recorded.get("quality_score") == 0.5
                 assert recorded.get("success") is False
@@ -498,7 +497,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
                     mime_type="application/pdf",
                     detect_language=True,
                 )
-                result = self.pipeline.run(input_data)
+                self.pipeline.run(input_data)
 
                 assert recorded.get("provider") == "ocr"
                 assert recorded.get("cost_usd") == 0.005
@@ -524,7 +523,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
                     mime_type="application/pdf",
                     detect_language=True,
                 )
-                result = self.pipeline.run(input_data)
+                self.pipeline.run(input_data)
 
                 assert recorded.get("provider") == "local"
                 assert recorded.get("cost_usd") == 0.001
@@ -550,7 +549,7 @@ class TestExtractPipelineNonMock:  # noqa: E302
         ):
             pipeline = ExtractPipeline()
             input_data = ExtractionInput(file_path="/fake/path.txt", mime_type="text/plain", detect_language=True)
-            result = pipeline.run(input_data)
+            pipeline.run(input_data)
 
             assert recorded.get("stage") == "extract_mock"
             assert recorded.get("success") is True
@@ -572,7 +571,7 @@ class TestExtractImage:
         """Test successful image extraction with OCR."""
         import tempfile
 
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
 
         # Create a test image with text
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -585,7 +584,7 @@ class TestExtractImage:
             draw.text((50, 50), "Test OCR Image", fill="black")
             img.save(temp_path)
 
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_image(temp_path)
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_image(temp_path)
 
             assert page_count == 1
             assert has_ocr is True
@@ -606,7 +605,7 @@ class TestExtractImage:
             temp_path = f.name
 
         try:
-            text, page_count, has_ocr, ocr_ratio = self.pipeline._extract_image(temp_path)
+            text, page_count, has_ocr, ocr_ratio, _ = self.pipeline._extract_image(temp_path)
 
             assert text == ""
             assert page_count == 1

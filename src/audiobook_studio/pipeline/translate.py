@@ -290,7 +290,7 @@ class TranslateAndDubPipeline:
             # router.call 依据 response_model 动态构造 LLMCallResult.output, 静态返回 Any, 按 TranslationResult 收窄
             translated = cast(TranslationResult, result.output)
             return translated.translated_text.strip()
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
             logger.error(f"LLM translation failed: {e}")
             # Fallback to a simple placeholder if translation fails
             return f"[{target_language}] {text}"
@@ -414,5 +414,5 @@ class TranslateAndDubPipeline:
             prosody_overrides=None,
         )
         # Add text attribute for test compatibility (ORM 模型未声明 text 列, 以动态属性承载)
-        setattr(new_segment, "text", translated_text)
+        new_segment.text = translated_text
         return new_segment

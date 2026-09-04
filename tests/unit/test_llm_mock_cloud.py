@@ -14,12 +14,11 @@ Tests:
 """
 
 import os
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig
 from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
     BookMeta,

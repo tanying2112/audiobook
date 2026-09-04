@@ -7,9 +7,8 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 import logging
 import os
 import random
-from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -407,7 +406,7 @@ def get_routed_session_factory() -> async_sessionmaker[RoutedSession]:
     """Get or create the routed session factory."""
     global _routed_session_factory
     if _routed_session_factory is None:
-        engine = get_routed_engine()
+        get_routed_engine()
         _routed_session_factory = async_sessionmaker(
             class_=RoutedSession,
             expire_on_commit=False,

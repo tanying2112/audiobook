@@ -4,15 +4,12 @@ P2-5: Optimize queries for >100 chapters with composite indexes and read replica
 """
 
 import os
-from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import event, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import event, inspect
 from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.database import Base
-from src.audiobook_studio.database import engine as get_engine
 from src.audiobook_studio.models import Chapter, Project
 from src.audiobook_studio.models.audio_segment import AudioSegment
 
@@ -77,9 +74,7 @@ class TestCompositeIndexes:
         """Test AudioSegment model has composite index for chapter queries."""
         from sqlalchemy import Index
 
-        from src.audiobook_studio.models.audio_segment import AudioSegment
-
-        table_args = AudioSegment.__table_args__
+        table_args = AudioSegment.__table_args__  # noqa: E303
         indexes = [arg for arg in table_args if isinstance(arg, Index)]
 
         # Check for composite index on chapter_id, index
@@ -128,9 +123,7 @@ class TestQueryPerformance:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
-        from src.audiobook_studio.models import Chapter, Project
-
-        with Session(engine) as session:
+        with Session(engine) as session:  # noqa: E303
             # Create test data
             project = Project(title="Test", author="Author", language="zh", genre="Fiction", difficulty="C")
             session.add(project)
@@ -163,7 +156,6 @@ class TestQueryPerformance:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
-        from src.audiobook_studio.models import Chapter, Project
         from src.audiobook_studio.models.audio_segment import AudioSegment
 
         with Session(engine) as session:
@@ -199,7 +191,6 @@ class TestMigrationScript:
 
     def test_migration_exists(self):
         """Test that migration script exists for composite indexes."""
-        import os
 
         migration_dir = "/Users/guwj/Documents/audiobook/alembic/versions"
         # Migration creation is a separate step; this test documents the

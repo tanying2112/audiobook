@@ -64,13 +64,13 @@ class TestAudioFinalizeParams:
         assert params.loudnorm_target_lra == 20.0
 
         # Should fail validation - out of bounds
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(Exception):  # Pydantic ValidationError  # noqa: B017
             AudioFinalizeParams(loudnorm_target_i=-5.0)  # > -10
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             AudioFinalizeParams(loudnorm_target_i=-35.0)  # < -30
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             AudioFinalizeParams(fade_in_ms=6000)  # > 5000
 
 

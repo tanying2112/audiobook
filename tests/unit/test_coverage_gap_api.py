@@ -4,19 +4,15 @@ Covers: config.py, collab.py, audio_segments.py, export.py, llm.py,
         dependencies.py, version_manager.py, main.py, mock_router.py
 """
 
-import json
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from src.audiobook_studio.database import Base, get_db
+from src.audiobook_studio.database import Base
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. dependencies.py

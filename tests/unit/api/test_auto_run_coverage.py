@@ -1,54 +1,53 @@
 """Additional tests for auto_run module to boost coverage."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
+
+import pytest
 
 # Import the module directly for coverage
 from src.audiobook_studio.api.auto_run import (
+    AutopilotConfig,
+    AutoRunActionResponse,
+    AutoRunConfig,
+    AutoRunStartRequest,
+    AutoRunStatusResponse,
+    IntermediateProduct,
+    StagePausePoint,
+    _active_runs,
     _generate_run_id,
     _get_checkpoint_manager,
     _stage_order,
-    _active_runs,
-    AutoRunConfig,
-    AutoRunStatusResponse,
-    StagePausePoint,
-    AutoRunStartRequest,
-    AutoRunActionResponse,
-    AutopilotConfig,
-    IntermediateProduct,
 )
+
 
 class TestAutoRunHelpers:
     """Test helper functions and data models."""
-    
+
     def test_generate_run_id(self):
         """Test run ID generation."""
         run_id = _generate_run_id(123)
         assert run_id.startswith("autorun_123_")
         assert len(run_id) > 20
-    
+
     def test_stage_order(self):
         """Test stage order constant."""
-        assert _stage_order == [
-            "extract", "analyze", "annotate", "edit", 
-            "audio_postprocess", "synthesize", "quality"
-        ]
-    
+        assert _stage_order == ["extract", "analyze", "annotate", "edit", "audio_postprocess", "synthesize", "quality"]
+
     def test_active_runs_dict(self):
         """Test active runs global."""
         assert isinstance(_active_runs, dict)
-    
+
     def test_get_checkpoint_manager(self):
         """Test checkpoint manager factory."""
-        with patch('src.audiobook_studio.api.auto_run.CheckpointManager') as mock_cm:
+        with patch("src.audiobook_studio.api.auto_run.CheckpointManager") as mock_cm:
             mgr = _get_checkpoint_manager(42)
             mock_cm.assert_called_once_with(42)
             assert mgr == mock_cm.return_value
 
+
 class TestAutoRunConfig:
     """Test AutoRunConfig model."""
-    
+
     def test_default_config(self):
         """Test default config values."""
         config = AutoRunConfig()
@@ -60,7 +59,7 @@ class TestAutoRunConfig:
         assert config.max_regeneration_attempts == 3
         assert config.enable_background_music is False
         assert config.enable_sfx is True
-    
+
     def test_custom_config(self):
         """Test custom config values."""
         config = AutoRunConfig(
@@ -82,9 +81,10 @@ class TestAutoRunConfig:
         assert config.enable_background_music is True
         assert config.enable_sfx is False
 
+
 class TestAutoRunStatusResponse:
     """Test AutoRunStatusResponse model."""
-    
+
     def test_default_status(self):
         """Test default status values."""
         resp = AutoRunStatusResponse(project_id=1, run_id="test_run")
@@ -102,7 +102,7 @@ class TestAutoRunStatusResponse:
         assert resp.can_pause is True
         assert resp.can_resume is False
         assert resp.can_cancel is True
-    
+
     def test_custom_status(self):
         """Test custom status values."""
         resp = AutoRunStatusResponse(
@@ -132,16 +132,17 @@ class TestAutoRunStatusResponse:
         assert resp.can_resume is True
         assert resp.can_cancel is False
 
+
 class TestStagePausePoint:
     """Test StagePausePoint model."""
-    
+
     def test_default_pause_point(self):
         """Test default pause point."""
         pp = StagePausePoint(stage="synthesize")
         assert pp.stage == "synthesize"
         assert pp.pause_after is True
         assert pp.requires_approval is False
-    
+
     def test_custom_pause_point(self):
         """Test custom pause point."""
         pp = StagePausePoint(
@@ -153,24 +154,26 @@ class TestStagePausePoint:
         assert pp.pause_after is False
         assert pp.requires_approval is True
 
+
 class TestAutoRunStartRequest:
     """Test AutoRunStartRequest model."""
-    
+
     def test_default_request(self):
         """Test default request."""
         req = AutoRunStartRequest()
         assert isinstance(req.config, AutoRunConfig)
         assert req.pause_points is None
-    
+
     def test_request_with_pause_points(self):
         """Test request with pause points."""
         pp = [StagePausePoint(stage="synthesize")]
         req = AutoRunStartRequest(pause_points=pp)
         assert req.pause_points == pp
 
+
 class TestAutoRunActionResponse:
     """Test AutoRunActionResponse model."""
-    
+
     def test_action_response(self):
         """Test action response."""
         resp = AutoRunActionResponse(
@@ -184,9 +187,10 @@ class TestAutoRunActionResponse:
         assert resp.message == "Pipeline will pause"
         assert resp.run_id == "run_123"
 
+
 class TestAutopilotConfig:
     """Test AutopilotConfig model."""
-    
+
     def test_autopilot_config(self):
         """Test autopilot config."""
         config = AutopilotConfig(
@@ -204,9 +208,10 @@ class TestAutopilotConfig:
         assert config.target_difficulty == "B"
         assert config.confidence == 0.9
 
+
 class TestIntermediateProduct:
     """Test IntermediateProduct model."""
-    
+
     def test_intermediate_product(self):
         """Test intermediate product."""
         prod = IntermediateProduct(
@@ -227,34 +232,36 @@ class TestIntermediateProduct:
         assert prod.can_view is True
         assert prod.can_edit is False
 
+
 class TestGenerateAutopilotConfig:
     """Test _generate_autopilot_config function."""
-    
+
     @pytest.mark.asyncio
     async def test_generate_autopilot_config(self):
         """Test autopilot config generation."""
-        from src.audiobook_studio.api.auto_run import _generate_autopilot_config
         from sqlalchemy import select
-        
+
+        from src.audiobook_studio.api.auto_run import _generate_autopilot_config
+
         # Mock project with chapters using proper mock objects
         mock_project = MagicMock()
-        
+
         # Create chapter mock that supports iteration
         mock_chapter = MagicMock()
         mock_chapter.raw_text = "test text"
         mock_chapter.extracted_text = "extracted text"
         mock_chapter.analyzed_json = None
-        
+
         # Make chapters iterable
         mock_project.chapters = [mock_chapter]
-        
+
         mock_db = AsyncMock()
         # mock_result must be MagicMock (not AsyncMock) because scalar_one_or_none is sync
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_project
         mock_db.execute = AsyncMock(return_value=mock_result)
-        
-        with patch('src.audiobook_studio.api.auto_run.select', side_effect=select):
+
+        with patch("src.audiobook_studio.api.auto_run.select", side_effect=select):
             config = await _generate_autopilot_config(1, mock_db)
             assert isinstance(config, AutopilotConfig)
             assert config.target_difficulty in ["A", "B", "C", "D"]

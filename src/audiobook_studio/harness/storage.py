@@ -9,16 +9,15 @@ import hashlib
 import json
 import logging
 import os
-import sqlite3
 import threading
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, ContextManager, Dict, Generic, Iterator, List, Optional, Type, TypeVar
+from typing import Any, Dict, Iterator, List, Optional, TypeVar
 
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from .models import Base, FeedbackRecord, SOPRule
@@ -407,7 +406,6 @@ class Storage:
         sample_id = record.get("sample_id") or sample_hash
 
         with self.db.session() as session:
-            from .models import GoldenSample as GoldenSampleModel
 
             # 检查是否已存在（按 hash 去重）
             existing = (

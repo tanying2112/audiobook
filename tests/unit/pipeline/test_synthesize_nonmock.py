@@ -5,14 +5,11 @@ without requiring actual TTS engine installations.
 """
 
 import asyncio
-import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import numpy as np
+from unittest.mock import MagicMock
 
 # Record the original sys.modules entries for third-party modules this suite
 # mocks at import time. These are restored in tearDownModule() so the mocks do
@@ -201,9 +198,9 @@ config_loader_mock.CostControlConfig = MagicMock()
 
 
 from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
-from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
+from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingInput
 from audiobook_studio.schemas.book import CharacterVoiceBinding
-from audiobook_studio.tts import FakeRemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
+from audiobook_studio.tts import FakeRemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor
 
 
 class DummyObserve:

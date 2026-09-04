@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.audiobook_studio.core.telemetry import get_telemetry
 from src.audiobook_studio.monitoring.metrics_exporter import _collect_db_pool_metrics, export_db_pool_metrics
 

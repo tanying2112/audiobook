@@ -15,7 +15,6 @@ assignment remains the graceful degradation when no GPU is present.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from .engine import VoiceInfo

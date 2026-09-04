@@ -8,8 +8,7 @@ import io
 import logging
 import os
 import time
-from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 import fitz  # pymupdf
 import pdfplumber
@@ -241,6 +240,10 @@ class ExtractPipeline:
                     page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
 
                     if page_text.strip():
+                        # ── OCR 增强：对照原图用多模态模型修正 OCR 误识 ──
+                        # 逐页就地增强（OCR 一页 → 立即增强该页），失败回退原始 OCR。
+                        png_bytes = pix.tobytes("png")
+                        page_text = self._enhance_single_page(png_bytes, page_text)
                         ocr_text_parts.append(page_text)
                         ocr_pages += 1
                 if ocr_text_parts:
@@ -295,6 +298,39 @@ class ExtractPipeline:
 
         ocr_ratio = ocr_pages / page_count if page_count > 0 else 0.0
         return extracted_text, page_count, has_ocr, ocr_ratio, visual_elements
+
+    def _ocr_enhance_enabled(self) -> bool:
+        """OCR 增强开关：环境变量 OCR_ENHANCE_ENABLED（默认 true）。"""
+        return os.environ.get("OCR_ENHANCE_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+
+    def _has_ocr_enhancer(self, client) -> bool:
+        """是否配置了 extra_params.ocr_enhance=true 的多模态提供方。"""
+        return bool(
+            getattr(client, "providers", None) and any(p.extra_params.get("ocr_enhance") for p in client.providers)
+        )
+
+    def _enhance_single_page(self, image_bytes: bytes, ocr_text: str) -> str:
+        """对单页/单张图做 OCR 增强：对照原图修正 OCR 文本；失败返回原文本。
+
+        逐页调用，供 PDF 逐页与单张图片共用。无增强提供方或全部失败时
+        诚实返回原始 OCR 文本（绝不阻塞主流程）。
+        """
+        if not self._ocr_enhance_enabled():
+            return ocr_text
+        if not ocr_text or not ocr_text.strip():
+            return ocr_text
+
+        # 惰性导入 + 缓存 vision 客户端（单例，避免每页重复创建）
+        client = self._get_vision_client()
+        if not client or not self._has_ocr_enhancer(client):
+            return ocr_text
+
+        try:
+            corrected = client.enhance_ocr_text(image_bytes, ocr_text, media_type="image/png")
+            return corrected if corrected else ocr_text
+        except Exception as e:  # noqa: BLE001 — 增强失败不阻塞
+            logger.debug(f"OCR enhance single page failed: {e}")
+            return ocr_text
 
     def _extract_epub(self, file_path: str) -> tuple[str, int, bool, float, list[VisualElement]]:
         """Extract text from EPUB."""
@@ -396,6 +432,10 @@ class ExtractPipeline:
 
             # Use pytesseract for OCR
             text = pytesseract.image_to_string(image, lang="chi_sim+eng")
+
+            # ── OCR 增强：对照原图用多模态模型修正 OCR 误识 ──
+            if text.strip():
+                text = self._enhance_single_page(image_bytes, text)
 
             return text.strip(), 1, True, 1.0, []
         except Exception as e:

@@ -1,38 +1,26 @@
 """Harness 迭代系统集成测试：端到端验证 M1→M4 闭环。"""
 
-import json
-import shutil
-import tempfile
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from src.audiobook_studio.harness.canary import get_canary_abtest
 from src.audiobook_studio.harness.collector import capture_feedback, get_correction_collector
 from src.audiobook_studio.harness.config import get_harness_settings
 from src.audiobook_studio.harness.dashboard import get_harness_dashboard
-from src.audiobook_studio.harness.golden import GoldenDatasetManager, append_golden_sample
+from src.audiobook_studio.harness.golden import GoldenDatasetManager
 from src.audiobook_studio.harness.harness import run_iteration_cycle
 from src.audiobook_studio.harness.models import (
-    Base,
-    CanaryDecision,
     FeedbackSource,
-    GoldenSplit,
     PipelineStage,
-    PromotionDecision,
-    PromptStatus,
-    SOPRuleStatus,
 )
 from src.audiobook_studio.harness.promotion_gate import promote_candidate
 from src.audiobook_studio.harness.prompt_evolution import PromptEvolutionEngine
 from src.audiobook_studio.harness.reflection import get_reflection_engine, run_reflection
 from src.audiobook_studio.harness.routing_evolution import get_routing_evolution_engine
 from src.audiobook_studio.harness.sop_store import create_sop_rule, get_sop_store
-from src.audiobook_studio.harness.storage import Storage, get_storage, reset_storage
+from src.audiobook_studio.harness.storage import get_storage, reset_storage
 from src.audiobook_studio.harness.threshold_calibrator import get_threshold_calibrator
 
 
@@ -110,7 +98,6 @@ class TestHarnessFullLoop:
             return {"output": "baseline output", "stage": "judge"}
 
         # 运行单阶段迭代
-        from src.audiobook_studio.harness.harness import run_iteration_cycle
 
         rep = run_iteration_cycle(
             stage="judge",
@@ -412,9 +399,7 @@ class TestHarnessFullLoop:
         def mock_baseline(inp):
             return {"output": "baseline"}
 
-        from src.audiobook_studio.harness.harness import run_iteration_cycle
-
-        rep = run_iteration_cycle(
+        rep = run_iteration_cycle(  # noqa: E303
             stage="edit",
             run_fn=lambda x: {"output": "edited"},
             baseline_fn=lambda x: {"output": "baseline"},
@@ -559,8 +544,6 @@ class TestHarnessFullLoop:
 
     def test_prompt_version_management(self):
         """Prompt 版本管理：编译、版本号、部署、回滚。"""
-        from src.audiobook_studio.feedback.deploy import promote_candidate as deploy_promote
-        from src.audiobook_studio.feedback.deploy import rollback_prompt
         from src.audiobook_studio.feedback.prompt_compiler import write_candidate_prompt
 
         # 编译候选

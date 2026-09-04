@@ -14,13 +14,12 @@ from pathlib import Path
 
 import pytest
 
+from src.audiobook_studio.pipeline.self_iteration import UserCorrection, validate_self_iteration
 from src.audiobook_studio.quality.audio_quality import (
-    AudioQualitySample,
-    AudioQualityScorer,
     AudioQualityReport,
+    AudioQualityScorer,
     fuse_audio_scores,
 )
-from src.audiobook_studio.pipeline.self_iteration import UserCorrection, validate_self_iteration
 
 GOLDEN_DIR = Path(__file__).parent.parent.parent / "golden" / "v04_multilingual"
 REF_WAV = GOLDEN_DIR / "ref_zh_female_001.wav"
@@ -31,7 +30,7 @@ def test_fuse_audio_scores_full():
     overall = fuse_audio_scores(4.0, 4.2, 0.02, 0.90)
     assert 0.0 <= overall <= 1.0
     # Weighted: (0.35*0.75 + 0.25*0.80 + 0.20*0.80 + 0.20*0.90)/1.0
-    expected = (0.35 * 0.75 + 0.25 * 0.80 + 0.20 * 0.80 + 0.20 * 0.90)
+    expected = 0.35 * 0.75 + 0.25 * 0.80 + 0.20 * 0.80 + 0.20 * 0.90
     assert overall == pytest.approx(expected, abs=1e-6)
 
 
@@ -193,7 +192,11 @@ def test_validate_self_iteration_with_audio(tmp_path: Path):
             context={"speaker": "林轩"},
         ),
     ]
-    held_out = [{"speaker": "旁白", "emotion": "solemn"}, {"speaker": "林轩", "emotion": "resolute"}, {"speaker": "魔尊", "emotion": "cold"}]
+    held_out = [
+        {"speaker": "旁白", "emotion": "solemn"},
+        {"speaker": "林轩", "emotion": "resolute"},
+        {"speaker": "魔尊", "emotion": "cold"},
+    ]
 
     report = validate_self_iteration(
         config_path=config,
@@ -217,19 +220,37 @@ def test_validate_self_iteration_backward_compat(tmp_path: Path):
     config = tmp_path / "agent_sop.json"
     corrections = [
         UserCorrection(
-            timestamp="2026-01-01T00:00:00Z", project_id=1, chapter_index=0, paragraph_index=0,
-            field="voice", original_value="x", corrected_value="kokoro_zh_narrator",
-            genre="仙侠", context={"speaker": "旁白"},
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="voice",
+            original_value="x",
+            corrected_value="kokoro_zh_narrator",
+            genre="仙侠",
+            context={"speaker": "旁白"},
         ),
         UserCorrection(
-            timestamp="2026-01-01T00:00:00Z", project_id=1, chapter_index=0, paragraph_index=0,
-            field="voice", original_value="x", corrected_value="kokoro_zh_protagonist",
-            genre="仙侠", context={"speaker": "林轩"},
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="voice",
+            original_value="x",
+            corrected_value="kokoro_zh_protagonist",
+            genre="仙侠",
+            context={"speaker": "林轩"},
         ),
         UserCorrection(
-            timestamp="2026-01-01T00:00:00Z", project_id=1, chapter_index=0, paragraph_index=0,
-            field="voice", original_value="x", corrected_value="kokoro_zh_antagonist",
-            genre="仙侠", context={"speaker": "魔尊"},
+            timestamp="2026-01-01T00:00:00Z",
+            project_id=1,
+            chapter_index=0,
+            paragraph_index=0,
+            field="voice",
+            original_value="x",
+            corrected_value="kokoro_zh_antagonist",
+            genre="仙侠",
+            context={"speaker": "魔尊"},
         ),
     ]
     report = validate_self_iteration(

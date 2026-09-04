@@ -23,7 +23,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 # Use UnifiedConfig for centralized configuration loading
 from ..config.unified import get_unified_config

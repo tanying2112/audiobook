@@ -7,8 +7,6 @@ critics are excluded (they are external adapters omitted from coverage).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from src.audiobook_studio.feedback.kill_switch import DegradationLevel, KillSwitch, KillSwitchConfig
 from src.audiobook_studio.feedback.promotion_gate import PromotionGate
 

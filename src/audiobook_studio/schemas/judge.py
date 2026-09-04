@@ -4,9 +4,9 @@
 - PairwiseJudgment: A/B 测试盲评的成对比较结果
 """
 
-from typing import Annotated, Dict, List, Literal, Optional
+from typing import Annotated, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 
 Score = Annotated[float, Field(ge=0.0, le=1.0)]
 

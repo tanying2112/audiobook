@@ -33,8 +33,6 @@ import importlib
 import importlib.util
 import os
 import sys as _sys
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 

@@ -19,9 +19,9 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -59,7 +59,7 @@ class PortConnectionError(PortError):
 class PortRemoteError(PortError):
     """Raised when remote service returns an error response."""
 
-    def __init__(self, message: str, status_code: int | None = None, response_body: str | None = None):
+    def __init__(self, message: str, status_code: int | None = None, response_body: str | None = None):  # noqa: B042
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body

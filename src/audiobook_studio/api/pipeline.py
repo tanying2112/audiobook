@@ -5,25 +5,20 @@ the translate stage for multilingual dubbing.
 """
 
 import asyncio
-import concurrent.futures
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-
-from ..exceptions import DomainError
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from ..api.dependencies import get_async_db
 from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..database import create_async_session, get_sync_engine_url
+from ..exceptions import DomainError
 from ..models import AudioSegment, Chapter, Paragraph, Project
-from ..pipeline.checkpoint import CheckpointManager
 from ..pipeline.orchestrator import run_stage
 
 logger = logging.getLogger(__name__)
@@ -173,7 +168,7 @@ async def _run_translate_stage(
                 result = await db.execute(
                     select(AudioSegment).where(
                         AudioSegment.paragraph_id == para.id,
-                        AudioSegment.is_current == True,
+                        AudioSegment.is_current,
                     )
                 )
                 audio_segments = result.scalars().all()
@@ -355,11 +350,10 @@ async def run_pipeline_stage(
 
     # For other stages, run via orchestrator.run_stage in thread pool with sync session
     import asyncio
-    from sqlalchemy.orm import Session
-    from sqlalchemy import create_engine
-    from ..database import get_sync_engine_url
 
-    # Create a sync engine for the thread pool
+    from sqlalchemy.orm import Session
+
+    # Create a sync engine for the thread pool  # noqa: E303
     sync_engine = create_engine(get_sync_engine_url(), pool_pre_ping=True)
     SyncSession = sessionmaker(bind=sync_engine, class_=Session, expire_on_commit=False)
 
@@ -473,7 +467,7 @@ async def get_translate_status(project_id: int, db: AsyncSession = Depends(get_a
         .where(
             AudioSegment.project_id == project_id,
             AudioSegment.paragraph_id <= 10000,
-            AudioSegment.is_current == True,
+            AudioSegment.is_current,
         )
     )
     total_original = total_original_result.scalar() or 0

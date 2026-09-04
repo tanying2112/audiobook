@@ -5,10 +5,9 @@ TestClient (which has Python 3.14 / httpx compatibility issues).
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 
 from src.audiobook_studio.api.audio_segments import (
     AudioSegmentResponse,
@@ -104,7 +103,6 @@ class TestBusinessLogic:
     @pytest.mark.asyncio
     async def test_list_audio_segments_empty_dir(self, tmp_path, monkeypatch):
         """Test list_audio_segments returns empty when book dir missing."""
-        from fastapi import FastAPI
 
         from src.audiobook_studio.api.audio_segments import list_audio_segments
 
@@ -140,9 +138,8 @@ class TestBusinessLogic:
     @pytest.mark.asyncio
     async def test_merge_segments_validation_minimum(self):
         """Test merge requires at least 2 segments."""
-        from src.audiobook_studio.exceptions import BadRequestError
-
         from src.audiobook_studio.api.audio_segments import merge_segments
+        from src.audiobook_studio.exceptions import BadRequestError
 
         request = MergeRequest(segment_ids=["seg_1"])
 
@@ -247,9 +244,8 @@ class TestGetAudioSegment:
     @pytest.mark.asyncio
     async def test_get_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 92-93)."""
-        from src.audiobook_studio.exceptions import NotFoundError
-
         from src.audiobook_studio.api.audio_segments import get_audio_segment
+        from src.audiobook_studio.exceptions import NotFoundError
 
         class FakeDB:
             pass
@@ -282,9 +278,8 @@ class TestDeleteAudioSegment:
     @pytest.mark.asyncio
     async def test_delete_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 194-195)."""
-        from src.audiobook_studio.exceptions import NotFoundError
-
         from src.audiobook_studio.api.audio_segments import delete_audio_segment
+        from src.audiobook_studio.exceptions import NotFoundError
 
         class FakeDB:
             pass

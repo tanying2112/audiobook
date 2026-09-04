@@ -1,7 +1,6 @@
 """Comprehensive tests for pipeline/orchestrator.py — hook system, sanitize, run_stage, run_pipeline."""
 
-import json
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,7 +25,9 @@ from src.audiobook_studio.pipeline.orchestrator import (
 
 class TestHookRegistration:
     def test_register_stage_hook(self):
-        fn = lambda *a, **k: None
+        def fn(*a, **k):
+            return None
+
         before = len(_stage_hooks)
         register_stage_hook(fn)
         assert fn in _stage_hooks
@@ -35,7 +36,9 @@ class TestHookRegistration:
         assert len(_stage_hooks) == before + 1
 
     def test_register_pipeline_hook(self):
-        fn = lambda *a, **k: None
+        def fn(*a, **k):
+            return None
+
         before = len(_pipeline_hooks)
         register_pipeline_hook(fn)
         assert fn in _pipeline_hooks
@@ -393,7 +396,7 @@ class TestRunPipeline:
     async def test_exception_propagates(self, mock_run_stage):
         mock_run_stage.side_effect = Exception("fail")
         db = MagicMock()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             await run_pipeline(["extract"], db, project_id=1)
 
     @pytest.mark.asyncio

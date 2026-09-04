@@ -4,40 +4,28 @@ Pydantic-validated tools for the agent to interact with the pipeline.
 Each tool is a self-contained function with typed input/output schemas.
 """
 
-import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal, Optional, cast
 
 from pydantic import BaseModel, Field
 
-from ..llm import LLMRouter, StageName, create_router
 from ..pipeline import ExtractMimeType
 from ..pipeline.analyze_structure import AnalyzeStructurePipeline
 from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline
 from ..pipeline.extract import ExtractPipeline
-from ..pipeline.orchestrator import run_stage
 from ..pipeline.synthesize import SynthesizePipeline
 from ..schemas import (
     BookAnalysisInput,
-    BookAnalysisOutput,
-    CharacterVoiceBinding,
     ExtractionInput,
-    ParagraphAnnotation,
     ParagraphAnnotationInput,
-    TtsRoutingDecision,
-    TtsRoutingInput,
 )
 from ..storage import (
-    annotated_dir,
     audio_dir,
-    extracted_dir,
     load_chapter_annotations,
     load_extracted_text,
-    project_dir,
 )
-from ..tts import FakeRemoteTTSPort, get_port
+from ..tts import FakeRemoteTTSPort
 
 logger = logging.getLogger(__name__)
 

@@ -9,14 +9,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Literal, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..analyzer import ensure_scene_tags_in_output
 from ..llm import LLMRouter, create_router
-from ..schemas import BookAnalysisInput, BookAnalysisOutput
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..schemas import BookAnalysisInput, BookAnalysisOutput
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +98,16 @@ class AnalyzeStructurePipeline:
         # Emit stage enter
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_enter(
-                stage="analyze",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                total_items=1,
-            ))
+            loop.create_task(
+                emit_stage_enter(
+                    stage="analyze",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    total_items=1,
+                )
+            )
         except RuntimeError:
             pass
 
@@ -122,15 +125,18 @@ class AnalyzeStructurePipeline:
         # Emit stage progress
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
-            loop.create_task(emit_stage_progress(
-                stage="analyze",
-                project_id=getattr(input_data, 'project_id', 0) or 0,
-                chapter_index=getattr(input_data, 'chapter_index', 1),
-                current=1,
-                total=1,
-                message="Analyzing book structure...",
-            ))
+            loop.create_task(
+                emit_stage_progress(
+                    stage="analyze",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    current=1,
+                    total=1,
+                    message="Analyzing book structure...",
+                )
+            )
         except RuntimeError:
             pass
 
@@ -160,30 +166,36 @@ class AnalyzeStructurePipeline:
             # Emit stage exit (success)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="analyze",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data, 'chapter_index', 1),
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="analyze",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
             return validated_output
 
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
             # Emit stage exit (error)
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="analyze",
-                    project_id=getattr(input_data, 'project_id', 0) or 0,
-                    chapter_index=getattr(input_data, 'chapter_index', 1),
-                    success=False,
-                    error_message=str(e),
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="analyze",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
             except RuntimeError:
                 pass
             logger.error(f"Structure analysis failed: {e}")
@@ -248,6 +260,6 @@ if __name__ == "__main__":  # pragma: no cover
                 f.write(output_json)
         else:
             logger.info(output_json)
-    except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, IOError, json.JSONDecodeError) as e:
+    except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as e:  # noqa: B014
         logger.error(f"Error: {e}")
         sys.exit(1)

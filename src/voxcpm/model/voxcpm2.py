@@ -484,7 +484,7 @@ class VoxCPM2Model(nn.Module):
         seed: Optional[int] = None,
     ) -> Generator[torch.Tensor, None, None]:
         if retry_badcase and streaming:
-            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")
+            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")  # noqa: B028
             retry_badcase = False
 
         if reference_wav_path and prompt_wav_path:
@@ -833,7 +833,7 @@ class VoxCPM2Model(nn.Module):
                 - New audio features up to the current step as a List if ``streaming=True``, else as a concatenated Tensor
         """
         if retry_badcase and streaming:
-            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")
+            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")  # noqa: B028
             retry_badcase = False
 
         # Determine mode from cache

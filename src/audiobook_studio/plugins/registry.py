@@ -14,12 +14,15 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import logging
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type
 
-from .manifest import PluginManifest, discover_plugins, read_installed_names, DEFAULT_INSTALLED_PATH, DEFAULT_PLUGINS_DIR
+from .manifest import (
+    PluginManifest,
+    discover_plugins,
+    read_installed_names,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +31,11 @@ logger = logging.getLogger(__name__)
 # Factory registration records
 # ======================================================================
 
+
 @dataclass(frozen=True)
 class TTSEngineFactoryRecord:
     """Record of a registered TTS engine factory."""
+
     plugin_name: str
     engine_name: str
     factory: Callable[..., Any]
@@ -41,6 +46,7 @@ class TTSEngineFactoryRecord:
 @dataclass(frozen=True)
 class LLMProviderFactoryRecord:
     """Record of a registered LLM provider factory."""
+
     plugin_name: str
     provider_name: str
     factory: Callable[..., Any]
@@ -51,6 +57,7 @@ class LLMProviderFactoryRecord:
 @dataclass(frozen=True)
 class PipelineStageFactoryRecord:
     """Record of a registered pipeline stage factory."""
+
     plugin_name: str
     stage_name: str
     factory: Callable[..., Any]
@@ -61,6 +68,7 @@ class PipelineStageFactoryRecord:
 # ======================================================================
 # PluginRegistry — simple lookup for registered factories
 # ======================================================================
+
 
 class PluginRegistry:
     """Read-only view of registered plugin factories."""
@@ -100,6 +108,7 @@ class PluginRegistry:
 # ======================================================================
 # PluginManager — discovery, loading, registration
 # ======================================================================
+
 
 class PluginManager:
     """Manages plugin discovery, installation state, and factory registration."""
@@ -174,9 +183,10 @@ class PluginManager:
         if engine_name in self._tts_engine_factories:
             existing = self._tts_engine_factories[engine_name].plugin_name
             logger.warning(
-                "TTS engine '%s' already registered by plugin '%s'; "
-                "overriding with '%s'",
-                engine_name, existing, plugin_name
+                "TTS engine '%s' already registered by plugin '%s'; " "overriding with '%s'",
+                engine_name,
+                existing,
+                plugin_name,
             )
         self._tts_engine_factories[engine_name] = TTSEngineFactoryRecord(
             plugin_name=plugin_name,
@@ -199,9 +209,10 @@ class PluginManager:
         if provider_name in self._llm_provider_factories:
             existing = self._llm_provider_factories[provider_name].plugin_name
             logger.warning(
-                "LLM provider '%s' already registered by plugin '%s'; "
-                "overriding with '%s'",
-                provider_name, existing, plugin_name
+                "LLM provider '%s' already registered by plugin '%s'; " "overriding with '%s'",
+                provider_name,
+                existing,
+                plugin_name,
             )
         self._llm_provider_factories[provider_name] = LLMProviderFactoryRecord(
             plugin_name=plugin_name,
@@ -224,9 +235,10 @@ class PluginManager:
         if stage_name in self._pipeline_stage_factories:
             existing = self._pipeline_stage_factories[stage_name].plugin_name
             logger.warning(
-                "Pipeline stage '%s' already registered by plugin '%s'; "
-                "overriding with '%s'",
-                stage_name, existing, plugin_name
+                "Pipeline stage '%s' already registered by plugin '%s'; " "overriding with '%s'",
+                stage_name,
+                existing,
+                plugin_name,
             )
         self._pipeline_stage_factories[stage_name] = PipelineStageFactoryRecord(
             plugin_name=plugin_name,
@@ -261,6 +273,7 @@ class PluginManager:
         try:
             # Add plugin directory to sys.path for import
             import sys
+
             plugin_dir = Path(manifest.directory) if manifest.directory else None
             if plugin_dir and str(plugin_dir) not in sys.path:
                 sys.path.insert(0, str(plugin_dir))
@@ -268,18 +281,17 @@ class PluginManager:
             # Use unique module name to avoid sys.modules collision
             module_name = f"audiobook_studio.plugins.{manifest.name}.{manifest.entry_module}"
             entry_dir = Path(manifest.directory) if manifest.directory else Path.cwd()
-            spec = importlib.util.spec_from_file_location(
-                module_name, entry_dir / f"{manifest.entry_module}.py"
-            )
+            spec = importlib.util.spec_from_file_location(module_name, entry_dir / f"{manifest.entry_module}.py")
             if spec is None or spec.loader is None:
                 raise ImportError(f"Could not load spec for {manifest.entry_module}")
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
-        except ImportError as exc:
+        except (ImportError, OSError) as exc:
+            # OSError covers FileNotFoundError when the entry module is missing
+            # on disk (broken plugin package) — fail the plugin, not the suite.
             self._load_errors[name] = f"Import failed: {exc}"
-            logger.error("Failed to import plugin '%s' entry module %s: %s",
-                         name, manifest.entry_module, exc)
+            logger.error("Failed to import plugin '%s' entry module %s: %s", name, manifest.entry_module, exc)
             return False
 
         register_fn = getattr(module, "register", None)
@@ -289,6 +301,7 @@ class PluginManager:
             return False
 
         from .context import PluginContext
+
         ctx = PluginContext(manifest=manifest)
         try:
             register_fn(ctx)

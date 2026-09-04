@@ -1,12 +1,9 @@
 """HealthProbe 扩展测试 — 覆盖 _probe_provider, _probe_all, probe_now 等路径。"""
 
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-
-class TestHealthProbeExtended:
+class TestHealthProbeExtended:  # noqa: E303
     def _make_hp(self, providers=None):
         """创建 HealthProbe 并绕过 conftest 的 autouse mock。"""
         from src.audiobook_studio.llm.health_probe import HealthProbe

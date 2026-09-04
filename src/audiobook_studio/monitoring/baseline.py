@@ -5,12 +5,9 @@ Tracks key metrics over time to establish baselines and detect regressions.
 
 import json
 import logging
-import os
 import threading
 import time
-from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

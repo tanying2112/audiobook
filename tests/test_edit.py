@@ -6,7 +6,6 @@ Target coverage: >= 60%.
 """
 
 import os
-import sys
 
 import pytest
 

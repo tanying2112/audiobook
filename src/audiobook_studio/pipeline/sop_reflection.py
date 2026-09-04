@@ -19,7 +19,7 @@ import os
 import threading
 import time
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import datetime, timezone
 from pathlib import Path

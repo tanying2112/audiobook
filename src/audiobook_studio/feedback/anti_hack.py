@@ -7,7 +7,7 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ class DualJudgeEvaluator:
         if len(avail) < 2:
             # 严格：必须两位裁判都跑出真值才能给均值，否则 None（不假通过）
             return DualJudgeResult(judges=verdicts, mean=None, agreement=None, pending_human=True)
-        
+
         mean = sum(v.score for v in avail) / len(avail)
         delta = abs(avail[0].score - avail[1].score)
         agreement = delta <= self.disagreement_delta
@@ -128,7 +128,9 @@ class DualJudgeEvaluator:
                 delta,
                 self.disagreement_delta,
             )
-        return DualJudgeResult(judges=verdicts, mean=mean, agreement=agreement, disagreement_delta=delta, pending_human=pending_human)
+        return DualJudgeResult(
+            judges=verdicts, mean=mean, agreement=agreement, disagreement_delta=delta, pending_human=pending_human
+        )
 
 
 # ── 元门禁：判官 prompt / 评估集 / 指标定义文件对进化循环只读 ─────────────────────
@@ -298,8 +300,6 @@ def evaluate_promotion_anti_hack(
             reasons.append("held_out:empty(留出集空无法量度诚实降级)")
         else:
             # 候选留出集评估（候选真值）与基线留出集评估（基线真值）
-            cand_scores = None
-            base_scores = None
             if candidate_eval_fn is not None:
                 res = ds.evaluate_candidate(
                     candidate_eval_fn,
@@ -307,7 +307,6 @@ def evaluate_promotion_anti_hack(
                     baseline_fn=baseline_fn if baseline_fn is not None else (lambda c: 0.0),
                     baseline_id="baseline",
                 )
-                cand_scores = res
                 held_out_score = res.mean_score
                 baseline_score = res.baseline_mean
                 held_out_dict.update(res.to_dict())
@@ -322,7 +321,7 @@ def evaluate_promotion_anti_hack(
                     "judges": [{"model": j.judge_model, "score": j.score, "error": j.error} for j in djres.judges],
                     "promotable_score": djres.promotable_score,
                 }
-                if not djres.promotable_score and not (judge_fn is None):
+                if not djres.promotable_score and judge_fn is not None:
                     if djres.mean is None:
                         reasons.append("dual_judge:unavailable(缺裁判/不可用不假通过)")
                     elif djres.agreement is False:

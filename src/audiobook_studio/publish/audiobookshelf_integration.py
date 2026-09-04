@@ -1,9 +1,6 @@
 """Audiobookshelf 集成模块 - 将有声书发布到 Audiobookshelf 平台."""
 
 import base64
-import hashlib
-import json
-import logging
 import mimetypes
 import os
 from dataclasses import dataclass, field
@@ -433,7 +430,7 @@ class AudiobookshelfIntegrator:
             if scan_resp.status_code not in (200, 201):
                 # 不致命，继续
                 pass
-        except Exception as e:
+        except Exception:
             # 不致命，继续
             pass
 
@@ -465,10 +462,7 @@ class AudiobookshelfIntegrator:
                             if not isinstance(metadata_item, dict):
                                 continue
                             item_title = metadata_item.get("title", "")
-                            if (
-                                isinstance(item_title, str)
-                                and item_title.lower() == book_title.lower()
-                            ):
+                            if isinstance(item_title, str) and item_title.lower() == book_title.lower():
                                 item_id = item.get("id")
                                 break
                 if item_id:
@@ -684,7 +678,7 @@ def main():
     logger.info(f"   文件名: {audio_file.file_path.name}")
     logger.info(f"   文件大小: {audio_file.size_bytes / (1024*1024):.1f} MB")
     logger.info(
-        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"
+        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"  # noqa: E228
     )
     logger.info(f"   格式: {audio_file.format}")
     logger.info(f"   比特率: {audio_file.bitrate_kbps} kbps")

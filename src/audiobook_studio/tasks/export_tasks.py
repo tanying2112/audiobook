@@ -8,7 +8,6 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from celery import Celery as CeleryApp
 from celery import Task
 from celery import states as celery_states
 

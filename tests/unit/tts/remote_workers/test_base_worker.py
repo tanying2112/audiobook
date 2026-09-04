@@ -5,16 +5,6 @@ Tests: worker initialization, job processing, error handling, status reporting, 
 Mocks: redis, boto3, signal handlers.
 """
 
-import abc
-import json
-import os
-import signal
-import sys
-import time
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
-
-import pytest
-
 # Mock boto3 and redis before importing base_worker.
 # NOTE: a bare Mock() has no ``__spec__``; ``instructor`` (imported transitively
 # by the app) calls ``importlib.util.find_spec("boto3")`` which raises
@@ -24,7 +14,13 @@ import pytest
 # ``AssertionError: Type <class 'object'> is already registered`` on the next app
 # import. Giving the mocks a real ModuleSpec avoids the cascade.
 import importlib.util as _ilu
-import types as _types
+import json
+import os
+import signal
+import sys
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 
 def _make_module_mock(name: str):
@@ -46,6 +42,7 @@ with patch.dict(
 ):
     _before_import = set(sys.modules)
     from src.audiobook_studio.tts.remote_workers.base_worker import BaseWorker, R2Uploader
+
     # ``patch.dict`` restores ``sys.modules`` on exit and EVICTS every module that
     # was imported during the block (the app package, SQLAlchemy, instructor, ...)
     # because they were not present beforehand. If they are evicted, the next app
@@ -54,11 +51,7 @@ with patch.dict(
     # blows up with ``AssertionError: Type <class 'object'> is already registered``
     # (the previous registration in ``sqlalchemy.inspection._registries`` survives).
     # Re-add the imported modules so the app + SQLAlchemy stay cached.
-    _imported_modules = {
-        k: sys.modules[k]
-        for k in set(sys.modules) - _before_import
-        if k not in ("boto3", "redis")
-    }
+    _imported_modules = {k: sys.modules[k] for k in set(sys.modules) - _before_import if k not in ("boto3", "redis")}
 
 # ``patch.dict`` has now exited (restoring the real boto3/redis state); re-add
 # the captured modules so they remain importable/cached for the rest of the session.
@@ -293,7 +286,7 @@ class TestBaseWorkerInitialization:
                 mock_redis_module.Redis.return_value = Mock()
                 mock_redis_module.exceptions.RedisError = Exception
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader") as mock_r2:
-                    worker = ConcreteWorker("test")
+                    ConcreteWorker("test")
                     mock_r2.assert_called_once()
 
     def test_init_calls_init_engine_and_smoke_test(self, mock_env):
@@ -305,7 +298,7 @@ class TestBaseWorkerInitialization:
                 with patch("src.audiobook_studio.tts.remote_workers.base_worker.R2Uploader"):
                     with patch.object(ConcreteWorker, "_init_engine", return_value=Mock()) as mock_init:
                         with patch.object(ConcreteWorker, "_execute_smoke_test") as mock_smoke:
-                            worker = ConcreteWorker("test")
+                            ConcreteWorker("test")
                             mock_init.assert_called_once()
                             mock_smoke.assert_called_once()
 
@@ -440,7 +433,7 @@ class TestBaseWorkerNetworkCallRetry:
             mock_func = Mock(side_effect=mock_redis.RedisError("fail"))
 
             with patch("time.sleep") as mock_sleep:
-                with pytest.raises(Exception):
+                with pytest.raises(Exception):  # noqa: B017
                     worker._execute_network_call_with_retry(mock_func, max_retries=3)
 
             # Check exponential backoff: 1.0, 2.0
@@ -668,6 +661,7 @@ class TestBaseWorkerAbstractMethods:
         class IncompleteWorker(BaseWorker):
             def _init_engine(self):
                 pass
+
             # Missing _execute_smoke_test, _synthesize, _get_platform_gpu_metrics
 
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
@@ -699,7 +693,7 @@ class TestBaseWorkerIdleTimeout:
         worker.running = True
         worker.max_empty_polls = 2
 
-        with patch("time.sleep") as mock_sleep:
+        with patch("time.sleep"):
             worker.run()
 
         # Should check queue depth after max_empty_polls

@@ -4,7 +4,7 @@ P2-3: Streaming TTS integration with WebSocket audio chunk streaming.
 """
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,7 +14,6 @@ from src.audiobook_studio.tts.streaming import (
     StreamingTTSResult,
     create_streaming_tts_engine,
 )
-from src.audiobook_studio.tts.port import RemoteTTSPort
 
 
 class TestStreamingTTSConfig:
@@ -108,9 +107,9 @@ class TestStreamingTTSEngine:
         """Test streaming synthesis in mock mode."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_streaming_tts_engine(cosyvoice_config)
-            
+
             chunks = list(engine.synthesize_stream("测试文本"))
-            
+
             assert len(chunks) > 0
             for chunk in chunks:
                 assert isinstance(chunk, StreamingTTSResult)
@@ -122,14 +121,14 @@ class TestStreamingTTSEngine:
     def test_synthesize_stream_first_chunk_latency(self, cosyvoice_config):
         """Test first chunk latency is under 500ms in mock mode."""
         import time
-        
+
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_streaming_tts_engine(cosyvoice_config)
-            
+
             start = time.time()
             chunks = list(engine.synthesize_stream("测试文本"))
             first_chunk_time = time.time() - start
-            
+
             # In mock mode, first chunk should be nearly instant
             assert first_chunk_time < 0.5  # 500ms
             assert len(chunks) > 0
@@ -138,9 +137,9 @@ class TestStreamingTTSEngine:
         """Test streaming synthesis with specific voice."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_streaming_tts_engine(melotts_config)
-            
+
             chunks = list(engine.synthesize_stream("测试文本", voice_id="zh-CN-Xiaoxiao"))
-            
+
             assert len(chunks) > 0
             for chunk in chunks:
                 assert chunk.audio_data is not None
@@ -149,20 +148,20 @@ class TestStreamingTTSEngine:
         """Test streaming synthesis with empty text."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_streaming_tts_engine(cosyvoice_config)
-            
+
             chunks = list(engine.synthesize_stream(""))
-            
+
             # Should handle gracefully
             assert isinstance(chunks, list)
 
     def test_mock_mode_via_config(self, cosyvoice_config):
         """Test that config.mock_mode property works."""
         config = StreamingTTSConfig(engine="cosyvoice_stream")
-        
+
         if "MOCK_TTS" in os.environ:
             del os.environ["MOCK_TTS"]
         assert config.mock_mode is False
-        
+
         os.environ["MOCK_TTS"] = "true"
         config2 = StreamingTTSConfig(engine="cosyvoice_stream")
         assert config2.mock_mode is True
@@ -184,11 +183,11 @@ class TestStreamingTTSEngineAsync:
         """Test async streaming synthesis."""
         with patch.dict(os.environ, {"MOCK_TTS": "true"}):
             engine = create_streaming_tts_engine(cosyvoice_config)
-            
+
             chunks = []
             async for chunk in engine.synthesize_stream_async("测试文本"):
                 chunks.append(chunk)
-            
+
             assert len(chunks) > 0
             for chunk in chunks:
                 assert isinstance(chunk, StreamingTTSResult)
@@ -201,7 +200,7 @@ class TestStreamingTTSPort:
     def test_implements_remote_tts_port(self):
         """Test that StreamingTTSEngine can be used as RemoteTTSPort."""
         from src.audiobook_studio.tts.streaming import StreamingTTSEngine
-        
+
         # Check it has the required methods
         assert hasattr(StreamingTTSEngine, "synthesize_stream")
         assert hasattr(StreamingTTSEngine, "synthesize_stream_async")

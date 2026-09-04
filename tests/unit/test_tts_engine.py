@@ -5,11 +5,10 @@ not just shallow mock-based assertions.
 """
 
 import asyncio
-import hashlib
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -28,10 +27,7 @@ from src.audiobook_studio.tts.engine import (
     TTSProsody,
     TTSTaskPayload,
     TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
-    cleanup_all_engines,
-    initialize_all_engines,
     probe_tts_engines,
     rate_limiter,
     tts_retry_policy,
@@ -712,7 +708,7 @@ class TestEdgeCases:
         await backend.initialize()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "out.mp3"
+            Path(tmpdir) / "out.mp3"
             # Validation happens at payload creation time
             with pytest.raises(ValueError, match="text must be non-empty"):
                 TTSTaskPayload(
@@ -801,7 +797,6 @@ class TestProbeTtsEngines:
 
     @staticmethod
     def _patch_httpx(monkeypatch, status_code: int = 200, error: BaseException | None = None) -> None:
-        from unittest.mock import patch as _patch
 
         fake = TestProbeTtsEngines._fake_client(status_code, error)
         # probe_tts_engines does `import httpx; httpx.AsyncClient(...)` locally,

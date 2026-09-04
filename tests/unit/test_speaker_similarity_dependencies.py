@@ -13,7 +13,7 @@ Test SpeakerSimilarityMetric dependency handling — 红线A (P2.13 §2.1).
 
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.audiobook_studio.quality.metrics import (
     ECAPATDNNBackend,

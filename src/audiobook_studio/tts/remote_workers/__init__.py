@@ -7,11 +7,11 @@ Usage:
     from audiobook_studio.tts.remote_workers import BaseWorker, LightningWorker, ModalWorker, BaiduWorker, KaggleWorker
 """
 
+from .baidu_worker import BaiduWorker
 from .base_worker import BaseWorker, R2Uploader
+from .kaggle_worker import KaggleWorker
 from .lightning_worker import LightningWorker
 from .modal_worker import ModalWorker
-from .baidu_worker import BaiduWorker
-from .kaggle_worker import KaggleWorker
 
 __all__ = [
     "BaseWorker",

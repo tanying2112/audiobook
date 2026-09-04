@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, status
-
-from ..exceptions import DomainError
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import DomainError
 from ..models.audio_segment import AudioSegment
 from ..models.paragraph import Paragraph
 from ..models.quality import Quality
@@ -128,12 +127,16 @@ async def create_paragraph(paragraph: ParagraphSchema, db: AsyncSession = Depend
     return db_par.to_schema()
 
 
-@router.get("/", response_model=List[ParagraphSchema])
+@router.get("/", response_model=List[Dict[str, Any]])
 async def list_paragraphs(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_async_db)):
-    """List all paragraphs."""
+    """List all paragraphs.
+
+    返回扁平化完整字段（含标注/编辑/路由/质检），供前端 ChapterTimeline 直接展示，
+    避免 N+1 次 detail 查询。
+    """
     result = await db.execute(select(Paragraph).offset(skip).limit(limit))
     items = result.scalars().all()
-    return [p.to_schema() for p in items]
+    return [p.to_full_dict() for p in items]
 
 
 @router.get("/{paragraph_id}", response_model=ParagraphSchema)

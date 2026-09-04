@@ -9,13 +9,11 @@ Covers:
 - _publish_to_audiobookshelf (MIME type mapping, upload flow)
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-
-from src.audiobook_studio.exceptions import DomainError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from src.audiobook_studio.exceptions import DomainError
 
 # ===========================================================================
 # Schema tests
@@ -79,7 +77,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_project_not_found(self):
-        from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
 
@@ -101,7 +98,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_project_not_completed(self):
-        from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
 
@@ -123,7 +119,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_invalid_destination(self):
-        from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, publish_project
 
@@ -145,7 +140,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_valid_publish_creates_job(self):
-        from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import PublishRequest, _publish_jobs, publish_project
 
@@ -174,7 +168,6 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_publish_with_audiobookshelf_config(self):
-        from sqlalchemy import select
 
         from src.audiobook_studio.api.publish import (
             AudiobookshelfConfig,
@@ -256,7 +249,6 @@ class TestPublishJobEndpoints:
 
     def test_get_job_not_found(self):
         import asyncio
-
 
         from src.audiobook_studio.api.publish import get_publish_job
 
@@ -462,7 +454,6 @@ class TestAudiobookshelfMimeTypes:
         # The _mime_type function is a local function inside _publish_to_audiobookshelf.
         # We can't call it directly, but we can test by checking the function source.
         import inspect
-        from pathlib import Path
 
         from src.audiobook_studio.api.publish import _publish_to_audiobookshelf
 
@@ -593,7 +584,6 @@ class TestPodcastRSSFeedEndpoint:
     async def test_project_not_found(self):
         from unittest.mock import AsyncMock, MagicMock
 
-
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
 
         mock_db = AsyncMock()
@@ -660,7 +650,7 @@ class TestGeneratePodcastRss:
 
     @pytest.mark.asyncio
     async def test_returns_episode_count(self):
-        from unittest.mock import AsyncMock, MagicMock, PropertyMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from src.audiobook_studio.api.publish import _generate_podcast_rss
         from src.audiobook_studio.models.audio_segment import AudioSegment

@@ -190,7 +190,6 @@ def _plugin_stage_handler_class(factory: Callable[..., Any]) -> Type[StageHandle
 
 
 from ..schemas import ExtractionInput
-from .extract import ExtractPipeline
 
 
 class ExtractStage(StageHandler):
@@ -254,9 +253,6 @@ class ExtractStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         # For extract stage, chapter may not exist yet - write_extract creates it
-        from sqlalchemy import select
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from sqlalchemy.orm import Session
 
         from ..models import Paragraph
         from .persistence import _acommit, _aexecute, write_extract
@@ -321,7 +317,6 @@ class AnalyzeStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if chapter:
-            from .persistence import write_analyze
 
             # ``write_analyze`` is async (see persistence.py); live persistence
             # runs via ``apersist`` below.
@@ -343,10 +338,7 @@ class AnalyzeStage(StageHandler):
             await write_analyze(db, chapter, result)
 
 
-from .annotate_paragraph import AnnotateParagraphPipeline
-
-
-class AnnotateStage(StageHandler):
+class AnnotateStage(StageHandler):  # noqa: E303
     """Annotate stage: annotate paragraph with prosody metadata."""
 
     async def run(self, **kwargs: Any) -> Any:
@@ -497,11 +489,8 @@ class AnnotateStage(StageHandler):
             result._paragraph_id = para.id
 
 
-from unittest.mock import MagicMock
-
-from ..schemas.paragraph import ParagraphAnnotation
+from ..schemas.paragraph import ParagraphAnnotation  # noqa: E303
 from ..schemas.tts_edit import TtsEditInput
-from .edit_for_tts import EditForTtsPipeline
 
 
 class EditStage(StageHandler):
@@ -567,7 +556,6 @@ class EditStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if paragraph:
-            from .persistence import write_edit
 
             # ``write_edit`` is async (see persistence.py); live persistence
             # runs via ``apersist`` below.
@@ -592,7 +580,6 @@ class EditStage(StageHandler):
 from dataclasses import asdict
 
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
-from .audio_postprocess import AudioPostProcessor
 
 
 class AudioPostprocessStage(StageHandler):
@@ -699,7 +686,6 @@ class AudioPostprocessStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if paragraph:
-            from .persistence import write_audio_postprocess
 
             # ``write_audio_postprocess`` is async (see persistence.py); live
             # persistence runs via ``apersist`` below. Sync path bridges.
@@ -744,7 +730,6 @@ class ReviewStage(StageHandler):
     async def run(self, **kwargs: Any) -> Any:
         import json
         import logging
-        import os
 
         from ..schemas.book import CharacterVoiceBinding
 
@@ -888,12 +873,8 @@ class ReviewStage(StageHandler):
         pass
 
 
-from unittest.mock import MagicMock
-
-from ..schemas.book import CharacterVoiceBinding
-from ..schemas.paragraph import ParagraphAnnotation
+from ..schemas.book import CharacterVoiceBinding  # noqa: E303
 from ..schemas.tts_routing import TtsRoutingInput
-from .synthesize import SynthesizePipeline
 
 
 class SynthesizeStage(StageHandler):
@@ -1032,8 +1013,7 @@ class SynthesizeStage(StageHandler):
                 await write_synthesize(db, project_id, chapter, paragraph, seg_dict)
 
 
-from .quality_check import QualityCheckPipeline
-from .segment import SegmentConfig, SegmentPipeline, SegmentStrategy
+from .segment import SegmentPipeline
 
 
 class QualityStage(StageHandler):
@@ -1110,7 +1090,6 @@ class QualityStage(StageHandler):
         paragraph_index: Optional[int] = None,
     ) -> None:
         if project_id and chapter and paragraph:
-            from .persistence import write_quality
 
             # ``write_quality`` is async (see persistence.py); live persistence
             # runs via ``apersist`` below.
@@ -1243,7 +1222,6 @@ class SegmentStage(StageHandler):
     ) -> None:
         # Segment stage updates chapter with segmentation results
         if project_id and chapter:
-            from .persistence import write_segment
 
             # ``write_segment`` is async (see persistence.py); live persistence
             # runs via ``apersist`` below.

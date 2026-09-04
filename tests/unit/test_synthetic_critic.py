@@ -11,14 +11,11 @@ Verifies:
 7. Serialization (to_dict / from_dict)
 """
 
-import sys
-from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
 from audiobook_studio.feedback.critics.base import (
-    BaseCritic,
     CriticEnsemble,
     CriticEnsembleEvaluator,
     CriticResult,
@@ -27,9 +24,7 @@ from audiobook_studio.feedback.critics.base import (
 )
 from audiobook_studio.feedback.critics.synthetic_critic import (
     DEFAULT_CALIBRATION_SAMPLES,
-    CalibrationResult,
     CalibrationSample,
-    SyntheticCritic,
     _compute_confusion_matrix,
     _compute_f1_per_class,
     create_synthetic_critic,

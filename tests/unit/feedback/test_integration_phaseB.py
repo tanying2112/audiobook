@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 import src.audiobook_studio.feedback.integration as imod
 from src.audiobook_studio.feedback.integration import (
     _log_self_iteration_event,
@@ -82,7 +80,12 @@ def test_collect_pipeline_feedback():
 def test_save_quality_feedback():
     collector = _FakeCollector()
     out = save_quality_feedback(
-        collector, "quality_judge", 1, 2, 3, 4,
+        collector,
+        "quality_judge",
+        1,
+        2,
+        3,
+        4,
         quality_judgment={"overall_score": 0.5},
         corrected_judgment={"overall_score": 0.9},
         rationale="fixed",
@@ -94,8 +97,14 @@ def test_save_quality_feedback():
 def test_save_user_rating_feedback():
     collector = _FakeCollector()
     out = save_user_rating_feedback(
-        collector, "user_rating", 1, 2, 3, 4,
-        user_rating={"rating": 5}, rationale="ok",
+        collector,
+        "user_rating",
+        1,
+        2,
+        3,
+        4,
+        user_rating={"rating": 5},
+        rationale="ok",
     )
     assert isinstance(out, Path)
 

@@ -1,7 +1,6 @@
 """Coverage tests for feedback/ab_test.py — target ≥85% branch coverage."""
 
-import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

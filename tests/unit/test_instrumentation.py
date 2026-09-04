@@ -8,7 +8,6 @@ Covers:
 - ``instrument_app`` end-to-end with mocked OpenTelemetry + Prometheus
 """
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest

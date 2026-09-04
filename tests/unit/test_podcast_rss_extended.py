@@ -1,14 +1,11 @@
 """publish/podcast_rss_generator.py 扩展测试 — 提升覆盖率到 80%+。"""
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 
-class TestPodcastRSSGeneratorExtended:
+class TestPodcastRSSGeneratorExtended:  # noqa: E303
     """PodcastRSSGenerator 深度覆盖。"""
 
     def _make_feed(self, **kwargs):

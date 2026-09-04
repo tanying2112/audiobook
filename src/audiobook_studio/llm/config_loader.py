@@ -186,6 +186,7 @@ class LLMProvidersConfig(BaseSettings):
         data: Dict[str, Any] = {}
         try:
             from ..config.unified import get_unified_config
+
             unified = get_unified_config()
             data = unified.load_yaml_config("llm_providers") or {}
         except (ImportError, AttributeError, OSError):
@@ -194,11 +195,12 @@ class LLMProvidersConfig(BaseSettings):
         # If UnifiedConfig couldn't find it, try the explicit path resolution
         if not data:
             import yaml
+
             if config_path is None:
                 cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
                 pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
                 config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
-            
+
             if Path(config_path).exists():
                 with open(config_path, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
@@ -233,18 +235,19 @@ class LLMProvidersConfig(BaseSettings):
         # Merge plugin-registered LLM provider factories
         try:
             from ..plugins import get_plugin_manager
+
             plugin_mgr = get_plugin_manager()
             plugin_factories = plugin_mgr.get_llm_provider_factories()
-            for provider_name, record in plugin_factories.items():
+            for _provider_name, record in plugin_factories.items():
                 provider_config = record.factory()
                 if provider_config:
                     # Convert to dict for Pydantic validation (avoids double-validation of ProviderConfig instances)
-                    if hasattr(provider_config, 'model_dump'):
+                    if hasattr(provider_config, "model_dump"):
                         providers.append(provider_config.model_dump())
                     else:
                         providers.append(provider_config)
             # Re-sort after adding plugin providers
-            providers.sort(key=lambda p: p.get('priority', 100) if isinstance(p, dict) else getattr(p, 'priority', 100))
+            providers.sort(key=lambda p: p.get("priority", 100) if isinstance(p, dict) else getattr(p, "priority", 100))
         except Exception as e:
             logger.warning("Failed to load plugin LLM providers: %s", e)
 
@@ -266,4 +269,3 @@ class LLMProvidersConfig(BaseSettings):
     def get_all_enabled(self) -> List[ProviderConfig]:
         """Get all enabled providers."""
         return [p for p in self.providers if p.enabled]
-

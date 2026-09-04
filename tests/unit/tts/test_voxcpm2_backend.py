@@ -4,10 +4,9 @@ Target: 70%+ coverage of voxcpm2_backend.py (216 lines, ~13% coverage).
 Tests: initialization, synthesize, voice listing, reference audio, error handling, mock mode.
 """
 
-import hashlib
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -17,10 +16,11 @@ import pytest
 # 会抛出 TypeError 而非 ImportError, importorskip 不会捕获, 故改用 try/except 统一跳过。
 pytestmark = pytest.mark.skip_env_missing
 try:
-    import voxcpm  # noqa: F401
     # voxcpm pulls the real (environment-broken) torch into sys.modules; restore
     # the conftest canonical torch mock so it does not leak into later tests.
     from tests.conftest_minimal import _force_torch_mock
+
+    import voxcpm  # noqa: F401
 
     _force_torch_mock()
     from src.audiobook_studio.tts.engine import (
@@ -67,7 +67,7 @@ class TestVOXCPM2Constants:
         for voice in expected_voices:
             assert voice in VOXCPM2_VOICES
 
-        for voice_id, info in VOXCPM2_VOICES.items():
+        for _voice_id, info in VOXCPM2_VOICES.items():
             assert "name" in info
             assert "language" in info
             assert "gender" in info
@@ -237,7 +237,7 @@ class TestVoxCPM2BackendSynthesis:
         await backend.initialize()
 
         output_path = tmp_path / "prosody_test.mp3"
-        result = await backend._synthesize_internal(
+        await backend._synthesize_internal(
             text="测试韵律控制",
             voice_id="zh_female_1",
             output_path=output_path,

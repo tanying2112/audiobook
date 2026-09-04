@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import * as api from '../api'
+import api from '../api'
 
 export interface User {
   id: number
@@ -60,7 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     formData.append('username', credentials.username)
     formData.append('password', credentials.password)
 
-    const { data } = await api.default.post<TokenResponse>('/api/auth/login', formData, {
+    const { data } = await api.post<TokenResponse>('/api/auth/login', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
 
@@ -72,7 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!refreshToken.value) return null
     
     try {
-      const { data } = await api.default.post<TokenResponse>('/api/auth/refresh', {
+      const { data } = await api.post<TokenResponse>('/api/auth/refresh', {
         refresh_token: refreshToken.value,
       })
       setTokens(data.access_token, data.refresh_token)
@@ -86,7 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUser(): Promise<void> {
     if (!token.value) return
     try {
-      const { data } = await api.default.get<User>('/api/auth/me')
+      const { data } = await api.get<User>('/api/auth/me')
       setUser(data)
     } catch {
       clearAuth()

@@ -5,7 +5,7 @@ the pipeline so the translate/synthesize paths run without external services.
 """
 
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 

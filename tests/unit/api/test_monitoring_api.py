@@ -1,12 +1,10 @@
 """Tests for monitoring API endpoints."""
 
 import json
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src.audiobook_studio.api.monitoring import (
@@ -22,7 +20,7 @@ from src.audiobook_studio.exceptions import FileNotFoundError, InfrastructureErr
 
 @pytest.fixture
 def client():
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock
 
     from fastapi import FastAPI
 
@@ -311,9 +309,7 @@ class TestMonitoringRouter:
 def test_list_projects_with_metrics_endpoint(client, tmp_path):
     from unittest.mock import AsyncMock, MagicMock
 
-    from fastapi import FastAPI
-
-    from src.audiobook_studio.api.dependencies import get_async_db
+    from src.audiobook_studio.api.dependencies import get_async_db  # noqa: E303
 
     with patch("src.audiobook_studio.api.monitoring.reports_dir") as mock_reports_dir:
         mock_project = MagicMock()

@@ -1,5 +1,3 @@
-import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -9,7 +7,6 @@ import pytest
 
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
-from src.audiobook_studio.schemas.quality import FixSuggestion
 from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 # Add the src directory to the path so we can import the module as a package

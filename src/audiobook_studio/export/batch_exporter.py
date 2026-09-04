@@ -4,11 +4,9 @@ D4 — 批量导出编排器
 整合 M4B、SRT、Audio-Ducking 模块，提供全流程导出 API。
 """
 
-import json
 import logging
 import shutil
 import subprocess
-import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,10 +14,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
-from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
+from .audio_ducking import MixConfig, mix_full_pipeline
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
 from .mastering import MasteringConfig, master_audio
-from .mp3 import ChapterInfo, Mp3Metadata, export_mp3_chapters, write_chapters_only, write_id3_tags
+from .mp3 import Mp3Metadata, export_mp3_chapters, write_chapters_only
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 
 logger = logging.getLogger(__name__)
@@ -249,7 +247,7 @@ def _build_subtitle_entries(
 
 def _build_project_metadata(chapter_data: List[Dict[str, Any]], project) -> M4bMetadata:
     """构建 M4B 元数据."""
-    first_chapter = chapter_data[0]["chapter"] if chapter_data else None
+    chapter_data[0]["chapter"] if chapter_data else None
     return M4bMetadata(
         title=project.title or "Untitled Audiobook",
         artist=project.author or "Unknown",

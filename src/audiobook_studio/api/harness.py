@@ -13,7 +13,7 @@ import logging
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -21,9 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..feedback.critics.base import CriticEnsembleEvaluator, CriticResult, CriticType
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
-from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
 from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
 from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
 from ..models.feedback_record import FeedbackRecord
@@ -548,7 +546,6 @@ async def get_ab_tests(
     Since A/B tests run in-memory, we provide the latest results from
     the promotion gate evaluation.
     """
-    from sqlalchemy import select
 
     # Build A/B test entries from prompt version comparison
     tests: List[ABTestResult] = []

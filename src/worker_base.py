@@ -227,7 +227,17 @@ class BaseWorker(abc.ABC):
                 "studio_id": self.studio_id,
                 "duration_ms": len(audio_bytes) * 1000 // 48000,  # rough estimate for 24kHz mono
             }
-        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError, MemoryError, TypeError, KeyError, AttributeError) as e:
+        except (  # noqa: B014
+            ValueError,
+            RuntimeError,
+            ConnectionError,
+            TimeoutError,
+            OSError,
+            MemoryError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as e:
             print(f"💥 [{self.worker_id}] Task {task_id} suffered pipeline hardware crash: {e}", file=sys.stderr)
             return {
                 "id": task_id,

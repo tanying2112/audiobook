@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,12 +34,29 @@ from src.audiobook_studio.tasks.tts_tasks import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _real_redis_exceptions(monkeypatch):
+    """conftest mocks the redis module as a bare MagicMock, so
+    redis.exceptions.RedisError is not a real exception class. Give tts_tasks a
+    real one so the redis error paths (`_FakeRedis` raising and the production
+    `except redis.exceptions.RedisError`) can raise and catch it."""
+    redis_err = Exception
+    monkeypatch.setattr(tts_mod.redis, "exceptions", MagicMock(RedisError=redis_err))
+    monkeypatch.setattr(tts_mod.redis, "RedisError", redis_err)
+
+
 class _FakeRedis:
     """Minimal Redis stand-in that records calls and yields configurable results."""
 
-    def __init__(self, *, evalsha_result: Any = 1, set_result: Any = True,
-                 smembers: set | None = None, get_result: Any = None,
-                 raise_on: set[str] = frozenset()):
+    def __init__(
+        self,
+        *,
+        evalsha_result: Any = 1,
+        set_result: Any = True,
+        smembers: set | None = None,
+        get_result: Any = None,
+        raise_on: set[str] = frozenset(),
+    ):
         self._evalsha = evalsha_result
         self._set = set_result
         self._smembers = smembers or set()
@@ -143,6 +159,7 @@ class _SeqDB:
 
 # ── Redis semaphore ──────────────────────────────────────────────────────────
 
+
 def test_acquire_semaphore_acquired() -> None:
     task = _make_task()
     fake = _FakeRedis(evalsha_result=1)
@@ -187,6 +204,7 @@ def test_release_semaphore_not_acquired_noop() -> None:
 
 # ── Idempotency ─────────────────────────────────────────────────────────────
 
+
 def test_check_and_set_idempotency_acquired() -> None:
     task = _make_task()
     fake = _FakeRedis(set_result=True)
@@ -209,6 +227,7 @@ def test_check_and_set_idempotency_exception_proceeds() -> None:
 
 
 # ── Failed paragraphs ───────────────────────────────────────────────────────
+
 
 def test_record_failed_paragraph() -> None:
     task = _make_task()
@@ -255,6 +274,7 @@ def test_clear_failed_paragraphs_redis_error() -> None:
 
 
 # ── Checkpoints ─────────────────────────────────────────────────────────────
+
 
 def test_save_checkpoint() -> None:
     task = _make_task()
@@ -310,6 +330,7 @@ def test_clear_checkpoint_redis_error() -> None:
 
 # ── Port payload / synthesis via port (HTTP) ──────────────────────────────────
 
+
 def test_build_port_payload_emotion() -> None:
     payload = _build_port_payload("hi", "v1", {"rate": 1.5, "pitch": 2.0, "emotion": "happy"})
     assert payload.prosody.rate == 1.5
@@ -333,7 +354,8 @@ def test_synthesize_via_port_success(tmp_path: Path) -> None:
 
     port = MagicMock()
     port.submit = AsyncMock(return_value=True)
-    st = _Status(); st.status = TTSStatus.DONE
+    st = _Status()
+    st.status = TTSStatus.DONE
     port.get_status = AsyncMock(return_value=st)
     port.get_result = AsyncMock(return_value=_Result())
 
@@ -366,7 +388,8 @@ def test_synthesize_via_port_failed_status() -> None:
 
     port = MagicMock()
     port.submit = AsyncMock(return_value=True)
-    st = _Status(); st.status = TTSStatus.FAILED
+    st = _Status()
+    st.status = TTSStatus.FAILED
     port.get_status = AsyncMock(return_value=st)
 
     async def _run():
@@ -387,7 +410,8 @@ def test_synthesize_via_port_unknown_status() -> None:
 
     port = MagicMock()
     port.submit = AsyncMock(return_value=True)
-    st = _Status(); st.status = _WeirdStatus()
+    st = _Status()
+    st.status = _WeirdStatus()
     port.get_status = AsyncMock(return_value=st)
 
     async def _run():
@@ -444,6 +468,7 @@ def test_get_audio_duration_exception_fallback(tmp_path: Path) -> None:
 
 # ── Chapter synthesis flow (DB + Redis + Port mocked) ───────────────────────
 
+
 def _fake_db_session(project: Any = None, chapter: Any = None):
     sess = AsyncMock()
 
@@ -452,6 +477,7 @@ def _fake_db_session(project: Any = None, chapter: Any = None):
             def scalar_one_or_none(self):
                 # First call -> project, second -> chapter (positional heuristic)
                 return project if _fake_db_session._call == 0 else chapter
+
         _fake_db_session._call += 1
         return _R()
 
@@ -461,9 +487,11 @@ def _fake_db_session(project: Any = None, chapter: Any = None):
 
 
 async def _run_chapter(task: TTSChapterTask, paragraphs, *, project=None, chapter=None):
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "SynthesizePipeline") as SP, \
-         patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=1, set_result=True)):
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "SynthesizePipeline") as SP,
+        patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=1, set_result=True)),
+    ):
         ASL.return_value.__aenter__.return_value = _fake_db_session(project, chapter)
         pipe = MagicMock()
         pipe._crossfade_stitch.return_value = Path("/tmp/chapter.wav")
@@ -487,9 +515,7 @@ async def _run_chapter(task: TTSChapterTask, paragraphs, *, project=None, chapte
             port.get_status = AsyncMock(return_value=st)
             port.get_result = AsyncMock(return_value=_Result())
             gp.return_value = port
-            return await tts_mod._run_synthesize_chapter_async(
-                task, 1, 2, 3, paragraphs
-            )
+            return await tts_mod._run_synthesize_chapter_async(task, 1, 2, 3, paragraphs)
 
 
 def test_run_chapter_success(tmp_path: Path, monkeypatch) -> None:
@@ -499,6 +525,7 @@ def test_run_chapter_success(tmp_path: Path, monkeypatch) -> None:
 
     class _Proj:
         id = 1
+
     class _Chap:
         id = 2
 
@@ -523,18 +550,19 @@ def test_run_chapter_project_not_found() -> None:
 def test_run_chapter_semaphore_limit() -> None:
     task = _make_task()
     para = [{"paragraph_id": "p1", "paragraph_index": 0, "text": "hello", "voice_id": "v1", "prosody": {}}]
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=0)):
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=0)),
+    ):
         ASL.return_value.__aenter__.return_value = _fake_db_session(None, None)
         # semaphore limit reached -> immediate failure before DB
-        result = asyncio.run(
-            tts_mod._run_synthesize_chapter_async(task, 1, 2, 3, para)
-        )
+        result = asyncio.run(tts_mod._run_synthesize_chapter_async(task, 1, 2, 3, para))
     assert result["status"] == "failed"
     assert "concurrency limit" in result["error"]
 
 
 # ── resume_chapter_task (Celery entry) ───────────────────────────────────────
+
 
 class _Chap:
     id = 2
@@ -551,8 +579,10 @@ class _Para:
 def test_resume_chapter_not_found() -> None:
     task = _make_task()
     db = _SeqDB([{"scalar": None}])
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_run_synthesize_chapter_async") as run:
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_run_synthesize_chapter_async") as run,
+    ):
         ASL.return_value.__aenter__.return_value = db
         res = resume_chapter_task(task, 1, 2, 3)
     assert res["status"] == "failed"
@@ -563,8 +593,10 @@ def test_resume_chapter_not_found() -> None:
 def test_resume_chapter_no_paragraphs() -> None:
     task = _make_task()
     db = _SeqDB([{"scalar": _Chap()}, {"scalars": []}])
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_run_synthesize_chapter_async") as run:
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_run_synthesize_chapter_async") as run,
+    ):
         ASL.return_value.__aenter__.return_value = db
         res = resume_chapter_task(task, 1, 2, 3)
     assert res["status"] == "failed"
@@ -575,8 +607,10 @@ def test_resume_chapter_no_paragraphs() -> None:
 def test_resume_chapter_delegates() -> None:
     task = _make_task()
     db = _SeqDB([{"scalar": _Chap()}, {"scalars": [_Para()]}])
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_run_synthesize_chapter_async") as run:
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_run_synthesize_chapter_async") as run,
+    ):
         ASL.return_value.__aenter__.return_value = db
         run.return_value = {"status": "completed"}
         res = resume_chapter_task(task, 1, 2, 3)
@@ -585,6 +619,7 @@ def test_resume_chapter_delegates() -> None:
 
 
 # ── synthesize_paragraph_task / _run_synthesize_paragraph_async ──────────────
+
 
 class _Proj:
     id = 1
@@ -608,9 +643,19 @@ class _ExistingSeg:
     voice_id = "v1"
 
 
-async def _run_paragraph(task, *, project=None, chapter=None, paragraph=None,
-                         existing=None, chapters=None, force: bool = True,
-                         run_impl=None, redis=None, use_wrapper: bool = False):
+async def _run_paragraph(
+    task,
+    *,
+    project=None,
+    chapter=None,
+    paragraph=None,
+    existing=None,
+    chapters=None,
+    force: bool = True,
+    run_impl=None,
+    redis=None,
+    use_wrapper: bool = False,
+):
     items = [
         {"scalar": project},
         {"scalar": chapter},
@@ -621,9 +666,11 @@ async def _run_paragraph(task, *, project=None, chapter=None, paragraph=None,
     db = _SeqDB(items)
     if redis is None:
         redis = _FakeRedis(evalsha_result=1, set_result=True)
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_get_redis", return_value=redis), \
-         patch.object(tts_mod, "_synthesize_via_port", new=run_impl or AsyncMock(return_value=(100, "kokoro"))):
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_get_redis", return_value=redis),
+        patch.object(tts_mod, "_synthesize_via_port", new=run_impl or AsyncMock(return_value=(100, "kokoro"))),
+    ):
         ASL.return_value.__aenter__.return_value = db
         with patch.object(task, "_get_port") as gp:
             gp.return_value = MagicMock()
@@ -669,8 +716,9 @@ def test_synthesize_paragraph_success(tmp_path: Path, monkeypatch) -> None:
         called["n"] += 1
         return 120, "kokoro"
 
-    res = asyncio.run(_run_paragraph(task, project=_Proj(), chapter=_Chap(),
-                                     paragraph=_ParaRow(), force=True, run_impl=_impl))
+    res = asyncio.run(
+        _run_paragraph(task, project=_Proj(), chapter=_Chap(), paragraph=_ParaRow(), force=True, run_impl=_impl)
+    )
     assert res["status"] == "completed"
     assert called["n"] == 1
 
@@ -678,10 +726,17 @@ def test_synthesize_paragraph_success(tmp_path: Path, monkeypatch) -> None:
 def test_synthesize_paragraph_skip_when_exists(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     task = _make_task()
-    res = asyncio.run(_run_paragraph(task, project=_Proj(), chapter=_Chap(),
-                                     paragraph=_ParaRow(), existing=_ExistingSeg(),
-                                     force=False,
-                                     run_impl=AsyncMock(return_value=(100, "kokoro"))))
+    res = asyncio.run(
+        _run_paragraph(
+            task,
+            project=_Proj(),
+            chapter=_Chap(),
+            paragraph=_ParaRow(),
+            existing=_ExistingSeg(),
+            force=False,
+            run_impl=AsyncMock(return_value=(100, "kokoro")),
+        )
+    )
     assert res["status"] == "skipped"
     assert res["file_path"] == "r2://existing.wav"
 
@@ -689,16 +744,20 @@ def test_synthesize_paragraph_skip_when_exists(tmp_path: Path, monkeypatch) -> N
 def test_synthesize_paragraph_task_wrapper(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     task = _make_task()
-    db = _SeqDB([
-        {"scalar": _Proj()},
-        {"scalar": _Chap()},
-        {"scalar": _ParaRow()},
-        {"scalar": None},
-        {"scalars": []},
-    ])
-    with patch.object(tts_mod, "AsyncSessionLocal") as ASL, \
-         patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=1, set_result=True)), \
-         patch.object(tts_mod, "_synthesize_via_port", new=AsyncMock(return_value=(100, "kokoro"))):
+    db = _SeqDB(
+        [
+            {"scalar": _Proj()},
+            {"scalar": _Chap()},
+            {"scalar": _ParaRow()},
+            {"scalar": None},
+            {"scalars": []},
+        ]
+    )
+    with (
+        patch.object(tts_mod, "AsyncSessionLocal") as ASL,
+        patch.object(tts_mod, "_get_redis", return_value=_FakeRedis(evalsha_result=1, set_result=True)),
+        patch.object(tts_mod, "_synthesize_via_port", new=AsyncMock(return_value=(100, "kokoro"))),
+    ):
         ASL.return_value.__aenter__.return_value = db
         with patch.object(task, "_get_port") as gp:
             gp.return_value = MagicMock()
@@ -708,6 +767,7 @@ def test_synthesize_paragraph_task_wrapper(tmp_path: Path, monkeypatch) -> None:
 
 # ── get_tts_status ───────────────────────────────────────────────────────────
 
+
 def _fake_async_result(state: str, info):
     r = MagicMock()
     r.state = state
@@ -716,9 +776,11 @@ def _fake_async_result(state: str, info):
 
 
 def test_get_tts_status_completed() -> None:
-    with patch.object(tts_mod.celery_app, "AsyncResult",
-                      return_value=_fake_async_result("SUCCESS", {"current": 5, "total": 5,
-                                                                   "paragraph_id": 3, "paragraph_index": 0})):
+    with patch.object(
+        tts_mod.celery_app,
+        "AsyncResult",
+        return_value=_fake_async_result("SUCCESS", {"current": 5, "total": 5, "paragraph_id": 3, "paragraph_index": 0}),
+    ):
         res = tts_mod.get_tts_status("abc")
     assert res["state"] == "SUCCESS"
     assert res["progress"] == "completed"
@@ -726,22 +788,21 @@ def test_get_tts_status_completed() -> None:
 
 
 def test_get_tts_status_failure() -> None:
-    with patch.object(tts_mod.celery_app, "AsyncResult",
-                      return_value=_fake_async_result("FAILURE", {"error": "boom"})):
+    with patch.object(tts_mod.celery_app, "AsyncResult", return_value=_fake_async_result("FAILURE", {"error": "boom"})):
         res = tts_mod.get_tts_status("abc")
     assert res["progress"] == "failed"
     assert res["error"] == "boom"
 
 
 def test_get_tts_status_processing() -> None:
-    with patch.object(tts_mod.celery_app, "AsyncResult",
-                      return_value=_fake_async_result("PROGRESS", "raw-info")):
+    with patch.object(tts_mod.celery_app, "AsyncResult", return_value=_fake_async_result("PROGRESS", "raw-info")):
         res = tts_mod.get_tts_status("abc")
     assert res["progress"] == "processing"
     assert "current" not in res  # info not a dict
 
 
 # ── verify_checkpoint_recovery ───────────────────────────────────────────────
+
 
 def test_verify_checkpoint_none() -> None:
     task = _make_task()
@@ -753,12 +814,14 @@ def test_verify_checkpoint_none() -> None:
 
 def test_verify_checkpoint_recovery_with_missing_segment() -> None:
     task = _make_task()
-    data = json.dumps({
-        "completed_paragraphs": [1],
-        "failed_paragraphs": [],
-        "segments": [{"segment_id": "s1", "file_path": "/tmp/does_not_exist.wav"}],
-        "chapter_audio_path": None,
-    })
+    data = json.dumps(
+        {
+            "completed_paragraphs": [1],
+            "failed_paragraphs": [],
+            "segments": [{"segment_id": "s1", "file_path": "/tmp/does_not_exist.wav"}],
+            "chapter_audio_path": None,
+        }
+    )
     fake = _FakeRedis(get_result=data)
     with patch.object(tts_mod, "_get_redis", return_value=fake):
         res = tts_mod.verify_checkpoint_recovery(task, 1, 2)
@@ -769,19 +832,22 @@ def test_verify_checkpoint_recovery_with_missing_segment() -> None:
 def test_verify_checkpoint_recovery_valid(tmp_path: Path) -> None:
     seg = tmp_path / "ok.wav"
     seg.write_bytes(b"data")
-    data = json.dumps({
-        "completed_paragraphs": [1],
-        "failed_paragraphs": [],
-        "segments": [{"segment_id": "s1", "file_path": str(seg)}],
-        "chapter_audio_path": None,
-    })
+    data = json.dumps(
+        {
+            "completed_paragraphs": [1],
+            "failed_paragraphs": [],
+            "segments": [{"segment_id": "s1", "file_path": str(seg)}],
+            "chapter_audio_path": None,
+        }
+    )
     fake = _FakeRedis(get_result=data)
     with patch.object(tts_mod, "_get_redis", return_value=fake):
-        res = tts_mod.verify_checkpoint_recovery(task := _make_task(), 1, 2)
+        res = tts_mod.verify_checkpoint_recovery(_task := _make_task(), 1, 2)  # noqa: F841
     assert res["verified"] is True
 
 
 # ── stress_test_concurrent_synthesis ─────────────────────────────────────────
+
 
 def test_stress_test_concurrent_synthesis() -> None:
     task = _make_task()
@@ -789,16 +855,16 @@ def test_stress_test_concurrent_synthesis() -> None:
     submitted.id = "sub-1"
 
     async_res = MagicMock()
-    async_res.get.return_value = {
-        "status": "completed", "succeeded": 1, "failed": 0, "segments": []
-    }
+    async_res.get.return_value = {"status": "completed", "succeeded": 1, "failed": 0, "segments": []}
 
     def _delay(**kwargs):
         return submitted
 
-    with patch.object(tts_mod.synthesize_chapter_task, "delay", side_effect=_delay), \
-         patch.object(tts_mod.celery_app, "AsyncResult", return_value=async_res), \
-         patch.object(tts_mod, "_run_synthesize_chapter_async", return_value={"status": "completed"}) as run:
+    with (
+        patch.object(tts_mod.synthesize_chapter_task, "delay", side_effect=_delay),
+        patch.object(tts_mod.celery_app, "AsyncResult", return_value=async_res),
+        patch.object(tts_mod, "_run_synthesize_chapter_async", return_value={"status": "completed"}) as run,
+    ):
         res = tts_mod.stress_test_concurrent_synthesis(task, chapter_count=2, paragraphs_per_chapter=1)
     assert res["total_chapters"] == 2
     assert len(res["results"]) == 2
