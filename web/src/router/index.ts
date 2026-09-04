@@ -141,6 +141,11 @@ const router = createRouter({
       name: 'admin',
       component: () => import('../views/AdminView.vue'),
     },
+    {
+      path: '/projects/:id/audio-segments',
+      name: 'audio-segments',
+      component: () => import('../views/AudioSegmentEditor.vue'),
+    },
   ],
 })
 

@@ -53,6 +53,7 @@
           <el-button text type="primary" @click="go('translation')">{{ t('overview.links.translation') }}</el-button>
           <el-button text type="primary" @click="go('voice-clone')">{{ t('overview.links.voiceClone') }}</el-button>
           <el-button text type="primary" @click="go('dashboard')">{{ t('overview.links.dashboard') }}</el-button>
+          <el-button text type="primary" @click="go('audio-segments')">{{ t('overview.links.audioSegments') }}</el-button>
         </div>
       </el-card>
     </template>
@@ -113,6 +114,7 @@ function go(target: string) {
     translation: `/projects/${projectId}/translation`,
     'voice-clone': `/projects/${projectId}/voice-clone`,
     dashboard: `/projects/${projectId}/dashboard`,
+    'audio-segments': `/projects/${projectId}/audio-segments`,
   }
   if (map[target]) router.push(map[target])
 }
