@@ -11,7 +11,14 @@ export interface AdminUser {
   [key: string]: unknown
 }
 
-export async function fetchUsers(): Promise<{ users: AdminUser[] }> {
+export interface AdminRole {
+  name: string
+  description?: string
+  permissions?: string[]
+  [key: string]: unknown
+}
+
+export async function fetchUsers(): Promise<AdminUser[]> {
   const { data } = await api.get('/api/auth/users')
   return data
 }
@@ -25,7 +32,7 @@ export async function deleteUser(userId: number): Promise<void> {
   await api.delete(`/api/auth/users/${userId}`)
 }
 
-export async function fetchRoles(): Promise<{ roles: string[] }> {
+export async function fetchRoles(): Promise<AdminRole[]> {
   const { data } = await api.get('/api/auth/roles')
   return data
 }

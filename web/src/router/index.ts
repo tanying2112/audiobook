@@ -136,6 +136,11 @@ const router = createRouter({
       name: 'sop-rules',
       component: () => import('../views/SopRulesView.vue'),
     },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminView.vue'),
+    },
   ],
 })
 
