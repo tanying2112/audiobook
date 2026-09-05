@@ -1648,6 +1648,13 @@ export default {
       voiceClone: 'Voice Cloning',
       dashboard: 'Project Dashboard',
       audioSegments: 'Audio Editor',
+      export: 'Export',
+      publish: 'Publish',
+      autoRun: 'Auto Run',
+      tabs: {
+        overview: 'Overview',
+        autoRun: 'Auto Run',
+      },
     },
   },
   segments: {

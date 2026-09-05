@@ -1647,6 +1647,13 @@ publish: {
       voiceClone: '声音克隆',
       dashboard: '项目仪表盘',
       audioSegments: '音频精修',
+      export: '导出',
+      publish: '发布',
+      autoRun: '自动运行',
+      tabs: {
+        overview: '总览',
+        autoRun: '自动运行',
+      },
     },
   },
   segments: {

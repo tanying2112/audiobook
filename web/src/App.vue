@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { useI18n } from './i18n'
 import Sidebar from './components/Sidebar.vue'
+import ProjectTabs from './components/ProjectTabs.vue'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -12,6 +13,8 @@ const isSidebarOpen = ref(false)
 const isPublicPage = computed(() =>
   route.matched.some((record) => record.meta.public)
 )
+
+const isProjectSubPage = computed(() => /^\/projects\/\d+\/.+/.test(route.path))
 
 function toggleSidebar() {
   isSidebarOpen.value = !isSidebarOpen.value
@@ -67,6 +70,7 @@ function closeSidebar() {
 
     <!-- Main content -->
     <main class="main-content" @click="closeSidebar">
+      <ProjectTabs v-if="isProjectSubPage" />
       <router-view />
     </main>
   </div>
