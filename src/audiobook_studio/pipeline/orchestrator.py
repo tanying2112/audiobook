@@ -532,6 +532,10 @@ async def run_stage(
             "chapter": chapter,
             "paragraph": para,
             "paragraph_index": paragraph_index,
+            # Stages that need to resolve related rows (e.g. QualityStage →
+            # AudioSegment) receive the session; they must handle both sync
+            # Session and AsyncSession.
+            "db": db,
         }
 
         # Inject raw_text from chapter for analyze stage
