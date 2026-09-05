@@ -29,13 +29,12 @@ from unittest.mock import MagicMock
 class _CanonicalAliasLoader(importlib.abc.Loader):
     """Loader that yields the already-loaded canonical ``src.`` module object.
 
-    ``_AliasFinder.find_spec`` pre-populates ``sys.modules[name]`` with the
-    canonical object before returning a spec, so the import machinery returns it
-    directly and ``_load``/``_init_module_attrs`` never runs on it. Doing
-    otherwise — handing the canonical module back from ``create_module`` — makes
-    CPython overwrite its ``__spec__`` with the alias spec (name/``__name__``
-    disagree), which intermittently surfaces as ``cannot import name '__all__'
-    from '<unknown module name>'``. The stubs below are only a safe fallback.
+    ``_AliasFinder.find_spec`` returns specs named after the *canonical* module
+    and pre-populates ``sys.modules[name]``, so ``_load``/``_init_module_attrs``
+    either never runs on the shared canonical object or, when it does, re-stamps
+    ``__spec__`` under the canonical name (so ``__spec__.name == __name__`` and
+    no ``cannot import name '__all__' from '<unknown module name>'`` mismatch
+    can arise). The stubs below are only a safe fallback.
     """
 
     def __init__(self, canonical: str):
@@ -59,17 +58,17 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
             # Canonical already imported: alias directly and reuse its spec.
             sys.modules[name] = existing
             return importlib.util.spec_from_loader(
-                name, existing.__loader__, origin=getattr(existing, "__file__", None)
+                canonical, existing.__loader__, origin=getattr(existing, "__file__", None)
             )
         try:
             canonical_mod = importlib.import_module(canonical)
         except Exception:
             return None
-        # Pre-populate sys.modules so the canonical object is returned without
-        # running `_load`/`_init_module_attrs` on it (see loader docstring).
+        # Pre-populate the alias key; spec is named after the canonical module
+        # so its `__spec__` cannot disagree with `__name__` (see loader docstring).
         sys.modules[name] = canonical_mod
         return importlib.util.spec_from_loader(
-            name,
+            canonical,
             _CanonicalAliasLoader(canonical),
             origin=getattr(canonical_mod, "__file__", None),
         )

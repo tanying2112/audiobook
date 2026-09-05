@@ -79,13 +79,7 @@ import src.audiobook_studio  # noqa: F401
 
 
 class _AudiobookStudioAliasLoader:
-    """Loader yielding the already-executed canonical ``src.`` module.
-
-    ``find_spec`` below pre-populates ``sys.modules[name]`` with the canonical
-    object, so the import machinery returns it directly and never calls
-    ``create_module``/``exec_module``. These stubs exist only as a safe fallback
-    for any path that does reach ``_load``.
-    """
+    """Loader yielding the already-executed canonical ``src.`` module."""
 
     def __init__(self, module):
         self._module = module
@@ -94,6 +88,7 @@ class _AudiobookStudioAliasLoader:
         return self._module
 
     def exec_module(self, module):
+        # The canonical module is already fully executed; nothing to do.
         return None
 
 
@@ -108,19 +103,29 @@ class _AudiobookStudioAliasFinder:
             canonical = importlib.import_module(alt)
         except ImportError:
             return None
-        # Pre-populate sys.modules so `_find_and_load_unlocked` returns the
-        # canonical module WITHOUT invoking `_load`/`_init_module_attrs`. If we
-        # instead let `_load` run and hand it the canonical object from
-        # create_module, CPython overwrites the canonical module's `__spec__`
-        # with the alias spec, leaving `module.__name__` ("src.…") disagreeing
-        # with `module.__spec__.name` ("audiobook_studio.…"). That half-aliased
-        # object is what intermittently surfaces as
-        # ``cannot import name '__all__' from '<unknown module name>'`` under
-        # some collection orders. Pre-populating keeps the canonical pristine.
+        # Build the spec under the CANONICAL name (`alt`), not the alias, and
+        # pre-populate the alias key. Two reasons:
+        #
+        # 1. `_load` runs even after find_spec returns (CPython does not re-check
+        #    sys.modules), and `_init_module_attrs(override=True)` then stamps
+        #    `module.__spec__` onto whatever create_module returns — here the
+        #    canonical module. If spec.name is the alias ("audiobook_studio.X"),
+        #    that leaves `canonical.__name__` ("src.audiobook_studio.X")
+        #    disagreeing with `canonical.__spec__.name` — a half-aliased object
+        #    that intermittently surfaces as ``cannot import name '__all__' from
+        #    '<unknown module name>'`` under some collection orders. Naming the
+        #    spec with `alt` keeps `__spec__.name == __name__`, so the overwrite
+        #    is a harmless no-op re-stamp of an equivalent spec.
+        #
+        # 2. Pre-populating `sys.modules[name]` preserves the existing
+        #    behaviour where `sys.modules["audiobook_studio.X"]` resolves to the
+        #    canonical object (the spec's own `_load` writes `sys.modules[alt]`,
+        #    not the alias key, so without this line the alias key would go
+        #    missing).
         sys.modules[name] = canonical
         from importlib.machinery import ModuleSpec
 
-        return ModuleSpec(name, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
+        return ModuleSpec(alt, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
 
 
 _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
