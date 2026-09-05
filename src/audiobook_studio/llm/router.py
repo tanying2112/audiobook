@@ -843,8 +843,17 @@ class LLMRouter:
                         raise ValueError("LLM returned None output")
 
                     # Defensive JSON parsing validation
-                    # The raw_response should be validated before Pydantic validation
-                    if hasattr(result, "raw_response") and result.raw_response is not None:
+                    # The raw_response should be validated before Pydantic validation.
+                    # Only applies to text payloads (str/dict): direct-SDK clients set
+                    # raw_response to the SDK object (e.g. ChatCompletion) whose output
+                    # instructor already parsed/validated — re-validating it as JSON
+                    # wrongly rejects every successful direct-SDK call (2026-09-05,
+                    # nvidia_nemotron 全部因此被误判失败).
+                    if (
+                        hasattr(result, "raw_response")
+                        and result.raw_response is not None
+                        and isinstance(result.raw_response, (str, dict))
+                    ):
                         from .utils import validate_and_parse_llm_response
 
                         try:
