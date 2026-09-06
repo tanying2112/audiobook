@@ -176,39 +176,47 @@ def _unify_audiobook_aliases() -> None:
     for modname, mod in list(_sys.modules.items()):
         if modname.startswith("src.audiobook_studio."):
             for attr_name, obj in list(vars(mod).items()):
-                if isinstance(obj, type) and getattr(obj, "__module__", None) and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio")):
+                if (
+                    isinstance(obj, type)
+                    and getattr(obj, "__module__", None)
+                    and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio"))
+                ):
                     src_classes[(obj.__qualname__, _strip_src(obj.__module__))] = obj
-    for modname in [m for m in _sys.modules if m.startswith("audiobook_studio") or m.startswith("src.audiobook_studio")]:
+    # Rebind across EVERY loaded module (production + test files), not just the
+    # audiobook/src tree. Test modules also capture classes at collection time (e.g.
+    # ``from src.audiobook_studio.tts.engine import TTSTaskResult``), so an
+    # ``isinstance(result, TTSTaskResult)`` inside a test can compare the orphaned
+    # duplicate against the canonical object and return False. Pointing every attribute
+    # whose class ``__module__`` is in the tree at the canonical class closes that gap,
+    # and normalising ``__module__`` keeps repr/identity-driven lookups consistent.
+    for modname in list(_sys.modules):
         mod = _sys.modules[modname]
-        for attr_name in list(vars(mod)):
-            obj = vars(mod).get(attr_name)
-            if isinstance(obj, type) and getattr(obj, "__module__", None):
-                base_mod = _strip_src(obj.__module__)
-                if base_mod.startswith("audiobook_studio"):
-                    canon = src_classes.get((obj.__qualname__, base_mod))
-                    if canon is not None and canon is not obj:
-                        try:
-                            setattr(mod, attr_name, canon)
-                        except Exception:
-                            pass
-    # Also normalise class __module__ so repr/identity-driven lookups agree.
-    for modname in [m for m in _sys.modules if m.startswith("audiobook_studio") or m.startswith("src.audiobook_studio")]:
-        mod = _sys.modules[modname]
-        for attr_name in list(vars(mod)):
-            obj = vars(mod).get(attr_name)
-            if isinstance(obj, type) and getattr(obj, "__module__", None):
+        try:
+            attrs = vars(mod)
+        except Exception:
+            continue
+        for attr_name in list(attrs):
+            obj = attrs.get(attr_name)
+            if isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
                 base = _strip_src(obj.__module__)
+                if not base.startswith("audiobook_studio"):
+                    continue
                 canon = src_classes.get((obj.__qualname__, base))
-                if canon is not None and canon is not obj:
-                    try:
-                        obj.__module__ = canon.__module__
-                    except Exception:
-                        pass
+                if canon is None or canon is obj:
+                    continue
+                try:
+                    setattr(mod, attr_name, canon)
+                except Exception:
+                    pass
+                try:
+                    obj.__module__ = canon.__module__
+                except Exception:
+                    pass
 
 
 def _strip_src(modname: str) -> str:
-    if modname.startswith("src."):
-        return modname[len("src."):]
+    if isinstance(modname, str) and modname.startswith("src."):
+        return modname[len("src.") :]
     return modname
 
 

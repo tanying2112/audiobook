@@ -22,7 +22,7 @@ providers:
   # use_direct_sdk: false (Anthropic protocol, not directly compatible with native SDK)
   - name: local_fcc_gateway
     provider: anthropic
-    model: opencode/deepseek-v4-flash-free
+    model: claude-3-freecc-no-thinking/nvidia_nim/deepseek-ai/deepseek-v4-flash-0731
     api_key_env: FCC_LOCAL_API_KEY
     base_url: http://127.0.0.1:8082
     health_path: /health
@@ -56,10 +56,10 @@ providers:
 
   # NVIDIA NIM - 本机直连可达✅, 官方key直连降级
   # OpenAI-compatible API -> can use direct SDK for lower latency
-  # 注意: 原 minimaxai/minimax-m2.7 已于 2026-08 前后 EOL(HTTP 410), 实测 meta/llama-3.1-8b-instruct 可用。
+  # 注意: meta/llama-3.1-8b-instruct 已于 2026-08-26 EOL(HTTP 410), 实测 mistralai/mistral-nemotron 可用(2026-09-05)。
   - name: nvidia_nemotron
     provider: openai
-    model: meta/llama-3.1-8b-instruct
+    model: mistralai/mistral-nemotron
     api_key_env: NVIDIA_API_KEY
     api_key_pool_env:
       - NVIDIA_API_KEY_1
@@ -67,6 +67,7 @@ providers:
     priority: 3
     max_tokens_per_minute: 4000
     max_requests_per_minute: 20
+    timeout_seconds: 120
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
     enabled: true
     extra_params:
@@ -151,7 +152,7 @@ providers:
   # OpenAI-compatible API -> can use direct SDK for lower latency
   - name: kilo
     provider: openai
-    model: tencent/hy3:free
+    model: minimax/minimax-m3:free
     api_key_env: KILO_API_KEY
     base_url: https://api.kilo.ai/api/gateway/v1
     priority: 0
