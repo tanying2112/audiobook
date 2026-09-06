@@ -130,6 +130,92 @@ class _AudiobookStudioAliasFinder:
 
 _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
 
+
+def _unify_audiobook_aliases() -> None:
+    """Rebind every ``audiobook_studio*`` sys.modules entry to its ``src.audiobook_studio*``
+    counterpart so the bare and ``src.`` names always yield ONE module object.
+
+    ``/repo/src`` is on sys.path and ``src`` is a plain namespace (no ``__init__.py``),
+    so ``audiobook_studio`` and ``src.audiobook_studio`` are two importable names for the
+    SAME directory. Imported independently they EXECUTE as separate module objects — and
+    every class defined in them (``CostTracker``, ``EngineRegistry``, ``LLMRouter``, ...)
+    exists TWICE, once per identity. The DI container registers the class object it saw
+    first; a code path that holds the other identity then fails with
+    ``KeyError: "No registration found for <class ...>"`` (or ``module ... has no attribute
+    ...``), all order-dependent on which identity was imported first.
+
+    The alias finder redirects new bare imports to ``src.`` lazily, but anything already
+    loaded (by conftest, a plugin, or collection) keeps its separate object. Sweeping the
+    keys after install (and again after collection) collapses each name-pair onto the
+    canonical ``src.`` object, so the two identities never diverge again. Future bare
+    imports then resolve through the finder to the same object. (TEST-ISOLATION ONLY — no
+    production code is modified.)
+    """
+    src_top = _sys.modules.get("src.audiobook_studio")
+    if src_top is None:
+        return
+    _sys.modules["audiobook_studio"] = src_top
+    for key in list(_sys.modules):
+        if key.startswith("audiobook_studio."):
+            src_key = "src." + key
+            if src_key in _sys.modules:
+                _sys.modules[key] = _sys.modules[src_key]
+
+    # Rebind module-level class references that were captured by value BEFORE the
+    # unification. ``di.py`` does ``from .tts.engine import EngineRegistry`` (and
+    # ``.llm.quota_registry import QuotaRegistry``) at import time, so it holds the
+    # engine module object that existed when di was first imported — which can be the
+    # *orphaned* duplicate if the split formed before this sweep. Re-aliasing sys.modules
+    # does NOT update that already-bound reference, so ``get_app_container().get(
+    # EngineRegistry)`` still misses. Rebinding every attribute that points at a class
+    # defined in the audiobook_studio/src.audiobook_studio tree to the now-canonical
+    # unified class closes that gap generically (no need to enumerate di.py / router.py /
+    # port_factory.py names).
+    # Prefer the ``src.`` modules' classes as canonical.
+    src_classes = {}
+    for modname, mod in list(_sys.modules.items()):
+        if modname.startswith("src.audiobook_studio."):
+            for attr_name, obj in list(vars(mod).items()):
+                if isinstance(obj, type) and getattr(obj, "__module__", None) and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio")):
+                    src_classes[(obj.__qualname__, _strip_src(obj.__module__))] = obj
+    for modname in [m for m in _sys.modules if m.startswith("audiobook_studio") or m.startswith("src.audiobook_studio")]:
+        mod = _sys.modules[modname]
+        for attr_name in list(vars(mod)):
+            obj = vars(mod).get(attr_name)
+            if isinstance(obj, type) and getattr(obj, "__module__", None):
+                base_mod = _strip_src(obj.__module__)
+                if base_mod.startswith("audiobook_studio"):
+                    canon = src_classes.get((obj.__qualname__, base_mod))
+                    if canon is not None and canon is not obj:
+                        try:
+                            setattr(mod, attr_name, canon)
+                        except Exception:
+                            pass
+    # Also normalise class __module__ so repr/identity-driven lookups agree.
+    for modname in [m for m in _sys.modules if m.startswith("audiobook_studio") or m.startswith("src.audiobook_studio")]:
+        mod = _sys.modules[modname]
+        for attr_name in list(vars(mod)):
+            obj = vars(mod).get(attr_name)
+            if isinstance(obj, type) and getattr(obj, "__module__", None):
+                base = _strip_src(obj.__module__)
+                canon = src_classes.get((obj.__qualname__, base))
+                if canon is not None and canon is not obj:
+                    try:
+                        obj.__module__ = canon.__module__
+                    except Exception:
+                        pass
+
+
+def _strip_src(modname: str) -> str:
+    if modname.startswith("src."):
+        return modname[len("src."):]
+    return modname
+
+
+# Unify immediately, before collection starts, so the canonical ``src.`` tree is the only
+# tree any test module (or production module imported during collection) can see.
+_unify_audiobook_aliases()
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Keep SQLite connections FK-OFF for the bulk/optimization DB tests.
 #
@@ -612,6 +698,19 @@ def pytest_collection_modifyitems(config, items):
     # hosts are untouched. (TEST-ISOLATION ONLY — no production code is modified.)
     try:
         _install_canonical_torch_mock()
+    except Exception:
+        pass
+
+    # Collapse any bare ``audiobook_studio*`` sys.modules entries that were created as
+    # separate objects during collection (despite the early sweep) back onto the canonical
+    # ``src.audiobook_studio*`` objects. Double-executed modules (one object per identity)
+    # otherwise give the DI container two distinct class objects and cause the
+    # ``KeyError: No registration found`` / ``has no attribute`` failures. This runs after
+    # collection and before the first test, so the first ``get_app_container()`` (which
+    # lazily builds the container at runtime) registers the unified classes.
+    # (TEST-ISOLATION ONLY — no production code is modified.)
+    try:
+        _unify_audiobook_aliases()
     except Exception:
         pass
 

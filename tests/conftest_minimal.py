@@ -10,6 +10,7 @@ import importlib.abc
 import importlib.util
 import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 

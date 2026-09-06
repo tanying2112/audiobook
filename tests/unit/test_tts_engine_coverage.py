@@ -201,8 +201,11 @@ class TestBackwardCompatShims:
         assert default_engine == eng
 
         await registry.close_all()
+        # Leave the container reset: get_app_container() lazily re-creates a
+        # fresh initialized container on next access. Re-installing the old
+        # (now reset_for_testing) container would leave it uninitialized and
+        # break later tests with KeyError on CostTracker/QuotaRegistry.
         reset_app_container()
-        set_app_container(container)
 
 
 if __name__ == "__main__":
