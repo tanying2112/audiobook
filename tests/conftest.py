@@ -154,12 +154,24 @@ def _unify_audiobook_aliases() -> None:
     src_top = _sys.modules.get("src.audiobook_studio")
     if src_top is None:
         return
+    # Merge any submodule/attribute references that live on the BARE tree into the
+    # canonical ``src.`` package before aliasing. E.g. if ``audiobook_studio.tts.
+    # license_guard`` was imported (creating the bare ``tts`` package and setting its
+    # ``license_guard`` attr) while ``src.audiobook_studio.tts`` never imported it, then
+    # rebinding ``sys.modules["audiobook_studio.tts"] = src tts`` would DROP that attr and
+    # ``src.audiobook_studio.tts.license_guard`` would fail. Copy missing attrs bare->src
+    # so no public name is lost.
+    _merge_submodule_attrs(src_top, _sys.modules.get("audiobook_studio"))
     _sys.modules["audiobook_studio"] = src_top
     for key in list(_sys.modules):
         if key.startswith("audiobook_studio."):
             src_key = "src." + key
             if src_key in _sys.modules:
-                _sys.modules[key] = _sys.modules[src_key]
+                bare_mod = _sys.modules.get(key)
+                src_mod = _sys.modules[src_key]
+                if bare_mod is not src_mod and bare_mod is not None:
+                    _merge_submodule_attrs(src_mod, bare_mod)
+                _sys.modules[key] = src_mod
 
     # Rebind module-level class references that were captured by value BEFORE the
     # unification. ``di.py`` does ``from .tts.engine import EngineRegistry`` (and
@@ -218,6 +230,24 @@ def _strip_src(modname: str) -> str:
     if isinstance(modname, str) and modname.startswith("src."):
         return modname[len("src.") :]
     return modname
+
+
+def _merge_submodule_attrs(target, source) -> None:
+    """Copy any public attributes ``target`` lacks from ``source`` (bare -> src merge)."""
+    if source is None or source is target:
+        return
+    try:
+        src_vars = vars(target)
+        for attr, val in list(vars(source).items()):
+            if attr.startswith("__") and attr.endswith("__"):
+                continue
+            if attr not in src_vars:
+                try:
+                    setattr(target, attr, val)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 # Unify immediately, before collection starts, so the canonical ``src.`` tree is the only
