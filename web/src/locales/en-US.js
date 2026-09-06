@@ -1668,6 +1668,7 @@ export default {
       export: 'Export',
       publish: 'Publish',
       autoRun: 'Auto Run',
+      runs: 'Run Logs',
       tabs: {
         overview: 'Overview',
         autoRun: 'Auto Run',
@@ -1693,6 +1694,14 @@ export default {
     deleteConfirm: 'Delete this segment?',
     empty: 'No audio segments for this book yet',
     actionFailed: 'Operation failed',
+  },
+  runs: {
+    title: 'Run Logs',
+    manualRun: 'Manual Single-Stage Run',
+    stage: 'Stage',
+    chapterId: 'Chapter ID',
+    run: 'Run',
+    intermediate: 'Intermediate Product',
   },
   stages: {
     extract: 'Extract',

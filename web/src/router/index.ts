@@ -87,6 +87,11 @@ const router = createRouter({
       component: () => import('../views/AutoRunView.vue'),
     },
     {
+      path: '/projects/:projectId/runs',
+      name: 'runs',
+      component: () => import('../views/RunsView.vue'),
+    },
+    {
       path: '/monitoring',
       name: 'monitoring-dashboard',
       component: () => import('../views/MonitoringDashboard.vue'),

@@ -1667,6 +1667,7 @@ publish: {
       export: '导出',
       publish: '发布',
       autoRun: '自动运行',
+      runs: '运行记录',
       tabs: {
         overview: '总览',
         autoRun: '自动运行',
@@ -1692,6 +1693,14 @@ publish: {
     deleteConfirm: '删除该音频段？',
     empty: '该书暂无音频段',
     actionFailed: '操作失败',
+  },
+  runs: {
+    title: '运行记录',
+    manualRun: '手动单阶段运行',
+    stage: '阶段',
+    chapterId: '章节 ID',
+    run: '运行',
+    intermediate: '中间产物',
   },
   stages: {
     extract: '提取',

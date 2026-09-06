@@ -654,6 +654,46 @@ export async function previewAutopilotConfig(projectId: number): Promise<Autopil
   return data
 }
 
+// ── Pipeline Manual Stage Run / Intermediate Product ────────────────────
+
+export interface StageRunRequestPayload {
+  stage: string
+  chapter_id?: number
+  paragraph_id?: number
+  target_difficulty?: string
+  target_language?: string
+  chapter_indices?: number[]
+  book_title?: string
+  author?: string
+}
+
+export interface StageRunResponse {
+  stage: string
+  status: string
+  message: string
+  progress: number
+  result?: Record<string, unknown> | null
+}
+
+export async function runPipelineStage(
+  projectId: number,
+  payload: StageRunRequestPayload,
+): Promise<StageRunResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/pipeline/run-stage`, payload)
+  return data
+}
+
+export async function fetchIntermediateProduct(
+  projectId: number,
+  stage: string,
+  chapterId?: number,
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/api/projects/${projectId}/auto-run/intermediate/${encodeURIComponent(stage)}`, {
+    params: chapterId ? { chapter_id: chapterId } : {},
+  })
+  return data
+}
+
 // ── Voice Cloning ──────────────────────────────────────────────────────
 
 export interface CloneVoiceRequest {

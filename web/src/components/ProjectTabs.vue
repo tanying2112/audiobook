@@ -76,6 +76,7 @@ const tabs = [
   { name: 'translation', label: 'overview.links.translation', path: 'translation' },
   { name: 'voice-clone', label: 'overview.links.voiceClone', path: 'voice-clone' },
   { name: 'auto-run', label: 'overview.links.autoRun', path: 'auto-run' },
+  { name: 'runs', label: 'overview.links.runs', path: 'runs' },
   { name: 'dashboard', label: 'overview.links.dashboard', path: 'dashboard' },
   { name: 'audio-segments', label: 'overview.links.audioSegments', path: 'audio-segments' },
   { name: 'export', label: 'overview.links.export', path: 'export' },
