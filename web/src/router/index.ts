@@ -137,9 +137,15 @@ const router = createRouter({
       component: () => import('../views/SopRulesView.vue'),
     },
     {
+      path: '/evolution/feedback',
+      name: 'feedback-insights',
+      component: () => import('../views/FeedbackInsightsView.vue'),
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),
+      meta: { requiresSuperuser: true },
     },
     {
       path: '/projects/:id/audio-segments',
@@ -149,7 +155,7 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from) => {
+router.beforeEach(async (to, _from) => {
   const authStore = useAuthStore()
   const isPublic = to.matched.some((record) => record.meta.public)
 
@@ -157,6 +163,18 @@ router.beforeEach((to, _from) => {
     return '/login'
   } else if (to.path === '/login' && authStore.isAuthenticated()) {
     return '/'
+  }
+  if (to.meta.requiresSuperuser && authStore.isAuthenticated()) {
+    if (!authStore.user) {
+      try {
+        await authStore.fetchUser()
+      } catch {
+        return '/login'
+      }
+    }
+    if (!authStore.user?.is_superuser) {
+      return '/'
+    }
   }
   // Return undefined to continue navigation
 })

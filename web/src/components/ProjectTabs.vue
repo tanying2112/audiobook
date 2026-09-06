@@ -1,5 +1,22 @@
 <template>
   <div v-if="projectId" class="project-tabs">
+    <div class="project-context">
+      <span class="crumb-label">{{ t('common.project') }}</span>
+      <el-select
+        :model-value="Number(projectId)"
+        size="small"
+        class="project-switcher"
+        @change="switchProject"
+      >
+        <el-option
+          v-for="p in projectOptions"
+          :key="p.id"
+          :label="p.title || `#${p.id}`"
+          :value="p.id"
+        />
+      </el-select>
+      <span v-if="currentProjectTitle" class="project-title">{{ currentProjectTitle }}</span>
+    </div>
     <el-tabs :model-value="activeTab" @tab-click="onTabClick">
       <el-tab-pane
         v-for="tab in tabs"
@@ -12,15 +29,45 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '../i18n'
+import { useProjectStore } from '../stores/projects'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const store = useProjectStore()
 
 const projectId = computed(() => String(route.params.id || route.params.projectId || ''))
+
+const projectOptions = computed(() => {
+  const list = Array.isArray(store.projects) ? store.projects : []
+  return list.map((p) => ({ id: p.id, title: p.title || `#${p.id}` }))
+})
+
+const currentProjectTitle = computed(() => {
+  const id = Number(projectId.value)
+  const current = store.currentProject?.id === id ? store.currentProject : store.projects.find((p) => p.id === id)
+  return current?.title || ''
+})
+
+async function ensureProjectContext() {
+  const id = Number(projectId.value)
+  if (!id) return
+  if (!store.projects.length) {
+    await store.loadProjects()
+  }
+  if (!store.currentProject || store.currentProject.id !== id) {
+    await store.loadProject(id)
+  }
+}
+
+function switchProject(id: number) {
+  const path = route.path
+  const next = path.replace(/^\/projects\/\d+/, `/projects/${id}`)
+  if (next !== path) router.push(next)
+}
 
 const tabs = [
   { name: 'overview', label: 'overview.links.tabs.overview', path: 'overview' },
@@ -50,6 +97,8 @@ function onTabClick(pane: { paneName?: string | number }) {
     router.push('/projects/' + projectId.value + '/' + tab.path)
   }
 }
+
+onMounted(ensureProjectContext)
 </script>
 
 <style scoped>
@@ -57,6 +106,27 @@ function onTabClick(pane: { paneName?: string | number }) {
   padding: 8px 24px 0;
   border-bottom: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
+}
+.project-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.crumb-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.project-switcher {
+  width: 180px;
+}
+.project-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .project-tabs :deep(.el-tabs__header) {
   margin-bottom: 0;

@@ -166,8 +166,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import axios from 'axios'
 import { useI18n } from '../i18n'
+import { fetchProjectsWithMetrics, fetchProjectMetrics } from '../api'
 
 Chart.register(...registerables)
 
@@ -182,8 +182,8 @@ const latencyChart = ref<Chart | null>(null)
 
 const fetchProjects = async () => {
   try {
-    const res = await axios.get('/api/monitoring/projects')
-    projects.value = res.data.projects || res.data
+    const res = await fetchProjectsWithMetrics()
+    projects.value = (res.projects || []).map((p) => ({ id: p.project_id, title: p.title }))
     if (projects.value.length > 0) {
       selectedProjectId.value = projects.value[0].id
     }
@@ -195,8 +195,7 @@ const fetchProjects = async () => {
 const fetchMetrics = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`/api/monitoring/projects/${selectedProjectId.value}/metrics`)
-    metrics.value = res.data
+    metrics.value = await fetchProjectMetrics(selectedProjectId.value)
     destroyCharts()
     await nextTick()
     initCharts()

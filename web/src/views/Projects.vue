@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projects'
 import { Icon } from '@iconify/vue'
 import { useI18n } from '../i18n'
+import EmptyState from '../components/EmptyState.vue'
 
 const router = useRouter()
 const store = useProjectStore()
@@ -155,9 +156,16 @@ function openCharacters(id: number) {
     <div v-else-if="store.error" class="alert alert-error">
       {{ t('common.error') }}: {{ store.error }}
     </div>
-    <div v-else-if="filteredProjects.length === 0" class="empty-state">
-      {{ searchQuery ? t('projects.no_results') : t('projects.empty_state') }}
-    </div>
+    <EmptyState
+      v-else-if="filteredProjects.length === 0"
+      :icon="searchQuery ? 'mdi:magnify-close' : 'mdi:bookshelf'"
+      :title="searchQuery ? t('projects.no_results') : t('projects.empty_state')"
+    >
+      <button v-if="!searchQuery" class="btn btn-primary touch-target" @click="createProject">
+        <Icon icon="mdi:plus" width="18" height="18" />
+        <span>{{ t('projects.new_project') }}</span>
+      </button>
+    </EmptyState>
 
     <div v-else class="grid grid-auto-fill">
       <div

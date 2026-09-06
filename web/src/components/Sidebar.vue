@@ -33,6 +33,7 @@ const navItems = computed(() => [
   { label: 'nav.promotions', icon: 'mdi:rocket-launch-outline', route: '/evolution/promotions' },
   { label: 'nav.golden_data', icon: 'mdi:database-star-outline', route: '/evolution/golden' },
   { label: 'nav.sop_rules', icon: 'mdi:book-cog-outline', route: '/evolution/sop' },
+  { label: 'nav.feedback_insights', icon: 'mdi:comment-quote-outline', route: '/evolution/feedback' },
   { label: 'nav.admin_panel', icon: 'mdi:shield-account-outline', route: '/admin' },
   { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
   { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },

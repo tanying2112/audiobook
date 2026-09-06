@@ -180,6 +180,7 @@ export default {
     unknown_error: '未知错误',
     please_wait: '请稍候...',
     no_data: '暂无数据',
+    noData: '暂无数据',
     empty: '空',
     na: '不适用',
     yes_no: '是/否',
@@ -207,6 +208,7 @@ export default {
     promotions: '晋升审批',
     golden_data: '金标数据',
     sop_rules: 'SOP 规则库',
+    feedback_insights: '反馈洞察',
     audio_segments: '音频精修',
     admin_panel: '管理后台',
     logs: '日志',
@@ -1624,6 +1626,21 @@ publish: {
     reflectTriggered: '反思已触发',
     selectGenre: '请选择体裁',
     noRules: '该体裁暂无学习到的规则',
+  },
+  // ── 反馈洞察 Feedback Insights ──
+  feedbackInsights: {
+    title: '反馈洞察',
+    funnel: '反馈漏斗',
+    patterns: '模式热力图',
+    totalFeedback: '总反馈',
+    analyzed: '已分析',
+    triggered: '触发升级',
+    promoted: '晋升通过',
+    published: '已发布',
+    pattern: '模式',
+    stage: '阶段',
+    count: '次数',
+    severity: '严重度',
   },
   // ── 项目概览 Overview ──
   overview: {
