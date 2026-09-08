@@ -1488,13 +1488,18 @@ class SynthesizePipeline:
             return get_duration_sync(chapter_audio_path)
 
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
-        """Make TTS routing decision (simplified for now).
+        """Make TTS routing decision using capability-aware selector.
 
-        In the future, this would use the LLM router for intelligent routing.
+        Uses providers_config.select_engine() which considers:
+        - engine capabilities (cloning, emotion, languages, min_compute)
+        - GPU availability (via ENABLE_GPU_BACKENDS env)
+        - license honesty (commercial_use=None means unverified, not faked)
+        - priority ordering from config/tts_providers.yaml
         """
         import os
 
         from ..schemas import TtsRoutingDecision
+        from ..tts.providers_config import select_engine, gpu_backends_enabled
 
         char = next(
             (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
@@ -1503,33 +1508,36 @@ class SynthesizePipeline:
         suggested = char.suggested_voice_id if char else None
         voice_id: str = suggested or "default"
 
-        # Respect ENABLE_LOCAL_TTS environment variable for engine selection
-        enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
+        # Determine engine via capability-aware selector
+        # Language from paragraph annotation or default to zh-CN
+        lang = inp.paragraph_annotation.emotion or "zh-CN"  # rough fallback; ideally from text analysis
+        # prefer_local override still respected
+        prefer_local = inp.prefer_local if inp.prefer_local is not None else True  # default to local
+        # Emotion capability requested?
+        need_emotion = bool(inp.paragraph_annotation.emotion and inp.paragraph_annotation.emotion != "neutral")
+        need_clone = False  # cloning not used in standard pipeline
 
-        engine_choice: EngineChoice  # noqa: F821
-        fallback_engine: EngineChoice  # noqa: F821
-        if enable_local_tts:
-            # Prefer local engine (Kokoro) when enabled
-            engine_choice = "kokoro"
+        engine, mode = select_engine(
+            language=lang,
+            need_clone=need_clone,
+            need_emotion=need_emotion,
+            gpu_available=gpu_backends_enabled(),
+        )
+        # Map mode back to engine_choice/fallback for compatibility
+        if mode == "preset":
+            # Cloning requested but no GPU clone backend -> CPU preset engine
+            engine_choice = engine
             fallback_engine = "edge"
-            mock_info = "Local TTS enabled"
         else:
-            # Prefer cloud engine (Edge-TTS) when local disabled
+            engine_choice = engine
+            fallback_engine = "edge" if engine != "edge" else "kokoro"
+
+        # If user explicitly asked for cloud, honor it (override local preference)
+        if inp.prefer_local is False:
             engine_choice = "edge"
             fallback_engine = "kokoro"
-            mock_info = "Local TTS disabled - using cloud"
 
-        # Override with prefer_local if explicitly set
-        if inp.prefer_local is not None:
-            if inp.prefer_local:
-                engine_choice = "kokoro"
-                fallback_engine = "edge"
-            else:
-                engine_choice = "edge"
-                fallback_engine = "kokoro"
-            mock_info += f" (prefer_local={inp.prefer_local})"
-
-        reasoning = f"Auto routing: {engine_choice} preferred, {fallback_engine} fallback ({mock_info})"
+        reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion})"
         # Voice IDs are engine-specific. The book analyse stage writes
         # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
         # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
