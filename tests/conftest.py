@@ -185,15 +185,21 @@ def _unify_audiobook_aliases() -> None:
     # port_factory.py names).
     # Prefer the ``src.`` modules' classes as canonical.
     src_classes = {}
+    # Also collect canonical FUNCTIONS (e.g. create_router) from the src. tree.
+    src_functions = {}
     for modname, mod in list(_sys.modules.items()):
         if modname.startswith("src.audiobook_studio."):
-            for attr_name, obj in list(vars(mod).items()):
+            for _attr_name, obj in list(vars(mod).items()):
                 if (
                     isinstance(obj, type)
                     and getattr(obj, "__module__", None)
                     and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio"))
                 ):
                     src_classes[(obj.__qualname__, _strip_src(obj.__module__))] = obj
+                elif callable(obj) and not isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
+                    base = _strip_src(obj.__module__)
+                    if base.startswith("audiobook_studio"):
+                        src_functions[(obj.__qualname__, base)] = obj
     # Rebind across EVERY loaded module (production + test files), not just the
     # audiobook/src tree. Test modules also capture classes at collection time (e.g.
     # ``from src.audiobook_studio.tts.engine import TTSTaskResult``), so an
@@ -209,11 +215,31 @@ def _unify_audiobook_aliases() -> None:
             continue
         for attr_name in list(attrs):
             obj = attrs.get(attr_name)
+            # Rebinding CLASSES defined in the audiobook_studio tree
             if isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
                 base = _strip_src(obj.__module__)
                 if not base.startswith("audiobook_studio"):
                     continue
                 canon = src_classes.get((obj.__qualname__, base))
+                if canon is None or canon is obj:
+                    continue
+                try:
+                    setattr(mod, attr_name, canon)
+                except Exception:
+                    pass
+                try:
+                    obj.__module__ = canon.__module__
+                except Exception:
+                    pass
+            # Also rebind FUNCTIONS (e.g. create_router) defined in the tree,
+            # so that modules holding a stale reference (e.g. pipeline.edit_for_tts
+            # holding a duplicate create_router from a prior bare import) get the canonical one.
+            elif callable(obj) and not isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
+                base = _strip_src(obj.__module__)
+                if not base.startswith("audiobook_studio"):
+                    continue
+                # Key by (qualname, base_module) for functions too
+                canon = src_functions.get((obj.__qualname__, base))
                 if canon is None or canon is obj:
                     continue
                 try:
@@ -459,6 +485,21 @@ def _reset_global_state():
         from src.audiobook_studio.di import reset_app_container
 
         reset_app_container()
+    except Exception:
+        pass
+
+    # Re-collapse any bare ``audiobook_studio*`` sys.modules entries that were created
+    # as SEPARATE objects during the just-finished test (the ``_AliasFinder``'s
+    # ``spec_from_loader`` path re-executes source into a second module object when the
+    # canonical module is already loaded, so a test that imports a bare name — e.g. the
+    # golden pipeline fixtures pulling in ``audiobook_studio.pipeline.edit_for_tts`` —
+    # re-splits the tree AFTER the collection-time sweep). Rebinding here (before the
+    # next test, and before that test's lazy ``get_app_container()``) guarantees the DI
+    # container registers the unified classes, closing the ``KeyError: No registration
+    # found for CostTracker`` that otherwise leaks into later tests.
+    # (TEST-ISOLATION ONLY — no production code is modified.)
+    try:
+        _unify_audiobook_aliases()
     except Exception:
         pass
 

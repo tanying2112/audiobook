@@ -56,10 +56,16 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
         canonical = "src." + name
         existing = sys.modules.get(canonical)
         if existing is not None:
-            # Canonical already imported: alias directly and reuse its spec.
+            # Canonical already imported: alias directly using the SAME loader that
+            # returns the already-executed module (NOT existing.__loader__, which is
+            # SourceFileLoader and would RE-EXECUTE the source into a second module
+            # object, recreating the bare/src identity split). Use _CanonicalAliasLoader
+            # consistently in both branches.
             sys.modules[name] = existing
             return importlib.util.spec_from_loader(
-                canonical, existing.__loader__, origin=getattr(existing, "__file__", None)
+                canonical,
+                _CanonicalAliasLoader(canonical),
+                origin=getattr(existing, "__file__", None),
             )
         try:
             canonical_mod = importlib.import_module(canonical)
