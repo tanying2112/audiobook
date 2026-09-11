@@ -216,6 +216,7 @@ export default {
     feedback_insights: 'Feedback Insights',
     admin_panel: 'Admin Console',
     audio_segments: 'Audio Editor',
+    waveform_demo: 'Waveform Editor Demo',
   },
 
   // Sidebar 侧边栏
@@ -1669,6 +1670,7 @@ export default {
       publish: 'Publish',
       autoRun: 'Auto Run',
       runs: 'Run Logs',
+      knowledge: 'Knowledge',
       tabs: {
         overview: 'Overview',
         autoRun: 'Auto Run',
@@ -1702,6 +1704,19 @@ export default {
     chapterId: 'Chapter ID',
     run: 'Run',
     intermediate: 'Intermediate Product',
+  },
+  knowledge: {
+    title: 'Agent Knowledge Base',
+    entries: 'Knowledge Entries',
+    searchTopic: 'Search by topic',
+    add: 'Add Knowledge',
+    topic: 'Topic',
+    source: 'Source',
+    content: 'Content',
+    createdAt: 'Created At',
+    topicRequired: 'Topic is required',
+    invalidJson: 'Knowledge content must be valid JSON',
+    added: 'Knowledge added',
   },
   stages: {
     extract: 'Extract',

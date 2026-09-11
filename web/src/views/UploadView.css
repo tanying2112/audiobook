@@ -1,0 +1,164 @@
+.upload-view {
+  max-width: 720px;
+}
+
+.step-indicator {
+  display: flex;
+  gap: 8px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.step-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.step-item.active .step-number {
+  background: var(--color-primary);
+  color: white;
+}
+
+.step-item.completed .step-number {
+  background: var(--color-success);
+  color: white;
+}
+
+.step-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.option-group {
+  transition: all var(--transition);
+}
+
+.option-group:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.radio {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.drop-zone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--color-bg);
+}
+
+.drop-zone:hover,
+.drop-zone.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.drop-zone.has-file {
+  border-style: solid;
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.drop-prompt .icon {
+  font-size: 2rem;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--color-success-soft);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-success);
+}
+
+.file-info .icon {
+  font-size: 1.5rem;
+}
+
+.hint {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.progress-text {
+  font-weight: 600;
+  min-width: 48px;
+  text-align: right;
+}
+
+.status-message {
+  margin: 16px 0;
+}
+
+.extraction-status {
+  padding: 12px 16px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .step-label {
+    display: none;
+  }
+  .step-item {
+    justify-content: center;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

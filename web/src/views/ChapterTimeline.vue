@@ -1,142 +1,37 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useChapterStore } from '../stores/chapters'
-import { useWaveSurfer } from '../composables/useWaveSurfer'
-import { usePipelineProgress } from '../composables/usePipelineProgress'
-import { useI18n } from '../i18n'
-import { Icon } from '@iconify/vue'
-import type { PipelineStage } from '../types/pipeline'
-import { normalizeChapterPipeline } from '../utils/normalize'
-
-const route = useRoute()
-const router = useRouter()
-const store = useChapterStore()
-const { t } = useI18n()
-
-const projectId = Number(route.params.projectId)
-const chapterId = Number(route.params.chapterId)
-
-const waveformContainer = ref<HTMLElement | null>(null)
-const selectedParaId = ref<number | null>(null)
-const zoomLevel = ref(50)
+import './ChapterTimeline.css'
+import { useChapterTimeline } from '../composables/useChapterTimeline'
 
 const {
-  isPlaying, currentTime, duration, error: wsError,
-  load: loadWave, playPause, skip, zoom, cleanup,
-} = useWaveSurfer(waveformContainer)
-
-const PIPELINE_STAGES: PipelineStage[] = [
-  'extract', 'analyze', 'annotate', 'edit',
-  'audio_postprocess', 'synthesize', 'quality'
-]
-
-const {
-  state: pipelineState,
-  getOverallProgress,
+  t,
+  chapterId,
+  store,
+  waveformContainer,
+  selectedParaId,
+  zoomLevel,
+  isPlaying,
+  currentTime,
+  duration,
+  wsError,
+  playPause,
+  skip,
+  zoom,
+  PIPELINE_STAGES,
+  pipelineState,
+  pipelineStageLabels,
   isStageCompleted,
   isStageActive,
-} = usePipelineProgress({
-  projectId,
-  autoConnect: true,
-})
+  overallProgress,
+  formatTime,
+  selectParagraph,
+  jumpToParagraph,
+  goBack,
+  hasAnnotations,
+} = useChapterTimeline()
 
-const pipelineStageLabels: Record<PipelineStage, string> = {
-  extract: t('pipeline.stages.extract'),
-  analyze: t('pipeline.stages.analyze'),
-  annotate: t('pipeline.stages.annotate'),
-  edit: t('pipeline.stages.edit'),
-  audio_postprocess: t('pipeline.stages.audio_postprocess'),
-  synthesize: t('pipeline.stages.synthesize'),
-  quality: t('pipeline.stages.quality'),
-}
-
-// Sync persisted chapter per-stage status into pipeline progress on load
-function syncPersistedPipelineStatus() {
-  const chapter = store.currentChapter
-  if (!chapter) return
-  const normalized = normalizeChapterPipeline(chapter, store.paragraphs)
-  const completed: PipelineStage[] = []
-  let current: PipelineStage | null = null
-  let stageProgress = 0
-
-  for (const ns of normalized) {
-    if (ns.status === 'completed') {
-      completed.push(ns.stage)
-    } else if (ns.status === 'running') {
-      current = ns.stage
-      stageProgress = 0.5
-    }
-  }
-
-  // Only override if we have meaningful persisted data and pipeline isn't already running
-  if (completed.length > 0 && !pipelineState.value.isRunning) {
-    pipelineState.value.completedStages = completed
-    if (current) {
-      pipelineState.value.currentStage = current
-      pipelineState.value.stageProgress = stageProgress
-    }
-  }
-}
-
-onMounted(async () => {
-  await store.loadChapter(projectId, chapterId)
-  await store.loadParagraphs(projectId, chapterId)
-  syncPersistedPipelineStatus()
-})
-
-// Re-sync when chapters/paragraphs load finishes (race-safe)
-watch(() => store.currentChapter, syncPersistedPipelineStatus, { immediate: false })
-watch(() => store.paragraphs.length, syncPersistedPipelineStatus, { immediate: false })
-
-function getAudioUrl(paragraphId: number): string {
-  return `/api/paragraphs/${paragraphId}/audio`
-}
-
-function selectParagraph(paraId: number) {
-  cleanup()
-  selectedParaId.value = paraId
-
-  const para = store.paragraphs.find((p) => p.id === paraId)
-  if (!para) return
-
-  store.loadAudioSegments(paraId)
-  store.loadQuality(paraId)
-
-  nextTick(() => {
-    loadWave(getAudioUrl(paraId))
-  })
-}
-
-function jumpToParagraph(paraId: number) {
-  selectParagraph(paraId)
-  const el = document.getElementById(`para-${paraId}`)
-  el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
-
-function formatTime(seconds: number): string {
-  if (!seconds || !isFinite(seconds)) return '0:00'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function goBack() {
-  router.push(`/projects/${projectId}`)
-}
-
-const overallProgress = computed(() => getOverallProgress())
-
-// Check if paragraph has any annotations to display
-function hasAnnotations(para: any): boolean {
-  return !!(
-    para.emotion ||
-    (para.speech_rate && para.speech_rate !== 1) ||
-    (para.pitch_shift_semitones && para.pitch_shift_semitones !== 0) ||
-    (para.needs_sfx && para.sfx_tags && para.sfx_tags.length > 0)
-  )
-}
+void waveformContainer
 </script>
+
 
 <template>
   <div class="page-container chapter-timeline">
@@ -301,109 +196,3 @@ function hasAnnotations(para: any): boolean {
     </div>
   </div>
 </template>
-
-<style scoped>
-.chapter-timeline {
-  max-width: 960px;
-}
-
-.pipeline-stage {
-  position: relative;
-}
-.pipeline-stage:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: 14px;
-  right: -6px;
-  width: 12px;
-  height: 2px;
-  background: var(--color-border);
-}
-.pipeline-stage.completed::after {
-  background: var(--color-success);
-}
-.pipeline-stage.active::after {
-  background: var(--color-primary);
-}
-
-.stage-indicator {
-  transition: all 0.2s ease;
-}
-.pipeline-stage.completed .stage-indicator {
-  background: var(--color-success);
-}
-.pipeline-stage.active .stage-indicator {
-  background: var(--color-primary);
-  animation: pulse 1.5s infinite;
-}
-.pipeline-stage.active .stage-icon.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.pipeline-stage.completed .stage-label,
-.pipeline-stage.active .stage-label {
-  color: var(--color-text);
-  font-weight: 500;
-}
-
-.paragraph-card.selected {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-alpha);
-}
-
-.status-dot.completed { background: var(--color-success); }
-.status-dot.pending { background: var(--color-warning); }
-.status-dot.error { background: var(--color-danger); }
-
-/* WaveSurfer container */
-.waveform-container {
-  min-height: 80px;
-}
-
-/* Responsive */
-@media (max-width: 767px) {
-  .pipeline-stages {
-    gap: 8px;
-  }
-  .pipeline-stage {
-    min-width: 80px;
-  }
-  .stage-label {
-    font-size: 9px;
-  }
-}
-
-/* Annotation chips */
-.annotation-chip {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  white-space: nowrap;
-}
-
-.para-text-section {
-  margin-bottom: 4px;
-}
-
-.edited-text-block p {
-  background: #f0fdf4;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border-left: 3px solid var(--color-success);
-}
-
-.original-text-block p {
-  /* keeps existing clamp styling */
-}
-</style>

@@ -1,0 +1,103 @@
+.chapter-timeline {
+  max-width: 960px;
+}
+
+.pipeline-stage {
+  position: relative;
+}
+.pipeline-stage:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  right: -6px;
+  width: 12px;
+  height: 2px;
+  background: var(--color-border);
+}
+.pipeline-stage.completed::after {
+  background: var(--color-success);
+}
+.pipeline-stage.active::after {
+  background: var(--color-primary);
+}
+
+.stage-indicator {
+  transition: all 0.2s ease;
+}
+.pipeline-stage.completed .stage-indicator {
+  background: var(--color-success);
+}
+.pipeline-stage.active .stage-indicator {
+  background: var(--color-primary);
+  animation: pulse 1.5s infinite;
+}
+.pipeline-stage.active .stage-icon.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.pipeline-stage.completed .stage-label,
+.pipeline-stage.active .stage-label {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.paragraph-card.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha);
+}
+
+.status-dot.completed { background: var(--color-success); }
+.status-dot.pending { background: var(--color-warning); }
+.status-dot.error { background: var(--color-danger); }
+
+/* WaveSurfer container */
+.waveform-container {
+  min-height: 80px;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .pipeline-stages {
+    gap: 8px;
+  }
+  .pipeline-stage {
+    min-width: 80px;
+  }
+  .stage-label {
+    font-size: 9px;
+  }
+}
+
+/* Annotation chips */
+.annotation-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.para-text-section {
+  margin-bottom: 4px;
+}
+
+.edited-text-block p {
+  background: #f0fdf4;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--color-success);
+}
+
+.original-text-block p {
+  /* keeps existing clamp styling */
+}

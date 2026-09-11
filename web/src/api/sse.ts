@@ -248,7 +248,7 @@ export interface PipelineEventCallbacks {
 export function streamPipelineEvents(
   projectId: number,
   callbacks: PipelineEventCallbacks,
-): () => void {
+): { disconnect: () => void; pause: () => boolean; resume: () => boolean } {
   const wsClient = createPipelineWebSocketClient({
     projectId,
     autoReconnect: true,
@@ -266,7 +266,9 @@ export function streamPipelineEvents(
 
   wsClient.connect()
 
-  return () => {
-    wsClient.disconnect()
+  return {
+    disconnect: () => wsClient.disconnect(),
+    pause: () => wsClient.pause(),
+    resume: () => wsClient.resume(),
   }
 }

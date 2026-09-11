@@ -2,6 +2,14 @@ import { ref, onUnmounted } from 'vue'
 import { streamPipelineEvents, type PipelineEventCallbacks } from '../api/sse'
 import type { PipelineStage } from '../types/pipeline'
 
+// 扩展 unsubscribe 类型以包含 pause/resume 方法
+interface PipelineUnsubscribe {
+  disconnect: () => void
+  pause: () => boolean
+  resume: () => boolean
+  call: () => void
+}
+
 export interface PipelineProgressState {
   /** 当前活动阶段 */
   currentStage: PipelineStage | null
@@ -65,7 +73,7 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
     lastUpdate: null,
   })
 
-  let unsubscribe: (() => void) | null = null
+  let unsubscribe: PipelineUnsubscribe | null = null
 
   const callbacks: PipelineEventCallbacks = {
     onStageEnter: (stage, chapterId) => {
@@ -128,13 +136,19 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
   /** 连接 WebSocket */
   function connect(): void {
     if (unsubscribe) return
-    unsubscribe = streamPipelineEvents(projectId, callbacks)
+    const wsClient = streamPipelineEvents(projectId, callbacks)
+    unsubscribe = {
+      disconnect: () => wsClient.disconnect(),
+      pause: () => wsClient.pause(),
+      resume: () => wsClient.resume(),
+      call: () => wsClient.disconnect(),
+    }
   }
 
   /** 断开连接 */
   function disconnect(): void {
     if (unsubscribe) {
-      unsubscribe()
+      unsubscribe.call()
       unsubscribe = null
     }
     state.value.isRunning = false

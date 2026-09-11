@@ -214,6 +214,7 @@ export default {
     logs: '日志',
     help: '帮助',
     about: '关于',
+    waveform_demo: '波形编辑器演示',
   },
 
   // Sidebar 侧边栏
@@ -1668,6 +1669,7 @@ publish: {
       publish: '发布',
       autoRun: '自动运行',
       runs: '运行记录',
+      knowledge: '知识库',
       tabs: {
         overview: '总览',
         autoRun: '自动运行',
@@ -1701,6 +1703,19 @@ publish: {
     chapterId: '章节 ID',
     run: '运行',
     intermediate: '中间产物',
+  },
+  knowledge: {
+    title: 'Agent 知识库',
+    entries: '知识条目',
+    searchTopic: '按主题搜索',
+    add: '新增知识',
+    topic: '主题',
+    source: '来源',
+    content: '内容',
+    createdAt: '创建时间',
+    topicRequired: '请填写主题',
+    invalidJson: '知识内容需为合法 JSON',
+    added: '知识已添加',
   },
   stages: {
     extract: '提取',

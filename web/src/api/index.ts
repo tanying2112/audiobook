@@ -1023,4 +1023,50 @@ export async function deleteAgentSession(projectId: number, sessionId: string): 
   await api.delete(`/api/agent/chat/${projectId}/sessions/${sessionId}`)
 }
 
+// ── Agent Knowledge Base ─────────────────────────────────────────────────
+
+export interface KnowledgeEntry {
+  id: string
+  topic: string
+  knowledge: Record<string, unknown>
+  source_agent?: string
+  confidence_score?: Record<string, unknown>
+  created_at?: string | null
+  last_accessed?: string | null
+}
+
+export interface KnowledgeListResponse {
+  project_id: number
+  knowledge: KnowledgeEntry[]
+}
+
+export async function listKnowledge(
+  projectId: number,
+  topic?: string,
+): Promise<KnowledgeListResponse> {
+  const { data } = await api.get(`/api/agent/knowledge/${projectId}`, {
+    params: topic ? { topic } : {},
+  })
+  return data
+}
+
+export async function addKnowledge(
+  projectId: number,
+  topic: string,
+  knowledge: Record<string, unknown>,
+  sourceAgent = 'user',
+  confidence = 1.0,
+): Promise<{ id: string; topic: string; message: string }> {
+  const { data } = await api.post('/api/agent/knowledge', null, {
+    params: {
+      project_id: projectId,
+      topic,
+      knowledge: JSON.stringify(knowledge),
+      source_agent: sourceAgent,
+      confidence,
+    },
+  })
+  return data
+}
+
 export default api

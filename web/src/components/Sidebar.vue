@@ -38,6 +38,7 @@ const navItems = computed(() => [
   { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
   { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },
   { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market' },
+  { label: 'nav.waveform_demo', icon: 'mdi:waveform', route: '/waveform-demo' },
   // Dashboard route dynamically generated with actual projectId from context store
   { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: contextStore.projectId ? `/projects/${contextStore.projectId}/dashboard` : '' },
 ])

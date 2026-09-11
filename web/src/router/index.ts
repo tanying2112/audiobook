@@ -92,6 +92,11 @@ const router = createRouter({
       component: () => import('../views/RunsView.vue'),
     },
     {
+      path: '/projects/:projectId/knowledge',
+      name: 'knowledge',
+      component: () => import('../views/KnowledgeBaseView.vue'),
+    },
+    {
       path: '/monitoring',
       name: 'monitoring-dashboard',
       component: () => import('../views/MonitoringDashboard.vue'),
@@ -156,6 +161,11 @@ const router = createRouter({
       path: '/projects/:id/audio-segments',
       name: 'audio-segments',
       component: () => import('../views/AudioSegmentEditor.vue'),
+    },
+    {
+      path: '/waveform-demo',
+      name: 'waveform-demo',
+      component: () => import('../views/WaveformDemoView.vue'),
     },
   ],
 })

@@ -1,0 +1,43 @@
+.dashboard-view {
+  max-width: 1400px;
+}
+
+.dashboard-grid { display: grid; gap: 24px; }
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.kpi-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.kpi-card { 
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 16px;
+}
+.kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.kpi-value {
+  line-height: 1.2;
+}
+.kpi-label {
+  font-size: 13px;
+}
+
+/* Desktop only overrides */
+@media (max-width: 1000px) { 
+  .chart-row { grid-template-columns: 1fr; } 
+  .kpi-section { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) { 
+  .kpi-section { grid-template-columns: 1fr; }
+}
