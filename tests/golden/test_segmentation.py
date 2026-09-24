@@ -15,10 +15,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 import pytest
+
 from src.audiobook_studio.pipeline.segment import (
-    SegmentPipeline,
     SegmentConfig,
-    SegmentStrategy,
+    SegmentPipeline,
     SegmentStrategy,
 )
 
@@ -54,14 +54,16 @@ class TestSegmentationGolden:
         result = pipeline_rule.run(text=case["input"])
 
         # Check segment count
-        assert len(result.segments) == case["expected_segments"], \
-            f"Expected {case['expected_segments']} segments, got {len(result.segments)} for {case['name']}"
+        assert (
+            len(result.segments) == case["expected_segments"]
+        ), f"Expected {case['expected_segments']} segments, got {len(result.segments)} for {case['name']}"
 
         # Check average length is reasonable
         avg_len = sum(len(s.text) for s in result.segments) / len(result.segments)
         # Allow 2x tolerance
-        assert avg_len <= case["expected_avg_length"] * 2, \
-            f"Average segment length {avg_len:.0f} exceeds expected {case['expected_avg_length'] * 2} for {case['name']}"
+        assert (
+            avg_len <= case["expected_avg_length"] * 2
+        ), f"Average segment length {avg_len:.0f} exceeds expected {case['expected_avg_length'] * 2} for {case['name']}"
 
         # Verify all segments have text
         for seg in result.segments:
@@ -178,6 +180,7 @@ class TestSegmentDataClasses:
     def test_segment_creation(self):
         """Test Segment dataclass."""
         from src.audiobook_studio.pipeline.segment import Segment
+
         seg = Segment(
             text="测试文本",
             index=0,
@@ -192,6 +195,7 @@ class TestSegmentDataClasses:
     def test_segmentation_result(self):
         """Test SegmentationResult dataclass."""
         from src.audiobook_studio.pipeline.segment import Segment, SegmentationResult, SegmentConfig
+
         seg = Segment(text="测试", index=0, start_char=0, end_char=2)
         result = SegmentationResult(
             segments=[seg],

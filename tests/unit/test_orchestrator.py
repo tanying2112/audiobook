@@ -1,6 +1,4 @@
 """Comprehensive unit tests for orchestrator pipeline targeting ≥80% line coverage.
-import os
-os.environ["MOCK_LLM"] = "true"
 
 Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - run_stage() with all 7 stages: extract, analyze, annotate, edit, audio_postprocess, synthesize, quality
@@ -10,15 +8,17 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - FeedbackCollector integration for self-iteration
 """
 
-import json
+import os
+
+os.environ["MOCK_LLM"] = "true"
+
 import sqlite3
-from datetime import datetime
-from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import sessionmaker
 
 
@@ -28,6 +28,11 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=OFF")
         cursor.close()
 
+
+# Async SQLite database (per-test temp file) for testing
+import warnings
+
+from sqlalchemy.exc import SAWarning
 
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.models import AudioSegment, Chapter, Paragraph, Project, Quality, TTSEdit
@@ -43,14 +48,6 @@ from src.audiobook_studio.pipeline.orchestrator import (
     run_stage,
 )
 
-# Create in-memory SQLite database for testing
-TEST_ENGINE = create_engine("sqlite:///:memory:", echo=False)
-event.listen(TEST_ENGINE, "connect", _set_sqlite_pragma)
-TestingSessionLocal = sessionmaker(bind=TEST_ENGINE)
-import warnings
-
-from sqlalchemy.exc import SAWarning
-
 warnings.filterwarnings(
     "ignore",
     message="Can't sort tables for DROP; an unresolvable foreign key dependency exists between tables",
@@ -60,27 +57,24 @@ warnings.filterwarnings(
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Create a fresh database session for each test."""
-    Base.metadata.create_all(TEST_ENGINE)
-    session = TestingSessionLocal()
-    yield session
-    session.close()
+    """Create a fresh sync database session for each test."""
+    import src.audiobook_studio.models  # noqa: F401 — register all ORM models
 
-    # 清理了本地不换行特殊空格，规范了本地局部导入
-    import warnings
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    db_path = tmp.name
+    sync_engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    event.listen(sync_engine, "connect", _set_sqlite_pragma)
+    Base.metadata.create_all(sync_engine)
 
-    from sqlalchemy.exc import SAWarning
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="Can't sort tables for DROP; an unresolvable foreign key dependency exists between tables:.*",
-            category=SAWarning,
-        )
-        Base.metadata.drop_all(TEST_ENGINE)
+    factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
+    with factory() as session:
+        yield session
+    sync_engine.dispose()
+    os.unlink(db_path)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_project(db_session):
     """Create a sample project."""
     project = Project(
@@ -96,7 +90,7 @@ def sample_project(db_session):
     return project
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_chapter(db_session, sample_project):
     """Create a sample chapter."""
     chapter = Chapter(
@@ -111,7 +105,7 @@ def sample_chapter(db_session, sample_project):
     return chapter
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_paragraph(db_session, sample_project, sample_chapter):
     """Create a sample paragraph."""
     para = Paragraph(
@@ -132,7 +126,7 @@ def sample_paragraph(db_session, sample_project, sample_chapter):
     return para
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
     """Create a sample paragraph with edited_text for quality testing."""
     para = Paragraph(
@@ -251,7 +245,6 @@ def mock_tts_edit_output():
 def mock_quality_judgment():
     """Create a valid QualityJudgment for testing."""
     from src.audiobook_studio.schemas import QualityJudgment
-    from src.audiobook_studio.schemas.quality import FixSuggestion
 
     return QualityJudgment(
         segment_id="test_book_ch1_p0",
@@ -285,7 +278,8 @@ def mock_audio_segments():
 class TestWriteExtract:
     """Test _write_extract function."""
 
-    def test_write_extract_creates_new_chapter(self, db_session, sample_project, mock_extraction_result):
+    @pytest.mark.asyncio
+    async def test_write_extract_creates_new_chapter(self, db_session, sample_project, mock_extraction_result):
         """Test _write_extract creates a new chapter when none exists."""
         chapter = _write_extract(
             db_session,
@@ -300,7 +294,8 @@ class TestWriteExtract:
         assert chapter.raw_text == mock_extraction_result.raw_text
         assert chapter.extract_status == "completed"
 
-    def test_write_extract_updates_existing_chapter_by_id(
+    @pytest.mark.asyncio
+    async def test_write_extract_updates_existing_chapter_by_id(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
         """Test _write_extract updates existing chapter when chapter_id provided."""
@@ -321,7 +316,8 @@ class TestWriteExtract:
         assert chapter.raw_text == mock_extraction_result.raw_text
         assert chapter.extract_status == "completed"
 
-    def test_write_extract_uses_existing_chapter_by_index(
+    @pytest.mark.asyncio
+    async def test_write_extract_uses_existing_chapter_by_index(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
         """Test _write_extract finds existing chapter by project_id and index."""
@@ -343,7 +339,8 @@ class TestWriteExtract:
 class TestWriteAnalyze:
     """Test _write_analyze function."""
 
-    def test_write_analyze_updates_chapter(self, db_session, sample_chapter, mock_book_analysis_output):
+    @pytest.mark.asyncio
+    async def test_write_analyze_updates_chapter(self, db_session, sample_chapter, mock_book_analysis_output):
         """Test _write_analyze updates chapter with analysis output."""
         _write_analyze(db_session, sample_chapter, mock_book_analysis_output)
 
@@ -357,7 +354,8 @@ class TestWriteAnalyze:
 class TestWriteAnnotate:
     """Test _write_annotate function."""
 
-    def test_write_annotate_creates_new_paragraph(
+    @pytest.mark.asyncio
+    async def test_write_annotate_creates_new_paragraph(
         self,
         db_session,
         sample_project,
@@ -384,7 +382,8 @@ class TestWriteAnnotate:
         assert para.emotion == "neutral"
         assert para.status == "annotated"
 
-    def test_write_annotate_updates_existing_paragraph(
+    @pytest.mark.asyncio
+    async def test_write_annotate_updates_existing_paragraph(
         self,
         db_session,
         sample_project,
@@ -415,7 +414,8 @@ class TestWriteAnnotate:
 class TestWriteEdit:
     """Test _write_edit function."""
 
-    def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
         """Test _write_edit creates TTSEdit record and updates paragraph."""
         # Create a mock result with string list for changes_made (matches TtsEditOutput schema)
         mock_result = MagicMock()
@@ -445,7 +445,10 @@ class TestWriteEdit:
 class TestWriteSynthesize:
     """Test _write_synthesize function."""
 
-    def test_write_synthesize_creates_audio_segment(self, db_session, sample_project, sample_chapter, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_write_synthesize_creates_audio_segment(
+        self, db_session, sample_project, sample_chapter, sample_paragraph
+    ):
         """Test _write_synthesize creates AudioSegment record."""
         seg_dict = {
             "file_path": "/tmp/test_synthesis.mp3",
@@ -476,7 +479,8 @@ class TestWriteSynthesize:
 class TestWriteQuality:
     """Test _write_quality function."""
 
-    def test_write_quality_creates_quality_record_with_existing_tts_edit(
+    @pytest.mark.asyncio
+    async def test_write_quality_creates_quality_record_with_existing_tts_edit(
         self,
         db_session,
         sample_project,
@@ -515,7 +519,8 @@ class TestWriteQuality:
         assert sample_paragraph.quality_overall_score == 0.9
         assert sample_paragraph.status == "quality_checked"
 
-    def test_write_quality_creates_tts_edit_if_missing(
+    @pytest.mark.asyncio
+    async def test_write_quality_creates_tts_edit_if_missing(
         self,
         db_session,
         sample_project,
@@ -525,7 +530,7 @@ class TestWriteQuality:
     ):
         """Test _write_quality auto-creates TTSEdit when none exists but paragraph has edited_text."""
         # Ensure no TTSEdit exists
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph_with_edit.id).delete()
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph_with_edit.id))
         db_session.commit()
 
         quality = _write_quality(
@@ -540,7 +545,8 @@ class TestWriteQuality:
         assert quality.tts_edit_id is not None
 
         # Verify a TTSEdit was created
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
         assert created_tts_edit.rationale == "Auto-created for quality check (no prior edit)"
@@ -550,7 +556,8 @@ class TestWriteQuality:
         assert sample_paragraph_with_edit.quality_overall_score == 0.9
         assert sample_paragraph_with_edit.status == "quality_checked"
 
-    def test_write_quality_handles_missing_edited_text(
+    @pytest.mark.asyncio
+    async def test_write_quality_handles_missing_edited_text(
         self,
         db_session,
         sample_project,
@@ -560,7 +567,7 @@ class TestWriteQuality:
     ):
         """Test _write_quality creates dummy TTSEdit even when no edited_text exists."""
         # Ensure no TTSEdit exists and paragraph has no edited_text
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph.id).delete()
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph.id))
         sample_paragraph.edited_text = None
         db_session.commit()
 
@@ -576,7 +583,8 @@ class TestWriteQuality:
         assert quality.tts_edit_id is not None  # Should create dummy TTSEdit
 
         # Verify a TTSEdit was created with empty edited_text
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == ""
 
@@ -589,7 +597,8 @@ class TestWriteQuality:
 class TestWriteAudioPostProcess:
     """Test _write_audio_postprocess function."""
 
-    def test_write_audio_postprocess_updates_paragraph(self, db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_write_audio_postprocess_updates_paragraph(self, db_session, sample_paragraph):
         """Test _write_audio_postprocess updates paragraph with audio params."""
         from src.audiobook_studio.schemas import AudioPostProcessParams
 
@@ -634,14 +643,13 @@ class TestRunStageExtract:
             mock_pipeline.run.assert_called_once()
 
             # Check chapter was created
-            chapter = (
-                db_session.query(Chapter)
-                .filter(
+            result = db_session.execute(
+                select(Chapter).filter(
                     Chapter.project_id == sample_project.id,
                     Chapter.index == 1,
                 )
-                .first()
             )
+            chapter = result.scalars().first()
             assert chapter is not None
             assert chapter.raw_text == mock_extraction_result.raw_text
 
@@ -916,15 +924,14 @@ class TestRunStageSynthesize:
             mock_pipeline.run.assert_called_once()
 
             # Check audio segment was created
-            audio = (
-                db_session.query(AudioSegment)
-                .filter(
+            result = db_session.execute(
+                select(AudioSegment).filter(
                     AudioSegment.project_id == sample_project.id,
                     AudioSegment.chapter_id == sample_chapter.id,
                     AudioSegment.paragraph_id == sample_paragraph.id,
                 )
-                .first()
             )
+            audio = result.scalars().first()
             assert audio is not None
             assert audio.file_path == "/tmp/test_segment_0.mp3"
 
@@ -970,15 +977,14 @@ class TestRunStageQuality:
             mock_pipeline.run.assert_called_once()
 
             # Check quality record was created
-            quality = (
-                db_session.query(Quality)
-                .filter(
+            result = db_session.execute(
+                select(Quality).filter(
                     Quality.project_id == sample_project.id,
                     Quality.chapter_id == sample_chapter.id,
                     Quality.paragraph_id == sample_paragraph_with_edit.id,
                 )
-                .first()
             )
+            quality = result.scalars().first()
             assert quality is not None
             assert quality.overall_score == 0.9
             assert quality.tts_edit_id is not None
@@ -1346,7 +1352,7 @@ class TestRunStageWithFeedbackCollector:
                 )
             ]
 
-            result = await run_stage(
+            await run_stage(
                 "quality",
                 db_session,
                 project_id=sample_project.id,

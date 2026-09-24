@@ -1,11 +1,8 @@
 """Tests for abstract base classes in base.py and stage_registry.py."""
 
-import threading
-from unittest.mock import MagicMock, patch
-
 import pytest
 
-from src.audiobook_studio.base import AbstractAgent, AgentCapability, AgentContext, AgentMessage, ErrorSeverity
+from src.audiobook_studio.base import AbstractAgent, AgentCapability
 from src.audiobook_studio.pipeline.stage_registry import StageHandler
 
 
@@ -217,7 +214,7 @@ def test_stage_handler_can_be_subclassed_and_used():
 
     # Test persist method
     stage.persist(None, 1, None, None, "test")
-    assert stage.persist_called == True
+    assert stage.persist_called
 
     # Test get_result_snapshot method
     snapshot = stage.get_result_snapshot("test_result")

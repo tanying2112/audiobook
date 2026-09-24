@@ -1,12 +1,10 @@
 """Tests for pipeline/translate.py (83 miss) + pipeline/synthesize.py (116 miss)."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
-class TestTranslateAndDubPipeline:
+class TestTranslateAndDubPipeline:  # noqa: E303
     def test_import(self):
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
 
@@ -38,7 +36,14 @@ class TestTranslateAndDubPipeline:
             assert p.annotate_pipeline is mock_ap
 
     def test_get_target_voice(self):
+        # _get_target_voice queries the real character-voice binding table. Ensure
+        # the schema exists so the test is order-independent (it must not rely on
+        # some earlier test having created the tables as a side effect).
+        import src.audiobook_studio.models  # noqa: F401  (register ORM tables)
+        from src.audiobook_studio.database import init_db
         from src.audiobook_studio.pipeline.translate import TranslateAndDubPipeline
+
+        init_db()
 
         with (
             patch("src.audiobook_studio.pipeline.translate.VoiceCloningManager"),
@@ -150,7 +155,6 @@ class TestSynthesizePipeline:
         assert result is None
 
     def test_load_existing_segment_from_disk_found(self, tmp_path):
-        import json
 
         from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
 

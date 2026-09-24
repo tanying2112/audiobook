@@ -1,0 +1,36 @@
+{
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "Prompt v2 not found for stage 'extract'"
+  },
+  "quality_improvement": {
+    "name": "质量 ≥ 旧版 102%",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 1.02,
+    "details": "无法加载 prompt: old=v1 new=v2"
+  },
+  "promotion": {
+    "stage": "extract",
+    "old_version": 1,
+    "new_version": 2,
+    "passed": false,
+    "summary": "Prompt v2 not found for stage 'extract'",
+    "gates": [],
+    "pass_rate": 0.0
+  },
+  "outputs": [
+    {
+      "error": "Prompt version 2 not found for stage extract"
+    },
+    {
+      "error": "Prompt version 2 not found for stage extract"
+    },
+    {
+      "error": "Prompt version 2 not found for stage extract"
+    }
+  ]
+}

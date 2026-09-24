@@ -5,9 +5,6 @@ All I/O mocked. No real file writes.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.export.srt import (
     SubtitleConfig,

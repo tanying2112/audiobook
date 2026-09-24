@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 import os
 import sys
 from datetime import datetime
@@ -16,7 +15,7 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.audiobook_studio.database import AsyncSessionLocal, create_async_session, init_async_db
+from src.audiobook_studio.database import AsyncSessionLocal, create_async_session
 from src.audiobook_studio.models import Chapter, Project
 from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
 from src.audiobook_studio.pipeline.orchestrator import init_telemetry
@@ -191,7 +190,7 @@ async def _run_chapter_pipeline(
 
         # Review stage (chapter-level quality gate)
         if "review" in stages:
-            print(f"    🔍 Running Reviewer Agent quality gate...")
+            print("    🔍 Running Reviewer Agent quality gate...")
             review_results = await orchestrator_run_pipeline(
                 stages=["review"],
                 db=db,
@@ -207,7 +206,7 @@ async def _run_chapter_pipeline(
                 if os.environ.get("REVIEWER_STRICT", "false").lower() == "true":
                     raise RuntimeError(f"Reviewer Agent blocked synthesis: {review_judgment.summary}")
             else:
-                print(f"    ✅ Reviewer passed")
+                print("    ✅ Reviewer passed")
 
         # Post-review paragraph stages (synthesize, quality)
         para_stages_post = [s for s in stages if s in ("synthesize", "quality")]
@@ -442,7 +441,6 @@ async def pipeline_run_command(args: argparse.Namespace) -> int:
 async def pipeline_resume_command(args: argparse.Namespace) -> int:
     """Execute the pipeline resume command."""
     project_id = args.project_id
-    chapter_filter = [args.chapter] if args.chapter else None
 
     print(f"🔄 Resuming pipeline for project {project_id}")
 

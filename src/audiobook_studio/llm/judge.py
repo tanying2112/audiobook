@@ -5,16 +5,15 @@ Implements pairwise comparison and scoring for quality gate.
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..schemas.quality import FixSuggestion, QualityJudgment
 from ..schemas import AudioPostProcessParams, PairwiseJudgment, ParagraphAnnotation
+from ..schemas.quality import FixSuggestion, QualityJudgment
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -56,11 +55,14 @@ class LLMJudge:
         audio_description: str,  # In real impl: audio analysis via multimodal LLM
         reference_text: str,
         audio_params: Optional[AudioPostProcessParams] = None,
+        real_audio_metrics: Optional[Dict[str, Any]] = None,  # P0-C1: real DNSMOS/UTMOS/WER/Sim
     ) -> QualityJudgment:
         """Evaluate audio quality against paragraph annotation.
 
         In production, this would use multimodal LLM to listen to audio.
         For now, uses text-based evaluation with simulated audio analysis.
+        Optionally accepts real_audio_metrics from AudioQualityScorer to ground
+        the LLM judgment in objective acoustic evidence.
         """
         if audio_params is None:
             audio_params = AudioPostProcessParams()
@@ -71,6 +73,7 @@ class LLMJudge:
             audio_params=audio_params,
             audio_description=audio_description,
             reference_text=reference_text,
+            real_audio_metrics=real_audio_metrics,
         )
 
         # Call judge model
@@ -91,7 +94,7 @@ class LLMJudge:
             return output
         except Exception as e:
             logger.error(f"Quality judgment failed for {segment_id}: {e}")
-            # Return safe default - requires regeneration
+            # Return safe default - judge error (do not fabricate a content finding)
             return QualityJudgment(
                 segment_id=segment_id,
                 speaker_clarity=0.0,
@@ -99,7 +102,7 @@ class LLMJudge:
                 prosody_naturalness=0.0,
                 text_audio_alignment=0.0,
                 overall_score=0.0,
-                issues=["sensitive_content"],  # Valid literal from schema
+                issues=["judge_error"],  # Honest: judge failure, not a content finding
                 fix_suggestions=[
                     FixSuggestion(
                         suggestion_type="prosody_correction",
@@ -110,7 +113,7 @@ class LLMJudge:
                         confidence=0.9,
                     )
                 ],
-                needs_regeneration=True,
+                needs_regeneration=False,  # transient judge error != must re-synth
             )
 
     def _get_system_prompt(self) -> str:
@@ -126,7 +129,25 @@ Identify specific issues and suggest concrete fixes."""
         audio_params: "AudioPostProcessParams",
         audio_description: str,
         reference_text: str,
+        real_audio_metrics: Optional[Dict[str, Any]] = None,  # P0-C1
     ) -> str:
+        # Build real metrics section if available
+        metrics_section = ""
+        if real_audio_metrics:
+            utmos = real_audio_metrics.get("utmos")
+            dnsmos = real_audio_metrics.get("dnsmos")
+            wer = real_audio_metrics.get("wer")
+            sim = real_audio_metrics.get("speaker_sim")
+            overall = real_audio_metrics.get("overall")
+            avail = real_audio_metrics.get("available_metrics", 0)
+            metrics_section = f"""
+REAL AUDIO METRICS (measured):
+- UTMOS: {f"{utmos:.2f}/5.0" if utmos is not None else "unavailable"}
+- DNSMOS OVR: {f"{dnsmos:.2f}/5.0" if dnsmos is not None else "unavailable"}
+- ASR WER: {f"{wer:.1%}" if wer is not None else "unavailable"}
+- Speaker Similarity: {f"{sim:.3f}" if sim is not None else "unavailable"}
+- Fused Overall (0-1): {f"{overall:.3f}" if overall is not None else "N/A"} (from {avail}/4 metrics)
+"""
         return f"""Segment ID: {segment_id}
 
 EXPECTED (from annotation + audio_postprocess):
@@ -139,7 +160,7 @@ EXPECTED (from annotation + audio_postprocess):
 - Reference Text: {reference_text[:500]}...
 
 AUDIO ANALYSIS (simulated):
-{audio_description}
+{audio_description}{metrics_section}
 
 EVALUATE AND OUTPUT QualityJudgment JSON with:
 - speaker_clarity (0-1): Does the voice match the expected speaker?

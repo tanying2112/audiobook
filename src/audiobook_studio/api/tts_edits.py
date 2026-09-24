@@ -2,11 +2,12 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import NotFoundError
 from ..models.legacy import LegacyTTSEdit as TTSEdit
 from ..schemas.legacy import TTSEdit as TTSEditSchema
 from .dependencies import get_async_db
@@ -65,7 +66,7 @@ async def get_tts_edit(edit_id: int, db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(select(TTSEdit).where(TTSEdit.id == edit_id))
     e = result.scalar_one_or_none()
     if not e:
-        raise HTTPException(status_code=404, detail="TTSEdit not found")
+        raise NotFoundError(resource="TTSEdit", identifier=str(edit_id))
     return e
 
 
@@ -75,7 +76,7 @@ async def update_tts_edit(edit_id: int, payload: TTSEditUpdate, db: AsyncSession
     result = await db.execute(select(TTSEdit).where(TTSEdit.id == edit_id))
     e = result.scalar_one_or_none()
     if not e:
-        raise HTTPException(status_code=404, detail="TTSEdit not found")
+        raise NotFoundError(resource="TTSEdit", identifier=str(edit_id))
     for field, value in payload.model_dump().items():
         if field in {"id", "paragraph_id"}:
             continue
@@ -91,7 +92,7 @@ async def delete_tts_edit(edit_id: int, db: AsyncSession = Depends(get_async_db)
     result = await db.execute(select(TTSEdit).where(TTSEdit.id == edit_id))
     e = result.scalar_one_or_none()
     if not e:
-        raise HTTPException(status_code=404, detail="TTSEdit not found")
+        raise NotFoundError(resource="TTSEdit", identifier=str(edit_id))
     await db.delete(e)
     await db.commit()
     return None

@@ -8,13 +8,12 @@ Supports multiple zero-shot cloning engines:
 Provides unified interface for voice cloning with reference audio.
 """
 
-import asyncio
 import logging
 import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Generator, List, Optional
+from typing import Generator, Optional
 
 import numpy as np
 
@@ -93,9 +92,7 @@ class BaseZeroShotCloneEngine(ABC):
         """Implementation-specific streaming cloning."""
         pass
 
-    def clone(
-        self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs
-    ) -> ZeroShotCloneResult:
+    def clone(self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs) -> ZeroShotCloneResult:
         """
         Clone voice from reference audio.
 
@@ -145,9 +142,7 @@ class BaseZeroShotCloneEngine(ABC):
             lang = language or self.config.language
             yield from self._clone_stream_impl(text, reference_audio, lang, **kwargs)
 
-    def _mock_clone(
-        self, text: str, reference_audio: bytes, language: Optional[str] = None
-    ) -> ZeroShotCloneResult:
+    def _mock_clone(self, text: str, reference_audio: bytes, language: Optional[str] = None) -> ZeroShotCloneResult:
         """Generate mock cloned audio for testing."""
         if not text:
             return ZeroShotCloneResult(
@@ -212,8 +207,23 @@ class XTTSv2Engine(BaseZeroShotCloneEngine):
     """
 
     SUPPORTED_LANGUAGES = {
-        "en", "es", "fr", "de", "it", "pt", "pl", "tr",
-        "ru", "nl", "cs", "ar", "zh", "ja", "hu", "ko", "hi"
+        "en",
+        "es",
+        "fr",
+        "de",
+        "it",
+        "pt",
+        "pl",
+        "tr",
+        "ru",
+        "nl",
+        "cs",
+        "ar",
+        "zh",
+        "ja",
+        "hu",
+        "ko",
+        "hi",
     }
 
     def _init_client(self):
@@ -233,16 +243,15 @@ class XTTSv2Engine(BaseZeroShotCloneEngine):
             logger.error("httpx not installed for XTTS-v2")
             raise
 
-    def _clone_impl(
-        self, text: str, reference_audio: bytes, language: str, **kwargs
-    ) -> ZeroShotCloneResult:
-        import httpx
+    def _clone_impl(self, text: str, reference_audio: bytes, language: str, **kwargs) -> ZeroShotCloneResult:
         import base64
+
+        import httpx
 
         # Detect language if auto
         if language == "auto":
             language = "zh"  # Default to Chinese for this project
-        
+
         if language not in self.SUPPORTED_LANGUAGES:
             logger.warning(f"Language {language} not officially supported by XTTS-v2, trying anyway")
 
@@ -282,10 +291,9 @@ class XTTSv2Engine(BaseZeroShotCloneEngine):
     async def _clone_async_impl(
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> ZeroShotCloneResult:
-        import httpx
         import base64
 
-        if language == "auto":
+        if language == "auto":  # noqa: E303
             language = "zh"
 
         ref_audio_b64 = base64.b64encode(reference_audio).decode("utf-8")
@@ -324,8 +332,9 @@ class XTTSv2Engine(BaseZeroShotCloneEngine):
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> Generator[ZeroShotCloneResult, None, None]:
         """Stream cloning via XTTS-v2 (if server supports streaming)."""
-        import httpx
         import base64
+
+        import httpx
 
         if language == "auto":
             language = "zh"
@@ -356,6 +365,7 @@ class XTTSv2Engine(BaseZeroShotCloneEngine):
                     continue
 
                 import json
+
                 chunk_data = json.loads(line)
                 audio_bytes = base64.b64decode(chunk_data["audio_base64"])
                 is_final = chunk_data.get("is_final", False)
@@ -385,9 +395,7 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
     - MIT license
     """
 
-    SUPPORTED_LANGUAGES = {
-        "en", "zh", "ja", "ko", "fr", "de", "es", "it", "pt", "ru"
-    }
+    SUPPORTED_LANGUAGES = {"en", "zh", "ja", "ko", "fr", "de", "es", "it", "pt", "ru"}
 
     def _init_client(self):
         if self.config.mock_mode:
@@ -406,11 +414,10 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
             logger.error("httpx not installed for OpenVoice V2")
             raise
 
-    def _clone_impl(
-        self, text: str, reference_audio: bytes, language: str, **kwargs
-    ) -> ZeroShotCloneResult:
-        import httpx
+    def _clone_impl(self, text: str, reference_audio: bytes, language: str, **kwargs) -> ZeroShotCloneResult:
         import base64
+
+        import httpx
 
         if language == "auto":
             language = "zh"
@@ -449,10 +456,9 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
     async def _clone_async_impl(
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> ZeroShotCloneResult:
-        import httpx
         import base64
 
-        if language == "auto":
+        if language == "auto":  # noqa: E303
             language = "zh"
 
         ref_audio_b64 = base64.b64encode(reference_audio).decode("utf-8")
@@ -490,8 +496,9 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> Generator[ZeroShotCloneResult, None, None]:
         """Stream cloning via OpenVoice V2."""
-        import httpx
         import base64
+
+        import httpx
 
         if language == "auto":
             language = "zh"
@@ -521,6 +528,7 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
                     continue
 
                 import json
+
                 chunk_data = json.loads(line)
                 audio_bytes = base64.b64decode(chunk_data["audio_base64"])
                 is_final = chunk_data.get("is_final", False)
@@ -535,7 +543,12 @@ class OpenVoiceV2Engine(BaseZeroShotCloneEngine):
                     text_processed=chunk_data.get("text", "") if chunk_index == 0 else "",
                     language_detected=chunk_data.get("language", language),
                     voice_similarity=chunk_data.get("similarity", 0.0),
-                    metadata={"engine": "openvoice_v2", "language": language, "chunk": chunk_index, "is_final": is_final},
+                    metadata={
+                        "engine": "openvoice_v2",
+                        "language": language,
+                        "chunk": chunk_index,
+                        "is_final": is_final,
+                    },
                 )
                 chunk_index += 1
 
@@ -569,11 +582,10 @@ class CosyVoiceCloneEngine(BaseZeroShotCloneEngine):
             logger.error("httpx not installed for CosyVoice Clone")
             raise
 
-    def _clone_impl(
-        self, text: str, reference_audio: bytes, language: str, **kwargs
-    ) -> ZeroShotCloneResult:
-        import httpx
+    def _clone_impl(self, text: str, reference_audio: bytes, language: str, **kwargs) -> ZeroShotCloneResult:
         import base64
+
+        import httpx
 
         if language == "auto":
             language = "zh"
@@ -613,10 +625,9 @@ class CosyVoiceCloneEngine(BaseZeroShotCloneEngine):
     async def _clone_async_impl(
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> ZeroShotCloneResult:
-        import httpx
         import base64
 
-        if language == "auto":
+        if language == "auto":  # noqa: E303
             language = "zh"
 
         ref_audio_b64 = base64.b64encode(reference_audio).decode("utf-8")
@@ -655,8 +666,9 @@ class CosyVoiceCloneEngine(BaseZeroShotCloneEngine):
         self, text: str, reference_audio: bytes, language: str, **kwargs
     ) -> Generator[ZeroShotCloneResult, None, None]:
         """Stream cloning via CosyVoice."""
-        import httpx
         import base64
+
+        import httpx
 
         if language == "auto":
             language = "zh"
@@ -687,6 +699,7 @@ class CosyVoiceCloneEngine(BaseZeroShotCloneEngine):
                     continue
 
                 import json
+
                 chunk_data = json.loads(line)
                 audio_bytes = base64.b64decode(chunk_data["audio_base64"])
                 is_final = chunk_data.get("is_final", False)
@@ -701,7 +714,12 @@ class CosyVoiceCloneEngine(BaseZeroShotCloneEngine):
                     text_processed=chunk_data.get("text", "") if chunk_index == 0 else "",
                     language_detected=chunk_data.get("language", language),
                     voice_similarity=chunk_data.get("similarity", 0.0),
-                    metadata={"engine": "cosyvoice_clone", "language": language, "chunk": chunk_index, "is_final": is_final},
+                    metadata={
+                        "engine": "cosyvoice_clone",
+                        "language": language,
+                        "chunk": chunk_index,
+                        "is_final": is_final,
+                    },
                 )
                 chunk_index += 1
 
@@ -728,9 +746,7 @@ class ZeroShotCloneEngine:
         return engine_class(config)
 
     # Delegate methods to underlying engine
-    def clone(
-        self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs
-    ) -> ZeroShotCloneResult:
+    def clone(self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs) -> ZeroShotCloneResult:
         return self._engine.clone(text, reference_audio, language, **kwargs)
 
     async def clone_async(

@@ -1,0 +1,19 @@
+{{- if .Values.worker.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-worker
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: worker
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.web.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "audiobook-studio.selectorLabels" . | nindent 4 }}
+    component: worker
+{{- end }}

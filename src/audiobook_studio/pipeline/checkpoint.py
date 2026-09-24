@@ -21,7 +21,7 @@ Usage::
 
     from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
 
-    cp = CheckpointManager(project_id=1)
+    cp = CheckpointManager(project_id=123)
     # chapter-level stage:
     cp.mark_stage_done("extract", chapter_index=1)
     if cp.is_stage_done("extract", chapter_index=1):
@@ -29,7 +29,7 @@ Usage::
     # paragraph-level stage:
     cp.mark_stage_done("annotate", chapter_index=1, paragraph_index=3)
     if cp.is_stage_done("annotate", chapter_index=1, paragraph_index=3):
-        logger.info("Paragraph 3 already annotated, skipping")
+        logger.info("Paragraph 3 already annotated, skipping)
 """
 
 import json
@@ -112,7 +112,7 @@ class CheckpointManager:
         # v2 → v3 migration: drop paragraph-level stages from chapter-level list,
         # carry forward only chapter-level stages (extract/analyze/review).
         chapters = data.get("chapters", {})
-        for ch_key, ch_data in chapters.items():
+        for _ch_key, ch_data in chapters.items():
             old_stage_list = ch_data.get("stages_done", [])
             # Keep only genuine chapter-level stages; drop the buggy
             # per-paragraph stage entries that v2 mistakenly stored here.
@@ -216,7 +216,9 @@ class CheckpointManager:
                 self._flush()
                 logger.info(
                     "Checkpoint: ch%d p%d stage '%s' completed",
-                    chapter_index, paragraph_index, stage,
+                    chapter_index,
+                    paragraph_index,
+                    stage,
                 )
             return
         ch = self._chapter(chapter_index)

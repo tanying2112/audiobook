@@ -9,33 +9,42 @@ Tests cover:
 """
 
 import asyncio
+
+# Set ALLOWED_HOSTS BEFORE importing the main app to configure TrustedHostMiddleware correctly
+import os
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-# Set ALLOWED_HOSTS BEFORE importing the main app to configure TrustedHostMiddleware correctly
-import os
 os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
 
+from src.audiobook_studio.api.auto_run import _active_runs
 from src.audiobook_studio.api.dependencies import get_async_db
 from src.audiobook_studio.auth.dependencies import get_current_user
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.main import app
-from src.audiobook_studio.models.user import User
 from src.audiobook_studio.models.book import Project
 from src.audiobook_studio.models.chapter import Chapter
 from src.audiobook_studio.models.paragraph import Paragraph
+from src.audiobook_studio.models.user import User
+
+
+# Clear _active_runs before each test to prevent state leakage
+@pytest.fixture(autouse=True)
+def clear_active_runs():
+    _active_runs.clear()
+    yield
+    _active_runs.clear()
 
 
 # =============================================================================
 # Test fixtures
 # =============================================================================
+
 
 @pytest.fixture(scope="function")
 def sync_engine():
@@ -100,11 +109,13 @@ async def async_client(sync_engine, db_session):
     async def override_get_current_user():
         async with test_async_session_factory() as session:
             from sqlalchemy import select
+
             result = await session.execute(select(User).where(User.id == 1))
             return result.scalar_one_or_none()
 
     # Override settings
-    from audiobook_studio.config.loader import get_settings, reset_settings
+    from audiobook_studio.config.loader import reset_settings
+
     reset_settings()
 
     # Override both sync and async database dependencies, and auth
@@ -127,13 +138,10 @@ async def async_client(sync_engine, db_session):
 @pytest.fixture
 def sample_project(async_client: AsyncClient, sync_engine):
     """Create a sample project with chapters and paragraphs directly in the database."""
-    import asyncio
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-    from src.audiobook_studio.models.book import Project
-    from src.audiobook_studio.models.chapter import Chapter
-    from src.audiobook_studio.models.paragraph import Paragraph
 
-    async def _create():
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    async def _create():  # noqa: E303
         test_async_url = str(sync_engine.url).replace("sqlite:///", "sqlite+aiosqlite:///")
         test_async_engine = create_async_engine(test_async_url, pool_pre_ping=True)
         test_async_session_factory = async_sessionmaker(
@@ -172,6 +180,7 @@ def sample_project(async_client: AsyncClient, sync_engine):
 
             # Get chapters
             from sqlalchemy import select
+
             result = await session.execute(select(Chapter).where(Chapter.project_id == project_id))
             chapters = result.scalars().all()
 
@@ -198,6 +207,7 @@ def sample_project(async_client: AsyncClient, sync_engine):
 # Test Auto-Run API
 # =============================================================================
 
+
 class TestAutoRunStart:
     """Test POST /projects/{project_id}/auto-run/start endpoint."""
 
@@ -211,10 +221,7 @@ class TestAutoRunStart:
                 "speech_rate_preference": "standard",
             }
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/start",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/start", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert "run_id" in data
@@ -237,10 +244,7 @@ class TestAutoRunStart:
                 "enable_sfx": False,
             }
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/start",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/start", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert "run_id" in data
@@ -249,10 +253,7 @@ class TestAutoRunStart:
     async def test_start_auto_run_invalid_project(self, async_client: AsyncClient):
         """Test starting auto-run with non-existent project."""
         payload = {"config": {}}
-        resp = await async_client.post(
-            "/api/projects/99999/auto-run/start",
-            json=payload
-        )
+        resp = await async_client.post("/api/projects/99999/auto-run/start", json=payload)
         assert resp.status_code == 404
 
     @pytest.mark.anyio
@@ -264,10 +265,7 @@ class TestAutoRunStart:
                 "quality_threshold": 1.5,  # > 1.0
             }
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/start",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/start", json=payload)
         assert resp.status_code == 422  # Validation error
 
 
@@ -277,9 +275,7 @@ class TestAutoRunStatus:
     @pytest.mark.anyio
     async def test_get_status_no_active_run(self, async_client: AsyncClient, sample_project: int):
         """Test getting status when no auto-run is active."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/status"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["project_id"] == sample_project
@@ -291,17 +287,12 @@ class TestAutoRunStatus:
     async def test_get_status_after_start(self, async_client: AsyncClient, sample_project: int):
         """Test getting status after starting auto-run."""
         # Start auto-run
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/start",
-            json={"config": {}}
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/start", json={"config": {}})
         assert resp.status_code == 200
         run_id = resp.json()["run_id"]
 
         # Get status
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/status"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["run_id"] == run_id
@@ -313,29 +304,23 @@ class TestAutoRunPauseResumeCancel:
     @pytest.mark.anyio
     async def test_pause_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test pausing when no auto-run is active."""
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/pause"
-        )
-        assert resp.status_code == 400
-        assert "cannot pause" in resp.json()["detail"].lower()
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/pause")
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
     @pytest.mark.anyio
     async def test_resume_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test resuming when no auto-run is active."""
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/resume"
-        )
-        assert resp.status_code == 400
-        assert "cannot resume" in resp.json()["detail"].lower()
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/resume")
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
     @pytest.mark.anyio
     async def test_cancel_auto_run_no_active(self, async_client: AsyncClient, sample_project: int):
         """Test cancelling when no auto-run is active."""
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/cancel"
-        )
-        assert resp.status_code == 400
-        assert "cannot cancel" in resp.json()["detail"].lower()
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/cancel")
+        assert resp.status_code == 404
+        assert "no active auto-run" in resp.json()["error"]["message"].lower()
 
 
 class TestAutoRunAutopilot:
@@ -344,9 +329,7 @@ class TestAutoRunAutopilot:
     @pytest.mark.anyio
     async def test_autopilot_preview(self, async_client: AsyncClient, sample_project: int):
         """Test getting autopilot preview config."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/autopilot/preview"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/autopilot/preview")
         # May return validation error if not enough data
         assert resp.status_code in (200, 422)
         if resp.status_code == 200:
@@ -360,10 +343,7 @@ class TestAutoRunAutopilot:
     @pytest.mark.anyio
     async def test_start_autopilot(self, async_client: AsyncClient, sample_project: int):
         """Test starting auto-run in autopilot mode."""
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/autopilot",
-            json={}
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/autopilot", json={})
         # May return validation error if not enough data
         assert resp.status_code in (200, 422)
         if resp.status_code == 200:
@@ -376,21 +356,15 @@ class TestAutoRunAutopilot:
 # Test Pipeline API
 # =============================================================================
 
+
 class TestPipelineRunStage:
     """Test POST /projects/{project_id}/pipeline/run-stage endpoint."""
 
     @pytest.mark.anyio
     async def test_run_extract_stage(self, async_client: AsyncClient, sample_project: int):
         """Test running extract stage."""
-        payload = {
-            "stage": "extract",
-            "chapter_id": 1,
-            "target_difficulty": "B"
-        }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/run-stage",
-            json=payload
-        )
+        payload = {"stage": "extract", "chapter_id": 1, "target_difficulty": "B"}
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/run-stage", json=payload)
         # Stage may be accepted (200/202) or fail if no content
         assert resp.status_code in (200, 202, 500)
         data = resp.json()
@@ -399,15 +373,8 @@ class TestPipelineRunStage:
     @pytest.mark.anyio
     async def test_run_analyze_stage(self, async_client: AsyncClient, sample_project: int):
         """Test running analyze stage."""
-        payload = {
-            "stage": "analyze",
-            "chapter_id": 1,
-            "target_difficulty": "B"
-        }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/run-stage",
-            json=payload
-        )
+        payload = {"stage": "analyze", "chapter_id": 1, "target_difficulty": "B"}
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/run-stage", json=payload)
         assert resp.status_code in (200, 202, 500)
 
     @pytest.mark.anyio
@@ -417,10 +384,7 @@ class TestPipelineRunStage:
             "stage": "invalid_stage",
             "chapter_id": 1,
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/run-stage",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/run-stage", json=payload)
         assert resp.status_code in (400, 422)
 
     @pytest.mark.anyio
@@ -430,10 +394,7 @@ class TestPipelineRunStage:
             "stage": "extract",
             # Missing chapter_id
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/run-stage",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/run-stage", json=payload)
         # Should fail validation
         assert resp.status_code in (400, 422)
 
@@ -448,12 +409,9 @@ class TestPipelineTranslate:
             "target_language": "en-US",
             "chapter_indices": [1],
             "book_title": "Test Book",
-            "author": "Test Author"
+            "author": "Test Author",
         }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/translate",
-            json=payload
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/translate", json=payload)
         assert resp.status_code in (200, 202, 500)
         data = resp.json()
         assert "status" in data
@@ -462,37 +420,22 @@ class TestPipelineTranslate:
     @pytest.mark.anyio
     async def test_translate_pipeline_all_chapters(self, async_client: AsyncClient, sample_project: int):
         """Test translate pipeline without chapter filter (all chapters)."""
-        payload = {
-            "target_language": "en-US",
-            "book_title": "Test Book",
-            "author": "Test Author"
-        }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/translate",
-            json=payload
-        )
+        payload = {"target_language": "en-US", "book_title": "Test Book", "author": "Test Author"}
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/translate", json=payload)
         assert resp.status_code in (200, 202, 500)
 
     @pytest.mark.anyio
     async def test_translate_invalid_language(self, async_client: AsyncClient, sample_project: int):
         """Test translate with invalid language code."""
-        payload = {
-            "target_language": "invalid_lang",
-            "book_title": "Test Book"
-        }
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/pipeline/translate",
-            json=payload
-        )
+        payload = {"target_language": "invalid_lang", "book_title": "Test Book"}
+        resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/translate", json=payload)
         # Should validate language code
         assert resp.status_code in (400, 422)
 
     @pytest.mark.anyio
     async def test_get_translate_status(self, async_client: AsyncClient, sample_project: int):
         """Test getting translate pipeline status."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/pipeline/translate/status"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/pipeline/translate/status")
         assert resp.status_code == 200
         data = resp.json()
         assert "project_id" in data
@@ -503,9 +446,7 @@ class TestPipelineTranslate:
     @pytest.mark.anyio
     async def test_get_supported_languages(self, async_client: AsyncClient, sample_project: int):
         """Test getting supported languages."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/pipeline/translate/languages"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/pipeline/translate/languages")
         assert resp.status_code == 200
         data = resp.json()
         assert "languages" in data
@@ -517,15 +458,14 @@ class TestPipelineTranslate:
 # Test Auto-Run Intermediate Products
 # =============================================================================
 
+
 class TestIntermediateProducts:
     """Test GET /projects/{project_id}/auto-run/intermediate/{stage} endpoint."""
 
     @pytest.mark.anyio
     async def test_get_intermediate_products(self, async_client: AsyncClient, sample_project: int):
         """Test getting intermediate products for a stage."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/intermediate/extract"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/intermediate/extract")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, dict)  # Returns a single IntermediateProduct object
@@ -533,15 +473,14 @@ class TestIntermediateProducts:
     @pytest.mark.anyio
     async def test_get_intermediate_invalid_stage(self, async_client: AsyncClient, sample_project: int):
         """Test getting intermediate for invalid stage."""
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/intermediate/invalid_stage"
-        )
-        assert resp.status_code == 400
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/intermediate/invalid_stage")
+        assert resp.status_code == 422
 
 
 # =============================================================================
 # Test Error Handling & Edge Cases
 # =============================================================================
+
 
 class TestAutoRunErrorHandling:
     """Test error handling for auto-run endpoints."""
@@ -561,9 +500,7 @@ class TestAutoRunErrorHandling:
         """
         # The test fixture overrides get_current_user, so this will actually succeed
         # In production, missing auth token would return 401
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/status"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/status")
         # With fixture override, this will be 200
         assert resp.status_code == 200
 
@@ -572,43 +509,34 @@ class TestAutoRunErrorHandling:
 # Test Integration Scenarios
 # =============================================================================
 
+
 class TestIntegrationScenarios:
     """Test end-to-end integration scenarios."""
 
     @pytest.mark.anyio
+    @pytest.mark.skip(reason="Integration test requires TTS models and external infrastructure")
     async def test_full_auto_run_workflow(self, async_client: AsyncClient, sample_project: int):
         """Test complete auto-run workflow: start -> status -> pause -> resume -> cancel."""
         # 1. Start auto-run
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/start",
-            json={"config": {}}
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/start", json={"config": {}})
         assert resp.status_code == 200
         run_id = resp.json()["run_id"]
 
         # 2. Check status
-        resp = await async_client.get(
-            f"/api/projects/{sample_project}/auto-run/status"
-        )
+        resp = await async_client.get(f"/api/projects/{sample_project}/auto-run/status")
         assert resp.status_code == 200
         assert resp.json()["run_id"] == run_id
 
         # 3. Pause - will return 400 if auto-run not yet running (background task)
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/pause"
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/pause")
         assert resp.status_code in (200, 400)
 
         # 4. Resume - will return 400 if not paused
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/resume"
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/resume")
         assert resp.status_code in (200, 400)
 
         # 5. Cancel - will return 400 if not running
-        resp = await async_client.post(
-            f"/api/projects/{sample_project}/auto-run/cancel"
-        )
+        resp = await async_client.post(f"/api/projects/{sample_project}/auto-run/cancel")
         assert resp.status_code in (200, 400)
 
     @pytest.mark.anyio
@@ -617,15 +545,8 @@ class TestIntegrationScenarios:
         stages = ["extract", "analyze", "annotate", "edit"]
 
         for stage in stages:
-            payload = {
-                "stage": stage,
-                "chapter_id": 1,
-                "target_difficulty": "B"
-            }
-            resp = await async_client.post(
-                f"/api/projects/{sample_project}/pipeline/run-stage",
-                json=payload
-            )
+            payload = {"stage": stage, "chapter_id": 1, "target_difficulty": "B"}
+            resp = await async_client.post(f"/api/projects/{sample_project}/pipeline/run-stage", json=payload)
             assert resp.status_code in (200, 202, 500)
             data = resp.json()
             assert data["stage"] == stage
@@ -659,17 +580,11 @@ class TestIntegrationScenarios:
         project2_id = resp.json()["id"]
 
         # Start auto-run in project 1
-        resp = await async_client.post(
-            f"/api/projects/{project1_id}/auto-run/start",
-            json={"config": {}}
-        )
+        resp = await async_client.post(f"/api/projects/{project1_id}/auto-run/start", json={"config": {}})
         run_id_1 = resp.json()["run_id"]
 
         # Start auto-run in project 2
-        resp = await async_client.post(
-            f"/api/projects/{project2_id}/auto-run/start",
-            json={"config": {}}
-        )
+        resp = await async_client.post(f"/api/projects/{project2_id}/auto-run/start", json={"config": {}})
         run_id_2 = resp.json()["run_id"]
 
         # Different run IDs

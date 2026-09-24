@@ -1,29 +1,31 @@
 <template>
-  <div class="translation-view">
-    <div class="header">
-      <button class="btn btn-ghost" @click="router.back()">
-        <Icon icon="mdi:arrow-left" width="18" height="18" />
-        {{ t('common.back') }}
-      </button>
-      <h1>{{ t('translation.title') }}</h1>
-      <p class="subtitle">{{ t('translation.subtitle') }}</p>
-    </div>
+  <div class="page-container">
+    <header class="page-header">
+      <div>
+        <button class="btn btn-ghost touch-target" @click="router.back()">
+          <Icon icon="mdi:arrow-left" width="18" height="18" />
+          <span class="hidden-mobile">{{ t('common.back') }}</span>
+        </button>
+        <h1 class="mt-4 mb-0">{{ t('translation.title') }}</h1>
+        <p class="text-secondary">{{ t('translation.subtitle') }}</p>
+      </div>
+    </header>
 
     <!-- Step 1: Configure -->
-    <section class="card" v-if="step === 1">
+    <section class="card section" v-if="step === 1">
       <h2>{{ t('translation.config_title') }}</h2>
 
       <div class="form-group">
-        <label>{{ t('translation.project_label') }}</label>
-        <div class="project-display">
+        <label class="form-label">{{ t('translation.project_label') }}</label>
+        <div class="form-control project-display">
           <Icon icon="mdi:book-open-variant" width="20" height="20" />
           <span>{{ projectTitle || t('translation.loading_project') }}</span>
         </div>
       </div>
 
       <div class="form-group">
-        <label>{{ t('translation.target_language_label') }}</label>
-        <select v-model="targetLanguage" class="select">
+        <label class="form-label">{{ t('translation.target_language_label') }}</label>
+        <select v-model="targetLanguage" class="form-control">
           <option value="" disabled>{{ t('translation.select_language') }}</option>
           <option
             v-for="lang in languages"
@@ -36,36 +38,37 @@
       </div>
 
       <div class="form-group">
-        <label>{{ t('translation.chapter_range_label') }}</label>
-        <div class="chapter-range">
-          <label class="radio-label">
-            <input type="radio" v-model="chapterMode" value="all" />
+        <label class="form-label">{{ t('translation.chapter_range_label') }}</label>
+        <div class="flex flex-wrap gap-4 chapter-range">
+          <label class="radio-label touch-target">
+            <input type="radio" v-model="chapterMode" value="all" class="touch-target-sm" />
             {{ t('translation.all_chapters') }}
           </label>
-          <label class="radio-label">
-            <input type="radio" v-model="chapterMode" value="selected" />
+          <label class="radio-label touch-target">
+            <input type="radio" v-model="chapterMode" value="selected" class="touch-target-sm" />
             {{ t('translation.selected_chapters') }}
           </label>
         </div>
-        <div v-if="chapterMode === 'selected'" class="chapter-checkboxes">
+        <div v-if="chapterMode === 'selected'" class="grid grid-auto-fill chapter-checkboxes">
           <label
             v-for="ch in chapters"
             :key="ch.id"
-            class="checkbox-label"
+            class="checkbox-label touch-target"
           >
             <input
               type="checkbox"
               :value="ch.chapter_number || ch.id"
               v-model="selectedChapters"
+              class="touch-target-sm"
             />
             {{ ch.title || t('project_detail.chapter_fallback', { number: ch.chapter_number || ch.id }) }}
           </label>
         </div>
       </div>
 
-      <div class="actions">
+      <div class="actions flex gap-2 flex-wrap justify-end mt-4">
         <button
-          class="btn primary"
+          class="btn btn-primary touch-target"
           @click="startTranslate"
           :disabled="!targetLanguage || translating"
         >
@@ -75,11 +78,11 @@
     </section>
 
     <!-- Step 2: Progress -->
-    <section class="card" v-if="step === 2">
+    <section class="card section" v-if="step === 2">
       <h2>{{ t('translation.progress_title') }}</h2>
 
       <div class="progress-header">
-        <div class="progress-bar-container">
+        <div class="progress-bar-container w-full">
           <div class="progress-bar" :style="{ width: overallProgress + '%' }"></div>
         </div>
         <span class="progress-text">{{ Math.round(overallProgress) }}%</span>
@@ -107,22 +110,22 @@
         </div>
       </div>
 
-      <div v-if="progressState.error" class="error-box">
+      <div v-if="progressState.error" class="alert alert-error">
         <Icon icon="mdi:alert-circle" width="20" height="20" />
         <span>{{ progressState.error }}</span>
       </div>
 
-      <div class="actions">
+      <div class="actions flex gap-2 flex-wrap justify-end mt-4">
         <button
           v-if="!progressState.isRunning"
-          class="btn primary"
+          class="btn btn-primary touch-target"
           @click="step = 3"
         >
           {{ t('translation.view_results') }}
         </button>
         <button
           v-if="progressState.isPaused"
-          class="btn secondary"
+          class="btn btn-outline touch-target"
           @click="resumeTranslation"
         >
           {{ t('translation.resume') }}
@@ -131,45 +134,45 @@
     </section>
 
     <!-- Step 3: Results -->
-    <section class="card" v-if="step === 3">
+    <section class="card section" v-if="step === 3">
       <h2>{{ t('translation.results_title') }}</h2>
 
-      <div class="result-summary">
-        <div class="stat">
+      <div class="result-summary grid grid-auto-fit">
+        <div class="stat card">
           <span class="stat-value">{{ translationStatus.total_original_segments }}</span>
           <span class="stat-label">{{ t('translation.original_segments') }}</span>
         </div>
-        <div class="stat">
+        <div class="stat card">
           <span class="stat-value">{{ translationStatus.total_translated_segments }}</span>
           <span class="stat-label">{{ t('translation.translated_segments') }}</span>
         </div>
-        <div class="stat">
+        <div class="stat card">
           <span class="stat-value">{{ Math.round(translationStatus.translation_ratio * 100) }}%</span>
           <span class="stat-label">{{ t('translation.coverage') }}</span>
         </div>
       </div>
 
-      <div class="comparison-section">
+      <div class="comparison-section mt-4">
         <h3>{{ t('translation.comparison_title') }}</h3>
         <p class="hint">{{ t('translation.comparison_hint') }}</p>
 
-        <div class="audio-comparison">
-          <div class="audio-card">
+        <div class="audio-comparison grid grid-2">
+          <div class="audio-card card">
             <h4>{{ t('translation.original_audio') }}</h4>
-            <div class="audio-player">
-              <select v-model="selectedParagraph" class="select small">
+            <div class="audio-player flex flex-col gap-2">
+              <select v-model="selectedParagraph" class="form-control" style="max-width: 100%;">
                 <option v-for="p in paragraphs" :key="p.id" :value="p.id">
                   {{ t('translation.paragraph') }} {{ p.index }}
                 </option>
               </select>
-              <button class="btn small" @click="playOriginal" :disabled="!selectedParagraph">
+              <button class="btn btn-primary touch-target" @click="playOriginal" :disabled="!selectedParagraph">
                 <Icon icon="mdi:play" width="16" height="16" />
-                {{ t('translation.play') }}
+                <span>{{ t('translation.play') }}</span>
               </button>
             </div>
           </div>
 
-          <div class="audio-card">
+          <div class="audio-card card">
             <h4>{{ t('translation.translated_audio') }}</h4>
             <div class="audio-player">
               <p class="hint">{{ t('translation.translated_hint') }}</p>
@@ -178,11 +181,11 @@
         </div>
       </div>
 
-      <div class="actions">
-        <button class="btn secondary" @click="step = 1">
+      <div class="actions flex gap-2 flex-wrap justify-end mt-4">
+        <button class="btn btn-outline touch-target" @click="step = 1">
           {{ t('translation.new_translation') }}
         </button>
-        <button class="btn secondary" @click="router.push(`/projects/${projectId}`)">
+        <button class="btn btn-outline touch-target" @click="router.push(`/projects/${projectId}`)">
           {{ t('translation.back_to_project') }}
         </button>
       </div>
@@ -349,276 +352,190 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.translation-view {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-.header {
-  margin-bottom: 2rem;
-}
-.header h1 {
-  font-size: 1.8rem;
-  margin: 0.5rem 0 0;
-}
-.subtitle {
-  color: var(--color-text-secondary, #888);
-  margin: 0.5rem 0 0;
-}
-.card {
-  background: var(--color-bg-secondary, #f9f9f9);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-.card h2 {
-  margin: 0 0 1rem;
-  font-size: 1.2rem;
-}
-.form-group {
-  margin-bottom: 1.25rem;
-}
-.form-group label {
-  display: block;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-}
-.select {
-  width: 100%;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--color-border, #ccc);
-  border-radius: 8px;
-  font-size: 0.95rem;
-  background: var(--color-bg-primary, #fff);
-}
-.select.small {
-  width: auto;
-  min-width: 200px;
-}
+/* Uses global responsive utilities from style.css */
+
+/* Form control visual adjustments for this view */
 .project-display {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.8rem;
-  background: var(--color-bg-primary, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 8px;
-  color: var(--color-text-primary, #333);
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
 }
+
 .chapter-range {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
 }
+
 .radio-label {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 8px;
   font-weight: 400;
   cursor: pointer;
 }
+
 .chapter-checkboxes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.5rem;
-  padding: 0.75rem;
-  background: var(--color-bg-primary, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 8px;
-  max-height: 200px;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  max-height: 220px;
   overflow-y: auto;
 }
+
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 8px;
   font-weight: 400;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 14px;
+  min-height: 44px; /* touch-friendly */
 }
+
 .progress-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 16px;
+  margin-bottom: 20px;
 }
+
 .progress-bar-container {
   flex: 1;
-  height: 12px;
-  background: var(--color-border, #e0e0e0);
-  border-radius: 6px;
+  height: 14px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
   overflow: hidden;
 }
+
 .progress-bar {
   height: 100%;
-  background: var(--color-primary, #4a90d9);
-  border-radius: 6px;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }
+
 .progress-text {
   font-weight: 600;
-  min-width: 48px;
+  min-width: 50px;
   text-align: right;
+  color: var(--color-text);
 }
+
 .stage-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  gap: 8px;
+  margin-bottom: 20px;
 }
+
 .stage-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  background: var(--color-bg-primary, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
   transition: all 0.2s;
+  min-height: 44px;
 }
+
 .stage-item.completed {
-  border-color: #28a745;
-  background: #f0fff4;
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
 }
+
 .stage-item.active {
-  border-color: var(--color-primary, #4a90d9);
-  background: #f0f7ff;
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
+
 .stage-progress {
   margin-left: auto;
-  font-size: 0.85rem;
-  color: var(--color-primary, #4a90d9);
+  font-size: 13px;
+  color: var(--color-primary);
   font-weight: 600;
 }
-.error-box {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: #fff5f5;
-  border: 1px solid #e53e3e;
-  border-radius: 8px;
-  color: #e53e3e;
-  margin-bottom: 1rem;
-}
+
 .result-summary {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
 }
+
 .stat {
   flex: 1;
-  min-width: 120px;
+  min-width: 140px;
   text-align: center;
-  padding: 1rem;
-  background: var(--color-bg-primary, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
 }
+
 .stat-value {
   display: block;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 700;
-  color: var(--color-primary, #4a90d9);
+  color: var(--color-primary);
 }
+
 .stat-label {
   display: block;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary, #888);
-  margin-top: 0.25rem;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
 }
+
 .comparison-section {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border, #e0e0e0);
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
 }
+
 .comparison-section h3 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 8px;
   font-size: 1rem;
 }
+
 .hint {
-  color: var(--color-text-secondary, #888);
-  font-size: 0.85rem;
-  margin: 0 0 1rem;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
 }
+
 .audio-comparison {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: 16px;
 }
+
 .audio-card {
-  padding: 1rem;
-  background: var(--color-bg-primary, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
 }
+
 .audio-card h4 {
-  margin: 0 0 0.75rem;
-  font-size: 0.95rem;
+  margin: 0 0 12px;
+  font-size: 15px;
 }
+
 .audio-player {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-.btn {
-  padding: 0.6rem 1.2rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: opacity 0.2s, background 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn.primary {
-  background: var(--color-primary, #4a90d9);
-  color: white;
-}
-.btn.primary:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-.btn.secondary {
-  background: var(--color-bg-secondary, #eee);
-  color: var(--color-text-primary, #333);
-}
-.btn.secondary:hover:not(:disabled) {
-  background: var(--color-border, #ddd);
-}
-.btn.ghost {
-  background: transparent;
-  color: var(--color-text-secondary, #888);
-  padding: 0.4rem 0.6rem;
-}
-.btn.ghost:hover {
-  color: var(--color-text-primary, #333);
-  background: var(--color-bg-secondary, #f5f5f5);
-}
-.btn.small {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
+  gap: 10px;
 }
 
-@media (max-width: 640px) {
-  .audio-comparison {
-    grid-template-columns: 1fr;
-  }
-  .result-summary {
-    flex-direction: column;
-  }
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 </style>

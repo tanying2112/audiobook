@@ -8,18 +8,15 @@ against a REAL in-memory SQLite (created via Base.metadata.create_all) and
 assert the seeding is real, idempotent, and that the read helpers return real
 data — no implicit mocking of the production path.
 """
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from tests.conftest import set_sqlite_fk_off
 
 from src.audiobook_studio.auth.models import PermissionName, RoleName
-from src.audiobook_studio.auth.rbac import (
-    RBACManager,
-    check_permission,
-    get_rbac_manager,
-    init_rbac,
-)
+from src.audiobook_studio.auth.rbac import RBACManager, check_permission, get_rbac_manager, init_rbac
 from src.audiobook_studio.database import Base
 from src.audiobook_studio.models.user import Permission, ProjectPermission, Role, User
 
@@ -31,6 +28,12 @@ def db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    # TEST-ISOLATION: harness leaks a process-wide FK=ON Engine-class "connect"
+    # listener (storage.py). This instance listener re-asserts FK=OFF on every
+    # connection this engine opens, so seeding/permission inserts (which write
+    # orphan project_permissions rows intentionally) don't trip a spurious
+    # FOREIGN KEY constraint under --random-order.
+    event.listen(engine, "connect", set_sqlite_fk_off)
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -92,14 +95,10 @@ class TestInitRbac:
 class TestRbacUserPermissionHelpers:
     def test_get_user_project_permissions_returns_rows(self, db):
         init_rbac(db)
-        user = User(
-            email="p@example.com", username="p", hashed_password="h", is_active=True
-        )
+        user = User(email="p@example.com", username="p", hashed_password="h", is_active=True)
         db.add(user)
         db.flush()
-        pp = ProjectPermission(
-            user_id=user.id, project_id=42, role="editor"
-        )
+        pp = ProjectPermission(user_id=user.id, project_id=42, role="editor")
         db.add(pp)
         db.commit()
 
@@ -111,9 +110,7 @@ class TestRbacUserPermissionHelpers:
 
     def test_get_user_projects_returns_role_map(self, db):
         init_rbac(db)
-        user = User(
-            email="p2@example.com", username="p2", hashed_password="h", is_active=True
-        )
+        user = User(email="p2@example.com", username="p2", hashed_password="h", is_active=True)
         db.add(user)
         db.flush()
         db.add_all(
@@ -132,9 +129,7 @@ class TestRbacUserPermissionHelpers:
 
     def test_user_has_permission_uses_real_seeded_roles(self, db):
         init_rbac(db)
-        user = User(
-            email="e@example.com", username="e", hashed_password="h", is_active=True
-        )
+        user = User(email="e@example.com", username="e", hashed_password="h", is_active=True)
         editor = db.query(Role).filter(Role.name == RoleName.EDITOR.value).first()
         user.roles = [editor]
         db.add(user)
@@ -150,9 +145,7 @@ class TestRbacUserPermissionHelpers:
 class TestLegacyConvenienceHelpers:
     def test_check_permission_uses_rbac_manager(self, db):
         init_rbac(db)
-        user = User(
-            email="x@example.com", username="x", hashed_password="h", is_active=True
-        )
+        user = User(email="x@example.com", username="x", hashed_password="h", is_active=True)
         admin = db.query(Role).filter(Role.name == RoleName.ADMIN.value).first()
         user.roles = [admin]
         db.add(user)

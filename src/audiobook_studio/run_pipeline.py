@@ -43,7 +43,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, List, Optional, Tuple
 
 # Show deprecation warning when imported (not when run as __main__)
 if __name__ != "__main__":
@@ -64,6 +64,7 @@ init_telemetry = None
 orchestrator_run_pipeline = None
 shutdown_telemetry = None
 cleanup_after_export = None
+export_project = None
 
 
 # ── Module-level __getattr__ for backward compatibility with test patches ──────
@@ -87,6 +88,8 @@ def __getattr__(name: str):
         return shutdown_telemetry or _get_orchestrator_functions()[2]
     if name == "cleanup_after_export":
         return cleanup_after_export or _get_cleanup_after_export()
+    if name == "export_project":
+        return export_project or _get_export_project()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -183,10 +186,12 @@ def _get_export_classes():
 
 
 def _get_export_project():
-    """Lazy import of export_project function."""
-    from src.audiobook_studio.export.batch_exporter import export_project
+    """Lazy import of export_project function, respecting test patches."""
+    if export_project is not None:
+        return export_project
+    from src.audiobook_studio.export.batch_exporter import export_project as _ep
 
-    return export_project
+    return _ep
 
 
 # ── 日志配置 ──────────────────────────────────────────────────────────────────
@@ -686,8 +691,10 @@ def run_book_pipeline(
 
         if has_incomplete:
             # Check if running in non-interactive mode (CI/CD)
-            import sys
-
+            # NOTE: use the module-level `sys` (imported at top of the file).
+            # A local `import sys` here would shadow the module global for the
+            # whole function and, being conditional, leave `sys` unbound on the
+            # non-interactive (non-TTY) exception paths -> UnboundLocalError.
             if sys.stdin.isatty():
                 print("⚠️  发现未完成进度，是否从检查点继续？(Y/n): ", end="")
                 try:
@@ -836,7 +843,7 @@ def run_book_pipeline(
                         and not review_judgment.overall_passed
                     ):
                         print(f"    ❌ Reviewer Agent 拦截: {review_judgment.blocking_issues} 个阻断性问题")
-                        print(f"       终端显示拦截/重试日志，等待 Developer Agent 修复...")
+                        print("       终端显示拦截/重试日志，等待 Developer Agent 修复...")
 
                         # Check if we should run the closed loop (auto-fix + re-review)
                         auto_fix = os.environ.get("REVIEWER_AUTO_FIX", "true").lower() == "true"
@@ -883,15 +890,13 @@ def run_book_pipeline(
                             CharacterVoiceBinding = _get_character_voice_binding()
 
                             voice_map = []
-                            scene_tags = []
-                            book_meta = {}
                             if chapter.analyzed_json:
                                 raw = chapter.analyzed_json
                                 if isinstance(raw, str):
                                     raw = json.loads(raw)
                                 voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
-                                scene_tags = raw.get("scene_tags", [])
-                                book_meta = raw.get("book_meta", {})
+                                raw.get("scene_tags", [])
+                                raw.get("book_meta", {})
 
                             if not voice_map:
                                 voice_map = [
@@ -976,7 +981,7 @@ def run_book_pipeline(
                         if os.environ.get("REVIEWER_STRICT", "false").lower() == "true":
                             raise RuntimeError(f"Reviewer Agent blocked synthesis: {review_judgment.summary}")
                     else:
-                        print(f"    ✅ Reviewer Agent 通过: 所有段落质量门禁通过")
+                        print("    ✅ Reviewer Agent 通过: 所有段落质量门禁通过")
 
                 # ── 阶段 7-8: 段落级后半段 (synthesize, quality) ──
                 paragraph_stages_post = [s for s in active_stages if s in ("synthesize", "quality")]
@@ -991,7 +996,7 @@ def run_book_pipeline(
                         .all()
                     )
                     if paragraphs:
-                        print(f"    🎙️ 开始段落级合成与质检...")
+                        print("    🎙️ 开始段落级合成与质检...")
                         for para in paragraphs:
                             print(f"      ── 段落 {para.index}/{len(paragraphs)} ──")
                             try:

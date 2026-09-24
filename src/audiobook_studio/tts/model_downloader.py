@@ -12,12 +12,10 @@ Downloads Kokoro-ONNX model files from Hugging Face with:
 
 import hashlib
 import logging
-import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import requests
 from tqdm import tqdm

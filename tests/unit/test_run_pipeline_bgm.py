@@ -112,11 +112,28 @@ class TestRunBookPipelineBgmExport:
 
         with (
             patch.object(rp, "orchestrator_run_pipeline", new=orchestrator_mock),
+            # _get_orchestrator_functions() returns the patched orchestrator
+            # function only when ALL THREE globals (init_telemetry,
+            # orchestrator_run_pipeline, shutdown_telemetry) are set; otherwise
+            # it falls through to a real import and runs the REAL pipeline.
+            # Patch init_telemetry/shutdown_telemetry too.
+            patch.object(rp, "init_telemetry", return_value=None),
+            patch.object(rp, "shutdown_telemetry", return_value=None),
             patch.object(rp, "_get_chapter_files", return_value=[(1, chap_file)]),
             patch.object(rp, "_find_project", return_value=project),
             patch.object(rp, "SessionLocal", return_value=db_mock),
+            # _get_session_local_and_init_db() returns the patched SessionLocal
+            # only when BOTH module globals SessionLocal and init_db are set;
+            # otherwise it falls through to a real import and opens a real sqlite
+            # DB. Patch init_db too so the mocked SessionLocal is actually used.
+            patch.object(rp, "init_db", return_value=MagicMock()),
             patch.object(rp, "CheckpointManager", return_value=cp_mgr),
-            patch("audiobook_studio.export.batch_exporter.export_project", side_effect=fake_export),
+            # Patch the module placeholder (rp.export_project) rather than the
+            # audiobook_studio.export.batch_exporter path: run_pipeline imports
+            # export_project from src.audiobook_studio.export.batch_exporter, which is
+            # a DIFFERENT module object under the src.* vs audiobook_studio.* dual
+            # import layout, so patching the latter never reaches run_book_pipeline.
+            patch.object(rp, "export_project", side_effect=fake_export),
         ):
             pid = rp.run_book_pipeline(
                 "红楼梦",

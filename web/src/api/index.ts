@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { Project, Chapter, Paragraph, AudioSegment, Character, QualityResult } from '../types'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -10,23 +11,207 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// ── Loading state (request counter + events) ──────────────────────────────
+let pendingRequests = 0
+export const apiEvents = new EventTarget()
+
+function emitLoading() {
+  const loading = pendingRequests > 0
+  apiEvents.dispatchEvent(
+    new CustomEvent('loading', { detail: { loading, pending: pendingRequests } }),
+  )
+}
+
+/** Subscribe to global loading-state changes. Returns an unsubscribe fn. */
+export function onApiLoading(
+  listener: (loading: boolean, pending: number) => void,
+): () => void {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent<{ loading: boolean; pending: number }>).detail
+    listener(detail.loading, detail.pending)
+  }
+  apiEvents.addEventListener('loading', handler)
+  // emit current state immediately
+  listener(pendingRequests > 0, pendingRequests)
+  return () => apiEvents.removeEventListener('loading', handler)
+}
+
 api.interceptors.request.use((config) => {
   const authStore = useAuthStore()
   if (authStore.token) {
     config.headers.Authorization = `Bearer ${authStore.token}`
   }
+  pendingRequests += 1
+  emitLoading()
   return config
 })
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      const authStore = useAuthStore()
-      authStore.logout()
-      window.location.href = '/login'
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+}> = []
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
     }
-    return Promise.reject(error)
+  })
+  failedQueue = []
+}
+
+// ── Unified API error-code mapping ──────────────────────────────────────────
+export interface ApiError {
+  status: number | null
+  code: string
+  message: string
+  detail?: unknown
+}
+
+function statusToCode(status: number | null, err: any): string {
+  switch (status) {
+    case 400:
+      return 'bad_request'
+    case 401:
+      return 'unauthorized'
+    case 403:
+      return 'forbidden'
+    case 404:
+      return 'not_found'
+    case 409:
+      return 'conflict'
+    case 422:
+      return 'validation_error'
+    case 429:
+      return 'rate_limited'
+    case 500:
+      return 'internal_error'
+    case 502:
+      return 'bad_gateway'
+    case 503:
+      return 'service_unavailable'
+  }
+  if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message))) return 'timeout'
+  if (err?.request && !err?.response) return 'network_error'
+  return 'unknown'
+}
+
+function defaultMessage(code: string): string {
+  switch (code) {
+    case 'bad_request':
+      return 'Bad request'
+    case 'unauthorized':
+      return 'Unauthorized'
+    case 'forbidden':
+      return 'Forbidden'
+    case 'not_found':
+      return 'Not found'
+    case 'conflict':
+      return 'Conflict'
+    case 'validation_error':
+      return 'Validation error'
+    case 'rate_limited':
+      return 'Too many requests, please slow down'
+    case 'internal_error':
+      return 'Internal server error'
+    case 'bad_gateway':
+      return 'Bad gateway'
+    case 'service_unavailable':
+      return 'Service unavailable'
+    case 'timeout':
+      return 'Request timeout'
+    case 'network_error':
+      return 'Network error'
+    default:
+      return 'Unknown error'
+  }
+}
+
+/** Normalize any axios/network error into a unified { status, code, message }. */
+export function normalizeApiError(error: unknown): ApiError {
+  const err = error as any
+  const status: number | null = err?.response?.status ?? null
+  const code = statusToCode(status, err)
+  const detail = err?.response?.data?.detail
+
+  // Prefer the backend's specific detail when available, then fall back to the
+  // localized message, then to a default English message.
+  let message = ''
+  if (typeof detail === 'string' && detail) {
+    message = detail
+  } else if (Array.isArray(detail) && detail.length) {
+    message = detail
+      .map((d: any) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d)))
+      .join('; ')
+  } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+    message = detail.message
+  }
+  if (!message) {
+    try {
+      message = t(`error.${code}`)
+    } catch {
+      message = ''
+    }
+    if (!message || message === `error.${code}`) {
+      message = defaultMessage(code)
+    }
+  }
+  return { status, code, message, detail: err?.response?.data }
+}
+
+api.interceptors.response.use(
+  (response) => {
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
+    return response
+  },
+  async (error) => {
+    const originalRequest = error.config
+    // The request has settled (success or failure) — always release the counter.
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // 如果正在刷新，将当前请求加入队列等待
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return api(originalRequest)
+          })
+          .catch((err) => Promise.reject(err))
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      const authStore = useAuthStore()
+      try {
+        const newToken = await authStore.refreshAccessToken()
+        if (newToken) {
+          processQueue(null, newToken)
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return api(originalRequest)
+        }
+        // 刷新失败，清理队列并登出
+        processQueue(new Error('Token refresh failed'), null)
+        authStore.logout()
+        window.location.href = '/login'
+        return Promise.reject(error)
+      } catch (err) {
+        processQueue(err, null)
+        authStore.logout()
+        window.location.href = '/login'
+        return Promise.reject(err)
+      } finally {
+        isRefreshing = false
+      }
+    }
+    return Promise.reject(normalizeApiError(error))
   }
 )
 
@@ -144,7 +329,10 @@ export async function uploadFile(
   const formData = new FormData()
   formData.append('file', file)
   const { data } = await api.post(`/api/projects/${projectId}/upload`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // Setting an explicit `multipart/form-data` header (without boundary) makes the
+    // server's multipart parser fail to find the boundary and reject the upload.
+    headers: { 'Content-Type': undefined },
     onUploadProgress: (e) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))
@@ -515,7 +703,9 @@ export async function cloneVoice(
   formData.append('consent', consent ? 'true' : 'false')
 
   const { data } = await api.post('/api/tts/voices/clone', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // An explicit header without a boundary makes the server reject the upload.
+    headers: { 'Content-Type': undefined },
     onUploadProgress: (e) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))
@@ -659,8 +849,19 @@ export async function getTranslationStatus(projectId: number): Promise<Translati
 }
 
 export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
-  const { data } = await api.get('/api/projects/1/pipeline/translate/languages')
-  return data
+  // Backend serves the language catalog at /api/v1/languages (languages_router is
+  // mounted under /api/v1). The previous /api/translate/languages path 404'd, so the
+  // UI fell back to a hard-coded list that omitted Chinese. Map the backend shape
+  // (iso639_1 / bcp47 / display_name) into the UI's {code,name,native_name}, using
+  // bcp47 as the code so it matches the pipeline translate stage's allowed set
+  // (e.g. zh-CN, en-US, ja-JP).
+  const { data } = await api.get('/api/v1/languages')
+  const languages: TranslationLanguage[] = (data.languages || []).map((l: any) => ({
+    code: l.bcp47,
+    name: l.display_name,
+    native_name: l.display_name,
+  }))
+  return { languages }
 }
 
 // ── Monitoring / Telemetry ────────────────────────────────────────────────
@@ -729,12 +930,12 @@ export async function fetchProjectMetrics(
 ): Promise<ProjectMetrics> {
   const params: Record<string, number> = {}
   if (chapterIndex !== undefined) params.chapter_index = chapterIndex
-  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics`, { params })
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics`, { params })
   return data
 }
 
 export async function fetchLatestProjectMetrics(projectId: number): Promise<ProjectMetrics> {
-  const { data } = await api.get<ProjectMetrics>(`/monitoring/projects/${projectId}/metrics/latest`)
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics/latest`)
   return data
 }
 
@@ -742,15 +943,44 @@ export async function fetchMetricsHistory(
   projectId: number,
   limit = 30
 ): Promise<MetricsHistoryResponse> {
-  const { data } = await api.get<MetricsHistoryResponse>(`/monitoring/projects/${projectId}/metrics/history`, {
+  const { data } = await api.get<MetricsHistoryResponse>(`/api/monitoring/projects/${projectId}/metrics/history`, {
     params: { limit }
   })
   return data
 }
 
 export async function fetchProjectsWithMetrics(): Promise<ProjectsWithMetricsResponse> {
-  const { data } = await api.get<ProjectsWithMetricsResponse>('/monitoring/projects')
+  const { data } = await api.get<ProjectsWithMetricsResponse>('/api/monitoring/projects')
   return data
+}
+
+// ── Agent Chat (migrated from raw fetch to share the interceptor) ───────────
+
+export interface AgentChatMessagePayload {
+  message: string
+  session_id: string | null
+  context?: Record<string, unknown>
+}
+
+export async function sendAgentChatMessage(projectId: number, payload: AgentChatMessagePayload): Promise<any> {
+  const { data } = await api.post('/api/agent/chat', { project_id: projectId, ...payload })
+  return data
+}
+
+export async function fetchAgentSessions(projectId: number): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/sessions`)
+  return data
+}
+
+export async function fetchAgentSessionHistory(projectId: number, sessionId: string): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/history`, {
+    params: { session_id: sessionId },
+  })
+  return data
+}
+
+export async function deleteAgentSession(projectId: number, sessionId: string): Promise<void> {
+  await api.delete(`/api/agent/chat/${projectId}/sessions/${sessionId}`)
 }
 
 export default api

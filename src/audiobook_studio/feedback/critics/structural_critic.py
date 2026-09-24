@@ -11,13 +11,13 @@ StructuralCritic (结构派) - 文档结构、章节边界、段落流程、成�
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ...llm import LLMRouter
 from ...schemas import ParagraphAnnotation, TtsRoutingDecision
-from .base import BaseCritic, CriticResult, CriticType, CriticVerdict
+from .base import BaseCritic, CriticResult, CriticType
 
 logger = logging.getLogger(__name__)
 
@@ -124,45 +124,47 @@ class StructuralCritic(BaseCritic):
             cost_context = context.get("cost_context", {})
             document_structure = context.get("document_structure", {})
 
-        return template.render(
-            # Segment info
-            segment_id=Path(audio_path).stem,
-            speaker=annotation.speaker_canonical_name,
-            is_dialogue=annotation.is_dialogue,
-            paragraph_index=annotation.paragraph_index,
-            chapter_index=context.get("chapter_index", 1) if context else 1,
-            # Reference text
-            reference_text=reference_text,
-            # Context: adjacent paragraphs
-            prev_text=prev_paragraph.get("text", "（无前段）")[:500],
-            prev_speaker=prev_paragraph.get("speaker", ""),
-            prev_is_dialogue=prev_paragraph.get("is_dialogue", False),
-            next_text=next_paragraph.get("text", "（无后段）")[:500],
-            next_speaker=next_paragraph.get("speaker", ""),
-            next_is_dialogue=next_paragraph.get("is_dialogue", False),
-            # Chapter boundary
-            chapter_boundary_info=chapter_boundary_info or "（非章节边界）",
-            is_chapter_start=(context.get("is_chapter_start", False) if context else False),
-            is_chapter_end=context.get("is_chapter_end", False) if context else False,
-            # Document structure
-            total_chapters=document_structure.get("total_chapters", 0),
-            total_paragraphs=document_structure.get("total_paragraphs", 0),
-            current_chapter_paragraphs=document_structure.get("current_chapter_paragraphs", 0),
-            # Cost context
-            cumulative_cost=cost_context.get("cumulative_cost_usd", 0.0),
-            cost_limit_per_book=cost_context.get("cost_limit_per_book", 20.0),
-            cost_limit_per_chapter=cost_context.get("cost_limit_per_chapter", 5.0),
-            estimated_cost=routing_decision.estimated_cost_usd,
-            engine_choice=routing_decision.engine_choice,
-            fallback_engine=routing_decision.fallback_engine,
-            # Format compliance
-            segment_id_format=routing_decision.segment_id,
-            contract_version=routing_decision.contract_version,
-            # Thresholds
-            pass_threshold=self.pass_threshold,
-            warning_threshold=self.warning_threshold,
-            boundary_tolerance=self.boundary_tolerance,
-            cost_tolerance=self.cost_tolerance,
+        return str(
+            template.render(
+                # Segment info
+                segment_id=Path(audio_path).stem,
+                speaker=annotation.speaker_canonical_name,
+                is_dialogue=annotation.is_dialogue,
+                paragraph_index=annotation.paragraph_index,
+                chapter_index=context.get("chapter_index", 1) if context else 1,
+                # Reference text
+                reference_text=reference_text,
+                # Context: adjacent paragraphs
+                prev_text=prev_paragraph.get("text", "（无前段）")[:500],
+                prev_speaker=prev_paragraph.get("speaker", ""),
+                prev_is_dialogue=prev_paragraph.get("is_dialogue", False),
+                next_text=next_paragraph.get("text", "（无后段）")[:500],
+                next_speaker=next_paragraph.get("speaker", ""),
+                next_is_dialogue=next_paragraph.get("is_dialogue", False),
+                # Chapter boundary
+                chapter_boundary_info=chapter_boundary_info or "（非章节边界）",
+                is_chapter_start=(context.get("is_chapter_start", False) if context else False),
+                is_chapter_end=context.get("is_chapter_end", False) if context else False,
+                # Document structure
+                total_chapters=document_structure.get("total_chapters", 0),
+                total_paragraphs=document_structure.get("total_paragraphs", 0),
+                current_chapter_paragraphs=document_structure.get("current_chapter_paragraphs", 0),
+                # Cost context
+                cumulative_cost=cost_context.get("cumulative_cost_usd", 0.0),
+                cost_limit_per_book=cost_context.get("cost_limit_per_book", 20.0),
+                cost_limit_per_chapter=cost_context.get("cost_limit_per_chapter", 5.0),
+                estimated_cost=routing_decision.estimated_cost_usd,
+                engine_choice=routing_decision.engine_choice,
+                fallback_engine=routing_decision.fallback_engine,
+                # Format compliance
+                segment_id_format=routing_decision.segment_id,
+                contract_version=routing_decision.contract_version,
+                # Thresholds
+                pass_threshold=self.pass_threshold,
+                warning_threshold=self.warning_threshold,
+                boundary_tolerance=self.boundary_tolerance,
+                cost_tolerance=self.cost_tolerance,
+            )
         )
 
     def _evaluate_mock(

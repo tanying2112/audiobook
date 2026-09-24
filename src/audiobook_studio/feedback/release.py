@@ -12,8 +12,6 @@ Contains:
 
 import json
 import logging
-import shutil
-import sys
 from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -392,7 +390,7 @@ class VersionStore:
         """回滚到上一个版本."""
         current = self.current_versions.get(stage, 1)
         if current <= 1:
-            logger.warning(f"Already at v1, cannot rollback further")
+            logger.warning("Already at v1, cannot rollback further")
             return False
         return self.rollback_version(stage, current - 1)
 

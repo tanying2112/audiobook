@@ -6,9 +6,10 @@ Triggers regeneration on failure.
 """
 
 import base64
-import json
 import logging
 import os
+import queue
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,14 +20,72 @@ import numpy as np
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
 from ..config.loader import load_quality_thresholds
 from ..llm import LLMJudge, LLMRouter, create_judge, create_router
-from ..monitoring.langfuse_client import is_enabled, observe_quality_check, trace_function
-from ..quality import DNSMOSResult, QualityCheckResult, QualityCheckSuite, SpeakerSimilarityResult, WERResult
-from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
+from ..monitoring.langfuse_client import observe_quality_check, trace_function
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..quality import QualityCheckResult, QualityCheckSuite
+from ..quality.audio_quality import fuse_audio_scores
+from ..schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 from ..schemas.quality import FixSuggestion
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync, get_rms_peak_sync, read_pcm_samples_sync
 
 logger = logging.getLogger(__name__)
+
+# ── A2 全局质检判定收集器 ────────────────────────────────────────────────────
+# run() 在 golden_feedback 开启时把质检判定（pass/fail + 原因）推入此收集器，
+# 由 pipeline/sop_reflection.SOPBackgroundThread 周期性抽干并回流为 judge 金标，
+# 实现「运行时自动回流」而非仅单次 run() 同步回流。
+
+
+@dataclass
+class _QualityJudgmentRecord:
+    judgment: Any
+    annotation: Any = None
+    reference_text: str = ""
+    audio_description: Optional[str] = None
+
+
+class QualityJudgmentCollector:
+    """线程安全的质检判定收集器，供 SOPBackgroundThread 周期性抽干回流。"""
+
+    def __init__(self, max_size: int = 10000) -> None:
+        self._queue: "queue.Queue[_QualityJudgmentRecord]" = queue.Queue(maxsize=max_size)
+
+    def add(
+        self,
+        judgment: Any,
+        annotation: Any = None,
+        reference_text: str = "",
+        audio_description: Optional[str] = None,
+    ) -> bool:
+        try:
+            self._queue.put_nowait(_QualityJudgmentRecord(judgment, annotation, reference_text, audio_description))
+            return True
+        except queue.Full:
+            return False
+
+    def drain(self, max_size: int = 500) -> List[_QualityJudgmentRecord]:
+        records: List[_QualityJudgmentRecord] = []
+        while len(records) < max_size:
+            try:
+                records.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        return records
+
+    def size(self) -> int:
+        return self._queue.qsize()
+
+
+_QUALITY_JUDGMENT_COLLECTOR: Optional[QualityJudgmentCollector] = None
+
+
+def get_quality_judgment_collector() -> QualityJudgmentCollector:
+    """返回全局质检判定收集器（懒初始化，单例）。"""
+    global _QUALITY_JUDGMENT_COLLECTOR
+    if _QUALITY_JUDGMENT_COLLECTOR is None:
+        _QUALITY_JUDGMENT_COLLECTOR = QualityJudgmentCollector()
+    return _QUALITY_JUDGMENT_COLLECTOR
+
 
 # One segment passed to the quality-check run loop:
 # (audio_path, paragraph_annotation, routing_decision, reference_text).
@@ -88,6 +147,15 @@ class QualityCheckPipeline:
         # This enables graceful degradation: missing deps skip their metric
         # instead of forcing the entire pipeline into mock mode.
         self._available_features = self._check_optional_dependencies()
+        # Safety gate: heavy native audio-metric models (faster-whisper/ctranslate2)
+        # can hard-crash the whole process on some hosts. Unit tests and other
+        # constrained environments set AUDIO_HARD_METRICS_DISABLED=1 to force
+        # graceful skip of DNSMOS/ASR/SpeakerSim hard checks.
+        import os as _os
+
+        if _os.environ.get("AUDIO_HARD_METRICS_DISABLED", "").lower() in ("1", "true", "yes"):
+            for _k in ("dnsmos", "asr", "speaker_sim"):
+                self._available_features[_k] = False
 
         # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
@@ -113,7 +181,7 @@ class QualityCheckPipeline:
         )
 
         # Apply hardware profile quality check settings
-        self._apply_hardware_profile_quality_config()
+        self._sync_hardware_profile()
 
         # Log available features for diagnostics
         enabled = [k for k, v in self._available_features.items() if v]
@@ -146,7 +214,10 @@ class QualityCheckPipeline:
             import onnxruntime  # noqa: F401
 
             features["dnsmos"] = True
-        except ImportError:
+        except Exception:
+            # Optional dep: a failed import (missing OR a native/torch conflict at
+            # runtime) must degrade gracefully to "dnsmos unavailable" rather than
+            # crash pipeline construction.
             pass
 
         # Check ASR backends (FunASR or faster-whisper)
@@ -154,17 +225,19 @@ class QualityCheckPipeline:
             import funasr  # noqa: F401
 
             features["asr"] = True
-        except ImportError:
+        except Exception:
+            # ``funasr`` pulls in ``torch``; a runtime import failure (e.g. a
+            # polluted/native-torch conflict) is treated as "asr unavailable".
             try:
                 import faster_whisper  # noqa: F401
 
                 features["asr"] = True
-            except ImportError:
+            except Exception:
                 try:
-                    import whisper  # openai-whisper fallback
+                    import whisper  # noqa: F401
 
                     features["asr"] = True
-                except ImportError:
+                except Exception:
                     pass
 
         # Check Speaker Similarity (torch + speechbrain)
@@ -173,7 +246,7 @@ class QualityCheckPipeline:
             from speechbrain.inference.speaker import EncoderClassifier  # noqa: F401
 
             features["speaker_sim"] = True
-        except (ImportError, Exception):
+        except Exception:
             pass
 
         return features
@@ -200,6 +273,26 @@ class QualityCheckPipeline:
         self._hw_dnsmos_enabled = qc.dnsmos_enabled
         self._hw_asr_enabled = qc.asr_enabled
         self._hw_speaker_sim_enabled = qc.speaker_similarity_enabled
+
+    def _sync_hardware_profile(self) -> None:
+        """Re-apply the active hardware profile to this checker.
+
+        Safe to call before each :meth:`run`. It re-resolves the live
+        :class:`HardwareProfile` singleton, so a runtime
+        ``set_active_profile`` / ``reload_hardware_profile`` is observed without
+        restarting the process. The underlying :class:`QualityCheckSuite` is
+        rebuilt whenever the active tier actually changes, because its device
+        selection (CPU vs CUDA) is bound at construction time.
+        """
+        if not self.hardware_profile:
+            return
+        current = self.hardware_profile.active_profile
+        self._apply_hardware_profile_quality_config()
+        if getattr(self._quality_suite, "hardware_profile", None) != current:
+            self._quality_suite = QualityCheckSuite(
+                config=dict(self.quality_thresholds),
+                hardware_profile=current,
+            )
 
     def _reload_config_if_changed(self) -> None:
         """Hot-reload quality thresholds if config file changed."""
@@ -273,8 +366,20 @@ class QualityCheckPipeline:
                 duration_match=False,
                 issues=["ffprobe_not_found"],
             )
-        except Exception as e:
+        except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as e:
             logger.error(f"Audio analysis failed for {audio_path}: {e}")
+            return AudioAnalysisResult(
+                duration_ms=expected_duration_ms,
+                has_silence=False,
+                silence_regions=[],
+                has_clipping=False,
+                rms_db=-60.0,
+                peak_db=-60.0,
+                duration_match=False,
+                issues=[f"analysis_error: {str(e)}"],
+            )
+        except Exception as e:
+            logger.error(f"Unexpected audio analysis error for {audio_path}: {e}")
             return AudioAnalysisResult(
                 duration_ms=expected_duration_ms,
                 has_silence=False,
@@ -375,7 +480,7 @@ class QualityCheckPipeline:
 
         except FileNotFoundError:
             raise
-        except Exception as e:
+        except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as e:
             logger.error(f"ffprobe analysis failed: {e}")
             raise
 
@@ -397,7 +502,7 @@ class QualityCheckPipeline:
             with open(audio_path, "rb") as f:
                 audio_bytes = f.read()
             return base64.b64encode(audio_bytes).decode("utf-8")
-        except Exception as e:
+        except (OSError, ValueError) as e:  # IOError is an alias of OSError
             logger.error(f"Failed to encode audio {audio_path}: {e}")
             return None
 
@@ -466,7 +571,7 @@ class QualityCheckPipeline:
                 )
                 return cast(QualityJudgment, result.output)
 
-        except Exception as e:
+        except (ValueError, RuntimeError, OSError) as e:  # OSError covers Connection/Timeout
             logger.warning(f"Multimodal quality judge failed for {segment_id}: {e}")
             return None
 
@@ -546,55 +651,87 @@ class QualityCheckPipeline:
         )
 
     @trace_function(name="pipeline.quality_check.run", stage="quality")  # type: ignore[untyped-decorator]  # langfuse trace_function returns Callable[..., Any]; cannot make it parametric from here
-    def run(self, inputs: List[QualityRunInput]) -> List[QualityJudgment]:
+    def run(
+        self,
+        inputs: List[QualityRunInput],
+        *,
+        golden_feedback: bool = False,
+        golden_feedback_split: str = "val",
+        golden_feedback_stage: str = "judge",
+    ) -> List[QualityJudgment]:
         """Run quality check on synthesized segments.
 
         Args:
             inputs: List of (audio_path, paragraph_annotation, routing_decision, reference_text)
+
+        Keyword Args:
+            golden_feedback: 若为真，将每段质检判定（pass/fail + 原因）回流为
+                ``judge`` 阶段金标样本（A2：quality_check → golden 闭环）。默认关闭，
+                避免污染生产数据流。也可用环境变量 ``AUDIOBOOK_GOLDEN_FEEDBACK=1`` 全局开启。
+            golden_feedback_split: 回流目标 split（默认 ``val``，不进 train 防污染）。
+            golden_feedback_stage: 回流目标 stage（默认 ``judge``）。
         """
+        # 环境变量可全局开启质检回流（A2），便于在生产入口处统一开关。
+        if not golden_feedback and os.environ.get("AUDIOBOOK_GOLDEN_FEEDBACK", "0") == "1":
+            golden_feedback = True
+
+        # Re-resolve the active hardware profile so a runtime tier switch
+        # (set_active_profile / reload_hardware_profile) is reflected here
+        # without a process restart.
+        self._sync_hardware_profile()
         logger.info(f"Quality checking {len(inputs)} segments")
 
         # Emit stage enter
         if inputs:
             annotation = inputs[0][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_enter(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    total_items=len(inputs),
-                ))
+                loop.create_task(
+                    emit_stage_enter(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        total_items=len(inputs),
+                    )
+                )
             except RuntimeError:
                 pass
 
         judgments: List[QualityJudgment] = []
+        # 与 judgments 一一对应配对（(annotation, reference_text)），供 A2 回流。
+        qc_pairs: List[Tuple[Any, str]] = []
+        # 当前段的音频描述（非 mock 分支才会赋值），供 A2 样本富化；默认 None。
+        audio_description: Optional[str] = None
 
         for i, (audio_path, annotation, routing, reference_text) in enumerate(inputs):
             # Emit stage progress
             annotation = inputs[i][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_progress(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    current=i + 1,
-                    total=len(inputs),
-                    message=f"Quality checking segment {i + 1}/{len(inputs)}",
-                ))
+                loop.create_task(
+                    emit_stage_progress(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        current=i + 1,
+                        total=len(inputs),
+                        message=f"Quality checking segment {i + 1}/{len(inputs)}",
+                    )
+                )
             except RuntimeError:
                 pass
 
@@ -620,8 +757,6 @@ class QualityCheckPipeline:
             # Mock mode: skip hard quality checks entirely (DNSMOS/ASR/SpeakerSim)
             # Mock audio has no real acoustic features, so hard metrics would fail
             if self.mock_mode:
-                # Determine if regeneration is needed based on rule-based issues
-                needs_regeneration = len(analysis.issues) > 0
                 # Call judge in mock mode to get the mock judgment
                 judgment = self.judge.judge_quality(
                     segment_id=routing.segment_id,
@@ -635,9 +770,7 @@ class QualityCheckPipeline:
                 # rationale-bearing FixSuggestion. cast preserves the existing runtime merge
                 # of diagnostics into the typed issues list against the (out-of-scope) schema.
                 if analysis.issues:
-                    judgment.issues = cast(
-                        List[Any], list(analysis.issues) + list(judgment.issues)
-                    )
+                    judgment.issues = cast(List[Any], list(analysis.issues) + list(judgment.issues))
                     judgment.needs_regeneration = True
                     judgment.fix_suggestions = [
                         FixSuggestion(
@@ -649,6 +782,14 @@ class QualityCheckPipeline:
                         )
                     ]
                 judgments.append(judgment)
+                # A2 回流配对：判定与对应标注/参考文本同步收集。
+                qc_pairs.append((annotation, reference_text))
+                # A2 运行时自动回流：判定推入全局收集器，交由 SOPBackgroundThread 抽干。
+                if golden_feedback:
+                    try:
+                        get_quality_judgment_collector().add(judgment, annotation, reference_text, audio_description)
+                    except Exception:  # 收集失败绝不应中断主链路
+                        pass
                 continue
 
             # MOCK: 待真实实现
@@ -684,6 +825,43 @@ class QualityCheckPipeline:
             # Start timing for LLM judgment
             judgment_start_time = time.time()
 
+            # Prepare real audio metrics for the judge (P0-C1)
+            real_metrics: Optional[Dict[str, Any]] = None
+            if not self.mock_mode and hard_result:
+
+                def _numeric(v: Any) -> Optional[float]:
+                    # Defensive: hard-check results may surface non-numeric
+                    # placeholders (e.g. when a feature is unavailable); only
+                    # pass real scores to the MOS fuser.
+                    return v if isinstance(v, (int, float)) else None
+
+                real_metrics = {
+                    "utmos": (
+                        _numeric(hard_result.utmos.mos) if hard_result.utmos and hard_result.utmos.success else None
+                    ),
+                    "dnsmos": (
+                        _numeric(hard_result.dnsmos.mos_ovr)
+                        if hard_result.dnsmos and hard_result.dnsmos.success
+                        else None
+                    ),
+                    "wer": _numeric(hard_result.wer.wer) if hard_result.wer and hard_result.wer.success else None,
+                    "speaker_sim": (
+                        _numeric(hard_result.speaker_sim.similarity)
+                        if hard_result.speaker_sim and hard_result.speaker_sim.success
+                        else None
+                    ),
+                }
+                # Count available metrics
+                avail = sum(1 for v in real_metrics.values() if v is not None)
+                if avail:
+                    real_metrics["available_metrics"] = avail
+                    real_metrics["overall"] = fuse_audio_scores(
+                        real_metrics.get("utmos"),
+                        real_metrics.get("dnsmos"),
+                        real_metrics.get("wer"),
+                        real_metrics.get("speaker_sim"),
+                    )
+
             # LLM-as-a-Judge evaluation
             try:
                 from ..monitoring import record_stage_performance
@@ -693,6 +871,7 @@ class QualityCheckPipeline:
                     paragraph_annotation=annotation,
                     audio_description=audio_description,
                     reference_text=reference_text,
+                    real_audio_metrics=real_metrics,
                 )
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
@@ -717,9 +896,7 @@ class QualityCheckPipeline:
                 # Incorporate hard quality check results into judgment
                 if not hard_result.passed:
                     judgment.needs_regeneration = True
-                    cast(List[Any], judgment.issues).append(
-                        f"Hard quality check failed: {hard_result.overall_message}"
-                    )
+                    cast(List[Any], judgment.issues).append(f"Hard quality check failed: {hard_result.overall_message}")
                     judgment.fix_suggestions.append(
                         FixSuggestion(
                             suggestion_type="content_edit",
@@ -784,7 +961,14 @@ class QualityCheckPipeline:
                 )
 
                 judgments.append(judgment)
-            except Exception as e:
+                qc_pairs.append((annotation, reference_text))
+                # A2 运行时自动回流：判定推入全局收集器，交由 SOPBackgroundThread 抽干。
+                if golden_feedback:
+                    try:
+                        get_quality_judgment_collector().add(judgment, annotation, reference_text, audio_description)
+                    except Exception:  # 收集失败绝不应中断主链路
+                        pass
+            except (ValueError, RuntimeError, OSError):  # OSError covers Connection/Timeout
                 from ..monitoring import record_stage_performance
 
                 judgment_latency_ms = (time.time() - judgment_start_time) * 1000
@@ -808,22 +992,46 @@ class QualityCheckPipeline:
         # Emit stage exit (success)
         if inputs:
             annotation = inputs[0][1]
-            project_id = getattr(annotation, 'book_id', 0) or 0
-            chapter_index = getattr(annotation, 'chapter_index', 1)
+            project_id = getattr(annotation, "book_id", 0) or 0
+            chapter_index = getattr(annotation, "chapter_index", 1)
             # Default to project_id=1 if not set (for testing)
             if project_id == 0:
                 project_id = 1
             try:
                 import asyncio
+
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="quality",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="quality",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
+
+        # A2 质检回流：将本批判定（pass/fail + 原因）归一化为 judge 金标样本。
+        # 已产出的判定（即便个别段走异常路径未产出）都在此回流为可学习数据；
+        # 用环境变量或 run(golden_feedback=True) 开启，默认关闭以防污染生产数据。
+        if golden_feedback and judgments:
+            try:
+                from ..feedback.loop import quality_judgments_to_golden
+
+                added = quality_judgments_to_golden(
+                    judgments,
+                    annotations=[a for a, _ in qc_pairs],
+                    reference_texts=[r for _, r in qc_pairs],
+                    split=golden_feedback_split,
+                    stage=golden_feedback_stage,
+                )
+                logger.info(
+                    f"[A2 golden feedback]回流 {added} 条质检判定 -> "
+                    f"{golden_feedback_split}/{golden_feedback_stage}"
+                )
+            except Exception as e:  # 回流失败绝不应中断主链路
+                logger.warning(f"[A2 golden feedback]回流失败（已跳过）: {e}")
 
         return judgments
 
@@ -840,7 +1048,6 @@ def quality_check(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("QualityCheckPipeline ready")

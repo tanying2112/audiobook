@@ -1,14 +1,12 @@
 """Unit tests for audio quality check pipeline."""
 
-import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
 
-from src.audiobook_studio.monitoring import record_stage_performance
 from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
 from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment, TtsRoutingDecision
 

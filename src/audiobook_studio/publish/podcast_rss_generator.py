@@ -6,15 +6,26 @@ Audiobook Studio — Podcast RSS Feed 生成器
 """
 
 import hashlib
-import json
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def rfc822_gmt(dt: datetime) -> str:
+    """Format an RFC-822 timestamp in GMT (required by feed validators).
+
+    A naive datetime is treated as already being UTC.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    else:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
 @dataclass
@@ -51,7 +62,7 @@ class PodcastEpisode:
                 # 如果文件不存在，基于路径和标题生成
                 hash_input = f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
                 return hashlib.sha256(hash_input.encode()).hexdigest()
-        except Exception:
+        except OSError:
             # 后备方案：基于标题和时间
             hash_input = f"{self.title}:{self.pub_date.isoformat()}"
             return hashlib.sha256(hash_input.encode()).hexdigest()
@@ -149,7 +160,7 @@ class PodcastRSSGenerator:
             ET.SubElement(channel, "managingEditor").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
             ET.SubElement(channel, "webMaster").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
 
-        ET.SubElement(channel, "lastBuildDate").text = self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(channel, "lastBuildDate").text = rfc822_gmt(self.feed.last_build_date)
         ET.SubElement(channel, "generator").text = self.feed.generator
 
         # 添加分类
@@ -200,19 +211,23 @@ class PodcastRSSGenerator:
         ET.SubElement(item, "description").text = episode.description
         ET.SubElement(item, "guid").text = episode.guid
         ET.SubElement(item, "guid").set("isPermaLink", "false")
-        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(item, "pubDate").text = rfc822_gmt(episode.pub_date)
 
         # Enclosure (音频文件)
         enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set("url", str(episode.audio_file_path))  # 在实际应用中，这 zou 是可访问的URL
-        enclosure.set(
-            "length",
-            str(
-                episode.enclosure_length or episode.audio_file_path.stat().st_size
-                if episode.audio_file_path.exists()
-                else 0
-            ),
-        )
+        enclosure.set("url", str(episode.audio_file_path))  # a publicly reachable URL in production
+        # enclosure length must be the real byte size; fall back to the
+        # explicitly provided enclosure_length, then to the on-disk file size.
+        if episode.enclosure_length:
+            length = episode.enclosure_length
+        elif episode.audio_file_path.exists():
+            try:
+                length = episode.audio_file_path.stat().st_size
+            except OSError:
+                length = 0
+        else:
+            length = 0
+        enclosure.set("length", str(length))
         enclosure.set("type", episode.enclosure_type)
 
         # 可选元素
@@ -272,6 +287,109 @@ class PodcastRSSGenerator:
                     pass
 
         return len(errors) == 0, errors
+
+
+async def generate_podcast_rss(project_id: int, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate a Podcast RSS feed for a project from its audio segments.
+
+    This is the production entry point used by the Celery publish task. It
+    loads the project's current audio segments, builds one episode per
+    segment, and writes the feed to disk. The enclosure ``length`` is always
+    the real byte size and ``pubDate`` is emitted in GMT so the feed passes
+    podcast validators.
+
+    Returns a dict with ``rss_xml``, ``rss_url``, ``episode_count`` and
+    ``file_path``.
+    """
+    from sqlalchemy import select
+
+    from ..config import get_settings
+    from ..database import AsyncSessionLocal
+    from ..models.audio_segment import AudioSegment
+    from ..models.book import Project
+
+    settings = get_settings()
+    public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")  # noqa: F821
+    media_url = f"{public_url}/media/{project_id}"
+
+    mime_by_ext = {
+        ".m4b": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".aac": "audio/aac",
+    }
+
+    async with AsyncSessionLocal() as db:
+        proj_res = await db.execute(select(Project).where(Project.id == project_id))
+        project = proj_res.scalar_one_or_none()
+        if project is None:
+            raise ValueError(f"Project {project_id} not found")
+        seg_res = await db.execute(
+            select(AudioSegment)
+            .where(
+                AudioSegment.project_id == project_id,
+                AudioSegment.is_current.is_(True),
+            )
+            .order_by(AudioSegment.index)
+        )
+        segments = list(seg_res.scalars().all())
+
+    episodes: List[PodcastEpisode] = []
+    for i, seg in enumerate(segments, start=1):
+        filename = Path(seg.file_path).name if seg.file_path else f"episode_{i}.m4b"
+        enclosure_url = f"{media_url}/{filename}"
+        ext = Path(filename).suffix.lower()
+        mime_type = mime_by_ext.get(ext, "application/octet-stream")
+        length = seg.file_size_bytes or 0
+        if not length and seg.file_path and Path(seg.file_path).exists():
+            try:
+                length = Path(seg.file_path).stat().st_size
+            except OSError:
+                length = 0
+        episodes.append(
+            PodcastEpisode(
+                title=f"Episode {i}",
+                description=config.get("description", project.story_line_summary or ""),
+                audio_file_path=Path(enclosure_url),
+                duration_seconds=int(seg.duration_ms // 1000) if seg.duration_ms else 0,
+                pub_date=datetime.now(timezone.utc),
+                enclosure_length=length,
+                enclosure_type=mime_type,
+            )
+        )
+
+    feed = PodcastFeed(
+        title=config.get("title", f"Podcast {project_id}"),
+        description=config.get("description", ""),
+        link=config.get("link", public_url),
+        language=config.get("language", "zh-CN"),
+        author=config.get("author", ""),
+        owner_name=config.get("owner_name", ""),
+        owner_email=config.get("owner_email", ""),
+        explicit=bool(config.get("explicit", False)),
+        itunes_author=config.get("author", ""),
+        itunes_owner_name=config.get("owner_name", ""),
+        itunes_owner_email=config.get("owner_email", ""),
+        itunes_explicit="yes" if config.get("explicit") else "no",
+    )
+    generator = PodcastRSSGenerator(feed)
+    for ep in episodes:
+        generator.add_episode(ep)
+
+    out_dir = Path(getattr(settings, "RSS_OUTPUT_DIR", "data/feeds")).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    file_path = out_dir / f"project_{project_id}.rss"
+    success, _msg = generator.save_to_file(file_path)
+    if not success:
+        logger.warning("Failed to persist RSS feed to %s", file_path)
+    return {
+        "rss_xml": generator.generate_rss_xml(),
+        "rss_url": str(file_path),
+        "file_path": str(file_path),
+        "episode_count": len(episodes),
+    }
 
 
 def main() -> None:
@@ -373,7 +491,7 @@ def main() -> None:
 
         generator.add_episode(episode)
         logger.info(f"   第{i+1}集: {chapter_data['title']}")
-        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")
+        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")  # noqa: E228
         logger.info(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
 
     logger.info("\n" + "=" * 60)
@@ -420,7 +538,9 @@ def main() -> None:
     logger.info("\n📈 Feed统计信息:")
     logger.info(f"   节目总数: {len(generator.feed.episodes)} 集")
     total_duration = sum(ep.duration_seconds for ep in generator.feed.episodes)
-    logger.info(f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}")
+    logger.info(
+        f"   时长总计: {total_duration // 3600:02d}:{(total_duration % 3600) // 60:02d}:{total_duration % 60:02d}"
+    )
     logger.info(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
     logger.info(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
 

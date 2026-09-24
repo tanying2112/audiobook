@@ -6,10 +6,8 @@ Tests the complete pipeline from raw text to finished audio:
 3. Chapter-level synthesis
 """
 
-from pathlib import Path
-
 import pytest
-from tests.e2e.conftest import SAMPLE_TEXT, E2ETestConfig
+from tests.e2e.conftest import E2ETestConfig
 
 pytestmark = pytest.mark.e2e
 

@@ -6,11 +6,10 @@ Provides async export execution with progress tracking via Celery states.
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from celery import Task, states as celery_states
-from celery import Celery as CeleryApp
-from typing import TYPE_CHECKING
+from celery import Task
+from celery import states as celery_states
 
 if TYPE_CHECKING:
     from celery import Task as CeleryTask
@@ -31,9 +30,7 @@ from ..utils.gc_manager import cleanup_after_export  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-def _typed_task(
-    *args: Any, **kwargs: Any
-) -> Callable[[Callable[..., Dict[str, Any]]], Callable[..., Dict[str, Any]]]:
+def _typed_task(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Dict[str, Any]]], Callable[..., Dict[str, Any]]]:
     """Type-safe wrapper for celery_app.task decorator."""
     return celery_app.task(*args, **kwargs)  # type: ignore
 
@@ -53,7 +50,7 @@ async def _run_export_async(
     the call site.
     """
     if db_session is None:
-        async with AsyncSessionLocal() as db:  # type: ignore
+        async with AsyncSessionLocal() as db:
             return await export_project(project_id, db, job)  # type: ignore
     else:
         return await export_project(project_id, db_session, job)  # type: ignore
@@ -209,15 +206,13 @@ def export_chapter_async(
         from ..export.batch_exporter import export_chapter
 
         async def _run() -> Optional[str]:
-            async with AsyncSessionLocal() as db:  # type: ignore
+            async with AsyncSessionLocal() as db:
                 return await export_chapter(project_id, chapter_id, db, output_dir)  # type: ignore
 
         result_path = asyncio.run(_run())
 
         if result_path:
-            response = _get_task_result_dict(
-                self, task_id, project_id, "complete", output_path=result_path
-            )
+            response = _get_task_result_dict(self, task_id, project_id, "complete", output_path=result_path)
         else:
             response = _get_task_result_dict(
                 self,

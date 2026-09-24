@@ -17,7 +17,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 # ── Optional dspy dependency (P0.4 Route B — honesty) ───────────────────────
 # dspy is NOT a declared dependency (absent from requirements / pyproject). It
@@ -42,10 +42,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 # ``class X(_DspyModule)`` is a valid base in both branches.
 if TYPE_CHECKING:
     import dspy
-    from dspy import Example, Prediction
+    from dspy import Example
+    from dspy import Module as _DspyModule
+    from dspy import Prediction
     from dspy.teleprompt.gepa import GEPA
     from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
-    from dspy import Module as _DspyModule
 else:
     # Runtime stand-in base; swapped for the real ``dspy.Module`` below when
     # dspy is importable. When dspy is absent this remains, and constructing a
@@ -54,13 +55,16 @@ else:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             _require_dspy("CharacterRecognitionModule / VoiceDesignModule")
 
+
 dspy: Any = None
 try:  # pragma: no cover - exercised in test_feedback_import_safety with dspy blocked
     import dspy  # noqa: F811  (TYPE_CHECKING import is for static typing only)
-    from dspy import Example, Prediction  # noqa: F401,F811  (kept for API parity)
+    from dspy import Example  # noqa: F401,F811  (kept for API parity)
+    from dspy import Prediction  # noqa: F401,F811  (kept for API parity)
+    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
     from dspy.teleprompt.gepa import GEPA  # noqa: F401,F811
     from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback  # noqa: F401,F811
-    from dspy import Module as _DspyModule  # noqa: F401,F811  # swap in real base
+
     DSPY_AVAILABLE: bool = True
 except ModuleNotFoundError:
     DSPY_AVAILABLE = False
@@ -88,7 +92,18 @@ DEFAULT_EARLY_STOP_PATIENCE = 10
 DEFAULT_LONG_NOVEL_DIR = "data/long_novel"
 
 
-def configure_dspy_optimizer(use_mock: bool = True) -> Any:
+def _mock_mode_from_env() -> bool:
+    """Return True only when MOCK_LLM is explicitly enabled.
+
+    The self-evolution loop defaults to a REAL LLM so that closed-loop
+    learning consumes real production samples and performs genuine LLM
+    reflection. MockLM is an explicit degradation path: set ``MOCK_LLM=true``
+    to opt in (used by tests / offline runs).
+    """
+    return os.getenv("MOCK_LLM", "false").strip().lower() in ("1", "true", "yes")
+
+
+def configure_dspy_optimizer(use_mock: bool = False) -> Any:
     """Configure DSPy with appropriate LM for optimization."""
     if use_mock:
         # Use a mock LM for testing
@@ -130,11 +145,75 @@ def configure_dspy_optimizer(use_mock: bool = True) -> Any:
         dspy.configure(lm=mock_lm)
         return mock_lm
     else:
-        # Use real LM configuration (from environment)
+        # Use real LM configuration - try FCC gateway first
         import dspy
 
-        # DSPy will use the default LM from environment variables
-        return None
+        # Check if FCC gateway is available
+        fcc_url = os.getenv("FCC_GATEWAY_URL", "http://127.0.0.1:8082")
+        fcc_key = os.getenv("FCC_API_KEY", "freecc")
+        fcc_model = os.getenv("FCC_MODEL", "opencode/deepseek-v4-flash-free")
+
+        class FCCGatewayLM(dspy.LM):
+            """Custom DSPy LM that uses the FCC gateway (Anthropic protocol)."""
+
+            def __init__(self) -> None:
+                super().__init__(model="fcc-gateway", temperature=1.0, max_tokens=32000)
+                self.fcc_url = fcc_url
+                self.fcc_key = fcc_key
+                self.fcc_model = fcc_model
+
+            def basic_request(self, prompt: str, **kwargs: Any) -> List[Dict[str, str]]:
+                import requests
+
+                url = f"{self.fcc_url}/v1/messages"
+                headers = {"Authorization": f"Bearer {self.fcc_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": self.fcc_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": kwargs.get("max_tokens", 32000),
+                    "temperature": kwargs.get("temperature", 1.0),
+                }
+
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Extract the text content from Anthropic response format
+                    content = data.get("content", [])
+                    if content and isinstance(content, list):
+                        text = "".join([c.get("text", "") for c in content if c.get("type") == "text"])
+                    else:
+                        text = str(content)
+
+                    return [{"text": text}]
+                except Exception as e:
+                    logger.warning(f"FCC gateway call failed: {e}")
+                    # Return empty response to indicate failure
+                    return [{"text": ""}]
+
+            def __call__(
+                self,
+                prompt: Optional[str] = None,
+                messages: Optional[List[Dict[str, Any]]] = None,
+                **kwargs: Any,
+            ) -> List[Dict[str, str]]:
+                # Handle both prompt= and messages= calling conventions
+                if messages is not None:
+                    # Extract prompt from messages
+                    prompt_text = " ".join(str(m.get("content", "")) for m in messages)
+                else:
+                    prompt_text = prompt or ""
+                return self.basic_request(prompt_text, **kwargs)
+
+        try:
+            fcc_lm = FCCGatewayLM()
+            dspy.configure(lm=fcc_lm)
+            logger.info("[BootstrapFewShot] Configured DSPy with FCC gateway LM")
+            return fcc_lm
+        except Exception as e:
+            logger.warning(f"[BootstrapFewShot] Failed to configure FCC gateway LM: {e}; DSPy will use default")
+            return None
 
 
 @dataclass
@@ -305,7 +384,6 @@ def extract_paragraphs_from_text(text: str, max_paragraphs: Optional[int] = None
         List of paragraph dicts with text and index
     """
     # Remove Project Gutenberg header/footer
-    import re
 
     # Remove Gutenberg header (everything before "START OF THE PROJECT GUTENBERG")
     start_markers = [
@@ -494,7 +572,7 @@ def load_long_novel_data(
 def run_pipeline_on_book_data(
     book_data: BookTrainingData,
     stage: str = "annotate_paragraph",
-    mock_mode: bool = True,
+    mock_mode: bool = False,
     max_paragraphs: Optional[int] = None,
 ) -> BookTrainingData:
     """Run pipeline stage on book paragraphs to extract character/voice annotations.
@@ -505,7 +583,8 @@ def run_pipeline_on_book_data(
     Args:
         book_data: BookTrainingData with extracted paragraphs
         stage: Pipeline stage to run ('annotate_paragraph' or 'edit_for_tts')
-        mock_mode: Use mock LLM for fast processing
+        mock_mode: Explicitly use MockLM (degradation path). Defaults to a REAL
+            LLM so closed-loop self-iteration learns from real production samples.
         max_paragraphs: Limit paragraphs to process
 
     Returns:
@@ -614,7 +693,7 @@ def run_pipeline_on_book_data(
 def prepare_training_data_from_books(
     novel_dir: str = DEFAULT_LONG_NOVEL_DIR,
     stage: str = "annotate_paragraph",
-    mock_mode: bool = True,
+    mock_mode: bool = False,
     max_books: Optional[int] = None,
     max_paragraphs_per_book: Optional[int] = None,
 ) -> List[Tuple[str, Dict[str, Any]]]:
@@ -771,8 +850,10 @@ class BootstrapFewShotOptimizer:
         """
         if not DSPY_AVAILABLE:
             _require_dspy("BootstrapFewShotOptimizer.optimize")
-        # Configure DSPy with mock LM for testing
-        configure_dspy_optimizer(use_mock=True)
+        # Configure DSPy for a REAL LLM by default so the self-evolution loop
+        # performs genuine reflection on real production samples. Explicitly
+        # degrade to MockLM only when MOCK_LLM is set (tests / offline runs).
+        configure_dspy_optimizer(use_mock=_mock_mode_from_env())
 
         # Reset state
         self._stopper = EarlyStoppingStopper(patience=self.early_stop_patience)

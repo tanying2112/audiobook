@@ -13,7 +13,7 @@ import logging
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -21,9 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..feedback.critics.base import CriticEnsembleEvaluator, CriticResult, CriticType
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
-from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
 from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
 from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
 from ..models.feedback_record import FeedbackRecord
@@ -245,7 +243,9 @@ async def get_harness_status(
     the FeedbackRecord table for unprocessed counts.
     """
     # Query unprocessed feedback count from DB
-    result = await db.execute(func.count(FeedbackRecord.id).select().where(FeedbackRecord.processed == False))
+    result = await db.execute(
+        func.count(FeedbackRecord.id).select().where(FeedbackRecord.processed == False)  # noqa: E712
+    )
     unprocessed_count = result.scalar() or 0
 
     # If project_id given, try to get iteration loop status
@@ -321,7 +321,7 @@ async def get_pattern_heatmap(
     """
     from sqlalchemy import select
 
-    query = select(FeedbackRecord).where(FeedbackRecord.processed == True)
+    query = select(FeedbackRecord).where(FeedbackRecord.processed == True)  # noqa: E712
     if project_id:
         query = query.where(FeedbackRecord.project_id == project_id)
 
@@ -546,7 +546,6 @@ async def get_ab_tests(
     Since A/B tests run in-memory, we provide the latest results from
     the promotion gate evaluation.
     """
-    from sqlalchemy import select
 
     # Build A/B test entries from prompt version comparison
     tests: List[ABTestResult] = []
@@ -715,15 +714,56 @@ async def get_full_dashboard(
 
     Aggregates real data from all subsystems.
     """
-    # Collect all dashboard components in parallel calls
-    iteration_status = await get_harness_status(project_id=project_id, db=db)
-    feedback_funnel = await get_feedback_funnel(project_id=project_id, db=db)
-    pattern_heatmap = await get_pattern_heatmap(project_id=project_id, db=db)
-    prompt_timeline = await get_prompt_timeline()
-    promotion_gate = await get_promotion_gate()
-    canary_dashboard = await get_canaries()
-    ab_tests = await get_ab_tests(project_id=project_id, db=db)
-    critics_latest = await get_latest_critic_results(project_id=project_id, db=db)
+    # Collect all dashboard components. Each subsystem is isolated so a failure in
+    # one (e.g. DB/Redis hiccup) degrades gracefully instead of taking down the
+    # whole console with a 5xx / connection-reset ("加载失败: 网络错误").
+    try:
+        iteration_status = await get_harness_status(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: iteration_status failed: %s", e)
+        iteration_status = SelfIterationStatus()
+
+    try:
+        feedback_funnel = await get_feedback_funnel(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: feedback_funnel failed: %s", e)
+        feedback_funnel = FeedbackFunnel()
+
+    try:
+        pattern_heatmap = await get_pattern_heatmap(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: pattern_heatmap failed: %s", e)
+        pattern_heatmap = PatternHeatmapResponse()
+
+    try:
+        prompt_timeline = await get_prompt_timeline()
+    except Exception as e:
+        logger.error("harness dashboard: prompt_timeline failed: %s", e)
+        prompt_timeline = PromptVersionTimelineResponse()
+
+    try:
+        promotion_gate = await get_promotion_gate()
+    except Exception as e:
+        logger.error("harness dashboard: promotion_gate failed: %s", e)
+        promotion_gate = PromotionGateResult()
+
+    try:
+        canary_dashboard = await get_canaries()
+    except Exception as e:
+        logger.error("harness dashboard: canaries failed: %s", e)
+        canary_dashboard = CanaryDashboardResponse()
+
+    try:
+        ab_tests = await get_ab_tests(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: ab_tests failed: %s", e)
+        ab_tests = ABTestDashboardResponse()
+
+    try:
+        critics_latest = await get_latest_critic_results(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: critics_latest failed: %s", e)
+        critics_latest = CriticEnsembleResult()
 
     return HarnessDashboardResponse(
         iteration_status=iteration_status,

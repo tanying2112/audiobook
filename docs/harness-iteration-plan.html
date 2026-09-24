@@ -1,0 +1,154 @@
+<title>马具迭代方案</title>
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1e;--muted:#6b6b70;--accent:#2563eb;--ok:#16a34a;--warn:#d97706;--card:#ffffff;--line:#e5e5e0}
+body{background:var(--bg);color:var(--fg);font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;max-width:960px;margin:0 auto;padding:32px 20px 80px;line-height:1.7}
+h1{font-size:1.9rem;margin:0 0 4px}
+h2{font-size:1.3rem;margin:40px 0 12px;border-left:4px solid var(--accent);padding-left:12px}
+h3{font-size:1.05rem;margin:24px 0 8px}
+.sub{color:var(--muted);margin-bottom:28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:.92rem;margin:12px 0;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+th{background:#f3f3ef}
+code{background:#f0f0ea;padding:1px 6px;border-radius:4px;font-size:.85em}
+pre{background:#1e1e22;color:#e6e6e6;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:.82rem;line-height:1.55}
+.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:600}
+.tag.ok{background:#dcfce7;color:#166534}.tag.warn{background:#fef3c7;color:#92400e}.tag.blue{background:#dbeafe;color:#1e40af}
+ul,ol{padding-left:22px}li{margin:5px 0}
+.mermaid{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0}
+.check li{list-style:none;position:relative;padding-left:26px}
+.check li:before{content:"☐";position:absolute;left:0;color:var(--accent);font-size:1.05rem}
+</style>
+
+<h1>马具迭代完整方案</h1>
+<p class="sub">Audiobook Studio 自我进化体系 —— 不训练模型，只迭代 Prompt / SOP / 阈值 / 路由。接入离线 Ollama + Qwen3.5-2B 后，迭代成本降为零，可常态化运行。</p>
+
+<h2>一、总体架构</h2>
+<div class="card">
+<p><b>核心命题</b>：模型（TTS / LLM）固定为免费资源，系统的"智能"增长全部来自五个文本/配置对象的迭代：</p>
+<table>
+<tr><th>迭代对象</th><th>位置</th><th>迭代产物</th><th>验证手段</th></tr>
+<tr><td>Prompt 模板</td><td><code>prompts/{stage}/v{N}.j2</code></td><td>新版本 prompt</td><td>golden 集金丝雀对比</td></tr>
+<tr><td>SOP 规则库</td><td><code>agent_sop.json</code></td><td>纠错规则条目</td><td>schema 校验 + 人工抽检</td></tr>
+<tr><td>质量阈值</td><td><code>config/quality_thresholds.yaml</code></td><td>校准后阈值</td><td>失败样本分布统计</td></tr>
+<tr><td>TTS 路由表</td><td>路由决策配置</td><td>角色→声线映射权重</td><td>speaker_sim 失败对降权</td></tr>
+<tr><td>黄金数据集</td><td><code>data/golden/{split}/{stage}/</code></td><td>回流失败案例</td><td>train/val/test 三集隔离</td></tr>
+</table>
+</div>
+
+<pre class="mermaid">
+flowchart LR
+  A[生产运行<br/>8 阶段管线] -->|失败/纠错样本| B[CorrectionCollector]
+  B --> C[ReflectionEngine<br/>归因分析]
+  C --> D1[SOP 规则追加]
+  C --> D2[Prompt 候选 vN+1<br/>DSPy BootstrapFewShot]
+  C --> D3[阈值/路由校准建议]
+  D1 & D2 & D3 --> E[金丝雀验证<br/>golden 集 A/B]
+  E --> F{晋升门禁<br/>4 项标准}
+  F -->|通过| G[vN+1 上线<br/>shadow 10% → 全量]
+  F -->|不通过| H[回滚<br/>规则留 SOP 待人审]
+  A -->|硬指标 DNSMOS/WER| I[监控看板]
+</pre>
+
+<h2>二、离线 LLM 接入（Ollama + Qwen3.5-2B）</h2>
+<div class="card">
+<p>本地 Ollama 使自迭代摆脱免费 API 配额约束——反思、prompt 改写、金丝雀判分全部可离线跑。Qwen3.5-2B 承担"教练"角色；生产主路由仍走免费云 API（质量更高），自迭代回环用本地模型。</p>
+<h3>配置</h3>
+<pre># .env
+OLLAMA_BASE_URL=http://localhost:11434
+SELF_ITERATION_LLM=ollama/qwen3.5:2b      # 自迭代专用模型
+SELF_ITERATION_MOCK=false                  # 真实运行（走 Ollama）
+SELF_ITERATION_BATCH_SIZE=20               # 攒 20 条纠错样本触发一轮反思
+GOLDEN_CANARY_SUBSET=8                     # 金丝雀每 stage 抽 8 条</pre>
+<p>litellm 原生支持 <code>ollama/qwen3.5:2b</code> 协议，<code>create_router</code> 增加 provider 条目即可，无需改管线代码。</p>
+<h3>模型分工</h3>
+<table>
+<tr><th>角色</th><th>模型</th><th>理由</th></tr>
+<tr><td>生产管线（extract/annotate/edit）</td><td>免费云 API 轮换池</td><td>质量优先，配额内</td></tr>
+<tr><td>自迭代教练（归因、prompt 改写）</td><td>本地 Qwen3.5-2B</td><td>无限量、离线、可批量</td></tr>
+<tr><td>晋升判分（golden pass/fail）</td><td>规则 + 硬指标为主，LLM-Judge 用云端</td><td>判分可信度必须高于被测对象</td></tr>
+</table>
+</div>
+
+<h2>三、实施步骤（4 个里程碑）</h2>
+
+<h3>M1 · 闭环打通（第 1 周）</h3>
+<div class="card">
+<ol>
+<li>Ollama provider 接入 <code>create_router</code>，写 3 个集成测试（路由命中 / 超时降级 / mock 切换）。</li>
+<li>CorrectionCollector 落库确认：每次质量门禁失败 + 人工编辑差异，生成统一 schema 的纠错记录（stage、input、output、缺陷类型、修复后样本）。</li>
+<li>ReflectionEngine 批量化：<code>SELF_ITERATION_BATCH_SIZE</code> 攒批触发，输出结构化归因 JSON（缺陷类别 × stage × 频次）。</li>
+<li>失败案例自动回流 golden 集 <code>data/golden/val/</code>（不进 train，防污染）。</li>
+</ol>
+<p><b>验收</b>：跑通一次完整闭环 —— 注入 20 条人工构造的失败样本 → 生成归因报告 → 至少 1 条 SOP 规则 + 1 个候选 prompt 落盘 → golden val 集条目数增长 ≥ 10。</p>
+</div>
+
+<h3>M2 · Prompt 自动进化（第 2–3 周）</h3>
+<div class="card">
+<ol>
+<li>DSPy BootstrapFewShot 对 6 个文本 stage 各生成 3 个候选 prompt（把高纠错率案例编译为 few-shot 示例）。</li>
+<li>金丝雀 A/B：<code>_run_stage_with_prompt_version()</code> 在 golden train 子集（每 stage 8 条）上对比 v1 vs 候选。</li>
+<li>晋升门禁执行（见第四节 4 项标准），通过者写入 <code>prompts/{stage}/v{N}.j2</code> 并 shadow 10% 流量。</li>
+<li>GEPA 式反思变异（可选增强）：本地 Qwen 对失败样本做"为什么这个 prompt 错了"归因 → 生成变异 prompt → 进候选池。</li>
+</ol>
+<p><b>验收</b>：至少 2 个 stage 出现 prompt 晋升；晋升后 golden val 集 pass rate 不降；shadow 期硬指标（DNSMOS/WER）无统计显著退化。</p>
+</div>
+
+<h3>M3 · 阈值与路由数据驱动校准（第 3–4 周）</h3>
+<div class="card">
+<ol>
+<li>收集 2 周生产硬指标分布（DNSMOS、WER、speaker_sim），对人工返工样本做分布对齐，重估 <code>dnsmos_min / asr_wer_max / speaker_sim_min</code>。</li>
+<li>路由表进化：speaker_sim 失败的（角色, 声线）对自动降权 10%，连续 3 次失败移出映射候选。</li>
+<li>阈值变更走同样的晋升门禁：在 golden 音频集上验证新阈值不放宽真实缺陷漏检。</li>
+</ol>
+<p><b>验收</b>：阈值调整有分布数据支撑（报告含前后分布图）；路由降权后跨章声纹一致性失败率下降 ≥ 20%。</p>
+</div>
+
+<h3>M4 · 常态化运营（持续）</h3>
+<div class="card">
+<ol>
+<li>每日定时：攒批反思（Ollama，夜间跑）→ 周报（归因分布、晋升记录、阈值漂移）。</li>
+<li>每周：全量 golden 回归（三集），产出进化曲线（各 stage pass rate 随版本变化）。</li>
+<li>每月：SOP 库治理 —— 条目数上限 200，低命中规则归档；prompt 膨胀检查（token 数上限）。</li>
+</ol>
+<p><b>验收</b>：连续 4 周周报产出；golden 集规模月均增长 ≥ 30 条；无一次未过门禁的 prompt 进入生产。</p>
+</div>
+
+<h2>四、晋升门禁与验收标准（核心护栏）</h2>
+<div class="card">
+<table>
+<tr><th>#</th><th>标准</th><th>量化口径</th><th>不通过处理</th></tr>
+<tr><td>1</td><td>质量提升</td><td>候选 prompt 在 golden train 子集 pass rate ≥ 现版 +2pp</td><td>候选废弃，归因入 SOP</td></tr>
+<tr><td>2</td><td>无回归</td><td>golden val 集 pass rate 下降 &lt; 1pp；硬指标（DNSMOS/WER）无显著退化</td><td>回滚 + 告警</td></tr>
+<tr><td>3</td><td>格式合规</td><td>输出 schema 校验通过率 = 100%</td><td>候选废弃</td></tr>
+<tr><td>4</td><td>样本充分</td><td>金丝雀样本 ≥ 8 条/stage；晋升决策需 ≥ 2 个独立批次佐证</td><td>延后，攒样再评</td></tr>
+</table>
+<p><b>Shadow 全量门槛</b>：shadow 10% 流量跑 7 天，硬指标均值不低于基线 95%，方可 100% 切换。</p>
+</div>
+
+<h2>五、风险与对策</h2>
+<div class="card">
+<table>
+<tr><th>风险</th><th>对策</th></tr>
+<tr><td>本地 2B 模型归因质量不足，产出噪声规则</td><td>规则仅入 SOP 候选区，晋升需门禁 + 人工抽检（每周 10 条）</td></tr>
+<tr><td>golden 集被失败案例污染，评估失真</td><td>train/val/test 三集隔离；回流只进 val；test 集冻结仅人工维护</td></tr>
+<tr><td>Prompt 无限膨胀拖慢生产</td><td>token 上限硬校验；few-shot 示例按效果末位淘汰</td></tr>
+<tr><td>自我迭代"进化"出指标刷分（过拟合 golden）</td><td>test 集从不参与进化循环；季度引入全新人工样本</td></tr>
+<tr><td>免费云 API 配额耗尽影响生产判分</td><td>LLM-Judge 可降级为纯硬指标门禁（DNSMOS+WER 已可用）</td></tr>
+</table>
+</div>
+
+<h2>六、总验收清单</h2>
+<div class="card">
+<ul class="check">
+<li>Ollama provider 接入，3 个集成测试通过</li>
+<li>一次完整闭环演示：失败样本 → 归因 → 候选 prompt → 金丝雀 → 门禁裁决</li>
+<li>≥ 2 个 stage 完成真实 prompt 晋升（非 mock）</li>
+<li>golden 三集隔离机制生效，val 集持续增长</li>
+<li>阈值校准报告含分布数据，路由降权生效</li>
+<li>晋升门禁 4 标准全部强制执行，有回滚演练记录</li>
+<li>周报机制跑满 4 周</li>
+</ul>
+</div>
+
+<p class="sub">方案定位：马具迭代是免费约束下唯一可行的进化路径——每轮成本 = 本地 GPU 电费 + 数百次免费 LLM 调用，收益直接体现在 golden pass rate 与硬指标上，且门禁保证只进不退。</p>

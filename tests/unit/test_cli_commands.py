@@ -203,7 +203,7 @@ class TestExportCommand:
         with (
             patch("audiobook_studio.cli.export.export_project", new=AsyncMock(return_value=mock_job)),
             patch("audiobook_studio.cli.export.AsyncSessionLocal") as mock_session,
-            patch("src.audiobook_studio.run_pipeline.cleanup_after_export") as mock_cleanup,
+            patch("src.audiobook_studio.run_pipeline.cleanup_after_export"),
         ):
 
             mock_db = AsyncMock()
@@ -307,9 +307,7 @@ class TestBookCommand:
         mock_proj = MagicMock()
         mock_proj.id = 42
 
-        with (
-            patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session,
-        ):
+        with (patch("audiobook_studio.cli.book.AsyncSessionLocal") as mock_session,):
 
             mock_db = AsyncMock()
             mock_session.return_value = mock_db

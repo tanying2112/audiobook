@@ -166,7 +166,6 @@ class LangfuseClient:
         group_by: str = "model",
     ) -> Dict[str, Any]:
         """获取成本汇总（基于本地缓存）."""
-        from datetime import datetime, timedelta
 
         cutoff = time.time() - (since_hours * 3600)
         recent = [t for t in self._local_traces if t.start_time >= cutoff]

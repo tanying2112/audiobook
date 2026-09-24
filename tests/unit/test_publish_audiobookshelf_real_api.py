@@ -4,10 +4,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-
-class TestAudiobookshelfRealAPI:
+class TestAudiobookshelfRealAPI:  # noqa: E303
     """_real_api_call 真实 HTTP 路径覆盖。"""
 
     def _make_pub(self, mock=True):

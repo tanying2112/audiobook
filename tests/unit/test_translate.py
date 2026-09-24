@@ -24,6 +24,24 @@ import pytest
 os.environ.setdefault("MOCK_LLM", "true")
 
 
+@pytest.fixture(autouse=True)
+def _ensure_db_tables():
+    """Create the ORM tables so DB-backed helpers (e.g. _get_target_voice)
+    are order-independent.
+
+    Several tests call ``pipeline._get_target_voice`` with the *real*
+    ``SessionLocal`` (no patched session). Those queries the ``characters``
+    table and fail with ``no such table`` unless some earlier test created it.
+    ``init_db`` is idempotent, so ensuring the schema here makes every test
+    pass regardless of collection order under --random-order.
+    """
+    import src.audiobook_studio.models  # noqa: F401  (register ORM tables)
+    from src.audiobook_studio.database import init_db
+
+    init_db()
+    yield
+
+
 @pytest.fixture
 def pipeline():
     """Build a TranslateAndDubPipeline with all heavy collaborators mocked.
@@ -400,7 +418,6 @@ class TestTranslateAndDub:
     def test_segment_with_default_annotation_path(self, pipeline):
         """When annotation is None, pipeline creates a default ParagraphAnnotation
         with speaker_canonical_name='旁白' and emotion='neutral'."""
-        from src.audiobook_studio.schemas import ParagraphAnnotation
 
         seg = self._make_segment(1, "没有标注的文本")
         # Ensure annotation not set
@@ -467,7 +484,6 @@ class TestSemanticCoherence:
     def test_full_coherence_check_exercised(self):
         """Inject a real SemanticCoherenceChecker via patch and trace coherence
         enforcement: success + failed semantic coherence + exception path."""
-        from src.audiobook_studio.models.audio_segment import AudioSegment
         from src.audiobook_studio.pipeline import translate as tr_mod
 
         # Build pipeline with synth configured

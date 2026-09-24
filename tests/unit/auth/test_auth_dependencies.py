@@ -1,6 +1,5 @@
 """Tests for auth dependencies - FastAPI dependency injection tests."""
 
-from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +23,7 @@ from src.audiobook_studio.auth.dependencies import (
     require_role,
 )
 from src.audiobook_studio.auth.jwt_handler import jwt_handler
-from src.audiobook_studio.auth.models import PermissionName, RoleName, TokenData
+from src.audiobook_studio.auth.models import PermissionName, RoleName
 from src.audiobook_studio.auth.rbac import RBACManager
 from src.audiobook_studio.database import Base, get_db
 from src.audiobook_studio.models.user import User as UserModel

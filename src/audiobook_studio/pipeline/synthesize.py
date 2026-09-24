@@ -16,97 +16,68 @@ import hashlib
 import json
 import logging
 import os
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Coroutine, Dict, List, Literal, Optional, Tuple, TypeVar, cast
+from typing import Any, Coroutine, Dict, List, Optional, cast
 
-from ..audio_quality import QualityReport, SegmentQualityResult, check_all_segments, save_quality_report
+from ..api.websocket import emit_pipeline_event
+from ..audio_quality import QualityReport, check_all_segments, save_quality_report
 from ..config.acoustic_mapping import get_emotion_map
 from ..config.hardware_profile import HardwareProfile, get_hardware_profile
-from ..di import get_app_container
-from ..export.pool import get_ffmpeg_semaphore, run_ffmpeg
+from ..export.pool import run_ffmpeg
 from ..llm import LLMRouter, create_router
-from ..monitoring.langfuse_client import is_enabled, observe_quality_check, observe_tts_synthesis, trace_function
-from ..monitoring.telemetry import record_tts_fallback, record_tts_quality_check, record_tts_retry, record_tts_segment
-from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress, emit_paragraph_complete
-from ..schemas import AudioPostProcessParams, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
+from ..monitoring.langfuse_client import is_enabled, observe_tts_synthesis, trace_function
+from ..monitoring.telemetry import record_tts_quality_check, record_tts_retry, record_tts_segment
+from ..pipeline.progress_emitter import emit_paragraph_complete, emit_stage_exit, emit_stage_progress
+from ..schemas import TtsRoutingDecision, TtsRoutingInput
 from ..security import safe_subprocess_args
 from ..tts import (
-    EngineRegistry,
     RemoteTTSPort,
-    SynthesisResult,
-    TTSEngine,
     TTSProsody,
     TTSStatus,
     TTSTaskPayload,
     TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
-    VoiceInfo,
-    get_port,
 )
-from ..tts.fake_port import FakeRemoteTTSPort
+from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
 from ..tts.clone import CloningConfig, VoiceCloningManager
+from ..tts.fake_port import FakeRemoteTTSPort
+from ..tts.streaming import StreamingTTSConfig, create_streaming_tts_engine
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
 
 
-_T = TypeVar("_T")
-
-
-def _run_async(coro: Coroutine[Any, Any, _T]) -> _T:
-    """Run a coroutine from a sync caller, safe inside a running event loop.
-
-    The pipeline orchestrator ``run_stage`` is ``async`` but invokes each
-    stage handler's ``run()`` synchronously (``handler.run(**context)``).
-    Synthesize's ``run()`` is sync but needs to drive async TTS Port / ffmpeg
-    calls. Plain ``asyncio.run()`` inside an already-running loop raises
-    ``RuntimeError: asyncio.run() cannot be called from a running event
-    loop``. When a loop is already running we hop onto a worker thread with
-    its own loop (the same pattern used in ``tts/voice_cloning.py``);
-    otherwise we fall back to ``asyncio.run``.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    import concurrent.futures
-
-    def _runner() -> _T:
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        try:
-            return new_loop.run_until_complete(coro)
-        finally:
-            new_loop.close()
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        return ex.submit(_runner).result(timeout=300)
-
-
-# Edge-TTS voice_id  ->  Kokoro equivalent voice_id
-# (Edge voice IDs come from the book analysis stage's default
-# ``zh-CN-XiaoxiaoNeural`` suggested_voice_id; Kokoro uses a disjoint set.
-# Without this map, Kokoro rejects the Edge ID and synthesise fails.)
-
-# The set of engines TtsRoutingDecision.engine_choice / fallback_engine may
-# name (mirrors the Literal on the schema without reaching into its private
-# type alias).
-EngineChoice = Literal["kokoro", "edge", "azure", "gcp", "human_clone"]
-
+# Edge-TTS voice ID -> Kokoro voice ID mapping
 _EDGE_TO_KOKORO: Dict[str, str] = {
     "zh-CN-XiaoxiaoNeural": "zf_xiaoxiao",
-    "zh-CN-XiaoyiNeural": "zf_xiaobei",
-    "zh-CN-Xiaoni": "zf_xiaoni",
-    "zh-CN-XiaoxuanNeural": "zf_xiaoxuan",
-    "zh-CN-YunjianNeural": "zm_yunjian",
     "zh-CN-YunxiNeural": "zm_yunxi",
-    "zh-CN-YunxiaNeural": "zm_yunxia",
-    "zh-CN-YunyangNeural": "zm_yunyang",
+    "zh-CN-YunjianNeural": "zm_yunjian",
+    "zh-CN-XiaoyiNeural": "zf_xiaoni",
+    "zh-CN-XiaochenNeural": "zf_xiaoxuan",
+    "zh-CN-XiaohanNeural": "zf_xiaobei",
+    "zh-CN-XiaomengNeural": "zf_xiaoxuan",
+    "zh-CN-XiaomoNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoqiuNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoruiNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoshuangNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoxuanNeural": "zf_xiaoxuan",
+    "zh-CN-YangxiNeural": "zm_yunyang",
+    "zh-CN-YangyangNeural": "zm_yunyang",
+    "zh-CN-YunhaoNeural": "zm_yunjian",
+    "zh-CN-YunzeNeural": "zm_yunjian",
+    "en-US-AriaNeural": "zf_xiaoxiao",
+    "en-US-JennyNeural": "zf_xiaoxiao",
+    "en-US-GuyNeural": "zm_yunjian",
+    "en-US-ChristopherNeural": "zm_yunjian",
+    "en-US-EricNeural": "zm_yunjian",
+    "en-US-RogerNeural": "zm_yunjian",
+    "en-US-SteffanNeural": "zm_yunjian",
+    "ja-JP-NanamiNeural": "zf_xiaoxiao",
+    "ja-JP-KeitaNeural": "zm_yunjian",
+    "ko-KR-SunHiNeural": "zf_xiaoxiao",
+    "ko-KR-InJoonNeural": "zm_yunjian",
 }
 
 
@@ -296,7 +267,7 @@ class SynthesizePipeline:
         else:
             # Lazy initialization: port will be created on first use
             self._port = None
-            self._pending_port = get_port()
+            self._pending_port = self._create_port()
 
         # Crossfade duration for segment stitching
         if crossfade_ms is not None:
@@ -304,11 +275,22 @@ class SynthesizePipeline:
         else:
             self.crossfade_ms = self.get_crossfade_ms()
 
+        # Audio semantic cache for TTS segment caching
+        self._audio_cache: Optional[AudioSemanticCache] = None
+        self._cache_enabled = os.environ.get("AUDIO_SEMANTIC_CACHE_ENABLED", "false").lower() == "true"
+        if self._cache_enabled:
+            self._audio_cache = get_audio_semantic_cache()
         # Track existing segments for incremental synthesis
         self.existing_segments: dict[str, AudioSegment] = {}
         self._mock_segment_counter = 0
 
         logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
+
+    async def _create_port(self) -> RemoteTTSPort:
+        """Create a new port instance via DI container."""
+        from ..tts.port_factory import get_port
+
+        return await get_port()
 
     async def _get_port(self) -> RemoteTTSPort:
         """Lazily initialize and return the RemoteTTSPort."""
@@ -318,10 +300,8 @@ class SynthesizePipeline:
                 self._port = await self._pending_port
                 self._pending_port = None
             else:
-                # Fallback - shouldn't happen
-                from ..tts.fake_port import FakeRemoteTTSPort
-
-                self._port = FakeRemoteTTSPort()
+                # Create new port via DI
+                self._port = await self._create_port()
         return self._port
 
     def _text_hash(self, text: str) -> str:
@@ -451,6 +431,22 @@ class SynthesizePipeline:
         voice_id = _normalize_voice_id(voice_id, actual_engine)
         payload = self._build_payload(text, voice_id, prosody)
 
+        # Check audio semantic cache first (Tier 1: exact, Tier 2: semantic)
+        if self._cache_enabled and self._audio_cache:
+            cached = self._audio_cache.get(text, voice_id, prosody)
+            if cached:
+                cached_audio_path, cached_duration_ms, cache_meta = cached
+                logger.info(
+                    f"Audio cache hit for segment {segment_id}: type={cache_meta.get('cache_type')}, "
+                    f"similarity={cache_meta.get('similarity', 1.0):.3f}, duration={cached_duration_ms}ms"
+                )
+                # Copy cached audio to output path
+                import shutil
+
+                shutil.copy2(cached_audio_path, output_path)
+                engine = cache_meta.get("engine", "cache")
+                return cached_duration_ms, engine
+
         # Submit to Hermes layer
         task_id = f"{segment_id}-{int(time.time() * 1000)}"
         logger.info(
@@ -504,6 +500,20 @@ class SynthesizePipeline:
         # Get duration
         duration_ms = result.duration_ms or get_duration_sync(output_path)
 
+        # Store in audio semantic cache for future reuse
+        if self._cache_enabled and self._audio_cache:
+            try:
+                self._audio_cache.put(
+                    text=text,
+                    voice_id=voice_id,
+                    prosody=prosody,
+                    audio_path=str(output_path),
+                    duration_ms=duration_ms,
+                    metadata={"engine": engine, "segment_id": segment_id},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to store audio in semantic cache: {e}")
+
         # Engine name from metadata or default. ``TTSTaskResult`` itself does
         # not carry metadata, but some port implementations (e.g. the Edge
         # port) attach an extra ``metadata`` dict to the returned result; fall
@@ -535,8 +545,163 @@ class SynthesizePipeline:
             # This is a placeholder for real implementation
             raise NotImplementedError(f"Remote audio download from {source_path} not implemented")
 
+    async def _synthesize_streaming(
+        self,
+        text: str,
+        voice_id: str,
+        prosody: dict[str, Any],
+        output_path: Path,
+        segment_id: str,
+        project_id: int,
+        chapter_index: int,
+        paragraph_index: int,
+        progress_callback: callable = None,
+    ) -> tuple[int, str]:
+        """Synthesize text to audio via Streaming TTS engine with WebSocket progress.
+
+        This method provides first-byte latency < 500ms by streaming audio chunks
+        in real-time via WebSocket to the frontend.
+
+        Args:
+            text: Text to synthesize.
+            voice_id: Voice identifier.
+            prosody: Prosody parameters.
+            output_path: Local path to save complete audio.
+            segment_id: Unique segment identifier for task tracking.
+            project_id: Project ID for WebSocket events.
+            chapter_index: Chapter index for progress.
+            paragraph_index: Paragraph index for progress.
+            progress_callback: Optional callback for chunk-level progress.
+
+        Returns:
+            Tuple of (duration_ms, engine_name).
+
+        Raises:
+            RuntimeError: If synthesis fails or times out.
+        """
+        # Determine streaming engine from environment or config
+        streaming_engine = os.getenv("STREAMING_TTS_ENGINE", "cosyvoice_stream")
+        streaming_host = os.getenv("STREAMING_TTS_HOST", "localhost")
+        streaming_port = int(os.getenv("STREAMING_TTS_PORT", "5000"))
+
+        # Check if streaming is enabled
+        if os.getenv("ENABLE_STREAMING_TTS", "false").lower() != "true":
+            logger.info("Streaming TTS not enabled, falling back to port synthesis")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
+        # Build streaming config
+        config = StreamingTTSConfig(
+            engine=streaming_engine,
+            host=streaming_host,
+            port=streaming_port,
+            sample_rate=24000,
+            chunk_size_ms=100,
+            voice_id=voice_id,
+            speed=prosody.get("rate", 1.0),
+        )
+
+        # Create streaming engine
+        try:
+            streaming_engine_instance = create_streaming_tts_engine(config)
+        except Exception as e:
+            logger.warning(f"Failed to create streaming engine: {e}, falling back to port")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
+        # Stream synthesis with WebSocket progress
+        import io
+
+        audio_buffer = io.BytesIO()
+        first_chunk = True
+        first_byte_latency_ms = 0
+        start_time = time.time()
+
+        try:
+            # Use async streaming for real-time WebSocket updates
+            chunk_index = 0
+            async for chunk in streaming_engine_instance.synthesize_stream_async(text, voice_id=voice_id, **prosody):
+                # Write chunk to buffer
+                audio_buffer.write(chunk.audio_data)
+
+                # Calculate latency for first chunk
+                if first_chunk:
+                    first_byte_latency_ms = int((time.time() - start_time) * 1000)
+                    first_chunk = False
+                    logger.info(f"Streaming TTS first-byte latency: {first_byte_latency_ms}ms for {segment_id}")
+
+                    # Emit first-byte event
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(
+                            emit_pipeline_event(
+                                project_id=project_id,
+                                event_type="first_byte",
+                                chapter_id=chapter_index,
+                                paragraph_index=paragraph_index,
+                                data={
+                                    "segment_id": segment_id,
+                                    "latency_ms": first_byte_latency_ms,
+                                    "engine": streaming_engine,
+                                },
+                            )
+                        )
+                    except RuntimeError:
+                        pass
+
+                # Emit chunk progress via WebSocket
+                if progress_callback:
+                    try:
+                        progress_callback(chunk_index, chunk.is_final, chunk.latency_ms)
+                    except Exception as e:
+                        logger.debug(f"Progress callback error: {e}")
+
+                # Emit WebSocket event for real-time progress
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        emit_pipeline_event(
+                            project_id=project_id,
+                            event_type="stream_chunk",
+                            chapter_id=chapter_index,
+                            paragraph_index=paragraph_index,
+                            progress=0.5 if not chunk.is_final else 1.0,
+                            data={
+                                "segment_id": segment_id,
+                                "chunk_index": chunk_index,
+                                "is_final": chunk.is_final,
+                                "latency_ms": chunk.latency_ms,
+                            },
+                        )
+                    )
+                except RuntimeError:
+                    pass
+
+                chunk_index += 1
+
+                if chunk.is_final:
+                    break
+
+            # Save complete audio to file
+            audio_data = audio_buffer.getvalue()
+            output_path.write_bytes(audio_data)
+
+            # Get duration
+            duration_ms = get_duration_sync(output_path)
+
+            logger.info(
+                f"Streaming synthesis complete: {segment_id} via {streaming_engine}, "
+                f"{duration_ms}ms, first-byte={first_byte_latency_ms}ms, chunks={chunk_index}"
+            )
+
+            return duration_ms, streaming_engine
+
+        except Exception as e:
+            logger.error(f"Streaming synthesis failed for {segment_id}: {e}")
+            # Fallback to port synthesis
+            logger.info("Falling back to port synthesis")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
     @trace_function(name="pipeline.synthesize.run", stage="synthesize")  # type: ignore[untyped-decorator]  # trace_function (monitoring/) returns Callable[...,Any] w/o preserving the wrapped signature; fix lives outside this file's scope.
-    def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
+    async def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
         """Synthesize multiple paragraphs incrementally with quality gate.
 
         For each input, checks if regeneration is needed (text changed),
@@ -563,7 +728,7 @@ class SynthesizePipeline:
         segment_files: list[Path] = []
         segment_ids: list[str] = []
 
-        for inp in inputs:
+        for i, inp in enumerate(inputs):
             decision = self._make_routing_decision(inp)
 
             # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
@@ -580,14 +745,16 @@ class SynthesizePipeline:
                 chapter_index = inputs[0].chapter_index
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(emit_stage_progress(
-                        stage="synthesize",
-                        project_id=project_id,
-                        chapter_index=chapter_index,
-                        current=i + 1,
-                        total=len(inputs),
-                        message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
-                    ))
+                    loop.create_task(
+                        emit_stage_progress(
+                            stage="synthesize",
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            current=i + 1,
+                            total=len(inputs),
+                            message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
+                        )
+                    )
                 except RuntimeError:
                     pass  # Silently skip if no event loop
 
@@ -603,12 +770,14 @@ class SynthesizePipeline:
                         chapter_index = inputs[0].chapter_index
                         try:
                             loop = asyncio.get_running_loop()
-                            loop.create_task(emit_paragraph_complete(
-                                project_id=project_id,
-                                chapter_index=chapter_index,
-                                paragraph_index=inp.paragraph_index,
-                                total_paragraphs=len(inputs),
-                            ))
+                            loop.create_task(
+                                emit_paragraph_complete(
+                                    project_id=project_id,
+                                    chapter_index=chapter_index,
+                                    paragraph_index=inp.paragraph_index,
+                                    total_paragraphs=len(inputs),
+                                )
+                            )
                         except RuntimeError:
                             pass
                     continue
@@ -625,12 +794,14 @@ class SynthesizePipeline:
                     chapter_index = inputs[0].chapter_index
                     try:
                         loop = asyncio.get_running_loop()
-                        loop.create_task(emit_paragraph_complete(
-                            project_id=project_id,
-                            chapter_index=chapter_index,
-                            paragraph_index=inp.paragraph_index,
-                            total_paragraphs=len(inputs),
-                        ))
+                        loop.create_task(
+                            emit_paragraph_complete(
+                                project_id=project_id,
+                                chapter_index=chapter_index,
+                                paragraph_index=inp.paragraph_index,
+                                total_paragraphs=len(inputs),
+                            )
+                        )
                     except RuntimeError:
                         pass
                 continue
@@ -653,16 +824,30 @@ class SynthesizePipeline:
             try:
                 start_time = time.time()
 
-                # Run async synthesis via port
-                duration, engine = _run_async(
-                    self._synthesize_via_port(
+                # Check if streaming TTS is enabled for first-byte latency optimization
+                enable_streaming = os.getenv("ENABLE_STREAMING_TTS", "false").lower() == "true"
+
+                if enable_streaming:
+                    # Run streaming synthesis with WebSocket progress
+                    duration, engine = await self._synthesize_streaming(
+                        inp.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        output_path,
+                        segment_id,
+                        project_id=inputs[0].book_id if inputs else 0,
+                        chapter_index=inputs[0].chapter_index if inputs else 0,
+                        paragraph_index=inp.paragraph_index,
+                    )
+                else:
+                    # Run async synthesis via port (legacy path)
+                    duration, engine = await self._synthesize_via_port(
                         inp.text,
                         decision.voice_id,
                         decision.prosody_overrides or {},
                         output_path,
                         segment_id,
                     )
-                )
 
                 synthesis_latency_ms = (time.time() - start_time) * 1000
                 success = True
@@ -777,12 +962,14 @@ class SynthesizePipeline:
                 chapter_index = inputs[0].chapter_index
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(emit_paragraph_complete(
-                        project_id=project_id,
-                        chapter_index=chapter_index,
-                        paragraph_index=inp.paragraph_index,
-                        total_paragraphs=len(inputs),
-                    ))
+                    loop.create_task(
+                        emit_paragraph_complete(
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            paragraph_index=inp.paragraph_index,
+                            total_paragraphs=len(inputs),
+                        )
+                    )
                 except RuntimeError:
                     pass
 
@@ -795,7 +982,7 @@ class SynthesizePipeline:
             chapter_index = inputs[0].chapter_index if inputs else 0
 
             # Define retry callback for quality failures
-            def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
+            async def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
                 """Re-synthesize a failed segment."""
                 # Find the original input for this segment
                 seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
@@ -808,14 +995,12 @@ class SynthesizePipeline:
 
                 try:
                     logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
-                    retry_duration, retry_engine = _run_async(
-                        self._synthesize_via_port(
-                            seg_input.text,
-                            decision.voice_id,
-                            decision.prosody_overrides or {},
-                            retry_output,
-                            f"{seg_id}_retry{attempt}",
-                        )
+                    retry_duration, retry_engine = await self._synthesize_via_port(
+                        seg_input.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        retry_output,
+                        f"{seg_id}_retry{attempt}",
                     )
                     # Record retry telemetry
                     record_tts_retry(fallback_from=decision.engine_choice)
@@ -842,16 +1027,14 @@ class SynthesizePipeline:
             }
 
             # Run quality checks with auto-retry
-            quality_report: QualityReport = _run_async(
-                check_all_segments(
-                    segment_files=segment_files,
-                    segment_ids=segment_ids,
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    max_retries=2,
-                    retry_callback=retry_callback,
-                    speaker_map=speaker_map,
-                )
+            quality_report: QualityReport = await check_all_segments(
+                segment_files=segment_files,
+                segment_ids=segment_ids,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                max_retries=2,
+                retry_callback=retry_callback,
+                speaker_map=speaker_map,
             )
 
             # Save quality report
@@ -882,7 +1065,7 @@ class SynthesizePipeline:
         # Stitch chapter-level audio (optional)
         if len(segments) > 1:
             chapter_output = self.output_dir / f"{inputs[0].book_id}_ch{inputs[0].chapter_index}.mp3"
-            self._crossfade_stitch(segments, chapter_output)
+            await self._crossfade_stitch(segments, chapter_output)
 
         # Emit stage exit for synthesize
         if inputs:
@@ -890,18 +1073,20 @@ class SynthesizePipeline:
             chapter_index = inputs[0].chapter_index
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(emit_stage_exit(
-                    stage="synthesize",
-                    project_id=project_id,
-                    chapter_index=chapter_index,
-                    success=True,
-                ))
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="synthesize",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        success=True,
+                    )
+                )
             except RuntimeError:
                 pass
 
         return segments
 
-    def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
+    async def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Stitch segments with crossfade using ffmpeg filter_complex. Returns total duration_ms."""
 
         if not segments:
@@ -968,13 +1153,13 @@ class SynthesizePipeline:
 
             logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
             # Run under global semaphore with timeout
-            result = _run_async(run_ffmpeg(cmd, timeout=120))
+            result = await run_ffmpeg(cmd, timeout=120)
 
             if result.returncode != 0:
                 stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
                 logger.error(f"ffmpeg crossfade failed: {stderr_text}")
                 # Fallback: simple concat without crossfade
-                return self._simple_concat(valid_segments, output_path)
+                return await self._simple_concat(valid_segments, output_path)
 
             # Get duration of output using ffprobe
             duration = get_duration_sync(output_path)
@@ -1002,12 +1187,12 @@ class SynthesizePipeline:
 
         except FileNotFoundError:
             logger.error("ffmpeg not found for crossfade stitching")
-            return self._simple_concat(valid_segments, output_path)
+            return await self._simple_concat(valid_segments, output_path)
         except Exception as e:
             logger.error(f"Crossfade stitching failed: {e}")
-            return self._simple_concat(valid_segments, output_path)
+            return await self._simple_concat(valid_segments, output_path)
 
-    def _simple_concat(self, segments: List[AudioSegment], output_path: Path) -> int:
+    async def _simple_concat(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Simple concatenation without crossfade as fallback."""
         try:
             import tempfile
@@ -1036,7 +1221,7 @@ class SynthesizePipeline:
                 cmd = safe_subprocess_args(cmd)
 
                 # Run under global semaphore with timeout
-                result = _run_async(run_ffmpeg(cmd, timeout=60))
+                result = await run_ffmpeg(cmd, timeout=60)
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1046,7 +1231,7 @@ class SynthesizePipeline:
             logger.error(f"Simple concat failed: {e}")
             return sum(s.duration_ms for s in segments)
 
-    def crossfade_replace_segment(
+    async def crossfade_replace_segment(
         self,
         chapter_audio_path: Path,
         segment_index: int,
@@ -1164,7 +1349,7 @@ class SynthesizePipeline:
             logger.info(
                 f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
             )
-            result = _run_async(run_ffmpeg(cmd, timeout=120))
+            result = await run_ffmpeg(cmd, timeout=120)
             result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1173,11 +1358,11 @@ class SynthesizePipeline:
 
         except Exception as e:
             logger.error(f"Crossfade replace failed: {e}")
-            return self._simple_replace_segment(
+            return await self._simple_replace_segment(
                 chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
             )
 
-    def _simple_replace_segment(
+    async def _simple_replace_segment(
         self,
         chapter_audio_path: Path,
         segment_index: int,
@@ -1213,7 +1398,7 @@ class SynthesizePipeline:
                         str(pre_path),
                     ]
                     cmd_pre = safe_subprocess_args(cmd_pre)
-                    result = _run_async(run_ffmpeg(cmd_pre, timeout=60))
+                    result = await run_ffmpeg(cmd_pre, timeout=60)
                     result.check_returncode()
                 else:
                     pre_path = None
@@ -1232,7 +1417,7 @@ class SynthesizePipeline:
                         str(post_path),
                     ]
                     cmd_post = safe_subprocess_args(cmd_post)
-                    result = _run_async(run_ffmpeg(cmd_post, timeout=60))
+                    result = await run_ffmpeg(cmd_post, timeout=60)
                     result.check_returncode()
                 else:
                     post_path = None
@@ -1260,7 +1445,7 @@ class SynthesizePipeline:
                     str(output_path),
                 ]
                 cmd_concat = safe_subprocess_args(cmd_concat)
-                result = _run_async(run_ffmpeg(cmd_concat, timeout=60))
+                result = await run_ffmpeg(cmd_concat, timeout=60)
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1291,8 +1476,8 @@ class SynthesizePipeline:
         # Respect ENABLE_LOCAL_TTS environment variable for engine selection
         enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
 
-        engine_choice: EngineChoice
-        fallback_engine: EngineChoice
+        engine_choice: EngineChoice  # noqa: F821
+        fallback_engine: EngineChoice  # noqa: F821
         if enable_local_tts:
             # Prefer local engine (Kokoro) when enabled
             engine_choice = "kokoro"
@@ -1389,11 +1574,11 @@ class SynthesizePipeline:
             estimated_duration_ms=3000,
         )
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the port and release resources."""
         if self._port:
             try:
-                _run_async(self._port.close())
+                await self._port.close()
             except RuntimeError:
                 # Event loop may be closed
                 pass
@@ -1409,14 +1594,16 @@ def synthesize_paragraphs(
     """Convenience function to synthesize paragraphs."""
     pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode, port=port)
     try:
-        return cast(List[AudioSegment], pipeline.run(inputs))
+        from ..utils.async_utils import run_async_safe
+
+        return cast(List[AudioSegment], run_async_safe(pipeline.run(inputs)))
     finally:
-        pipeline.close()
+        from ..utils.async_utils import run_async_safe
+
+        run_async_safe(pipeline.close())
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
     logger.info("SynthesizePipeline ready")
-

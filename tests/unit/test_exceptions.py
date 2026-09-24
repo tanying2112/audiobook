@@ -1,7 +1,5 @@
 """Tests for audiobook_studio exceptions module."""
 
-import pytest
-
 from src.audiobook_studio.exceptions import (
     AudiobookError,
     CircuitOpenError,
@@ -12,7 +10,6 @@ from src.audiobook_studio.exceptions import (
     DomainError,
     FallbackUsedError,
     FileWriteError,
-    InfrastructureError,
     PipelineError,
     ProviderError,
     ProviderTimeoutError,
@@ -23,7 +20,6 @@ from src.audiobook_studio.exceptions import (
     StageExecutionError,
     StageHookError,
     TTSAudioExportError,
-    TTSError,
     TTSModelLoadError,
     TTSSynthesisError,
     ValidationError,

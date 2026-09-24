@@ -7,8 +7,7 @@
 4. 降级路径（LLM 失败时）
 """
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

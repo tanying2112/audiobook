@@ -252,7 +252,6 @@ class TestContainerWithDefaults:
     def test_initialize_defaults_with_custom_config(self):
         """Test initialize_defaults accepts custom configs."""
         from src.audiobook_studio.config.hardware_profile import HardwareProfile
-        from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
 
         container = DIContainer()
         custom_hardware = HardwareProfile()

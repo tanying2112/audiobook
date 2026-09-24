@@ -4,12 +4,11 @@ E6 — Kill Switch 强化
 当 LLM 服务全部不可用时，执行纯规则降级策略，确保系统可靠运行。
 """
 
-import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +222,7 @@ class KillSwitch:
 
     def _rule_based_annotate(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """纯规则段落标注降级."""
-        text = input_data.get("text", "")
+        input_data.get("text", "")
         return {
             "speaker_canonical_name": "unknown",
             "is_dialogue": False,

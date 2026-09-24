@@ -1,20 +1,16 @@
 """Unit tests for LLM Router, Client, and Judge with compliance rate statistics."""
 
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 # Set MOCK_LLM environment variable before importing
 os.environ["MOCK_LLM"] = "true"
 
-from src.audiobook_studio.llm.client import MODEL_PRICING, LLMCallResult, LLMClient, LLMClientConfig, create_client
-from src.audiobook_studio.llm.judge import JudgeConfig, JudgmentType, LLMJudge, create_judge
+from src.audiobook_studio.llm.client import LLMCallResult, create_client
+from src.audiobook_studio.llm.judge import create_judge
 from src.audiobook_studio.llm.router import (
-    CostTracker,
-    LLMRouter,
-    ModelConfig,
-    StageRoutingConfig,
     create_router,
     get_cost_tracker,
     reset_cost_tracker,

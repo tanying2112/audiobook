@@ -11,10 +11,11 @@ Hermes-AgentMesh Core Architecture Integration:
 
 import os
 import sys
+
 import torch
 import torchaudio
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import snapshot_download
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .base_worker import BaseWorker
 
@@ -23,7 +24,7 @@ def get_gpu_memory_used_mb() -> int:
     try:
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except RuntimeError:
         pass
     return 0
 
@@ -32,7 +33,7 @@ def get_gpu_memory_total_mb() -> int:
     try:
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except RuntimeError:
         pass
     return 0
 
@@ -41,7 +42,7 @@ def get_device_name() -> str:
     try:
         if torch.cuda.is_available():
             return torch.cuda.get_device_name(0)
-    except Exception:
+    except RuntimeError:
         pass
     return "CPU"
 
@@ -123,12 +124,14 @@ class T4VoxCPM2Engine:
         waveform = self.model.decode_audio(audio_tokens)
 
         import io
+
         buffer = io.BytesIO()
         torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
         return buffer.getvalue()
 
     def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
         import os
+
         if reference_audio and os.path.exists(reference_audio):
             waveform, sr = torchaudio.load(reference_audio)
             if sr != 24000:

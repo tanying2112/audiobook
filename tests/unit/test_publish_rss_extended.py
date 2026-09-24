@@ -5,10 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
-
-class TestRssFeedGeneratorExtended:
+class TestRssFeedGeneratorExtended:  # noqa: E303
     """RssFeedGenerator 全路径覆盖。"""
 
     def test_init_default_url(self):

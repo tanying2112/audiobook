@@ -11,7 +11,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ..database import SessionLocal
 from ..pipeline.orchestrator import run_pipeline
@@ -95,7 +95,7 @@ class PipelineContext:
     # Async event for waiting on human confirmation
     _confirmation_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self._confirmation_event = asyncio.Event()
 
 
@@ -111,7 +111,7 @@ class PipelineFSM:
     def __init__(
         self,
         context: PipelineContext,
-        stage_runner: Optional[Callable] = None,
+        stage_runner: Optional[Callable[[str, PipelineContext], Awaitable[Any]]] = None,
     ):
         """Initialize FSM.
 
@@ -123,7 +123,7 @@ class PipelineFSM:
         self.context = context
         self.stage_runner = stage_runner or self._default_stage_runner
         self._running = False
-        self._current_task: Optional[asyncio.Task] = None
+        self._current_task: Optional[asyncio.Task[Any]] = None
 
     async def _default_stage_runner(self, stage: str, ctx: PipelineContext) -> Any:
         """Default stage runner using orchestrator.run_pipeline."""

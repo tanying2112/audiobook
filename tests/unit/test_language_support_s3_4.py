@@ -19,7 +19,6 @@ from audiobook_studio.languages import (
     free_api_for,
     is_supported,
     migrate_sop_rules,
-    normalize_language,
     requires_translation,
     tts_engine_for,
 )
@@ -83,7 +82,7 @@ def test_migrate_sop_rules_empty_is_safe():
 
 def test_languages_endpoint_exposes_core_four():
     resp = languages_api.list_languages()
-    langs = {l["iso639_1"]: l for l in resp["languages"]}
+    langs = {l["iso639_1"]: l for l in resp["languages"]}  # noqa: E741
     for code in ["zh", "en", "ja", "ko"]:
         assert code in langs
         assert langs[code]["default_edge_voice"]

@@ -18,9 +18,6 @@ import pytest
 
 from src.audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline, edit_for_tts
 from src.audiobook_studio.schemas import (
-    BookMeta,
-    CharacterVoiceBinding,
-    EmotionSnapshot,
     ParagraphAnnotation,
     TtsEditInput,
     TtsEditOutput,
@@ -86,7 +83,6 @@ class TestEditForTtsPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = EditForTtsPipeline()
         assert pipeline.router is not None
@@ -229,14 +225,15 @@ class TestEditForTtsPipeline:
     def test_run_real_mode_records_performance_on_failure(self):
         """Test run() records performance metrics on failure."""
         mock_router = MagicMock()
-        mock_router.call.side_effect = Exception("API Error")
+        # Raise RuntimeError which is caught by the except block
+        mock_router.call.side_effect = RuntimeError("API Error")
 
         with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             # Explicitly set mock_mode=False for real mode test
             pipeline = EditForTtsPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
 
-            with pytest.raises(Exception, match="API Error"):
+            with pytest.raises(RuntimeError, match="API Error"):
                 pipeline.run(input_data)
 
             mock_record.assert_called_once()

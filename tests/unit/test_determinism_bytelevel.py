@@ -19,18 +19,17 @@
 import asyncio
 import hashlib
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from audiobook_studio.tts.engine import TTSTaskPayload, TTSProsody, TTSVoiceAnchor
+from audiobook_studio.tts.engine import TTSProsody, TTSTaskPayload, TTSVoiceAnchor
 from audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 from audiobook_studio.tts.pronunciation_dict import apply_pronunciation_dict, load_pronunciation_dict
 
 
 def _run(coro):
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
     import concurrent.futures

@@ -5,7 +5,6 @@ Wraps EdgeTTSEngine to implement the RemoteTTSPort contract for cloud TTS synthe
 
 import asyncio
 import logging
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -90,14 +89,8 @@ class EdgeTTSPort(RemoteTTSPort):
                 output_path = self.output_dir / f"{task_id}_{voice_id}.mp3"
 
                 # Map prosody
-                prosody = None
                 if payload.prosody:
-                    prosody = {
-                        "rate": payload.prosody.rate,
-                        "pitch": payload.prosody.pitch,
-                        "volume": payload.prosody.volume,
-                        "emotion": payload.prosody.emotion,
-                    }
+                    pass
 
                 # Update progress
                 async with self._lock:

@@ -2,8 +2,15 @@
 
 import asyncio
 import logging
+import os
 import re
+
+# 把 .env 注入 os.environ: pydantic Settings 只读 .env 到 Settings 对象,
+# 但 LiteLLM / provider key pool 直接读 os.environ (如 OPENAI_API_KEY、
+# KILO_API_KEY)。若不加载, 除 fcc (硬编码 extra_headers) 外所有 provider
+# 都会因 "Missing credentials" 失败。此处一次性加载, uvicorn/celery/脚本均受益。
 from pathlib import Path
+from pathlib import Path as _Path
 from typing import List, Optional
 
 from pydantic import Field
@@ -11,19 +18,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-# 把 .env 注入 os.environ: pydantic Settings 只读 .env 到 Settings 对象,
-# 但 LiteLLM / provider key pool 直接读 os.environ (如 OPENAI_API_KEY、
-# KILO_API_KEY)。若不加载, 除 fcc (硬编码 extra_headers) 外所有 provider
-# 都会因 "Missing credentials" 失败。此处一次性加载, uvicorn/celery/脚本均受益。
-from pathlib import Path as _Path
-
 try:
     from dotenv import load_dotenv as _load_dotenv
 
     _env_file = _Path(".env")
     if _env_file.exists():
         _load_dotenv(_env_file)
-except Exception:  # pragma: no cover - dotenv 可选
+except ImportError:  # pragma: no cover - dotenv 可选
     pass
 
 from ..database import _get_async_database_url
@@ -72,7 +73,7 @@ class Settings(BaseSettings):
 
     # Security - Trusted Hosts (for TrustedHostMiddleware)
     ALLOWED_HOSTS: List[str] = Field(
-        default=["localhost", "127.0.0.1"],
+        default=["localhost", "127.0.0.1", "testserver"],
         alias="ALLOWED_HOSTS",
     )
 
@@ -84,7 +85,11 @@ class Settings(BaseSettings):
     REGION_ID: str = Field(default="local", alias="REGION_ID")
 
     # API rate limiting / quota (S3.6)
-    RATE_LIMIT_ENABLED: bool = Field(default=False, alias="RATE_LIMIT_ENABLED")
+    RATE_LIMIT_ENABLED: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
+    # Redis dependency mode: required | optional
+    # "required" = fail startup if Redis unreachable (production)
+    # "optional" = warn and continue with in-memory cache (development / potato mode)
+    REDIS_REQUIRED: bool = Field(default=False, alias="REDIS_REQUIRED")
     RATE_LIMIT_PER_USER_PER_MINUTE: int = Field(default=60, alias="RATE_LIMIT_PER_USER_PER_MINUTE")
     RATE_LIMIT_BURST: int = Field(default=10, alias="RATE_LIMIT_BURST")
 
@@ -132,6 +137,26 @@ class Settings(BaseSettings):
     # 默认 true 保持既有行为; CI/生产设 false 走真实 LLM 进化链路。
     SELF_ITERATION_MOCK: bool = Field(default=True, alias="SELF_ITERATION_MOCK")
 
+    # Mock mode for LLM/TTS (used by pipeline stages)
+    MOCK_LLM: bool = Field(default=False, alias="MOCK_LLM")
+    MOCK_TTS: bool = Field(default=False, alias="MOCK_TTS")
+
+    # Audio processing
+    CROSSFADE_MS: int = Field(default=50, alias="CROSSFADE_MS")
+    AUDIO_SEMANTIC_CACHE_ENABLED: bool = Field(default=False, alias="AUDIO_SEMANTIC_CACHE_ENABLED")
+
+    # DNSMOS model paths
+    DNSMOS_MODEL_URL: Optional[str] = Field(default=None, alias="DNSMOS_MODEL_URL")
+    DNSMOS_MODEL_PATH: str = Field(default="dnsmos.onnx", alias="DNSMOS_MODEL_PATH")
+
+    # Tesseract OCR
+    TESSERACT_CMD: Optional[str] = Field(default=None, alias="TESSERACT_CMD")
+
+    # Model cache directory
+    AUDIOBOOK_STUDIO_MODEL_CACHE: str = Field(
+        default="~/.cache/audiobook_studio/models", alias="AUDIOBOOK_STUDIO_MODEL_CACHE"
+    )
+
     # ffmpeg concurrency control
     FFMPEG_CONCURRENCY: int = Field(default=0, alias="FFMPEG_CONCURRENCY")  # 0=auto(cpu_count-1)
 
@@ -140,7 +165,11 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = Field(default="json", alias="LOG_FORMAT")
 
     # Auth registration mode: open | invite | approval
-    AUTH_REGISTRATION_MODE: str = Field(default="open", alias="AUTH_REGISTRATION_MODE")
+    # Secure default is "invite" - anonymous self-registration is disabled unless a
+    # valid invite code (REGISTRATION_INVITE_CODES) is supplied or an admin bootstraps.
+    AUTH_REGISTRATION_MODE: str = Field(default="invite", alias="AUTH_REGISTRATION_MODE")
+    # Comma-separated invite codes accepted when AUTH_REGISTRATION_MODE=invite.
+    REGISTRATION_INVITE_CODES: str = Field(default="", alias="REGISTRATION_INVITE_CODES")
 
     # Observability
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -196,8 +225,8 @@ class Settings(BaseSettings):
                 raise ValueError("Decoded length < 32 bytes")
         except Exception as e:
             raise RuntimeError(
-                f"Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
-                f"Generate a secure key with: python scripts/generate_secrets.py --format env"
+                "Refusing to start: JWT_SECRET_KEY is not valid URL-safe base64. "
+                "Generate a secure key with: python scripts/generate_secrets.py --format env"
             ) from e
 
     def validate_cors_security(self) -> None:
@@ -241,6 +270,11 @@ class Settings(BaseSettings):
         """
         logger = logging.getLogger("audiobook_studio.startup")
 
+        # Offline / "potato mode": skip non-critical external dependency checks
+        # (Redis, local model files, LLM key formats). Database is always verified.
+        # Set SKIP_RUNTIME_DEPS=1 for zero-config startup without Redis.
+        skip_external = os.environ.get("SKIP_RUNTIME_DEPS", "").lower() in ("1", "true", "yes", "on")
+
         # 1. Database connectivity (async)
         try:
             async_engine = create_async_engine(
@@ -254,10 +288,7 @@ class Settings(BaseSettings):
             logger.info("Database connectivity: OK")
         except Exception as e:
             logger.critical(f"DATABASE_URL connect failed: {e}")
-            raise RuntimeError(
-                f"DATABASE_URL connect failed: {e}. "
-                f"Check DATABASE_URL={self.DATABASE_URL}"
-            ) from e
+            raise RuntimeError(f"DATABASE_URL connect failed: {e}. " f"Check DATABASE_URL={self.DATABASE_URL}") from e
 
         # 2. Redis connectivity (async ping)
         try:
@@ -269,22 +300,36 @@ class Settings(BaseSettings):
                 await r.aclose()
             logger.info("Redis connectivity: OK")
         except Exception as e:
-            logger.critical(f"Redis ping failed: {e}")
-            raise RuntimeError(f"Redis ping failed: {e}. Check REDIS_URL={self.REDIS_URL}") from e
+            if skip_external or not self.REDIS_REQUIRED:
+                # Offline / potato mode / optional Redis: degrade gracefully.
+                logger.warning(f"Redis ping failed (continuing without Redis): {e}")
+            else:
+                logger.critical(f"Redis ping failed: {e}")
+                raise RuntimeError(f"Redis ping failed: {e}. Check REDIS_URL={self.REDIS_URL}") from e
 
         # 3. Kokoro model file existence (if local TTS enabled)
         if self.ENABLE_LOCAL_TTS and self.KOKORO_MODEL_PATH:
             model_path = Path(self.KOKORO_MODEL_PATH)
             if not model_path.exists():
-                logger.critical(f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}")
-                raise RuntimeError(
-                    f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}. "
-                    f"Download models or set ENABLE_LOCAL_TTS=false to use Edge-TTS fallback."
-                )
-            logger.info(f"Kokoro model file found: {self.KOKORO_MODEL_PATH}")
+                if skip_external:
+                    logger.warning(
+                        f"KOKORO_MODEL_PATH not found (SKIP_RUNTIME_DEPS set, continuing): " f"{self.KOKORO_MODEL_PATH}"
+                    )
+                else:
+                    logger.critical(f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}")
+                    raise RuntimeError(
+                        f"KOKORO_MODEL_PATH not found: {self.KOKORO_MODEL_PATH}. "
+                        f"Download models or set ENABLE_LOCAL_TTS=false to use Edge-TTS fallback."
+                    )
+            else:
+                logger.info(f"Kokoro model file found: {self.KOKORO_MODEL_PATH}")
 
         # 4. LLM API key format validation (basic format checks for configured keys)
-        self._validate_llm_api_keys()
+        # 4. LLM API key format validation (basic format checks for configured keys)
+        if skip_external:
+            logger.warning("Skipping LLM API key format validation (SKIP_RUNTIME_DEPS set).")
+        else:
+            self._validate_llm_api_keys()
 
     def _validate_llm_api_keys(self) -> None:
         """Validate format of configured LLM API keys.
@@ -292,7 +337,6 @@ class Settings(BaseSettings):
         Performs basic format validation on known LLM provider API keys.
         Does not validate actual API access (too slow for startup).
         """
-        import re
 
         logger = logging.getLogger("audiobook_studio.startup")
 

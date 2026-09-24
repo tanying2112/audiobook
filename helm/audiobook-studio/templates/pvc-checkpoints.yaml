@@ -1,0 +1,16 @@
+{{- if .Values.persistence.checkpoints.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-checkpoints
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: "{{ .Values.persistence.checkpoints.storageClass }}"
+  resources:
+    requests:
+      storage: {{ .Values.persistence.checkpoints.size }}
+{{- end }}

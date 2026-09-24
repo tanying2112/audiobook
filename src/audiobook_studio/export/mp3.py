@@ -9,31 +9,31 @@ D6 — MP3 ID3v2.4 标签写入模块
 """
 
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
     import mutagen
+    from mutagen.id3 import APIC  # Attached picture
+    from mutagen.id3 import CHAP  # Chapter
+    from mutagen.id3 import COMM  # Comments
+    from mutagen.id3 import CTOC  # Table of contents
+    from mutagen.id3 import SYLT  # Synchronized lyric
+    from mutagen.id3 import TALB  # Album
+    from mutagen.id3 import TCON  # Genre
+    from mutagen.id3 import TDRC  # Year/Date
+    from mutagen.id3 import TIT2  # Title
+    from mutagen.id3 import TPE1  # Artist
+    from mutagen.id3 import TPOS  # Disc number
+    from mutagen.id3 import TRCK  # Track number
+    from mutagen.id3 import TXXX  # User defined text
+    from mutagen.id3 import USLT  # Unsynchronized lyric
     from mutagen.id3 import (
         ID3,
-        TIT2,  # Title
-        TPE1,  # Artist
-        TALB,  # Album
-        TDRC,  # Year/Date
-        TCON,  # Genre
-        TRCK,  # Track number
-        TPOS,  # Disc number
-        APIC,  # Attached picture
-        CHAP,  # Chapter
-        CTOC,  # Table of contents
-        USLT,  # Unsynchronized lyric
-        SYLT,  # Synchronized lyric
-        COMM,  # Comments
-        TXXX,  # User defined text
     )
     from mutagen.mp3 import MP3
+
     MUTAGEN_AVAILABLE = True
 except ImportError:
     MUTAGEN_AVAILABLE = False
@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChapterInfo:
     """MP3 章节信息 (用于 CHAP/TOC 标签)."""
+
     title: str
     start_ms: int
     end_ms: int
@@ -63,6 +64,7 @@ class ChapterInfo:
 @dataclass
 class Mp3Metadata:
     """MP3 元数据."""
+
     title: str = ""
     artist: str = ""
     album: str = ""
@@ -109,7 +111,21 @@ def write_id3_tags(
     _ensure_id3(audio)
 
     # Clear existing tags of same types to avoid duplicates
-    tags_to_clear = ['TIT2', 'TPE1', 'TALB', 'TDRC', 'TCON', 'TRCK', 'TPOS', 'APIC', 'CHAP', 'CTOC', 'USLT', 'SYLT', 'COMM']
+    tags_to_clear = [
+        "TIT2",
+        "TPE1",
+        "TALB",
+        "TDRC",
+        "TCON",
+        "TRCK",
+        "TPOS",
+        "APIC",
+        "CHAP",
+        "CTOC",
+        "USLT",
+        "SYLT",
+        "COMM",
+    ]
     for tag_id in tags_to_clear:
         if tag_id in audio.tags:
             del audio.tags[tag_id]
@@ -136,13 +152,15 @@ def write_id3_tags(
             cover_data = f.read()
         ext = Path(metadata.cover_image).suffix.lower()
         mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
-        audio.tags.add(APIC(
-            encoding=3,
-            mime=mime_type,
-            type=3,  # Front cover
-            desc="Cover",
-            data=cover_data,
-        ))
+        audio.tags.add(
+            APIC(
+                encoding=3,
+                mime=mime_type,
+                type=3,  # Front cover
+                desc="Cover",
+                data=cover_data,
+            )
+        )
         logger.info(f"Added cover image: {metadata.cover_image}")
 
     # Write chapters (CHAP) and table of contents (CTOC)
@@ -181,12 +199,14 @@ def write_id3_tags(
 
     # Write unsynchronized lyrics (USLT)
     if metadata.lyrics:
-        audio.tags.add(USLT(
-            encoding=3,
-            lang="chi" if any(ord(c) > 127 for c in metadata.lyrics[:100]) else "eng",
-            desc="",
-            text=metadata.lyrics,
-        ))
+        audio.tags.add(
+            USLT(
+                encoding=3,
+                lang="chi" if any(ord(c) > 127 for c in metadata.lyrics[:100]) else "eng",
+                desc="",
+                text=metadata.lyrics,
+            )
+        )
         logger.info("Added unsynchronized lyrics (USLT)")
 
     # Write synchronized lyrics (SYLT)
@@ -196,14 +216,16 @@ def write_id3_tags(
         for timestamp, text in metadata.synced_lyrics:
             sylt_data.append((int(timestamp * 1000), text))
 
-        audio.tags.add(SYLT(
-            encoding=3,
-            lang="chi" if any(ord(c) > 127 for c in metadata.synced_lyrics[0][1][:10]) else "eng",
-            format=2,  # Milliseconds
-            type=1,  # Lyrics
-            desc="",
-            text=sylt_data,
-        ))
+        audio.tags.add(
+            SYLT(
+                encoding=3,
+                lang="chi" if any(ord(c) > 127 for c in metadata.synced_lyrics[0][1][:10]) else "eng",
+                format=2,  # Milliseconds
+                type=1,  # Lyrics
+                desc="",
+                text=sylt_data,
+            )
+        )
         logger.info(f"Added synchronized lyrics (SYLT) with {len(metadata.synced_lyrics)} entries")
 
     # Save
@@ -277,9 +299,9 @@ def read_id3_tags(mp3_path: Path) -> Dict[str, Any]:
 
     result = {}
     for tag_id, tag in audio.tags.items():
-        if hasattr(tag, 'text'):
+        if hasattr(tag, "text"):
             result[tag_id] = tag.text
-        elif hasattr(tag, 'data'):
+        elif hasattr(tag, "data"):
             result[tag_id] = f"<binary data: {len(tag.data)} bytes>"
         else:
             result[tag_id] = str(tag)
@@ -298,8 +320,8 @@ def add_mp3_to_zip(
     zip_path = Path(zip_path)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for i, mp3_file in enumerate(mp3_files):
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for _i, mp3_file in enumerate(mp3_files):
             mp3_file = Path(mp3_file)
             if mp3_file.exists():
                 arcname = mp3_file.name
@@ -324,7 +346,7 @@ def export_mp3_chapters(
 
     exported_files = []
 
-    for i, (audio_file, chapter) in enumerate(zip(audio_files, chapter_infos)):
+    for i, (audio_file, chapter) in enumerate(zip(audio_files, chapter_infos, strict=False)):
         output_file = output_dir / f"chapter_{i+1:03d}_{chapter.title}.mp3"
 
         # Copy original file
@@ -347,4 +369,3 @@ def export_mp3_chapters(
         exported_files.append(output_file)
 
     return exported_files
-

@@ -11,7 +11,7 @@ All stage names are normalized to canonical form for consistent processing.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class CanonicalStage(Enum):

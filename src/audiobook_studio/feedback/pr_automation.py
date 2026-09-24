@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -312,7 +311,10 @@ def create_prompt_upgrade_pr(
         return PRResult(success=False, error=str(e))
 
     # Create branch
-    branch_name = _create_pr_branch(base_branch, stage, version)
+    try:
+        branch_name = _create_pr_branch(base_branch, stage, version)
+    except RuntimeError as e:
+        return PRResult(success=False, error=str(e))
 
     # Commit changes
     if not _commit_prompt_changes(stage, version):
@@ -331,7 +333,7 @@ def create_prompt_upgrade_pr(
         "",
         "### Changes",
         f"- Upgraded prompt `{stage}` to version `v{version}`",
-        f"- Updated CHANGELOG.md with change summary",
+        "- Updated CHANGELOG.md with change summary",
         "",
         "### Validation Results",
     ]
@@ -444,7 +446,6 @@ def list_open_prompt_prs() -> List[Dict[str, Any]]:
 
 def close_stale_prompt_prs(days: int = 7) -> int:
     """Close prompt upgrade PRs older than specified days."""
-    import time
 
     prs = list_open_prompt_prs()
     closed_count = 0
@@ -459,7 +460,7 @@ def close_stale_prompt_prs(days: int = 7) -> int:
                 if age_days > days:
                     _run_command(["gh", "pr", "close", str(pr["number"]), "--comment", "Auto-closed: stale PR"])
                     closed_count += 1
-            except Exception:
+            except ValueError:
                 pass
 
     return closed_count

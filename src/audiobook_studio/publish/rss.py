@@ -7,7 +7,7 @@
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin
 
 from ..models.audio_segment import AudioSegment

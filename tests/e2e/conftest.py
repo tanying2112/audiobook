@@ -14,9 +14,7 @@ Usage:
     pytest tests/unit/ -v  # E2E tests skipped
 """
 
-import asyncio
 import os
-from pathlib import Path
 from typing import Optional
 
 import pytest

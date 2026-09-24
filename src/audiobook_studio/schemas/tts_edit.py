@@ -14,7 +14,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
 from .paragraph import ParagraphAnnotation

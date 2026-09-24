@@ -16,16 +16,18 @@ from .direct_client import (
     DirectProviderClient,
     DirectProviderClientConfig,
     DirectProviderType,
-    LLMCallResult as DirectLLMCallResult,
+)
+from .direct_client import LLMCallResult as DirectLLMCallResult
+from .direct_client import (
     create_direct_client,
 )
 from .judge import JudgeConfig, LLMJudge, create_judge
 from .router import CostTracker, LLMRouter, ModelConfig, StageRoutingConfig, create_router, get_cost_tracker
 from .utils import LLMParseError, validate_and_parse_llm_response
+from .vllm_backend import LLMCallResult as VLLMLLMCallResult
 from .vllm_backend import (
     VLLMBackend,
     VLLMBackendConfig,
-    LLMCallResult as VLLMLLMCallResult,
     create_vllm_backend,
 )
 

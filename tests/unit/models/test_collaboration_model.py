@@ -5,6 +5,7 @@ exercise the mapper definitions is to instantiate them against a REAL schema
 (Base.metadata.create_all) and assert the column/relationship wiring, enum
 defaults, and JSON-list mutability behave correctly. No implicit mocking.
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -84,6 +85,7 @@ class TestTeamMemberModel:
         assert m.languages == []
         # created_at populated from the default lambda — must be a near-now TZ-aware datetime.
         from datetime import datetime, timezone
+
         assert (datetime.now(timezone.utc) - m.created_at.replace(tzinfo=timezone.utc)).total_seconds() < 5
 
     def test_skills_list_mutates_inplace(self, db):
@@ -204,9 +206,7 @@ class TestTaskModel:
         parent = Task(title="Epic", description="d", assignee_id=assignee.id)
         db.add(parent)
         db.commit()
-        child = Task(
-            title="Sub", description="d", assignee_id=assignee.id, parent_task_id=parent.id
-        )
+        child = Task(title="Sub", description="d", assignee_id=assignee.id, parent_task_id=parent.id)
         db.add(child)
         db.commit()
         assert child in parent.subtasks
@@ -264,9 +264,7 @@ class TestApprovalWorkflow:
         approver = TeamMember(name="K", email="k@example.com", role="manager")
         db.add_all([requester, approver])
         db.flush()
-        req = ApprovalRequest(
-            title="X", description="d", requester_id=requester.id, required_approvals=1
-        )
+        req = ApprovalRequest(title="X", description="d", requester_id=requester.id, required_approvals=1)
         req.approvers.append(approver)
         db.add(req)
         db.commit()

@@ -6,7 +6,6 @@ Target: >70% schema compliance rate per stage.
 
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -17,19 +16,11 @@ os.environ["MOCK_LLM"] = "true"
 
 
 from audiobook_studio.llm import create_router  # noqa: E402
-from audiobook_studio.pipeline import (  # noqa: E402
-    analyze_structure,
-    annotate_paragraph,
-    edit_for_tts,
-    extract_text,
-    quality_check,
-    synthesize_paragraphs,
-)
 from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline
 from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline
 from audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline
 from audiobook_studio.pipeline.extract import ExtractPipeline
-from audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline
+from audiobook_studio.pipeline.quality_check import QualityCheckPipeline
 from audiobook_studio.pipeline.synthesize import SynthesizePipeline
 from audiobook_studio.schemas import (  # noqa: E402
     BookAnalysisInput,
@@ -72,7 +63,6 @@ class TestGoldenDatasetExtract:
 
     def test_mock_mode_returns_valid_result(self, pipeline):
         """Test mock mode returns valid ExtractionResult."""
-        from audiobook_studio.schemas import ExtractionInput
 
         input_data = ExtractionInput(file_path="/fake/test.txt", mime_type="text/plain", detect_language=True)
         result = pipeline.run(input_data)
@@ -219,7 +209,7 @@ class TestGoldenDatasetAnnotateParagraph:
     def test_mock_mode_returns_valid_annotation(self, pipeline):
         """Test mock mode returns valid ParagraphAnnotation."""
         # Create minimal valid input
-        from audiobook_studio.schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot, ParagraphAnnotationInput
+        from audiobook_studio.schemas import ParagraphAnnotationInput
 
         book_meta = BookMeta(
             title="Test Book",
@@ -416,7 +406,6 @@ class TestGoldenDatasetTtsRouting:
 
     def test_mock_mode_returns_valid_decisions(self, pipeline):
         """Test mock mode returns valid routing decisions via run()."""
-        from audiobook_studio.schemas import CharacterVoiceBinding, TtsRoutingInput
 
         char_voice_map = [
             CharacterVoiceBinding(
@@ -481,10 +470,10 @@ class TestGoldenDatasetSynthesize:
     def pipeline(self, router):
         return SynthesizePipeline(router=router)
 
-    def test_mock_mode_returns_valid_segments(self, pipeline):
+    @pytest.mark.asyncio
+    async def test_mock_mode_returns_valid_segments(self, pipeline):
         """Test mock mode returns valid AudioSegment via run()."""
         from audiobook_studio.pipeline.synthesize import AudioSegment
-        from audiobook_studio.schemas import CharacterVoiceBinding, TtsRoutingInput
 
         char_voice_map = [
             CharacterVoiceBinding(
@@ -526,7 +515,7 @@ class TestGoldenDatasetSynthesize:
             prefer_local=True,
         )
 
-        results = pipeline.run([tts_input])
+        results = await pipeline.run([tts_input])
 
         assert len(results) == 1
         assert isinstance(results[0], AudioSegment)

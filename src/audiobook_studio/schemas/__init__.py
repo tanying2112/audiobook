@@ -22,7 +22,7 @@ from .audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from .audio_postprocess import AudioPostProcessParams
 from .book import Book, BookAnalysisInput, BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourceParagraph
-from .extraction import ExtractionInput, ExtractionResult
+from .extraction import ExtractionInput, ExtractionResult, VisualElement
 from .feedback import FeedbackRecord
 from .feedback_analysis import FeedbackAnalysis
 from .judge import PairwiseDimensionScore, PairwiseJudgment
@@ -45,6 +45,7 @@ __all__ = [
     # 环节①
     "ExtractionInput",
     "ExtractionResult",
+    "VisualElement",
     # 环节②
     "BookAnalysisInput",
     "BookMeta",

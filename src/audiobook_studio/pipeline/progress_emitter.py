@@ -5,10 +5,9 @@ to WebSocket clients. It integrates with the orchestrator's hook system.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
+from ..api.websocket import PipelineEventType, emit_pipeline_event
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +46,7 @@ class ProgressEmitter:
         total_items: Optional[int] = None,
     ):
         """Emit stage enter event."""
-        context = self._build_base_context(
-            project_id, chapter_index, chapter_id, paragraph_index, paragraph_id
-        )
+        context = self._build_base_context(project_id, chapter_index, chapter_id, paragraph_index, paragraph_id)
         if total_items is not None:
             context["total_items"] = total_items
 
@@ -95,9 +92,7 @@ class ProgressEmitter:
         if total and total > 0:
             progress = min(current / total, 1.0)
 
-        data = self._build_base_context(
-            project_id, chapter_index, chapter_id, paragraph_index
-        )
+        data = self._build_base_context(project_id, chapter_index, chapter_id, paragraph_index)
         data.update({"current": current, "total": total or 0, "message": message})
 
         await emit_pipeline_event(
@@ -126,9 +121,7 @@ class ProgressEmitter:
         if key in self._stage_progress:
             del self._stage_progress[key]
 
-        data = self._build_base_context(
-            project_id, chapter_index, chapter_id, paragraph_index
-        )
+        data = self._build_base_context(project_id, chapter_index, chapter_id, paragraph_index)
         if not success:
             data["error"] = error_message
 
@@ -308,9 +301,7 @@ async def emit_chapter_complete(
     total_chapters: Optional[int] = None,
 ):
     """Emit chapter completion event."""
-    await progress_emitter.emit_chapter_complete(
-        project_id, chapter_index, chapter_id, total_chapters
-    )
+    await progress_emitter.emit_chapter_complete(project_id, chapter_index, chapter_id, total_chapters)
 
 
 async def emit_paragraph_complete(
@@ -320,9 +311,7 @@ async def emit_paragraph_complete(
     total_paragraphs: Optional[int] = None,
 ):
     """Emit paragraph completion event."""
-    await progress_emitter.emit_paragraph_complete(
-        project_id, chapter_index, paragraph_index, total_paragraphs
-    )
+    await progress_emitter.emit_paragraph_complete(project_id, chapter_index, paragraph_index, total_paragraphs)
 
 
 async def emit_error(
@@ -334,9 +323,7 @@ async def emit_error(
     paragraph_index: Optional[int] = None,
 ):
     """Emit error event."""
-    await progress_emitter.emit_error(
-        project_id, stage, error_message, chapter_index, chapter_id, paragraph_index
-    )
+    await progress_emitter.emit_error(project_id, stage, error_message, chapter_index, chapter_id, paragraph_index)
 
 
 async def emit_pipeline_completed(
@@ -355,4 +342,3 @@ async def emit_pipeline_paused(project_id: int):
 async def emit_pipeline_resumed(project_id: int):
     """Emit pipeline resumed event."""
     await progress_emitter.emit_pipeline_resumed(project_id)
-

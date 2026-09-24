@@ -399,15 +399,16 @@ class TestExportProjectSuccess:
         mock_project.chapters = [mock_chapter]
         mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
 
+        import src.audiobook_studio.export.batch_exporter as be_mod
         from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
 
         job = ExportJob(project_id=1, formats=[ExportFormat.M4B], output_dir="/tmp/test")
 
         # Mock the helper functions
         with (
-            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
-            patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio_files,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
+            patch.object(be_mod, "_collect_chapter_data") as mock_collect,
+            patch.object(be_mod, "_collect_audio_files") as mock_audio_files,
+            patch.object(be_mod, "build_m4b") as mock_build_m4b,
             patch("src.audiobook_studio.export.srt.generate_srt"),
             patch("zipfile.ZipFile"),
             patch("pathlib.Path.exists", return_value=True),
@@ -427,7 +428,7 @@ class TestExportProjectSuccess:
 
                     mock_collect.return_value = {
                         "chapter": mock_chapter,
-                        "paragraphs": [mock_paragraph],
+                        "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
                         "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
                         "chapter_data": {},
                     }
@@ -634,15 +635,16 @@ class TestExportErrorHandling:
         mock_project.chapters = [MagicMock(id=1)]
         mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
 
+        import src.audiobook_studio.export.batch_exporter as be_mod
         from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
 
         job = ExportJob(project_id=1, formats=[ExportFormat.M4B], output_dir="/tmp/test")
 
         # Mock the helper functions to raise an exception during build
         with (
-            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
-            patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_collect_audio,
-            patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
+            patch.object(be_mod, "_collect_chapter_data") as mock_collect,
+            patch.object(be_mod, "_collect_audio_files") as mock_collect_audio,
+            patch.object(be_mod, "build_m4b") as mock_build_m4b,
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
         ):
@@ -656,7 +658,7 @@ class TestExportErrorHandling:
 
                 mock_collect.return_value = {
                     "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
-                    "paragraphs": [MagicMock(id=1, index=1, text="x", sfx_tags=[])],
+                    "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
                     "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
                     "chapter_data": {},
                 }

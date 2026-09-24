@@ -90,8 +90,8 @@ def test_list_models_endpoint():
 
 
 def test_install_model_endpoint_404_for_unknown():
-    from fastapi import HTTPException
+    from src.audiobook_studio.exceptions import NotFoundError
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(NotFoundError) as exc:
         market_api.install_model(name="nope")
-    assert exc.value.status_code == 404
+    assert exc.value.error_code == "NOT_FOUND"

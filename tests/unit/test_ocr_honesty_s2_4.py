@@ -31,9 +31,22 @@ def test_ocr_availability_is_honest():
 def test_image_extraction_raises_when_ocr_unavailable():
     """An image with no text layer must NOT silently fake success."""
     if not extract_mod.OCR_AVAILABLE:
-        pipeline = ExtractPipeline(mock_mode=True)
-        with pytest.raises(ValueError):
-            pipeline._extract_image("does_not_matter.png")
+        import os
+        import tempfile
+
+        # Create a temp image file (empty PNG)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            # Minimal PNG header: \x89PNG\r\n\x1a\n
+            tmp.write(b"\x89PNG\r\n\x1a\n")
+            tmp_path = tmp.name
+
+        try:
+            # Use mock_mode=False to test real path (no vision providers configured)
+            pipeline = ExtractPipeline(mock_mode=False)
+            with pytest.raises(ValueError):
+                pipeline._extract_image(tmp_path)
+        finally:
+            os.unlink(tmp_path)
 
 
 def test_pdf_text_layer_only_when_ocr_unavailable():

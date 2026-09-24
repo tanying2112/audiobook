@@ -1,0 +1,36 @@
+{
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "Prompt v2 not found for stage 'annotate_paragraph'"
+  },
+  "quality_improvement": {
+    "name": "质量 ≥ 旧版 102%",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 1.02,
+    "details": "无法加载 prompt: old=v1 new=v2"
+  },
+  "promotion": {
+    "stage": "annotate_paragraph",
+    "old_version": 1,
+    "new_version": 2,
+    "passed": false,
+    "summary": "Prompt v2 not found for stage 'annotate_paragraph'",
+    "gates": [],
+    "pass_rate": 0.0
+  },
+  "outputs": [
+    {
+      "error": "8 validation errors for ParagraphAnnotationInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nchapter_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nbook_meta\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncharacter_voice_map\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nemotion_snapshot\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nstory_line_summary\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nglobal_style_notes\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 1.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "8 validation errors for ParagraphAnnotationInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nchapter_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nbook_meta\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncharacter_voice_map\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nemotion_snapshot\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nstory_line_summary\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nglobal_style_notes\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 2.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    },
+    {
+      "error": "8 validation errors for ParagraphAnnotationInput\nparagraph_text\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nparagraph_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nchapter_index\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nbook_meta\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncharacter_voice_map\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nemotion_snapshot\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nstory_line_summary\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nglobal_style_notes\n  Field required [type=missing, input_value={'text': 'This is a test ...tate_paragraph case 3.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+  ]
+}

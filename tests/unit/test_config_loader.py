@@ -1,13 +1,11 @@
 """Tests for config loader module with Pydantic validation."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from src.audiobook_studio.config.loader import (
     ConfigLoader,
-    clear_config_cache,
     load_contract_versions,
     load_quality_thresholds,
     load_rules,
@@ -253,7 +251,6 @@ class TestConfigFileLock:
 
         # Inside the context, the per-path RLock must exist and be held by THIS thread
         # (RLock is reentrant, so a nested acquire on the same thread must not block).
-        reentered = {}
         with ConfigFileLock.acquire(path):
             lock = ConfigFileLock._locks[resolved]
             assert isinstance(lock, type(threading.RLock()))

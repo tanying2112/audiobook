@@ -4,7 +4,6 @@ Token-bucket style rate limiter with Redis-backed distributed coordination.
 Used for remote TTS endpoints (VoxCPM2, cloud TTS) to respect API quotas.
 """
 
-import logging
 import threading
 import time
 from dataclasses import dataclass, field

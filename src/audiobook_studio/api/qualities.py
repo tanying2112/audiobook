@@ -2,11 +2,12 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import NotFoundError
 from ..models.legacy import LegacyQuality as Quality
 from ..schemas.legacy import Quality as QualitySchema
 from .dependencies import get_async_db
@@ -65,7 +66,7 @@ async def get_quality(quality_id: int, db: AsyncSession = Depends(get_async_db))
     result = await db.execute(select(Quality).where(Quality.id == quality_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Quality not found")
+        raise NotFoundError(resource="Quality", identifier=str(quality_id))
     return i
 
 
@@ -75,7 +76,7 @@ async def update_quality(quality_id: int, payload: QualityUpdate, db: AsyncSessi
     result = await db.execute(select(Quality).where(Quality.id == quality_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Quality not found")
+        raise NotFoundError(resource="Quality", identifier=str(quality_id))
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field in {"id", "tts_edit_id"}:
             continue
@@ -91,7 +92,7 @@ async def delete_quality(quality_id: int, db: AsyncSession = Depends(get_async_d
     result = await db.execute(select(Quality).where(Quality.id == quality_id))
     i = result.scalar_one_or_none()
     if not i:
-        raise HTTPException(status_code=404, detail="Quality not found")
+        raise NotFoundError(resource="Quality", identifier=str(quality_id))
     await db.delete(i)
     await db.commit()
     return None

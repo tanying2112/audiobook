@@ -15,8 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from ..schemas.review import (
     FixCommand,
@@ -441,7 +440,8 @@ class ReviewerAgent:
                             parameters={
                                 "current_speed": tag_check.actual,
                                 "clamped_speed": max(
-                                    self.speed_min, min(self.speed_max, float(tag_check.actual) if tag_check.actual else 1.0)
+                                    self.speed_min,
+                                    min(self.speed_max, float(tag_check.actual) if tag_check.actual else 1.0),
                                 ),
                             },
                             priority=6,
@@ -691,7 +691,7 @@ if __name__ == "__main__":  # pragma: no cover
     ]
 
     result = review_annotations(
-        project_id=1,
+        project_id=123,
         chapter_index=1,
         paragraphs=test_paragraphs,
         character_voice_map=test_voice_map,
@@ -699,13 +699,13 @@ if __name__ == "__main__":  # pragma: no cover
         mock_mode=False,
     )
 
-    print(f"\n=== Reviewer Judgment ===")
-    print(f"Overall Passed: {result.overall_passed}")
-    print(f"Blocking Issues: {result.blocking_issues}")
-    print(f"Warnings: {result.warning_issues}")
-    print(f"Summary: {result.summary}")
-    print(f"Fix Commands: {len(result.fix_commands)}")
+    logger.info("\n=== Reviewer Judgment ===")
+    logger.info(f"Overall Passed: {result.overall_passed}")
+    logger.warning(f"Blocking Issues: {result.blocking_issues}")
+    logger.warning(f"Warnings: {result.warning_issues}")
+    logger.info(f"Summary: {result.summary}")
+    logger.error(f"Fix Commands: {len(result.fix_commands)}")
     for cmd in result.fix_commands:
-        print(f"  - {cmd.command_type} para={cmd.target_paragraph_index}: {cmd.rationale}")
+        logger.info(f"  - {cmd.command_type} para={cmd.target_paragraph_index}: {cmd.rationale}")
 
     sys.exit(0 if result.overall_passed else 1)

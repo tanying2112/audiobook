@@ -1,19 +1,11 @@
 """Tests for api/auto_run.py — schemas, helpers, endpoints, background logic."""
 
-import asyncio
-import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-import src.audiobook_studio.api.auto_run  # Ensure module is imported for coverage
-
-# ===========================================================================
+# ===========================================================================  # noqa: E303
 # Schema / dataclass tests
 # ===========================================================================
 
 
-class TestAutoRunSchemas:
+class TestAutoRunSchemas:  # noqa: E302
     def test_auto_run_config_defaults(self):
         from src.audiobook_studio.api.auto_run import AutoRunConfig
 

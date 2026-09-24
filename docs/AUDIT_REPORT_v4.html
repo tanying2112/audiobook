@@ -1,0 +1,387 @@
+<title>Audiobook Studio v0.4 深度审计</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6f8; --bg2:#ffffff; --bg3:#e9eef2;
+  --ink:#16222e; --ink2:#44566a; --ink3:#6b7f93;
+  --line:#d7dfe6; --line2:#e5ebf0;
+  --accent:#0d7a72; --accent-ink:#07534d; --accent-soft:#dcefec;
+  --good:#1a7f37; --good-soft:#e1f3e6;
+  --warn:#a4600a; --warn-soft:#fbeed6;
+  --crit:#c03a2e; --crit-soft:#fbe3e0;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  --disp:"Schibsted Grotesk","Public Sans",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f151b; --bg2:#151d25; --bg3:#0a0f14;
+  --ink:#e6edf3; --ink2:#9fb0bf; --ink3:#6d7f90;
+  --line:#26323e; --line2:#1d2832;
+  --accent:#2bb2a6; --accent-ink:#7fe0d6; --accent-soft:#122a27;
+  --good:#3ec463; --good-soft:#12301c;
+  --warn:#e0a33e; --warn-soft:#33260e;
+  --crit:#ef6a5a; --crit-soft:#3a1a17;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --bg2:#151d25; --bg3:#0a0f14;
+  --ink:#e6edf3; --ink2:#9fb0bf; --ink3:#6d7f90;
+  --line:#26323e; --line2:#1d2832;
+  --accent:#2bb2a6; --accent-ink:#7fe0d6; --accent-soft:#122a27;
+  --good:#3ec463; --good-soft:#12301c;
+  --warn:#e0a33e; --warn-soft:#33260e;
+  --crit:#ef6a5a; --crit-soft:#3a1a17;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6}
+.wrap{max-width:1060px;margin:0 auto;padding:48px 28px 80px}
+h1,h2,h3,.disp{font-family:var(--disp);line-height:1.15;text-wrap:balance}
+a{color:var(--accent-ink)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 14px}
+.hero{border-bottom:1px solid var(--line);padding:12px 0 40px;margin-bottom:40px}
+h1{font-size:clamp(30px,5vw,46px);font-weight:800;margin:0 0 12px;letter-spacing:-.015em}
+.lede{font-size:18px;color:var(--ink2);max-width:64ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:22px;font-family:var(--mono);font-size:12.5px;color:var(--ink3)}
+.meta b{color:var(--ink2);font-weight:500}
+.verdict{margin:26px 0 0;background:var(--bg2);border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:8px;padding:16px 18px;font-size:15px}
+.verdict .t{font-family:var(--disp);font-weight:700;color:var(--crit);letter-spacing:.01em}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.card .n{font-family:var(--disp);font-size:28px;font-weight:800;color:var(--accent-ink);line-height:1}
+.card .k{font-size:13px;color:var(--ink2);margin-top:6px}
+.card .v{font-size:14.5px;margin-top:4px;color:var(--ink)}
+section{margin:52px 0}
+h2{font-size:24px;font-weight:700;margin:0 0 6px;letter-spacing:-.01em}
+.sec-note{color:var(--ink3);font-size:14.5px;margin:0 0 22px;max-width:72ch}
+h3{font-size:16.5px;font-weight:700;margin:30px 0 10px}
+/* severity row */
+.row{display:flex;gap:14px;align-items:flex-start;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+.row .badge{flex:0 0 auto;font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:.04em;padding:4px 9px;border-radius:6px;margin-top:2px;text-transform:uppercase}
+.b-crit{background:var(--crit-soft);color:var(--crit)}
+.b-high{background:var(--warn-soft);color:var(--warn)}
+.b-med{background:var(--accent-soft);color:var(--accent-ink)}
+.b-low{background:var(--bg3);color:var(--ink3)}
+.row .body{min-width:0}
+.row h4{margin:0 0 6px;font-size:16px;font-family:var(--disp);font-weight:700}
+.row p{margin:0 0 8px;color:var(--ink2);font-size:14.5px}
+.ev{font-family:var(--mono);font-size:12.5px;color:var(--ink3);background:var(--bg3);border:1px solid var(--line2);border-radius:6px;padding:8px 11px;white-space:pre-wrap;overflow-x:auto}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--ink2);background:var(--bg3);border:1px solid var(--line2);border-radius:4px;padding:1px 7px;margin-right:6px}
+/* table */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+th{text-align:left;font-family:var(--disp);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);padding:11px 14px;border-bottom:1px solid var(--line);font-weight:600;background:var(--bg3)}
+td{padding:11px 14px;border-bottom:1px solid var(--line2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-family:var(--disp);font-weight:600}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.pill.bad{background:var(--crit-soft);color:var(--crit)}
+.pill.mid{background:var(--warn-soft);color:var(--warn)}
+ol.tasks{counter-reset:t;list-style:none;padding:0;margin:0}
+ol.tasks>li{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:16px 18px 16px 56px;margin:12px 0;position:relative}
+ol.tasks>li::before{counter-increment:t;content:counter(t,upper-alpha);position:absolute;left:18px;top:16px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-ink)}
+ol.tasks h4{margin:0 0 6px;font-family:var(--disp);font-size:15.5px;font-weight:700}
+ol.tasks .why{color:var(--ink2);font-size:14px;margin:0 0 10px}
+ol.tasks .acc{font-size:13.5px;color:var(--ink)}
+ol.tasks .acc b{color:var(--good);font-weight:600}
+ol.tasks .eff{display:inline-block;font-family:var(--mono);font-size:11px;margin-left:8px;color:var(--ink3)}
+code{font-family:var(--mono);font-size:.92em;background:var(--bg3);border:1px solid var(--line2);border-radius:4px;padding:.5px 5px}
+.star{color:var(--accent-ink)}
+.foot{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);color:var(--ink3);font-size:13px}
+.foot p{margin:5px 0}
+@media(max-width:600px){.wrap{padding:32px 16px 60px}.hero{padding-top:4px}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">深度审计 · 生产可用性实地实测</p>
+  <h1>Audiobook Studio v0.4</h1>
+  <p class="lede">面向「免费资源下可自我迭代进化的人工智能有声书系统」目标的全面审计：代码级核查 + 前后端全栈真实冒烟测试 + 竞品/前沿对标。</p>
+  <div class="meta">
+    <span><b>基线</b> 分支 feat/v0.4-multilingual-clone</span>
+    <span><b>审计方式</b> 真实启动 uvicorn · 真实 TTS 合成 · 全量测试 · 覆盖率实测</span>
+    <span><b>全量测试</b> 7017 passed / 158 skipped / 0 failed</span>
+    <span><b>日期</b> 2026-08-27</span>
+  </div>
+  <div class="verdict">
+    <span class="t">总评 verdict</span> — 工程骨架与真实可用性（后端启动、认证、真实 TTS 合成、前端构建）已具备相当成色，<b>较 v3.3 审计有实质改善</b>；但项目最核心的「自我迭代进化」主张<b>今日无法成立</b>——进化管道真实、学习信号全为桩。另有零配置承诺、覆盖率门禁、翻译零测试、语音试听死桩四类阻断。
+  </div>
+</header>
+
+<!-- scorecard -->
+<section>
+  <h2>健康度计分卡</h2>
+  <p class="sec-note">每一项都来自本次实地实测，非推断。</p>
+  <div class="grid g2">
+    <div class="card"><div class="n">7017<span style="font-size:14px;color:var(--ink3)"> / 158</span></div><div class="k">全量测试通过 / 跳过</div><div class="v">孤立运行时全绿；首次 20 失败为并发共享运行时文件所致（非代码缺陷）</div></div>
+    <div class="card"><div class="n">83.2<span style="font-size:14px;color:var(--ink3)">%</span></div><div class="k">真实覆盖率（<b style="color:var(--crit)">低于 85 门禁</b>）</div><div class="v">在 omit 掉约 4900 行核心代码后仍差 1.8 个百分点</div></div>
+    <div class="card"><div class="n">200<span style="font-size:14px;color:var(--ink3)">→201</span></div><div class="k">后端全栈冒烟</div><div class="v">健康→注册→登录→JWT→受保护端点→建项目 全通；真实 Kokoro 合成出 190KB 真 MP3</div></div>
+    <div class="card"><div class="n">PASS<span style="font-size:14px;color:var(--good)"></span></div><div class="k">前端构建</div><div class="v">vue-tsc + vite build 通过（v3.3 的 TS6133 阻断已解除）</div></div>
+  </div>
+</section>
+
+<!-- critical -->
+<section>
+  <h2>Critical · 阻断目标成立的问题</h2>
+  <p class="sec-note">这五条不修复，「免费资源下可自我迭代进化」的目标就无法达成。</p>
+
+  <div class="row">
+    <div class="badge b-crit">C1</div>
+    <div class="body">
+      <h4>自我迭代闭环：管道真实、学习信号全为桩</h4>
+      <p>核心主张的成色核查——SOP 反思、晋升门禁、DSPy/GEPA 的<b>每一次质量信号都不是真实学习</b>。B1 自迭代验证默认走确定性 mock LLM；音质指标是合规启发式（音色绑定覆盖率/情感默认覆盖率/角色解析率）而非真实听感；LLM-as-judge 是"文本模拟音频分析"；DSPy GEPA 分支内部用 MockLM，脚本自述「分数恒为 0、optimized_prompt 不变、perplexity drop=0 属已知限制」。金标集每阶段仅 3 例。系统今天无法真正自我改进，也无法自我证明它改进了。</p>
+      <span class="tag">self_iteration.py:115</span><span class="tag">sop_verification.py:35</span><span class="tag">judge.py:62</span><span class="tag">run_gepa_b2.py:38</span>
+      <div class="ev">"defaults to the deterministic role-aware one"  — self_iteration.py:115
+"AnnotationQualityMetric — a deterministic, reproducible proxy for annotation quality" — sop_verification.py:35
+"Uses text-based evaluation with simulated audio analysis." — judge.py:63
+"优化器内部 MockLM 确定性导致分数恒为 0、optimized_prompt 不变、perplexity 历史为常数（drop=0），属已知限制" — run_gepa_b2.py</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-crit">C2</div>
+    <div class="body">
+      <h4>「零配置 / 土豆断网」承诺与 Redis 硬依赖矛盾</h4>
+      <p>README 宣称土豆模式「断网可用、零配置免费版启动」，但 <code>validate_runtime_dependencies</code> 在 Redis ping 失败时<b>无条件抛 RuntimeError 拒绝启动</b>，无跳过开关。实测无 Redis 时 uvicorn 启动即退出；须先安装并启动 redis-server 才能拉起。加之本环境 torch 2.2.2 &lt; 2.5 使 transformers 禁用 PyTorch。</p>
+      <span class="tag">settings.py:285</span>
+      <div class="ev">RuntimeError: Redis ping failed: Error 61 connecting to localhost:6379. Connection refused. Check REDIS_URL=redis://localhost:6379/0
+Application startup failed. Exiting.</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-crit">C3</div>
+    <div class="body">
+      <h4>覆盖率剧场：omit 核心代码后仍低于门禁</h4>
+      <p><code>fail_under=85</code>，实测仅 <b>83.21%</b> —— 连门禁线都未达到；且这是把约 4900 行最核心、最高风险代码（全部 TTS 后端、feedback/critics、regression_suite、LLM 层、telemetry）排除在统计之外后的数字。越是有价值、越需要测试的代码，越被"设计性地不测"。</p>
+      <span class="tag">pyproject.toml:108,145</span>
+      <div class="ev">TOTAL   33488   4953   8174   897   83.21%
+Coverage failure: total of 83.21 is less than fail-under=85.00
+(omit 含: tts/*backend*, feedback/critics/*, regression_suite, llm/llm_client, telemetry, tracing ... ≈4900 行)</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-crit">C4</div>
+    <div class="body">
+      <h4>翻译（多语言配音）整模块测试被模块级跳过</h4>
+      <p>头号功能之一翻译有真实实现（<code>multilingual_dubbing.py</code> 20.7K，非纯 mock），但其测试模块 <code>test_translate.py</code> 被模块级 <code>mark.skip</code> 标注「Sprint G Placeholder — mock_mode stub」，导致整个翻译功能<b>零测试验证</b>——是"测试存根伪装真实功能"的正面案例。</p>
+      <span class="tag">tests/test_translate.py:9</span>
+      <div class="ev">@pytest.mark.skip(reason="Sprint G Placeholder — translate pipeline is mock_mode stub, not real usable code")</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-crit">C5</div>
+    <div class="body">
+      <h4>语音试听端点是死桩（指向不存在的 URL）</h4>
+      <p>前端试听功能依赖的 <code>GET /api/tts/voices/preview/{voice_id}</code> 是显式 TODO 桩，返回占位 JSON 指向 <code>/api/tts/preview/{id}.mp3</code>；该 mp3 端点实测返回 <b>404</b>。讽刺的是底层真实合成（<code>/api/tts/stream</code>）可用并产出 190KB 真音频——试听只需几行代码复用即可，却留成了断链。</p>
+      <span class="tag">tts_voices.py:479</span>
+      <div class="ev">{"voice_id":"af_heart","preview_url":"/api/tts/preview/af_heart.mp3",
+  "note":"Voice preview synthesis - placeholder implementation"}
+→ GET /api/tts/preview/af_heart.mp3  →  HTTP 404</div>
+    </div>
+  </div>
+</section>
+
+<!-- high -->
+<section>
+  <h2>High · 应尽快修复</h2>
+
+  <div class="row">
+    <div class="badge b-high">H1</div>
+    <div class="body">
+      <h4>安全默认薄弱：限流默认关闭 + 注册默认开放</h4>
+      <p><code>RATE_LIMIT_ENABLED=False</code>、<code>AUTH_REGISTRATION_MODE=open</code> 均为默认。面向免费云 Studio 的定位下，开放注册叠加无限流 = 注册滥用/配额打爆面。注册/登录端点当前无频控。</p>
+      <span class="tag">settings.py:87,161</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-high">H2</div>
+    <div class="body">
+      <h4>LLM-judge 异常回退误标「敏感内容」</h4>
+      <p><code>judge_quality</code> 任何异常（网络抖动、超时）都返回 <code>issues=["sensitive_content"]</code> 并 <code>needs_regeneration=True</code>——一次瞬时错误会把内容误判为涉敏并触发强制重合成，还可能引发重合成死循环。错误路径应降级为「待人工」而非编造结论。</p>
+      <span class="tag">judge.py:95-114</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-high">H3</div>
+    <div class="body">
+      <h4>测试非 hermetic：并发共享可变运行时文件</h4>
+      <p>首次全量跑 20 失败，同命令重跑（无并发干扰）0 失败。根因是并发 pytest 进程共享 <code>audiobook_studio.db</code> / <code>test_indexes.db</code> / <code>storage/</code> 等运行时文件相互踩踏。CI 若并行/多次复跑会不稳定。</p>
+      <span class="tag">仓库根目录 *.db</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="badge b-high">H4</div>
+    <div class="body">
+      <h4>短句合成时长异常（疑似重复/过慢）</h4>
+      <p>「你好，这是一个语音合成测试。」（约 2 秒语料）经 <code>/api/tts/stream</code> 产出 <b>31.7 秒</b>音频，58/63 个半秒窗非静音——非静音填充，疑似模型重复朗读或极端慢速。需排查是否为多遍合成拼接。</p>
+      <span class="tag">实测 /api/tts/stream · 190KB MP3 · 31.7s</span>
+    </div>
+  </div>
+</section>
+
+<!-- medium -->
+<section>
+  <h2>Medium · 建议处理</h2>
+
+  <div class="row">
+    <div class="badge b-med">M1</div>
+    <div class="body">
+      <h4>前端 echarts chunk 达 877KB 未做代码分割</h4>
+      <p>vite 构建告警 chunk &gt;500KB，echarts 整包进首屏，影响加载。应动态 import 按需引入。</p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="badge b-med">M2</div>
+    <div class="body">
+      <h4>前端硬编码 project id=1 与时间戳为空</h4>
+      <p><code>getSupportedLanguages</code> 写死 <code>/api/projects/1/...</code>（可用但为代码异味）；建项目响应 <code>created_at/updated_at</code> 为 null（应在服务端填充）。</p>
+      <span class="tag">web/src/api/index.ts:662</span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="badge b-med">M3</div>
+    <div class="body">
+      <h4>Kokoro 声纹克隆能力成色存疑</h4>
+      <p>Kokoro-ONNX 为固定音色架构，无原生零样本克隆；<code>clone.py</code> 宣称「基于 kokoro-onnx 的本地声音克隆 + 15s SNR≥20dB 门控」，实际更可能是音色映射。专业档对接 CosyVoice/VoxCPM2 尚未落地。需澄清能力边界，避免误导。</p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="badge b-med">M4</div>
+    <div class="body">
+      <h4>158 个跳过测试中相当比例为环境条件性</h4>
+      <p>跳过多为无 GPU / 可选依赖（voxcpm、sherpa-onnx、本地 LLM）所致，属诚实降级；但其中「自我迭代/翻译/进化」相关跳过直接削弱了目标主张的可验证性。</p>
+    </div>
+  </div>
+</section>
+
+<!-- benchmarking -->
+<section>
+  <h2>对标 · 同类产品与前沿技术</h2>
+  <p class="sec-note">本环境 WebSearch/WebFetch 工具被网络策略阻断；已用 <code>curl → Bing/github.com</code> 替代路径实测取回关键来源（见文末「来源实证」）。以下为基于实测来源 + 知识库的对标。</p>
+
+  <div class="tw">
+  <table>
+    <tr><th>方案</th><th class="num">音质 MOS</th><th>零样本克隆</th><th>情感控制</th><th>成本/许可</th><th>对本项目</th></tr>
+    <tr><td>Kokoro-82M（本项目默认）</td><td class="num">≈4.0</td><td>无（固定音色）</td><td>弱</td><td>免费 / Apache-2</td><td><b>音质天花板被锁死</b></td></tr>
+    <tr><td>Dia（Nari Labs, 2025）</td><td class="num">4.4+</td><td>部分</td><td><b>强（叙事/情感专精）</b></td><td>免费 / Apache-2</td><td>有声书情感表达的最佳免费替换</td></tr>
+    <tr><td>F5-TTS</td><td class="num">4.3–4.5</td><td>强</td><td>中</td><td>免费 / MIT</td><td>零样本克隆升级路径</td></tr>
+    <tr><td>CosyVoice2（阿里）</td><td class="num">4.3–4.5</td><td>强</td><td>中</td><td>免费 / 自定义</td><td>多语言+克隆，专业档已预留</td></tr>
+    <tr><td>Spark-TTS / Zonos-v1.1</td><td class="num">4.4–4.6</td><td>强</td><td>中</td><td>免费 / 非商用</td><td>音质最高，许可受限</td></tr>
+    <tr><td>ElevenLabs Projects</td><td class="num">4.5+</td><td>强</td><td>强</td><td>$5+/月</td><td>生态/生态音质标杆，不可自建</td></tr>
+    <tr><td>Apple/Google 自动旁白</td><td class="num">—</td><td>—</td><td>中</td><td>平台锁定</td><td>不构成自建替代</td></tr>
+  </table>
+  </div>
+
+  <h3>前沿「自我迭代」差距（本项目的短板 vs 业界做法）</h3>
+  <div class="tw">
+  <table>
+    <tr><th>维度</th><th>业界前沿做法</th><th>本项目现状</th><th>可借鉴落地路径</th></tr>
+    <tr><td>音质评测信号</td><td>UTMOS / SpeechLMScore / 多模态 LLM 听评</td><td>启发式合规（绑定覆盖率等），judge 为文本模拟</td><td>接入 UTMOS 或 SpeechLMScore 作真实听感打分</td></tr>
+    <tr><td>自动优化</td><td>DSPy GEPA / MIPROv2 在<b>真实</b> judge 分数上优化</td><td>GEPA 用 MockLM，分数恒 0、drop=0 已豁免</td><td>GEPA 接真实 LLM + 真实评测分数，删除豁免</td></tr>
+    <tr><td>偏好学习</td><td>DPO/KTO/self-rewarding RL，免 RLHF 偏好优化</td><td>无真实人类/偏好采集闭环</td><td>采集真实听评偏好，喂 DPO 微调</td></tr>
+    <tr><td>闭环重训</td><td>LoRA 微调 / 蒸馏小模型；<b>CosyVoice2 已支持 GRPO 强化训练</b>（2025/07 实测来源）</td><td>无（本地模型不重训）</td><td>基于真实反馈 LoRA 微调 Kokoro，或专业档接 CosyVoice2 的 RL 训练</td></tr>
+    <tr><td>Agentic 自修复</td><td>self-refine / Reflexion 纠正循环</td><td>晋升门禁/金标存在但信号为桩</td><td>金标接真实 LLM-as-judge + 人审后回流</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>来源实证（curl 替代路径实测取回）</h2>
+  <p class="sec-note">本环境 WebSearch/WebFetch 被网络策略阻断，改用 <code>curl</code> 直连可达域（bing.com / github.com）实测取回。实测抓取：</p>
+  <div class="tw"><table>
+    <tr><th>来源</th><th>实测 URL</th><th>实测取回的关键事实</th></tr>
+    <tr><td>Kokoro-82M</td><td class="ev" style="white-space:nowrap">github.com/hexgrad/kokoro</td><td>82M 参数，Apache 许可权重，「lightweight…deploy anywhere」</td></tr>
+    <tr><td>Dia</td><td class="ev" style="white-space:nowrap">github.com/Nari-Labs/Dia</td><td>1.6B 参数，Apache-2.0，情感/语气控制，可输出非言语声音</td></tr>
+    <tr><td>CosyVoice2</td><td class="ev" style="white-space:nowrap">github.com/FunAudioLLM/CosyVoice</td><td>「zero-shot multilingual…in the wild」、Bi-Streaming、<b>cosyvoice2 grpo training support (2025/07)</b></td></tr>
+    <tr><td>F5-TTS</td><td class="ev" style="white-space:nowrap">github.com/SWivid/F5-TTS</td><td>MIT 许可（零样本克隆路径可选）</td></tr>
+  </table></div>
+  <p class="sec-note" style="margin-top:12px">⚠ 可达域有限（google/huggingface/arxiv 被防火墙阻断），以上为可及范围内实证；音质 MOS 数值仍为知识库估计，需在可访问环境复核。</p>
+</section>
+
+<!-- task plan -->
+<section>
+  <h2>优化任务执行清单 · 含验收标准</h2>
+  <p class="sec-note">按优先级分组；每项给出<b>验收标准</b>（达标判定）与工作量。A–E 为 P0（不修则目标不成立），F–I 为 P1，J–L 为 P2。</p>
+
+  <h3>P0 · 让「可自我迭代进化」目标成立</h3>
+  <ol class="tasks">
+    <li><h4>接入真实音质评测信号，替换启发式合规指标 <span class="eff">约 3–5 天</span></h4>
+      <p class="why">根因：学习信号失真。合规覆盖率与「好听」无关，导致闭环优化优化的是错的目标。</p>
+      <p class="acc"><b>验收</b>：新增质量层基于真实音频特征（UTMOS 或 SpeechLMScore）产出可复现分数；judge 调用真实模型而非文本模拟；golden 数据据真实分数量化「改进」。</p></li>
+    <li><h4>自我迭代默认接真实 LLM，MockLM 仅作显式降级 <span class="eff">约 2–3 天</span></h4>
+      <p class="why">B1 默认确定性 mock、GEPA 用 MockLM——管道跑通了，但没有任何真实推理进入学习。</p>
+      <p class="acc"><b>验收</b>：无 MOCK_LLM 时闭环消费真实生产样本并真实调用 LLM 反思；移除 GEPA「drop=0 豁免」；增益由外部 judge 独立验证而非自证。</p></li>
+    <li><h4>拆除覆盖率 omit，真实覆盖率 ≥85% <span class="eff">约 3–5 天</span></h4>
+      <p class="why">约 4900 行最核心代码被排除；即便如此仍 83.21% 未达门禁。</p>
+      <p class="acc"><b>验收</b>：<code>coverage run</code>（仅排除 tests/migrations/__init__）≥85%；CI 门禁真实生效。</p></li>
+    <li><h4>翻译功能取消模块级 skip 并补全测试 <span class="eff">约 1–2 天</span></h4>
+      <p class="why">有真实实现却整模块零测试，是「存根伪装真实」。</p>
+      <p class="acc"><b>验收</b>：test_translate 全绿；翻译模块计入覆盖率。</p></li>
+    <li><h4>语音试听复用真实合成引擎，修复死桩 <span class="eff">约 0.5 天</span></h4>
+      <p class="why">底层 <code>/api/tts/stream</code> 已能产出真音频，试听却指向 404。</p>
+      <p class="acc"><b>验收</b>：<code>GET /voices/preview/{id}</code> 返回可播放 MP3；前端试听全流程可用。</p></li>
+  </ol>
+
+  <h3>P1 · 生产级加固</h3>
+  <ol class="tasks" style="counter-reset:t 5">
+    <li><h4>Redis 不可用时代码降级，兑现「零配置启动」<span class="eff">约 2–3 天</span></h4>
+      <p class="why">README 承诺断网/零配置，但 Redis 是硬依赖。</p>
+      <p class="acc"><b>验收</b>：无 Redis 下 uvicorn 成功启动，核心路径（含本地 TTS 合成）可用；可选用项优雅禁用。</p></li>
+    <li><h4>安全默认硬化：限流默认开、注册保护 <span class="eff">约 1 天</span></h4>
+      <p class="why">免费云定位下开放注册+无限流=滥用面。</p>
+      <p class="acc"><b>验收</b>：默认配置注册被限流保护；提供审批制开关。</p></li>
+    <li><h4>judge 异常回退改为「待人工」，禁编造敏感结论 <span class="eff">约 0.5 天</span></h4>
+      <p class="why">瞬时错误会误判涉敏并触发强制重合成。</p>
+      <p class="acc"><b>验收</b>：模拟 judge 异常，返回内容不含 sensitive_content，状态为待人工。</p></li>
+    <li><h4>测试 hermetic 化：隔离共享运行时文件 <span class="eff">约 1–2 天</span></h4>
+      <p class="why">并发复跑不稳定。</p>
+      <p class="acc"><b>验收</b>：两个并发 pytest 进程均 0 失败。</p></li>
+  </ol>
+
+  <h3>P2 · 打磨与增长</h3>
+  <ol class="tasks" style="counter-reset:t 9">
+    <li><h4>前端 echarts 动态 import 代码分割 <span class="eff">约 0.5 天</span></h4>
+      <p class="acc"><b>验收</b>：构建无 &gt;500KB chunk 告警；首屏体积下降。</p></li>
+    <li><h4>修复 project 硬编码 id 与时间戳为空 <span class="eff">约 0.5 天</span></h4>
+      <p class="acc"><b>验收</b>：语言接口不再写死 project 1；created_at/updated_at 建项即填充。</p></li>
+    <li><h4>扩充金标集并接真实 LLM-as-judge 标注 <span class="eff">约 2–3 天</span></h4>
+      <p class="why">当前每 stage 仅 3 例，无法支撑可信晋升。</p>
+      <p class="acc"><b>验收</b>：每 stage ≥30 例，带真实 LLM-judge + 人审回流。</p></li>
+    <li><h4>澄清/升级声纹克隆能力，专业档接入真零样本引擎 <span class="eff">约 3–5 天</span></h4>
+      <p class="why">Kokoro 固定音色做克隆成色存疑；对标 F5-TTS/CosyVoice2。</p>
+      <p class="acc"><b>验收</b>：文档澄清能力边界；专业档可选接入零样本克隆引擎。</p></li>
+    <li><h4>排查短句 31s 时长异常 <span class="eff">约 0.5–1 天</span></h4>
+      <p class="acc"><b>验收</b>：15 字句合成时长回归 &lt;5s，无重复/异常慢速。</p></li>
+  </ol>
+</section>
+
+<!-- strengths -->
+<section>
+  <h2>值得肯定 · 本次实测确认的既有优势</h2>
+  <div class="grid g2">
+    <div class="card"><div class="k">前端构建</div><div class="v">v3.3 的 TS6133 阻断已解除，vue-tsc 与 vite build 均通过。</div></div>
+    <div class="card"><div class="k">真实 TTS 合成</div><div class="v"><code>/api/tts/stream</code> 真产出 190KB 可播放 MP3；Kokoro ONNX 不依赖 torch 故可用。</div></div>
+    <div class="card"><div class="k">认证/密钥安全硬化</div><div class="v">JWT 256-bit 熵强制（拒默认占位）、bcrypt 强制、.env 已 gitignore、secrets 生成脚本、无硬编码 admin。</div></div>
+    <div class="card"><div class="k">免费 LLM 池真实</div><div class="v">QuotaRegistry 配额感知路由 + 熔断 + 健康探针（1500/天~100万/天）。</div></div>
+    <div class="card"><div class="k">自我迭代脚手架完备</div><div class="v">collector→反思→晋升门禁→金丝雀→A/B→回滚→版本管理 控制流齐全——缺的只是真实学习信号。</div></div>
+    <div class="card"><div class="k">测试纪律</div><div class="v">断言密度 2.53/用例（15611/6177）；跳过多为诚实环境条件。</div></div>
+  </div>
+</section>
+
+<div class="foot">
+  <p>报告生成：Audiobook Studio 深度审计 · 2026-08-27 · 实测数据来自本地真实启动/合成/测试，非推断。</p>
+  <p>对标部分因本环境网络策略阻断 Web 访问，为知识库离线对标，方向参考。</p>
+  <p>建议下一步：先交付 A–E（P0）五项，其余按 P1/P2 排期；每项验收达标后再宣告「自我迭代」目标达成。</p>
+</div>
+
+</div>

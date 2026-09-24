@@ -29,16 +29,16 @@ export interface ModelCatalog {
 }
 
 export async function listModels(): Promise<ModelCatalog> {
-  const { data } = await api.get<ModelCatalog>('/models')
+  const { data } = await api.get<ModelCatalog>('/api/v1/models')
   return data
 }
 
 export async function installModel(name: string): Promise<{ name: string; installed: boolean; already_installed: boolean }> {
-  const { data } = await api.post(`/models/install?name=${encodeURIComponent(name)}`)
+  const { data } = await api.post(`/api/v1/models/install?name=${encodeURIComponent(name)}`)
   return data
 }
 
 export async function uninstallModel(name: string): Promise<{ name: string; removed: boolean }> {
-  const { data } = await api.post(`/models/uninstall?name=${encodeURIComponent(name)}`)
+  const { data } = await api.post(`/api/v1/models/uninstall?name=${encodeURIComponent(name)}`)
   return data
 }

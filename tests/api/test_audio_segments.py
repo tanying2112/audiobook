@@ -5,10 +5,9 @@ TestClient (which has Python 3.14 / httpx compatibility issues).
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 
 from src.audiobook_studio.api.audio_segments import (
     AudioSegmentResponse,
@@ -104,7 +103,6 @@ class TestBusinessLogic:
     @pytest.mark.asyncio
     async def test_list_audio_segments_empty_dir(self, tmp_path, monkeypatch):
         """Test list_audio_segments returns empty when book dir missing."""
-        from fastapi import FastAPI
 
         from src.audiobook_studio.api.audio_segments import list_audio_segments
 
@@ -140,34 +138,32 @@ class TestBusinessLogic:
     @pytest.mark.asyncio
     async def test_merge_segments_validation_minimum(self):
         """Test merge requires at least 2 segments."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.audio_segments import merge_segments
+        from src.audiobook_studio.exceptions import BadRequestError
 
         request = MergeRequest(segment_ids=["seg_1"])
 
         class FakeDB:
             pass
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(BadRequestError) as exc_info:
             await merge_segments(request, book_id="test_book", db=FakeDB())
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "BAD_REQUEST"
 
     @pytest.mark.asyncio
     async def test_trim_segment_validation(self):
         """Test trim validation rejects start >= end."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.audio_segments import trim_segment
+        from src.audiobook_studio.exceptions import BadRequestError
 
         request = TrimRequest(start_ms=5000, end_ms=3000)
 
         class FakeDB:
             pass
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(BadRequestError) as exc_info:
             await trim_segment("seg_1", request, book_id="test_book", db=FakeDB())
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "BAD_REQUEST"
 
     @pytest.mark.asyncio
     async def test_trim_segment_success(self):
@@ -248,17 +244,16 @@ class TestGetAudioSegment:
     @pytest.mark.asyncio
     async def test_get_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 92-93)."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.audio_segments import get_audio_segment
+        from src.audiobook_studio.exceptions import NotFoundError
 
         class FakeDB:
             pass
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             await get_audio_segment("seg_1", book_id="test_book", db=FakeDB())
-        assert exc_info.value.status_code == 404
-        assert exc_info.value.detail == "Segment not found"
+        assert exc_info.value.error_code == "NOT_FOUND"
+        assert "Segment not found" in exc_info.value.message
 
     @patch("pathlib.Path.exists", return_value=True)
     @pytest.mark.asyncio
@@ -283,17 +278,16 @@ class TestDeleteAudioSegment:
     @pytest.mark.asyncio
     async def test_delete_audio_segment_not_found(self, mock_exists):
         """Test 404 when segment file doesn't exist (line 194-195)."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.audio_segments import delete_audio_segment
+        from src.audiobook_studio.exceptions import NotFoundError
 
         class FakeDB:
             pass
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             await delete_audio_segment("seg_1", book_id="test_book", db=FakeDB())
-        assert exc_info.value.status_code == 404
-        assert exc_info.value.detail == "Segment not found"
+        assert exc_info.value.error_code == "NOT_FOUND"
+        assert "Segment not found" in exc_info.value.message
 
     @patch("pathlib.Path.exists", return_value=True)
     @pytest.mark.asyncio

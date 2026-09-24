@@ -60,6 +60,9 @@ class PermissionName(str, Enum):
     FEEDBACK_CREATE = "feedback:create"
     FEEDBACK_READ = "feedback:read"
     FEEDBACK_PROCESS = "feedback:process"
+    AUTH_VERIFY_EMAIL = "auth:verify_email"
+    AUTH_INVITE_CREATE = "auth:invite_create"
+    AUTH_AUDIT_READ = "auth:audit_read"
 
 
 # Pydantic models for API
@@ -72,6 +75,10 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
+    invite_code: Optional[str] = Field(
+        default=None,
+        description="Invite code required when AUTH_REGISTRATION_MODE=invite",
+    )
 
 
 class UserUpdate(BaseModel):
@@ -85,9 +92,14 @@ class UserOut(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
+    # Defaults to False so a caller that cannot resolve the flag (legacy row, or a
+    # payload built before the column existed) degrades to "unverified" instead of
+    # raising a 500 on serialization.
+    is_email_verified: bool = False
     # created_at can be None on freshly-constructed/persisted users at runtime,
     # so keep it optional rather than a required datetime (was a 500 on /me).
     created_at: Optional[datetime] = None
+    email_verified_at: Optional[datetime] = None
     roles: List[str] = []
     project_permissions: List["ProjectPermissionOut"] = []
     model_config = ConfigDict(from_attributes=True)
@@ -152,6 +164,62 @@ class TokenData(BaseModel):
     user_id: Optional[int] = None
     roles: List[str] = []
     permissions: List[str] = []
+
+
+# Email verification
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailResponse(BaseModel):
+    message: str
+    verified: bool = False
+
+
+# Invite code management
+class InviteCodeCreate(BaseModel):
+    code: str = Field(..., min_length=8, max_length=64)
+    description: Optional[str] = None
+    max_uses: int = Field(default=1, ge=1)
+    expires_in_days: Optional[int] = Field(default=30, ge=1)
+
+
+class InviteCodeOut(BaseModel):
+    id: int
+    code: str
+    description: Optional[str] = None
+    max_uses: int
+    used_count: int
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+    created_by: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Audit log
+class AuditLogEntry(BaseModel):
+    id: int
+    event_type: str
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    details: dict = {}
+    timestamp: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogFilter(BaseModel):
+    event_type: Optional[str] = None
+    user_id: Optional[int] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    limit: int = Field(default=100, ge=1, le=1000)
+    offset: int = Field(default=0, ge=0)
 
 
 # Forward references

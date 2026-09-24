@@ -1,14 +1,28 @@
 """Configuration module for Audiobook Studio."""
 
 from .loader import (
+    get_settings,
+    get_unified_redis_config,
     load_contract_versions,
     load_pipeline_config,
     load_quality_thresholds,
     load_rules,
-    get_settings,
     reset_settings,
 )
 from .settings import Settings
+from .unified import (
+    dump_config,
+    get_database_config,
+    get_hardware_profile,
+    get_llm_config,
+    get_llm_providers_config,
+    get_pipeline_config,
+    get_redis_config,
+    get_tts_config,
+    get_unified_config,
+    reset_unified_config,
+    validate_config,
+)
 
 __all__ = [
     "Settings",
@@ -18,4 +32,16 @@ __all__ = [
     "load_quality_thresholds",
     "load_rules",
     "load_contract_versions",
+    "get_unified_redis_config",
+    "get_unified_config",
+    "get_database_config",
+    "get_redis_config",
+    "get_llm_config",
+    "get_llm_providers_config",
+    "get_tts_config",
+    "get_pipeline_config",
+    "get_hardware_profile",
+    "validate_config",
+    "dump_config",
+    "reset_unified_config",
 ]

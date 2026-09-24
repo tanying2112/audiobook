@@ -4,16 +4,15 @@ P2-1: Bypass LiteLLM for OpenAI/Anthropic to reduce ~200ms overhead.
 """
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import LLMClientConfig
 from src.audiobook_studio.llm.direct_client import (
     DirectProviderClient,
     DirectProviderClientConfig,
-    create_direct_client,
     DirectProviderType,
+    create_direct_client,
 )
 from src.audiobook_studio.schemas import ParagraphAnnotation
 
@@ -65,7 +64,7 @@ class TestDirectProviderClientConfig:
         """Test that config.mock_mode property reads MOCK_LLM env var."""
         # Save original env
         original = os.environ.get("MOCK_LLM")
-        
+
         try:
             # Without MOCK_LLM env var, mock_mode should be False
             if "MOCK_LLM" in os.environ:
@@ -76,7 +75,7 @@ class TestDirectProviderClientConfig:
                 api_key="test-key",
             )
             assert config.mock_mode is False
-            
+
             # With MOCK_LLM env var, mock_mode should be True
             os.environ["MOCK_LLM"] = "true"
             config2 = DirectProviderClientConfig(
@@ -85,7 +84,7 @@ class TestDirectProviderClientConfig:
                 api_key="test-key",
             )
             assert config2.mock_mode is True
-            
+
             # With MOCK_LLM=false, mock_mode should be False
             os.environ["MOCK_LLM"] = "false"
             config3 = DirectProviderClientConfig(
@@ -233,7 +232,7 @@ class TestDirectProviderClientMockMode:
     def test_mock_mode_different_models(self):
         """Test mock mode works for different response models."""
         from src.audiobook_studio.schemas import BookAnalysisOutput, QualityJudgment, TtsEditOutput
-        
+
         with patch.dict(os.environ, {"MOCK_LLM": "true"}):
             config = DirectProviderClientConfig(
                 provider=DirectProviderType.OPENAI,
@@ -241,7 +240,7 @@ class TestDirectProviderClientMockMode:
                 api_key="test-key",
             )
             client = create_direct_client(config)
-            
+
             # Test different response models
             for model in [ParagraphAnnotation, BookAnalysisOutput, QualityJudgment, TtsEditOutput]:
                 result = client.call(prompt="test", response_model=model)
@@ -255,7 +254,6 @@ class TestDirectProviderClientIntegration:
     def test_router_uses_direct_client_when_configured(self):
         """Test that router can use direct client when provider has use_direct_sdk=true."""
         from src.audiobook_studio.llm.config_loader import ProviderConfig, ProviderType
-        from src.audiobook_studio.llm.router import LLMRouter
 
         # Create a provider config with use_direct_sdk
         provider = ProviderConfig(

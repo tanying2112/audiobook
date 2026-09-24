@@ -12,8 +12,6 @@ Hermes-AgentMesh Core Architecture Integration:
 
 import os
 import sys
-import uuid
-from typing import Any, Dict, Optional
 
 from .base_worker import BaseWorker
 
@@ -24,13 +22,15 @@ from .base_worker import BaseWorker
 def is_gpu_available() -> bool:
     try:
         import torch
+
         return torch.cuda.is_available()
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级: torch 缺失或 CUDA 初始化崩溃均回退 paddle
         pass
     try:
         import paddle
+
         return paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
-    except Exception:
+    except Exception:  # noqa: BLE001 — paddle 同样不可用则视为无 GPU
         pass
     return False
 
@@ -38,13 +38,15 @@ def is_gpu_available() -> bool:
 def get_device_name() -> str:
     try:
         import paddle
+
         return paddle.device.cuda.get_device_name(0)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     try:
         import torch
+
         return torch.cuda.get_device_name(0)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     return "CPU"
 
@@ -52,14 +54,16 @@ def get_device_name() -> str:
 def get_gpu_memory_used_mb() -> int:
     try:
         import paddle
+
         return paddle.device.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() // (1024 * 1024)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     return 0
 
@@ -67,14 +71,16 @@ def get_gpu_memory_used_mb() -> int:
 def get_gpu_memory_total_mb() -> int:
     try:
         import paddle
+
         return paddle.device.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-    except Exception:
+    except Exception:  # noqa: BLE001 — 探测降级
         pass
     return 0
 
@@ -95,8 +101,8 @@ def get_torch_engine():
 
     import torch
     import torchaudio
-    from transformers import AutoModelForCausalLM, AutoTokenizer
     from huggingface_hub import snapshot_download
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     class T4VoxCPM2Engine:
         HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")
@@ -112,6 +118,7 @@ def get_torch_engine():
 
         def _load_model(self) -> None:
             import os
+
             if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
                 print(f"📡 [PyTorch] 模型未找到，正在从 Hugging Face 下载: {self.HF_REPO_ID} -> {self.CACHE_DIR}...")
                 snapshot_download(
@@ -169,12 +176,14 @@ def get_torch_engine():
             waveform = self.model.decode_audio(audio_tokens)
 
             import io
+
             buffer = io.BytesIO()
             torchaudio.save(buffer, waveform.cpu(), sample_rate=24000, format="wav")
             return buffer.getvalue()
 
         def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
             import os
+
             if reference_audio and os.path.exists(reference_audio):
                 waveform, sr = torchaudio.load(reference_audio)
                 if sr != 24000:
@@ -201,12 +210,13 @@ def get_paddle_engine():
     if _PADDLE_ENGINE is not None:
         return _PADDLE_ENGINE
 
+    import io
+
     import paddle
+    import soundfile as sf
+    from huggingface_hub import snapshot_download
     from paddlenlp.transformers import AutoModelForCausalLM as PaddleAutoModelForCausalLM
     from paddlenlp.transformers import AutoTokenizer as PaddleAutoTokenizer
-    from huggingface_hub import snapshot_download
-    import soundfile as sf
-    import io
 
     class PaddleVoxCPM2Engine:
         HF_REPO_ID = os.getenv("VOXCPM2_HF_REPO", "openbmb/VoxCPM2")
@@ -221,6 +231,7 @@ def get_paddle_engine():
 
         def _load_model(self) -> None:
             import os
+
             if not os.path.exists(os.path.join(self.CACHE_DIR, "config.json")):
                 print(f"📡 [Paddle] 模型未找到，正在从 Hugging Face 下载: {self.HF_REPO_ID} -> {self.CACHE_DIR}...")
                 snapshot_download(
@@ -274,14 +285,16 @@ def get_paddle_engine():
             return buffer.getvalue()
 
         def _get_speaker_prompt(self, voice_id: str, reference_audio: str = None):
-            import paddle
             from pathlib import Path
+
+            import paddle
 
             if reference_audio and Path(reference_audio).exists():
                 waveform, sr = sf.read(reference_audio)
                 waveform_tensor = paddle.to_tensor(waveform.T, dtype="float32").unsqueeze(0).to("gpu")
                 if sr != 24000:
                     import paddlaudio.functional as F
+
                     waveform_tensor = F.resample(waveform_tensor, sr, 24000)
                 return self.model.encode_speaker(waveform_tensor)
 
@@ -314,6 +327,7 @@ class BaiduWorker(BaseWorker):
         if self.prefer_paddle:
             try:
                 import paddle
+
                 # Check if paddle is available and can use GPU
                 if paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0:
                     PaddleEngine = get_paddle_engine()
@@ -327,6 +341,7 @@ class BaiduWorker(BaseWorker):
 
         try:
             import torch
+
             if torch.cuda.is_available():
                 TorchEngine = get_torch_engine()
                 engine = TorchEngine()
@@ -363,7 +378,7 @@ class BaiduWorker(BaseWorker):
 
 
 def main():
-    if not getattr(sys, '_baidu_worker_test_mode', False):
+    if not getattr(sys, "_baidu_worker_test_mode", False):
         if not is_gpu_available():
             print("ERROR: GPU not available. This worker requires V100 GPU on Baidu AI Studio.", file=sys.stderr)
             sys.exit(1)

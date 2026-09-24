@@ -6,12 +6,10 @@ Target coverage: >= 60%.
 """
 
 import os
-import sys
 
 import pytest
 
-from audiobook_studio.pipeline import edit_for_tts
-from audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline
+from audiobook_studio.pipeline.edit_for_tts import EditForTtsPipeline, edit_for_tts
 from audiobook_studio.schemas import ParagraphAnnotation, TtsEditInput, TtsEditOutput
 
 

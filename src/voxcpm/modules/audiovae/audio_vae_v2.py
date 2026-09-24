@@ -127,7 +127,7 @@ class CausalEncoder(nn.Module):
         self,
         d_model: int = 64,
         latent_dim: int = 32,
-        strides: list = [2, 4, 8, 8],
+        strides: list = [2, 4, 8, 8],  # noqa: B006
         depthwise: bool = False,
     ):
         super().__init__()
@@ -530,7 +530,7 @@ class StreamingVAEDecoder:
 
     # -- internals ---------------------------------------------------------
     def _install(self):
-        for name, mod in self._vae.decoder.named_modules():
+        for name, mod in self._vae.decoder.named_modules():  # noqa: B007
             if isinstance(mod, CausalConv1d):
                 pad = mod._CausalConv1d__padding * 2 - mod._CausalConv1d__output_padding
                 if pad > 0:

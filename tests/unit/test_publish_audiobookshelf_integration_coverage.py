@@ -1,6 +1,5 @@
 """Comprehensive tests for publish/audiobookshelf_integration.py — coverage boost."""
 
-import asyncio
 import base64
 import tempfile
 from pathlib import Path

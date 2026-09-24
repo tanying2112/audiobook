@@ -1,12 +1,10 @@
 """Unit tests for the agents module."""
 
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.audiobook_studio.base import AgentCapability
-from src.audiobook_studio.database import SessionLocal, get_db
 from src.audiobook_studio.models import TaskRecord
 from src.audiobook_studio.pipeline.agents import AnalyzeAgent, ExtractAgent, QualityAgent, SynthesizeAgent
 from src.audiobook_studio.pipeline.analyze_structure import BookAnalysisOutput
@@ -48,7 +46,7 @@ class TestExtractAgent:
         with (
             patch(
                 "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-            ) as _mock_session_local,
+            ) as _mock_session_local,  # noqa: F841
             patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
         ):
             mock_extract.return_value = mock_extract_result
@@ -66,11 +64,11 @@ class TestExtractAgent:
     def test_handle_message_exception(self):
         agent = make_agent(ExtractAgent)
         mock_session = MagicMock()
-        mock_task_record = MagicMock(spec=TaskRecord)
+        MagicMock(spec=TaskRecord)
         with (
             patch(
                 "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-            ) as _mock_session_local,
+            ) as _mock_session_local,  # noqa: F841
             patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
         ):
             mock_extract.side_effect = Exception("extract failed")
@@ -107,7 +105,7 @@ class TestExtractAgent:
         with (
             patch(
                 "src.audiobook_studio.pipeline.agents.SessionLocal", return_value=mock_session
-            ) as _mock_session_local,
+            ) as _mock_session_local,  # noqa: F841
             patch("src.audiobook_studio.pipeline.agents.extract_text") as mock_extract,
         ):
             mock_extract.return_value = mock_extract_result

@@ -173,25 +173,81 @@ class DeveloperAgent:
     ) -> dict[str, Any]:
         """Run re-annotation for specific paragraphs.
 
-        Delegates to the annotate pipeline.
+        Loads the chapter's extracted text, re-runs the paragraph annotation
+        pipeline for the requested paragraphs, and persists the results.
         """
         if self.mock_mode:
             return {"status": "mock", "reannotated": paragraph_indices}
 
-        from ..pipeline.annotate import annotate_chapter  # type: ignore[import-untyped]
-        from ..storage import get_db_session
+        from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline
+        from ..schemas import (
+            BookMeta,
+            CharacterVoiceBinding,
+            EmotionSnapshot,
+            ParagraphAnnotationInput,
+        )
+        from ..storage import load_extracted_text, save_chapter_annotations
 
-        db = get_db_session()
-        try:
-            # Run full chapter re-annotation
-            result = await annotate_chapter(
-                project_id=project_id,
-                chapter_index=chapter_index,
-                style="detailed",
+        text = load_extracted_text(project_id, chapter_index)
+        if not text:
+            return {
+                "status": "failed",
+                "error_message": f"No extracted text found for chapter {chapter_index}",
+                "reannotated": [],
+            }
+
+        paragraphs_text = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+        book_meta = BookMeta(
+            title="Unknown",
+            author="Unknown",
+            genre="小说",
+            difficulty="B",
+            language="zh",
+            total_chapters_estimated=10,
+            reading_time_minutes=60,
+        )
+        emotion_snapshot = EmotionSnapshot(
+            chapter=chapter_index,
+            dominant_emotion="neutral",
+            intensity=0.5,
+        )
+        character_voice_map = [
+            CharacterVoiceBinding(
+                canonical_name="_narrator_",
+                aliases=["旁白"],
+                gender="unknown",
+                suggested_voice_id=None,
+                sample_quote="",
             )
-            return {"status": "ok", "reannotated": paragraph_indices, "result": result}
-        finally:
-            db.close()
+        ]
+        story_line_summary = " " * 100
+        global_style_notes = ""
+
+        pipeline = AnnotateParagraphPipeline()
+        annotations: list[dict[str, Any]] = []
+        reannotated: list[int] = []
+        for idx in paragraph_indices:
+            if idx < 0 or idx >= len(paragraphs_text):
+                continue
+            input_data = ParagraphAnnotationInput(
+                paragraph_text=paragraphs_text[idx],
+                paragraph_index=idx,
+                chapter_index=chapter_index,
+                book_meta=book_meta,
+                character_voice_map=character_voice_map,
+                emotion_snapshot=emotion_snapshot,
+                story_line_summary=story_line_summary,
+                global_style_notes=global_style_notes,
+            )
+            annotation = pipeline.run(input_data)
+            annotations.append(annotation.model_dump())
+            reannotated.append(idx)
+
+        if annotations:
+            save_chapter_annotations(project_id, chapter_index, annotations)
+
+        return {"status": "ok", "reannotated": reannotated, "result": annotations}
 
     def create_fixed_reviewer_input(
         self,

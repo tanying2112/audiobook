@@ -9,9 +9,8 @@
 6. Jinja2 模板渲染
 """
 
-import json
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

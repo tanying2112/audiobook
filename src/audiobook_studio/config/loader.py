@@ -5,6 +5,8 @@ Provides Pydantic-based configuration loading with:
 - File lock protection for concurrent access
 - Hot-reload support with mtime checking
 - Environment variable interpolation (optional)
+
+Now integrated with UnifiedConfig for centralized configuration management.
 """
 
 # type: ignore[redundant-module-resolution]
@@ -16,7 +18,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, cast
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+# Import UnifiedConfig for centralized configuration
+from .unified import get_unified_config
 
 logger = logging.getLogger(__name__)
 
@@ -444,7 +449,7 @@ class ContractVersionsConfig(BaseModel):
 
 
 # =============================================================================
-# Configuration Loader with File Lock and Hot-Reload
+# Configuration Loader with File Lock and Hot-Reload (backward compatible)
 # =============================================================================
 
 
@@ -472,11 +477,16 @@ class ConfigFileLock:
 
 
 class ConfigLoader:
-    """Pydantic-based configuration loader with schema validation and hot-reload."""
+    """Pydantic-based configuration loader with schema validation and hot-reload.
+
+    Now delegates to UnifiedConfig for centralized configuration management
+    while maintaining backward-compatible API.
+    """
 
     def __init__(self):
         self._cache: Dict[str, tuple[Dict[str, Any], float]] = {}
         self._lock = threading.RLock()
+        self._unified = get_unified_config()
 
     def _read_with_file_lock(self, path: Path) -> str:
         """Read file content with file-level lock for atomic reads."""
@@ -490,7 +500,7 @@ class ConfigLoader:
                 try:
                     fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
                     fd.close()
-                except Exception:
+                except OSError:
                     pass
 
     def _load_yaml_safe(self, path: Path) -> Dict[str, Any]:
@@ -582,7 +592,10 @@ class ConfigLoader:
         return default
 
     def load_pipeline_config(self, config_path: str = "./config/pipeline.yaml") -> Dict[str, Any]:
-        """Load pipeline configuration with hot-reload support and schema validation."""
+        """Load pipeline configuration with hot-reload support and schema validation.
+
+        Now also checks UnifiedConfig for any environment variable overrides.
+        """
         path = Path(config_path)
 
         with self._lock:
@@ -608,11 +621,47 @@ class ConfigLoader:
                 defaults = self._get_default_pipeline_config()
                 merged = {**defaults, **validated}
 
+                # Apply UnifiedConfig environment overrides if any
+                unified_overrides = self._get_unified_overrides()
+                if unified_overrides:
+                    merged = self._deep_merge(merged, unified_overrides)
+
                 # Update cache
                 self._cache[config_path] = (merged, current_mtime)
                 logger.info(f"Loaded and validated pipeline configuration from {config_path}")
 
                 return merged
+
+    def _get_unified_overrides(self) -> Dict[str, Any]:
+        """Get configuration overrides from UnifiedConfig (environment variables)."""
+        # Check for any pipeline-related env vars
+        overrides = {}
+        unified = get_unified_config()
+
+        # Pipeline-specific env vars that can override config
+        pipeline_env_keys = [
+            "PIPELINE_QUALITY_THRESHOLDS",
+            "PIPELINE_DIFFICULTY_WEIGHTS",
+            "PIPELINE_VOICE_MAPPING",
+            "PIPELINE_PROMOTION_THRESHOLDS",
+        ]
+        for key in pipeline_env_keys:
+            if hasattr(unified.settings, key):
+                val = getattr(unified.settings, key)
+                if val is not None:
+                    overrides[key.lower().replace("pipeline_", "")] = val
+
+        return overrides
+
+    def _deep_merge(self, base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge two dictionaries."""
+        result = base.copy()
+        for key, value in overrides.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
 
     def _get_default_pipeline_config(self) -> Dict[str, Any]:
         """Return default pipeline configuration."""
@@ -771,31 +820,13 @@ def get_hardware_profile_instance(config_path: str = "./config/hardware_profile.
 
 
 # =============================================================================
-# Settings Singleton with @lru_cache
+# Settings Singleton (delegates to settings_loader for single source of truth)
 # =============================================================================
 
-from functools import lru_cache
+from .settings_loader import get_settings, reset_settings
 
-from .settings import Settings
-
-
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """Get or create the global Settings singleton.
-
-    Uses @lru_cache to ensure the Settings instance is created only once.
-    This avoids side-effect imports at module load time.
-    """
-    settings = Settings()  # type: ignore[call-arg]
-    # Validate security settings on first load
-    settings.validate_jwt_secret()
-    settings.validate_cors_security()
-    return settings
-
-
-def reset_settings() -> None:
-    """Reset the global settings instance (useful for testing)."""
-    get_settings.cache_clear()
+# Re-export for backward compatibility
+__all__ = ["get_settings", "reset_settings"]
 
 
 # Backward compatibility defaults (kept for existing code)
@@ -810,3 +841,43 @@ def load_rules(
 
     loader = ConfigLoader()
     return loader.load_constitutional_rules(config_path)
+
+
+# =============================================================================
+# New: UnifiedConfig Integration Helpers
+# =============================================================================
+
+
+def get_unified_database_config() -> Dict[str, Any]:
+    """Get database configuration from UnifiedConfig."""
+    return get_unified_config().get_database_config()
+
+
+def get_unified_redis_config() -> Dict[str, Any]:
+    """Get Redis configuration from UnifiedConfig."""
+    return get_unified_config().get_redis_config()
+
+
+def get_unified_llm_config() -> Dict[str, Any]:
+    """Get LLM configuration from UnifiedConfig."""
+    return get_unified_config().get_llm_config()
+
+
+def get_unified_tts_config() -> Dict[str, Any]:
+    """Get TTS configuration from UnifiedConfig."""
+    return get_unified_config().get_tts_config()
+
+
+def get_unified_hardware_profile() -> Dict[str, Any]:
+    """Get hardware profile from UnifiedConfig."""
+    return get_unified_config().get_hardware_profile()
+
+
+def validate_all_config() -> List[str]:
+    """Validate all configuration using UnifiedConfig."""
+    return get_unified_config().validate_all()
+
+
+def dump_all_config() -> Dict[str, Any]:
+    """Dump all configuration for debugging."""
+    return get_unified_config().dump_all()

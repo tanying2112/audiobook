@@ -6,10 +6,9 @@
 3. A/B 测试样本构建的输入源
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated
 
-from pydantic import BaseModel, Field, confloat, conint
-from typing_extensions import Annotated as AnnotatedExt
+from pydantic import BaseModel, Field
 
 from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .paragraph import ParagraphAnnotation

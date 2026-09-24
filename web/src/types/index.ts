@@ -13,6 +13,12 @@ export interface Project {
   /** Book genre — drives SOP reflection rule-bucketing (matches backend Project.genre). */
   genre?: string
   status?: string
+  /** 当前 7 阶段之一 (extract/analyze/annotate/edit/audio_postprocess/synthesize/quality) */
+  current_stage?: string
+  /** 0-1 进度 */
+  progress?: number
+  total_cost_usd?: number
+  difficulty?: string
   created_at?: string
   updated_at?: string
 }
@@ -96,6 +102,9 @@ export interface PaginatedResponse<T> {
   page_size: number
 }
 
+// Supported UI locales (mirrors SUPPORTED_LOCALES in i18n.js)
+export type SupportedLocale = 'zh-CN' | 'en-US'
+
 // Book Genre Type
 export type BookGenre =
   | '古典小说'
@@ -113,3 +122,4 @@ export type BookGenre =
   | '儿童文学'
   | '青春文学'
   | '其他'
+  | ''

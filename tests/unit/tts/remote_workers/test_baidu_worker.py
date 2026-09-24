@@ -8,15 +8,17 @@ Mocks: torch, paddle, transformers, huggingface_hub, torchaudio, soundfile.
 
 import os
 import sys
-from unittest.mock import ANY, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 
 def _identity_decorator(*args, **kwargs):
     """Decorator factory returning the wrapped function unchanged."""
+
     def decorator(func):
         return func
+
     return decorator
 
 
@@ -97,6 +99,8 @@ _IMPORT_MODULES = {
 for _name, _mock in _IMPORT_MODULES.items():
     sys.modules[_name] = _mock
 
+import src.audiobook_studio.tts.remote_workers.baidu_worker as _baidu_worker_mod
+
 # Now import the module
 from src.audiobook_studio.tts.remote_workers.baidu_worker import (
     BaiduWorker,
@@ -108,7 +112,6 @@ from src.audiobook_studio.tts.remote_workers.baidu_worker import (
     is_gpu_available,
     main,
 )
-import src.audiobook_studio.tts.remote_workers.baidu_worker as _baidu_worker_mod
 
 for _name in _IMPORT_MODULES:
     sys.modules.pop(_name, None)
@@ -151,6 +154,7 @@ def _mock_runtime_deps():
         saved[_name] = sys.modules.get(_name, _MISSING)
         sys.modules[_name] = _mock
     import importlib
+
     importlib.reload(_baidu_worker_mod)
     _rebind_worker_globals()
     try:
@@ -208,8 +212,16 @@ def _apply_defaults():
 @pytest.fixture(autouse=True)
 def _reset_mocks():
     """Reset shared module-level mocks before each test to avoid state leakage."""
-    for _m in (mock_torch, mock_paddle, mock_transformers, mock_paddle_transformers,
-               mock_hf_hub, mock_torchaudio, mock_soundfile, mock_paddlaudio):
+    for _m in (
+        mock_torch,
+        mock_paddle,
+        mock_transformers,
+        mock_paddle_transformers,
+        mock_hf_hub,
+        mock_torchaudio,
+        mock_soundfile,
+        mock_paddlaudio,
+    ):
         _m.reset_mock(return_value=True, side_effect=True)
     _apply_defaults()
     yield
@@ -295,6 +307,7 @@ class TestTorchEngine:
     def reset_modules(self):
         """Reset global engine cache between tests."""
         import src.audiobook_studio.tts.remote_workers.baidu_worker as bw
+
         bw._TORCH_ENGINE = None
         bw._PADDLE_ENGINE = None
         yield
@@ -320,7 +333,7 @@ class TestTorchEngine:
         mock_snapshot_download.reset_mock()
 
         engine_class = get_torch_engine()
-        engine = engine_class(model_path=str(tmp_path))
+        engine_class(model_path=str(tmp_path))
 
         mock_auto_tokenizer.from_pretrained.assert_called()
         mock_auto_model.from_pretrained.assert_called()
@@ -347,8 +360,7 @@ class TestTorchEngine:
         mock_buffer.getvalue = Mock(return_value=b"wav_data")
         mock_torchaudio.save = Mock()
 
-        import io
-        with patch("io.BytesIO", return_value=mock_buffer):
+        with patch("io.BytesIO", return_value=mock_buffer):  # noqa: E303
             audio_bytes = engine.synthesize("测试", "zh_female_1", {"temperature": 0.7}, None)
 
         assert audio_bytes == b"wav_data"
@@ -375,8 +387,7 @@ class TestTorchEngine:
         mock_waveform.to = Mock(return_value=mock_waveform)
         mock_torchaudio.load.return_value = (mock_waveform, 24000)
 
-        import io
-        mock_buffer = Mock()
+        mock_buffer = Mock()  # noqa: E303
         mock_buffer.getvalue = Mock(return_value=b"wav_data")
         with patch("os.path.exists", return_value=True):
             with patch("io.BytesIO", return_value=mock_buffer):
@@ -393,6 +404,7 @@ class TestPaddleEngine:
     @pytest.fixture(autouse=True)
     def reset_modules(self):
         import src.audiobook_studio.tts.remote_workers.baidu_worker as bw
+
         bw._TORCH_ENGINE = None
         bw._PADDLE_ENGINE = None
         yield
@@ -418,7 +430,7 @@ class TestPaddleEngine:
         mock_snapshot_download.reset_mock()
 
         engine_class = get_paddle_engine()
-        engine = engine_class(model_path="/tmp/model")
+        engine_class(model_path="/tmp/model")
 
         mock_paddle_auto_tokenizer.from_pretrained.assert_called()
         mock_paddle_auto_model.from_pretrained.assert_called()
@@ -441,7 +453,7 @@ class TestPaddleEngine:
         engine = engine_class(model_path="/tmp/model")
 
         mock_buffer = Mock()
-        import io
+
         with patch("io.BytesIO", return_value=mock_buffer):
             mock_buffer.getvalue = Mock(return_value=b"wav_data")
             audio_bytes = engine.synthesize("测试", "zh_female_1", {"temperature": 0.7}, None)
@@ -500,6 +512,7 @@ class TestBaiduWorkerInitialization:
     @pytest.fixture(autouse=True)
     def reset_modules(self):
         import src.audiobook_studio.tts.remote_workers.baidu_worker as bw
+
         bw._TORCH_ENGINE = None
         bw._PADDLE_ENGINE = None
         yield
@@ -509,7 +522,7 @@ class TestBaiduWorkerInitialization:
     def test_init_prefers_paddle_when_available(self, mock_env):
         """Test worker initializes with PaddlePaddle when preferred and available."""
         with patch.dict(os.environ, mock_env, clear=True):
-            with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.BaseWorker.__init__", return_value=None) as mock_super:
+            with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.BaseWorker.__init__", return_value=None):
                 with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_paddle_engine") as mock_get_paddle:
                     mock_engine = Mock()
                     mock_get_paddle.return_value = mock_engine
@@ -525,8 +538,13 @@ class TestBaiduWorkerInitialization:
         """Test worker falls back to PyTorch when PaddlePaddle fails."""
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.BaseWorker.__init__", return_value=None):
-                with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_paddle_engine", side_effect=Exception("Paddle failed")):
-                    with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_torch_engine") as mock_get_torch:
+                with patch(
+                    "src.audiobook_studio.tts.remote_workers.baidu_worker.get_paddle_engine",
+                    side_effect=Exception("Paddle failed"),
+                ):
+                    with patch(
+                        "src.audiobook_studio.tts.remote_workers.baidu_worker.get_torch_engine"
+                    ) as mock_get_torch:
                         mock_engine = Mock()
                         mock_get_torch.return_value = mock_engine
 
@@ -555,8 +573,14 @@ class TestBaiduWorkerInitialization:
         """Test worker raises RuntimeError when both backends fail."""
         with patch.dict(os.environ, mock_env, clear=True):
             with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.BaseWorker.__init__", return_value=None):
-                with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_paddle_engine", side_effect=RuntimeError("Paddle failed")):
-                    with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_torch_engine", side_effect=RuntimeError("Torch failed")):
+                with patch(
+                    "src.audiobook_studio.tts.remote_workers.baidu_worker.get_paddle_engine",
+                    side_effect=RuntimeError("Paddle failed"),
+                ):
+                    with patch(
+                        "src.audiobook_studio.tts.remote_workers.baidu_worker.get_torch_engine",
+                        side_effect=RuntimeError("Torch failed"),
+                    ):
                         with pytest.raises(RuntimeError):
                             worker = BaiduWorker()
                             worker._init_engine()
@@ -596,7 +620,9 @@ class TestBaiduWorkerMethods:
     def test_get_platform_gpu_metrics(self, worker):
         """Test GPU metrics includes backend info."""
         with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_used_mb", return_value=1024):
-            with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_total_mb", return_value=16384):
+            with patch(
+                "src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_total_mb", return_value=16384
+            ):
                 with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_device_name", return_value="V100"):
                     metrics = worker._get_platform_gpu_metrics()
 
@@ -610,7 +636,9 @@ class TestBaiduWorkerMethods:
         worker.backend = "torch"
 
         with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_used_mb", return_value=2048):
-            with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_total_mb", return_value=32768):
+            with patch(
+                "src.audiobook_studio.tts.remote_workers.baidu_worker.get_gpu_memory_total_mb", return_value=32768
+            ):
                 with patch("src.audiobook_studio.tts.remote_workers.baidu_worker.get_device_name", return_value="T4"):
                     metrics = worker._get_platform_gpu_metrics()
 
@@ -645,6 +673,7 @@ class TestBaiduWorkerMain:
             mock_worker_class.return_value = mock_worker
 
             import sys as _sys
+
             _sys._baidu_worker_test_mode = True
             try:
                 main()
@@ -660,8 +689,8 @@ class TestBaiduWorkerSpeakerMap:
 
     def test_speaker_map_defaults(self):
         """Test default speaker mappings."""
-        from src.audiobook_studio.tts.remote_workers.baidu_worker import get_torch_engine
         import src.audiobook_studio.tts.remote_workers.baidu_worker as bw
+        from src.audiobook_studio.tts.remote_workers.baidu_worker import get_torch_engine
 
         bw._TORCH_ENGINE = None
         mock_model = Mock()
@@ -678,20 +707,20 @@ class TestBaiduWorkerSpeakerMap:
         engine = engine_class(model_path="/tmp")
 
         # Test default speaker mapping
-        embedding = engine._get_speaker_prompt("zh_female_1", None)
+        engine._get_speaker_prompt("zh_female_1", None)
         mock_model.get_speaker_embedding.assert_called_with(0)
 
-        embedding = engine._get_speaker_prompt("zh_male_1", None)
+        engine._get_speaker_prompt("zh_male_1", None)
         mock_model.get_speaker_embedding.assert_called_with(1)
 
-        embedding = engine._get_speaker_prompt("en_female_1", None)
+        engine._get_speaker_prompt("en_female_1", None)
         mock_model.get_speaker_embedding.assert_called_with(2)
 
-        embedding = engine._get_speaker_prompt("en_male_1", None)
+        engine._get_speaker_prompt("en_male_1", None)
         mock_model.get_speaker_embedding.assert_called_with(3)
 
         # Unknown voice_id defaults to 0
-        embedding = engine._get_speaker_prompt("unknown", None)
+        engine._get_speaker_prompt("unknown", None)
         mock_model.get_speaker_embedding.assert_called_with(0)
 
         bw._TORCH_ENGINE = None

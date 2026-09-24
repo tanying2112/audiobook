@@ -9,7 +9,6 @@ Tests each pipeline stage with real LLM API calls:
 """
 
 import json
-from pathlib import Path
 
 import pytest
 from tests.e2e.conftest import SAMPLE_TEXT, E2ETestConfig

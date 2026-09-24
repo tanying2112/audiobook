@@ -3,8 +3,10 @@
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
+
+from ..exceptions import NotFoundError
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -149,9 +151,7 @@ def _feed_sop_collector_feedback(feedback: FeedbackCreate, pattern_tags: list[st
     except Exception as exc:  # noqa: BLE001 — 入队失败绝不影响 feedback 主流程
         import logging
 
-        logging.getLogger(__name__).warning(
-            "feedback→SOP collector 投喂失败（静默降级，不影响反馈入库）: %s", exc
-        )
+        logging.getLogger(__name__).warning("feedback→SOP collector 投喂失败（静默降级，不影响反馈入库）: %s", exc)
 
 
 @router.get("/", response_model=FeedbackListResponse)
@@ -184,7 +184,7 @@ async def get_feedback(feedback_id: str):
     for f in _feedback_store:
         if f["id"] == feedback_id:
             return FeedbackResponse(**f)
-    raise HTTPException(status_code=404, detail="Feedback not found")
+    raise NotFoundError(resource="Feedback", identifier=feedback_id)
 
 
 @router.get("/stats/summary")

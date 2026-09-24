@@ -99,21 +99,20 @@ class TestEngineRegistry:
         eng2.engine_name = "engine2"
         await self.registry.register(eng1)
         await self.registry.register(eng2)
-        assert self.registry._default_engine == "engine1"
         assert self.registry.get_default() is eng1
 
     @pytest.mark.asyncio
     async def test_register_explicit_name(self):
-        """register accepts an explicit name distinct from engine.engine_name."""
+        """Explicit name overrides engine_name."""
         eng = Mock(spec=TTSEngine)
-        eng.engine_name = "real_name"
-        await self.registry.register(eng, name="alias")
-        assert self.registry.get("alias") is eng
-        assert "alias" in self.registry.list_engines()
+        eng.engine_name = "actual_name"
+        await self.registry.register(eng, name="custom_name")
+        assert self.registry.get("custom_name") is eng
+        assert self.registry.get("actual_name") is None
 
     @pytest.mark.asyncio
     async def test_close_all_calls_close_on_each_engine(self):
-        """close_all invokes close() on every registered engine."""
+        """close_all awaits close() on each registered engine."""
         eng1 = Mock(spec=TTSEngine)
         eng1.engine_name = "e1"
         eng1.close = AsyncMock()
@@ -128,15 +127,27 @@ class TestEngineRegistry:
 
     @pytest.mark.asyncio
     async def test_warmup_initializes_unloaded_engines(self):
-        """warmup initializes engines that are not yet loaded."""
-        eng1 = Mock(spec=TTSEngine)
-        eng1.engine_name = "e1"
-        eng1._loaded = False
-        eng1.initialize = AsyncMock()
-        await self.registry.register(eng1)
+        """warmup initializes engines that haven't been loaded yet."""
+        eng = Mock(spec=TTSEngine)
+        eng.engine_name = "e1"
+        eng._loaded = False
+        eng.initialize = AsyncMock()
+        await self.registry.register(eng)
         results = await self.registry.warmup()
         assert results == {"e1": True}
-        eng1.initialize.assert_awaited_once()
+        eng.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_warmup_skips_already_loaded(self):
+        """warmup returns True without re-initializing loaded engines."""
+        eng = Mock(spec=TTSEngine)
+        eng.engine_name = "e1"
+        eng._loaded = True
+        eng.initialize = AsyncMock()
+        await self.registry.register(eng)
+        results = await self.registry.warmup()
+        assert results == {"e1": True}
+        eng.initialize.assert_not_awaited()
 
 
 class TestTTSEngineProtocol:
@@ -157,34 +168,42 @@ class TestTTSEngineProtocol:
 
 
 class TestBackwardCompatShims:
-    """Coverage for module-level backward-compat helpers."""
+    """Coverage for DI-container-based engine access (module shims were removed)."""
 
     @pytest.mark.asyncio
-    async def test_module_level_shims(self):
-        from src.audiobook_studio.tts.engine import (
-            cleanup_all_engines,
-            get_engine,
-            get_engine_registry,
-            initialize_all_engines,
-            register_engine,
-            set_engine_registry,
+    async def test_module_level_shims_delegate_to_di(self):
+        """Engine access now flows through the DI container singleton."""
+        from src.audiobook_studio.di import (
+            get_app_container,
+            reset_app_container,
+            set_app_container,
         )
+        from src.audiobook_studio.tts.port_factory import get_default_engine
 
-        registry = set_engine_registry(EngineRegistry())
+        reset_app_container()
+        container = get_app_container()
+
+        registry = container.get(EngineRegistry)
+        assert isinstance(registry, EngineRegistry)
+
         eng = Mock(spec=TTSEngine)
         eng.engine_name = "shim_test"
         eng.initialize = AsyncMock()
         eng.close = AsyncMock()
 
-        register_engine(eng, set_as_default=True)
+        # Register into the container-owned registry (old register_engine path)
+        await registry.register(eng, set_as_default=True)
+        assert registry.get("shim_test") == eng
+        assert registry.get("nonexistent") is None
 
-        retrieved = get_engine("shim_test")
-        assert retrieved == eng
-        assert get_engine("nonexistent") is None
+        # get_default_engine falls back to the container registry
+        default_engine = await get_default_engine(registry)
+        assert default_engine == eng
 
-        await initialize_all_engines()
-        await cleanup_all_engines()
+        await registry.close_all()
+        reset_app_container()
+        set_app_container(container)
 
-        # Cleanup so the global registry is not polluted for other tests
-        registry._engines.clear()
-        registry._default_engine = None
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

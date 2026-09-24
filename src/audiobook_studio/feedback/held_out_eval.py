@@ -53,9 +53,7 @@ class HeldOutCase:
 
     def signature(self) -> str:
         """该样例的内容指纹（排序稳定），用于集合整体指纹与篡改检测。"""
-        payload = json.dumps(
-            {"id": self.case_id, "input": dict(self.input)}, ensure_ascii=False, sort_keys=True
-        )
+        payload = json.dumps({"id": self.case_id, "input": dict(self.input)}, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -74,11 +72,11 @@ class DatasetManifest:
 
     stage: str
     case_count: int
-    signatures: Tuple[str, ...]           # 每例指纹，排序稳定
-    dataset_signature: str                # 整集指纹 = SHA256 over sorted(signatures)
-    golden_root: str                      # 样本来源目录
-    origin_status: str                    # "loaded" | "empty:<reason>"
-    held_out_commit_note: str             # 登记固化说明（SSOT 文档化）
+    signatures: Tuple[str, ...]  # 每例指纹，排序稳定
+    dataset_signature: str  # 整集指纹 = SHA256 over sorted(signatures)
+    golden_root: str  # 样本来源目录
+    origin_status: str  # "loaded" | "empty:<reason>"
+    held_out_commit_note: str  # 登记固化说明（SSOT 文档化）
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -99,10 +97,10 @@ class CandidateEvalResult:
     candidate_id: str
     baseline_id: str
     case_count: int
-    scores: Tuple[float, ...]             # 每例得分（0-1），与 manifest.signatures 对齐
+    scores: Tuple[float, ...]  # 每例得分（0-1），与 manifest.signatures 对齐
     mean_score: float
     baseline_mean: Optional[float] = None
-    effect_size: Optional[float] = None   # mean_score - baseline_mean
+    effect_size: Optional[float] = None  # mean_score - baseline_mean
     notes: List[str] = field(default_factory=list)
 
     @property
@@ -135,9 +133,7 @@ class HeldOutDataset:
         cases, origin = self._load_frozen(stage, root)
         # 关键不可变点：cases 为 tuple，任何 append/mutation 都会抛
         self._cases: Tuple[HeldOutCase, ...] = tuple(cases)
-        self._cases_index: MappingProxyType[str, HeldOutCase] = MappingProxyType(
-            {c.case_id: c for c in self._cases}
-        )
+        self._cases_index: MappingProxyType[str, HeldOutCase] = MappingProxyType({c.case_id: c for c in self._cases})
         self._manifest = self._build_manifest(origin)
 
     # ── 公共只读接口（MappingProxyType + tuple = 任何改写即 TypeError）──────────
@@ -185,15 +181,11 @@ class HeldOutDataset:
         # 任何非私有的属性赋值一律拒绝（防 dataset.cases = [...] 这类偷换）
         super().__setattr__(key, value)  # 仍走默认以触发 dataclass-style 错误
         # 上一行对普通实例会成功，但我们在下方覆盖以更严格地拒绝：
-        raise TypeError(
-            f"HeldOutDataset is frozen: cannot set attribute {key!r} on the immutable held-out set"
-        )
+        raise TypeError(f"HeldOutDataset is frozen: cannot set attribute {key!r} on the immutable held-out set")
 
     # ── 加载：只读 tests/golden/<stage>/ 的 JSON/JSONL，不发 I/O 写、不改源 ────────
     @staticmethod
-    def _load_frozen(
-        stage: str, root: Path
-    ) -> Tuple[List[HeldOutCase], str]:
+    def _load_frozen(stage: str, root: Path) -> Tuple[List[HeldOutCase], str]:
         stage_dir = root / stage
         if not stage_dir.exists():
             logger.warning("Held-out golden dir not found: %s", stage_dir)
@@ -221,7 +213,9 @@ class HeldOutDataset:
     def _parse_row(data: Any, stage: str, origin: str) -> HeldOutCase:
         if not isinstance(data, Mapping):
             raise KeyError(f"non-mapping row in {origin}")
-        case_id = str(data.get("id") or f"{origin}:{hash(json.dumps(data, sort_keys=True, ensure_ascii=False)) & 0xFFFF:x}")
+        case_id = str(
+            data.get("id") or f"{origin}:{hash(json.dumps(data, sort_keys=True, ensure_ascii=False)) & 0xFFFF:x}"
+        )
         inp = data.get("input") or {}
         exp = data.get("expected_output") or {}
         # 将 input/expected_output 冻结为只读 MappingProxyType，防后续改写
@@ -236,9 +230,9 @@ class HeldOutDataset:
     def _build_manifest(self, origin: str) -> DatasetManifest:
         sigs = tuple(sorted(c.signature() for c in self._cases))
         ds_sig = hashlib.sha256(
-            json.dumps(
-                {"stage": self._stage, "signatures": list(sigs)}, sort_keys=True, ensure_ascii=False
-            ).encode("utf-8")
+            json.dumps({"stage": self._stage, "signatures": list(sigs)}, sort_keys=True, ensure_ascii=False).encode(
+                "utf-8"
+            )
         ).hexdigest()
         return DatasetManifest(
             stage=self._stage,

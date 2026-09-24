@@ -1,0 +1,21 @@
+{{- if and .Values.web.enabled .Values.web.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-web
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: web
+  {{- with .Values.web.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.web.ingress.className }}
+  {{- if .Values.web.ingress.tls }}
+  tls:
+    {{- toYaml .Values.web.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- toYaml .Values.web.ingress.hosts | nindent 4 }}
+{{- end }}

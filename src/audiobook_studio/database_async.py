@@ -7,6 +7,7 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 import os
 from typing import Any, AsyncGenerator, Optional
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -99,7 +100,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except SQLAlchemyError:
             await session.rollback()
             raise
         finally:

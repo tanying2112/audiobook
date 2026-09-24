@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.audiobook_studio.database import DATABASE_URL, Base, SessionLocal, engine, init_db
+from src.audiobook_studio.database import DATABASE_URL, Base, SessionLocal, engine
 
 
 class TestDatabaseModule:
@@ -114,6 +114,13 @@ class TestDatabaseModule:
                     # Should have our model tables
                     assert len(tables) > 0
 
+            # Restore the database module to its original (real) state. The
+            # importlib.reload above re-baked DATABASE_URL/engine/SessionLocal from
+            # the temporary env var; reloading once more (now that patch.dict has
+            # restored the real env) prevents leaking the temporary DB path to
+            # later tests in the session.
+            importlib.reload(db_module)
+
 
 class TestInitDb:
     """Tests for init_db function."""
@@ -121,12 +128,15 @@ class TestInitDb:
     def test_init_db_runs_without_error(self):
         """Verify Base.metadata has tables registered at import time."""
         from src.audiobook_studio.database import Base
+
         assert len(Base.metadata.tables) > 0
 
     def test_init_db_idempotent(self):
         """init_db is idempotent."""
         from src.audiobook_studio.database import Base
+
         assert len(Base.metadata.tables) > 0
+
 
 class TestDatabaseConnectArgs:
     """Tests for database connect_args handling."""

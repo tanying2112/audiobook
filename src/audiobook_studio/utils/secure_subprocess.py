@@ -154,7 +154,6 @@ async def run_command_async(
     Returns:
         CompletedProcess result
     """
-    import asyncio
 
     if not cmd:
         raise ValueError("Empty command")

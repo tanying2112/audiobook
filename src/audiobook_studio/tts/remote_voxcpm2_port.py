@@ -19,9 +19,9 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -59,7 +59,7 @@ class PortConnectionError(PortError):
 class PortRemoteError(PortError):
     """Raised when remote service returns an error response."""
 
-    def __init__(self, message: str, status_code: int | None = None, response_body: str | None = None):
+    def __init__(self, message: str, status_code: int | None = None, response_body: str | None = None):  # noqa: B042
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
@@ -399,7 +399,7 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
             error_body = ""
             try:
                 error_body = response.text
-            except Exception:
+            except httpx.HTTPError:
                 pass
 
             logger.warning(f"{method} {url} -> {response.status_code} ({elapsed_ms:.0f}ms): {error_body[:200]}")
@@ -486,6 +486,12 @@ class RemoteVoxCPM2Port(RemoteTTSPort):
             "language": voice_anchor.language,
             "reference_audio_path": voice_anchor.reference_audio_path,
         }
+
+        # Reference transcript (zero-shot prompt_text). Only sent when present so
+        # older backends that do not declare the field are unaffected.
+        reference_text = getattr(voice_anchor, "reference_text", None)
+        if reference_text:
+            request_data["reference_text"] = reference_text
 
         # Add prosody if provided
         if payload.prosody:

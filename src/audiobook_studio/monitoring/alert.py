@@ -18,12 +18,10 @@ import argparse
 import json
 import logging
 import os
-import sys
-from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 from pydantic import BaseModel

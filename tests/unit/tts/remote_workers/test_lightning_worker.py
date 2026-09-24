@@ -5,17 +5,18 @@ Tests: worker initialization, engine loading, smoke test, synthesis, GPU metrics
 Mocks: torch, torchaudio, transformers, huggingface_hub.
 """
 
-import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
 
 def _identity_decorator(*args, **kwargs):
     """Decorator factory returning the wrapped function unchanged."""
+
     def decorator(func):
         return func
+
     return decorator
 
 
@@ -56,15 +57,15 @@ _IMPORT_MODULES = {
 for _name, _mock in _IMPORT_MODULES.items():
     sys.modules[_name] = _mock
 
+import src.audiobook_studio.tts.remote_workers.lightning_worker as _lightning_worker_mod
 from src.audiobook_studio.tts.remote_workers.lightning_worker import (
     LightningWorker,
     T4VoxCPM2Engine,
     get_device_name,
-    get_gpu_memory_used_mb,
     get_gpu_memory_total_mb,
+    get_gpu_memory_used_mb,
     main,
 )
-import src.audiobook_studio.tts.remote_workers.lightning_worker as _lightning_worker_mod
 
 for _name in _IMPORT_MODULES:
     sys.modules.pop(_name, None)
@@ -105,6 +106,7 @@ def _mock_runtime_deps():
         saved[_name] = sys.modules.get(_name, _MISSING)
         sys.modules[_name] = _mock
     import importlib
+
     importlib.reload(_lightning_worker_mod)
     _rebind_worker_globals()
     try:
@@ -245,9 +247,7 @@ class TestT4VoxCPM2Engine:
                 with patch("torchaudio.save"):
                     with patch("torchaudio.load", return_value=(Mock(), 24000)) as mock_load:
                         with patch("torchaudio.functional.resample"):
-                            audio_bytes = engine.synthesize(
-                                "Hello", "zh_female_1", {}, "/path/to/reference.wav"
-                            )
+                            audio_bytes = engine.synthesize("Hello", "zh_female_1", {}, "/path/to/reference.wav")
 
         assert audio_bytes == b"fake_wav_data"
         mock_load.assert_called()
@@ -271,9 +271,7 @@ class TestT4VoxCPM2Engine:
             with patch("io.BytesIO", return_value=mock_buffer):
                 with patch("torchaudio.save"):
                     with patch("torchaudio.load", return_value=(Mock(), 16000)):  # Different sample rate
-                        audio_bytes = engine.synthesize(
-                            "Hello", "zh_female_1", {}, "/path/to/reference.wav"
-                        )
+                        engine.synthesize("Hello", "zh_female_1", {}, "/path/to/reference.wav")
 
         # The worker calls `torchaudio.functional.resample` via its module-level
         # `torchaudio` reference (= mock_torchaudio). Patching the dotted string
@@ -310,7 +308,7 @@ class TestLightningWorker:
         """Test worker init calls parent init with lightning prefix."""
         with patch.object(LightningWorker.__mro__[1], "__init__", return_value=None) as mock_super:
             with patch.dict(LightningWorker._init_engine.__globals__, {"T4VoxCPM2Engine": Mock()}):
-                worker = LightningWorker()
+                LightningWorker()
                 mock_super.assert_called_once_with(platform_prefix="lightning")
 
     def test_init_engine_returns_t4_engine(self, worker):

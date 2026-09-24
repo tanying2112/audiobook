@@ -4,10 +4,9 @@ Target: 70%+ coverage of edge_tts_engine.py (148 lines, ~20% coverage).
 Tests: initialization, synthesize, voice listing, SSML prosody, error handling, mock mode.
 """
 
-import hashlib
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -18,11 +17,11 @@ from src.audiobook_studio.tts.edge_tts_engine import (
 )
 from src.audiobook_studio.tts.engine import (
     SynthesisResult,
+    TTSProsody,
     TTSTaskPayload,
     TTSTaskResult,
     TTSTaskStatus,
     TTSVoiceAnchor,
-    TTSProsody,
     VoiceInfo,
 )
 
@@ -33,9 +32,15 @@ class TestEdgeVoices:
     def test_edge_voices_has_expected_keys(self):
         """Test that EDGE_VOICES contains expected voice keys."""
         expected_voices = [
-            "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "zh-CN-YunjianNeural",
-            "zh-CN-XiaoyiNeural", "zh-CN-XiaochenNeural",
-            "en-US-JennyNeural", "en-US-GuyNeural", "en-US-AriaNeural", "en-US-DavisNeural",
+            "zh-CN-XiaoxiaoNeural",
+            "zh-CN-YunxiNeural",
+            "zh-CN-YunjianNeural",
+            "zh-CN-XiaoyiNeural",
+            "zh-CN-XiaochenNeural",
+            "en-US-JennyNeural",
+            "en-US-GuyNeural",
+            "en-US-AriaNeural",
+            "en-US-DavisNeural",
         ]
         for voice in expected_voices:
             assert voice in EDGE_VOICES
@@ -249,34 +254,34 @@ class TestEdgeTTSEngineSSML:
     def test_build_ssml_with_rate(self, mock_engine):
         """Test _build_ssml includes rate in prosody."""
         ssml = mock_engine._build_ssml("Test", "zh-CN-XiaoxiaoNeural", {"rate": 1.5})
-        assert '+50%' in ssml  # 1.5 -> +50%
-        assert 'rate='+'' in ssml or 'rate="' in ssml
+        assert "+50%" in ssml  # 1.5 -> +50%
+        assert "rate=" + "" in ssml or 'rate="' in ssml
 
     def test_build_ssml_with_pitch(self, mock_engine):
         """Test _build_ssml includes pitch in prosody."""
         ssml = mock_engine._build_ssml("Test", "zh-CN-XiaoxiaoNeural", {"pitch": 2.0})
-        assert '+2.0st' in ssml
-        assert 'pitch='+'' in ssml or 'pitch="' in ssml
+        assert "+2.0st" in ssml
+        assert "pitch=" + "" in ssml or 'pitch="' in ssml
 
     def test_build_ssml_with_volume(self, mock_engine):
         """Test _build_ssml includes volume in prosody."""
         ssml = mock_engine._build_ssml("Test", "zh-CN-XiaoxiaoNeural", {"volume": -3.0})
-        assert '-3.0dB' in ssml
-        assert 'volume='+'' in ssml or 'volume="' in ssml
+        assert "-3.0dB" in ssml
+        assert "volume=" + "" in ssml or 'volume="' in ssml
 
     def test_build_ssml_full_prosody(self, mock_engine):
         """Test _build_ssml with all prosody controls."""
         prosody = {"rate": 0.8, "pitch": -1.5, "volume": 5.0}
         ssml = mock_engine._build_ssml("Test text", "zh-CN-XiaoxiaoNeural", prosody)
 
-        assert '-20%' in ssml or '-19%' in ssml  # 0.8 -> -20% (or -19% due to float precision)
-        assert '-1.5st' in ssml
-        assert '+5.0dB' in ssml
-        assert 'Test text' in ssml
-        assert 'zh-CN-XiaoxiaoNeural' in ssml
-        assert 'prosody' in ssml
-        assert '<speak' in ssml
-        assert '</speak>' in ssml
+        assert "-20%" in ssml or "-19%" in ssml  # 0.8 -> -20% (or -19% due to float precision)
+        assert "-1.5st" in ssml
+        assert "+5.0dB" in ssml
+        assert "Test text" in ssml
+        assert "zh-CN-XiaoxiaoNeural" in ssml
+        assert "prosody" in ssml
+        assert "<speak" in ssml
+        assert "</speak>" in ssml
 
     def test_build_ssml_xml_lang(self, mock_engine):
         """Test _build_ssml includes xml:lang attribute."""
@@ -373,6 +378,7 @@ class TestEdgeTTSEngineSynthesizeProtocol:
         await mock_engine.submit(task_id, payload)
 
         import asyncio
+
         await asyncio.sleep(0.1)
 
         result = await mock_engine.get_result(task_id)
@@ -422,6 +428,7 @@ class TestEdgeTTSEngineSynthesizeProtocol:
 
         await mock_engine.submit(task_id, payload)
         import asyncio
+
         await asyncio.sleep(0.15)
 
         cancelled = await mock_engine.cancel(task_id)

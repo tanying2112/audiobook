@@ -2,16 +2,13 @@
 
 import json
 import logging
-from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..llm.client import create_client
-from ..llm.router import LLMRouter
-from ..schemas.paragraph import ParagraphAnnotation
 
 logger = logging.getLogger(__name__)
 

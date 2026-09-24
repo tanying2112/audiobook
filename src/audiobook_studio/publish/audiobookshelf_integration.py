@@ -1,9 +1,6 @@
 """Audiobookshelf 集成模块 - 将有声书发布到 Audiobookshelf 平台."""
 
 import base64
-import hashlib
-import json
-import logging
 import mimetypes
 import os
 from dataclasses import dataclass, field
@@ -202,7 +199,7 @@ class AudiobookshelfIntegrator:
             try:
                 with open(metadata.cover_image_path, "rb") as f:
                     cover_data = base64.b64encode(f.read()).decode("utf-8")
-            except Exception:
+            except OSError:
                 pass  # 封面图片读取失败不影响主要功能
 
         # 准备章节信息
@@ -433,7 +430,7 @@ class AudiobookshelfIntegrator:
             if scan_resp.status_code not in (200, 201):
                 # 不致命，继续
                 pass
-        except Exception as e:
+        except Exception:
             # 不致命，继续
             pass
 
@@ -452,16 +449,25 @@ class AudiobookshelfIntegrator:
                 )
                 if resp.status_code == 200:
                     results = resp.json()
-                    for item in results:
-                        media = item.get("media") or {}
-                        metadata_item = media.get("metadata") or {}
-                        item_title = metadata_item.get("title", "")
-                        if item_title.lower() == book_title.lower():
-                            item_id = item.get("id")
-                            break
+                    # 防御：搜索接口契约是 list[dict]；若对端返回了其他形状
+                    # （dict / 字符串等），跳过本轮匹配而不是让整个上传流程失败。
+                    if isinstance(results, list):
+                        for item in results:
+                            if not isinstance(item, dict):
+                                continue
+                            media = item.get("media") or {}
+                            if not isinstance(media, dict):
+                                continue
+                            metadata_item = media.get("metadata") or {}
+                            if not isinstance(metadata_item, dict):
+                                continue
+                            item_title = metadata_item.get("title", "")
+                            if isinstance(item_title, str) and item_title.lower() == book_title.lower():
+                                item_id = item.get("id")
+                                break
                 if item_id:
                     break
-            except Exception:
+            except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                 pass
 
         # 第六步：更新元数据（如果找到 item_id）
@@ -517,7 +523,7 @@ class AudiobookshelfIntegrator:
                 if resp.status_code not in (200, 204):
                     # 不致命，继续
                     pass
-            except Exception:
+            except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                 pass
 
             # 第七步：上传封面图片（如果有）
@@ -532,7 +538,7 @@ class AudiobookshelfIntegrator:
                     if resp.status_code not in (200, 201):
                         # 不致命
                         pass
-                except Exception:
+                except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
                     pass
 
         # 构建返回结果
@@ -578,7 +584,7 @@ class AudiobookshelfIntegrator:
                     "status": "online",
                     "last_updated": datetime.now().isoformat(),
                 }
-        except Exception:
+        except Exception:  # noqa: BLE001 — best-effort 步骤，任何网络异常不致命
             pass
 
         return {
@@ -672,7 +678,7 @@ def main():
     logger.info(f"   文件名: {audio_file.file_path.name}")
     logger.info(f"   文件大小: {audio_file.size_bytes / (1024*1024):.1f} MB")
     logger.info(
-        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"
+        f"   时长: {int(audio_file.duration_seconds//3600):02d}:{int((audio_file.duration_seconds%3600)//60):02d}:{int(audio_file.duration_seconds%60):02d}"  # noqa: E228
     )
     logger.info(f"   格式: {audio_file.format}")
     logger.info(f"   比特率: {audio_file.bitrate_kbps} kbps")

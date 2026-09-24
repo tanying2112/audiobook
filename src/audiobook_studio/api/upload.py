@@ -6,24 +6,22 @@ with async text extraction and WebSocket progress updates.
 Uses Redis for distributed upload sessions and extraction job tracking.
 """
 
-import asyncio
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..api.websocket import PipelineEventType, emit_pipeline_event, manager
+from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..auth.dependencies import get_current_active_user, require_project_permission
 from ..auth.models import RoleName
-from ..database import get_async_session
+from ..exceptions import DomainError
 from ..models import Chapter, Project, ProjectSegment
 from ..models.user import User
 from ..pipeline.extract import extract_text
@@ -186,17 +184,29 @@ def project_extractions_key(project_id: int) -> str:
 def validate_file(file: UploadFile) -> None:
     """Validate uploaded file."""
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise DomainError(
+            message="No filename provided",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"field": "filename"},
+        )
 
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        raise DomainError(
+            message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
 
     if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"MIME type {file.content_type} not allowed")
+        raise DomainError(
+            message=f"MIME type {file.content_type} not allowed",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"mime_type": file.content_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
+        )
 
 
 async def save_upload_chunk(
@@ -207,7 +217,12 @@ async def save_upload_chunk(
     session_data = await redis_client.hgetall(session_key)
 
     if not session_data:
-        raise HTTPException(status_code=404, detail="Upload session not found")
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
 
     file_path = session_data["file_path"]
     chunk_size = int(session_data.get("chunk_size", len(chunk)))
@@ -235,14 +250,24 @@ async def finalize_upload(redis_client: redis.Redis, upload_id: str) -> str:
     session_data = await redis_client.hgetall(session_key)
 
     if not session_data:
-        raise HTTPException(status_code=404, detail="Upload session not found")
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
 
     # Verify all chunks received
     chunks_received = int(session_data.get("chunks_received", 0))
     total_chunks = int(session_data.get("total_chunks", 0))
 
     if chunks_received != total_chunks:
-        raise HTTPException(status_code=400, detail="Not all chunks received")
+        raise DomainError(
+            message="Not all chunks received",
+            error_code="VALIDATION_ERROR",
+            stage="upload",
+            context={"upload_id": upload_id, "chunks_received": chunks_received, "total_chunks": total_chunks},
+        )
 
     return session_data["file_path"]
 
@@ -395,21 +420,38 @@ async def init_upload(
     # Verify project exists and user has access
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"project_id": project_id},
+        )
 
     # Validate file type
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        raise DomainError(
+            message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
 
     if mime_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"MIME type {mime_type} not allowed")
+        raise DomainError(
+            message=f"MIME type {mime_type} not allowed",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"mime_type": mime_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
+        )
 
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes")
+        raise DomainError(
+            message=f"File too large. Max size: {MAX_FILE_SIZE} bytes",
+            error_code="PAYLOAD_TOO_LARGE",
+            stage="upload",
+            context={"file_size": file_size, "max_file_size": MAX_FILE_SIZE},
+        )
 
     # Create upload session in Redis
     redis_client = await get_redis()
@@ -442,14 +484,29 @@ async def upload_chunk(
 
     session = await get_upload_session(redis_client, upload_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
 
     if session["project_id"] != str(project_id):
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
 
     # Verify total_chunks matches
     if int(session.get("total_chunks", 0)) != total_chunks:
-        raise HTTPException(status_code=400, detail="Total chunks mismatch")
+        raise DomainError(
+            message="Total chunks mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_chunks": total_chunks, "actual_chunks": session.get("total_chunks")},
+        )
 
     # Read chunk data
     chunk_data = await file.read()
@@ -505,6 +562,7 @@ async def upload_chunk(
 @router.post("/{project_id}/upload", response_model=UploadCompleteResponse)
 async def upload_file(
     project_id: int,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
     db: AsyncSession = Depends(get_async_db),
@@ -513,14 +571,24 @@ async def upload_file(
     # Verify project
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"project_id": project_id},
+        )
 
     validate_file(file)
 
     # Read file content
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
+        raise DomainError(
+            message="File too large",
+            error_code="PAYLOAD_TOO_LARGE",
+            stage="upload",
+            context={"file_size": len(content), "max_file_size": MAX_FILE_SIZE},
+        )
 
     # Save file
     upload_id = str(uuid.uuid4())
@@ -742,10 +810,20 @@ async def get_upload_status(
     session = await get_upload_session(redis_client, upload_id)
 
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
 
     if session["project_id"] != str(project_id):
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
 
     chunks_received = await redis_client.scard(upload_chunks_key(upload_id))
     total_chunks = int(session.get("total_chunks", 0))
@@ -774,10 +852,20 @@ async def get_extraction_status(
     job = await get_extraction_job(redis_client, job_id)
 
     if not job:
-        raise HTTPException(status_code=404, detail="Extraction job not found")
+        raise DomainError(
+            message="Extraction job not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"job_id": job_id},
+        )
 
     if job["project_id"] != str(project_id):
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": job["project_id"]},
+        )
 
     return ExtractionJobStatus(**job)
 
@@ -805,10 +893,20 @@ async def cancel_upload(
 
     session = await get_upload_session(redis_client, upload_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
 
     if session["project_id"] != str(project_id):
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
 
     await delete_upload_session(redis_client, upload_id)
 

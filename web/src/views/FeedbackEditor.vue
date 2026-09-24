@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
+import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import { useI18n } from '../i18n'
 
@@ -41,9 +42,47 @@ const form = ref<FeedbackForm>({
   rationale: ''
 })
 
+// JSON 文本字段（v-model 绑定，提交时解析回 form）
+const jsonText = reactive({
+  input_snapshot: JSON.stringify(form.value.input_snapshot, null, 2),
+  llm_output: JSON.stringify(form.value.llm_output, null, 2),
+  corrected_output: JSON.stringify(form.value.corrected_output, null, 2)
+})
+
 const loading = ref(false)
 const message = ref('')
 const messageType = ref<'success' | 'error'>('success')
+
+function syncJsonText() {
+  jsonText.input_snapshot = JSON.stringify(form.value.input_snapshot, null, 2)
+  jsonText.llm_output = JSON.stringify(form.value.llm_output, null, 2)
+  jsonText.corrected_output = JSON.stringify(form.value.corrected_output, null, 2)
+}
+
+function parseJsonText(): boolean {
+  try {
+    form.value.input_snapshot = JSON.parse(jsonText.input_snapshot)
+  } catch {
+    message.value = t('feedback_editor.json_parse_failed')
+    messageType.value = 'error'
+    return false
+  }
+  try {
+    form.value.llm_output = JSON.parse(jsonText.llm_output)
+  } catch {
+    message.value = t('feedback_editor.json_parse_failed')
+    messageType.value = 'error'
+    return false
+  }
+  try {
+    form.value.corrected_output = JSON.parse(jsonText.corrected_output)
+  } catch {
+    message.value = t('feedback_editor.json_parse_failed')
+    messageType.value = 'error'
+    return false
+  }
+  return true
+}
 
 const submitFeedback = async () => {
   if (!form.value.book_id) {
@@ -56,6 +95,7 @@ const submitFeedback = async () => {
     messageType.value = 'error'
     return
   }
+  if (!parseJsonText()) return
 
   loading.value = true
   message.value = ''
@@ -64,6 +104,7 @@ const submitFeedback = async () => {
     await axios.post(`${API_BASE}/feedback/`, form.value)
     message.value = t('feedback_editor.submit_success')
     messageType.value = 'success'
+    ElMessage.success(message.value)
     form.value = {
       source: 'human_edit',
       stage: 'annotate_paragraph',
@@ -75,6 +116,7 @@ const submitFeedback = async () => {
       corrected_output: {},
       rationale: ''
     }
+    syncJsonText()
   } catch (error: any) {
     message.value = t('feedback_editor.submit_failed') + (error.response?.data?.detail || error.message)
     messageType.value = 'error'
@@ -110,133 +152,96 @@ const loadSampleData = () => {
     },
     rationale: '该段落描述 Alexander 亲自处理危机，说话人应为 Alexander 而非旁白，且情感应为紧张而非中性。'
   }
-}
-
-const parseJsonField = (field: keyof FeedbackForm) => {
-  try {
-    const el = document.getElementById(`json-${field}`) as HTMLTextAreaElement
-    if (!el) return
-    const parsed = JSON.parse(el.value)
-    if (field === 'input_snapshot') form.value.input_snapshot = parsed
-    else if (field === 'llm_output') form.value.llm_output = parsed
-    else if (field === 'corrected_output') form.value.corrected_output = parsed
-  } catch {
-    message.value = t('feedback_editor.json_parse_failed')
-    messageType.value = 'error'
-  }
+  syncJsonText()
 }
 </script>
 
 <template>
-  <div class="feedback-editor max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-sm">
-    <h2 class="text-2xl font-semibold text-gray-800 mb-6">{{ t('feedback_editor.title') }}</h2>
-
-    <div v-if="message" :class="['mb-4 p-4 rounded-lg', messageType === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700']">
-      {{ message }}
+  <div class="feedback-editor">
+    <div class="page-header">
+      <h2>{{ t('feedback_editor.title') }}</h2>
     </div>
 
-    <div class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.book_id') }} *</label>
-          <input
-            v-model="form.book_id"
-            type="text"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            :placeholder="t('feedback_editor.book_id_placeholder')"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.source') }} *</label>
-          <select v-model="form.source" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option v-for="s in sources" :key="s" :value="s">{{ t('feedback_editor.sources.' + s) }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.stage') }} *</label>
-          <select v-model="form.stage" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option v-for="s in stages" :key="s" :value="s">{{ t('feedback_editor.stages.' + s) }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.chapter_index') }}</label>
-          <input
-            v-model.number="form.chapter_index"
-            type="number"
-            min="1"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.paragraph_index') }}</label>
-          <input
-            v-model.number="form.paragraph_index"
-            type="number"
-            min="0"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-      </div>
+    <el-alert
+      v-if="message"
+      :title="message"
+      :type="messageType"
+      show-icon
+      :closable="false"
+      class="message-alert"
+    />
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.input_snapshot') }} (JSON)</label>
-        <textarea
-          id="json-input_snapshot"
-          rows="3"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-          :value="JSON.stringify(form.input_snapshot, null, 2)"
-          @change="() => parseJsonField('input_snapshot')"
-        />
-      </div>
+    <el-form label-position="top">
+      <el-row :gutter="16">
+        <el-col :xs="24" :md="12">
+          <el-form-item :label="t('feedback_editor.book_id') + ' *'">
+            <el-input v-model="form.book_id" :placeholder="t('feedback_editor.book_id_placeholder')" />
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :md="12">
+          <el-form-item :label="t('feedback_editor.source') + ' *'">
+            <el-select v-model="form.source" style="width: 100%">
+              <el-option v-for="s in sources" :key="s" :label="t('feedback_editor.sources.' + s)" :value="s" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :md="12">
+          <el-form-item :label="t('feedback_editor.stage') + ' *'">
+            <el-select v-model="form.stage" style="width: 100%">
+              <el-option v-for="s in stages" :key="s" :label="t('feedback_editor.stages.' + s)" :value="s" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :md="6">
+          <el-form-item :label="t('feedback_editor.chapter_index')">
+            <el-input-number v-model="form.chapter_index" :min="1" style="width: 100%" />
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :md="6">
+          <el-form-item :label="t('feedback_editor.paragraph_index')">
+            <el-input-number v-model="form.paragraph_index" :min="0" style="width: 100%" />
+          </el-form-item>
+        </el-col>
+      </el-row>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.llm_output') }} (JSON)</label>
-        <textarea
-          id="json-llm_output"
-          rows="3"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-          :value="JSON.stringify(form.llm_output, null, 2)"
-          @change="() => parseJsonField('llm_output')"
-        />
-      </div>
+      <el-form-item :label="t('feedback_editor.input_snapshot') + ' (JSON)'">
+        <el-input v-model="jsonText.input_snapshot" type="textarea" :rows="3" class="json-input" />
+      </el-form-item>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.corrected_output') }} (JSON)</label>
-        <textarea
-          id="json-corrected_output"
-          rows="3"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-          :value="JSON.stringify(form.corrected_output, null, 2)"
-          @change="() => parseJsonField('corrected_output')"
-        />
-      </div>
+      <el-form-item :label="t('feedback_editor.llm_output') + ' (JSON)'">
+        <el-input v-model="jsonText.llm_output" type="textarea" :rows="3" class="json-input" />
+      </el-form-item>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('feedback_editor.rationale') }} *</label>
-        <textarea
+      <el-form-item :label="t('feedback_editor.corrected_output') + ' (JSON)'">
+        <el-input v-model="jsonText.corrected_output" type="textarea" :rows="3" class="json-input" />
+      </el-form-item>
+
+      <el-form-item :label="t('feedback_editor.rationale') + ' *'">
+        <el-input
           v-model="form.rationale"
-          rows="4"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          type="textarea"
+          :rows="4"
           :placeholder="t('feedback_editor.rationale_placeholder')"
         />
-        <p class="mt-1 text-sm text-gray-500">{{ form.rationale.length }}/10 {{ t('feedback_editor.min_chars') }}</p>
-      </div>
+        <div class="char-count">{{ form.rationale.length }}/10 {{ t('feedback_editor.min_chars') }}</div>
+      </el-form-item>
 
-      <div class="flex gap-3">
-        <button
-          @click="submitFeedback"
-          :disabled="loading"
-          class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-        >
+      <div class="actions">
+        <el-button type="primary" :loading="loading" @click="submitFeedback">
           {{ loading ? t('feedback_editor.submitting') : t('feedback_editor.submit') }}
-        </button>
-        <button
-          @click="loadSampleData"
-          class="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-        >
-          {{ t('feedback_editor.load_sample') }}
-        </button>
+        </el-button>
+        <el-button @click="loadSampleData">{{ t('feedback_editor.load_sample') }}</el-button>
       </div>
-    </div>
+    </el-form>
   </div>
 </template>
+
+<style scoped>
+.feedback-editor { max-width: 760px; margin: 0 auto; padding: 24px; }
+.page-header { margin-bottom: 16px; }
+.page-header h2 { margin: 0; font-size: 20px; color: var(--color-text); }
+.message-alert { margin-bottom: 16px; }
+.json-input :deep(textarea) { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.char-count { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
+.actions { display: flex; gap: 8px; margin-top: 8px; }
+</style>

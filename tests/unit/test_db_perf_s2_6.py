@@ -6,11 +6,9 @@ Verifies:
   on when >0) using a real in-memory async engine.
 """
 
-import sys
 import inspect
+import sys
 from unittest.mock import patch
-
-import pytest
 
 sys.path.insert(0, "src")
 

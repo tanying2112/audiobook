@@ -1,0 +1,16 @@
+{{- if .Values.persistence.modelsCache.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-models-cache
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: "{{ .Values.persistence.modelsCache.storageClass }}"
+  resources:
+    requests:
+      storage: {{ .Values.persistence.modelsCache.size }}
+{{- end }}

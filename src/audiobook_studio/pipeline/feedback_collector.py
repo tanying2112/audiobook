@@ -29,7 +29,7 @@ class FeedbackCollector:
     """Collects and persists feedback records for each pipeline stage.
 
     Usage:
-        collector = FeedbackCollector(project_id=1)
+        collector = FeedbackCollector(project_id=123)
 
         # In each pipeline stage, wrap the LLM call:
         with collector.capture_stage("annotate", chapter_index=1, paragraph_index=5) as capture:

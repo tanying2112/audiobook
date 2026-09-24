@@ -9,10 +9,9 @@ Hermes-AgentMesh Core Architecture Integration:
 - Requires Modal Secret "audiobook-config" with: REDIS_HOST, REDIS_PORT, REDIS_AUTH, R2_*, WORKER_ID, VOXCPM2_HF_REPO (optional)
 """
 
-import json
+import io
 import os
 import sys
-import io
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -29,14 +28,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 try:
     import torch  # type: ignore[import-untyped]
 except ImportError:
+
     class MockTorch:
         def inference_mode(self, *args: Any, **kwargs: Any) -> Any:
             return lambda func: func
+
     torch = MockTorch()  # type: ignore[assignment]
     print("⚠️  Local env missing torch, mock active (cloud deployment unaffected).")
 
 from .base_worker import BaseWorker
-
 
 # ==========================================
 # 1. Modal Image Definition (pre-baked deps)
@@ -87,6 +87,7 @@ class VoxCPM2Engine:
 
     def __init__(self, model_path: str = None) -> None:
         import torch  # type: ignore[import-untyped]
+
         self.model_path = model_path or self.CACHE_DIR
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model: Any = None
@@ -94,10 +95,11 @@ class VoxCPM2Engine:
         self._load_model()
 
     def _load_model(self) -> None:
-        import torch  # type: ignore[import-untyped]
-        from transformers import LlamaTokenizerFast  # type: ignore[import-untyped]
-        from huggingface_hub import snapshot_download  # type: ignore[import-untyped]
         import sys
+
+        from huggingface_hub import snapshot_download  # type: ignore[import-untyped]
+        from transformers import LlamaTokenizerFast  # type: ignore[import-untyped]
+
         sys.path.insert(0, "/src")
 
         from voxcpm.model.voxcpm2 import VoxCPM2Model  # type: ignore[import-untyped]
@@ -164,9 +166,9 @@ class VoxCPM2Engine:
         waveform = torch.cat(audio_chunks, dim=-1)
 
         import soundfile as sf  # type: ignore[import-untyped]
-        import numpy as np
+
         buffer = io.BytesIO()
-        sample_rate = getattr(self.model, 'sample_rate', 24000)
+        sample_rate = getattr(self.model, "sample_rate", 24000)
         sf.write(buffer, waveform.cpu().numpy().T, sample_rate, format="WAV")
         return buffer.getvalue()
 
@@ -196,9 +198,12 @@ class ModalWorker(BaseWorker):
 
     def _get_platform_gpu_metrics(self) -> Dict[str, int]:
         import torch  # type: ignore[import-untyped]
+
         return {
             "gpu_mem_used_mb": torch.cuda.memory_allocated() // (1024 * 1024) if torch.cuda.is_available() else 0,
-            "gpu_mem_total_mb": torch.cuda.get_device_properties(0).total_memory // (1024 * 1024) if torch.cuda.is_available() else 0,
+            "gpu_mem_total_mb": (
+                torch.cuda.get_device_properties(0).total_memory // (1024 * 1024) if torch.cuda.is_available() else 0
+            ),
             "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
         }
 
@@ -219,6 +224,7 @@ class ModalWorker(BaseWorker):
 def run_modal_consumer() -> None:
     """Modal Serverless entry point running BaseWorker in ephemeral container."""
     import uuid
+
     os.environ["WORKER_ID"] = os.getenv("WORKER_ID", f"modal-t4-{uuid.uuid4().hex[:8]}")
     os.environ["IDLE_TIMEOUT_SECONDS"] = "900"
     os.environ["MAX_EMPTY_POLLS"] = "2"

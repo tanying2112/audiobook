@@ -8,14 +8,50 @@ import { useI18n } from '../i18n'
 const router = useRouter()
 const store = useProjectStore()
 const searchQuery = ref('')
+const editingId = ref<number | null>(null)
+const draftTitle = ref('')
 const { t } = useI18n()
+
+// 7 阶段流程（与 AutoRunView / ChapterTimeline 一致）
+const PIPELINE_STAGES = [
+  'extract', 'analyze', 'annotate', 'edit',
+  'audio_postprocess', 'synthesize', 'quality',
+] as const
+
+function stageLabel(stage: string): string {
+  const map: Record<string, string> = {
+    extract: t('pipeline.stages.extract'),
+    analyze: t('pipeline.stages.analyze'),
+    annotate: t('pipeline.stages.annotate'),
+    edit: t('pipeline.stages.edit'),
+    audio_postprocess: t('pipeline.stages.audio_postprocess'),
+    synthesize: t('pipeline.stages.synthesize'),
+    quality: t('pipeline.stages.quality'),
+  }
+  return map[stage] || stage
+}
+
+/** 当前阶段在 7 阶段中的索引；'pending' → -1（未开始），'completed' → 全部完成 */
+function currentStageIndex(stage?: string): number {
+  if (!stage || stage === 'pending') return -1
+  if (stage === 'completed') return PIPELINE_STAGES.length
+  return PIPELINE_STAGES.indexOf(stage as any)
+}
+
+/** 后端 progress 为 0-100 浮点；归一化到 0-1 */
+function progressRatio(project: { progress?: number }): number {
+  const p = project.progress ?? 0
+  const ratio = p > 1 ? p / 100 : p
+  return Math.max(0, Math.min(1, ratio))
+}
 
 onMounted(() => store.loadProjects())
 
 const filteredProjects = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  if (!q) return store.projects
-  return store.projects.filter(
+  const list = Array.isArray(store.projects) ? store.projects : []
+  if (!q) return list
+  return list.filter(
     (p) =>
       (p.title || '').toLowerCase().includes(q) ||
       (p.description || '').toLowerCase().includes(q),
@@ -44,49 +80,174 @@ async function removeProject(id: number, title: string) {
     alert(t('projects.delete_failed') + (e.message || e))
   }
 }
+
+async function editProjectName(id: number, currentTitle: string) {
+  draftTitle.value = currentTitle
+  editingId.value = id
+}
+
+async function saveEdit(id: number) {
+  const name = draftTitle.value.trim()
+  const idx = store.projects.findIndex((p) => p.id === id)
+  const current = idx !== -1 ? (store.projects[idx].title || '') : ''
+  if (!name || name === current) {
+    editingId.value = null
+    return
+  }
+  try {
+    await store.editProject(id, { title: name } as any)
+    editingId.value = null
+  } catch (e: any) {
+    alert(t('projects.create_failed') + (e.message || e))
+  }
+}
+
+function cancelEdit() {
+  editingId.value = null
+  draftTitle.value = ''
+}
+
+function exportProject(id: number) {
+  router.push(`/projects/${id}/export`)
+}
+
+function openAutoRun(id: number) {
+  router.push(`/projects/${id}/auto-run`)
+}
+
+function openQuality(id: number) {
+  router.push(`/projects/${id}/quality`)
+}
+
+function openTranslation(id: number) {
+  router.push(`/projects/${id}/translation`)
+}
+
+function openCharacters(id: number) {
+  router.push(`/projects/${id}/characters`)
+}
 </script>
 
 <template>
-  <div class="projects-page">
-    <div class="page-header">
+  <div class="page-container">
+    <header class="page-header">
       <h1>{{ t('projects.title') }}</h1>
-      <button class="btn btn-primary" @click="createProject">
+      <button class="btn btn-primary touch-target" @click="createProject">
         <Icon icon="mdi:plus" width="18" height="18" />
-        {{ t('projects.new_project') }}
+        <span class="hidden-mobile">{{ t('projects.new_project') }}</span>
       </button>
-    </div>
+    </header>
 
-    <div class="search-bar">
+    <div class="search-bar section">
       <Icon icon="mdi:magnify" width="18" height="18" class="search-icon" />
       <input
         v-model="searchQuery"
         type="text"
         :placeholder="t('projects.search_placeholder')"
-        class="search-input"
+        class="form-control search-input"
       />
     </div>
 
-    <div v-if="store.loading" class="loading">{{ t('projects.loading') }}</div>
-    <div v-else-if="store.error" class="error">{{ t('common.error') }}: {{ store.error }}</div>
-    <div v-else-if="filteredProjects.length === 0" class="empty">
+    <div v-if="store.loading" class="loading-section">
+      <div class="spinner"></div>
+      <p>{{ t('projects.loading') }}</p>
+    </div>
+    <div v-else-if="store.error" class="alert alert-error">
+      {{ t('common.error') }}: {{ store.error }}
+    </div>
+    <div v-else-if="filteredProjects.length === 0" class="empty-state">
       {{ searchQuery ? t('projects.no_results') : t('projects.empty_state') }}
     </div>
 
-    <div v-else class="project-grid">
+    <div v-else class="grid grid-auto-fill">
       <div
         v-for="project in filteredProjects"
         :key="project.id"
-        class="project-card"
+        class="card card-hover touch-target"
         @click="openProject(project.id)"
       >
         <div class="card-body">
-          <h3>{{ project.title || t('projects.unnamed_project') }}</h3>
-          <p v-if="project.description" class="desc">{{ project.description }}</p>
-          <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
+          <template v-if="editingId === project.id">
+            <input
+              v-model="draftTitle"
+              class="form-control"
+              :placeholder="t('projects.enter_project_name')"
+              @click.stop
+              @keyup.enter="saveEdit(project.id)"
+              @keyup.esc="cancelEdit"
+            />
+            <div class="edit-actions">
+              <button class="btn btn-primary btn-sm touch-target-sm" :title="t('common.save')" @click.stop="saveEdit(project.id)">
+                <Icon icon="mdi:check" width="18" height="18" />
+              </button>
+              <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.cancel')" @click.stop="cancelEdit">
+                <Icon icon="mdi:close" width="18" height="18" />
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h3 class="card-title">{{ project.title || t('projects.unnamed_project') }}</h3>
+            <p v-if="project.description" class="desc">{{ project.description }}</p>
+            <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
+
+            <!-- 7 阶段流程进度 -->
+            <div class="stage-progress-row">
+              <div class="stage-progress-steps">
+                <span
+                  v-for="(stage, si) in PIPELINE_STAGES"
+                  :key="stage"
+                  class="stage-dot"
+                  :class="{
+                    done: currentStageIndex(project.current_stage) > si,
+                    active: currentStageIndex(project.current_stage) === si,
+                  }"
+                  :title="stageLabel(stage)"
+                ></span>
+              </div>
+              <div class="stage-progress-bar">
+                <div
+                  class="stage-progress-fill"
+                  :style="{ width: `${Math.round(progressRatio(project) * 100)}%` }"
+                ></div>
+              </div>
+              <div class="stage-progress-meta">
+                <span class="stage-current">{{ project.current_stage ? stageLabel(project.current_stage) : t('projects.not_started') }}</span>
+                <span class="stage-percent">{{ Math.round(progressRatio(project) * 100) }}%</span>
+              </div>
+            </div>
+          </template>
         </div>
         <div class="card-actions">
-          <button class="btn-icon" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
+          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
             <Icon icon="mdi:delete-outline" width="18" height="18" />
+          </button>
+          <button v-if="editingId !== project.id" class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.edit')" @click.stop="editProjectName(project.id, project.title || '')">
+            <Icon icon="mdi:pencil-outline" width="18" height="18" />
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.export')" @click.stop="exportProject(project.id)">
+            <Icon icon="mdi:export" width="18" height="18" />
+          </button>
+        </div>
+        <div class="card-quicklinks">
+          <button class="btn btn-primary btn-sm touch-target-sm" @click.stop="openAutoRun(project.id)">
+            <Icon icon="mdi:play-circle-outline" width="16" height="16" />
+            <span>{{ t('auto_run.title') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openCharacters(project.id)">
+            <Icon icon="mdi:account-group" width="16" height="16" />
+            <span>{{ t('project_detail.characters') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openQuality(project.id)">
+            <Icon icon="mdi:chart-bar" width="16" height="16" />
+            <span>{{ t('project_detail.quality_report') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openTranslation(project.id)">
+            <Icon icon="mdi:translate" width="16" height="16" />
+            <span>{{ t('translation.title') }}</span>
+          </button>
+          <button class="btn btn-outline btn-sm touch-target-sm" @click.stop="exportProject(project.id)">
+            <Icon icon="mdi:download" width="16" height="16" />
+            <span>{{ t('projects.export_audio') }}</span>
           </button>
         </div>
       </div>
@@ -95,47 +256,95 @@ async function removeProject(id: number, title: string) {
 </template>
 
 <style scoped>
-.projects-page { max-width: 960px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-header h1 { margin: 0; font-size: 24px; }
+/* Uses global responsive utilities from style.css */
+
 .search-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 20px;
+  position: relative;
 }
-.search-icon { color: #94a3b8; flex-shrink: 0; }
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
 .search-input {
-  border: none;
-  outline: none;
-  flex: 1;
-  font-size: 14px;
-  background: transparent;
-  color: var(--color-text);
+  padding-left: 40px !important;
 }
-.search-input::placeholder { color: #94a3b8; }
-.project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+
 .project-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition: box-shadow 0.2s, transform 0.15s;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
+  cursor: pointer;
+  transition: box-shadow var(--transition), transform var(--transition-fast);
 }
-.project-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
-.card-body h3 { margin: 0 0 8px; font-size: 18px; }
-.desc { color: #64748b; font-size: 14px; margin: 0 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.meta { color: #94a3b8; font-size: 12px; }
-.card-actions { display: flex; align-items: flex-start; }
-.btn-icon { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px; border-radius: 6px; }
-.btn-icon:hover { background: #fee2e2; color: #ef4444; }
-.loading, .error, .empty { text-align: center; padding: 60px 20px; color: #64748b; }
-.error { color: #ef4444; }
+.project-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.project-card:active {
+  transform: translateY(0);
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card-title {
+  margin: 0;
+  font-size: 17px;
+}
+.desc {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.meta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.card-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.card-quicklinks {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+@media (max-width: 767px) {
+  .card-quicklinks {
+    width: 100%;
+  }
+}
+
+.loading-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
 </style>

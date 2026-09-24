@@ -8,14 +8,15 @@
 """
 
 import pytest
-import math
+
 
 # Helper function to replace pytest.approx which has numpy 2.x compatibility issues
 def approx_equal(actual, expected, rel=1e-9, abs_tol=1e-12):
     """Check if actual is approximately equal to expected."""
     return abs(actual - expected) <= max(rel * max(abs(actual), abs(expected)), abs_tol)
 
-from src.audiobook_studio.config.acoustic_mapping import EMOTION_ACOUSTIC_MAP, TRANSITION_PAUSE_MAP
+
+from src.audiobook_studio.config.acoustic_mapping import EMOTION_ACOUSTIC_MAP
 from src.audiobook_studio.pipeline.audio_postprocess import (
     AudioPostProcessor,
     PhysicalAudioSegment,
@@ -136,12 +137,12 @@ class TestPunctuationDynamicPause:
         processor = AudioPostProcessor()
 
         # 带感叹号
-        seg_excl = processor.generate_acoustic_schedule(
+        processor.generate_acoustic_schedule(
             [{"text": "太好了！", "speaker": "主角", "emotion": "happy", "is_dialogue": True}]
         )[0]
 
         # 带逗号
-        seg_comma = processor.generate_acoustic_schedule(
+        processor.generate_acoustic_schedule(
             [{"text": "好吧，", "speaker": "主角", "emotion": "neutral", "is_dialogue": True}]
         )[0]
 

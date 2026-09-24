@@ -1,14 +1,11 @@
 """publish/audiobookshelf.py 扩展测试 — 覆盖 AudiobookshelfPublisher 核心路径。"""
 
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
-class TestAudiobookshelfPublisher:
+class TestAudiobookshelfPublisher:  # noqa: E303
     """AudiobookshelfPublisher 测试覆盖。"""
 
     def _make_config(self):
@@ -358,13 +355,11 @@ class TestAudiobookshelfPublisher:
     def test_real_api_call_library_not_found(self):
         """库不存在时 _real_api_call 返回 404 错误。"""
         from src.audiobook_studio.publish.audiobookshelf import (
-            AudiobookFile,
-            AudiobookMetadata,
             AudiobookshelfConfig,
             AudiobookshelfPublisher,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
                 cfg = AudiobookshelfConfig(api_url="http://x", api_key="k", library_id="lib1")
                 pub = AudiobookshelfPublisher(cfg)

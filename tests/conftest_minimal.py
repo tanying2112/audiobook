@@ -6,15 +6,102 @@ to succeed in environments where heavy optional dependencies are not installed.
 DO NOT add test fixtures here - they belong in tests/conftest.py
 """
 
+import importlib.abc
+import importlib.util
 import os
 import sys
 from unittest.mock import MagicMock
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Unify dual-import namespaces.
+#
+# The package is importable BOTH as ``audiobook_studio`` (editable install) and
+# as ``src.audiobook_studio`` (when ``src`` is on sys.path). These resolve to
+# *different* module objects for the same source files, so a patch like
+# ``patch("src.audiobook_studio.feedback.promotion_gate._constitution")`` does
+# NOT affect code that did ``from audiobook_studio.feedback.promotion_gate
+# import ...`` (and vice versa). That mismatch is the root cause of several
+# pre-existing test-isolation failures. The meta-path finder below redirects
+# every ``audiobook_studio.*`` import to the canonical ``src.audiobook_studio.*``
+# module object so the two namespaces are a single object.
+# ═══════════════════════════════════════════════════════════════════════════
+class _CanonicalAliasLoader(importlib.abc.Loader):
+    """Loader that yields the already-loaded canonical ``src.`` module object."""
+
+    def __init__(self, canonical: str):
+        self.canonical = canonical
+
+    def create_module(self, spec):
+        return importlib.import_module(self.canonical)
+
+    def exec_module(self, module):
+        # The canonical module is already fully executed; nothing to do.
+        return None
+
+
+class _AliasFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name != "audiobook_studio" and not name.startswith("audiobook_studio."):
+            return None
+        canonical = "src." + name
+        existing = sys.modules.get(canonical)
+        if existing is not None:
+            # Canonical already imported: alias directly and reuse its spec.
+            sys.modules[name] = existing
+            return importlib.util.spec_from_loader(
+                name, existing.__loader__, origin=getattr(existing, "__file__", None)
+            )
+        try:
+            cspec = importlib.util.find_spec(canonical)
+        except Exception:
+            return None
+        if cspec is None or cspec.origin is None:
+            return None
+        return importlib.util.spec_from_loader(name, _CanonicalAliasLoader(canonical), origin=cspec.origin)
+
+
+sys.meta_path.insert(0, _AliasFinder())
+
+# Alias any ``audiobook_studio.*`` module that was imported (as a distinct
+# object) before this finder was installed, so it points at the canonical
+# ``src.`` object too.
+for _mod in list(sys.modules):
+    if _mod == "audiobook_studio" or _mod.startswith("audiobook_studio."):
+        _canon = "src." + _mod
+        if _canon in sys.modules and sys.modules[_mod] is not sys.modules[_canon]:
+            sys.modules[_mod] = sys.modules[_canon]
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Set ALLOWED_HOSTS BEFORE any imports to configure TrustedHostMiddleware correctly
 # This must happen before src.audiobook_studio.main is imported anywhere
 # ═══════════════════════════════════════════════════════════════════════════
 os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "testserver"]'
+
+# =============================================================================
+# Hermetic test DB: each pytest process gets its own temp SQLite file so
+# concurrent test runs never share/overwrite a repository DB (fixes H3 flakiness).
+# CI may override DATABASE_URL. Rate limiting stays OFF during tests to avoid
+# cross-test 429s from the shared per-IP bucket; the production default is ON
+# in code (see settings.RATE_LIMIT_ENABLED).
+# =============================================================================
+import tempfile as _tempfile
+
+os.environ.setdefault("AUDIO_HARD_METRICS_DISABLED", "1")
+os.environ.setdefault(
+    "DATABASE_URL",
+    f"sqlite:///{_tempfile.gettempdir()}/audiobook_test_{os.getpid()}.db",
+)
+# Tests must never be throttled by the shared per-IP bucket. The production
+# default (settings.RATE_LIMIT_ENABLED) is True; tests force it off.
+os.environ["RATE_LIMIT_ENABLED"] = "false"
+# Tests self-register freely. The production default (settings.AUTH_REGISTRATION_MODE)
+# is "invite"; test_registration_mode.py explicitly overrides to "invite" to verify it.
+os.environ.setdefault("AUTH_REGISTRATION_MODE", "open")
+
+# JWT secret for tests (must be valid URL-safe base64, >=32 chars for 256-bit entropy)
+# Using a fixed test key: "test-secret-key-for-testing-purposes-only-32chars"
+os.environ.setdefault("JWT_SECRET_KEY", "dGVzdC1zZWNyZXQta2V5LWZvci10ZXN0aW5nLXB1cnBvc2VzLW9ubHktMzJjaGFycw==")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Only mock dspy if it's not available - this is an optional dependency
@@ -115,6 +202,101 @@ if not DSPY_AVAILABLE:
 # Mock heavy optional dependencies that trigger import chains
 # ═══════════════════════════════════════════════════════════════════════════
 
+
+def _install_canonical_torch_mock():
+    """Install/repair the mocked ``torch`` with a valid ``__spec__``.
+
+    A bare ``MagicMock`` in ``sys.modules['torch']`` lacks ``__spec__`` and makes
+    any later ``import torch`` raise ``ValueError: torch.__spec__ is not set``
+    (importlib validates the spec of already-imported modules). It also makes
+    hardware-probing code (e.g. ``bench_voxcpm2.detect_hardware``) store a
+    ``MagicMock`` inside a JSON-serialized report. Rebuilding the mock here gives
+    a deterministic, serializable, spec-equipped fake so tests cannot leak bad
+    torch state into one another.
+    """
+    _torch_mock = sys.modules.get("torch")
+    if not isinstance(_torch_mock, MagicMock):
+        # Real torch (or absent entirely) — don't clobber it.
+        return
+
+    _torch_mock = MagicMock()
+    _torch_mock.__spec__ = importlib.util.spec_from_loader("torch", None)
+    _torch_mock.__version__ = "0.0.0"
+    _cuda_mock = MagicMock()
+    _cuda_mock.is_available.return_value = False
+    _cuda_mock.device_count.return_value = 0
+    _cuda_mock.get_device_name.return_value = "cpu"
+    _cuda_mock.memory_allocated.return_value = 0
+    _cuda_mock.max_memory_allocated.return_value = 0
+    _cuda_mock.empty_cache.return_value = None
+    _cuda_mock.get_device_properties.return_value = MagicMock(total_memory=0)
+    _cuda_mock.mem_get_info.return_value = (0, 0)
+    _cuda_mock.is_bf16_supported.return_value = False
+    _torch_mock.cuda = _cuda_mock
+    _mps_mock = MagicMock()
+    _mps_mock.is_available.return_value = False
+    _torch_mock.backends = MagicMock()
+    _torch_mock.backends.mps = _mps_mock
+    _torch_mock.backends.cudnn = MagicMock()
+    _torch_mock.backends.cudnn.is_available.return_value = False
+    _torch_mock.version = MagicMock()
+    _torch_mock.version.cuda = None
+    sys.modules["torch"] = _torch_mock
+
+
+def _force_torch_mock():
+    """Force ``sys.modules['torch']`` (and torchaudio) back to the canonical mock.
+
+    Some optional-backend test modules (e.g. voxcpm-based ones) must import a
+    *real* torch-dependent package at collection time. Those imports pull the
+    real, environment-broken torch into ``sys.modules``, which then leaks and
+    crashes unrelated tests later in the session (e.g. ``import spacy`` ->
+    ``thinc`` -> ``torch._C`` -> ``NameError: name '_C' is not defined``).
+    Re-establishing the canonical MagicMock here keeps the rest of the session
+    hermetic. Unlike :func:`_install_canonical_torch_mock`, this deliberately
+    OVERWRITES real torch (the importing module has already captured its own
+    reference, so restoring the mock for everyone else is safe).
+    """
+    _torch_mock = MagicMock()
+    _torch_mock.__spec__ = importlib.util.spec_from_loader("torch", None)
+    _torch_mock.__version__ = "0.0.0"
+    _cuda_mock = MagicMock()
+    _cuda_mock.is_available.return_value = False
+    _cuda_mock.device_count.return_value = 0
+    _cuda_mock.get_device_name.return_value = "cpu"
+    _cuda_mock.memory_allocated.return_value = 0
+    _cuda_mock.max_memory_allocated.return_value = 0
+    _cuda_mock.empty_cache.return_value = None
+    _cuda_mock.get_device_properties.return_value = MagicMock(total_memory=0)
+    _cuda_mock.mem_get_info.return_value = (0, 0)
+    _cuda_mock.is_bf16_supported.return_value = False
+    _torch_mock.cuda = _cuda_mock
+    _mps_mock = MagicMock()
+    _mps_mock.is_available.return_value = False
+    _torch_mock.backends = MagicMock()
+    _torch_mock.backends.mps = _mps_mock
+    _torch_mock.backends.cudnn = MagicMock()
+    _torch_mock.backends.cudnn.is_available.return_value = False
+    _torch_mock.version = MagicMock()
+    _torch_mock.version.cuda = None
+    sys.modules["torch"] = _torch_mock
+    if "torchaudio" not in sys.modules or not isinstance(sys.modules.get("torchaudio"), MagicMock):
+        _ta_mock = MagicMock()
+        _ta_mock.__spec__ = importlib.util.spec_from_loader("torchaudio", None)
+        sys.modules["torchaudio"] = _ta_mock
+
+
+# Registry of the third-party modules that were shadowed as MagicMocks at
+# session start. ``tests/conftest._reset_global_state`` re-installs these exact
+# objects after every test so a test that swaps one of them in sys.modules
+# (e.g. ``tests/unit/pipeline/test_synthesize_nonmock.py`` replaces
+# ``opentelemetry.*`` with its own shared mock meter) cannot leak the swap into
+# a later test module and break it under ``--random-order``. Only modules that
+# were *actually* mocked here are recorded (modules already imported as real,
+# such as ``requests``, are intentionally excluded so their real identity is
+# preserved). See the comment on the ``_reset_global_state`` teardown.
+CANONICAL_MOCKED_MODULES: dict = {}
+
 for mod_name in [
     "fitz",
     "pymupdf",
@@ -140,7 +322,6 @@ for mod_name in [
     "redis",
     "redis.asyncio",
     "flower",
-    "deepeval",
     "promptfoo",
     "black",
     "isort",
@@ -155,8 +336,17 @@ for mod_name in [
     "instructor",
     # "tenacity",  # Do NOT mock - tts_retry_policy depends on it
     "jinja2",
-    "edge_tts",
-    "kokoro_onnx",
+    # NOTE: `edge_tts` and `kokoro_onnx` are intentionally NOT mocked here.
+    # They are real, installed packages that the real-TTS e2e
+    # (scripts/fallback_chain_e2e_test.py) and other integration tests need to
+    # run for real (红线#2: no fake audio assertions). Mocking them as bare
+    # MagicMocks in sys.modules is process-global, so even tests outside the
+    # tests/ tree (the e2e lives in scripts/) inherit the shadow and
+    # Kokoro.create / edge_tts.Communicate become MagicMocks -> real synthesis
+    # never happens. Edge-TTS import is cheap; kokoro_onnx import is cheap
+    # (the ONNX model loads lazily inside initialize()), so leaving the real
+    # modules in place does not slow collection. Tests that must avoid the real
+    # engines mock specific methods (e.g. patch KokoroBackend.warmup) instead.
     "piper_tts",
     "openai",
     "anthropic",
@@ -216,8 +406,39 @@ for mod_name in [
     "click.types",
     "click._compat",
 ]:
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = MagicMock()
+    # Modules that are genuinely installed must NOT be shadowed by a bare
+    # MagicMock: doing so breaks code that accesses attributes on the real
+    # module (e.g. ``requests.exceptions.HTTPError``) and pollutes
+    # globally-imported modules such as ``base_worker`` across the whole
+    # session. These are hard dependencies that are always present, so we
+    # leave the real modules in place. Everything else keeps the original
+    # behaviour of being mocked only if it has not yet been imported (which
+    # covers genuinely-optional dependencies). "typer" pulls in "click" at
+    # runtime, so "typer._click" and friends are also skipped here.
+    # ``requests`` is a hard dependency that is always installed, so it must
+    # never be shadowed by a bare MagicMock (otherwise ``requests.exceptions
+    # .HTTPError`` is not a real exception and download-retry tests break).
+    # ``transformers`` is intentionally NOT whitelisted: it is an optional
+    # dependency and mocking it as a bare MagicMock actually *helps* (its real
+    # import triggers a torch-availability check that crashes against the
+    # mocked ``torch`` module). Everything else keeps the original behaviour
+    # of being mocked only if it has not yet been imported.
+    _INSTALLED_OK = {"requests", "jinja2", "deepeval"}
+    if mod_name not in sys.modules and mod_name not in _INSTALLED_OK:
+        _mock_mod = MagicMock()
+        # Give the fake module a minimal __spec__ so that submodule imports
+        # such as ``from torch import nn`` (and importlib internals) don't
+        # raise "ValueError: <mod>.__spec__ is not set" against the mocked
+        # module. Without this, any code that triggers importlib's spec check
+        # on the mocked module crashes the whole import.
+        _mock_mod.__spec__ = importlib.util.spec_from_loader(mod_name, None)
+        sys.modules[mod_name] = _mock_mod
+        CANONICAL_MOCKED_MODULES[mod_name] = _mock_mod
+
+# Ensure the mocked torch (which the loop above may have just created) has a
+# valid __spec__ and deterministic CUDA/MPS probes so hardware detection and
+# JSON-serialized reports don't leak MagicMock objects.
+_install_canonical_torch_mock()
 
 # Set celery states constants
 sys.modules["celery.states"].PENDING = "PENDING"
@@ -226,14 +447,17 @@ sys.modules["celery.states"].RETRY = "RETRY"
 sys.modules["celery.states"].STARTED = "STARTED"
 sys.modules["celery.states"].SUCCESS = "SUCCESS"
 
+
 # Create a proper Celery mock that returns a task with string id
 class MockAsyncResult:
     def __init__(self, task_id="test-task-id-12345"):
         self.id = task_id
 
+
 # Provide a fake Task class that can be subclassed
 class FakeCeleryTask:
     """Fake Task class that mimics celery.Task for testing."""
+
     def __init__(self):
         self.request = MagicMock()
         self.request.id = "test-task-id-12345"
@@ -244,32 +468,36 @@ class FakeCeleryTask:
         self.retry_jitter = True
         self.acks_late = True
         self.reject_on_worker_lost = True
-    
+
     def retry(self, exc=None, *args, **kwargs):
         """Mock retry method."""
         raise exc
-    
+
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Mock on_failure callback."""
         pass
-    
+
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         """Mock on_retry callback."""
         pass
-    
+
     def on_success(self, retval, task_id, args, kwargs):
         """Mock on_success callback."""
         pass
 
+
 class MockCeleryTask:
     def __init__(self, func):
         self.func = func
+
     def delay(self, *args, **kwargs):
         return MagicMock(id="test-task-id-12345")
+
     def __call__(self, *args, **kwargs):
         # In mock mode, just call the underlying function with MOCK_LLM=true
         os.environ["MOCK_LLM"] = "true"
         return self.func(*args, **kwargs)
+
 
 mock_celery_app = MagicMock()
 mock_celery_app.AsyncResult.return_value = MockAsyncResult()
@@ -280,9 +508,13 @@ sys.modules["celery"] = mock_celery_app
 sys.modules["celery"].Celery = MagicMock(return_value=mock_celery_app)
 sys.modules["celery"].current_app = mock_celery_app
 sys.modules["celery"].Task = FakeCeleryTask  # Use proper fake Task class instead of MagicMock
+# The celery mock is finalised here (replacing the bare MagicMock the loop
+# above installed), so record its canonical identity for sys.modules restore.
+CANONICAL_MOCKED_MODULES["celery"] = mock_celery_app
 
 # Also patch celery_app module to use the fake Task
 import types
+
 mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
 mock_celery_module.celery_app = mock_celery_app
 mock_celery_module.celery_app.Task = FakeCeleryTask
@@ -290,6 +522,7 @@ sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
 
 # Also mock the celery_app module used by the codebase
 import types
+
 mock_celery_module = types.ModuleType("src.audiobook_studio.celery_app")
 mock_celery_module.celery_app = mock_celery_app
 sys.modules["src.audiobook_studio.celery_app"] = mock_celery_module
@@ -361,6 +594,7 @@ class MockLLMProvidersConfig:
                 max_daily_cost_usd=10.0,
             )
         ]
+
         # Provide real PromptCompressionConfig values instead of MagicMock
         class MockPromptCompression:
             max_input_tokens = 4000
@@ -415,15 +649,16 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
     mock_config_loader = sys.modules[module_name]
     # Create an iterable StageName enum mock for router.stage_configs iteration
     from enum import Enum
+
     class MockStageName(str, Enum):
-        EXTRACT = 'extract'
-        ANALYZE = 'analyze'
-        ANNOTATE = 'annotate'
-        ANNOTATE_PARAGRAPH = 'annotate_paragraph'
-        EDIT = 'edit'
-        ROUTE = 'route'
-        JUDGE = 'judge'
-        TRANSLATE = 'translate'
+        EXTRACT = "extract"
+        ANALYZE = "analyze"
+        ANNOTATE = "annotate"
+        ANNOTATE_PARAGRAPH = "annotate_paragraph"
+        EDIT = "edit"
+        ROUTE = "route"
+        JUDGE = "judge"
+        TRANSLATE = "translate"
 
     mock_config_loader.LLMProvidersConfig = MockLLMProvidersConfig
     mock_config_loader.ProviderType = MagicMock()
@@ -440,10 +675,9 @@ for module_name in ["src.audiobook_studio.llm.config_loader", "audiobook_studio.
 
 
 def _mock_sf_write(path, data, sr):
-    from pathlib import Path
 
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_bytes(b"\x00" * len(data))
+    Path(path).parent.mkdir(parents=True, exist_ok=True)  # noqa: F821
+    Path(path).write_bytes(b"\x00" * len(data))  # noqa: F821
 
 
 mock_sf = MagicMock()
@@ -456,7 +690,6 @@ sys.modules["soundfile"] = mock_sf
 
 import logging
 import warnings
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -511,15 +744,13 @@ def reset_singletons():
 def mock_voice_mapping(tmp_path):
     """Create a temporary voice_mapping.yaml for tests."""
     voice_mapping = tmp_path / "voice_mapping.yaml"
-    voice_mapping.write_text(
-        """
+    voice_mapping.write_text("""
 voice_mapping:
   test_voice:
     voice_id: "test_voice_id"
     description: "Test voice"
     language: "zh-CN"
-"""
-    )
+""")
     with patch("pathlib.Path.exists", return_value=True):
         with patch("pathlib.Path.read_text", return_value=voice_mapping.read_text()):
             yield voice_mapping
@@ -569,6 +800,60 @@ def disable_langfuse(monkeypatch):
 @pytest.fixture(scope="session", autouse=True)
 def ensure_tmp_repo():
     os.makedirs("/tmp/repo", exist_ok=True)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def isolate_torch_mock():
+    """Reset the mocked ``torch`` after every test to prevent global pollution.
+
+    Several test modules assign ``sys.modules['torch'] = MagicMock()`` (without a
+    valid ``__spec__``), which leaks into later tests and breaks any ``import
+    torch`` that triggers importlib's spec check, or stores a ``MagicMock`` in a
+    JSON-serialized report. Restoring the canonical spec-equipped mock after each
+    test guarantees no test can corrupt the shared ``torch`` state.
+    """
+    yield
+    _install_canonical_torch_mock()
+
+
+@pytest.fixture(autouse=True, scope="function")
+def reset_redis_url():
+    """Neutralize a known global pollutant from the integration tests.
+
+    ``tests/integration/test_stress_celery_redis.py`` assigns
+    ``REDIS_URL = ".../1"`` at module-import time and never restores it, which
+    leaks into unit tests that expect the default ``/0``. Drop it after each test
+    unless a real test deliberately set ``TEST_REDIS_URL``. This is a targeted
+    fix for that one pollutant (not a blanket env reset, which broke other tests).
+    """
+    yield
+    if os.environ.get("REDIS_URL") == "redis://localhost:6379/1" and "TEST_REDIS_URL" not in os.environ:
+        os.environ.pop("REDIS_URL", None)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def ensure_di_defaults():
+    """Keep global singletons in a clean state across tests.
+
+    Several pre-existing test-isolation failures are caused by singleton state
+    (DI container, LLM router, settings, semantic/regression caches) leaking
+    from one test into the next. Reset the canonical ones after every test so
+    each test starts from a fresh default. Wrapped in try/except so a failure
+    here can never mask a real test failure.
+    """
+    yield
+    for _reset in (
+        "src.audiobook_studio.di:reset_app_container",
+        "src.audiobook_studio.llm.router:reset_llm_router",
+        "src.audiobook_studio.config.settings_loader:reset_settings",
+        "src.audiobook_studio.llm.semantic_cache:reset_semantic_cache",
+        "src.audiobook_studio.feedback.regression_suite:reset_regression_suite",
+    ):
+        try:
+            _mod, _fn = _reset.split(":")
+            getattr(__import__(_mod, fromlist=[_fn]), _fn)()
+        except Exception:
+            pass
 
 
 # Ignore SAWarning about foreign key cycles in SQLite drop_all

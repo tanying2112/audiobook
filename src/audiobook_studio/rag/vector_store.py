@@ -7,23 +7,27 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import chromadb
+import numpy as np
+from chromadb.api import ClientAPI
+from chromadb.api.models.Collection import Collection as ChromaCollection
+from chromadb.api.types import EmbeddingFunction, Embeddings, Metadatas, WhereDocument
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
 from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 from .models import (
-    RAGDocument,
-    DocumentType,
     CharacterProfile,
-    WorldBuildingDoc,
-    StyleGuide,
+    DocumentType,
     PlotSummary,
     ProperNouns,
+    RAGDocument,
+    StyleGuide,
+    WorldBuildingDoc,
     create_character_profile_doc,
-    create_world_building_doc,
-    create_style_guide_doc,
     create_plot_summary_doc,
     create_proper_nouns_doc,
+    create_style_guide_doc,
+    create_world_building_doc,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 class ChromaVectorStore:
     """Wrapper around ChromaDB for RAG document storage and retrieval."""
-    
+
     def __init__(
         self,
         host: str = "localhost",
@@ -45,12 +49,12 @@ class ChromaVectorStore:
         self.collection_prefix = collection_prefix
         self.embedding_model = embedding_model
         self.persist_directory = persist_directory
-        
-        self._client: Optional[chromadb.Client] = None
-        self._collections: Dict[DocumentType, chromadb.Collection] = {}
-        self._embedding_fn = None
-        
-    def _get_client(self) -> chromadb.Client:
+
+        self._client: Optional[ClientAPI] = None
+        self._collections: Dict[tuple[DocumentType, int], ChromaCollection] = {}
+        self._embedding_fn: Optional[EmbeddingFunction[Any]] = None
+
+    def _get_client(self) -> ClientAPI:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.persist_directory:
@@ -60,7 +64,7 @@ class ChromaVectorStore:
                     settings=ChromaSettings(
                         anonymized_telemetry=False,
                         allow_reset=True,
-                    )
+                    ),
                 )
             else:
                 # HTTP client for remote/server deployment
@@ -70,8 +74,8 @@ class ChromaVectorStore:
                     settings=ChromaSettings(anonymized_telemetry=False),
                 )
         return self._client
-    
-    def _get_embedding_function(self):
+
+    def _get_embedding_function(self) -> EmbeddingFunction[Any]:
         """Get or create embedding function."""
         if self._embedding_fn is None:
             # Use ONNX MiniLM-L6-v2 for CPU-only inference (no PyTorch required)
@@ -82,12 +86,12 @@ class ChromaVectorStore:
                 # Fallback to default embedding function
                 self._embedding_fn = embedding_functions.DefaultEmbeddingFunction()
         return self._embedding_fn
-    
+
     def _get_collection_name(self, doc_type: DocumentType, project_id: int) -> str:
         """Generate collection name for a document type and project."""
         return f"{self.collection_prefix}_{doc_type.value}_{project_id}"
-    
-    def _get_or_create_collection(self, doc_type: DocumentType, project_id: int) -> chromadb.Collection:
+
+    def _get_or_create_collection(self, doc_type: DocumentType, project_id: int) -> ChromaCollection:
         """Get or create a collection for a document type."""
         key = (doc_type, project_id)
         if key not in self._collections:
@@ -106,62 +110,69 @@ class ChromaVectorStore:
                 )
             self._collections[key] = collection
         return self._collections[key]
-    
+
     def add_document(self, doc: RAGDocument) -> str:
         """Add a single document to the vector store."""
         collection = self._get_or_create_collection(doc.doc_type, doc.project_id)
-        
+
         # Generate ID if not provided
         doc_id = doc.id or str(uuid.uuid4())
-        
+
+        # Convert embedding to proper type if present
+        embedding_list: Embeddings | None = None
+        if doc.embedding is not None:
+            embedding_list = [np.array(doc.embedding, dtype=np.float32)]
+
         collection.add(
             ids=[doc_id],
             documents=[doc.content],
             metadatas=[doc.metadata],
-            embeddings=[doc.embedding] if doc.embedding else None,
+            embeddings=embedding_list,
         )
         logger.debug(f"Added document {doc_id} to {doc.doc_type.value} collection")
         return doc_id
-    
+
     def add_documents(self, docs: List[RAGDocument]) -> List[str]:
         """Add multiple documents to the vector store."""
         if not docs:
             return []
-        
+
         # Group by collection
-        by_collection: Dict[tuple, List[RAGDocument]] = {}
+        by_collection: Dict[tuple[DocumentType, int], List[RAGDocument]] = {}
         for doc in docs:
             key = (doc.doc_type, doc.project_id)
             by_collection.setdefault(key, []).append(doc)
-        
+
         all_ids = []
         for (doc_type, project_id), doc_list in by_collection.items():
             collection = self._get_or_create_collection(doc_type, project_id)
-            
+
             ids = []
             documents = []
-            metadatas = []
-            embeddings = []
-            
+            metadatas: Metadatas = []
+            embeddings_list: List[np.ndarray[Any, Any]] = []
+
             for doc in doc_list:
                 doc_id = doc.id or str(uuid.uuid4())
                 ids.append(doc_id)
                 documents.append(doc.content)
                 metadatas.append(doc.metadata)
-                if doc.embedding:
-                    embeddings.append(doc.embedding)
-            
+                if doc.embedding is not None:
+                    embeddings_list.append(np.array(doc.embedding, dtype=np.float32))
+
+            embedding_arg: Embeddings | None = embeddings_list if embeddings_list else None
+
             collection.add(
                 ids=ids,
                 documents=documents,
                 metadatas=metadatas,
-                embeddings=embeddings if embeddings else None,
+                embeddings=embedding_arg,
             )
             all_ids.extend(ids)
             logger.debug(f"Added {len(doc_list)} documents to {doc_type.value} collection")
-        
+
         return all_ids
-    
+
     def query(
         self,
         query_text: str,
@@ -169,11 +180,11 @@ class ChromaVectorStore:
         project_id: int,
         n_results: int = 5,
         where: Optional[Dict[str, Any]] = None,
-        where_document: Optional[Dict[str, Any]] = None,
+        where_document: Optional[WhereDocument] = None,
     ) -> List[RAGDocument]:
         """Query documents by semantic similarity."""
         collection = self._get_or_create_collection(doc_type, project_id)
-        
+
         results = collection.query(
             query_texts=[query_text],
             n_results=n_results,
@@ -181,21 +192,24 @@ class ChromaVectorStore:
             where_document=where_document,
             include=["documents", "metadatas", "distances"],
         )
-        
+
         documents = []
         if results["ids"] and results["ids"][0]:
+            docs_batch = results["documents"] or [[]]
+            metas_batch = results["metadatas"] or [[]]
             for i, doc_id in enumerate(results["ids"][0]):
                 doc = RAGDocument(
                     id=doc_id,
                     project_id=project_id,
                     doc_type=doc_type,
-                    content=results["documents"][0][i],
-                    metadata=results["metadatas"][0][i] or {},
+                    content=docs_batch[0][i],
+                    metadata=dict(metas_batch[0][i] or {}),
+                    embedding=None,
                 )
                 documents.append(doc)
-        
+
         return documents
-    
+
     def query_by_ids(
         self,
         ids: List[str],
@@ -204,41 +218,49 @@ class ChromaVectorStore:
     ) -> List[RAGDocument]:
         """Retrieve documents by their IDs."""
         collection = self._get_or_create_collection(doc_type, project_id)
-        
+
         results = collection.get(
             ids=ids,
             include=["documents", "metadatas"],
         )
-        
+
         documents = []
         if results["ids"]:
+            docs_list = results["documents"] or []
+            metas_list = results["metadatas"] or []
             for i, doc_id in enumerate(results["ids"]):
                 doc = RAGDocument(
                     id=doc_id,
                     project_id=project_id,
                     doc_type=doc_type,
-                    content=results["documents"][i],
-                    metadata=results["metadatas"][i] or {},
+                    content=docs_list[i],
+                    metadata=dict(metas_list[i] or {}),
+                    embedding=None,
                 )
                 documents.append(doc)
-        
+
         return documents
-    
+
     def update_document(self, doc: RAGDocument) -> None:
         """Update an existing document."""
         collection = self._get_or_create_collection(doc.doc_type, doc.project_id)
+
+        embedding_list: Embeddings | None = None
+        if doc.embedding is not None:
+            embedding_list = [np.array(doc.embedding, dtype=np.float32)]
+
         collection.update(
             ids=[doc.id],
             documents=[doc.content],
             metadatas=[doc.metadata],
-            embeddings=[doc.embedding] if doc.embedding else None,
+            embeddings=embedding_list,
         )
-    
+
     def delete_document(self, doc_id: str, doc_type: DocumentType, project_id: int) -> None:
         """Delete a document by ID."""
         collection = self._get_or_create_collection(doc_type, project_id)
         collection.delete(ids=[doc_id])
-    
+
     def delete_project(self, project_id: int) -> None:
         """Delete all collections for a project."""
         client = self._get_client()
@@ -249,7 +271,7 @@ class ChromaVectorStore:
                 self._collections.pop((doc_type, project_id), None)
             except Exception:
                 pass  # Collection might not exist
-    
+
     def get_collection_stats(self, doc_type: DocumentType, project_id: int) -> Dict[str, Any]:
         """Get collection statistics."""
         collection = self._get_or_create_collection(doc_type, project_id)
@@ -260,34 +282,34 @@ class ChromaVectorStore:
             "doc_type": doc_type.value,
             "project_id": project_id,
         }
-    
+
     # --- High-level methods for domain models ---
-    
+
     def add_character_profile(self, profile: CharacterProfile) -> str:
         """Add a character profile to the vector store."""
         doc = create_character_profile_doc(profile)
         return self.add_document(doc)
-    
+
     def add_world_building_doc(self, doc: WorldBuildingDoc) -> str:
         """Add a world-building document to the vector store."""
         rag_doc = create_world_building_doc(doc)
         return self.add_document(rag_doc)
-    
+
     def add_style_guide(self, guide: StyleGuide) -> str:
         """Add a style guide to the vector store."""
         rag_doc = create_style_guide_doc(guide)
         return self.add_document(rag_doc)
-    
+
     def add_plot_summary(self, summary: PlotSummary) -> str:
         """Add a plot summary to the vector store."""
         rag_doc = create_plot_summary_doc(summary)
         return self.add_document(rag_doc)
-    
+
     def add_proper_nouns(self, noun: ProperNouns) -> str:
         """Add proper nouns to the vector store."""
         rag_doc = create_proper_nouns_doc(noun)
         return self.add_document(rag_doc)
-    
+
     def search_characters(
         self,
         query: str,
@@ -296,7 +318,7 @@ class ChromaVectorStore:
     ) -> List[RAGDocument]:
         """Search character profiles."""
         return self.query(query, DocumentType.CHARACTER_PROFILE, project_id, n_results)
-    
+
     def search_world_building(
         self,
         query: str,
@@ -307,7 +329,7 @@ class ChromaVectorStore:
         """Search world-building documents."""
         where = {"doc_type": doc_type_filter} if doc_type_filter else None
         return self.query(query, DocumentType.WORLD_BUILDING, project_id, n_results, where=where)
-    
+
     def search_style_guides(
         self,
         query: str,
@@ -316,7 +338,7 @@ class ChromaVectorStore:
     ) -> List[RAGDocument]:
         """Search style guides."""
         return self.query(query, DocumentType.STYLE_GUIDE, project_id, n_results)
-    
+
     def search_plot_summaries(
         self,
         query: str,
@@ -325,7 +347,7 @@ class ChromaVectorStore:
     ) -> List[RAGDocument]:
         """Search plot summaries."""
         return self.query(query, DocumentType.PLOT_SUMMARY, project_id, n_results)
-    
+
     def search_proper_nouns(
         self,
         query: str,
@@ -336,20 +358,24 @@ class ChromaVectorStore:
         """Search proper nouns."""
         where = {"category": category} if category else None
         return self.query(query, DocumentType.PROPER_NOUNS, project_id, n_results, where=where)
-    
+
     def get_all_characters(self, project_id: int) -> List[RAGDocument]:
         """Get all character profiles for a project."""
         collection = self._get_or_create_collection(DocumentType.CHARACTER_PROFILE, project_id)
         results = collection.get(include=["documents", "metadatas"])
+        ids_list = results["ids"] or []
+        docs_list = results["documents"] or []
+        metas_list = results["metadatas"] or []
         return [
             RAGDocument(
-                id=results["ids"][i],
+                id=ids_list[i],
                 project_id=project_id,
                 doc_type=DocumentType.CHARACTER_PROFILE,
-                content=results["documents"][i],
-                metadata=results["metadatas"][i] or {},
+                content=docs_list[i],
+                metadata=dict(metas_list[i] or {}),
+                embedding=None,
             )
-            for i in range(len(results["ids"]))
+            for i in range(len(ids_list))
         ]
 
 
@@ -377,7 +403,7 @@ def get_vector_store(
     return _vector_store
 
 
-def init_vector_store_from_settings(settings) -> ChromaVectorStore:
+def init_vector_store_from_settings(settings: Any) -> ChromaVectorStore:
     """Initialize vector store from application settings."""
     global _vector_store
     _vector_store = ChromaVectorStore(

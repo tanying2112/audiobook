@@ -1,7 +1,6 @@
 """Tests for ffmpeg_probe media analysis utilities."""
 
 import asyncio
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -25,7 +24,7 @@ from src.audiobook_studio.utils.ffmpeg_probe import (
 
 def run_async(coro):
     """Helper to run async coroutine in tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class TestAsyncRunners:
@@ -255,9 +254,7 @@ class TestReadPcmSamples:
         """Test PCM sample extraction."""
         import struct
 
-        import numpy as np
-
-        # Create fake float32 data: 4 samples (16 bytes)
+        # Create fake float32 data: 4 samples (16 bytes)  # noqa: E303
         fake_bytes = struct.pack("4f", 0.1, -0.2, 0.3, -0.4)
         mock_run.return_value = MagicMock(returncode=0, stdout=fake_bytes)
 

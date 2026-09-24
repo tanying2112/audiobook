@@ -5,7 +5,6 @@ metrics work correctly on Python 3.14 without pydub installed.
 """
 
 import asyncio
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -304,7 +303,6 @@ class TestNoPydubInCriticalPath:
 
     def test_ffmpeg_probe_does_not_import_pydub(self):
         """ffmpeg_probe module should not import pydub."""
-        import importlib
 
         import src.audiobook_studio.utils.ffmpeg_probe as mod
 

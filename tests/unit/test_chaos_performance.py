@@ -2,14 +2,13 @@
 
 import threading
 import time
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-from src.audiobook_studio.llm.health_probe import HealthProbe, HealthStatus
+from src.audiobook_studio.llm.health_probe import HealthProbe
 from src.audiobook_studio.llm.key_pool import ApiKeyPool
-from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, ParagraphAnnotation, QualityCheckPipeline
 from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
 
 

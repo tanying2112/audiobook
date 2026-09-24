@@ -5,13 +5,11 @@ Audiobook Studio — 多语言翻译配音系统
 实现多语言翻译配音，保留角色/情绪映射并进行情感连续性检查。
 """
 
-import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -338,7 +336,7 @@ class MultilingualDubbingManager:
             issues.append(f"片段数量不匹配: 原始 {len(original_segments)} vs 翻译 {len(translated_segments)}")
             return False, issues
 
-        for i, (orig, trans) in enumerate(zip(original_segments, translated_segments)):
+        for i, (orig, trans) in enumerate(zip(original_segments, translated_segments, strict=False)):
             # 检查角色是否一致
             if orig.character != trans.character:
                 issues.append(f"片段 {i+1}: 角色不匹配 - 原始 '{orig.character}' vs 翻译 '{trans.character}'")

@@ -9,7 +9,7 @@ D3 — Audio-Ducking 混音模块
 import logging
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -131,7 +131,7 @@ def mix_with_ducking(
     speech_duration_s = speech_duration_ms / 1000.0
 
     # Detect segments if not provided
-    segments = ducking_segments or detect_speech_segments(speech_path, cfg.silence_threshold_db)
+    ducking_segments or detect_speech_segments(speech_path, cfg.silence_threshold_db)
 
     if not bgm_path:
         # No BGM — just apply post-processing (normalize + fade)
@@ -307,7 +307,7 @@ def build_sfx_segments_from_paragraphs(
     sfx_segments: List[SFXSegment] = []
 
     # Get SFX library path
-    effects_lib = Path(cfg.sfx_library_path or "assets/effects")
+    Path(cfg.sfx_library_path or "assets/effects")
 
     # Calculate cumulative duration for each paragraph
     cumulative_ms = 0
@@ -457,7 +457,6 @@ def mix_full_pipeline(
     cfg = config or MixConfig()
 
     # Step 1: Apply BGM with ducking (or just normalize if no BGM)
-    import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         temp_path = Path(tmp.name)

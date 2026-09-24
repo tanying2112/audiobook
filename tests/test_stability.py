@@ -1,17 +1,14 @@
 """Tests for CircuitBreaker, HealthProbe, ApiKeyPool, and enhanced Router."""
 
 import os
-import threading
 import time
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # Set MOCK_LLM environment variable for mock mode testing
 os.environ["MOCK_LLM"] = "true"
 
 from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-from src.audiobook_studio.llm.health_probe import HealthProbe, HealthStatus
+from src.audiobook_studio.llm.health_probe import HealthProbe
 from src.audiobook_studio.llm.key_pool import ApiKeyPool, KeyPoolManager
 
 

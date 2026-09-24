@@ -5,14 +5,14 @@ not just shallow mock-based assertions.
 """
 
 import asyncio
-import hashlib
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from src.audiobook_studio.di import get_app_container
 from src.audiobook_studio.tts import (
     EngineRegistry,
     KokoroBackend,
@@ -20,25 +20,20 @@ from src.audiobook_studio.tts import (
     TTSEngine,
     VoiceInfo,
     VoxCPM2Backend,
-    cleanup_all_engines,
-    create_kokoro_backend,
-    create_voxcpm2_backend,
-    get_engine,
-    get_engine_registry,
-    initialize_all_engines,
-    register_engine,
 )
 from src.audiobook_studio.tts.engine import (
-    TTSProsody,
     BaseTTSEngine,
-    rate_limiter,
-    tts_retry_policy,
+    EngineRegistry,
+    TTSProsody,
     TTSTaskPayload,
     TTSTaskResult,
-    TTSTaskStatus,
     TTSVoiceAnchor,
     probe_tts_engines,
+    rate_limiter,
+    tts_retry_policy,
 )
+from src.audiobook_studio.tts.kokoro_backend import create_kokoro_backend
+from src.audiobook_studio.tts.voxcpm2_backend import create_voxcpm2_backend
 
 
 class TestVoiceInfo:
@@ -265,35 +260,32 @@ class TestGlobalRegistry:
 
     @pytest.mark.asyncio
     async def test_get_engine_registry(self):
-        """Test getting registry from DI container."""
-        registry = get_engine_registry()
+        registry = get_app_container().get(EngineRegistry)
         assert isinstance(registry, EngineRegistry)
 
     @pytest.mark.asyncio
     async def test_register_engine_global(self):
-        """Test registering engine via DI container shim."""
         mock_engine = Mock(spec=TTSEngine)
         mock_engine.engine_name = "global_test"
 
-        # Use the synchronous register_engine function (it doesn't await)
-        register_engine(mock_engine)
+        registry = get_app_container().get(EngineRegistry)
+        await registry.register(mock_engine)
 
-        retrieved = get_engine("global_test")
+        retrieved = registry.get("global_test")
         assert retrieved == mock_engine
 
     @pytest.mark.asyncio
     async def test_get_engine_global(self):
-        """Test getting engine from DI container shim."""
         mock_engine = Mock(spec=TTSEngine)
-        mock_engine.engine_name = "global_test2"
+        mock_engine.engine_name = "global_get"
+        registry = get_app_container().get(EngineRegistry)
+        await registry.register(mock_engine)
 
-        register_engine(mock_engine)
-
-        retrieved = get_engine("global_test2")
+        retrieved = registry.get("global_get")
         assert retrieved == mock_engine
 
         # Non-existent
-        assert get_engine("nonexistent") is None
+        assert registry.get("nonexistent") is None
 
 
 class TestKokoroBackend:
@@ -682,7 +674,7 @@ class TestRateLimiter:
 
         @rate_limiter(max_calls=5, period=1.0)
         async def limited_func():
-            call_times.append(asyncio.get_event_loop().time())
+            call_times.append(asyncio.get_running_loop().time())
             return "ok"
 
         for _ in range(5):
@@ -716,7 +708,7 @@ class TestEdgeCases:
         await backend.initialize()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "out.mp3"
+            Path(tmpdir) / "out.mp3"
             # Validation happens at payload creation time
             with pytest.raises(ValueError, match="text must be non-empty"):
                 TTSTaskPayload(
@@ -795,7 +787,9 @@ class TestProbeTtsEngines:
     def _fake_client(status_code: int = 200, error: BaseException | None = None) -> MagicMock:
         """Build an httpx.AsyncClient(context-manager) stand-in for the probe."""
         client = MagicMock()
-        client.get = AsyncMock(side_effect=error) if error else AsyncMock(return_value=SimpleNamespace(status_code=status_code))
+        client.get = (
+            AsyncMock(side_effect=error) if error else AsyncMock(return_value=SimpleNamespace(status_code=status_code))
+        )
         ctx = MagicMock()
         ctx.__aenter__.return_value = client
         ctx.__aexit__ = AsyncMock(return_value=False)
@@ -803,7 +797,6 @@ class TestProbeTtsEngines:
 
     @staticmethod
     def _patch_httpx(monkeypatch, status_code: int = 200, error: BaseException | None = None) -> None:
-        from unittest.mock import patch as _patch
 
         fake = TestProbeTtsEngines._fake_client(status_code, error)
         # probe_tts_engines does `import httpx; httpx.AsyncClient(...)` locally,
@@ -824,17 +817,28 @@ class TestProbeTtsEngines:
         assert set(result["engines"]) == {"kokoro", "voxcpm2", "edge", "piper"}
         assert set(result["details"]) == {"kokoro", "voxcpm2", "edge", "piper"}
 
-    def test_kokoro_model_present(self, monkeypatch, tmp_path):
-        """Kokoro reports healthy when the model file exists."""
+    def test_kokoro_warmup_healthy(self, monkeypatch, tmp_path):
+        """Kokoro reports healthy when warmup succeeds (<100ms)."""
         self._patch_httpx(monkeypatch, status_code=200)
-        model = tmp_path / "kokoro.pth"
-        model.write_bytes(b"model")
+        # Create dummy model files that warmup() checks for
+        model_dir = tmp_path / "models"
+        model_dir.mkdir()
+        (model_dir / "kokoro-v1.0.onnx").write_bytes(b"fake")
+        (model_dir / "voices-v1.0.bin").write_bytes(b"fake")
         monkeypatch.delenv("VOXCPM2_ENDPOINT", raising=False)
-        monkeypatch.setenv("KOKORO_MODEL_PATH", str(model))
+        monkeypatch.setenv("KOKORO_MODEL_PATH", str(model_dir / "kokoro-v1.0.onnx"))
+        # Mock KokoroBackend.warmup to return True (simulating successful warmup < 100ms)
+        import src.audiobook_studio.tts.kokoro_backend as kokoro_module
+
+        async def mock_warmup(self):
+            return True
+
+        monkeypatch.setattr(kokoro_module.KokoroBackend, "warmup", mock_warmup)
 
         result = asyncio.run(probe_tts_engines(timeout=1.0))
         assert result["engines"]["kokoro"] is True
-        assert result["details"]["kokoro"]["detail"]["model_present"] is True
+        assert result["details"]["kokoro"]["detail"]["source"] == "temporary_engine"
+        assert result["details"]["kokoro"]["detail"]["warmed_up"] is True
 
     def test_voxcpm2_reachable(self, monkeypatch):
         """VoxCPM2 reports healthy when /health returns < 500."""

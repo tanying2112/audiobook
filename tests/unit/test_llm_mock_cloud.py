@@ -14,12 +14,11 @@ Tests:
 """
 
 import os
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig
 from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
     BookMeta,
@@ -842,11 +841,18 @@ class TestRouterCallCircuitBreaker:
         """When provider fails, circuit breaker records the failure."""
         from src.audiobook_studio.di import reset_app_container
 
-        router, provider = self._make_router()
-
+        # Configure the mocked client BEFORE constructing the router so that
+        # any client creation (eager during __init__ or lazy at call time)
+        # resolves to the failing client. This keeps the test hermetic against
+        # global-state pollution from other tests in the suite.
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
         mock_client.call.side_effect = Exception("API Error")
+
+        router, provider = self._make_router()
+        # Force re-resolution of the client at call time (defends against a
+        # stale client cached by prior global state).
+        router.clients.clear()
 
         # Circuit breaker keys use provider.name which is a MagicMock
         # Find the CB by iterating
@@ -874,11 +880,14 @@ class TestRouterCallCircuitBreaker:
         """When provider fails, quota registry records the failure."""
         from src.audiobook_studio.di import reset_app_container
 
-        router, provider = self._make_router()
-
+        # Configure the mocked client BEFORE constructing the router (see
+        # test_provider_failure_records_circuit_breaker for rationale).
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
         mock_client.call.side_effect = Exception("API Error")
+
+        router, provider = self._make_router()
+        router.clients.clear()
 
         with patch.object(router.quota_registry, "record_request") as mock_record:
             messages = [{"role": "user", "content": "test"}]

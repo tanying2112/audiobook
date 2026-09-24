@@ -30,7 +30,7 @@ from src.audiobook_studio.audio_quality import (
 # ── 辅助: 同步驱动 async ─────────────────────────────────────────────────────
 def _run(coro):
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
     import concurrent.futures
@@ -150,14 +150,12 @@ class TestP213ProfileLock:
     def test_profile_lock_locks_voice_id_when_anchor_exists(self):
         """角色本章已有锚 → _make_routing_decision 锁 voice_id = anchor.voice_id."""
         from src.audiobook_studio.pipeline.synthesize import SynthesizePipeline
+        from src.audiobook_studio.pipeline.voice_anchor import VoiceAnchorRecord
         from src.audiobook_studio.schemas import (
+            CharacterVoiceBinding,
             ParagraphAnnotation,
             TtsRoutingInput,
-            CharacterVoiceBinding,
-            EmotionSnapshot,
-            BookMeta,
         )
-        from src.audiobook_studio.pipeline.voice_anchor import VoiceAnchorRecord
 
         annotation = ParagraphAnnotation(
             paragraph_index=1,

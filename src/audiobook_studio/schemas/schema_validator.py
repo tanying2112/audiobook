@@ -7,19 +7,17 @@ Provides:
 - Sync validation for CI/CD
 """
 
-import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import DeclarativeBase
 
 if TYPE_CHECKING:
-    from ..models import Chapter, Paragraph, Project
-    from ..schemas import Project as ProjectSchema
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -231,8 +229,6 @@ class SchemaValidator:
             # Normalize types for comparison
             # If ORM field is nullable, treat it as Optional for comparison
             # If Schema field is Optional and ORM is nullable, they match if base types match
-            orm_type_normalized = f"Optional[{orm_type}]" if orm_nullable else orm_type
-            schema_type_normalized = schema_type  # Already includes Optional in type string
 
             # Direct type comparison
             types_match = orm_type == schema_type
@@ -353,7 +349,7 @@ def sync_schema_validator():
     validator = SchemaValidator()
 
     # Import models and schemas for validation (runtime imports)
-    from ..models import Chapter, Paragraph, Project
+    from ..models import Project
     from ..schemas import Project as ProjectSchema
 
     pairs = [

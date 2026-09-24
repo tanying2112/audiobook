@@ -8,7 +8,6 @@ Audiobook Studio — 本地声音克隆系统
 import hashlib
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -46,16 +45,24 @@ class VoiceSample:
 
 @dataclass
 class VoicePrint:
-    """声音指纹（声纹）"""
+    """声音指纹（声纹）占位对象 —— *不是* 真实生物特征声纹.
+
+    ⚠️ 诚实声明：本结构用于记录模拟/占位模式下的克隆结果。其中的 ``embedding``
+    来自 ``_extract_real_embedding`` 的谱质心占位特征，``voice_hash`` 来自
+    ``_calculate_audio_hash`` 的粗粒度统计哈希，二者均**不可**作为说话人身份或
+    声纹比对的依据。``feature_method`` 显式标注所用方法；仅当其为占位方法时本对象
+    才是占位结果，真实克隆模式下应由 Kokoro-ONNX 提供真正的 embedding。
+    """
 
     speaker_id: str
     voice_hash: str
-    embedding: List[float]  # 声音特征向量
+    embedding: List[float]  # 占位声音特征向量（非真实声纹）
     quality: AudioQuality
     sample_count: int
     avg_snr: float
     created_at: str
     updated_at: str
+    feature_method: str = "spectral_centroid_placeholder"  # 诚实标注：占位特征方法
 
 
 @dataclass
@@ -123,14 +130,21 @@ class VoiceCloningManager:
             logger.warning(f"⚠️ 保存声音指纹失败: {e}")
 
     def _extract_real_embedding(self, sample: VoiceSample, target_dim: int = 256) -> List[float]:
-        """从音频样本提取真实的声音特征向量.
+        """从音频样本提取 *占位* 声音特征向量（preset placeholder，非真实声纹）.
+
+        ⚠️ 诚实声明：本方法（尽管名为 ``_extract_real_embedding``）仅基于频谱质心 /
+        过零率 / 频谱带宽等粗粒度声学统计量构造一个 ``target_dim`` 维向量，**不是**
+        说话人声纹 / 生物特征 embedding，也**不是** Kokoro 原生的 voice embedding。
+        真实克隆链路（模型就绪时）由 Kokoro-ONNX 自身生成 embedding，不会使用本向量。
+        本向量仅用于模拟/占位模式下让调用方拿到可复现的 deterministic 特征，便于灰度
+        与回放测试，绝不能用于声纹比对或身份认证。
 
         Args:
             sample: 声音样本
-            target_dim: 目标特征维度 (默认 256，匹配 Kokoro embedding)
+            target_dim: 目标特征维度 (默认 256，匹配 Kokoro embedding 维度)
 
         Returns:
-            特征向量列表
+            占位特征向量列表，对应 feature_method="spectral_centroid_placeholder"
         """
         try:
             # 延迟导入 soundfile (避免强制依赖)
@@ -153,7 +167,9 @@ class VoiceCloningManager:
 
             features = []
 
-            # 频谱质心 (Spectral Centroid) - 8 维
+            # 提取频谱特征 (简化版 MFCC 替代) —— 占位特征，非真实声纹
+            # 实际生产环境建议用 Kokoro 自身生成的 embedding；本处仅谱质心/ZCR/带宽占位
+            # 频谱质心 (Spectral Centroid) - 8 维（占位特征，非真实声纹）
             if len(audio_data) > 100:
                 segment_size = len(audio_data) // 8
                 for i in range(8):
@@ -194,8 +210,12 @@ class VoiceCloningManager:
             return [0.5] * target_dim
 
     def _calculate_audio_hash(self, audio_data: np.ndarray, sample_rate: int) -> str:
-        """计算音频数据的哈希值（用于声纹）"""
-        # 简化实现：使用音频数据的统计特征
+        """计算音频数据的 *占位* 哈希值（preset placeholder，非声纹）.
+
+        ⚠️ 诚实声明：仅用均值/标准差/分位数等统计特征做确定性哈希，用于模拟模式下
+        区分不同样本，不构成生物特征声纹。
+        """
+        # 简化实现：使用音频数据的统计特征（占位哈希，非真实声纹）
         # 实际实现 zou 使用 MFCC、声谱图等特征提取
         features = [
             np.mean(audio_data),
@@ -295,7 +315,7 @@ class VoiceCloningManager:
         try:
             # 在实际实现中，这里 zou 提取音频特征并平均
             # 为演示目的，我们使用哈希和简单统计
-            total_duration = sum(s.duration for s in valid_samples)
+            sum(s.duration for s in valid_samples)
             avg_snr = sum(s.snr_db for s in valid_samples) / len(valid_samples)
 
             # 生成声音哈希（基于所有样本的组合特征）
@@ -374,7 +394,7 @@ class VoiceCloningManager:
 
             # Map language to kokoro voice format
             # For voice cloning, we use the speaker embedding directly
-            voice_print = self.voice_prints[speaker_id]
+            self.voice_prints[speaker_id]
 
             # Determine kokoro voice based on language
             # Note: kokoro-onnx uses preset voices, for cloning we pass reference_audio
@@ -420,7 +440,7 @@ class VoiceCloningManager:
                     output_path,
                 )
             else:
-                return False, f"合成失败: 输出文件为空", None
+                return False, "合成失败: 输出文件为空", None
 
         except ImportError as e:
             logger.warning(f"onnxruntime/kokoro-onnx 未安装: {e}")
@@ -472,7 +492,7 @@ class VoiceCloningManager:
 
             # Check if we're already in an event loop
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We're in an async context, can't use asyncio.run()
                 # Run the async synthesis in a new thread or use run_coroutine_threadsafe
                 import concurrent.futures

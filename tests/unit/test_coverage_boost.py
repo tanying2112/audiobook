@@ -1,12 +1,9 @@
 """Batch coverage boost tests - simplified."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
-class TestPromotionGate:
+class TestPromotionGate:  # noqa: E303
     def test_promotion_gate_class(self):
         from src.audiobook_studio.feedback.promotion_gate import PromotionGate
 
@@ -60,7 +57,7 @@ class TestVersionManager:
         with patch("src.audiobook_studio.version_manager.SessionLocal"):
             try:
                 save_run(project_id=1, stages_config={})
-            except:
+            except Exception:  # noqa: B001,E722 - broad catch intended in coverage shim
                 pass
 
 

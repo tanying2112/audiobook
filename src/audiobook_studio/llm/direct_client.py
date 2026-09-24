@@ -5,12 +5,10 @@ Supports structured output via instructor-compatible parsing.
 """
 
 import asyncio
-import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
@@ -18,8 +16,10 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
+from .semantic_cache import cached_llm_lookup, cached_llm_store, get_semantic_cache
+
 # Import shared validation utilities
-from .utils import LLMParseError, validate_and_parse_llm_response
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -29,6 +29,7 @@ class DirectProviderType(str, Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
 
 
 # Model pricing (USD per 1M tokens) - for direct provider calls
@@ -44,6 +45,12 @@ DIRECT_MODEL_PRICING = {
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     # Free tier models (via OpenAI-compatible APIs)
     "gpt-4o-mini-free": {"input": 0.00, "output": 0.00},
+    # Ollama local models (free)
+    "qwen3.5:2b": {"input": 0.00, "output": 0.00},
+    "qwen2.5:14b": {"input": 0.00, "output": 0.00},
+    "qwen2.5:32b": {"input": 0.00, "output": 0.00},
+    "llama3.1:8b": {"input": 0.00, "output": 0.00},
+    "gemma4:e2b": {"input": 0.00, "output": 0.00},
 }
 
 
@@ -105,6 +112,8 @@ class DirectProviderClient:
             self._init_openai_client()
         elif self.config.provider == DirectProviderType.ANTHROPIC:
             self._init_anthropic_client()
+        elif self.config.provider == DirectProviderType.OLLAMA:
+            self._init_ollama_client()
         else:
             raise ValueError(f"Unsupported provider: {self.config.provider}")
 
@@ -156,6 +165,30 @@ class DirectProviderClient:
             logger.error(f"Failed to initialize Anthropic client: {e}")
             raise
 
+    def _init_ollama_client(self):
+        """Initialize Ollama client with instructor for structured output."""
+        try:
+            import instructor
+            from openai import AsyncOpenAI
+
+            # Create base OpenAI client pointed at Ollama's OpenAI-compatible API
+            base_client = AsyncOpenAI(
+                api_key="ollama",  # Ollama doesn't require real API key
+                base_url=self.config.api_base or "http://localhost:11434/v1",
+                timeout=self.config.timeout,
+                default_headers=self.config.extra_headers,
+            )
+
+            # Wrap with instructor for structured output parsing
+            self._client = instructor.from_openai(base_client, mode=instructor.Mode.JSON)
+            logger.info(f"Initialized Ollama direct client for model: {self.config.model}")
+        except ImportError as e:
+            logger.error(f"OpenAI SDK not installed: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to initialize Ollama client: {e}")
+            raise
+
     def _build_messages(self, prompt: Any) -> List[Dict[str, str]]:
         """Build messages list from prompt (string or messages list)."""
         if isinstance(prompt, list):
@@ -190,60 +223,107 @@ class DirectProviderClient:
         Returns:
             LLMCallResult with parsed output and metadata
         """
-        if self.config.mock_mode:
-            return self._mock_call(prompt, response_model)
+        # --- LLM semantic cache (no-op when disabled) ---
+        _sem_cache = get_semantic_cache()
+        if _sem_cache is not None:
+            _cached = cached_llm_lookup(
+                _sem_cache,
+                prompt=prompt,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=(temperature if temperature is not None else self.config.temperature),
+                max_tokens=(max_tokens if max_tokens is not None else self.config.max_tokens),
+            )
+            if _cached is not None:
+                return _cached
 
-        messages = self._build_messages(prompt)
         temp = temperature if temperature is not None else self.config.temperature
         max_tok = max_tokens if max_tokens is not None else self.config.max_tokens
+        result: Any = None
+        if self.config.mock_mode:
+            result = self._mock_call(prompt, response_model)
+        else:
+            messages = self._build_messages(prompt)
 
-        start = time.time()
-        try:
-            # Run async call in event loop
-            if self.config.provider == DirectProviderType.OPENAI:
-                result = asyncio.run(self._call_openai(messages, response_model, temp, max_tok, **kwargs))
-            elif self.config.provider == DirectProviderType.ANTHROPIC:
-                result = asyncio.run(self._call_anthropic(messages, response_model, temp, max_tok, **kwargs))
-            else:
-                raise ValueError(f"Unsupported provider: {self.config.provider}")
+            start = time.time()
+            try:
+                # Run async call in a fresh event loop.
+                # When the caller is already inside a running event loop (e.g. an
+                # async pipeline stage), asyncio.run() raises "cannot be called
+                # from a running event loop". Detect that case and run the async
+                # call in a dedicated worker thread so the sync `call()` remains
+                # safe from both sync and async contexts.
+                if self.config.provider == DirectProviderType.OPENAI:
+                    coro = self._call_openai(messages, response_model, temp, max_tok, **kwargs)
+                elif self.config.provider == DirectProviderType.ANTHROPIC:
+                    coro = self._call_anthropic(messages, response_model, temp, max_tok, **kwargs)
+                elif self.config.provider == DirectProviderType.OLLAMA:
+                    coro = self._call_openai(messages, response_model, temp, max_tok, **kwargs)
+                else:
+                    raise ValueError(f"Unsupported provider: {self.config.provider}")
 
-            latency_ms = int((time.time() - start) * 1000)
+                try:
+                    asyncio.get_running_loop()
+                    # Already inside a running loop — run the coroutine in a new thread.
+                    import concurrent.futures
 
-            # Extract token usage from result
-            tokens_in = getattr(result, "_raw_usage", {}).get("prompt_tokens", 0)
-            tokens_out = getattr(result, "_raw_usage", {}).get("completion_tokens", 0)
+                    def _run():
+                        return asyncio.run(coro)
 
-            # If instructor didn't populate usage, try to get from raw response
-            if tokens_in == 0 and tokens_out == 0:
-                raw_resp = getattr(result, "_raw_response", None)
-                if raw_resp:
-                    usage = getattr(raw_resp, "usage", None)
-                    if usage:
-                        tokens_in = getattr(usage, "prompt_tokens", 0)
-                        tokens_out = getattr(usage, "completion_tokens", 0)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        result = pool.submit(_run).result()
+                except RuntimeError:
+                    # No running loop — safe to use asyncio.run directly.
+                    result = asyncio.run(coro)
 
-            cost_usd = self._calculate_cost(tokens_in, tokens_out)
+                latency_ms = int((time.time() - start) * 1000)
 
-            logger.info(
-                f"Direct LLM call [{self.config.provider.value}] model={self.config.model} "
-                f"tokens={tokens_in}/{tokens_out} cost=${cost_usd:.6f} latency={latency_ms}ms"
-            )
+                # Extract token usage from result
+                tokens_in = getattr(result, "_raw_usage", {}).get("prompt_tokens", 0)
+                tokens_out = getattr(result, "_raw_usage", {}).get("completion_tokens", 0)
 
-            return LLMCallResult(
-                output=result,
+                # If instructor didn't populate usage, try to get from raw response
+                if tokens_in == 0 and tokens_out == 0:
+                    raw_resp = getattr(result, "_raw_response", None)
+                    if raw_resp:
+                        usage = getattr(raw_resp, "usage", None)
+                        if usage:
+                            tokens_in = getattr(usage, "prompt_tokens", 0)
+                            tokens_out = getattr(usage, "completion_tokens", 0)
+
+                cost_usd = self._calculate_cost(tokens_in, tokens_out)
+
+                logger.info(
+                    f"Direct LLM call [{self.config.provider.value}] model={self.config.model} "
+                    f"tokens={tokens_in}/{tokens_out} cost=${cost_usd:.6f} latency={latency_ms}ms"
+                )
+
+                result = LLMCallResult(
+                    output=result,
+                    model=self.config.model,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=cost_usd,
+                    latency_ms=latency_ms,
+                    schema_compliance=True,
+                    raw_response=getattr(result, "_raw_response", None),
+                )
+
+            except Exception as e:
+                latency_ms = int((time.time() - start) * 1000)
+                logger.error(f"Direct LLM call failed [{self.config.provider.value}]: {e} (latency={latency_ms}ms)")
+                raise
+        if _sem_cache is not None:
+            cached_llm_store(
+                _sem_cache,
+                prompt=prompt,
+                result=result,
+                response_model=response_model,
                 model=self.config.model,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_usd=cost_usd,
-                latency_ms=latency_ms,
-                schema_compliance=True,
-                raw_response=getattr(result, "_raw_response", None),
+                temperature=temp,
+                max_tokens=max_tok,
             )
-
-        except Exception as e:
-            latency_ms = int((time.time() - start) * 1000)
-            logger.error(f"Direct LLM call failed [{self.config.provider.value}]: {e} (latency={latency_ms}ms)")
-            raise
+        return result
 
     async def call_async(
         self,
@@ -315,8 +395,8 @@ class DirectProviderClient:
         **kwargs: Any,
     ) -> T:
         """Call OpenAI API with structured output."""
-        # Use instructor's parse method for structured output
-        result = await self._client.chat.completions.parse(
+        # instructor 1.x: use `create` + `response_model` (NOT the legacy `parse`).
+        result = await self._client.chat.completions.create(
             model=self.config.model,
             messages=messages,
             response_model=response_model,
@@ -344,7 +424,7 @@ class DirectProviderClient:
             else:
                 user_messages.append(msg)
 
-        # Use instructor's parse method for structured output
+        # Use instructor's create method for structured output (NOT legacy `parse`).
         result = await self._client.messages.create(
             model=self.config.model,
             system=system_msg if system_msg else None,
@@ -463,7 +543,7 @@ class DirectProviderClient:
             # Try to create default instance
             try:
                 mock_output = response_model()
-            except Exception:
+            except TypeError:
                 mock_output = None
 
         return LLMCallResult(

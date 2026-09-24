@@ -1,8 +1,5 @@
-import sys
-
 import pytest
 
-from audiobook_studio.llm.config_loader import ProviderType
 from audiobook_studio.llm.router import LLMRouter
 from audiobook_studio.schemas import (
     BookAnalysisOutput,
@@ -110,7 +107,6 @@ def test_fallback_chain(mock_router):
     """Verify fallback chain does not crash on API failure — and router state remains valid."""
     # In mock_mode, call_1 mock_mode, the mock result is returned directly without triggering fallback
     # Test with mock_mode=False to actually test the fallback chain
-    from audiobook_studio.llm.router import ProviderConfig, ProviderType, StageName
 
     # Test that call method works without exception in mock_mode
     result = mock_router.call("annotate", ParagraphAnnotation, [{"role": "user", "content": "test"}])

@@ -1,11 +1,8 @@
 """Enhanced tests for Batch Exporter module to improve coverage."""
 
 import subprocess
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.export.batch_exporter import (
     ExportFormat,
@@ -263,7 +260,7 @@ class TestExportChapter:
             # Mock Path behavior - return proper path for output
             def path_div(*args, **kwargs):
                 result = MagicMock()
-                result.__str__.return_value = f"/tmp/output/ch01_Test_Chapter.m4b"
+                result.__str__.return_value = "/tmp/output/ch01_Test_Chapter.m4b"
                 result.exists.return_value = True
                 return result
 

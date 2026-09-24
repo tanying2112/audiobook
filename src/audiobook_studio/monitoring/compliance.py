@@ -6,7 +6,6 @@ compliance across all pipeline stages. Supports HARNESS §3 evaluation layer.
 
 import json
 import logging
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime

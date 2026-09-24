@@ -1,7 +1,5 @@
 """Tests for log sanitization utilities — #15 engineering debt."""
 
-import pytest
-
 from src.audiobook_studio.utils.log_sanitizer import (
     ALLOWLIST_FIELDS,
     SENSITIVE_FIELD_PATTERNS,

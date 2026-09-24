@@ -7,15 +7,11 @@ Tests:
 - run_bootstrap_optimization entry point
 """
 
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.audiobook_studio.feedback.bootstrap_fewshot import (
-    BUDGET_LIMIT,
     BootstrapFewShotOptimizer,
     EarlyStoppingStopper,
     MultiObjectiveLoss,
@@ -263,7 +259,7 @@ class TestLoadTrainingExamples:
         """Training examples should have character and voice fields."""
         prompt, examples = load_training_examples("annotate_paragraph")
 
-        for text, target in examples:
+        for _text, target in examples:
             assert "character" in target
             assert "voice" in target
 

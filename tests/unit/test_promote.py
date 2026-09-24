@@ -2,8 +2,6 @@
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from scripts.promote import (
@@ -11,16 +9,10 @@ from scripts.promote import (
     CanaryMetrics,
     CanaryRelease,
     PromotionGate,
-    PromotionGateResult,
-    PromotionMetrics,
     VersionStore,
-    cmd_canary_complete,
     cmd_canary_record,
     cmd_canary_start,
     cmd_evaluate,
-    cmd_history,
-    cmd_rollback,
-    cmd_status,
 )
 
 

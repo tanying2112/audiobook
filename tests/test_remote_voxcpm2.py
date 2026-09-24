@@ -16,7 +16,6 @@ pytestmark = pytest.mark.e2e
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -147,7 +146,6 @@ class TestRemoteVoxCPM2Client:
         request = httpx_mock.get_requests()[0]
         assert request.method == "POST"
         assert str(request.url) == "https://test.example.com/generate"
-        import json
 
         payload = json.loads(request.content)
         assert payload["text"] == "测试文本"
@@ -173,7 +171,6 @@ class TestRemoteVoxCPM2Client:
 
         assert result == audio_data
         request = httpx_mock.get_requests()[0]
-        import json
 
         payload = json.loads(request.content)
         assert payload["reference_audio"] == "/path/to/reference.wav"
@@ -458,7 +455,7 @@ class TestRemoteVoxCPM2ClientIntegration:
             ("故事结束", "zh_female_1"),
         ]
 
-        for i, (text, voice) in enumerate(paragraphs):
+        for i, (text, voice) in enumerate(paragraphs):  # noqa: B007
             httpx_mock.add_response(
                 method="POST",
                 url="https://test.example.com/generate",
@@ -783,7 +780,7 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_parses_progress_meta(self):
         """Test get_tts_status correctly parses progress meta from Celery result."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
@@ -810,7 +807,7 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_completed(self):
         """Test get_tts_status for completed task."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
@@ -831,7 +828,7 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_failed(self):
         """Test get_tts_status for failed task."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 
@@ -849,7 +846,7 @@ class TestSynthesizeChapterTaskProgress:
 
     def test_get_tts_status_retry(self):
         """Test get_tts_status for retrying task."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from src.audiobook_studio.tasks.tts_tasks import get_tts_status
 

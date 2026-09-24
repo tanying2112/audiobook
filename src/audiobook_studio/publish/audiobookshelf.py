@@ -2,8 +2,6 @@
 
 import base64
 import hashlib
-import json
-import logging
 import mimetypes
 import os
 from dataclasses import dataclass, field

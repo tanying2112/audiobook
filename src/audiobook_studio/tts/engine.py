@@ -7,12 +7,11 @@ into a single protocol with optional async support.
 from __future__ import annotations
 
 import asyncio
-from abc import ABC, abstractmethod
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Dict, Optional, Protocol, runtime_checkable
 
 
 @dataclass
@@ -70,6 +69,10 @@ class TTSVoiceAnchor:
     speaker_name: Optional[str] = None
     language: str = "zh-CN"
     reference_audio_path: Optional[str] = None
+    # Transcript of the reference sample. Zero-shot cloning backends
+    # (CosyVoice2 inference_zero_shot, VoxCPM prompt_text) need it as the prompt
+    # transcript; similarity degrades measurably without it.
+    reference_text: Optional[str] = None
 
     def __post_init__(self):
         if not self.voice_id or not self.voice_id.strip():
@@ -203,10 +206,10 @@ class TTSEngine(Protocol):
         payload: TTSTaskPayload,
     ) -> AsyncIterator[bytes]:
         """Stream audio chunks for real-time playback.
-        
+
         Args:
             payload: Synthesis specification
-            
+
         Yields:
             Audio chunks as bytes (raw PCM or encoded format depending on engine)
         """
@@ -250,7 +253,7 @@ class BaseTTSEngine:
         self._lock = asyncio.Lock()
 
     def _generate_task_id(self) -> str:
-        return f"tts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"
+        return f"tts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"  # nosec B324
 
     def _build_output_path(self, task_id: str, voice_id: str) -> Path:
         return self.output_dir / f"{task_id}_{voice_id}.mp3"
@@ -295,7 +298,7 @@ class BaseTTSEngine:
         payload: TTSTaskPayload,
     ) -> AsyncIterator[bytes]:
         """Stream audio chunks for real-time playback.
-        
+
         Default implementation raises NotImplementedError.
         Engines that support streaming should override this method.
         """
@@ -449,17 +452,48 @@ class EngineRegistry:
         # Import backend factories here to avoid circular imports
         from .edge_tts_engine import create_edge_tts_engine
         from .kokoro_backend import create_kokoro_backend
+        from .piper_backend import create_piper_backend
 
-        # from .voxcpm2_backend import create_voxcpm2_engine
+        # Track B / Pro Studio: reflect real GPU clone backend capability in the
+        # registry ONLY when an endpoint is actually configured. Imports are
+        # deferred and guarded so a free/no-GPU host never pays for (or breaks
+        # on) the import. (The factory symbol is ``create_voxcpm2_backend``.)
 
         engine_factories = {
             "kokoro": create_kokoro_backend,
             "edge": create_edge_tts_engine,
-            # "voxcpm2": create_voxcpm2_engine,
+            "piper": create_piper_backend,  # S2-4: preferred local engine (priority 0)
         }
+
+        _voxcpm2_ep = os.getenv("VOXCPM2_ENDPOINT") or os.getenv("COSYVOICE_ENDPOINT")
+        if _voxcpm2_ep:
+            try:
+                from .voxcpm2_backend import create_voxcpm2_backend
+
+                engine_factories["voxcpm2"] = create_voxcpm2_backend
+            except Exception as _vox_err:  # noqa: BLE001 — degrade, never break init
+                logger.warning("voxcpm2 引擎注册跳过 (导入失败): %s", _vox_err)
+
+        # Merge plugin-registered TTS engine factories
+        from ..plugins import get_plugin_manager
+
+        plugin_mgr = get_plugin_manager()
+        plugin_factories = plugin_mgr.get_tts_engine_factories()
+        for engine_name, record in plugin_factories.items():
+            engine_factories[engine_name] = record.factory
 
         for engine_name, engine_config in self._config.items():
             if engine_name in engine_factories:
+                # P0 no-GPU safety: skip GPU-only engines when GPU backends are
+                # disabled (free/no-GPU hosts must never instantiate an engine
+                # they cannot run). Capability is read from the provider config;
+                # unknown engines are assumed CPU and are not skipped.
+                if _should_skip_engine(engine_name, _gpu_backends_enabled()):
+                    logger.info(
+                        "Skipping GPU engine %s (ENABLE_GPU_BACKENDS=false)",
+                        engine_name,
+                    )
+                    continue
                 factory = engine_factories[engine_name]
                 # Factories are async coroutines (create + initialize the engine)
                 engine = await factory(**engine_config)
@@ -529,66 +563,57 @@ class EngineRegistry:
         await self.close_all()
 
 
-_global_registry: Optional[EngineRegistry] = None
-
-
-def get_engine_registry() -> EngineRegistry:
-    """Get global engine registry."""
-    global _global_registry
-    if _global_registry is None:
-        _global_registry = EngineRegistry()
-    return _global_registry
-
-
-def set_engine_registry(registry: EngineRegistry) -> EngineRegistry:
-    """Set global engine registry."""
-    global _global_registry
-    _global_registry = registry
-    return _global_registry
-
-
-def get_engine(name: str) -> Optional[TTSEngine]:
-    """Get an engine by name from the global registry."""
-    registry = get_engine_registry()
-    return registry.get(name)
-
-
-def register_engine(engine: TTSEngine, set_as_default: bool = False) -> None:
-    """Register an engine in the global registry."""
-    registry = get_engine_registry()
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        # If we're in an async context, we can't block
-        # Schedule the coroutine to run
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            pool.submit(asyncio.run, registry.register(engine, set_as_default=set_as_default)).result()
-    else:
-        asyncio.run(registry.register(engine, set_as_default=set_as_default))
-
-
-async def initialize_all_engines() -> None:
-    """Initialize all registered engines."""
-    registry = get_engine_registry()
-    for engine in registry._engines.values():
-        await engine.initialize()
-
-
-async def cleanup_all_engines() -> None:
-    """Cleanup all registered engines."""
-    registry = get_engine_registry()
-    await registry.close_all()
-
-
 # ---------------------------------------------------------------------------
 # S1-6: Real TTS readiness probe
 # ---------------------------------------------------------------------------
 
 #: Canonical engine list surfaced by /health/ready (audit S1-6 return shape).
 TTS_HEALTH_ENGINES: tuple[str, ...] = ("kokoro", "voxcpm2", "edge", "piper")
+
+
+def _gpu_backends_enabled() -> bool:
+    """Local mirror of ``providers_config.gpu_backends_enabled`` (no import cycle).
+
+    Returns True only when ``ENABLE_GPU_BACKENDS`` is set, so GPU-only engines
+    (F5/CosyVoice2/Dia, Track B) are skipped on free/no-GPU hosts.
+    """
+    return os.environ.get("ENABLE_GPU_BACKENDS", "false").lower() in ("1", "true", "yes", "on")
+
+
+def _should_skip_engine(engine_name: str, gpu_enabled: bool) -> bool:
+    """P0 no-GPU safety: skip GPU-only engines when GPU backends are disabled.
+
+    Returns True when ``engine_name``'s capability declares ``min_compute='gpu'``
+    but ``gpu_enabled`` is False. Unknown engines are never skipped (CPU assumed).
+    """
+    if gpu_enabled:
+        return False
+    try:
+        from .providers_config import capability_matrix
+
+        cap = capability_matrix().get(engine_name)
+        return cap is not None and cap.min_compute == "gpu"
+    except Exception:  # noqa: BLE001 — never block engine init on config errors
+        return False
+
+
+async def cleanup_all_engines(registry: Optional["EngineRegistry"] = None) -> None:
+    """Cleanup all registered engines from the given registry or the default one."""
+    if registry is None:
+        from ..di import get_app_container
+
+        registry = get_app_container().get(EngineRegistry)
+    await registry.close_all()
+
+
+async def initialize_all_engines(registry: Optional["EngineRegistry"] = None) -> None:
+    """Initialize all registered engines from the given registry or the default one."""
+    if registry is None:
+        from ..di import get_app_container
+
+        registry = get_app_container().get(EngineRegistry)
+    for engine in registry._engines.values():
+        await engine.initialize()
 
 
 async def probe_tts_engines(
@@ -604,7 +629,8 @@ async def probe_tts_engines(
     Probes (each bounded by ``timeout`` and never raising — a failure degrades to
     ``healthy=False`` instead of propagating):
 
-      - ``kokoro``: local model file present under ``KOKORO_MODEL_PATH``.
+      - ``kokoro``: real warmup via ``KokoroBackend.warmup()`` with 100ms budget
+        (S1-6). Prefers registered engine; falls back to temporary engine.
       - ``voxcpm2``: real ``GET {VOXCPM2_ENDPOINT}/health`` when an endpoint is
         configured (remote pool); otherwise ``not_configured``.
       - ``edge``: real network reachability probe against the Edge speech host.
@@ -629,14 +655,62 @@ async def probe_tts_engines(
     def _set(name: str, healthy: bool, detail: Dict[str, Any]) -> None:
         result[name] = {"healthy": healthy, "detail": detail}
 
-    # 1) kokoro — model file present (real, fast; avoids loading a heavy model in a health probe).
-    kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
-    require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
-    if not require_local or not kokoro_path:
-        _set("kokoro", False, {"reason": "not_configured"})
+    # 1) kokoro — real warmup probe (S1-6): call KokoroBackend.warmup() with 100ms budget.
+    # Prefer registered engine's warmup; otherwise create a temporary one for the probe.
+    kokoro_warmed_up = False
+    kokoro_detail: Dict[str, Any] = {}
+
+    # Try registered engine first
+    kokoro_engine = None
+    if registry is not None:
+        kokoro_engine = registry.get("kokoro")
+
+    if kokoro_engine is not None:
+        # Use registered engine's warmup
+        try:
+            kokoro_warmed_up = await asyncio.wait_for(kokoro_engine.warmup(), timeout=0.1)  # 100ms
+            kokoro_detail = {"source": "registered_engine", "warmed_up": kokoro_warmed_up}
+        except asyncio.TimeoutError:
+            kokoro_warmed_up = False
+            kokoro_detail = {"source": "registered_engine", "error": "warmup timeout (>100ms)"}
+        except Exception as e:
+            kokoro_warmed_up = False
+            kokoro_detail = {"source": "registered_engine", "error": str(e)}
+        _set("kokoro", kokoro_warmed_up, kokoro_detail)
     else:
-        present = Path(kokoro_path).exists()
-        _set("kokoro", present, {"model_present": present, "model_path": kokoro_path})
+        # Fallback: create temporary engine for probe
+        kokoro_path = os.getenv("KOKORO_MODEL_PATH", "")
+        require_local = os.getenv("ENABLE_LOCAL_TTS", "true").lower() not in ("false", "0")
+        if not require_local or not kokoro_path:
+            _set("kokoro", False, {"reason": "not_configured"})
+        else:
+            present = Path(kokoro_path).exists()
+            if present:
+                # Create temporary engine and warmup
+                try:
+                    from .kokoro_backend import KokoroBackend
+
+                    temp_engine = KokoroBackend(model_path=kokoro_path)
+                    kokoro_warmed_up = await asyncio.wait_for(temp_engine.warmup(), timeout=0.1)  # 100ms
+                    kokoro_detail = {
+                        "source": "temporary_engine",
+                        "warmed_up": kokoro_warmed_up,
+                        "model_path": kokoro_path,
+                    }
+                    await temp_engine.close()
+                except asyncio.TimeoutError:
+                    kokoro_warmed_up = False
+                    kokoro_detail = {
+                        "source": "temporary_engine",
+                        "error": "warmup timeout (>100ms)",
+                        "model_path": kokoro_path,
+                    }
+                except Exception as e:
+                    kokoro_warmed_up = False
+                    kokoro_detail = {"source": "temporary_engine", "error": str(e), "model_path": kokoro_path}
+            else:
+                kokoro_detail = {"reason": "model_not_found", "model_path": kokoro_path}
+            _set("kokoro", kokoro_warmed_up, kokoro_detail)
 
     # 2) voxcpm2 — real /health probe when an endpoint is configured.
     v2_endpoint = os.getenv("VOXCPM2_ENDPOINT", "").rstrip("/")
@@ -662,21 +736,65 @@ async def probe_tts_engines(
     except Exception as e:  # noqa: BLE001
         _set("edge", False, {"error": str(e)})
 
-    # 4) piper — future (S2-4), never falsely happy.
-    _set("piper", False, {"reason": "not_implemented"})
+    # 4) piper — real local detection (S2-4): available only when BOTH a runnable
+    #    `piper` binary AND at least one `.onnx` model are present (never falsely happy).
+    try:
+        from .piper_models import detect_piper_availability
+
+        available, detail = detect_piper_availability()
+        _set("piper", bool(available), detail)
+    except Exception as e:  # noqa: BLE001 — degrade not propagate
+        _set("piper", False, {"reason": "detection_error", "error": str(e)})
 
     # Overlay any engines actually loaded/registered: prefer their real health_check()
     # (e.g. RemoteVoxCPM2Engine does a pass-through GET /health) over static probes.
+    # Skip kokoro since we already did a real warmup probe above.
     if registry is not None:
         for name, engine in registry._engines.items():
+            if name == "kokoro":
+                continue  # Already probed via warmup()
             if name not in result:
                 _set(name, False, {"reason": "unknown_engine"})
             try:
                 health = await asyncio.wait_for(engine.health_check(), timeout=timeout)
                 healthy = bool(health.get("healthy", False))
                 result[name] = {"healthy": healthy, "detail": health}
-            except Exception:  # noqa: BLE001 — degrade not propagate (incl. timeout)
+            except (
+                asyncio.TimeoutError,
+                RuntimeError,
+                OSError,
+            ):  # noqa: BLE001 — degrade not propagate (incl. timeout)
                 _set(name, False, {"error": "health_check timeout or failed"})
 
     bool_map: Dict[str, bool] = {name: result.get(name, {}).get("healthy", False) for name in TTS_HEALTH_ENGINES}
     return {"engines": bool_map, "details": result}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Backward-compatibility shims
+#
+# The DI container is the canonical home of the EngineRegistry singleton
+# (``get_engine_registry`` lives in ``src.audiobook_studio.di``). Older
+# integration tests imported these names from ``tts.engine``; re-export them
+# here (with lazy imports) so those tests collect cleanly after the TTS
+# registry refactor.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def get_engine_registry() -> "EngineRegistry":
+    """Return the app-wide EngineRegistry singleton (delegates to the DI container)."""
+    from ..di import get_engine_registry as _get
+
+    return _get()
+
+
+def set_engine_registry(registry: "EngineRegistry") -> None:
+    """Replace the app-wide EngineRegistry singleton in the DI container."""
+    from ..di import get_app_container
+
+    container = get_app_container()
+    try:
+        container.unregister(EngineRegistry)
+    except Exception:
+        pass
+    container.register_singleton(EngineRegistry, registry)

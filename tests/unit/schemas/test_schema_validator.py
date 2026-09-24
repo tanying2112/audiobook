@@ -5,6 +5,7 @@ against Pydantic schemas and reports drift. Exercises type normalization,
 Optional detection, Literal refinement, nullability matching, and migration
 hint generation.
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -20,8 +21,8 @@ from src.audiobook_studio.schemas.schema_validator import (
     sync_schema_validator,
 )
 
-
 # ---- minimal ORM-like fixtures (no DB needed) -----------------------------
+
 
 class _FakeColumn:
     def __init__(self, name, type_obj, nullable=True, primary_key=False, default=None, length=None):
@@ -163,6 +164,7 @@ class NullableSchema(BaseModel):
 # _type_to_string
 # ============================================================
 
+
 class TestTypeToString:
     def test_plain_types(self):
         v = SchemaValidator()
@@ -201,8 +203,10 @@ class TestTypeToString:
 
     def test_unknown_type_falls_back_to_repr(self):
         v = SchemaValidator()
+
         class Custom:
             pass
+
         # Unknown type with no __origin__ -> str(type) fallback
         result = v._type_to_string(Custom)
         assert "Custom" in result
@@ -211,6 +215,7 @@ class TestTypeToString:
 # ============================================================
 # _is_optional
 # ============================================================
+
 
 class TestIsOptional:
     def test_plain_type_not_optional(self):
@@ -224,11 +229,13 @@ class TestIsOptional:
 
     def test_union_with_none(self):
         from typing import Union
+
         v = SchemaValidator()
         assert v._is_optional(Union[str, None]) is True
 
     def test_union_without_none(self):
         from typing import Union
+
         v = SchemaValidator()
         assert v._is_optional(Union[int, str]) is False
 
@@ -242,22 +249,29 @@ class TestIsOptional:
 # compare - drift detection
 # ============================================================
 
+
 class TestCompareDrift:
     def test_synced_model_schema_no_drift(self, patched_inspect):
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False, "pk": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False, "pk": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, SyncedSchema)
         assert report.is_synced is True
         assert report.drifts == []
 
     def test_field_in_schema_not_in_orm_yields_added(self, patched_inspect):
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, ExtraFieldSchema)
         assert report.is_synced is False
@@ -268,10 +282,13 @@ class TestCompareDrift:
         assert any("Add column 'unexpected_field'" in h for h in report.migration_hints)
 
     def test_field_in_orm_not_in_schema_yields_removed(self, patched_inspect):
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, MissingFieldSchema)
         assert report.is_synced is False
@@ -285,10 +302,13 @@ class TestCompareDrift:
         class OnlyNameSchema(BaseModel):
             name: str
 
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "_sa_instance_state", "type_name": "String", "python_type_name": "str", "nullable": True},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "_sa_instance_state", "type_name": "String", "python_type_name": "str", "nullable": True},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, OnlyNameSchema)
         # _sa_instance_state should be skipped (not flagged as REMOVED)
@@ -296,10 +316,13 @@ class TestCompareDrift:
         assert "_sa_instance_state" not in removed_names
 
     def test_type_mismatch_detected(self, patched_inspect):
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, TypeMismatchSchema)
         changed = [d for d in report.drifts if d.drift_type == DriftType.TYPE_CHANGED]
@@ -310,10 +333,13 @@ class TestCompareDrift:
 
     def test_nullability_mismatch_detected(self, patched_inspect):
         # ORM nullable=True, schema non-nullable (str) -> mismatch
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": True},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": True},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, NullableSchema)
         nullab = [d for d in report.drifts if d.drift_type == DriftType.NULLABILITY_CHANGED]
@@ -327,9 +353,13 @@ class TestCompareDrift:
         # ORM nullable str + Schema Optional[str] -> base types match, no TYPE_CHANGED
         class OptStrSchema(BaseModel):
             name: Optional[str] = None
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": True},
-        ], model_name="FakeModel")
+
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": True},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, OptStrSchema)
         # No TYPE_CHANGED drift for name
@@ -345,9 +375,12 @@ class TestCompareDrift:
         class LiteralSchema(BaseModel):
             name: Literal["draft", "completed"]
 
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         report = v.compare(model, LiteralSchema)
         type_changed = [d for d in report.drifts if d.drift_type == DriftType.TYPE_CHANGED and d.field_name == "name"]
@@ -358,11 +391,15 @@ class TestCompareDrift:
 # validate_all
 # ============================================================
 
+
 class TestValidateAll:
     def test_validate_all_collects_reports(self, patched_inspect):
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         reports = v.validate_all([(model, MissingFieldSchema)])
         assert len(reports) == 1
@@ -370,20 +407,28 @@ class TestValidateAll:
         assert v.reports == reports
 
     def test_validate_all_multiple_pairs(self, patched_inspect):
-        synced_model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="SyncedModel")
+        synced_model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="SyncedModel",
+        )
         # drift_model has 'age' but MissingFieldSchema lacks it -> FIELD_REMOVED drift
-        drift_model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="DriftModel")
+        drift_model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="DriftModel",
+        )
         v = SchemaValidator()
-        reports = v.validate_all([
-            (synced_model, SyncedSchema),
-            (drift_model, MissingFieldSchema),
-        ])
+        reports = v.validate_all(
+            [
+                (synced_model, SyncedSchema),
+                (drift_model, MissingFieldSchema),
+            ]
+        )
         assert reports[0].is_synced is True
         assert reports[1].is_synced is False
 
@@ -391,6 +436,7 @@ class TestValidateAll:
 # ============================================================
 # generate_migration_script_hint
 # ============================================================
+
 
 class TestMigrationHint:
     def test_empty_reports_returns_no_migration_string(self):
@@ -400,10 +446,13 @@ class TestMigrationHint:
 
     def test_filled_reports_generates_upgrade_with_hints(self, patched_inspect):
         # 'age' exists in ORM but not in MissingFieldSchema -> drift -> hint emitted
-        model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="FakeModel")
+        model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="FakeModel",
+        )
         v = SchemaValidator()
         v.validate_all([(model, MissingFieldSchema)])
         hint = v.generate_migration_script_hint()
@@ -413,19 +462,27 @@ class TestMigrationHint:
         assert "HINT" in hint
 
     def test_synced_reports_skipped_in_hint(self, patched_inspect):
-        synced_model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="SyncedModel")
-        drift_model = _orm_model([
-            {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
-            {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
-        ], model_name="DriftModel")
+        synced_model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="SyncedModel",
+        )
+        drift_model = _orm_model(
+            [
+                {"name": "name", "type_name": "String", "python_type_name": "str", "nullable": False},
+                {"name": "age", "type_name": "Integer", "python_type_name": "int", "nullable": False},
+            ],
+            model_name="DriftModel",
+        )
         v = SchemaValidator()
-        v.validate_all([
-            (synced_model, SyncedSchema),
-            (drift_model, MissingFieldSchema),
-        ])
+        v.validate_all(
+            [
+                (synced_model, SyncedSchema),
+                (drift_model, MissingFieldSchema),
+            ]
+        )
         hint = v.generate_migration_script_hint()
         assert "For SyncedModel" not in hint
         assert "For DriftModel" in hint
@@ -434,6 +491,7 @@ class TestMigrationHint:
 # ============================================================
 # SchemaSyncReport.to_dict
 # ============================================================
+
 
 class TestSchemaSyncReportToDict:
     def test_to_dict_round_trips(self):
@@ -465,6 +523,7 @@ class TestSchemaSyncReportToDict:
 # DriftType enum
 # ============================================================
 
+
 class TestDriftType:
     def test_enum_values_are_strings(self):
         assert DriftType.FIELD_ADDED.value == "field_added"
@@ -478,15 +537,14 @@ class TestDriftType:
 # sync_schema_validator (module-level function, calls sys.exit)
 # ============================================================
 
+
 class TestSyncSchemaValidator:
     def test_synced_returns_zero_exit(self, patched_inspect, capsys):
         # Build a synced pair using real Project models is hard; instead patch
         # validator.validate_all to return an empty drifts list.
         from src.audiobook_studio.schemas import schema_validator as mod
 
-        real_validator_cls = mod.SchemaValidator
-
-        class FakeValidator:
+        class FakeValidator:  # noqa: E303
             def __init__(self):
                 self.reports = []
 

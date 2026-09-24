@@ -19,22 +19,15 @@ Covers:
 - get_client with langfuse init
 """
 
-import json
 import os
 import time
-from collections import defaultdict
-from unittest.mock import MagicMock, PropertyMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
 from src.audiobook_studio.llm.router import (
-    CostTracker,
     LLMRouter,
-    ModelConfig,
     PromptCompressor,
     ProviderRateLimiter,
-    StageRoutingConfig,
     create_router,
     reset_cost_tracker,
 )
@@ -297,7 +290,7 @@ class TestSelectProvider:
     def test_all_providers_skipped_returns_fallback(self):
         router = self._make_router_for_select()
         # Set circuit breaker to open for all providers
-        for name, cb in router.circuit_breakers.items():
+        for _name, cb in router.circuit_breakers.items():
             cb.record_failure()
             cb.record_failure()
             cb.record_failure()
@@ -400,7 +393,7 @@ class TestCreateMockResult:
         class DummyModel:
             pass
 
-        result = router._create_mock_result(DummyModel, "unknown")
+        router._create_mock_result(DummyModel, "unknown")
         # May return None if it can't create an instance, that's fine
         from src.audiobook_studio.di import reset_app_container
 
@@ -477,7 +470,7 @@ class TestGetFreeTierHealth:
             free_p,
         ]
         # Break circuit breaker for the original test_provider to reduce healthy count
-        for name, cb in router.circuit_breakers.items():
+        for _name, cb in router.circuit_breakers.items():
             cb.record_failure()
             cb.record_failure()
             cb.record_failure()

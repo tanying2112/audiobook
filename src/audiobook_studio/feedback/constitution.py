@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 class HardRule(str, Enum):
     """创作宪法硬规则枚举。值用于序列化与单测匹配。"""
 
-    VERBATIM_READABLE = "verbatim_readable"      # 逐字朗读：参考文本被候选输出大体覆盖
-    INTELLIGIBLE = "intelligible"                # 可懂：WER 不超阈值（P0.2 ASR 真值）
-    NO_CLIPPING_DISTORTION = "no_clipping"      # 不破音：DNSMOS / 破音检测不越界
+    VERBATIM_READABLE = "verbatim_readable"  # 逐字朗读：参考文本被候选输出大体覆盖
+    INTELLIGIBLE = "intelligible"  # 可懂：WER 不超阈值（P0.2 ASR 真值）
+    NO_CLIPPING_DISTORTION = "no_clipping"  # 不破音：DNSMOS / 破音检测不越界
 
 
 @dataclass(frozen=True)

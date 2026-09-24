@@ -6,7 +6,6 @@ TestClient (which has Python 3.14 / httpx compatibility issues).
 
 import unittest
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -752,9 +751,8 @@ class TestRSSFeedGeneration:
     @pytest.mark.asyncio
     async def test_get_podcast_rss_feed_project_not_found(self, mock_db_class):
         """Test RSS feed when project not found."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
+        from src.audiobook_studio.exceptions import DomainError
 
         # Create async session mock
         mock_session = AsyncMock()
@@ -764,10 +762,10 @@ class TestRSSFeedGeneration:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_podcast_rss_feed(project_id=999, db=mock_session)
 
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @patch("src.audiobook_studio.database.AsyncSessionLocal")
     @pytest.mark.asyncio
@@ -827,7 +825,6 @@ class TestJobEndpoints:
     @pytest.mark.asyncio
     async def test_get_publish_job_success(self):
         """Test getting a publish job by ID."""
-        from fastapi import HTTPException
 
         from src.audiobook_studio.api.publish import get_publish_job
 
@@ -850,21 +847,19 @@ class TestJobEndpoints:
     @pytest.mark.asyncio
     async def test_get_publish_job_not_found(self):
         """Test getting a non-existent job."""
-        from fastapi import HTTPException
-
         from src.audiobook_studio.api.publish import get_publish_job
+        from src.audiobook_studio.exceptions import DomainError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_publish_job(project_id=1, job_id="nonexistent")
 
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_get_publish_job_wrong_project(self):
         """Test getting a job for wrong project."""
-        from fastapi import HTTPException
-
-        from src.audiobook_studio.api.publish import get_publish_job, _publish_jobs_fallback
+        from src.audiobook_studio.api.publish import get_publish_job
+        from src.audiobook_studio.exceptions import DomainError
 
         # Use unique job_id to avoid Redis collision from previous test runs
         unique_job_id = "test_job_wrong_project_unique"
@@ -878,10 +873,10 @@ class TestJobEndpoints:
         }
         _publish_jobs_fallback[unique_job_id] = job_data
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await get_publish_job(project_id=1, job_id=unique_job_id)
 
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "FORBIDDEN"
 
     @pytest.mark.asyncio
     async def test_get_publish_history(self):
@@ -932,7 +927,6 @@ class TestPublishValidation:
     @pytest.mark.asyncio
     async def test_invalid_destination_rejected(self):
         """Test that invalid destinations are rejected."""
-        from pydantic import ValidationError
 
         from src.audiobook_studio.api.publish import PublishRequest
 
@@ -992,7 +986,6 @@ class TestMIMETypeHandling:
     )
     def test_mime_type_detection(self, ext, mime):
         """Test MIME type detection for various extensions."""
-        from src.audiobook_studio.api.publish import _publish_to_audiobookshelf
 
         # We can't easily test the internal _mime_type function,
         # but we can verify the mapping used in the code

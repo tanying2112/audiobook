@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -36,13 +35,13 @@ logger = logging.getLogger(__name__)
 class PromNode:
     """晋升历史节点（不可变）。append-only DAG 的一个顶点。"""
 
-    node_id: str                # 配置版本标识，如 "edit_for_tts:prom-7"
-    parent_id: Optional[str]   # 父节点 id（根为 None）
+    node_id: str  # 配置版本标识，如 "edit_for_tts:prom-7"
+    parent_id: Optional[str]  # 父节点 id（根为 None）
     stage: str
-    held_out_mean: float        # 该配置在留出集上的 mean_score（真值）
-    effect_size: float         # 相对父节点的 effect_size
-    promoted_at: str           # ISO 时间戳（由上层注入，避免 Date.now 依赖）
-    config_digest: str         # 配置内容指纹（CI 元门禁可比对）
+    held_out_mean: float  # 该配置在留出集上的 mean_score（真值）
+    effect_size: float  # 相对父节点的 effect_size
+    promoted_at: str  # ISO 时间戳（由上层注入，避免 Date.now 依赖）
+    config_digest: str  # 配置内容指纹（CI 元门禁可比对）
 
 
 @dataclass
@@ -148,7 +147,11 @@ class EvolutionGuard:
             self._regression_streak += 1
             logger.warning(
                 "EvolutionGuard regression #%d/%d: candidate mean %.3f < active %.3f (effect %.3f)",
-                self._regression_streak, self._streak_limit, held_out_mean, parent_mean, effect_size,
+                self._regression_streak,
+                self._streak_limit,
+                held_out_mean,
+                parent_mean,
+                effect_size,
             )
             if self._regression_streak >= self._streak_limit:
                 result = self._rollback_and_prune(
@@ -179,7 +182,11 @@ class EvolutionGuard:
         self._regression_streak = 0
         logger.info(
             "EvolutionGuard promoted: %s (stage=%s mean=%.3f effect=%.3f parent=%s)",
-            node_id, stage, held_out_mean, effect_size, parent_id,
+            node_id,
+            stage,
+            held_out_mean,
+            effect_size,
+            parent_id,
         )
         return None
 
@@ -219,7 +226,10 @@ class EvolutionGuard:
         )
         logger.warning(
             "EvolutionGuard ROLLBACK: %s → %s, pruned %d descendants (%s)",
-            result.rolled_back_from, result.rolled_back_to, len(pruned_ids), reason,
+            result.rolled_back_from,
+            result.rolled_back_to,
+            len(pruned_ids),
+            reason,
         )
         return result
 
@@ -251,9 +261,13 @@ class EvolutionGuard:
         return {
             "nodes": [
                 {
-                    "node_id": n.node_id, "parent_id": n.parent_id, "stage": n.stage,
-                    "held_out_mean": n.held_out_mean, "effect_size": n.effect_size,
-                    "promoted_at": n.promoted_at, "config_digest": n.config_digest,
+                    "node_id": n.node_id,
+                    "parent_id": n.parent_id,
+                    "stage": n.stage,
+                    "held_out_mean": n.held_out_mean,
+                    "effect_size": n.effect_size,
+                    "promoted_at": n.promoted_at,
+                    "config_digest": n.config_digest,
                     "pruned": n.node_id in self._pruned,
                 }
                 for n in self._nodes.values()

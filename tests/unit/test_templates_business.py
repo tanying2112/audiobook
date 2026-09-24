@@ -239,7 +239,6 @@ class TestApplyEditTemplateBusiness:
     @pytest.mark.asyncio
     async def test_creates_tts_edit_with_all_fields(self):
         from src.audiobook_studio.api.templates import _apply_edit_template
-        from src.audiobook_studio.models import TTSEdit
 
         db = AsyncMock()
         pa = self._make_para()
@@ -496,7 +495,6 @@ class TestApplyQualityTemplateBusiness:
 # _rerun_downstream_stages
 # ===========================================================================
 
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -611,7 +609,7 @@ class TestApplyTemplateBackground:
     @pytest.mark.asyncio
     async def test_progress_tracking_lifecycle(self):
         """Background task tracks progress from running to completed."""
-        from src.audiobook_studio.api.templates import _apply_annotation_template, _apply_template_background
+        from src.audiobook_studio.api.templates import _apply_template_background
 
         task_id = "test_task_001"
 
@@ -640,13 +638,9 @@ class TestApplyTemplateBackground:
 
         mock_db.execute = AsyncMock(side_effect=[mock_scalar_one, mock_scalar_all])
 
-        with patch(
-            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
-        ):
+        with patch("src.audiobook_studio.api.templates.create_async_session", return_value=mock_db):
             with patch("src.audiobook_studio.api.templates._apply_annotation_template"):
-                with patch(
-                    "src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock
-                ):
+                with patch("src.audiobook_studio.api.templates._rerun_downstream_stages", new_callable=AsyncMock):
                     await _apply_template_background(
                         project_id=10,
                         template_id=42,
@@ -679,9 +673,7 @@ class TestApplyTemplateBackground:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        with patch(
-            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
-        ):
+        with patch("src.audiobook_studio.api.templates.create_async_session", return_value=mock_db):
             await _apply_template_background(
                 project_id=10,
                 template_id=999,
@@ -715,9 +707,7 @@ class TestApplyTemplateBackground:
         mock_result.scalar_one_or_none.return_value = mock_template
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        with patch(
-            "src.audiobook_studio.api.templates.create_async_session", return_value=mock_db
-        ):
+        with patch("src.audiobook_studio.api.templates.create_async_session", return_value=mock_db):
             await _apply_template_background(
                 project_id=10,
                 template_id=42,

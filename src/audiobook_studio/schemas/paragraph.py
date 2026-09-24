@@ -18,8 +18,7 @@ Schema v2 (极简重构):
 
 from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field, confloat, conint
-from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
 
 from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
@@ -47,6 +46,7 @@ class ParagraphAnnotationInput(BaseModel):
     emotion_snapshot: EmotionSnapshot = Field(..., description="当前章节情感快照")
     story_line_summary: str = Field(..., min_length=100, max_length=500, description="故事主线摘要")
     global_style_notes: str = Field(..., description="全局文风备注")
+    rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
     contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
 

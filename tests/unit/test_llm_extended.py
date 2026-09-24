@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -140,7 +140,7 @@ class TestLLMClientExtended:
         from src.audiobook_studio.llm.client import create_client
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-            client = create_client(
+            create_client(
                 model="test",
                 langfuse_enabled=True,
                 langfuse_public_key="pk",
@@ -169,7 +169,7 @@ class TestLLMClientExtended:
         assert "gemini-2.0-flash" in MODEL_PRICING
         assert "gpt-4o" in MODEL_PRICING
         assert "groq/llama-3.1-70b-versatile" in MODEL_PRICING
-        for name, pricing in MODEL_PRICING.items():
+        for _name, pricing in MODEL_PRICING.items():
             assert "input" in pricing
             assert "output" in pricing
 

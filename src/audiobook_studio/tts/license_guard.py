@@ -24,14 +24,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+# Use UnifiedConfig for centralized configuration loading
+from ..config.unified import get_unified_config
+
 logger = logging.getLogger(__name__)
 
 # 视为非商用 (免费档) 的 profile 名 → 守卫对 null/false 宽容 (不阻断)。
 # 余下 (pro_studio / cloud_hybrid 等生产/商用倾向档) 触发严格商用守门。
 _FREE_PROFILES = frozenset({"potato"})
-
-# config/tts_licenses.yaml 相对仓库根路径 (license_guard 与硬件配置同目录约定)。
-_LICENSES_PATH = Path("config/tts_licenses.yaml")
 
 
 class LicenseVerdict(str, Enum):
@@ -54,22 +54,12 @@ class EngineLicense:
 
 def load_license_registry(config_path: Optional[Path] = None) -> Dict[str, EngineLicense]:
     """加载引擎许可注册表; 缺失/解析失败 → 返回空表 (调用方按 None 处理, 诚实降级)。"""
-    path = config_path or _LICENSES_PATH
     try:
-        import yaml  # 既有依赖 (hardware_profile 等已用), 非新增
-    except ImportError:
-        logger.warning("license_guard: pyyaml 未安装, 无法加载 TTS 许可表 → 全引擎按未核实降级")
-        return {}
-
-    if not Path(path).exists():
-        logger.warning("license_guard: 许可配置缺失 (%s) → 全引擎按未核实降级", path)
-        return {}
-
-    try:
-        with open(path, encoding="utf-8") as f:
-            raw: Dict[str, Any] = yaml.safe_load(f) or {}
+        # Use UnifiedConfig for centralized loading with caching
+        unified = get_unified_config()
+        raw: Dict[str, Any] = unified.load_yaml_config("tts_licenses")
     except Exception as e:  # pragma: no cover - 解析失败诚实降级
-        logger.warning("license_guard: 许可配置解析失败 (%s): %s → 全引擎按未核实降级", path, e)
+        logger.warning("license_guard: 许可配置加载失败 (%s): %s → 全引擎按未核实降级", config_path, e)
         return {}
 
     registry: Dict[str, EngineLicense] = {}
@@ -79,87 +69,95 @@ def load_license_registry(config_path: Optional[Path] = None) -> Dict[str, Engin
     for name, meta in engines.items():
         if not isinstance(meta, dict):
             continue
-        cu = meta.get("commercial_use", None)
-        # yaml null → None; 容错非 bool 字面 (只接受 bool/None)
-        if cu is not None and not isinstance(cu, bool):
-            cu = None
-        registry[str(name)] = EngineLicense(
-            commercial_use=cu,
+        registry[name] = EngineLicense(
+            commercial_use=meta.get("commercial_use"),
             license_name=meta.get("license_name"),
-            note=str(meta.get("note") or ""),
+            note=str(meta.get("note", "")),
             verified_at=meta.get("verified_at"),
         )
     return registry
 
 
-def is_commercial_profile(active_profile: Optional[str]) -> bool:
-    """active_profile 是否商用倾向 (触发严格守门)。
+def get_active_profile() -> str:
+    """获取当前硬件档位 (复用 hardware_profile 模块, 避免循环导入)."""
+    try:
+        from ..config.hardware_profile import get_active_profile as _get_active
 
-    None/未知 → False (最保守: 不拦, 走 warn 通道, 免误杀可用引擎)。
+        return _get_active()
+    except ImportError:
+        return "unknown"
+
+
+def is_commercial_profile(profile: str) -> bool:
+    """判断是否为商用路径 (非 free 档即视为商用倾向, 触发严格守门)."""
+    return profile not in _FREE_PROFILES
+
+
+def check_engine_license(engine_name: str) -> LicenseVerdict:
+    """对单引擎做商用许可校验, 返回三态判定。"""
+    registry = load_license_registry()
+    license_meta = registry.get(engine_name)
+
+    if license_meta is None or license_meta.commercial_use is None:
+        # 未核实 → 商用路径 warn, 非商用 ok
+        profile = get_active_profile()
+        return LicenseVerdict.WARN_UNVERIFIED if is_commercial_profile(profile) else LicenseVerdict.OK
+
+    if license_meta.commercial_use is False:
+        # 显式禁用商用
+        profile = get_active_profile()
+        return LicenseVerdict.BLOCKED if is_commercial_profile(profile) else LicenseVerdict.OK
+
+    # commercial_use=True → 所有路径 ok
+    return LicenseVerdict.OK
+
+
+def register_guard(engine_name: str, active_profile: str) -> bool:
+    """register 时许可守门: 返回 True=允许注册, False=阻断 (诚实噪止).
+
+    P2.11 守门语义 (与 check_engine_license 对齐, 但接受显式传入的 active_profile):
+        - active_profile 为商用路径 (非 free 档) 且引擎 commercial_use=False
+          → 阻断注册 (False), 由调用方诚实噪止而非假装成功。
+        - commercial_use=None (未核实) / 非商用档 / commercial_use=True
+          → 放行 (True) (未核实仅降级 warn, 不误杀)。
     """
-    if not active_profile:
-        return False
-    return active_profile.strip() not in _FREE_PROFILES
+    registry = load_license_registry()
+    license_meta = registry.get(engine_name)
+    commercial = is_commercial_profile(active_profile)
+
+    if license_meta is None or license_meta.commercial_use is None:
+        # 未核实: 商用路径降级 warn 但放行, 非商用放行 → 一律放行。
+        return True
+    if license_meta.commercial_use is False:
+        # 显式禁用商用: 仅商用路径阻断, 非商用放行。
+        return not commercial
+    # commercial_use=True → 所有路径放行。
+    return True
 
 
-def check_engine_license(
-    engine_name: str,
-    active_profile: Optional[str],
-    registry: Optional[Dict[str, EngineLicense]] = None,
-) -> LicenseVerdict:
-    """判定某引擎在给定 profile 下能否注册。
-
-    红线#1 语义:
-    - 非商用档 (potato / 未判定): 任何 commercial_use 都 OK (含 null/false)
-      —— 免费档非商用场景本就不触发商用限制。
-    - 商用档: commercial_use=True → OK; null → WARN_UNVERIFIED (降级不禁);
-      false → BLOCKED (诚实噪止, 终止该引擎注册, 避免商用路径误用非商用引擎假装就绪)。
-    """
-    if registry is None:
-        registry = load_license_registry()
-
-    if not is_commercial_profile(active_profile):
-        return LicenseVerdict.OK
-
-    lic = registry.get(engine_name)
-    if lic is None:
-        # 无表项 = 未核实: 商用路径降级 warn, 不假成功也不阻断 (与 null 同语义)
-        logger.warning(
-            "license_guard: 引擎 %s 无许可声明 (商用档 %s) → 降级 warn (未核实, 不假成功)",
+def log_license_audit(engine_name: str, verdict: LicenseVerdict) -> None:
+    """统一日志格式, 便于审计追踪。"""
+    profile = get_active_profile()
+    if verdict == LicenseVerdict.BLOCKED:
+        logger.error(
+            "license_guard: BLOCKED engine=%s profile=%s reason=commercial_use=false",
             engine_name,
-            active_profile,
+            profile,
         )
-        return LicenseVerdict.WARN_UNVERIFIED
-
-    if lic.commercial_use is True:
-        return LicenseVerdict.OK
-    if lic.commercial_use is False:
+    elif verdict == LicenseVerdict.WARN_UNVERIFIED:
         logger.warning(
-            "license_guard: 引擎 %s 声明 commercial_use=False (仅非商用), 商用档 %s 禁用注册",
+            "license_guard: WARN_UNVERIFIED engine=%s profile=%s reason=commercial_use=null (未核实)",
             engine_name,
-            active_profile,
+            profile,
         )
-        return LicenseVerdict.BLOCKED
-    # commercial_use is None → 未核实
-    logger.warning(
-        "license_guard: 引擎 %s 许可未核实 (commercial_use=null), 商用档 %s 降级 warn",
-        engine_name,
-        active_profile,
-    )
-    return LicenseVerdict.WARN_UNVERIFIED
+    else:
+        logger.debug("license_guard: OK engine=%s profile=%s", engine_name, profile)
 
 
-def register_guard(
-    engine_name: str,
-    active_profile: Optional[str],
-    registry: Optional[Dict[str, EngineLicense]] = None,
-) -> bool:
-    """EngineRegistry.register 钩子: 返回是否允许注册该引擎。
-
-    True = 放行 (ok / warn_unverified: 后者降级但不禁, 因阻断须凭已核实 false)。
-    False = 阻断 (blocked: 商用路径明确禁用非商用引擎)。
-
-    调用方应在 BLOCKED 时跳过该引擎注册, 并在日志记清原因 (不假装注册成功)。
-    """
-    verdict = check_engine_license(engine_name, active_profile, registry)
-    return verdict != LicenseVerdict.BLOCKED
+if __name__ == "__main__":
+    # 手工校验入口: python -m src.audiobook_studio.tts.license_guard
+    logging.basicConfig(level=logging.DEBUG)
+    for eng in ["kokoro", "edge_tts", "azure_tts", "gcp_tts", "elevenlabs", "voxcpm2"]:
+        verdict = check_engine_license(eng)
+        log_license_audit(eng, verdict)
+        logger.info(f"{eng}: {verdict.value}")

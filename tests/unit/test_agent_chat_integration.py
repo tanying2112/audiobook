@@ -5,10 +5,10 @@ Verifies:
 2. Session management across chat sessions
 3. WebSocket endpoint responds properly
 """
+
 import json
-import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,6 +31,7 @@ class TestAgentChatHTTPEndpoint:
     def test_chat_request_schema_valid(self):
         """Verify AgentChatRequest Pydantic schema validation."""
         from src.audiobook_studio.api.agent_chat import AgentChatRequest
+
         req = AgentChatRequest(
             project_id=1,
             message="你好，帮我看看项目状态",
@@ -43,12 +44,14 @@ class TestAgentChatHTTPEndpoint:
 
     def test_chat_request_required_fields(self):
         from src.audiobook_studio.api.agent_chat import AgentChatRequest
+
         # session_id is optional
         req = AgentChatRequest(project_id=1, message="test")
         assert req.session_id is None
 
     def test_chat_response_schema(self):
         from src.audiobook_studio.api.agent_chat import AgentChatResponse
+
         resp = AgentChatResponse(
             session_id="test_session_123",
             message="我收到了你的消息",
@@ -62,6 +65,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_get_or_create_session_new(self):
         from src.audiobook_studio.api.agent_chat import _get_or_create_session, agent_sessions
+
         session_id = _get_or_create_session(project_id=1, session_id=None)
         assert session_id is not None
         assert session_id.startswith("agent_chat_1_")
@@ -72,6 +76,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_get_or_create_session_existing(self):
         from src.audiobook_studio.api.agent_chat import _get_or_create_session, agent_sessions
+
         existing_id = "agent_chat_1_abc123def456"
         agent_sessions[existing_id] = {
             "project_id": 1,
@@ -84,6 +89,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_add_chat_message_to_history(self):
         from src.audiobook_studio.api.agent_chat import _add_message, _get_or_create_session, agent_sessions
+
         session_id = _get_or_create_session(project_id=1, session_id=None)
         _add_message(session_id, "user", "测试消息", {"key": "value"})
         session = agent_sessions[session_id]
@@ -95,6 +101,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_add_chat_message_nonexistent_session(self):
         from src.audiobook_studio.api.agent_chat import _add_message
+
         # Should not raise
         _add_message("nonexistent_session", "user", "test")
 
@@ -102,6 +109,7 @@ class TestAgentChatHTTPEndpoint:
         """Verify project existence check in the chat endpoint."""
         # Simulated: the endpoint code verification via mocking
         from src.audiobook_studio.api.agent_chat import AgentChatRequest
+
         req = AgentChatRequest(project_id=999999, message="test")
         assert req.project_id == 999999
 
@@ -129,6 +137,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_agent_status_response_schema(self):
         from src.audiobook_studio.api.agent_chat import AgentStatusResponse
+
         status = AgentStatusResponse(
             project_id=1,
             active_sessions=3,
@@ -141,6 +150,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_pipeline_start_request_schema(self):
         from src.audiobook_studio.api.agent_chat import PipelineStartRequest
+
         req = PipelineStartRequest(
             project_id=1,
             mode="autopilot",
@@ -151,6 +161,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_pipeline_start_invalid_mode(self):
         from src.audiobook_studio.api.agent_chat import PipelineStartRequest
+
         req = PipelineStartRequest(
             project_id=1,
             mode="interactive",
@@ -161,6 +172,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_pipeline_confirm_request(self):
         from src.audiobook_studio.api.agent_chat import PipelineConfirmRequest
+
         req = PipelineConfirmRequest(project_id=1, confirmed=True)
         assert req.confirmed is True
         req = PipelineConfirmRequest(project_id=1, confirmed=False)
@@ -168,6 +180,7 @@ class TestAgentChatHTTPEndpoint:
 
     def test_pipeline_status_response_schema(self):
         from src.audiobook_studio.api.agent_chat import PipelineStatusResponse
+
         status = PipelineStatusResponse(
             project_id=1,
             mode="autopilot",
@@ -185,7 +198,8 @@ class TestAgentChatHTTPEndpoint:
 
     def test_agent_chat_http_endpoint_with_mock_session(self):
         """Verify chat session lifecycle: create → add message → retrieve."""
-        from src.audiobook_studio.api.agent_chat import _get_or_create_session, _add_message, agent_sessions
+        from src.audiobook_studio.api.agent_chat import _add_message, _get_or_create_session, agent_sessions
+
         sid = _get_or_create_session(project_id=1, session_id=None)
         assert sid.startswith("agent_chat_1_")
         _add_message(sid, "user", "项目状态怎么样？", {})

@@ -53,8 +53,7 @@ def _run_with_dspy_blocked(script: str) -> subprocess.CompletedProcess[str]:
     on a clean install. The subprocess inherits the parent env plus the project
     ``src`` dir on PYTHONPATH so ``audiobook_studio`` is importable.
     """
-    launcher = textwrap.dedent(
-        """
+    launcher = textwrap.dedent("""
         import builtins
 
         _real_import = builtins.__import__
@@ -67,8 +66,7 @@ def _run_with_dspy_blocked(script: str) -> subprocess.CompletedProcess[str]:
 
 
         builtins.__import__ = _block_dspy
-        """
-    )
+        """)
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(_SRC), env.get("PYTHONPATH", "")])
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -87,12 +85,10 @@ def test_import_audiobook_studio_without_dspy() -> None:
     Regression for the original defect: the package top-level eagerly reached
     into the DSPy-backed optimiser, so a clean install crashed on import.
     """
-    script = textwrap.dedent(
-        """
+    script = textwrap.dedent("""
         import audiobook_studio
         print("import-ok", audiobook_studio.__name__)
-        """
-    )
+        """)
     result = _run_with_dspy_blocked(script)
     assert result.returncode == 0, "import audiobook_studio crashed when dspy was blocked:\n" + result.stderr
     assert "import-ok" in result.stdout
@@ -106,8 +102,7 @@ def test_feedback_export_symbols_lazy_on_dspy() -> None:
     ``ModuleNotFoundError`` (so users who actually run optimisation still get an
     honest error, while the package import stays cheap and optional-free).
     """
-    script = textwrap.dedent(
-        """
+    script = textwrap.dedent("""
         import audiobook_studio.feedback as fb
         # importing the package must NOT have pulled dspy in
         import sys
@@ -118,8 +113,7 @@ def test_feedback_export_symbols_lazy_on_dspy() -> None:
             print("access-no-error")
         except ModuleNotFoundError as exc:
             print("dspy-required")
-        """
-    )
+        """)
     result = _run_with_dspy_blocked(script)
     assert result.returncode == 0, "import audiobook_studio.feedback crashed when dspy was blocked:\n" + result.stderr
     assert "dspy-required" in result.stdout, (

@@ -81,9 +81,7 @@ def _read_installed() -> Dict[str, Any]:
 
 def _write_installed(data: Dict[str, Any]) -> None:
     INSTALLED_PLUGINS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    INSTALLED_PLUGINS_PATH.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    INSTALLED_PLUGINS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def list_installed_plugins() -> List[str]:
@@ -97,9 +95,7 @@ def install_plugin(name: str, plugins_dir: Path | None = None) -> Dict[str, Any]
     Returns a status dict: ``{"name", "installed": bool, "already_installed": bool}``.
     Raises ``KeyError`` (caller maps to 404) if the plugin is not discoverable.
     """
-    manifest = next(
-        (p for p in discover_plugins(plugins_dir) if p.name == name), None
-    )
+    manifest = next((p for p in discover_plugins(plugins_dir) if p.name == name), None)
     if manifest is None:
         raise KeyError(f"Plugin not found: {name}")
 

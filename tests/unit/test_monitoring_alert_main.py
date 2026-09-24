@@ -2,13 +2,10 @@
 
 import json
 import os
-from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from datetime import datetime
+from unittest.mock import patch
 
-import pytest
-
-from src.audiobook_studio.monitoring.alert import collect_logs, collect_self_iteration_logs, main
+from src.audiobook_studio.monitoring.alert import main
 
 
 def _write_perf_log(logs_dir, records):

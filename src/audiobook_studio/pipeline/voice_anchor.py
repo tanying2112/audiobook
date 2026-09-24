@@ -7,9 +7,9 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from ..config.hardware_profile import get_hardware_profile
 from ..quality.metrics import SpeakerSimilarityMetric, SpeakerSimilarityResult
@@ -451,7 +451,7 @@ async def apply_voice_anchor(
                 # Stashed dynamically: ParagraphAnnotation (extra="forbid") has
                 # no declared voice_anchor_ref field, so use setattr to express
                 # the runtime stash without overshooting the schema contract.
-                setattr(inp.paragraph_annotation, "voice_anchor_ref", ref_audio)
+                inp.paragraph_annotation.voice_anchor_ref = ref_audio
 
     return inputs
 

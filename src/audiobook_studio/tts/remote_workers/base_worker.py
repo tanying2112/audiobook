@@ -161,7 +161,9 @@ class BaseWorker(abc.ABC):
 
     def _handle_shutdown(self, signum: int, frame: Any) -> None:
         """Catch OS termination request, finish current task, then exit cleanly."""
-        print(f"\n⚠️ [{self.worker_id}] Caught termination signal ({signum}). Flushing current transaction and exiting gracefully...")
+        print(
+            f"\n⚠️ [{self.worker_id}] Caught termination signal ({signum}). Flushing current transaction and exiting gracefully..."
+        )
         self.running = False
 
     def _execute_network_call_with_retry(
@@ -177,7 +179,10 @@ class BaseWorker(abc.ABC):
             try:
                 return func(*args, **kwargs)
             except (redis.RedisError, boto3.exceptions.Boto3Error) as error:
-                print(f"⚠️ [{self.worker_id}] Dynamic I/O failure on attempt {attempt}/{max_retries}: {error}", file=sys.stderr)
+                print(
+                    f"⚠️ [{self.worker_id}] Dynamic I/O failure on attempt {attempt}/{max_retries}: {error}",
+                    file=sys.stderr,
+                )
                 if attempt == max_retries:
                     raise
                 time.sleep(delay)
@@ -242,7 +247,7 @@ class BaseWorker(abc.ABC):
         while self.running:
             try:
                 queue_depth = self.redis.llen("tts:tasks")
-            except Exception:
+            except redis.exceptions.RedisError:
                 queue_depth = 0
 
             self._send_heartbeat("idle" if empty_polls > 0 else "processing", queue_depth)
@@ -250,7 +255,7 @@ class BaseWorker(abc.ABC):
             try:
                 # Long-poll unified queue (5 min blocking)
                 task_data = self.redis.blpop("tts:tasks", timeout=300)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 print(f"🔌 [{self.worker_id}] Connection severed during blocking poll: {e}", file=sys.stderr)
                 time.sleep(5)
                 continue
@@ -289,10 +294,12 @@ class BaseWorker(abc.ABC):
                 if empty_polls >= self.max_empty_polls:
                     try:
                         if self.redis.llen("tts:tasks") == 0:
-                            print(f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine.")
+                            print(
+                                f"🛑 [{self.worker_id}] Idle timeout triggered quota preservation. Autonomously terminating engine."
+                            )
                             self._send_heartbeat("exiting", 0)
                             break
-                    except Exception:
+                    except redis.exceptions.RedisError:
                         pass
 
         print(f"🛑 [{self.worker_id}] Process shutdown sequence complete.")

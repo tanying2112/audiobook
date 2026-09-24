@@ -13,16 +13,14 @@ the existing processor.py for batch analysis.
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from ..models import FeedbackRecord as FeedbackRecordModel
 from ..storage import project_dir
-from .collector import list_unprocessed_feedback, mark_feedback_processed
+from .collector import list_unprocessed_feedback
 from .processor import AggregateAnalysis, analyze_batch
 
 logger = logging.getLogger(__name__)

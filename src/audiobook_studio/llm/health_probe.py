@@ -5,6 +5,7 @@ and latency degradation. Results feed into circuit breaker and routing decisions
 """
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -14,6 +15,42 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# When set (e.g. by the test harness), HealthProbe never spawns its background
+# thread. The real probe pings live provider endpoints; under unit tests the
+# configured providers are frequently MagicMocks whose ``base_url`` is truthy,
+# so the probe would mark them unhealthy asynchronously and the router would
+# skip them at the ``is_healthy`` guard. That races with ``router.call`` (a
+# query succeeds in isolated runs but is skipped under heavy load), producing
+# order-dependent failures. Disabling the thread keeps probe state empty (every
+# provider treated as healthy) and removes a CPU-contending daemon thread that
+# can push slow global checks (mypy --strict) past their timeout.
+_DISABLE_ENV = "AUDIOBOOK_DISABLE_HEALTH_PROBE"
+
+
+def is_probe_disabled() -> bool:
+    """True when the health-probe background thread should be suppressed."""
+    return os.environ.get(_DISABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Registry of HealthProbe instances with a live background thread. Used by the
+# test harness (and operational shutdown) to guarantee no probe thread leaks
+# across tests. A leaked daemon thread keeps pinging providers and contends for
+# CPU, which can push slow global checks (e.g. mypy --strict) past their timeout.
+_active_probes: "set[HealthProbe]" = set()
+
+
+def stop_all_health_probes() -> None:
+    """Stop every currently-running HealthProbe background thread.
+
+    Safe to call multiple times / when none are running.
+    """
+    for probe in list(_active_probes):
+        try:
+            probe.stop()
+        except Exception:  # pragma: no cover - defensive
+            pass
+    _active_probes.clear()
 
 
 @dataclass
@@ -55,17 +92,28 @@ class HealthProbe:
         self.statuses: Dict[str, HealthStatus] = {}
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._registered = False
 
         for p in providers:
             self.statuses[p.name] = HealthStatus(provider=p.name)
 
     def start(self):
-        """Start background health probe thread."""
+        """Start background health probe thread.
+
+        No-op when the probe is disabled via ``AUDIOBOOK_DISABLE_HEALTH_PROBE``
+        (see :func:`is_probe_disabled`) – the probe is left in a healthy state
+        without spawning any thread.
+        """
+        if is_probe_disabled():
+            logger.info("Health probe disabled by env, not starting thread")
+            return
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._probe_loop, daemon=True)
         self._thread.start()
+        _active_probes.add(self)
+        self._registered = True
         logger.info(f"Health probe started (interval={self.interval_s}s)")
 
     def stop(self):
@@ -73,6 +121,9 @@ class HealthProbe:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5.0)
+        if self._registered:
+            _active_probes.discard(self)
+            self._registered = False
         logger.info("Health probe stopped")
 
     def _probe_loop(self):
@@ -108,7 +159,7 @@ class HealthProbe:
         # Resolve health-check path: explicit health_path wins; Ollama has no
         # /models so it falls to /api/tags; otherwise default to /models
         # (OpenAI-compatible). Anthropic gateways (fcc) set health_path=/health.
-        import os as _os
+
         health_path = getattr(provider, "health_path", None) or "/models"
         if base_url == "http://localhost:11434" or (base_url and "11434" in base_url):
             if not getattr(provider, "health_path", None):

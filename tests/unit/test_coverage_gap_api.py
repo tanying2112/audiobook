@@ -4,19 +4,15 @@ Covers: config.py, collab.py, audio_segments.py, export.py, llm.py,
         dependencies.py, version_manager.py, main.py, mock_router.py
 """
 
-import json
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from src.audiobook_studio.database import Base, get_db
+from src.audiobook_studio.database import Base
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. dependencies.py
@@ -93,25 +89,20 @@ class TestCollabAPI:
     def client(self):
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-        from src.audiobook_studio.api.collab import router
-        from src.audiobook_studio.api.dependencies import get_async_db
-
         # collab endpoints depend on get_async_db; ensure collaboration tables
         # (incl. the new CollaborationRecord aggregate) are registered on
         # Base.metadata before DDL is applied.
         import src.audiobook_studio.models.collaboration  # noqa: F401
+        from src.audiobook_studio.api.collab import router
+        from src.audiobook_studio.api.dependencies import get_async_db
 
         app = FastAPI()
         app.include_router(router)
 
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tmp.close()
-        sync_engine = create_engine(
-            f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-        )
-        async_engine = create_async_engine(
-            f"sqlite+aiosqlite:///{tmp.name}", connect_args={"check_same_thread": False}
-        )
+        sync_engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
+        async_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp.name}", connect_args={"check_same_thread": False})
         Base.metadata.create_all(bind=sync_engine)
         TestSession = async_sessionmaker(bind=async_engine, expire_on_commit=False)
 
@@ -196,12 +187,43 @@ class TestAudioSegmentsAPI:
 class TestExportAPI:
     @pytest.fixture()
     def client(self):
+        # TEST-ISOLATION: the export router depends on ``get_async_db`` (the real
+        # app async engine). In the full suite that shared engine's DB is only
+        # populated when some *other* API/harness test runs first, so under
+        # ``--random-order`` these tests hit ``no such table: projects`` and 500
+        # (which is not in the accepted status set). Give the export router its
+        # own isolated in-memory DB with all tables created and override
+        # ``get_async_db`` so it no longer depends on collection order.
+        import os
+        import tempfile
+
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        import src.audiobook_studio.models  # noqa: F401 — register all ORM models
+        from src.audiobook_studio.api.dependencies import get_async_db
         from src.audiobook_studio.api.export import router
 
         app = FastAPI()
         app.include_router(router)
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        sync_engine = create_engine(f"sqlite:///{tmp.name}", connect_args={"check_same_thread": False})
+        async_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp.name}", connect_args={"check_same_thread": False})
+        Base.metadata.create_all(bind=sync_engine)
+        TestSession = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+
+        async def override():
+            async with TestSession() as db:
+                yield db
+
+        app.dependency_overrides[get_async_db] = override
         with TestClient(app) as c:
             yield c
+        app.dependency_overrides.clear()
+        sync_engine.dispose()
+        async_engine.dispose()
+        os.unlink(tmp.name)
 
     def test_list_formats(self, client):
         r = client.get("/projects/1/export/")

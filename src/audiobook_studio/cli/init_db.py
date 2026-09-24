@@ -6,9 +6,8 @@ Initializes database schema and optionally seeds project records.
 import argparse
 import asyncio
 
-from ..database import AsyncSessionLocal, drop_async_db, init_async_db
-from ..models import Project
-from ..run_pipeline import BOOK_CONFIG, initialize_database
+from ..database import drop_async_db, init_async_db
+from ..run_pipeline import initialize_database
 
 
 def add_init_db_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -47,7 +46,7 @@ async def _init_db_async(args: argparse.Namespace) -> int:
         if not args.no_seed:
             # Run seed projects in sync context (uses sync SessionLocal)
             # We could make initialize_database async, but for now run in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, initialize_database, True)
         else:
             print("ℹ️  Skipping project seed data creation.")

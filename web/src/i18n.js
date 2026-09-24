@@ -7,11 +7,12 @@
  */
 
 import zhCN from './locales/zh-CN.js'
+import enUS from './locales/en-US.js'
 
 // 支持的语言列表
 export const SUPPORTED_LOCALES = {
   'zh-CN': '简体中文',
-  // 'en-US': 'English (US)',
+  'en-US': 'English (US)',
   // 'ja-JP': '日本語',
   // 'ko-KR': '한국어',
   // 'fr-FR': 'Français',
@@ -19,12 +20,13 @@ export const SUPPORTED_LOCALES = {
   // 'es-ES': 'Español',
 }
 
-// 默认语言
+// 默认语言（同时作为缺失翻译的回退语言）
 export const DEFAULT_LOCALE = 'zh-CN'
 
 // 语言包存储
 const messages = {
   'zh-CN': zhCN,
+  'en-US': enUS,
 }
 
 // 当前语言
@@ -72,8 +74,13 @@ function getNestedValue(obj, path) {
 export function t(key, params = {}) {
   const localeMessages = messages[currentLocale] || messages[DEFAULT_LOCALE]
   let translation = getNestedValue(localeMessages, key)
-  
-  // 如果找不到翻译，返回 key 本身
+
+  // 当前语言缺失时，回退到默认语言（zh-CN），避免出现裸露的 key 字符串。
+  if ((translation === undefined || translation === null) && currentLocale !== DEFAULT_LOCALE) {
+    translation = getNestedValue(messages[DEFAULT_LOCALE], key)
+  }
+
+  // 如果默认语言也找不到翻译，返回 key 本身并告警。
   if (translation === undefined || translation === null) {
     console.warn(`[i18n] Translation not found for key: ${key} (locale: ${currentLocale})`)
     return key

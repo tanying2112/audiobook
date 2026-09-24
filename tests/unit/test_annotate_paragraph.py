@@ -86,7 +86,6 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = AnnotateParagraphPipeline()
         assert pipeline.router is not None
@@ -205,7 +204,6 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_calls_router(self):
         """Test run() in real mode calls router with correct parameters."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
         # Router returns a result object with metadata attributes AND .output
@@ -253,7 +251,6 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_records_performance_on_success(self):
         """Test run() records performance metrics on success."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
         mock_result = MagicMock()
@@ -294,17 +291,17 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_records_performance_on_failure(self):
         """Test run() records performance metrics on failure."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
-        mock_router.call.side_effect = Exception("API Error")
+        # Raise RuntimeError which is caught by the except block
+        mock_router.call.side_effect = RuntimeError("API Error")
 
         # Explicitly set mock_mode=False for real mode test
         with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             pipeline = AnnotateParagraphPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
 
-            with pytest.raises(Exception, match="API Error"):
+            with pytest.raises(RuntimeError, match="API Error"):
                 pipeline.run(input_data)
 
             mock_record.assert_called_once()

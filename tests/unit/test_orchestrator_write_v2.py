@@ -1,10 +1,8 @@
 """Tests for pipeline/orchestrator.py — _write_* functions."""
 
-import json
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import select
 
 from src.audiobook_studio.pipeline.orchestrator import (
     _write_analyze,

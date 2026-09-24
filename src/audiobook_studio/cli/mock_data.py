@@ -4,9 +4,8 @@ Generates mock chapter text files for testing the pipeline.
 """
 
 import argparse
-from pathlib import Path
 
-from ..run_pipeline import BOOK_CONFIG, DATA_DIR, MOCK_DATA_DIR, _get_chapter_templates, create_mock_data
+from ..run_pipeline import BOOK_CONFIG, create_mock_data
 
 
 def add_mock_data_parser(subparsers: argparse._SubParsersAction) -> None:

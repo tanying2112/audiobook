@@ -3,15 +3,14 @@
 Locks in the mock↔real self-iteration switch (C-01-2) and the golden-dataset
 path that the canary / promotion-gate / A-B evolution chain relies on (C-01-3).
 
-Default behavior must stay *mock* (``SELF_ITERATION_MOCK=true``) so nothing in
-the existing harness changes until an operator flips it to ``false`` for the
-real-LLM evolution loop — that regression is the core guarantee here.
+Default behavior is now *real* (``SELF_ITERATION_MOCK=false``) so the harness
+runs the real-LLM evolution loop out of the box; an operator can still flip it
+to ``true`` to force the deterministic mock path. The regression guarantee here
+is that the switch keeps working in both directions.
 """
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -20,8 +19,8 @@ import pytest
 from src.audiobook_studio.feedback.promotion_gate import (
     _load_golden_examples,
     _resolve_mock_mode,
-    _self_iteration_mock_enabled,
     _run_stage_with_prompt_version,
+    _self_iteration_mock_enabled,
 )
 
 #: Golden dataset directories under tests/golden/ (C-01-3).
@@ -40,11 +39,11 @@ GOLDEN_STAGES: tuple[str, ...] = (
 class TestSelfIterationMockSwitch:
     """C-01-2: SELF_ITERATION_MOCK env drives mock_mode resolution."""
 
-    def test_default_is_mock(self, monkeypatch):
-        """Unset env ⇒ mock mode (true) — preserves existing harness behavior."""
+    def test_default_is_real_llm(self, monkeypatch):
+        """Unset env ⇒ real mode (false) — harness runs real LLM by default (C-01)."""
         monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
-        assert _self_iteration_mock_enabled() is True
-        assert _resolve_mock_mode(None) is True
+        assert _self_iteration_mock_enabled() is False
+        assert _resolve_mock_mode(None) is False
 
     def test_env_false_turns_off_mock(self, monkeypatch):
         """SELF_ITERATION_MOCK=false ⇒ real mode (false)."""
@@ -100,17 +99,20 @@ class TestMockModeForwardedToStage:
             def run(self, input_data):
                 return input_data
 
-        with patch(
-            "src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", FakeEdit
-        ):
+        with patch("src.audiobook_studio.pipeline.edit_for_tts.EditForTtsPipeline", FakeEdit):
             _run_stage_with_prompt_version("edit", 1, SimpleNamespace(text="x"))
 
         return captured["mock_mode"]
 
-    def test_forwards_mock_true_by_default(self, tmp_path, monkeypatch):
+    def test_forwards_real_false_by_default(self, tmp_path, monkeypatch):
+        """Unset env ⇒ real-LLM mode (false) reaches the stage by default (C-01)."""
         monkeypatch.delenv("SELF_ITERATION_MOCK", raising=False)
-        assert self._run_edit_stage(tmp_path, monkeypatch) is True
+        assert self._run_edit_stage(tmp_path, monkeypatch) is False
 
     def test_forwards_real_false_when_opt_out(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SELF_ITERATION_MOCK", "false")
         assert self._run_edit_stage(tmp_path, monkeypatch) is False
+
+    def test_forwards_mock_true_when_mock_set(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SELF_ITERATION_MOCK", "true")
+        assert self._run_edit_stage(tmp_path, monkeypatch) is True

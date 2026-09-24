@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from typing_extensions import Annotated
 
 
 class FeedbackRecord(BaseModel):

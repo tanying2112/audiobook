@@ -7,11 +7,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentType(str, Enum):
     """Types of documents stored in the RAG system."""
+
     CHARACTER_PROFILE = "character_profile"
     WORLD_BUILDING = "world_building"
     STYLE_GUIDE = "style_guide"
@@ -22,6 +23,7 @@ class DocumentType(str, Enum):
 
 class RetrievalStrategy(str, Enum):
     """Retrieval strategy for RAG."""
+
     SEMANTIC = "semantic"
     BM25 = "bm25"
     HYBRID = "hybrid"
@@ -42,45 +44,44 @@ def _json_loads(s: str) -> Any:
 
 class CharacterProfile(BaseModel):
     """Character profile for consistency across chapters."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     # Core identity
     canonical_name: str = Field(..., description="Canonical name used in narration")
     aliases: List[str] = Field(default_factory=list, description="Alternative names/nicknames")
     pronouns: Dict[str, str] = Field(
         default_factory=lambda: {"subject": "他", "object": "他", "possessive": "他的"},
-        description="Pronouns for the character (subject, object, possessive)"
+        description="Pronouns for the character (subject, object, possessive)",
     )
-    
+
     # Physical/Voice attributes
     gender: Optional[str] = Field(None, description="Gender for voice selection")
     age: Optional[str] = Field(None, description="Age range or specific age")
     voice_description: Optional[str] = Field(None, description="Voice characteristics")
     suggested_voice_id: Optional[str] = Field(None, description="TTS voice ID suggestion")
-    
+
     # Personality & Behavior
     personality_traits: List[str] = Field(default_factory=list, description="Key personality traits")
     speech_patterns: List[str] = Field(default_factory=list, description="Speech patterns, catchphrases")
     emotional_baseline: str = Field(default="neutral", description="Default emotional state")
-    
+
     # Relationships
     relationships: Dict[str, str] = Field(
-        default_factory=dict, 
-        description="Relationship to other characters (name -> relationship)"
+        default_factory=dict, description="Relationship to other characters (name -> relationship)"
     )
-    
+
     # Narrative
     backstory: Optional[str] = Field(None, description="Character backstory")
     role: Optional[str] = Field(None, description="Role in story (protagonist, antagonist, etc.)")
     first_appearance_chapter: Optional[int] = Field(None, description="Chapter where character first appears")
-    
+
     # Metadata
     project_id: int = Field(..., description="Project ID this character belongs to")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     version: int = Field(default=1, description="Profile version for tracking changes")
-    
+
     # Source tracking
     source_chapters: List[int] = Field(default_factory=list, description="Chapters where info was extracted from")
     confidence: float = Field(default=1.0, description="Confidence in this profile (0-1)")
@@ -88,17 +89,19 @@ class CharacterProfile(BaseModel):
 
 class WorldBuildingDoc(BaseModel):
     """World-building document for setting consistency."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     title: str = Field(..., description="Document title")
-    doc_type: str = Field(..., description="Sub-type: geography, magic_system, technology, culture, history, organization, etc.")
+    doc_type: str = Field(
+        ..., description="Sub-type: geography, magic_system, technology, culture, history, organization, etc."
+    )
     content: str = Field(..., description="Full document content")
     summary: Optional[str] = Field(None, description="Brief summary for quick retrieval")
-    
+
     # Key entities mentioned
     key_entities: List[str] = Field(default_factory=list, description="Important names, places, terms mentioned")
-    
+
     # Metadata
     project_id: int = Field(..., description="Project ID")
     chapter_range: Optional[str] = Field(None, description="Chapters this applies to (e.g., '1-10', 'all')")
@@ -111,25 +114,29 @@ class WorldBuildingDoc(BaseModel):
 
 class StyleGuide(BaseModel):
     """Style guide for narrative voice and writing style."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     name: str = Field(..., description="Style guide name")
-    narrative_voice: str = Field(..., description="Description of narrative voice (e.g., 'third-person omniscient, literary')")
+    narrative_voice: str = Field(
+        ..., description="Description of narrative voice (e.g., 'third-person omniscient, literary')"
+    )
     tone: str = Field(..., description="Overall tone (e.g., 'serious, melancholic, humorous')")
     pacing: str = Field(..., description="Pacing style (e.g., 'slow and atmospheric, fast-paced action')")
-    
+
     # Specific rules
-    perspective_rules: List[str] = Field(default_factory=list, description="POV rules (e.g., 'never break from protagonist POV')")
+    perspective_rules: List[str] = Field(
+        default_factory=list, description="POV rules (e.g., 'never break from protagonist POV')"
+    )
     dialogue_rules: List[str] = Field(default_factory=list, description="Dialogue formatting rules")
     description_rules: List[str] = Field(default_factory=list, description="Description style rules")
     forbidden_patterns: List[str] = Field(default_factory=list, description="Patterns to avoid")
     required_patterns: List[str] = Field(default_factory=list, description="Patterns to maintain")
-    
+
     # TTS-specific
     prosody_guidance: Dict[str, Any] = Field(default_factory=dict, description="Prosody guidance for TTS")
     emotion_mapping: Dict[str, str] = Field(default_factory=dict, description="Emotion to prosody mapping")
-    
+
     # Metadata
     project_id: int = Field(..., description="Project ID")
     genre: Optional[str] = Field(None, description="Genre this style guide applies to")
@@ -141,9 +148,9 @@ class StyleGuide(BaseModel):
 
 class PlotSummary(BaseModel):
     """Chapter or book-level plot summary."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     project_id: int
     chapter_index: Optional[int] = Field(None, description="Chapter number (None for book-level)")
     summary: str = Field(..., description="Plot summary")
@@ -154,9 +161,9 @@ class PlotSummary(BaseModel):
 
 class ProperNouns(BaseModel):
     """Proper nouns (names, places, terms) for consistency."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     project_id: int
     category: str = Field(..., description="Category: character, place, organization, item, term, etc.")
     canonical_form: str = Field(..., description="Canonical spelling/form")
@@ -168,9 +175,9 @@ class ProperNouns(BaseModel):
 
 class RAGDocument(BaseModel):
     """Unified document model for ChromaDB storage."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     id: str = Field(..., description="Unique document ID")
     project_id: int = Field(..., description="Project ID")
     doc_type: DocumentType = Field(..., description="Document type")
@@ -181,9 +188,9 @@ class RAGDocument(BaseModel):
 
 class RetrievalResult(BaseModel):
     """Result from RAG retrieval."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     document: RAGDocument
     score: float = Field(..., description="Relevance score (0-1)")
     strategy: RetrievalStrategy = Field(..., description="Strategy used for retrieval")
@@ -191,29 +198,29 @@ class RetrievalResult(BaseModel):
 
 class RAGContext(BaseModel):
     """Aggregated RAG context for LLM injection."""
-    
+
     model_config = ConfigDict(extra="allow")
-    
+
     project_id: int
     chapter_index: Optional[int] = None
     paragraph_index: Optional[int] = None
-    
+
     # Retrieved contexts by type
     character_profiles: List[CharacterProfile] = Field(default_factory=list)
     world_building: List[WorldBuildingDoc] = Field(default_factory=list)
     style_guides: List[StyleGuide] = Field(default_factory=list)
     plot_summaries: List[PlotSummary] = Field(default_factory=list)
     proper_nouns: List[ProperNouns] = Field(default_factory=list)
-    
+
     # Metadata
     retrieval_strategy: RetrievalStrategy = RetrievalStrategy.HYBRID
     total_documents: int = 0
     retrieval_time_ms: float = 0.0
-    
+
     def to_prompt_context(self) -> str:
         """Format retrieved context for LLM prompt injection."""
         parts = []
-        
+
         if self.character_profiles:
             parts.append("=== 角色档案 ===")
             for char in self.character_profiles:
@@ -231,7 +238,7 @@ class RAGContext(BaseModel):
                     rel_str = ", ".join(f"{k}: {v}" for k, v in char.relationships.items())
                     parts.append(f"  关系: {rel_str}")
                 parts.append("")
-        
+
         if self.world_building:
             parts.append("=== 世界设定 ===")
             for doc in self.world_building:
@@ -243,7 +250,7 @@ class RAGContext(BaseModel):
                 if doc.key_entities:
                     parts.append(f"  关键实体: {', '.join(doc.key_entities)}")
                 parts.append("")
-        
+
         if self.style_guides:
             parts.append("=== 风格指南 ===")
             for guide in self.style_guides:
@@ -258,7 +265,7 @@ class RAGContext(BaseModel):
                 if guide.forbidden_patterns:
                     parts.append(f"  禁用模式: {'; '.join(guide.forbidden_patterns)}")
                 parts.append("")
-        
+
         if self.plot_summaries:
             parts.append("=== 情节摘要 ===")
             for summary in self.plot_summaries:
@@ -269,18 +276,19 @@ class RAGContext(BaseModel):
                 if summary.key_events:
                     parts.append(f"  关键事件: {'; '.join(summary.key_events)}")
                 parts.append("")
-        
+
         if self.proper_nouns:
             parts.append("=== 专有名词表 ===")
             for noun in self.proper_nouns:
                 variant_str = f" (别名: {', '.join(noun.variants)})" if noun.variants else ""
                 parts.append(f"  {noun.canonical_form}{variant_str}: {noun.definition or 'N/A'}")
             parts.append("")
-        
+
         return "\n".join(parts)
 
 
 # Helper functions for creating RAG documents from pipeline outputs
+
 
 def create_character_profile_doc(profile: CharacterProfile) -> RAGDocument:
     """Convert CharacterProfile to RAGDocument for storage."""
@@ -299,12 +307,13 @@ def create_character_profile_doc(profile: CharacterProfile) -> RAGDocument:
         f"关系: {', '.join(f'{k}是{v}' for k, v in profile.relationships.items())}" if profile.relationships else "",
     ]
     content = "\n".join(filter(None, content_parts))
-    
+
     return RAGDocument(
         id=f"character_{profile.project_id}_{profile.canonical_name}",
         project_id=profile.project_id,
         doc_type=DocumentType.CHARACTER_PROFILE,
         content=content,
+        embedding=None,
         metadata={
             "canonical_name": profile.canonical_name,
             "aliases": _json_dumps(profile.aliases),
@@ -322,7 +331,7 @@ def create_character_profile_doc(profile: CharacterProfile) -> RAGDocument:
             "emotional_baseline": profile.emotional_baseline,
             "backstory": profile.backstory,
             "relationships": _json_dumps(profile.relationships),
-        }
+        },
     )
 
 
@@ -331,12 +340,13 @@ def create_world_building_doc(doc: WorldBuildingDoc) -> RAGDocument:
     content = f"标题: {doc.title}\n类型: {doc.doc_type}\n内容: {doc.content}"
     if doc.summary:
         content = f"摘要: {doc.summary}\n{content}"
-    
+
     return RAGDocument(
         id=f"world_{doc.project_id}_{doc.title}",
         project_id=doc.project_id,
         doc_type=DocumentType.WORLD_BUILDING,
         content=content,
+        embedding=None,
         metadata={
             "title": doc.title,
             "doc_type": doc.doc_type,
@@ -347,7 +357,7 @@ def create_world_building_doc(doc: WorldBuildingDoc) -> RAGDocument:
             "priority": doc.priority,
             "version": doc.version,
             "project_id": doc.project_id,
-        }
+        },
     )
 
 
@@ -369,14 +379,15 @@ def create_style_guide_doc(guide: StyleGuide) -> RAGDocument:
         content_parts.append(f"禁用模式: {'; '.join(guide.forbidden_patterns)}")
     if guide.required_patterns:
         content_parts.append(f"必需模式: {'; '.join(guide.required_patterns)}")
-    
+
     content = "\n".join(content_parts)
-    
+
     return RAGDocument(
         id=f"style_{guide.project_id}_{guide.name}",
         project_id=guide.project_id,
         doc_type=DocumentType.STYLE_GUIDE,
         content=content,
+        embedding=None,
         metadata={
             "name": guide.name,
             "narrative_voice": guide.narrative_voice,
@@ -392,7 +403,7 @@ def create_style_guide_doc(guide: StyleGuide) -> RAGDocument:
             "required_patterns": _json_dumps(guide.required_patterns),
             "prosody_guidance": _json_dumps(guide.prosody_guidance),
             "emotion_mapping": _json_dumps(guide.emotion_mapping),
-        }
+        },
     )
 
 
@@ -403,19 +414,20 @@ def create_plot_summary_doc(summary: PlotSummary) -> RAGDocument:
         content += f"\n关键事件: {'; '.join(summary.key_events)}"
     if summary.characters_involved:
         content += f"\n涉及角色: {', '.join(summary.characters_involved)}"
-    
+
     return RAGDocument(
         id=f"plot_{summary.project_id}_ch{summary.chapter_index or 'all'}",
         project_id=summary.project_id,
         doc_type=DocumentType.PLOT_SUMMARY,
         content=content,
+        embedding=None,
         metadata={
             "chapter_index": summary.chapter_index,
             "key_events": _json_dumps(summary.key_events),
             "characters_involved": _json_dumps(summary.characters_involved),
             "project_id": summary.project_id,
             "summary": summary.summary,
-        }
+        },
     )
 
 
@@ -426,12 +438,13 @@ def create_proper_nouns_doc(noun: ProperNouns) -> RAGDocument:
         content += f"\n别名: {', '.join(noun.variants)}"
     if noun.definition:
         content += f"\n定义: {noun.definition}"
-    
+
     return RAGDocument(
         id=f"noun_{noun.project_id}_{noun.canonical_form}",
         project_id=noun.project_id,
         doc_type=DocumentType.PROPER_NOUNS,
         content=content,
+        embedding=None,
         metadata={
             "canonical_form": noun.canonical_form,
             "category": noun.category,
@@ -439,7 +452,7 @@ def create_proper_nouns_doc(noun: ProperNouns) -> RAGDocument:
             "first_appearance_chapter": noun.first_appearance_chapter,
             "project_id": noun.project_id,
             "definition": noun.definition,
-        }
+        },
     )
 
 
@@ -453,6 +466,7 @@ def deserialize_character_profile(metadata: Dict[str, Any]) -> CharacterProfile:
         gender=metadata.get("gender"),
         age=metadata.get("age"),
         suggested_voice_id=metadata.get("suggested_voice_id"),
+        voice_description=metadata.get("voice_description"),
         role=metadata.get("role"),
         first_appearance_chapter=metadata.get("first_appearance_chapter"),
         confidence=metadata.get("confidence", 1.0),

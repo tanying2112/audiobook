@@ -13,7 +13,6 @@ from src.audiobook_studio.api.websocket import (
     PipelineEventType,
     emit_pipeline_event,
     handle_client_message,
-    manager,
     pipeline_websocket,
 )
 
@@ -70,9 +69,7 @@ class TestConnectionManager:
 
         # State must remain clean: no orphaned project mapping, no stray connection sets
         assert websocket not in manager.connection_to_project
-        assert manager.active_connections == {}, (
-            "Disconnecting unknown websocket must not create stray project sets"
-        )
+        assert manager.active_connections == {}, "Disconnecting unknown websocket must not create stray project sets"
 
     @pytest.mark.asyncio
     async def test_broadcast_to_project(self):
@@ -240,7 +237,10 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "pause"}
 
-        await handle_client_message(websocket, project_id, message)
+        # Patch the module-global `manager` with a fresh instance so the test is
+        # isolated from global connection/pause state left by other tests.
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
@@ -256,7 +256,14 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "resume"}
 
-        await handle_client_message(websocket, project_id, message)
+        # Patch the module-global `manager` with a fresh instance. Pre-create the
+        # pause state so resume is meaningful without depending on global state
+        # left by other tests (order-independent, event-loop independent).
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()) as mock_manager:
+            mock_manager.pause_events[project_id] = asyncio.Event()
+            mock_manager.pause_states[project_id] = True
+
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
@@ -272,7 +279,8 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "status"}
 
-        await handle_client_message(websocket, project_id, message)
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
@@ -288,7 +296,8 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "unknown"}
 
-        await handle_client_message(websocket, project_id, message)
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         # Should not send any response for unknown message types
         websocket.send_text.assert_not_awaited()
@@ -313,8 +322,8 @@ class TestPipelineWebsocket:
 
             await pipeline_websocket(websocket, project_id)
 
-            # Check connection handling
-            mock_manager.connect.assert_awaited_once_with(websocket, project_id)
+            # Check connection handling (subprotocol negotiated from client headers)
+            mock_manager.connect.assert_awaited_once_with(websocket, project_id, subprotocol=None)
             mock_manager.disconnect.assert_called_once_with(websocket)
 
             # Check initial connection message

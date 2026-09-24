@@ -10,21 +10,19 @@ Verifies:
 3. Quality judgments are generated for all segments
 """
 
+import asyncio
 import os
 import sys
-import pytest
-import asyncio
 from pathlib import Path
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 from src.audiobook_studio.database import AsyncSessionLocal, init_async_db
-from src.audiobook_studio.models import Project, Chapter, Paragraph
-from src.audiobook_studio.pipeline.orchestrator import run_pipeline
-from src.audiobook_studio.pipeline.checkpoint import CheckpointManager
 from src.audiobook_studio.pipeline.quality_check import QualityCheckPipeline
-from src.audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision, QualityJudgment
+from src.audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision
 
 
 @pytest.fixture(scope="module")
@@ -100,6 +98,7 @@ class TestMockPipeline:
     async def test_quality_check_mock_mode_with_silence_issue(self, mock_pipeline):
         """Test that rule-based issues (silence) still trigger regeneration in mock mode."""
         from unittest.mock import patch
+
         from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult
 
         # Create analysis with silence issue
@@ -163,11 +162,11 @@ class TestFakeRemoteTTSPortSineWave:
     @pytest.mark.asyncio
     async def test_fake_port_generates_sine_wave(self):
         """Verify FakeRemoteTTSPort generates valid WAV with sine wave (not silence)."""
-        from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
-        from src.audiobook_studio.tts.port import TTSTaskPayload, TTSVoiceAnchor, TTSProsody
-        import tempfile
-        import wave
         import struct
+        import wave
+
+        from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
+        from src.audiobook_studio.tts.port import TTSProsody, TTSTaskPayload, TTSVoiceAnchor
 
         port = FakeRemoteTTSPort(synthesis_delay=0.01)
 
@@ -182,7 +181,7 @@ class TestFakeRemoteTTSPortSineWave:
         await port.submit("test_task_1", payload)
 
         # Poll for result
-        import asyncio
+
         for _ in range(50):
             status = await port.get_status("test_task_1")
             if status.status.value == "DONE":

@@ -5,7 +5,6 @@ import pytest
 from src.audiobook_studio.di import reset_app_container
 from src.audiobook_studio.llm.quota_registry import (
     QuotaConfig,
-    QuotaRegistry,
     QuotaUsage,
     get_quota_registry,
     init_quota_registry,

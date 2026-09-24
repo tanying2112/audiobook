@@ -4,11 +4,9 @@ D4 — 批量导出编排器
 整合 M4B、SRT、Audio-Ducking 模块，提供全流程导出 API。
 """
 
-import json
 import logging
 import shutil
 import subprocess
-import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,9 +14,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from ..utils.ffmpeg_probe import get_duration_sync
-from .audio_ducking import MixConfig, mix_full_pipeline, mix_with_ducking
+from .audio_ducking import MixConfig, mix_full_pipeline
 from .m4b import ChapterMarker, M4bMetadata, build_m4b
-from .mp3 import ChapterInfo, Mp3Metadata, write_id3_tags, export_mp3_chapters
+from .mastering import MasteringConfig, master_audio
+from .mp3 import Mp3Metadata, export_mp3_chapters, write_chapters_only
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
 
 logger = logging.getLogger(__name__)
@@ -63,6 +62,8 @@ class ExportJob:
     subtitle_config: Optional[SubtitleConfig] = None
     mix_config: Optional[MixConfig] = None
     output_dir: Optional[str] = None
+    # S2-5 母带后处理：导出时对 M4B/MP3 应用 mastering (降噪+静音修剪+响度归一化)
+    master: bool = True
 
     # Runtime
     progress: ExportProgress = ExportProgress.PENDING
@@ -132,7 +133,7 @@ def _build_chapter_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMa
                 if alt_path.exists():
                     try:
                         chapter_duration_ms += get_duration_sync(alt_path)
-                    except Exception:
+                    except (RuntimeError, OSError):
                         chapter_duration_ms += seg.duration_ms or 3000
                 else:
                     chapter_duration_ms += seg.duration_ms or 3000
@@ -163,14 +164,14 @@ def _build_segment_markers(chapter_data: List[Dict[str, Any]]) -> List[ChapterMa
             if path.exists():
                 try:
                     duration = get_duration_sync(path)
-                except Exception:
+                except (RuntimeError, OSError):
                     duration = seg.duration_ms or 3000
             else:
                 alt_path = path.with_suffix(".wav" if path.suffix == ".mp3" else ".mp3")
                 if alt_path.exists():
                     try:
                         duration = get_duration_sync(alt_path)
-                    except Exception:
+                    except (RuntimeError, OSError):
                         duration = seg.duration_ms or 3000
                 else:
                     duration = seg.duration_ms or 3000
@@ -246,12 +247,30 @@ def _build_subtitle_entries(
 
 def _build_project_metadata(chapter_data: List[Dict[str, Any]], project) -> M4bMetadata:
     """构建 M4B 元数据."""
-    first_chapter = chapter_data[0]["chapter"] if chapter_data else None
+    chapter_data[0]["chapter"] if chapter_data else None
     return M4bMetadata(
         title=project.title or "Untitled Audiobook",
         artist=project.author or "Unknown",
         album=project.title or "Untitled Audiobook",
     )
+
+
+def _apply_mastering_to_files(files: List[Path]) -> None:
+    """对一组已导出的音频文件就地应用 S2-5 母带后处理 (best-effort)。
+
+    文件不存在或 ffmpeg 失败时记录警告并跳过，不影响整体导出。
+    """
+    cfg = MasteringConfig(channels=2)
+    for f in files:
+        f = Path(f)
+        if not f.exists():
+            logger.debug("mastering 跳过不存在的文件: %s", f)
+            continue
+        try:
+            master_audio(f, f, cfg=cfg)
+            logger.info("mastered: %s", f)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("mastering 失败 (跳过): %s -> %s", f, e)
 
 
 def export_project(
@@ -309,7 +328,7 @@ def export_project(
 
             audio_files = _collect_audio_files(chapter_data_list)
             segment_markers = _build_segment_markers(chapter_data_list)
-            
+
             mp3_metadata = Mp3Metadata(
                 title=project.title or "Untitled Audiobook",
                 artist=project.author or "Unknown",
@@ -320,12 +339,33 @@ def export_project(
                 cover_image=job.cover_image if job.include_cover else None,
             )
 
-            # Export each chapter as separate MP3 with ID3 tags
+            # S2-5 母带后处理：先对原始音频做 mastering (降噪+静音修剪+响度归一化)，
+            # 必须在写入章节/ID3 之前完成 —— 因为 master_audio 会重新编码音频，
+            # 若在写标签之后再 master 会丢失章节元数据。
+            # 注意：母带化写入独立的临时副本，避免污染原始 audio_files
+            # (M4B 环节会重新收集同样的原始文件并自行 normalize，避免双重母带)。
+            mastered_input_dir = output_dir / "mastered_audio"
+            mastered_input_dir.mkdir(parents=True, exist_ok=True)
+            mastered_audio_files: List[Path] = []
+            for af in audio_files:
+                af = Path(af)
+                dst = mastered_input_dir / af.name
+                if af.exists():
+                    shutil.copy2(af, dst)
+                    mastered_audio_files.append(dst)
+                else:
+                    # 源文件不存在 (如测试中的 fake 路径)：直接透传，
+                    # 依赖下游 master_audio/export_mp3_chapters 的 exist 守卫或 mock。
+                    mastered_audio_files.append(af)
+            if job.master:
+                _apply_mastering_to_files(mastered_audio_files)
+
+            # Export each chapter as separate MP3 with ID3 tags (基于已母带的音频)
             mp3_output_dir = output_dir / "mp3_chapters"
             mp3_output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             mp3_files = export_mp3_chapters(
-                audio_files=audio_files,
+                audio_files=mastered_audio_files,
                 chapter_infos=segment_markers,
                 output_dir=mp3_output_dir,
                 metadata=mp3_metadata,
@@ -343,15 +383,31 @@ def export_project(
                         f.write(f"file '{mf.absolute()}'\n")
                 subprocess.run(
                     [
-                        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                        "-i", str(concat_list), "-c", "copy", str(combined_mp3)
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(combined_mp3),
                     ],
-                    check=True, capture_output=True,
+                    check=True,
+                    capture_output=True,
                 )
-                # Write chapters to combined MP3
+                concat_list.unlink(missing_ok=True)
+
+                # S2-5 母带后处理：合并后再归一化整书响度 (且重编码会丢掉章节，
+                # 故必须在 write_chapters_only 之前执行)。
+                if job.master:
+                    _apply_mastering_to_files([combined_mp3])
+
+                # Write chapters to combined MP3 (在 master 之后，避免被重编码抹除)
                 write_chapters_only(combined_mp3, segment_markers)
                 job.output_paths["mp3"] = str(combined_mp3)
-                concat_list.unlink(missing_ok=True)
 
         # --- M4B export ---
         if ExportFormat.M4B in job.formats or ExportFormat.M4B_SRT in job.formats or ExportFormat.ALL in job.formats:
@@ -426,7 +482,7 @@ def export_project(
                     chapter_markers=segment_markers,
                     output_path=m4b_path,
                     metadata=metadata,
-                    normalize=False,  # Disable for mock audio
+                    normalize=True,  # S2-5 母带后处理 (降噪+静音修剪+响度归一化)
                 )
 
                 # Cleanup temp files
@@ -439,7 +495,7 @@ def export_project(
                     chapter_markers=segment_markers,
                     output_path=m4b_path,
                     metadata=metadata,
-                    normalize=False,  # Disable for mock audio
+                    normalize=True,  # S2-5 母带后处理 (降噪+静音修剪+响度归一化)
                 )
 
             job.output_paths["m4b"] = str(m4b_path)

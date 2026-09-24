@@ -7,7 +7,6 @@ in-memory SQLite database (created via create_all), not mocks. Asserts:
 - role membership check matches by role.name
 - permission aggregation deduplicates and grants "*" to superusers
 """
-from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine

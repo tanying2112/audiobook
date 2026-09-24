@@ -1,0 +1,214 @@
+# Alertmanager Alert Rules for Audiobook Studio
+# Place this file in /etc/prometheus/rules/ or configure in prometheus.yml
+
+groups:
+  - name: audiobook-studio-alerts
+    interval: 30s
+    rules:
+      # HTTP Error Rate Alert (>5% error rate over 5m)
+      - alert: HighHTTPErrorRate
+        expr: |
+          sum(rate(audiobook_http_errors_total[5m])) / sum(rate(audiobook_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "HTTP error rate is {{ $value | humanizePercentage }} (threshold: 5%) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighHTTPErrorRate"
+
+      # HTTP P99 Latency Alert (>10s P99 over 5m)
+      - alert: HighHTTPLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(audiobook_http_request_duration_seconds_bucket[5m]))) > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High HTTP P99 latency"
+          description: "HTTP P99 latency is {{ $value | humanizeDuration }} (threshold: 10s) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighHTTPLatencyP99"
+
+      # Queue Depth Alert (>100 items in any queue over 5m)
+      - alert: HighQueueDepth
+        expr: |
+          max by (queue) (audiobook_queue_depth) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High queue depth detected"
+          description: "Queue '{{ $labels.queue }}' has {{ $value }} items (threshold: 100) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighQueueDepth"
+
+      # LLM Error Rate Alert (>5% error rate over 5m)
+      - alert: HighLLMErrorRate
+        expr: |
+          sum(rate(audiobook_llm_errors_total[5m])) / sum(rate(audiobook_llm_tokens_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: ai
+        annotations:
+          summary: "High LLM error rate"
+          description: "LLM error rate is {{ $value | humanizePercentage }} (threshold: 5%) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighLLMErrorRate"
+
+      # LLM P99 Latency Alert (>60s P99 over 5m)
+      - alert: HighLLMLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum by (le, model) (rate(audiobook_llm_request_duration_seconds_bucket[5m]))) > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: ai
+        annotations:
+          summary: "High LLM P99 latency"
+          description: "LLM P99 latency for model '{{ $labels.model }}' is {{ $value | humanizeDuration }} (threshold: 60s) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighLLMLatencyP99"
+
+      # TTS Error Rate Alert (>5% error rate over 5m)
+      - alert: HighTTSErrorRate
+        expr: |
+          sum(rate(audiobook_tts_synthesis_total{status="error"}[5m])) / sum(rate(audiobook_tts_synthesis_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High TTS error rate"
+          description: "TTS error rate is {{ $value | humanizePercentage }} (threshold: 5%) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighTTSErrorRate"
+
+      # TTS P99 Latency Alert (>30s P99 over 5m)
+      - alert: HighTTSLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum by (le, engine) (rate(audiobook_tts_synthesis_duration_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High TTS P99 latency"
+          description: "TTS P99 latency for engine '{{ $labels.engine }}' is {{ $value | humanizeDuration }} (threshold: 30s) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighTTSLatencyP99"
+
+      # Pipeline Stage Duration Alert (>5min for any stage over 5m)
+      - alert: SlowPipelineStage
+        expr: |
+          histogram_quantile(0.95, sum by (le, stage) (rate(audiobook_pipeline_stage_duration_seconds_bucket[5m]))) > 300
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow pipeline stage detected"
+          description: "Pipeline stage '{{ $labels.stage }}' P95 latency is {{ $value | humanizeDuration }} (threshold: 5min) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-SlowPipelineStage"
+
+      # Pipeline Failure Rate Alert (>1% failure rate over 5m)
+      - alert: HighPipelineFailureRate
+        expr: |
+          sum(rate(audiobook_pipeline_failures_total[5m])) / sum(rate(audiobook_pipeline_stage_duration_seconds_count[5m])) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High pipeline failure rate"
+          description: "Pipeline failure rate is {{ $value | humanizePercentage }} (threshold: 1%) for the last 5 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighPipelineFailureRate"
+
+      # Cost Alert - Daily cost >80% of budget (assuming $100/day budget)
+      - alert: HighDailyCost
+        expr: |
+          increase(audiobook_cost_usd_daily[24h]) > 80
+        for: 1h
+        labels:
+          severity: warning
+          team: finance
+        annotations:
+          summary: "Daily cost exceeds 80% of budget"
+          description: "Daily cost is ${{ $value }} (threshold: $80/day, budget: $100/day)"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighDailyCost"
+
+      # Cost Alert - Daily cost >100% of budget
+      - alert: CriticalDailyCost
+        expr: |
+          increase(audiobook_cost_usd_daily[24h]) > 100
+        for: 30m
+        labels:
+          severity: critical
+          team: finance
+        annotations:
+          summary: "Daily cost exceeds budget"
+          description: "Daily cost is ${{ $value }} (threshold: $100/day)"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-CriticalDailyCost"
+
+      # Free Tier Quota Low Alert (<20% remaining)
+      - alert: FreeTierQuotaLow
+        expr: |
+          audiobook_free_tier_quota_remaining < 20
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Free tier quota running low"
+          description: "Free tier quota remaining is {{ $value }}% (threshold: 20%)"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-FreeTierQuotaLow"
+
+      # Quality Check Failures Alert (>10 failures in 1h)
+      - alert: HighQualityCheckFailures
+        expr: |
+          increase(audiobook_quality_check_failures_total[1h]) > 10
+        for: 15m
+        labels:
+          severity: warning
+          team: quality
+        annotations:
+          summary: "High quality check failure rate"
+          description: "{{ $value }} quality check failures in the last hour (threshold: 10/hour)"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighQualityCheckFailures"
+
+      # Regeneration Rate Alert (>50 regenerations in 1h)
+      - alert: HighRegenerationRate
+        expr: |
+          increase(audiobook_regeneration_triggered_total[1h]) > 50
+        for: 15m
+        labels:
+          severity: warning
+          team: quality
+        annotations:
+          summary: "High audio regeneration rate"
+          description: "{{ $value }} regenerations triggered in the last hour (threshold: 50/hour)"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-HighRegenerationRate"
+
+      # Service Down Alert (no metrics for 2 minutes)
+      - alert: ServiceDown
+        expr: |
+          up{job="audiobook-studio"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Audiobook Studio service is down"
+          description: "No metrics received from audiobook-studio for 2 minutes"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-ServiceDown"
+
+      # Database Connection Alert
+      - alert: DatabaseConnectionFailed
+        expr: |
+          increase(audiobook_http_errors_total{path=~".*health.*"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Database connection health check failing"
+          description: "Health check endpoint returning errors"
+          runbook_url: "https://github.com/your-org/audiobook-studio/wiki/Runbook-DatabaseConnectionFailed"

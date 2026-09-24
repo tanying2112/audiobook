@@ -1,0 +1,7 @@
+{
+  "installed": [
+    "example_tts",
+    "example_llm",
+    "sample_tts_voice"
+  ]
+}

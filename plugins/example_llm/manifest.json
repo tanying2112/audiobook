@@ -1,0 +1,25 @@
+{
+  "name": "example_llm",
+  "version": "1.0.0",
+  "type": "llm_provider",
+  "description": "Example third-party LLM provider using OpenAI-compatible API. Demonstrates plugin registration without modifying core code.",
+  "author": "Audiobook Studio Team",
+  "license": "MIT",
+  "homepage": "https://github.com/example/example-llm",
+  "models": ["example-llm-model-1", "example-llm-model-2"],
+  "requires": [],
+  "python_requires": ">=3.10",
+  "extra_dependencies": [],
+  "entry_point": "plugin:register",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "api_key_env": {"type": "string", "description": "Env var name for API key"},
+      "base_url": {"type": "string", "description": "OpenAI-compatible API base URL"},
+      "model": {"type": "string", "description": "Model identifier"},
+      "priority": {"type": "number", "description": "Provider priority (lower = higher)", "default": 50},
+      "stages": {"type": "array", "items": {"type": "string"}, "description": "Pipeline stages this provider supports"}
+    },
+    "required": ["api_key_env", "base_url", "model"]
+  }
+}

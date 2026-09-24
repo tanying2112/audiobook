@@ -1,11 +1,6 @@
 """Tests for monitoring module coverage."""
 
-import json
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
+from unittest.mock import patch
 
 # Add src to path
 
@@ -204,7 +199,7 @@ class TestDashboard:
         log_file = logs_dir / "test_perf.jsonl"
         log_file.write_text('{"stage": "extract", "latency_ms": 100}\n')
         with patch("sys.argv", ["test", "--hours", "24", "--json", "--logs-dir", str(logs_dir)]):
-            with patch("sys.exit") as mock_exit:
+            with patch("sys.exit"):
                 main()
                 # Should call sys.exit(0) or sys.exit(1) - we just verify it runs
 

@@ -6,10 +6,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import FileNotFoundError as AudiobookFileNotFoundError
+from ..exceptions import InfrastructureError
 from ..models import Project
 from ..storage import reports_dir
 from .dependencies import get_async_db
@@ -41,9 +43,9 @@ async def get_project_metrics(
         return _load_metrics(report_path)
 
     # If no metrics file, return empty structure
-    raise HTTPException(
-        status_code=404,
-        detail=f"No metrics summary found for project {project_id}",
+    raise AudiobookFileNotFoundError(
+        path=f"metrics_summary for project {project_id}",
+        operation="get_project_metrics",
     )
 
 
@@ -56,19 +58,28 @@ async def get_latest_metrics(project_id: int):
     """
     reports_dir_path = reports_dir(project_id)
     if not reports_dir_path.exists():
-        raise HTTPException(status_code=404, detail=f"Reports directory not found for project {project_id}")
+        raise AudiobookFileNotFoundError(
+            path=f"reports directory for project {project_id}",
+            operation="get_latest_metrics",
+        )
 
     # Find all metrics summary files
     metrics_files = list(reports_dir_path.glob("metrics_summary_ch_*.json"))
     metrics_files.append(reports_dir_path / "metrics_summary.json")
 
     if not metrics_files:
-        raise HTTPException(status_code=404, detail=f"No metrics found for project {project_id}")
+        raise AudiobookFileNotFoundError(
+            path=f"metrics files for project {project_id}",
+            operation="get_latest_metrics",
+        )
 
     # Sort by modification time, newest first
     metrics_files = [f for f in metrics_files if f.exists()]
     if not metrics_files:
-        raise HTTPException(status_code=404, detail=f"No metrics found for project {project_id}")
+        raise AudiobookFileNotFoundError(
+            path=f"metrics files for project {project_id}",
+            operation="get_latest_metrics",
+        )
 
     latest = max(metrics_files, key=lambda f: f.stat().st_mtime)
     return _load_metrics(latest)
@@ -153,10 +164,20 @@ def _load_metrics(path: Path) -> dict[str, Any]:
             return data
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Corrupted metrics file: {path.name}") from e
+        raise InfrastructureError(
+            message=f"Corrupted metrics file: {path.name}",
+            error_code="INFRASTRUCTURE_ERROR",
+            component="storage",
+            original_error=e,
+        ) from e
     except Exception as e:
         logger.error(f"Failed to read metrics from {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to read metrics: {e}") from e
+        raise InfrastructureError(
+            message=f"Failed to read metrics: {e}",
+            error_code="INFRASTRUCTURE_ERROR",
+            component="storage",
+            original_error=e,
+        ) from e
 
 
 # WebSocket for real-time metrics updates (optional enhancement)

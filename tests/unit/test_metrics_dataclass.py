@@ -6,7 +6,6 @@ that are typically skipped in the main parametric test suite.
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -161,7 +160,6 @@ class TestSpeakerSimilarityResult:
 class TestQualityCheckResult:
     def test_to_dict(self):
         # Test the dataclass's to_dict method
-        from src.audiobook_studio.quality.metrics import QualityCheckResult
 
         dnsmos = DNSMOSResult(mos_overall=4.0, mos_sig=4.0, mos_bak=4.0, mos_ovr=4.0, success=True)
         wer = WERResult(

@@ -4,9 +4,10 @@ Verifies the per-client token-bucket middleware returns 429 when a client
 exceeds its burst budget, is a no-op when disabled, and exempts health/auth.
 """
 
-import src.audiobook_studio.api.rate_limit_middleware as rl
 from fastapi import FastAPI
 from starlette.testclient import TestClient
+
+import src.audiobook_studio.api.rate_limit_middleware as rl
 
 
 class _FakeSettings:

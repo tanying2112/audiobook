@@ -28,8 +28,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import ValidationError
-
 from .models import (
     ExperimentType,
     ExperimentVariant,
@@ -39,7 +37,6 @@ from .models import (
     PromptStatus,
     PromptTemplate,
     PromptVersion,
-    PromptVersionMetrics,
 )
 
 logger = logging.getLogger(__name__)

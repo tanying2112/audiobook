@@ -8,7 +8,7 @@ import hashlib
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from fastapi import Request
 

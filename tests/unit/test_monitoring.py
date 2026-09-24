@@ -18,6 +18,19 @@ monitoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitoring)
 
 
+@pytest.fixture(autouse=True)  # noqa: E303
+def _reset_monitoring_collector():
+    """Reset the standalone collector after each test for order-independence.
+
+    The collector is a module-level singleton loaded via importlib under the
+    name ``monitoring_standalone``; the global conftest reset targets the
+    ``src.audiobook_studio.monitoring`` module, a different object, so this
+    file must reset its own collector to avoid cross-test record leakage.
+    """
+    yield
+    monitoring.reset_collector()
+
+
 class TestStagePerformanceRecord:
     """Tests for StagePerformanceRecord dataclass."""
 
@@ -347,10 +360,9 @@ if __name__ == "__main__":
 """Tests for monitoring module (src/audiobook_studio/monitoring/)."""
 
 import json
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -366,24 +378,12 @@ from src.audiobook_studio.monitoring.alert import (
     send_dingtalk_alert,
     send_slack_alert,
 )
-from src.audiobook_studio.monitoring.baseline import (
-    BaselineRecorder,
-    GrowthMetric,
-    PerformanceMetric,
-    get_baseline_recorder,
-    record_growth_metric,
-    record_stage_performance,
-)
 from src.audiobook_studio.monitoring.compliance import (
     ComplianceMonitor,
-    ComplianceRecord,
-    StageComplianceSummary,
-    get_compliance_monitor,
-    record_pipeline_compliance,
 )
-from src.audiobook_studio.monitoring.cost_dashboard import CostBreakdown, CostDashboard
-from src.audiobook_studio.monitoring.cost_dashboard import collect_logs as cost_collect_logs
 from src.audiobook_studio.monitoring.cost_dashboard import (
+    CostBreakdown,
+    CostDashboard,
     compute_cost_breakdown,
     enrich_records_with_context,
     format_table,
@@ -407,7 +407,6 @@ from src.audiobook_studio.monitoring.metrics_exporter import (
     export_health_probe_metrics,
     export_key_pool_metrics,
     export_router_metrics,
-    get_metrics_for_ci,
 )
 from src.audiobook_studio.monitoring.offline_monitoring import (
     DummyOfflineMonitor,
@@ -1259,7 +1258,6 @@ class TestMetricsExporterModule:
 
     def test_export_compliance_rate(self, tmp_path):
         """Test exporting compliance rate."""
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         # Add some mock data
@@ -1283,7 +1281,6 @@ class TestMetricsExporterModule:
 
     def test_export_contract_version(self, tmp_path):
         """Test exporting contract version."""
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         for _ in range(5):
@@ -1310,7 +1307,6 @@ class TestMetricsExporterModule:
     def test_export_all_metrics(self, tmp_path):
         """Test exporting all metrics at once."""
         from src.audiobook_studio.llm.router import LLMRouter
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         router = LLMRouter(mock_mode=True)
         monitor = ComplianceMonitor()
@@ -1334,7 +1330,6 @@ class TestMetricsExporterModule:
     def test_get_metrics_for_ci(self, tmp_path):
         """Test getting metrics for CI consumption."""
         # First export some metrics
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         for _ in range(10):
@@ -1363,7 +1358,6 @@ class TestMetricsExporterModule:
 
     def test_read_existing_metrics_nonexistent(self, tmp_path):
         """Test reading metrics from nonexistent file."""
-        from pathlib import Path as PathLib
 
         output_path = tmp_path / "nonexistent.json"
         result = _read_existing_metrics(output_path)
@@ -1428,7 +1422,6 @@ class TestOfflineMonitoringModule:
 
     def test_offline_monitor_init(self):
         """Test OfflineMonitor initialization."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
         assert monitor.offline_dir == self.offline_dir
@@ -1436,7 +1429,6 @@ class TestOfflineMonitoringModule:
 
     def test_log_performance_success(self, monkeypatch):
         """Test logging performance when external service works."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1451,7 +1443,6 @@ class TestOfflineMonitoringModule:
 
     def test_log_performance_fallback(self, monkeypatch):
         """Test fallback to offline storage when external fails."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1466,7 +1457,6 @@ class TestOfflineMonitoringModule:
 
     def test_save_to_offline_error(self, monkeypatch):
         """Test error handling when saving to offline."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1481,9 +1471,7 @@ class TestOfflineMonitoringModule:
         """Test syncing offline data to external service."""
         import json
 
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
-
-        monitor = OfflineMonitor(offline_dir=self.offline_dir)
+        monitor = OfflineMonitor(offline_dir=self.offline_dir)  # noqa: E303
         date_str = datetime.now().strftime("%Y-%m-%d")
         offline_file = self.offline_dir / f"performance_{date_str}.jsonl"
         test_record = {"stage": "test", "latency_ms": 100}
@@ -1500,7 +1488,6 @@ class TestOfflineMonitoringModule:
 
     def test_dummy_offline_monitor(self):
         """Test DummyOfflineMonitor stub class."""
-        from src.audiobook_studio.monitoring.offline_monitoring import DummyOfflineMonitor
 
         dummy = DummyOfflineMonitor()
         dummy.start()
@@ -1509,7 +1496,6 @@ class TestOfflineMonitoringModule:
 
     def test_create_offline_monitor(self):
         """Test create_offline_monitor factory function."""
-        from src.audiobook_studio.monitoring.offline_monitoring import DummyOfflineMonitor, create_offline_monitor
 
         result = create_offline_monitor()
         assert isinstance(result, DummyOfflineMonitor)

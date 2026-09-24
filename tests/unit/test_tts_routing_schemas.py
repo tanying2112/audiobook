@@ -330,7 +330,7 @@ class TestTtsRoutingDecision:
         """Test engine_choice must be one of allowed values."""
         with pytest.raises(
             ValidationError,
-            match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'",
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp', 'human_clone', 'cosyvoice_stream', 'seed_tts_stream', 'melotts_stream', 'xtts_v2', 'openvoice_v2', 'cosyvoice_clone' or 'voxcpm2'",
         ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
@@ -344,7 +344,7 @@ class TestTtsRoutingDecision:
         """Test fallback_engine must be one of allowed values."""
         with pytest.raises(
             ValidationError,
-            match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'",
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp', 'human_clone', 'cosyvoice_stream', 'seed_tts_stream', 'melotts_stream', 'xtts_v2', 'openvoice_v2', 'cosyvoice_clone' or 'voxcpm2'",
         ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
@@ -562,7 +562,7 @@ class TestTtsRoutingSchemasIntegration:
         )
 
         # Should still allow decision but with warning
-        decision = TtsRoutingDecision(
+        TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice="kokoro",
             voice_id="kokoro_narrator",

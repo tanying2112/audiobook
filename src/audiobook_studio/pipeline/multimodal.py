@@ -54,8 +54,18 @@ class LocalBgmGenerator(MusicGenerator):
             _write_silence(output_path, duration_sec)
             return output_path
         cmd = [
-            "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(self.bgm_asset),
-            "-t", str(duration_sec), "-c:a", "libmp3lame", "-q:a", "4",
+            "ffmpeg",
+            "-y",
+            "-stream_loop",
+            "-1",
+            "-i",
+            str(self.bgm_asset),
+            "-t",
+            str(duration_sec),
+            "-c:a",
+            "libmp3lame",
+            "-q:a",
+            "4",
             str(output_path),
         ]
         _run_ffmpeg(cmd)
@@ -88,9 +98,17 @@ def _run_ffmpeg(cmd: list[str]) -> None:
 
 def _write_silence(output_path: Path, duration_sec: float) -> None:
     cmd = [
-        "ffmpeg", "-y", "-f", "lavfi", "-i",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
         f"anullsrc=r=24000:d={duration_sec}",
-        "-c:a", "libmp3lame", "-q:a", "4", str(output_path),
+        "-c:a",
+        "libmp3lame",
+        "-q:a",
+        "4",
+        str(output_path),
     ]
     _run_ffmpeg(cmd)
 
@@ -108,12 +126,19 @@ def mix_with_bg_music(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(tts_path),
-        "-i", str(bgm_path),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(tts_path),
+        "-i",
+        str(bgm_path),
         "-filter_complex",
         f"[1:a]volume={bgm_gain_db}dB[bg];[0:a][bg]amix=inputs=2:duration=first",
-        "-c:a", "libmp3lame", "-q:a", "3", str(output_path),
+        "-c:a",
+        "libmp3lame",
+        "-q:a",
+        "3",
+        str(output_path),
     ]
     _run_ffmpeg(cmd)
     return output_path
@@ -136,14 +161,36 @@ def mux_audio_subtitle_to_mp4(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(audio_path),
-        "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r=1",
-        "-i", str(subtitle_path),
-        "-map", "0:a", "-map", "1:v", "-map", "2:s?",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "1",
-        "-c:a", "aac", "-b:a", "192k", "-c:s", "mov_text",
-        "-shortest", str(output_path),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(audio_path),
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s={width}x{height}:r=1",
+        "-i",
+        str(subtitle_path),
+        "-map",
+        "0:a",
+        "-map",
+        "1:v",
+        "-map",
+        "2:s?",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "1",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-c:s",
+        "mov_text",
+        "-shortest",
+        str(output_path),
     ]
     _run_ffmpeg(cmd)
     return output_path
@@ -158,10 +205,17 @@ def qc_adapt_audio(input_path: Path, output_path: Path) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-        "-c:a", "libmp3lame", "-q:a", "3", str(output_path),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-af",
+        "loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-c:a",
+        "libmp3lame",
+        "-q:a",
+        "3",
+        str(output_path),
     ]
     _run_ffmpeg(cmd)
     return output_path

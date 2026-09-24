@@ -1,13 +1,11 @@
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+import bcrypt
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from src.audiobook_studio.config import get_settings
-
-import bcrypt
 
 BCRYPT_AVAILABLE = True
 
@@ -64,7 +62,7 @@ class JWTHandler:
             try:
                 hashed_bytes = hashed_password.encode("utf-8")
                 return bcrypt.checkpw(password_bytes, hashed_bytes)
-            except Exception:
+            except (ValueError, TypeError):
                 return False
 
         # Legacy hashes are no longer supported — must be migrated
