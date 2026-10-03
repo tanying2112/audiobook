@@ -376,13 +376,21 @@ for mod_name in [
     "passlib",
     "cryptography",
     # "email_validator",  # Do NOT mock - Pydantic's EmailStr depends on it
-    "python_multipart",
+    # "python_multipart",  # Do NOT mock - starlette's multipart/__init__.py
+    #   shim does `from python_multipart import __all__, __version__` at import
+    #   time (python-multipart >= 0.0.12 dual layout). A bare MagicMock lacks
+    #   the __all__ dunder, the from-import falls back to a submodule load whose
+    #   spec has no origin, and fastapi/starlette collection dies with
+    #   "cannot import name '__all__' from '<unknown module name>'".
     # "pydantic_settings",  # Do NOT mock - Settings class depends on it
     "python_dotenv",
     "uvicorn",
     "asyncpg",
     "psycopg2",
-    "httpx",
+    # "httpx",  # Do NOT mock - hard dependency of the ASGITransport-based API
+    #   tests (tests/unit/api/*.py import the REAL AsyncClient); also imported
+    #   by deepeval's pytest plugin, so in a healthy env it was pre-imported
+    #   anyway and this mock never fired. Shadowing it breaks every API test.
     "mako",
     "markdown_it",
     "mkdocs",

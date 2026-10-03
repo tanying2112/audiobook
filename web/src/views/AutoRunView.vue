@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from '../i18n'
 import { useAutoRun } from '../composables/useAutoRun'
 import AutoRunConfigForm from '../components/autorun/AutoRunConfigForm.vue'
@@ -8,6 +9,7 @@ import AutoRunStageControl from '../components/autorun/AutoRunStageControl.vue'
 import AutopilotPreviewModal from '../components/autopilot/AutopilotPreviewModal.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 const {
   loading,
   starting,
@@ -19,15 +21,16 @@ const {
   autopilotPreview,
   previewLoading,
   config,
+  mode,
   selectedEngine,
   selectedVoice,
   availableEngines,
   availableVoices,
   canStart,
   progressPercent,
-  // WebSocket 实时状态
   isPipelineRunning,
   isPipelinePaused,
+  isAwaitingReview,
   currentStage,
   completedStages,
   pipelineProgress,
@@ -39,13 +42,25 @@ const {
   handleStartAutopilot,
   loadAutoRunStatus,
   goBack,
+  goToReviewGate,
+  projectId,
 } = useAutoRun()
+
+function handleViewIntermediate(stage: string) {
+  router.push({ path: `/projects/${projectId}/runs`, query: { stage } })
+}
+function handleRerunStage(stage: string) {
+  router.push({ path: `/projects/${projectId}/runs`, query: { stage } })
+}
+function handleRunFromStage(stage: string) {
+  router.push({ path: `/projects/${projectId}/runs`, query: { stage } })
+}
 </script>
 
 <template>
   <div class="page-container auto-run-view">
     <header class="page-header">
-      <button class="btn btn-ghost touch-target" @click="goBack">
+      <button class="btn btn-ghost touch-target" @click="goBack" aria-label="Back">
         <Icon icon="mdi:arrow-left" width="18" height="18" />
         <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
@@ -59,12 +74,14 @@ const {
       :tts-status="ttsStatus"
       :tts-voices="ttsVoices"
       :config="config"
+      :mode="mode"
       :selected-engine="selectedEngine"
       :selected-voice="selectedVoice"
       :available-engines="availableEngines"
       :available-voices="availableVoices"
       :loading="loading"
       @update:config="config = $event"
+      @update:mode="mode = $event"
       @update:selectedEngine="selectedEngine = $event"
       @update:selectedVoice="selectedVoice = $event"
     />
@@ -76,11 +93,13 @@ const {
       :starting="starting"
       :autopilot-starting="autopilotStarting"
       :preview-loading="previewLoading"
+      :is-awaiting-review="isAwaitingReview"
       @start="handleStartAutoRun"
       @pause="handlePause"
       @resume="handleResume"
       @cancel="handleCancel"
       @refresh="loadAutoRunStatus"
+      @go-review="goToReviewGate"
       @autopilot-preview="handleAutopilotPreview"
     />
 
@@ -98,6 +117,10 @@ const {
       :handle-pause="handlePause"
       :handle-resume="handleResume"
       :handle-cancel="handleCancel"
+      @view-intermediate="handleViewIntermediate"
+      @rerun-stage="handleRerunStage"
+      @run-from-stage="handleRunFromStage"
+      @pause-stage="handlePause"
     />
 
     <AutopilotPreviewModal
@@ -116,25 +139,7 @@ const {
   max-width: 960px;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
+.flex-1 {
+  flex: 1 1 0%;
 }
-
-.page-header h1 {
-  margin: 0;
-  font-size: 22px;
-  flex: 1;
-}
-
-.page-subtitle {
-  margin: 4px 0 0;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.flex-1 { flex: 1 1 0%; }
 </style>

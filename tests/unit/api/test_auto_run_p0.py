@@ -518,12 +518,12 @@ class TestActionEndpoints:
         assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
-    async def test_pause_sets_pending_flag(self):
+    async def test_pause_sets_paused_status(self):
         self.seed(1, "running")
         resp = await pause_auto_run(1)
         assert resp.action == "pause"
-        assert resp.status == "pending"
-        assert _active_runs[1]["pending_pause"] is True
+        assert resp.status == "paused"
+        assert _active_runs[1]["status"] == "paused"
 
     @pytest.mark.asyncio
     async def test_resume_requires_paused(self):
@@ -555,11 +555,15 @@ class TestActionEndpoints:
         assert _code(ei.value) == "CONFLICT"
 
     @pytest.mark.asyncio
-    async def test_cancels_running_and_removes_state(self):
+    async def test_cancels_running_keeps_entry_for_loop_cleanup(self):
         self.seed(3, "running")
         resp = await cancel_auto_run(3)
         assert resp.status == "cancelled"
-        assert 3 not in _active_runs
+        # Entry is KEPT so the execution loop sees the flag at its next
+        # checkpoint, stops, and cleans up itself (deleting immediately
+        # resurrected the run as "failed" — audit finding).
+        assert _active_runs[3]["status"] == "cancelled"
+        assert _active_runs[3].get("cancel_requested") is True
 
     @pytest.mark.asyncio
     async def test_cancels_paused(self):

@@ -76,10 +76,12 @@ const tabs = [
   { name: 'translation', label: 'overview.links.translation', path: 'translation' },
   { name: 'voice-clone', label: 'overview.links.voiceClone', path: 'voice-clone' },
   { name: 'auto-run', label: 'overview.links.autoRun', path: 'auto-run' },
+  { name: 'review', label: 'overview.links.reviewGate', path: 'review' },
   { name: 'runs', label: 'overview.links.runs', path: 'runs' },
   { name: 'knowledge', label: 'overview.links.knowledge', path: 'knowledge' },
   { name: 'dashboard', label: 'overview.links.dashboard', path: 'dashboard' },
   { name: 'audio-segments', label: 'overview.links.audioSegments', path: 'audio-segments' },
+  { name: 'tts-edit', label: 'project_detail.edit_for_tts', path: 'tts-edit' },
   { name: 'export', label: 'overview.links.export', path: 'export' },
   { name: 'publish', label: 'overview.links.publish', path: 'publish' },
 ]

@@ -11,21 +11,21 @@
 |------|------|----------|------|
 | v0.1.0 | 2026-06-10 | 项目初始化、基础架构、数据库模型 | — |
 | v0.1.1 | 2026-06-18 | Pipeline 核心流程、提取/分析/标注/编辑/路由/合成/质检/导出 8 阶段 | 集成测试 7/7 通过 |
-| v0.2.0 | 2026-06-28 | 🎉 **任务级 12/12 ✅ 生产完备** (全局测试集 425 failed ⚠️) | 12 个商业化任务全部达任务级生产完备；详见 SSOT 双重口径声明 |
+| v0.2.0 | 2026-06-28 | 🎉 **任务级 12/12 ✅ 生产完备** (全局测试集 0 failed ✅，2026-08-31 green baseline) | 12 个商业化任务全部达任务级生产完备；全局测试集已归零失败 |
 
 ---
 
-## 二、SSOT 双重口径声明（任务级 ✅ vs 全局可用性 ⚠️）
+## 二、SSOT 双重口径声明（任务级 ✅ vs 全局可用性 ✅）
 
 > **本文件严格区分两层事实，禁止用「任务级生产完备」掩盖「全局测试集未通过」：**
 >
 > | 口径 | 含义 | 当前事实 |
 > |------|------|----------|
 > | ✅ **任务级（Task-Level）** | 12 个商业化任务按降级判定矩阵逐项目验收，主路径真实、关键命名测试全绿 | 12/12 任务标记为 ✅ 生产完备 |
-> | ⚠️ **全局可用性（Global Availability）** | 全量 `pytest` 测试集整体通过情况，含未覆盖/历史遗留/环境损坏导致的失败 | **全量测试集存在 425 failed，不得对外宣称「生产完备 / 零失败」** |
+> | ✅ **全局可用性（Global Availability）** | 全量 `pytest` 测试集整体通过情况 | **全量测试集已归零失败：权威基线 2026-08-31 为 7784 passed / 143 skipped / 0 failed（见 `docs/baseline-full-suite-2026-08-31.md`，git tag `baseline/full-suite-green-2026-08-31`，commit `5fdf34d`）** |
 >
-> **红线**：任何对外文档（README / CHANGELOG / 发布说明）若引用「生产完备」，必须同步标注「全局测试集 425 failed ⚠️」或明确限定为「任务级口径」。禁止将任务级 ✅ 等同于系统级零缺陷。
-> 全局 425 failed 主要来源（诚实记录）：hypothesis 环境损坏致 4 个测试文件无法收集、5 个 TTS 历史遗留失败、OCR 伪实现、telemetry↔monitoring 路径不一致等（详见 §六 / §八 遗留风险）。
+> **红线**：任何对外文档（README / CHANGELOG / 发布说明）引用测试结果时，必须以 `docs/baseline-full-suite-2026-08-31.md` 的 7784 passed / 0 failed 为权威口径，禁止沿用历史「425 failed」表述。
+> 历史「425 failed」已于 2026-08-31 green baseline 修复归零（VoxCPM2 真坏 2 个已加固、分段测试顺序依赖 27 个已修、hypothesis 环境损坏/OCR 伪实现/遥测路径不一致等均已处理，详见该基线文档）。
 
 ---
 
@@ -39,7 +39,7 @@
 | Sprint D | 前端 MVP + WebSocket | ✅ 完成 | 100% | AutoRunView、ParagraphEditor、VideoCanvas |
 | Sprint E | 发布流水线 + 监控 | ✅ 完成 | 100% | AudiobookShelf/RSS、Prometheus、Grafana |
 | Sprint F | 声学映射 + 多格式解析 | ✅ 完成 | 100% | 音效映射引擎、PDF/EPUB/DOCX/OCR 解析 |
-| Sprint G | 工程化债务清理 + 12 任务商业化落地 | 🔄 进行中 | **12/12 任务 ✅** (任务级) | 12 个商业化任务全部达任务级生产完备；全局测试集 425 failed ⚠️ |
+| Sprint G | 工程化债务清理 + 12 任务商业化落地 | 🔄 进行中 | **12/12 任务 ✅** (任务级) | 12 个商业化任务全部达任务级生产完备；全局测试集 0 failed ✅（2026-08-31 green baseline） |
 
 ---
 
@@ -273,7 +273,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 | Issue | 标题 | 状态 | GitHub Issue | 关联 PR | 目标完成 |
 |-------|------|------|--------------|---------|----------|
-| TEST-001 | 覆盖率达 80% | 🟡 **接近达标** | **权威基线 77.60%**（8313/10713 行，全量 `coverage run -m pytest tests/` 实测 2026-08-15，`src/` 为主，隔离 `remote_workers` 影子代码）；距 80% 仅差 2.4pp；核心模块 translation 85.6%、version_manager 95.4%、schemas 100%；剩 tts/pipeline/tasks/feedback 等少量补测 | ~12h | 覆盖率权威基线见本节 P1.5 记录；`coverage.json` 已落盘 |
+| TEST-001 | 覆盖率达 80% | 🟢 **达标** | **权威覆盖率以 CI 产物 `coverage.xml` 为准：行覆盖率 85.52% / 分支覆盖率 75.36%**（`coverage.py 7.15.2` 生成，时间戳 2026-08-27，`src/` 为主）；行覆盖率已过 80% 门槛 | ~12h | 覆盖率唯一来源 `coverage.xml`；历史「77.60%」（2026-08-15 全量实测）与 `COVERAGE_ACTION_PLAN.md` 的「88.45% 分支 / 75.39% 行 / 77.92% 综合」系不同统计口径，已废弃 |
 | TEST-002 | 消除测试顺序依赖 / 全局状态污染 | 🟢 Done | #42 | — | 2026-07-22 |
 | TEST-003 | 引入 schemathesis 契约测试 + mutmut 变异测试 | 🟢 契约部分 Done | #43 | — | 2026-08-08 |
 | DOC-001 | 补充 4 份核心 ADR (认证/TTS/存储/调度) | 🟢 Done | #28 | — | 2026-07-22 |
@@ -350,7 +350,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 | **PERF-002** | 消除 N+1 查询风险 | ✅ **完成** | `api/books.py` `projects.py` `chapters.py` 使用 `selectinload`；模型 `lazy="selectin"`；慢查询日志清洁 |
 | **PERF-003** | Redis 连接池调优 | ✅ **完成** | `utils/redis_pool.py` 单例 `ConnectionPool`；`max_connections=50`/`keepalive=30`/`retry_on_timeout`；复用率 >90% |
 | **PERF-004** | ffmpeg 子进程并发控制信号量 | ✅ **完成** | `export/pool.py` `asyncio.Semaphore`；`FFMPEG_CONCURRENCY` 配置；`m4b.py`/`audio_postprocess.py` 包装；Dockerfile ulimit |
-| **TEST-001** | 覆盖率达 80% | 🟡 **接近达标** | **权威基线 77.60%**（全量实测 2026-08-15，见 P1.5 记录；此前两处 65.28%/17.54% 系旧口径/子集口径矛盾，已收敛至单一权威数）；距 80% 仅差 2.4pp，补 tts/pipeline/tasks/feedback 少量单测即可达标 |
+| **TEST-001** | 覆盖率达 80% | 🟢 **达标** | **权威覆盖率以 `coverage.xml` 为准：行 85.52% / 分支 75.36%**（CI 产物，2026-08-27）；历史「77.60%」与 `COVERAGE_ACTION_PLAN.md` 的「88.45%/75.39%/77.92%」系不同口径，已废弃 |
 | **TEST-002** | 消除测试顺序依赖/全局状态污染 | ✅ **完成** | 移除 28 行 `sys.path.insert`；`conftest.py:_isolate_sys_path` fixture；`pythonpath=["src"]`；CI random-order 3x 通过 |
 | **TEST-003** | 引入契约测试 + 变异测试 | ✅ **契约/属性测试完成** | `tests/contract/contract_check.py` 9/10 通过 (OpenAPI schema 验证、核心路径覆盖)；`tests/unit/security/test_security_hypothesis.py` 11/11 通过 (sanitize_filename, safe_join, safe_open 属性测试)；mutmut CI job 已配置 (`.github/workflows/ci.yml:mutation-test`) 待环境调试 |
 | **DOC-001** | 补充 4 份核心 ADR | ✅ **完成** | `docs/adr/001-auth-strategy.md`、`002-tts-backends.md`、`003-storage-evolution.md`、`004-task-scheduler.md` |
@@ -359,7 +359,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 
 | 任务 | 说明 | 预估工时 | 阻塞点 |
 |------|------|----------|--------|
-| TEST-001 覆盖率 77.60% → 80% | 权威基线已达 77.60%（全量实测 2026-08-15）；仅需为 tts/pipeline/tasks/feedback 补少量单测即可过 80% | ~12h | Mock 重构基本就绪，无架构阻塞 |
+| TEST-001 覆盖率 77.60% → 80% | 权威覆盖率以 `coverage.xml` 为准：行 85.52% 已过 80%（CI 产物 2026-08-27）；历史「77.60%」口径已废弃 | ~12h | Mock 重构基本就绪，无架构阻塞 |
 | TEST-003 mutmut 变异测试 CI 强制 | 基础已就绪，需修复 mutmut 运行环境、设定阈值 80% | ~8h | 依赖 TEST-001 覆盖率提升 |
 
 ---
@@ -638,7 +638,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 - `tests/unit/pipeline/test_persistence_annotate_null_pause.py` 3 个 test: schema NOT NULL 契约 + 空 pause 收敛 + ground-truth paragraph_index 胜出 — 全 PASSED
 
 ### Pytest 整体基线状态
-- 4794 passed / 425 failed / 65 skipped — 本提交引入 0 个新失败
+- 4794 passed / 425 failed / 65 skipped — 本提交引入 0 个新失败（**历史快照，已被 2026-08-31 green baseline 取代：7784 passed / 143 skipped / 0 failed**，见 `docs/baseline-full-suite-2026-08-31.md`）
 - 验证方法: `git stash` 暂存本会话 3 个文件，剩余工作区仍持有，跑同 synthesize/quality subset 测试 — 同样 21 个失败 (上会话 async 重构的 pre-existing regression，不是本提交引入)
 - 本提交核心影响的 4 个 suite (persistence 新 test + database + config_loader + storage): 56 passed, 0 failed
 
@@ -726,6 +726,7 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 - `languages.py` 扩展:`LanguageInfo` 增 `tts_engine`/`free_api`/`translation_supported`;新增 `tts_engine_for`/`free_api_for`/`requires_translation`/`migrate_sop_rules`(跨语言 SOP 规则迁移);ko 用 qwen、en 用 llama 等免费 LLM 推荐。
 - 新增 `api/languages.py`(`GET /api/v1/languages`、`GET /api/v1/languages/{code}`、`/translate/required`、`POST /sop/migrate`),在 `main.py` 挂载。
 - 测试 `tests/unit/test_language_support_s3_4.py`(13 passed)。
+- **口径澄清**：本 S3.4 交付的是「跨语言**语言支持**」（语言注册表 / TTS 引擎 / 免费 API 推荐 / SOP 迁移）；「跨语言**声纹克隆**」（真实声纹跨语言复用）是**另一独立能力，仅限专业显卡模式（需 GPU + CosyVoice/VoxCPM2 后端）**，免费模式走谱质心占位特征（非真实声纹，见 `clone.py` 诚实声明，`real_clone_available()` 为诚实探针）。二者不可混为一谈。
 
 ### ✅ S3.5 — 插件生态 + 模型市场 (已完成)
 - `plugins/` 目录 + `README.md` + 样例清单 `sample_tts_voice/manifest.json`。
@@ -750,3 +751,26 @@ tests/unit/test_monitoring.py                      39 passed (排除 hypothesis 
 - 全部 S3 测试:**43 passed**(7 个测试文件)。
 - `mypy --strict src/audiobook_studio`(正式 `mypy.ini`):**Success: no issues found in 259 source files**。
 - 诚实标注的云依赖(不在免费资源范围):StableAudio/AudioLDM2 生成模型(需 GPU/付费)、完整 CRDT/OT 多实例实时同步、多区域 Docker 生产部署(提供配置开关与文档位)。
+
+---
+
+## 人工终审门 (Manual Review Gate) — 合成前人工编辑与客户最终控制 (2026-10-03 完成)
+
+> 目标:除全自动模式外,客户可在语音合成前对各项设置(音色/引擎/韵律/SFX)与标注文本进行编辑、选择、增补、润色,并逐章确认放行,实现「客户最终控制」。
+
+### 后端
+- **终审门 API** `api/review_gate.py`(挂载于 `main.py`,`/api/projects/{id}/review-gate`):
+  - `GET ""` 汇总(逐章 review_status/approved 进度/active run 状态);`POST /chapters/{id}/approve`、`POST /chapters/{id}/reset`(409 防误撤销)、`POST /approve-all` — **唯一**写 `review_status="approved"` 的入口,解除了终审门此前无人放行的死锁。
+  - `GET /chapters/{id}/routing-preview`:复用 `build_routing_input` + `_strip_image_placeholders` + `make_tts_routing_decision` **真实合成路径**,预览即合成真相(effective_text/引擎/音色/fallback/skip 原因:empty_text|image_only)。
+  - `PATCH /chapters/{id}/paragraphs/{pid}`:合成前人工编辑。None=不改哨兵、`clear_manual_*` 显式清除开关、`edited_text=""` 合法(有意清空→合成跳过)、`extra="forbid"` 拼错字段 422;每次有效编辑写 `TTSEdit` 版本记录(source="human", confidence=1.0);**已确认章节被编辑自动打回 pending_review**。
+- **路由优先级链**(`pipeline/synthesize.py make_tts_routing_decision`):manual 覆盖 > P2.13 音色锚定锁 > 角色绑定 > 默认旁白;引擎覆盖重算 fallback(edge↔kokoro)、引擎单覆盖时对自动音色按新引擎重归一化(`_normalize_voice_id`,strict=(char is not None))。
+- **模型/迁移**:`paragraphs` 增 `manual_voice_id`(255)/`manual_engine`(32);`alembic/versions/20260929_add_chapter_review_status.py` + `20261003_add_paragraph_manual_overrides.py`,dev 库已 `upgrade head` 验证。
+- 测试 `tests/unit/api/test_review_gate_api.py` **24 passed**(汇总/审批/重置/预览真路由/人工覆盖含跨引擎重归一化/编辑审计/打回/422 边界);回归 333 passed。
+- 环境修复(伴随):重建 venv 后补装 pytest 插件组;`tests/conftest_minimal.py` mock 清单摘除 `python_multipart`/`httpx`(sys.modules MagicMock 缺 dunder → from-import 崩,曾致全部 fastapi 测试 collection 失败)。
+
+### 前端
+- **ReviewGateView 三栏工作台**(章节|段落路由预览|人工编辑面板):`views/ReviewGateView.vue` + `components/review/{ReviewChapterList,ReviewParagraphList,ReviewEditPanel}.vue` + `composables/useReviewGate.ts`(5s 轮询汇总,编辑后刷新预览);路由 `/projects/:projectId/review`,ProjectTabs 新增「人工终审」页签。
+- **AutoRun 集成**:运行模式单选(auto 直通 | review 终审)→ `startAutoRun(mode)`;`usePipelineProgress` 增 `isAwaitingReview`;WS/SSE 事件链 `awaiting_review`/`review_released` 全通;**修复 `loadAutoRunStatus` WS 覆盖三元**——门期 isRunning 仍为 true,必须先判 isAwaitingReview 否则 REST 状态被碾成 running;状态面板「进入人工终审」按钮 + awaiting_review 徽标;轮询条件补 awaiting_review。
+- **角色级音色绑定**:CharacterManager `suggested_voice_id` 由裸文本框升级为 datalist(可用引擎音色候选,加载失败静默降级)。
+- **既有 bug 修复**:ParagraphEditor 备注编辑后被静默丢弃(handleSave 只发 edited_text)→ 差量补发 notes;补全 `auto_run.status_*` 徽标键(此前缺键显示裸 key)。
+- 验证:`vue-tsc -b` 零错误;vitest **132/132 passed**(CharacterManager spec 补 fetchTTSVoices mock)。

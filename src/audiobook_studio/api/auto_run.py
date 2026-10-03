@@ -6,7 +6,7 @@ Provides one-click full automation from text to audiobook.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.dependencies import get_async_db
-from ..api.websocket import PipelineEventType, emit_pipeline_event
+from ..api.websocket import PipelineEventType, emit_pipeline_event, get_pause_event, is_paused, pause_check
 from ..database import create_async_session
 from ..exceptions import DomainError
 from ..models.audio_segment import AudioSegment
@@ -53,7 +53,7 @@ class AutoRunStatusResponse(BaseModel):
 
     project_id: int
     run_id: str
-    status: str = "pending"  # pending, running, paused, completed, failed
+    status: str = "pending"  # pending, running, paused, awaiting_review, completed, failed, cancelled, not_started
     current_stage: Optional[str] = None
     completed_stages: List[str] = Field(default_factory=list)
     progress: float = Field(0.0, ge=0, le=1)
@@ -65,6 +65,8 @@ class AutoRunStatusResponse(BaseModel):
     can_pause: bool = True
     can_resume: bool = False
     can_cancel: bool = True
+    # 人工终审门激活中（status=="awaiting_review"）→ 前端显示「进入人工终审」
+    can_review: bool = False
 
 
 class StagePausePoint(BaseModel):
@@ -80,6 +82,9 @@ class AutoRunStartRequest(BaseModel):
 
     config: AutoRunConfig = Field(default_factory=AutoRunConfig)
     pause_points: Optional[List[StagePausePoint]] = Field(None, description="Stages to pause at")
+    # 运行模式：auto=全自动直通合成（默认，向后兼容）；review=人工终审——
+    # audio_postprocess 完成后暂停，客户逐章/整书确认标注文本后放行合成。
+    mode: Literal["auto", "review"] = Field("auto", description="Run mode: auto | review")
 
 
 class AutoRunActionResponse(BaseModel):
@@ -154,6 +159,176 @@ def _get_checkpoint_manager(project_id: int) -> CheckpointManager:
     return CheckpointManager(project_id)
 
 
+def _is_cancelled(project_id: int) -> bool:
+    """True when a cancel was requested for the project's active run."""
+    return _active_runs.get(project_id, {}).get("status") == "cancelled"
+
+
+async def _sync_project_progress(
+    project_id: int,
+    current_stage: Optional[str],
+    status: str,
+    progress: Optional[float] = None,
+) -> None:
+    """Mirror run progress onto the projects table row.
+
+    The in-memory _active_runs state is process-local and lost on restart;
+    every DB-backed surface (Dashboard, project lists) reads this row, so it
+    must track the pipeline (previously stuck at draft/analyze/0.15 after a
+    completed run, audit finding).
+    """
+    from ..database import create_async_session
+
+    db = create_async_session()
+    try:
+        project = await db.get(Project, project_id)
+        if not project:
+            return
+        project.status = status
+        project.current_stage = current_stage
+        if progress is not None:
+            project.progress = float(progress)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to sync project progress for {project_id}: {e}")
+    finally:
+        await db.close()
+
+
+async def _pause_if_requested(project_id: int) -> None:
+    """Block at an execution checkpoint while a pause is in effect.
+
+    The shared pause event (also used by the WebSocket handler) is set by
+    POST /auto-run/pause; pause_check() waits on it until /resume clears it.
+    _active_runs status is flipped to "paused" so /resume and the status
+    endpoint stay consistent (previously /pause only set a dead
+    ``pending_pause`` flag nothing ever read, audit finding).
+    """
+    if not project_id or not is_paused(project_id):
+        return
+
+    run_info = _active_runs.get(project_id)
+    if run_info and run_info["status"] == "running":
+        run_info["status"] = "paused"
+        await emit_pipeline_event(
+            project_id=project_id,
+            event_type=PipelineEventType.PAUSED,
+            data={"run_id": run_info["run_id"]},
+        )
+
+    # Blocks until the pause event is cleared by resume.
+    await pause_check(project_id)
+
+    if run_info and run_info["status"] == "paused":
+        run_info["status"] = "running"
+        await emit_pipeline_event(
+            project_id=project_id,
+            event_type=PipelineEventType.RESUMED,
+            data={"run_id": run_info["run_id"]},
+        )
+
+
+async def _enter_review_gate(project_id: int, run_id: str) -> bool:
+    """Block at the manual review gate until every chapter is approved.
+
+    Entry: flips run status to ``awaiting_review``, marks chapters that are
+    still NULL as ``pending_review`` (never touches already-approved rows —
+    the restart-recovery path relies on approved flags surviving), syncs the
+    project row and emits AWAITING_REVIEW. When every chapter is already
+    approved the gate is skipped entirely (a restart-recovery run goes
+    straight to synthesize).
+
+    Polling mirrors the pause_points dict-polling pattern rather than the
+    shared pause event: ``websocket.pause_check`` waits on an already-set
+    event and returns immediately, so it is unusable as the gate's blocking
+    primitive. Each tick uses a fresh DB session so no SQLite transaction is
+    held across ticks.
+
+    Returns True when the gate released (all chapters approved) and the run
+    should continue to synthesize; False when cancelled while awaiting review
+    (state cleanup already happened here — the caller must return).
+    """
+    db = create_async_session()
+    try:
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+        chapters = list(result.scalars().all())
+        if all(ch.review_status == "approved" for ch in chapters):
+            logger.info("Review gate: all chapters already approved, skipping gate (recovery run)")
+            return True
+        # 只填 NULL，绝不清 approved —— 恢复路径依赖 approved 标记存活
+        for ch in chapters:
+            if ch.review_status is None:
+                ch.review_status = "pending_review"
+        await db.commit()
+    finally:
+        await db.close()
+
+    run_info = _active_runs.get(project_id)
+    if run_info:
+        run_info["status"] = "awaiting_review"
+        run_info["current_stage"] = None
+    await _sync_project_progress(project_id, None, "awaiting_review")
+
+    # 清残留 pause 事件与状态，防幽灵 PAUSED/RESUMED 事件对（门等待不占用
+    # pause 事件；若审核期间用户点「暂停」应先取消审核门 —— /pause 在
+    # awaiting_review 状态下本来就会被 409 拒绝）。
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = False
+
+    total = len(chapters)
+    approved = sum(1 for ch in chapters if ch.review_status == "approved")
+    await emit_pipeline_event(
+        project_id=project_id,
+        event_type=PipelineEventType.AWAITING_REVIEW,
+        data={"run_id": run_id, "total_chapters": total, "pending_chapters": total - approved},
+    )
+    logger.info("Auto-run %s awaiting manual review (%d chapters, %d approved)", run_id, total, approved)
+
+    while True:
+        # Cancel during the gate: same shape as the stage-boundary cancel path,
+        # plus the project-row sync the legacy /cancel never did — without it a
+        # cancelled gate would leave project.status stuck at awaiting_review
+        # (ghost gate).
+        if _is_cancelled(project_id):
+            _active_runs.pop(project_id, None)
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.CANCELLED,
+                data={"run_id": run_id},
+            )
+            await _sync_project_progress(project_id, None, "cancelled")
+            logger.info("Auto-run %s cancelled while awaiting review", run_id)
+            return False
+
+        released = False
+        db = create_async_session()
+        try:
+            result = await db.execute(select(Chapter).where(Chapter.project_id == project_id))
+            rows = result.scalars().all()
+            released = all(ch.review_status == "approved" for ch in rows)
+        except Exception as e:
+            logger.warning("Review gate poll failed for project %s: %s", project_id, e)
+        finally:
+            await db.close()
+
+        if released:
+            run_info = _active_runs.get(project_id)
+            if run_info:
+                run_info["status"] = "running"
+            await _sync_project_progress(project_id, None, "processing")
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.REVIEW_RELEASED,
+                data={"run_id": run_id},
+            )
+            logger.info("Review gate released for run %s; continuing to synthesize", run_id)
+            return True
+
+        await asyncio.sleep(2)
+
+
 async def _create_paragraphs_from_chapters(db: AsyncSession, project_id: int):
     """Create Paragraph records from Chapter raw_text if they don't exist."""
     result = await db.execute(select(Project).where(Project.id == project_id))
@@ -188,6 +363,7 @@ def _run_auto_pipeline_blocking(
     run_id: str,
     config: AutoRunConfig,
     pause_points: Optional[List[StagePausePoint]] = None,
+    mode: str = "auto",
 ):
     """Sync wrapper: run the auto pipeline on its own event loop in a worker
     thread. Several stages perform blocking sync I/O (LLM HTTP clients, TTS);
@@ -199,6 +375,7 @@ def _run_auto_pipeline_blocking(
             run_id=run_id,
             config=config,
             pause_points=pause_points,
+            mode=mode,
         )
     )
 
@@ -208,6 +385,7 @@ async def _run_auto_pipeline(
     run_id: str,
     config: AutoRunConfig,
     pause_points: Optional[List[StagePausePoint]] = None,
+    mode: str = "auto",
 ):
     """
     Background task: Run complete auto pipeline.
@@ -227,6 +405,7 @@ async def _run_auto_pipeline(
         _active_runs[project_id] = {
             "run_id": run_id,
             "status": "running",
+            "mode": mode,
             "config": config.model_dump(),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "current_stage": None,
@@ -244,8 +423,25 @@ async def _run_auto_pipeline(
         _get_checkpoint_manager(project_id)
 
         for stage in _stage_order:
+            # Cancel checkpoint between stages: the run stops here and cleans
+            # up its state instead of continuing in the background (audit
+            # finding: cancel previously only deleted the dict entry while the
+            # task kept running to completion).
+            if _is_cancelled(project_id):
+                run_info = _active_runs.get(project_id)
+                del _active_runs[project_id]
+                await emit_pipeline_event(
+                    project_id=project_id,
+                    event_type=PipelineEventType.CANCELLED,
+                    data={"run_id": run_id},
+                )
+                logger.info(f"Auto-run {run_id} cancelled at stage boundary '{stage}'")
+                return
+
             # Update current stage
             _active_runs[project_id]["current_stage"] = stage
+            stage_idx = _stage_order.index(stage)
+            await _sync_project_progress(project_id, stage, "processing", stage_idx / len(_stage_order))
 
             # Emit stage enter
             await emit_pipeline_event(
@@ -257,6 +453,18 @@ async def _run_auto_pipeline(
 
             # Run stage
             await _run_single_stage(project_id, stage, config)
+
+            # Cancelled mid-stage: _run_single_stage returns early when the
+            # cancel flag is seen; stop before marking anything completed.
+            if _is_cancelled(project_id):
+                del _active_runs[project_id]
+                await emit_pipeline_event(
+                    project_id=project_id,
+                    event_type=PipelineEventType.CANCELLED,
+                    data={"run_id": run_id},
+                )
+                logger.info(f"Auto-run {run_id} cancelled during stage '{stage}'")
+                return
 
             # Emit stage exit
             await emit_pipeline_event(
@@ -282,12 +490,31 @@ async def _run_auto_pipeline(
                             data={"pause_point": pp.model_dump()},
                         )
                         # Wait for resume
-                        while _active_runs[project_id]["status"] == "paused":
+                        while _active_runs.get(project_id, {}).get("status") == "paused":
                             await asyncio.sleep(1)
 
-        # Completed
+            # 人工终审门 (Manual Review Gate)：review 模式下，全部文本侧阶段
+            # (至 audio_postprocess) 完成后暂停，等待客户确认章节后放行合成。
+            # 置于 pause_points 块之后（pause_points 优先）。全部章节已
+            # approved 时门被跳过、直进 synthesize —— 这是重启恢复路径
+            # (死门 → /review/confirm → 内部拉起恢复 run) 的关键。
+            if stage == "audio_postprocess" and mode == "review":
+                if not await _enter_review_gate(project_id, run_id):
+                    return
+
+        # Completed (never overwrite a cancelled run: cancel keeps the entry
+        # so the loops can exit cleanly and delete it themselves)
+        if _is_cancelled(project_id):
+            del _active_runs[project_id]
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.CANCELLED,
+                data={"run_id": run_id},
+            )
+            return
         _active_runs[project_id]["status"] = "completed"
         _active_runs[project_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        await _sync_project_progress(project_id, None, "completed", 1.0)
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -297,8 +524,13 @@ async def _run_auto_pipeline(
 
     except Exception as e:
         logger.error(f"Auto-run failed: {e}")
+        if _is_cancelled(project_id):
+            # Cancelled runs keep their "cancelled" state; do not resurrect
+            # the entry as "failed" (audit finding).
+            return
         _active_runs[project_id]["status"] = "failed"
         _active_runs[project_id]["error_message"] = str(e)
+        await _sync_project_progress(project_id, None, "failed")
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -361,6 +593,13 @@ async def _run_single_stage(
                     return
 
             for idx, chapter in enumerate(chapters, start=1):
+                # Cancel/pause checkpoints between chapters (audit finding:
+                # the loop previously never checked either, so HTTP/WS
+                # pause and cancel had no effect on real execution).
+                if _is_cancelled(project_id):
+                    return
+                await _pause_if_requested(project_id)
+
                 # Check per-chapter checkpoint
                 if checkpoint_mgr.is_stage_done(stage, chapter.index):
                     logger.info(f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping")
@@ -425,6 +664,13 @@ async def _run_single_stage(
                 return
 
             for idx, para in enumerate(paragraphs, start=1):
+                # Cancel/pause checkpoints between paragraphs (audit finding:
+                # the loop previously never checked either, so HTTP/WS
+                # pause and cancel had no effect on real execution).
+                if _is_cancelled(project_id):
+                    return
+                await _pause_if_requested(project_id)
+
                 # run_stage() resolves chapter/paragraph from IDs via StageRegistry.
                 # Pass target_difficulty through kwargs for stages that need it
                 # (e.g. edit stage uses it for difficulty-level editing).
@@ -551,14 +797,25 @@ async def start_auto_run(
     # Generate run ID
     run_id = _generate_run_id(project_id)
 
-    # Check if already running
-    if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
+    # Check if already running. paused / awaiting_review runs also block a new
+    # start — otherwise an active review gate would be orphaned by a second run.
+    if project_id in _active_runs and _active_runs[project_id]["status"] in ("running", "paused", "awaiting_review"):
         raise DomainError(
             message="Auto-run already in progress for this project",
             error_code="CONFLICT",
             stage="auto_run",
             context={"project_id": project_id},
         )
+
+    # Review mode opens a fresh review epoch: reset every chapter's review flag
+    # so the gate re-arms. The reset lives HERE ONLY — never inside the gate
+    # itself, or a restart-recovery run would deadlock (gate entry must see
+    # approved chapters surviving from before the restart).
+    if request.mode == "review":
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id))
+        for ch in result.scalars().all():
+            ch.review_status = None
+        await db.commit()
 
     # Start background task (blocking wrapper: own thread + event loop)
     background_tasks.add_task(
@@ -567,6 +824,7 @@ async def start_auto_run(
         run_id=run_id,
         config=request.config,
         pause_points=request.pause_points,
+        mode=request.mode,
     )
 
     return AutoRunStatusResponse(
@@ -608,7 +866,8 @@ async def get_auto_run_status(project_id: int, run_id: Optional[str] = None):
         completed_at=run_info.get("completed_at"),
         can_pause=run_info["status"] == "running",
         can_resume=run_info["status"] == "paused",
-        can_cancel=run_info["status"] in ("running", "paused"),
+        can_cancel=run_info["status"] in ("running", "paused", "awaiting_review"),
+        can_review=run_info["status"] == "awaiting_review",
     )
 
 
@@ -632,13 +891,25 @@ async def pause_auto_run(project_id: int):
             context={"project_id": project_id, "status": run_info["status"]},
         )
 
-    # Set pause flag - pipeline will pause at next pause point
-    run_info["pending_pause"] = True
+    # Pause for real: set the shared pause event (also used by the WebSocket
+    # handler) so the execution loop blocks at its next checkpoint. The old
+    # code only set a ``pending_pause`` flag nothing ever read (audit finding).
+    run_info["status"] = "paused"
+    get_pause_event(project_id).set()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = True
+
+    await emit_pipeline_event(
+        project_id=project_id,
+        event_type=PipelineEventType.PAUSED,
+        data={"run_id": run_info["run_id"]},
+    )
 
     return AutoRunActionResponse(
         action="pause",
-        status="pending",
-        message="Pipeline will pause at next safe point",
+        status="paused",
+        message="Pipeline paused at next safe point",
         run_id=run_info["run_id"],
     )
 
@@ -663,8 +934,13 @@ async def resume_auto_run(project_id: int):
             context={"project_id": project_id, "status": run_info["status"]},
         )
 
-    # Resume
+    # Resume: clear the shared pause event so the execution loop unblocks,
+    # and reset the WS pause state (mirror of the WebSocket resume handler).
     run_info["status"] = "running"
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = False
 
     await emit_pipeline_event(
         project_id=project_id,
@@ -692,7 +968,7 @@ async def cancel_auto_run(project_id: int):
         )
 
     run_info = _active_runs[project_id]
-    if run_info["status"] not in ("running", "paused"):
+    if run_info["status"] not in ("running", "paused", "awaiting_review"):
         raise DomainError(
             message=f"Cannot cancel: current status is {run_info['status']}",
             error_code="CONFLICT",
@@ -700,16 +976,22 @@ async def cancel_auto_run(project_id: int):
             context={"project_id": project_id, "status": run_info["status"]},
         )
 
-    # Cancel
+    # Cancel for real: mark cancelled and KEEP the entry so the execution
+    # loop sees the flag at its next checkpoint, stops, and cleans up itself.
+    # The old code deleted the entry while the task kept running to
+    # completion, then crashed on a KeyError and resurrected as "failed"
+    # (audit finding). Also clear any pause so a paused run can exit.
     run_info["status"] = "cancelled"
+    run_info["cancel_requested"] = True
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
 
-    # Clean up
-    del _active_runs[project_id]
+    manager.pause_states[project_id] = False
 
     return AutoRunActionResponse(
         action="cancel",
         status="cancelled",
-        message="Pipeline cancelled",
+        message="Pipeline cancellation requested; stopping at next safe point",
         run_id=run_info["run_id"],
     )
 
@@ -743,8 +1025,8 @@ async def start_autopilot(
             context={"project_id": project_id},
         )
 
-    # Check if already running
-    if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
+    # Check if already running (paused / awaiting_review runs block too)
+    if project_id in _active_runs and _active_runs[project_id]["status"] in ("running", "paused", "awaiting_review"):
         raise DomainError(
             message="Auto-run already in progress for this project",
             error_code="CONFLICT",

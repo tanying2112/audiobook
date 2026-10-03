@@ -87,6 +87,11 @@ const router = createRouter({
       component: () => import('../views/AutoRunView.vue'),
     },
     {
+      path: '/projects/:projectId/review',
+      name: 'review-gate',
+      component: () => import('../views/ReviewGateView.vue'),
+    },
+    {
       path: '/projects/:projectId/runs',
       name: 'runs',
       component: () => import('../views/RunsView.vue'),
@@ -163,6 +168,11 @@ const router = createRouter({
       component: () => import('../views/AudioSegmentEditor.vue'),
     },
     {
+      path: '/projects/:id/tts-edit',
+      name: 'tts-edit',
+      component: () => import('../views/TtsEditView.vue'),
+    },
+    {
       path: '/waveform-demo',
       name: 'waveform-demo',
       component: () => import('../views/WaveformDemoView.vue'),
@@ -177,13 +187,34 @@ router.beforeEach(async (to, _from) => {
   if (!isPublic && !authStore.isAuthenticated()) {
     return '/login'
   } else if (to.path === '/login' && authStore.isAuthenticated()) {
-    return '/'
+    // Validate token is actually valid before skipping login
+    try {
+      await authStore.fetchUser()
+      return '/'
+    } catch {
+      // Token invalid/expired — clear and let them log in
+      authStore.clearAuth()
+      return undefined
+    }
   }
+
+  // For all protected routes: validate token with backend on first navigation
+  if (!isPublic && authStore.isAuthenticated() && !authStore.user) {
+    try {
+      await authStore.fetchUser()
+    } catch {
+      // Token invalid/expired — clear and redirect to login
+      authStore.clearAuth()
+      return '/login'
+    }
+  }
+
   if (to.meta.requiresSuperuser && authStore.isAuthenticated()) {
     if (!authStore.user) {
       try {
         await authStore.fetchUser()
       } catch {
+        authStore.clearAuth()
         return '/login'
       }
     }

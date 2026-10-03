@@ -541,7 +541,7 @@ class TestSynthesizePipelineRoutingDecision:
         monkeypatch.setenv("ENABLE_LOCAL_TTS", "true")
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
 
-        assert decision.engine_choice == "kokoro"
+        assert decision.engine_choice == "piper"
         assert decision.fallback_engine == "edge"
 
     @pytest.mark.asyncio
@@ -567,14 +567,14 @@ class TestSynthesizePipelineRoutingDecision:
         inp.prefer_local = True
         decision = synthesize_pipeline._make_routing_decision(inp)
 
-        assert decision.engine_choice == "kokoro"
+        assert decision.engine_choice == "piper"
 
     @pytest.mark.asyncio
     async def test_routing_decision_voice_id_from_character_map(self, synthesize_pipeline, tts_routing_inputs):
         """Test voice_id is extracted from character_voice_map and normalized for engine."""
         decision = synthesize_pipeline._make_routing_decision(tts_routing_inputs[0])
-        # Edge voice ID is mapped to Kokoro equivalent since engine_choice is kokoro
-        assert decision.voice_id == "zf_xiaoxiao"
+        # Edge voice ID is mapped to the piper default since engine_choice is piper
+        assert decision.voice_id == "zh_CN-huayan-medium"
 
 
 class TestSynthesizePipelineErrorHandling:

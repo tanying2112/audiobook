@@ -223,6 +223,10 @@ export interface PipelineEventCallbacks {
   onError?: (message: string) => void
   onPaused?: () => void
   onResumed?: () => void
+  /** 人工终审门：流水线在合成前暂停等待人工确认 */
+  onAwaitingReview?: () => void
+  /** 人工终审门：全部章节确认完毕，放行合成 */
+  onReviewReleased?: () => void
 }
 
 /**
@@ -261,6 +265,8 @@ export function streamPipelineEvents(
       onError: callbacks.onError,
       onPaused: callbacks.onPaused,
       onResumed: callbacks.onResumed,
+      onAwaitingReview: callbacks.onAwaitingReview,
+      onReviewReleased: callbacks.onReviewReleased,
     },
   })
 

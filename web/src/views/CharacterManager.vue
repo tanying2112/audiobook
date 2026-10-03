@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as api from '../api'
 import type { Character, BookGenre } from '../types'
@@ -17,6 +17,22 @@ const characters = ref<Character[]>([])
 const loading = ref(false)
 const editingChar = ref<Character | null>(null)
 const showEditor = ref(false)
+
+// 音色绑定候选（datalist）：来自可用 TTS 引擎的声音清单，失败非致命
+const ttsVoices = ref<api.TTSVoicesResponse | null>(null)
+
+const voiceOptions = computed(() => {
+  const out: { id: string; label: string }[] = []
+  if (ttsVoices.value) {
+    for (const engine of Object.values(ttsVoices.value.engines)) {
+      if (!engine.available) continue
+      for (const voice of engine.voices || []) {
+        out.push({ id: voice.id, label: `${engine.name} · ${voice.name} (${voice.language})` })
+      }
+    }
+  }
+  return out
+})
 
 // Form state
 const formName = ref('')
@@ -55,6 +71,11 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+
+  // 音色候选清单（datalist）；失败静默降级为自由输入
+  api.fetchTTSVoices(true).then((v) => { ttsVoices.value = v }).catch((e) => {
+    console.warn('[CharacterManager] 音色清单加载失败（降级为自由输入）:', e?.message || e)
+  })
 })
 
 function addCharacter() {
@@ -162,7 +183,7 @@ function goBack() {
 
     <template v-else>
       <div v-if="characters.length === 0" class="empty-state section">
-        <Icon icon="mdi:account-group-outline" width="48" height="48" style="opacity: 0.4" />
+        <Icon icon="mdi:account-group-outline" width="48" height="48" class="empty-icon" />
         <p>{{ t('character_manager.empty') }}</p>
         <button class="btn btn-primary mt-4" @click="addCharacter">
           <Icon icon="mdi:account-plus" width="16" height="16" class="gap-2" />
@@ -177,7 +198,7 @@ function goBack() {
           class="card card-hover character-card flex items-center justify-between"
         >
           <div class="character-info flex items-center gap-3">
-            <div class="character-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 16px;">
+            <div class="character-avatar">
               {{ c.canonical_name?.charAt(0).toUpperCase() || '?' }}
             </div>
             <div>
@@ -219,7 +240,21 @@ function goBack() {
             </div>
             <div class="form-group mb-4">
               <label class="form-label">{{ t('character_manager.voice_id') }}</label>
-              <input v-model="formVoice" type="text" class="form-control" :placeholder="t('character_manager.optional_voice_id')" />
+              <input
+                v-model="formVoice"
+                type="text"
+                class="form-control"
+                list="character-voice-options"
+                :placeholder="t('character_manager.optional_voice_id')"
+              />
+              <datalist id="character-voice-options">
+                <option v-for="v in voiceOptions" :key="v.id" :value="v.id">
+                  {{ v.label }}
+                </option>
+              </datalist>
+              <p v-if="voiceOptions.length > 0" class="text-muted text-sm mt-1">
+                {{ t('character_manager.voice_id_hint', { count: voiceOptions.length }) }}
+              </p>
             </div>
             <div class="form-group mb-4">
               <label class="form-label">{{ t('character_manager.emotion') }}</label>
@@ -243,7 +278,7 @@ function goBack() {
               </div>
             </div>
           </div>
-          <div class="modal-footer flex justify-end gap-2 p-4 border-t" style="border-color: var(--color-border);">
+          <div class="modal-footer flex justify-end gap-2 p-4 border-t" >
             <button class="btn btn-outline" @click="showEditor = false">{{ t('common.cancel') }}</button>
             <button class="btn btn-primary" @click="saveCharacter">{{ t('common.save') }}</button>
           </div>
@@ -283,6 +318,10 @@ function goBack() {
   flex-shrink: 0;
 }
 
+.empty-icon {
+  opacity: 0.4;
+}
+
 .character-list {
   margin-top: 8px;
 }
@@ -291,7 +330,7 @@ function goBack() {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--color-overlay, rgba(0, 0, 0, 0.5));
   display: flex;
   align-items: center;
   justify-content: center;

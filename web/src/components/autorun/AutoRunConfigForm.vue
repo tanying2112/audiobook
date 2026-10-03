@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- TTS Status Banner -->
-    <div v-if="ttsStatus" class="alert alert-info section" style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <div v-if="ttsStatus" class="tts-banner section">
       <div class="flex items-center gap-3">
         <Icon
           :icon="ttsStatus.enable_local_tts_env ? 'mdi:cpu-64-bit' : 'mdi:cloud'"
@@ -10,7 +10,7 @@
           class="text-primary"
         />
         <div>
-          <p class="font-medium" style="color: var(--color-primary);">
+          <p class="tts-mode-label">
             {{ ttsStatus.enable_local_tts_env ? t('auto_run.local_mode_active') : t('auto_run.cloud_mode_active') }}
           </p>
           <p class="text-sm text-secondary">
@@ -31,7 +31,22 @@
     <div class="card card-hover section">
       <h2 class="card-title">{{ t('auto_run.configuration') }}</h2>
 
-      <div class="grid grid-auto-fill gap-4">
+      <!-- 运行模式：全自动 vs 人工终审（合成前暂停确认） -->
+      <div class="mode-row">
+        <span class="form-label">{{ t('auto_run.mode') }}</span>
+        <label class="mode-option" :class="{ 'mode-option--active': mode === 'auto' }">
+          <input type="radio" name="run-mode" value="auto" :checked="mode === 'auto'" @change="onModeChange" />
+          <Icon icon="mdi:robot" width="16" height="16" />
+          {{ t('auto_run.mode_auto') }}
+        </label>
+        <label class="mode-option" :class="{ 'mode-option--active': mode === 'review' }">
+          <input type="radio" name="run-mode" value="review" :checked="mode === 'review'" @change="onModeChange" />
+          <Icon icon="mdi:clipboard-check-search-outline" width="16" height="16" />
+          {{ t('auto_run.mode_review') }}
+        </label>
+      </div>
+
+      <div class="form-grid">
         <div>
           <label class="form-label">{{ t('auto_run.target_difficulty') }}</label>
           <select :value="config.target_difficulty" @change="onSelectChange('target_difficulty', $event)" class="form-control">
@@ -100,36 +115,34 @@
           />
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="checkbox-row">
           <input
             type="checkbox"
             id="bgm"
             :checked="config.enable_background_music"
             @change="onCheckboxChange('enable_background_music', $event)"
-            class="h-4 w-4"
-            style="accent-color: var(--color-primary);"
+            class="checkbox-input"
           />
-          <label for="bgm" class="form-label" style="margin: 0; font-size: 14px;">{{ t('auto_run.enable_bgm') }}</label>
+          <label for="bgm" class="form-label checkbox-label">{{ t('auto_run.enable_bgm') }}</label>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="checkbox-row">
           <input
             type="checkbox"
             id="sfx"
             :checked="config.enable_sfx"
             @change="onCheckboxChange('enable_sfx', $event)"
-            class="h-4 w-4"
-            style="accent-color: var(--color-primary);"
+            class="checkbox-input"
           />
-          <label for="sfx" class="form-label" style="margin: 0; font-size: 14px;">{{ t('auto_run.enable_sfx') }}</label>
+          <label for="sfx" class="form-label checkbox-label">{{ t('auto_run.enable_sfx') }}</label>
         </div>
       </div>
 
-      <!-- Engine Selection (Dynamic based on TTS Status) -->
-      <div v-if="ttsVoices" class="mt-4 pt-4 border-t" style="border-color: var(--color-border);">
-        <h3 class="text-secondary" style="font-size: 14px; font-weight: 500; margin-bottom: 12px;">{{ t('auto_run.engine_selection') }}</h3>
+      <!-- Engine Selection -->
+      <div v-if="ttsVoices" class="engine-section">
+        <h3 class="engine-section-title">{{ t('auto_run.engine_selection') }}</h3>
 
-        <div class="grid grid-auto-fill gap-4">
+        <div class="form-grid">
           <div>
             <label class="form-label">{{ t('auto_run.select_engine') }}</label>
             <select
@@ -152,7 +165,7 @@
                 </option>
               </optgroup>
             </select>
-            <p class="text-muted" style="font-size: 12px; margin-top: 4px;">
+            <p class="hint-text">
               {{ t('auto_run.engine_hint', { recommended: ttsStatus?.recommended_engine || 'kokoro' }) }}
             </p>
           </div>
@@ -169,19 +182,19 @@
                 {{ voice.name }} ({{ voice.language }}, {{ voice.gender }})
               </option>
             </select>
-            <p class="text-muted" style="font-size: 12px; margin-top: 4px;" v-if="availableVoices.length > 0">
+            <p class="hint-text" v-if="availableVoices.length > 0">
               {{ t('auto_run.voice_hint', { count: availableVoices.length }) }}
             </p>
-            <p class="text-muted" style="font-size: 12px; margin-top: 4px;" v-else>
+            <p class="hint-text" v-else>
               {{ t('auto_run.no_voices_available') }}
             </p>
           </div>
         </div>
 
         <!-- Engine Details -->
-        <div class="mt-4 p-3 rounded" style="background: var(--color-bg-tertiary);">
-          <h4 class="text-secondary" style="font-size: 13px; font-weight: 500; margin-bottom: 12px;">{{ t('auto_run.engine_details') }}</h4>
-          <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); font-size: 13px;">
+        <div class="engine-details">
+          <h4 class="engine-details-title">{{ t('auto_run.engine_details') }}</h4>
+          <div class="engine-details-grid">
             <div v-if="ttsStatus">
               <span class="text-muted">{{ t('auto_run.local_tts_env') }}</span>
               <p class="font-medium">{{ ttsStatus.enable_local_tts_env ? t('common.enabled') : t('common.disabled') }}</p>
@@ -216,12 +229,14 @@ import type {
   TTSStatusResponse,
   TTSVoicesResponse,
   AutoRunConfig,
+  AutoRunMode,
 } from '../../api'
 
 interface Props {
   ttsStatus: TTSStatusResponse | null
   ttsVoices: TTSVoicesResponse | null
   config: AutoRunConfig
+  mode: AutoRunMode
   selectedEngine: string
   selectedVoice: string
   availableEngines: Array<{ id: string; name: string; voices: Array<{ id: string; name: string; language: string; gender: string }> }>
@@ -233,6 +248,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:config': [config: AutoRunConfig]
+  'update:mode': [mode: AutoRunMode]
   'update:selectedEngine': [value: string]
   'update:selectedVoice': [value: string]
 }>()
@@ -255,6 +271,10 @@ function onCheckboxChange(field: keyof AutoRunConfig, event: Event) {
   updateConfig(field, (event.target as HTMLInputElement).checked)
 }
 
+function onModeChange(event: Event) {
+  emit('update:mode', (event.target as HTMLInputElement).value as AutoRunMode)
+}
+
 function onEngineChange(event: Event) {
   emit('update:selectedEngine', (event.target as HTMLSelectElement).value)
 }
@@ -268,11 +288,112 @@ function onVoiceChange(event: Event) {
 .section {
   margin-bottom: 20px;
 }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
-.gap-4 { gap: 16px; }
-.grid { display: grid; }
-.grid-auto-fill { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+/* ── TTS Banner ───────────────────────────────────────────── */
+.tts-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--color-info-soft);
+  border: 1px solid rgba(2, 132, 199, 0.15);
+  border-radius: var(--radius);
+}
+.tts-mode-label {
+  font-weight: 500;
+  color: var(--color-primary);
+  margin: 0;
+}
+
+/* ── Form grid ────────────────────────────────────────────── */
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mode-option input {
+  accent-color: var(--color-primary);
+}
+
+.mode-option--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* ── Checkboxes ───────────────────────────────────────────── */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.checkbox-input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+.checkbox-label {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ── Engine section ───────────────────────────────────────── */
+.engine-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.engine-section-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+.hint-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 4px 0 0;
+}
+
+/* ── Engine details ───────────────────────────────────────── */
+.engine-details {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--color-bg-tertiary);
+}
+.engine-details-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+.engine-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  font-size: 13px;
+}
 </style>

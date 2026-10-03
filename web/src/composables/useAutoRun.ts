@@ -14,6 +14,7 @@ import {
   startAutopilot,
   previewAutopilotConfig,
   type AutoRunConfig,
+  type AutoRunMode,
   type AutoRunStatusResponse,
   type TTSVoicesResponse,
   type TTSStatusResponse,
@@ -52,6 +53,9 @@ export function useAutoRun() {
   const showAutopilotPreview = ref(false)
   const autopilotPreview = ref<AutopilotConfig | null>(null)
   const previewLoading = ref(false)
+
+  // 运行模式：auto=全自动直通合成；review=合成前停人工终审门等确认
+  const mode = ref<AutoRunMode>('auto')
 
   // Form config
   const config = ref<AutoRunConfig>({
@@ -108,6 +112,13 @@ export function useAutoRun() {
     return pipelineProgress.state.value.isPaused || autoRunStatus.value?.status === 'paused'
   })
 
+  // 终审门激活中：REST 报 awaiting_review / can_review，或 WS 推过 awaiting_review 事件
+  const isAwaitingReview = computed(() => {
+    return pipelineProgress.state.value.isAwaitingReview ||
+      autoRunStatus.value?.status === 'awaiting_review' ||
+      autoRunStatus.value?.can_review === true
+  })
+
   const currentStage = computed(() => {
     return (pipelineProgress.state.value.currentStage || autoRunStatus.value?.current_stage || null) as PipelineStage | null
   })
@@ -134,7 +145,11 @@ export function useAutoRun() {
 
   function startStatusPolling() {
     statusPollInterval = setInterval(async () => {
-      if (autoRunStatus.value && (autoRunStatus.value.status === 'running' || autoRunStatus.value.status === 'paused')) {
+      if (autoRunStatus.value && (
+        autoRunStatus.value.status === 'running' ||
+        autoRunStatus.value.status === 'paused' ||
+        autoRunStatus.value.status === 'awaiting_review'
+      )) {
         await loadAutoRunStatus()
       }
     }, 2000)
@@ -182,7 +197,10 @@ export function useAutoRun() {
       if (pipelineProgress.state.value.currentStage) {
         autoRunStatus.value.current_stage = pipelineProgress.state.value.currentStage
       }
-      autoRunStatus.value.status = pipelineProgress.state.value.isRunning ? 'running' :
+      // 注意顺序：终审门期间 isRunning 仍为 true（阶段事件停了但没人把它置 false），
+      // 必须先判 isAwaitingReview，否则 REST 的 awaiting_review 会被碾成 running。
+      autoRunStatus.value.status = pipelineProgress.state.value.isAwaitingReview ? 'awaiting_review' :
+        pipelineProgress.state.value.isRunning ? 'running' :
         pipelineProgress.state.value.isPaused ? 'paused' :
         status.status
     } catch (error) {
@@ -201,7 +219,7 @@ export function useAutoRun() {
           startConfig.primary_voice_preference = 'cloud'
         }
       }
-      await startAutoRun(projectId, startConfig)
+      await startAutoRun(projectId, startConfig, mode.value)
       await loadAutoRunStatus()
     } catch (error: any) {
       console.error('Failed to start auto-run:', error)
@@ -271,6 +289,11 @@ export function useAutoRun() {
     router.push('/projects/' + projectId)
   }
 
+  /** 跳转人工终审工作台（终审门激活时进入） */
+  function goToReviewGate() {
+    router.push(`/projects/${projectId}/review`)
+  }
+
   function getStageLabel(stage: string): string {
     return stageLabels[stage] || stage
   }
@@ -316,15 +339,18 @@ export function useAutoRun() {
     autopilotPreview,
     previewLoading,
     config,
+    mode,
     selectedEngine,
     selectedVoice,
     availableEngines,
     availableVoices,
     canStart,
     progressPercent,
+    projectId,
     // WebSocket 实时状态
     isPipelineRunning,
     isPipelinePaused,
+    isAwaitingReview,
     currentStage,
     completedStages,
     pipelineProgress: pipelineProgress.state,
@@ -336,6 +362,7 @@ export function useAutoRun() {
     handleStartAutopilot,
     loadAutoRunStatus,
     goBack,
+    goToReviewGate,
     getStageLabel,
     getDifficultyLabel,
   }

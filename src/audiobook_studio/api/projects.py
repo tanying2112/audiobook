@@ -80,6 +80,8 @@ class ChapterOut(BaseModel):
     cost_usd: float
     token_count: int
     tts_chars: int
+    # 人工终审门：None=未在审 | pending_review | approved
+    review_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,8 +107,16 @@ class ParagraphOut(BaseModel):
     confidence: Optional[float] = None
     notes: Optional[str] = None
     edited_text: Optional[str] = None
+    # 人工终审覆盖：客户在合成前逐段强制指定的 voice/engine（NULL=自动决策）
+    manual_voice_id: Optional[str] = None
+    manual_engine: Optional[str] = None
     status: str = "pending"
     content_rating: Optional[str] = None
+    # Phase 5: Extended fields
+    tts_edit_history: Optional[list] = None
+    quality_records: Optional[list] = None
+    routing_decision: Optional[dict] = None
+    annotations_full: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -325,6 +335,42 @@ async def get_paragraph(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get a single paragraph by its DB ID."""
+    result = await db.execute(
+        select(Paragraph).where(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+    )
+    para = result.scalar_one_or_none()
+    if not para:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
+    return para
+
+
+@router.get(
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/detail",
+    response_model=ParagraphOut,
+)
+async def get_paragraph_detail(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single paragraph with full detail including extended fields.
+
+    This endpoint returns the complete paragraph data including:
+    - tts_edit_history: TTS editing history
+    - quality_records: Quality assessment records
+    - routing_decision: TTS routing decision
+    - annotations_full: Full annotation details
+    """
     result = await db.execute(
         select(Paragraph).where(
             Paragraph.project_id == project_id,
