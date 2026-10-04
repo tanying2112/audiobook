@@ -83,6 +83,9 @@ dev = [
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
 ]
+evolution = [
+    "dspy-ai>=2.5.0",
+]
 
 [project.scripts]
 audiobook-studio = "audiobook_studio.cli:main"

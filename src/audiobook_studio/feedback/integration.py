@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from ..pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 from .ab_test import ABTestReport, build_ab_samples, run_ab_test
 from .auto_processor import create_auto_processor
+from .deploy import deploy_prompt, promote_candidate
 from .pr_automation import MergeResult, PRResult, create_prompt_upgrade_pr, monitor_and_merge_pr
 from .processor import AggregateAnalysis
 from .promotion_gate import PromotionVerdict, _golden_to_pipeline_stage
@@ -32,11 +33,7 @@ from .promotion_gate import _load_golden_examples
 from .promotion_gate import _load_golden_examples as load_golden_for_ab
 from .promotion_gate import _run_stage_with_prompt_version, evaluate_promotion
 from .prompt_upgrader import _load_current_prompt, batch_upgrade
-from .quality_enhancement import (
-    FreeTierHealth,
-    check_semantic_coherence,
-    get_free_tier_health,
-)
+from .quality_enhancement import FreeTierHealth, check_semantic_coherence, get_free_tier_health
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +85,7 @@ class SelfIterationLoop:
         canary_percentage: float = 0.1,
         enable_auto_pr: bool = True,
         enable_auto_merge: bool = True,
+        auto_deploy: bool = True,
         pr_base_branch: str = "main",
         ci_timeout_seconds: int = 1800,
     ):
@@ -96,6 +94,7 @@ class SelfIterationLoop:
         self.canary_percentage = canary_percentage
         self.enable_auto_pr = enable_auto_pr
         self.enable_auto_merge = enable_auto_merge
+        self.auto_deploy = auto_deploy
         self.pr_base_branch = pr_base_branch
         self.ci_timeout_seconds = ci_timeout_seconds
 
@@ -229,6 +228,26 @@ class SelfIterationLoop:
             if promotion_result.passed:
                 logger.info(f"✅ Promoted new prompt for {stage}: {prompt_path} (v{old_version} → v{new_version})")
                 promoted_any = True
+
+                # Deploy to production prompts/ directory if auto_deploy is enabled
+                if self.auto_deploy:
+                    try:
+                        deploy_decision = promote_candidate(
+                            stage=stage,
+                            candidate_version=new_version,
+                            golden_dataset_pass_rate=validation.get("golden_pass_rate", 1.0),
+                            quality_score_ratio=validation.get("avg_quality_ratio", 1.0),
+                            format_compliance_rate=validation.get("format_compliance_rate", 1.0),
+                            human_preference_score=validation.get("human_preference_score", 1.0),
+                            prompts_dir=Path("prompts"),  # Production prompts directory
+                            auto_deploy=True,
+                        )
+                        if deploy_decision.deployed:
+                            logger.info(f"✅ Deployed {stage} v{new_version} to production prompts/")
+                        else:
+                            logger.warning(f"⚠️ Promotion passed but deployment failed for {stage}")
+                    except Exception as e:
+                        logger.error(f"Failed to deploy {stage} v{new_version} to production: {e}")
 
                 # 4. Run A/B test for promoted prompts
                 ab_test_result: Optional[ABTestReport] = None
@@ -663,6 +682,7 @@ def create_self_iteration_loop(
     canary_percentage: float = 0.1,
     enable_auto_pr: bool = True,
     enable_auto_merge: bool = True,
+    auto_deploy: bool = True,
     pr_base_branch: str = "main",
     ci_timeout_seconds: int = 1800,
 ) -> SelfIterationLoop:
@@ -676,6 +696,7 @@ def create_self_iteration_loop(
         canary_percentage=canary_percentage,
         enable_auto_pr=enable_auto_pr,
         enable_auto_merge=enable_auto_merge,
+        auto_deploy=auto_deploy,
         pr_base_branch=pr_base_branch,
         ci_timeout_seconds=ci_timeout_seconds,
     )

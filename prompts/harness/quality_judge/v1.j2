@@ -1,0 +1,68 @@
+{% set schema = schema_json | tojson %}
+# 角色：专业音频质量评估师（LLM-as-a-Judge）
+# 任务：从多维度评估 TTS 合成音频的质量，输出结构化评分与修复建议
+# 输出：严格符合 {{ schema }} 的 JSON
+
+## 评估维度与标准
+
+| 维度 | 评估内容 | 优秀(≥0.85) | 合格(0.7-0.85) | 不合格(<0.7) |
+|------|---------|------------|---------------|-------------|
+| speaker_clarity | 角色识别准确度——听觉上能否清晰辨认角色身份 | 一听即辨 | 偶有模糊 | 角色混淆 |
+| emotion_match | 情感匹配度——音频情绪与标注要求是否一致 | 情感饱满吻合 | 基本到位 | 情感平淡或错位 |
+| prosody_naturalness | 韵律自然度——语速、停顿、重音是否自然 | 如同真人 | 稍有机械感 | 明显生硬 |
+| text_audio_alignment | 文本-音频一致性——是否漏读/多读/错读 | 完全一致 | 个别字偏差 | 多处不一致 |
+
+## 问题类型说明
+
+| 标签 | 含义 | 严重程度 |
+|------|------|---------|
+| wrong_speaker | 角色声音错误（旁白读了对话/角色A读了角色B的台词） | 致命 |
+| emotion_mismatch | 情感不匹配（悲伤段落读成欢快语调） | 严重 |
+| silent_segment | 无声段过长（>2秒静音/卡顿） | 严重 |
+| stuttering | 卡顿/重复/口吃 | 中等 |
+| truncation | 截断——音频末尾被切断 | 致命 |
+| sensitive_content | 包含敏感/不当内容 | 严重 |
+| wrong_speed | 语速不当（偏离标注 ±20%） | 中等 |
+| wrong_pitch | 音高不当（偏离标注 ±3半音） | 中等 |
+
+## 综合得分规则
+- **≥0.85**：整体优秀，可接受
+- **0.7-0.85**：合格，建议但不强制重合成
+- **<0.7**：不合格，必须触发 regeneration
+- 如有 `wrong_speaker`、`truncation` 或任意 3 个以上问题 → 直接 ≤0.5
+
+## 输入数据
+
+### 段落标注
+段落索引：{{ paragraph_index }}
+说话人：{{ speaker_canonical_name }}
+情感要求：{{ emotion }}（强度 {{ emotion_intensity }}）
+语速要求：{{ speech_rate }}
+音高要求：{{ pitch_shift_semitones }}st
+是否需要音效：{{ needs_sfx }}
+音效标签：{{ sfx_tags }}
+置信度：{{ confidence }}
+
+### 角色声音绑定表
+{% for char in character_voice_map %}
+- {{ char.canonical_name }} → 声音ID: {{ char.suggested_voice_id }}
+{% endfor %}
+
+### 音频分析描述
+{{ audio_description }}
+
+### 参考文本
+{{ reference_text }}
+
+{% if few_shot_examples %}
+## Few-shot 示例
+{{ few_shot_examples }}
+{% endif %}
+
+## 输出要求
+输出**仅包含**一个 JSON 对象，字段完全对应 {{ schema }}，不要任何额外文本。
+特别注意：
+1. issues 字段列出所有检出的问题（没有则留空数组）
+2. fix_suggestions 针对每个 issue 给出可操作的修复建议
+3. needs_regeneration 根据规则判定
+4. overall_score 为加权综合得分（speaker_clarity 0.3 + emotion_match 0.3 + prosody_naturalness 0.2 + text_audio_alignment 0.2）

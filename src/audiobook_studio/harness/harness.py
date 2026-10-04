@@ -25,7 +25,6 @@ from ..harness.config import HARNESS_PROMPTS_DIR, get_harness_settings
 from ..harness.golden import evaluate_on_harness_golden
 from ..harness.models import PipelineStage
 from ..harness.spotcheck import human_preference_score_for
-from ..harness.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -271,46 +270,47 @@ async def run_harness_cycle(
 ) -> List[Dict[str, Any]]:
     """运行完整的马具迭代周期（异步版）。
 
-    返回所有 stage 的迭代报告列表。
+    对每个 stage 跑一轮真实的迭代（编译候选 prompt → 在留出集评判 → 晋升门禁 → 部署/回滚），
+    返回所有 stage 的迭代报告字典列表。整轮不触网（默认 OfflineJudge 兜底），可离线复现。
     """
     get_harness_settings()
     stages = stages or [s.value for s in PipelineStage]
 
-    reports = []
+    reports: List[Dict[str, Any]] = []
     for stage in stages:
-        # 这里需要实际的 stage 运行函数
-        # 暂时返回模拟报告
-        reports.append(
-            {
-                "stage": stage,
-                "status": "pending",
-                "message": "待集成真实 stage 运行逻辑",
-            }
+        rep = run_iteration_cycle(
+            stage=stage,
+            run_fn=lambda inp, _s=stage: run_stage(_s, inp),
+            golden_root=golden_root,
+            prompts_root=prompts_root,
+            auto_deploy=auto_deploy,
         )
+        reports.append(rep.to_dict())
 
     return reports
 
 
 def get_harness_status() -> Dict[str, Any]:
-    """获取马具迭代系统整体状态。"""
-    settings = get_harness_settings()
-    get_storage()
+    """获取马具迭代系统整体状态。
 
-    return {
-        "enabled": settings.ENABLED,
-        "self_iteration_llm": settings.SELF_ITERATION_LLM,
-        "batch_size": settings.SELF_ITERATION_BATCH_SIZE,
-        "mock_mode": settings.SELF_ITERATION_MOCK,
-        "golden_root": settings.GOLDEN_ROOT,
-        "prompts_dir": str(HARNESS_PROMPTS_DIR),
-        "golden_stats": {
-            "train": 0,
-            "val": 0,
-            "test": 0,
-        },
-        "active_canaries": 0,
-        "pending_promotions": 0,
-    }
+    金标三集统计 / 活跃金丝雀 / 待晋升计数从真实存储（SQLite）聚合，而非硬编码零值；
+    与 ``harness.dashboard.get_harness_status`` 使用同一真实实现。
+    """
+    from ..harness.dashboard import get_harness_status as _dashboard_status
+
+    settings = get_harness_settings()
+    status = _dashboard_status()
+    status.update(
+        {
+            "enabled": settings.ENABLED,
+            "self_iteration_llm": settings.SELF_ITERATION_LLM,
+            "batch_size": settings.SELF_ITERATION_BATCH_SIZE,
+            "mock_mode": settings.SELF_ITERATION_MOCK,
+            "golden_root": settings.GOLDEN_ROOT,
+            "prompts_dir": str(HARNESS_PROMPTS_DIR),
+        }
+    )
+    return status
 
 
 def trigger_iteration(stage: str, auto_deploy: bool = True) -> IterationReport:
