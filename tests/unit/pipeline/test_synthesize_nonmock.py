@@ -197,10 +197,10 @@ config_loader_mock.FallbackConfig = MagicMock()
 config_loader_mock.CostControlConfig = MagicMock()
 
 
-from audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
-from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingInput
-from audiobook_studio.schemas.book import CharacterVoiceBinding
-from audiobook_studio.tts import FakeRemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor
+from src.audiobook_studio.pipeline.synthesize import AudioSegment, SynthesizePipeline
+from src.audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingInput
+from src.audiobook_studio.schemas.book import CharacterVoiceBinding
+from src.audiobook_studio.tts import FakeRemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor
 
 
 class DummyObserve:

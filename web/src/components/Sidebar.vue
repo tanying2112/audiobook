@@ -30,9 +30,15 @@ const navItems = computed(() => [
   { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
   { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback' },
   { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness' },
+  { label: 'nav.promotions', icon: 'mdi:rocket-launch-outline', route: '/evolution/promotions' },
+  { label: 'nav.golden_data', icon: 'mdi:database-star-outline', route: '/evolution/golden' },
+  { label: 'nav.sop_rules', icon: 'mdi:book-cog-outline', route: '/evolution/sop' },
+  { label: 'nav.feedback_insights', icon: 'mdi:comment-quote-outline', route: '/evolution/feedback' },
+  { label: 'nav.admin_panel', icon: 'mdi:shield-account-outline', route: '/admin' },
   { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
   { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },
   { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market' },
+  { label: 'nav.waveform_demo', icon: 'mdi:waveform', route: '/waveform-demo' },
   // Dashboard route dynamically generated with actual projectId from context store
   { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: contextStore.projectId ? `/projects/${contextStore.projectId}/dashboard` : '' },
 ])

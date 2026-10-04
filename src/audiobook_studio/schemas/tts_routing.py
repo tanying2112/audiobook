@@ -33,6 +33,7 @@ CostUsd = Annotated[float, Field(ge=0.0)]
 # v0.4 引擎选择枚举
 EngineChoice = Literal[
     # 本地/免费引擎
+    "piper",
     "kokoro",
     "edge",
     # 云端/付费引擎
@@ -53,7 +54,7 @@ EngineChoice = Literal[
 ]
 
 # 本地引擎集合 (免费)
-LOCAL_ENGINES = {"kokoro", "edge"}
+LOCAL_ENGINES = {"kokoro", "edge", "piper"}
 
 # 流式引擎集合
 STREAMING_ENGINES = {"cosyvoice_stream", "seed_tts_stream", "melotts_stream"}
@@ -85,6 +86,10 @@ class TtsRoutingInput(BaseModel):
     enable_cloning: bool = Field(default=False, description="启用零样本克隆 (需 sample_quote)")
     # v0.5 新增: RAG 检索上下文 (用于韵律/声音一致性)
     rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
+    # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段强制指定的
+    # voice/engine，优先于角色绑定与能力路由 (NULL=自动决策)
+    manual_voice_id: Optional[str] = Field(default=None, description="人工覆盖音色 ID (终审门)")
+    manual_engine: Optional[EngineChoice] = Field(default=None, description="人工覆盖引擎 (终审门)")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 

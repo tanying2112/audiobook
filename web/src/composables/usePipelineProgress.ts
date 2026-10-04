@@ -2,6 +2,14 @@ import { ref, onUnmounted } from 'vue'
 import { streamPipelineEvents, type PipelineEventCallbacks } from '../api/sse'
 import type { PipelineStage } from '../types/pipeline'
 
+// 扩展 unsubscribe 类型以包含 pause/resume 方法
+interface PipelineUnsubscribe {
+  disconnect: () => void
+  pause: () => boolean
+  resume: () => boolean
+  call: () => void
+}
+
 export interface PipelineProgressState {
   /** 当前活动阶段 */
   currentStage: PipelineStage | null
@@ -15,6 +23,8 @@ export interface PipelineProgressState {
   isRunning: boolean
   /** 管线是否暂停 */
   isPaused: boolean
+  /** 人工终审门：合成前暂停等待人工确认 */
+  isAwaitingReview: boolean
   /** 错误信息 */
   error: string | null
   /** 最后更新时间 */
@@ -61,11 +71,12 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
     completedStages: [],
     isRunning: false,
     isPaused: false,
+    isAwaitingReview: false,
     error: null,
     lastUpdate: null,
   })
 
-  let unsubscribe: (() => void) | null = null
+  let unsubscribe: PipelineUnsubscribe | null = null
 
   const callbacks: PipelineEventCallbacks = {
     onStageEnter: (stage, chapterId) => {
@@ -108,6 +119,7 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
       state.value.currentStage = null
       state.value.currentChapterId = null
       state.value.stageProgress = 1
+      state.value.isAwaitingReview = false
       state.value.lastUpdate = new Date()
     },
     onPaused: () => {
@@ -116,6 +128,17 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
     },
     onResumed: () => {
       state.value.isPaused = false
+      state.value.lastUpdate = new Date()
+    },
+    onAwaitingReview: () => {
+      // 终审门：合成前暂停，运行中标志保留（流水线仍活着，等确认）
+      state.value.isAwaitingReview = true
+      state.value.lastUpdate = new Date()
+    },
+    onReviewReleased: () => {
+      // 全部章节确认完毕，放行合成
+      state.value.isAwaitingReview = false
+      state.value.isRunning = true
       state.value.lastUpdate = new Date()
     },
     onError: (message) => {
@@ -128,13 +151,19 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
   /** 连接 WebSocket */
   function connect(): void {
     if (unsubscribe) return
-    unsubscribe = streamPipelineEvents(projectId, callbacks)
+    const wsClient = streamPipelineEvents(projectId, callbacks)
+    unsubscribe = {
+      disconnect: () => wsClient.disconnect(),
+      pause: () => wsClient.pause(),
+      resume: () => wsClient.resume(),
+      call: () => wsClient.disconnect(),
+    }
   }
 
   /** 断开连接 */
   function disconnect(): void {
     if (unsubscribe) {
-      unsubscribe()
+      unsubscribe.call()
       unsubscribe = null
     }
     state.value.isRunning = false
@@ -150,6 +179,7 @@ export function usePipelineProgress(options: UsePipelineProgressOptions) {
       completedStages: [],
       isRunning: false,
       isPaused: false,
+      isAwaitingReview: false,
       error: null,
       lastUpdate: null,
     }

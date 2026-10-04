@@ -38,6 +38,10 @@ export interface PipelineEventCallbacks {
   onError?: (message: string) => void
   onConnected?: () => void
   onKeepalive?: () => void
+  /** 人工终审门：流水线在合成前暂停等待人工确认 */
+  onAwaitingReview?: () => void
+  /** 人工终审门：全部章节确认完毕，放行合成 */
+  onReviewReleased?: () => void
 }
 
 export interface WebSocketClientOptions {
@@ -165,6 +169,12 @@ export class PipelineWebSocketClient {
         break
       case 'resumed':
         this.options.callbacks.onResumed?.()
+        break
+      case 'awaiting_review':
+        this.options.callbacks.onAwaitingReview?.()
+        break
+      case 'review_released':
+        this.options.callbacks.onReviewReleased?.()
         break
       case 'error':
         this.options.callbacks.onError?.(event.data?.message as string ?? '未知错误')

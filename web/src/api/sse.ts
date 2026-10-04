@@ -223,6 +223,10 @@ export interface PipelineEventCallbacks {
   onError?: (message: string) => void
   onPaused?: () => void
   onResumed?: () => void
+  /** 人工终审门：流水线在合成前暂停等待人工确认 */
+  onAwaitingReview?: () => void
+  /** 人工终审门：全部章节确认完毕，放行合成 */
+  onReviewReleased?: () => void
 }
 
 /**
@@ -248,7 +252,7 @@ export interface PipelineEventCallbacks {
 export function streamPipelineEvents(
   projectId: number,
   callbacks: PipelineEventCallbacks,
-): () => void {
+): { disconnect: () => void; pause: () => boolean; resume: () => boolean } {
   const wsClient = createPipelineWebSocketClient({
     projectId,
     autoReconnect: true,
@@ -261,12 +265,16 @@ export function streamPipelineEvents(
       onError: callbacks.onError,
       onPaused: callbacks.onPaused,
       onResumed: callbacks.onResumed,
+      onAwaitingReview: callbacks.onAwaitingReview,
+      onReviewReleased: callbacks.onReviewReleased,
     },
   })
 
   wsClient.connect()
 
-  return () => {
-    wsClient.disconnect()
+  return {
+    disconnect: () => wsClient.disconnect(),
+    pause: () => wsClient.pause(),
+    resume: () => wsClient.resume(),
   }
 }

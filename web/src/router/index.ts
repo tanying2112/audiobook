@@ -87,6 +87,21 @@ const router = createRouter({
       component: () => import('../views/AutoRunView.vue'),
     },
     {
+      path: '/projects/:projectId/review',
+      name: 'review-gate',
+      component: () => import('../views/ReviewGateView.vue'),
+    },
+    {
+      path: '/projects/:projectId/runs',
+      name: 'runs',
+      component: () => import('../views/RunsView.vue'),
+    },
+    {
+      path: '/projects/:projectId/knowledge',
+      name: 'knowledge',
+      component: () => import('../views/KnowledgeBaseView.vue'),
+    },
+    {
       path: '/monitoring',
       name: 'monitoring-dashboard',
       component: () => import('../views/MonitoringDashboard.vue'),
@@ -116,17 +131,96 @@ const router = createRouter({
       name: 'video-canvas',
       component: () => import('../views/VideoCanvasView.vue'),
     },
+    {
+      path: '/projects/:id/overview',
+      name: 'project-overview',
+      component: () => import('../views/ProjectOverviewView.vue'),
+    },
+    {
+      path: '/evolution/promotions',
+      name: 'promotions',
+      component: () => import('../views/PromotionsView.vue'),
+    },
+    {
+      path: '/evolution/golden',
+      name: 'golden-data',
+      component: () => import('../views/GoldenDataView.vue'),
+    },
+    {
+      path: '/evolution/sop',
+      name: 'sop-rules',
+      component: () => import('../views/SopRulesView.vue'),
+    },
+    {
+      path: '/evolution/feedback',
+      name: 'feedback-insights',
+      component: () => import('../views/FeedbackInsightsView.vue'),
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresSuperuser: true },
+    },
+    {
+      path: '/projects/:id/audio-segments',
+      name: 'audio-segments',
+      component: () => import('../views/AudioSegmentEditor.vue'),
+    },
+    {
+      path: '/projects/:id/tts-edit',
+      name: 'tts-edit',
+      component: () => import('../views/TtsEditView.vue'),
+    },
+    {
+      path: '/waveform-demo',
+      name: 'waveform-demo',
+      component: () => import('../views/WaveformDemoView.vue'),
+    },
   ],
 })
 
-router.beforeEach((to, _from) => {
+router.beforeEach(async (to, _from) => {
   const authStore = useAuthStore()
   const isPublic = to.matched.some((record) => record.meta.public)
 
   if (!isPublic && !authStore.isAuthenticated()) {
     return '/login'
   } else if (to.path === '/login' && authStore.isAuthenticated()) {
-    return '/'
+    // Validate token is actually valid before skipping login
+    try {
+      await authStore.fetchUser()
+      return '/'
+    } catch {
+      // Token invalid/expired — clear and let them log in
+      authStore.clearAuth()
+      return undefined
+    }
+  }
+
+  // For all protected routes: validate token with backend on first navigation
+  if (!isPublic && authStore.isAuthenticated() && !authStore.user) {
+    try {
+      await authStore.fetchUser()
+    } catch {
+      // Token invalid/expired — clear and redirect to login
+      authStore.clearAuth()
+      return '/login'
+    }
+  }
+
+  if (to.meta.requiresSuperuser && authStore.isAuthenticated()) {
+    if (!authStore.user) {
+      try {
+        await authStore.fetchUser()
+      } catch {
+        authStore.clearAuth()
+        return '/login'
+      }
+    }
+    if (!authStore.user?.is_superuser) {
+      return '/'
+    }
   }
   // Return undefined to continue navigation
 })

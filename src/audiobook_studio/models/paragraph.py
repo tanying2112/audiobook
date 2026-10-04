@@ -76,6 +76,12 @@ class Paragraph(Base):
     routing_estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
     routing_estimated_duration: Mapped[int] = mapped_column(Integer, default=0)
 
+    # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段强制指定
+    # voice/engine，NULL=不覆盖（路由按角色绑定+能力选择自动决策）。
+    # 合成时优先级：manual_* > 角色绑定 > 自动选择。
+    manual_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    manual_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     # 环节⑥质检
     quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_emotion_match: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -179,6 +185,9 @@ class Paragraph(Base):
             # 环节⑤路由
             "routing_engine": self.routing_engine,
             "routing_voice_id": self.routing_voice_id,
+            # 人工终审覆盖
+            "manual_voice_id": self.manual_voice_id,
+            "manual_engine": self.manual_engine,
             # 环节⑥质检
             "quality_overall_score": self.quality_overall_score,
             "quality_needs_regeneration": self.quality_needs_regeneration,

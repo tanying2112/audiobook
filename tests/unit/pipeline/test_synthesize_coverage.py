@@ -25,11 +25,7 @@ from src.audiobook_studio.pipeline.synthesize import (
     _port_engine_name,
     synthesize_paragraphs,
 )
-from src.audiobook_studio.schemas import (
-    CharacterVoiceBinding,
-    ParagraphAnnotation,
-    TtsRoutingInput,
-)
+from src.audiobook_studio.schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingInput
 from src.audiobook_studio.tts.fake_port import FakeRemoteTTSPort
 
 # ── _normalize_voice_id ─────────────────────────────────────────────────────
@@ -413,10 +409,10 @@ def test_routing_decision_default_voice_local_on(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_LOCAL_TTS", "true")
     p = SynthesizePipeline(mock_mode=True, router=MagicMock())
     dec = p._make_routing_decision(_make_input())
-    assert dec.engine_choice == "kokoro"
+    assert dec.engine_choice == "piper"
     assert dec.fallback_engine == "edge"
-    # default voice -> normalized to narrator
-    assert dec.voice_id == "zf_xiaoxiao"
+    # default voice -> normalized to piper narrator
+    assert dec.voice_id == "zh_CN-huayan-medium"
 
 
 def test_routing_decision_local_off(monkeypatch) -> None:
@@ -432,7 +428,7 @@ def test_routing_decision_prefer_local_true(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_LOCAL_TTS", "false")
     p = SynthesizePipeline(mock_mode=True, router=MagicMock())
     dec = p._make_routing_decision(_make_input(prefer_local=True))
-    assert dec.engine_choice == "kokoro"
+    assert dec.engine_choice == "piper"
 
 
 def test_routing_decision_prefer_local_false(monkeypatch) -> None:
@@ -454,8 +450,8 @@ def test_routing_decision_character_binding_honoured(monkeypatch) -> None:
     )
     p = SynthesizePipeline(mock_mode=True, router=MagicMock())
     dec = p._make_routing_decision(_make_input(speaker="alice", char_map=[binding]))
-    # explicit binding matched -> strict pass-through of the Edge id (mapped to kokoro)
-    assert dec.voice_id == "zf_xiaoxiao"
+    # explicit binding matched -> strict pass-through of the Edge id (mapped to piper)
+    assert dec.voice_id == "zh_CN-huayan-medium"
 
 
 def test_routing_decision_emotion_volume(monkeypatch) -> None:

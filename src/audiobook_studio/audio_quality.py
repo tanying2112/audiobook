@@ -42,6 +42,35 @@ MAX_VALID_DURATION_MS = int(__import__("os").getenv("AUDIO_MAX_VALID_DURATION_MS
 UTMOS_THRESHOLD = float(__import__("os").getenv("AUDIO_UTMOS_THRESHOLD", "3.5"))
 
 
+def _suite_config_from_hardware_profile() -> Dict[str, Any]:
+    """Build QualityCheckSuite config from the ACTIVE hardware profile.
+
+    Previously both QualityCheckSuite() call sites passed no config, so every
+    heavy metric (DNSMOS/UTMOS/ASR/speaker-sim) defaulted to *enabled*; on
+    torch 2.2.2 their in-process model load segfaults and kills the whole API
+    server (observed 2026-09-04 during auto-run synthesize/quality stages).
+    The hardware profile is the documented source of truth for these switches.
+    On any failure we fail safe: heavy metrics disabled, rules still run.
+    """
+    try:
+        from .config.hardware_profile import get_hardware_profile
+
+        qc = get_hardware_profile().quality_check
+        return {"quality_check": qc.model_dump()}
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(
+            "hardware profile unavailable for quality suite (%s); heavy metrics disabled", e
+        )
+        return {
+            "quality_check": {
+                "dnsmos_enabled": False,
+                "utmos_enabled": False,
+                "asr_enabled": False,
+                "speaker_similarity_enabled": False,
+            }
+        }
+
+
 @dataclass
 class SegmentQualityResult:
     """Quality check result for a single audio segment."""
@@ -320,7 +349,7 @@ async def _run_hard_metrics_async(
 
     # 复用传入 suite (跨段缓存生效); 否则惰性新建 (向后兼容, 缓存仅本段)。
     if suite is None:
-        suite = QualityCheckSuite()
+        suite = QualityCheckSuite(config=_suite_config_from_hardware_profile())
     try:
         qc_result: QualityCheckResult = await asyncio.to_thread(
             suite.check_all,
@@ -637,7 +666,7 @@ async def check_all_segments(
         try:
             from .quality import QualityCheckSuite
 
-            shared_suite = QualityCheckSuite()
+            shared_suite = QualityCheckSuite(config=_suite_config_from_hardware_profile())
         except ModuleNotFoundError:
             logger.debug("quality package unavailable — P2.13 speaker_sim/drift path degraded")
             shared_suite = None

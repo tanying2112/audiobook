@@ -38,22 +38,35 @@ def _typed_task(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Dict[str, 
 async def _run_export_async(
     project_id: int, job: ExportJob, db_session: Union[AsyncSessionLocal, None] = None
 ) -> ExportJob:
-    """Run export asynchronously against the real 3-arg ``export_project``.
+    """Run export against the real 3-arg ``export_project``.
 
-    ``export_project(project_id, session, job)`` writes progress onto the job
-    object itself (batch_exporter.py:254) and has **no** progress-callback
-    parameter. Sprint L's ``progress_callback`` plumbing called it with a
-    phantom 4th arg -> ``TypeError`` on every task -> retry×3 -> FAILURE.
-    ``db_session`` is kept (defaulting to ``None``) as the Celery task-context
-    injection point -- the caller ``export_project_async`` is ``bind=True`` and
-    passes ``self`` -- so progress reporting can be re-added without touching
-    the call site.
+    ``export_project(project_id, session, job)`` is a **synchronous** function
+    (batch_exporter.py:276) that uses a **synchronous** SQLAlchemy session
+    (``session.query(...)``). Awaiting it / handing it an AsyncSession raised
+    ``TypeError: object ExportJob can't be used in 'await' expression`` on
+    every export task (2026-09-05 E2E). The production path therefore runs it
+    in a worker thread with a ``SessionLocal`` (sync) session.
+
+    ``db_session`` remains the test-injection point: when provided, the call
+    stays in the event loop and the result is awaited only if awaitable, so
+    both sync fakes and AsyncMock spies satisfy the pinned 3-arg contract
+    (tests/unit/test_export_tasks_signature_regression.py).
     """
-    if db_session is None:
-        async with AsyncSessionLocal() as db:
-            return await export_project(project_id, db, job)  # type: ignore
-    else:
-        return await export_project(project_id, db_session, job)  # type: ignore
+    import inspect
+
+    if db_session is not None:
+        result = export_project(project_id, db_session, job)  # type: ignore
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+    from ..database import SessionLocal
+
+    def _run_sync() -> ExportJob:
+        with SessionLocal() as db:
+            return export_project(project_id, db, job)  # type: ignore
+
+    return await asyncio.to_thread(_run_sync)
 
 
 def _get_task_result_dict(

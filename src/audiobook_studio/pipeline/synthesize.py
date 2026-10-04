@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,16 +31,9 @@ from ..llm import LLMRouter, create_router
 from ..monitoring.langfuse_client import is_enabled, observe_tts_synthesis, trace_function
 from ..monitoring.telemetry import record_tts_quality_check, record_tts_retry, record_tts_segment
 from ..pipeline.progress_emitter import emit_paragraph_complete, emit_stage_exit, emit_stage_progress
-from ..schemas import TtsRoutingDecision, TtsRoutingInput
+from ..schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
 from ..security import safe_subprocess_args
-from ..tts import (
-    RemoteTTSPort,
-    TTSProsody,
-    TTSStatus,
-    TTSTaskPayload,
-    TTSTaskResult,
-    TTSVoiceAnchor,
-)
+from ..tts import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
 from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
 from ..tts.clone import CloningConfig, VoiceCloningManager
 from ..tts.fake_port import FakeRemoteTTSPort
@@ -47,6 +41,22 @@ from ..tts.streaming import StreamingTTSConfig, create_streaming_tts_engine
 from ..utils.ffmpeg_probe import get_duration_sync
 
 logger = logging.getLogger(__name__)
+
+
+# 提取阶段 (pipeline/extract.py) 将图片理解结果以 "[插图: {…json…}]" 块并入段落
+# 文本，供分析/标注阶段参考。JSON 内容可能跨行，故用 DOTALL 非贪婪匹配到块尾 "]"。
+# 块可能被截断（无闭合 "]" 直到段尾），故结尾允许 "]" 或字符串结束。
+_IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
+
+
+def _strip_image_placeholders(text: str) -> str:
+    """Remove ``[插图: ...]`` image-understanding blocks from paragraph text
+    before TTS. Returns the remaining speakable text (whitespace-normalized);
+    an empty string means the paragraph is image-only."""
+    if not text:
+        return ""
+    cleaned = _IMAGE_PLACEHOLDER_RE.sub(" ", text)
+    return " ".join(cleaned.split())
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping
@@ -113,7 +123,11 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
       which is preferable to silently swapping voices).
     """
     if voice_id == "default":
-        return "zf_xiaoxiao" if engine_choice == "kokoro" else "zh-CN-XiaoxiaoNeural"
+        if engine_choice == "kokoro":
+            return "zf_xiaoxiao"
+        if engine_choice == "piper":
+            return "zh_CN-huayan-medium"
+        return "zh-CN-XiaoxiaoNeural"
     if engine_choice == "kokoro":
         # Map Edge voice_id to Kokoro equivalent; pass through if it's already a
         # Kokoro ID, else default to ``zf_xiaoxiao``.
@@ -137,6 +151,19 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         if strict:
             return voice_id
         return "zf_xiaoxiao"
+    if engine_choice == "piper":
+        # Piper's Chinese preset pool is tiny (``zh_CN-huayan-medium`` narrator +
+        # ``zh_CN-shaoer-medium`` child); the analyse stage writes Edge-TTS voice
+        # IDs which piper rejects. Piper IDs use an underscore scheme (``zh_CN-*``)
+        # vs Edge's hyphen (``zh-CN-*``), so cross-map Edge IDs to the piper
+        # narrator default and pass piper IDs through as-is.
+        if voice_id.startswith("zh_CN-"):
+            return voice_id
+        if voice_id.startswith("zh-"):
+            return "zh_CN-huayan-medium"
+        # Unknown (e.g. a custom voice ID) — strict honours it, non-strict falls
+        # back to the piper narrator default (same contract as kokoro/edge).
+        return voice_id if strict else "zh_CN-huayan-medium"
     # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
     # map Kokoro IDs back to Edge if we get one (edge case).
     if not voice_id.startswith("zh-"):
@@ -514,12 +541,13 @@ class SynthesizePipeline:
             except Exception as e:
                 logger.warning(f"Failed to store audio in semantic cache: {e}")
 
-        # Engine name from metadata or default. ``TTSTaskResult`` itself does
-        # not carry metadata, but some port implementations (e.g. the Edge
-        # port) attach an extra ``metadata`` dict to the returned result; fall
-        # back to "hermes" when it is absent or None.
+        # Engine name from metadata, falling back to the port's real engine
+        # name. ``TTSTaskResult`` itself does not carry metadata, but some
+        # port implementations (e.g. the Edge port) attach an extra
+        # ``metadata`` dict to the returned result. Never report the legacy
+        # "hermes" default when a different engine actually ran.
         result_meta: Optional[dict[str, Any]] = getattr(result, "metadata", None)
-        engine = result_meta.get("engine", "hermes") if result_meta else "hermes"
+        engine = (result_meta.get("engine") if result_meta else None) or actual_engine
 
         logger.info(f"Segment {segment_id} synthesized via {engine}: {duration_ms}ms")
         return duration_ms, engine
@@ -730,6 +758,19 @@ class SynthesizePipeline:
 
         for i, inp in enumerate(inputs):
             decision = self._make_routing_decision(inp)
+
+            # 提取阶段会把图片理解结果以 "[插图: {…json…}]" 块并入段落文本，
+            # 供分析/标注等文本阶段参考；这些块（含整段 JSON caption）不是可朗读
+            # 内容，进 TTS 前必须剥离 —— 否则 Kokoro 会把 JSON 读出来，且中英混杂
+            # 的长 JSON 会超过 510 音素上下文窗口直接崩掉整章合成（2026-09-04 E2E
+            # 实测: 14_ch5_p6）。剥离后为空 ⇒ 纯图片段落，无语音内容，跳过并记录。
+            inp.text = _strip_image_placeholders(inp.text)
+            if not inp.text:
+                logger.info(
+                    f"Segment {decision.segment_id}: no speakable text after stripping "
+                    "image placeholder blocks; skipping synthesis for this paragraph"
+                )
+                continue
 
             # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
             # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
@@ -1458,121 +1499,13 @@ class SynthesizePipeline:
             return get_duration_sync(chapter_audio_path)
 
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
-        """Make TTS routing decision (simplified for now).
+        """Thin delegate to the module-level router.
 
-        In the future, this would use the LLM router for intelligent routing.
+        The routing logic lives at module level (``make_tts_routing_decision``)
+        so the review-gate routing preview calls the exact same code the
+        synthesis path runs — the two can never drift.
         """
-        import os
-
-        from ..schemas import TtsRoutingDecision
-
-        char = next(
-            (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
-            None,
-        )
-        suggested = char.suggested_voice_id if char else None
-        voice_id: str = suggested or "default"
-
-        # Respect ENABLE_LOCAL_TTS environment variable for engine selection
-        enable_local_tts = os.environ.get("ENABLE_LOCAL_TTS", "true").lower() == "true"
-
-        engine_choice: EngineChoice  # noqa: F821
-        fallback_engine: EngineChoice  # noqa: F821
-        if enable_local_tts:
-            # Prefer local engine (Kokoro) when enabled
-            engine_choice = "kokoro"
-            fallback_engine = "edge"
-            mock_info = "Local TTS enabled"
-        else:
-            # Prefer cloud engine (Edge-TTS) when local disabled
-            engine_choice = "edge"
-            fallback_engine = "kokoro"
-            mock_info = "Local TTS disabled - using cloud"
-
-        # Override with prefer_local if explicitly set
-        if inp.prefer_local is not None:
-            if inp.prefer_local:
-                engine_choice = "kokoro"
-                fallback_engine = "edge"
-            else:
-                engine_choice = "edge"
-                fallback_engine = "kokoro"
-            mock_info += f" (prefer_local={inp.prefer_local})"
-
-        reasoning = f"Auto routing: {engine_choice} preferred, {fallback_engine} fallback ({mock_info})"
-        # Voice IDs are engine-specific. The book analyse stage writes
-        # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
-        # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
-        # disjoint set (``zf_xiaoxiao``/``zm_yunjian`` etc.). Without mapping,
-        # Kokoro rejects the Edge voice ID and synthesize fails silently.
-        # Map Edge voice IDs to Kokoro equivalents when engine_choice is
-        # kokoro; pass through Edge IDs (and Kokoro IDs) to their native engine.
-        #
-        # P1.9 strict pass-through (red-line #1): when an explicit
-        # ``character_voice_map`` binding was matched (``char is not None``) the
-        # user *named* a voice, so honour an unknown ID as-is instead of
-        # silently swapping it for the narrator default — the engine then owns
-        # the honest accept/reject at synthesis time. When no binding matched
-        # (``char is None``, voice_id == "default") keep the production-safe
-        # fallback. See ``_normalize_voice_id`` docstring for the contract.
-        voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
-        # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
-        # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
-        # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
-        # each emotion -> (speed, volume_db, pitch_hz); the routing decision
-        # pre-existed for ``rate`` (speed) and ``pitch`` (semitones, already the
-        # right unit — do NOT use ``pitch_hz`` here, different unit). We add
-        # ``volume`` (the emotion's ``volume_db`` as a numeric dB float, matching
-        # ``TTSProsody.volume``) and ``emotion`` (the annotation's emotion tag,
-        # passed through so downstream engines that support emotion can use it and
-        # those that don't can ignore it).
-        annotation = inp.paragraph_annotation
-        emotion_tag = annotation.emotion
-        emotion_acoustic = get_emotion_map().get(emotion_tag)
-        volume_db = float(emotion_acoustic.volume_db) if emotion_acoustic is not None else 0.0
-
-        # P2.13: profile-lock — 角色在本章已注册声纹锚 (首段成功合成后) 时, 锁定
-        # voice_id 为首段锚的 voice_id, 防同章跨段声纹漂移. 锁是首段决定 (已过
-        # _normalize_voice_id 的 strict pass-through) 的固化, 不改变 P1.9 语义——
-        # 仍是 honour 该角色绑定最早选用, 而非旁路换 ID. 无锚 (首段或 VA 禁用) 时
-        # 保持上面 normalize 后的 voice_id. 同时把参考音频注入 prosody (§34 漂移门
-        # 用 quality_check 真主路径核对生成 vs 锚).
-        ref_audio_for_prosody: Optional[str] = None
-        char_name = annotation.speaker_canonical_name
-        try:
-            from .voice_anchor import get_voice_anchor_manager
-
-            va = get_voice_anchor_manager()
-            if va.config.enabled and char_name and va.has_anchor(char_name, chapter_index=inp.chapter_index):
-                anchor = va.get_anchor(char_name, chapter_index=inp.chapter_index)
-                if anchor:
-                    voice_id = anchor.voice_id
-                    ref_audio_for_prosody = va.get_reference_audio(char_name, chapter_index=inp.chapter_index)
-        except Exception as e:
-            logger.debug(f"P2.13 profile-lock resolve failed for {char_name}: {e}")
-
-        prosody_overrides = {
-            "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
-            "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
-            # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
-            "volume": volume_db,
-            # pass the emotion tag through for engines that support emotion
-            "emotion": emotion_tag,
-        }
-        # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
-        if ref_audio_for_prosody:
-            prosody_overrides["reference_audio"] = ref_audio_for_prosody
-
-        return TtsRoutingDecision(
-            segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
-            engine_choice=engine_choice,
-            voice_id=voice_id,
-            prosody_overrides=prosody_overrides,
-            fallback_engine=fallback_engine,
-            reasoning=reasoning,
-            estimated_cost_usd=0.0 if engine_choice == "kokoro" else 0.001,
-            estimated_duration_ms=3000,
-        )
+        return make_tts_routing_decision(inp)
 
     async def close(self) -> None:
         """Close the port and release resources."""
@@ -1583,6 +1516,254 @@ class SynthesizePipeline:
                 # Event loop may be closed
                 pass
             self._port = None
+
+
+def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
+    """Make TTS routing decision using capability-aware selector.
+
+    Module-level (extracted from ``SynthesizePipeline._make_routing_decision``)
+    so the review-gate preview runs the exact same routing code as synthesis.
+
+    Uses providers_config.select_engine() which considers:
+    - engine capabilities (cloning, emotion, languages, min_compute)
+    - GPU availability (via ENABLE_GPU_BACKENDS env)
+    - license honesty (commercial_use=None means unverified, not faked)
+    - priority ordering from config/tts_providers.yaml
+    """
+    from ..tts.providers_config import gpu_backends_enabled, select_engine
+
+    char = next(
+        (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
+        None,
+    )
+    suggested = char.suggested_voice_id if char else None
+    voice_id: str = suggested or "default"
+
+    # Determine engine via capability-aware selector
+    # Language from paragraph annotation or default to zh-CN
+    lang = inp.paragraph_annotation.emotion or "zh-CN"  # rough fallback; ideally from text analysis
+    # prefer_local override still respected
+    prefer_local = inp.prefer_local if inp.prefer_local is not None else True  # default to local
+    # Emotion capability requested?
+    need_emotion = bool(inp.paragraph_annotation.emotion and inp.paragraph_annotation.emotion != "neutral")
+    need_clone = False  # cloning not used in standard pipeline
+
+    engine, mode = select_engine(
+        language=lang,
+        need_clone=need_clone,
+        need_emotion=need_emotion,
+        gpu_available=gpu_backends_enabled(),
+    )
+    # Map mode back to engine_choice/fallback for compatibility
+    if mode == "preset":
+        # Cloning requested but no GPU clone backend -> CPU preset engine
+        engine_choice = engine
+        fallback_engine = "edge"
+    else:
+        engine_choice = engine
+        fallback_engine = "edge" if engine != "edge" else "kokoro"
+
+    # If user explicitly asked for cloud, honor it (override local preference)
+    if inp.prefer_local is False:
+        engine_choice = "edge"
+        fallback_engine = "kokoro"
+
+    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion})"
+    # Voice IDs are engine-specific. The book analyse stage writes
+    # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
+    # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
+    # disjoint set (``zf_xiaoxiao``/``zm_yunjian`` etc.). Without mapping,
+    # Kokoro rejects the Edge voice ID and synthesize fails silently.
+    # Map Edge voice IDs to Kokoro equivalents when engine_choice is
+    # kokoro; pass through Edge IDs (and Kokoro IDs) to their native engine.
+    #
+    # P1.9 strict pass-through (red-line #1): when an explicit
+    # ``character_voice_map`` binding was matched (``char is not None``) the
+    # user *named* a voice, so honour an unknown ID as-is instead of
+    # silently swapping it for the narrator default — the engine then owns
+    # the honest accept/reject at synthesis time. When no binding matched
+    # (``char is None``, voice_id == "default") keep the production-safe
+    # fallback. See ``_normalize_voice_id`` docstring for the contract.
+    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
+    # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
+    # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
+    # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
+    # each emotion -> (speed, volume_db, pitch_hz); the routing decision
+    # pre-existed for ``rate`` (speed) and ``pitch`` (semitones, already the
+    # right unit — do NOT use ``pitch_hz`` here, different unit). We add
+    # ``volume`` (the emotion's ``volume_db`` as a numeric dB float, matching
+    # ``TTSProsody.volume``) and ``emotion`` (the annotation's emotion tag,
+    # passed through so downstream engines that support emotion can use it and
+    # those that don't can ignore it).
+    annotation = inp.paragraph_annotation
+    emotion_tag = annotation.emotion
+    emotion_acoustic = get_emotion_map().get(emotion_tag)
+    volume_db = float(emotion_acoustic.volume_db) if emotion_acoustic is not None else 0.0
+
+    # P2.13: profile-lock — 角色在本章已注册声纹锚 (首段成功合成后) 时, 锁定
+    # voice_id 为首段锚的 voice_id, 防同章跨段声纹漂移. 锁是首段决定 (已过
+    # _normalize_voice_id 的 strict pass-through) 的固化, 不改变 P1.9 语义——
+    # 仍是 honour 该角色绑定最早选用, 而非旁路换 ID. 无锚 (首段或 VA 禁用) 时
+    # 保持上面 normalize 后的 voice_id. 同时把参考音频注入 prosody (§34 漂移门
+    # 用 quality_check 真主路径核对生成 vs 锚).
+    # NOTE (review-gate preview divergence): anchors are in-memory and only
+    # registered after a chapter's first successful synthesis, so a
+    # pre-synthesis preview shows the un-anchored voice; the orchestrator
+    # recomputes routing from paragraph fields at synthesis time anyway, so
+    # the frozen routing_* columns are an approval snapshot, not the
+    # synthesis-time source of truth.
+    ref_audio_for_prosody: Optional[str] = None
+    char_name = annotation.speaker_canonical_name
+    try:
+        from .voice_anchor import get_voice_anchor_manager
+
+        va = get_voice_anchor_manager()
+        if va.config.enabled and char_name and va.has_anchor(char_name, chapter_index=inp.chapter_index):
+            anchor = va.get_anchor(char_name, chapter_index=inp.chapter_index)
+            if anchor:
+                voice_id = anchor.voice_id
+                ref_audio_for_prosody = va.get_reference_audio(char_name, chapter_index=inp.chapter_index)
+    except Exception as e:
+        logger.debug(f"P2.13 profile-lock resolve failed for {char_name}: {e}")
+
+    # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段显式指定的
+    # voice/engine 胜过自动决策与 P2.13 声纹锚锁 —— 客户最终控制。
+    # voice 用 strict 归一化（客户点名的 ID 原样透传，引擎负责诚实的
+    # 接受/拒绝）；engine 直接覆盖 engine_choice 并重算 fallback。引擎
+    # 单独覆盖（未同时点名 voice）时把自动决策的 voice 按新引擎重归一化
+    # —— Edge↔Kokoro ID 交叉映射 —— 避免跨引擎非法 ID 流到合成。
+    if inp.manual_engine:
+        if inp.manual_engine != engine_choice and not inp.manual_voice_id:
+            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None))
+        engine_choice = inp.manual_engine
+        fallback_engine = "kokoro" if engine_choice == "edge" else "edge"
+        reasoning += f"; manual engine override → {engine_choice}"
+    if inp.manual_voice_id:
+        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True)
+        reasoning += f"; manual voice override → {voice_id}"
+
+    prosody_overrides = {
+        "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
+        "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
+        # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
+        "volume": volume_db,
+        # pass the emotion tag through for engines that support emotion
+        "emotion": emotion_tag,
+    }
+    # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
+    if ref_audio_for_prosody:
+        prosody_overrides["reference_audio"] = ref_audio_for_prosody
+
+    return TtsRoutingDecision(
+        segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
+        engine_choice=engine_choice,
+        voice_id=voice_id,
+        prosody_overrides=prosody_overrides,
+        fallback_engine=fallback_engine,
+        reasoning=reasoning,
+        estimated_cost_usd=0.0 if engine_choice in ("kokoro", "piper") else 0.001,
+        estimated_duration_ms=3000,
+    )
+
+
+def build_routing_input(
+    para: Optional[Any],
+    chapter: Optional[Any],
+    project_id: Optional[int],
+) -> Optional[TtsRoutingInput]:
+    """Build the exact ``TtsRoutingInput`` ``SynthesizeStage.run`` would build.
+
+    Shared by the synthesis path (``SynthesizeStage.run``) and the review-gate
+    routing preview so the two constructions can never drift. Mirrors the
+    historical inline construction verbatim, including the ``or`` coercions,
+    the default narrator voice-map fallback and ``prefer_local=False``.
+
+    Returns ``None`` for paragraphs with empty/whitespace text — the
+    ``edited_text == ""`` case (edit stage intentionally cleared a
+    cover/illustration caption) plus whitespace-only text. Those paragraphs
+    are skipped at synthesis time and ``TtsRoutingInput`` rejects empty
+    ``text`` (min_length=1), so the preview reports them as skipped instead.
+    """
+    paragraph_annotation: Optional[ParagraphAnnotation] = None
+    if para:
+        paragraph_annotation = ParagraphAnnotation(
+            paragraph_index=para.index,
+            speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
+            is_dialogue=para.is_dialogue or False,
+            emotion=para.emotion or "neutral",
+            emotion_intensity=para.emotion_intensity or 0.5,
+            speech_rate=para.speech_rate or 1.0,
+            pitch_shift_semitones=para.pitch_shift_semitones or 0,
+            pause_before_ms=para.pause_before_ms or 300,
+            pause_after_ms=para.pause_after_ms or 500,
+            confidence=para.confidence or 0.9,
+            difficulty="B",
+            needs_sfx=para.needs_sfx or False,
+            sfx_tags=para.sfx_tags or [],
+        )
+
+    # TtsRoutingInput.paragraph_annotation is non-Optional on the schema;
+    # synthesize a minimal default when no paragraph DB record was resolved
+    # so the contract stays satisfied (mirrors AnnotateStage's skip-stub).
+    if paragraph_annotation is None:
+        paragraph_annotation = ParagraphAnnotation(
+            paragraph_index=0,
+            speaker_canonical_name="_narrator_",
+            is_dialogue=False,
+            emotion="neutral",
+            emotion_intensity=0.0,
+            confidence=0.0,
+            notes="Skipped: no paragraph record for synthesis",
+        )
+
+    # Build voice_map from chapter's analyzed_json
+    voice_map: List[CharacterVoiceBinding] = []
+    if chapter and chapter.analyzed_json:
+        raw = chapter.analyzed_json
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+
+    if not voice_map:
+        voice_map = [
+            CharacterVoiceBinding(
+                canonical_name="_narrator_",
+                aliases=[],
+                gender="neutral",
+                age_range="adult",
+                suggested_voice_id="zh-CN-XiaoxiaoNeural",
+                sample_quote="旁白样本",
+            )
+        ]
+
+    # TTS 必须读 edit 阶段的产出：edited_text 非空 → 用编辑后文本；
+    # edited_text == "" → 编辑阶段有意清空（封面/扉页/插图说明等不可朗读
+    # 内容），跳过合成；edited_text is NULL → 该段未经过编辑，回退原始文本。
+    if para and para.edited_text is not None:
+        text = para.edited_text
+    else:
+        text = para.text if para else ""
+
+    if not text or not text.strip():
+        return None
+
+    return TtsRoutingInput(
+        paragraph_annotation=paragraph_annotation,
+        text=text,
+        character_voice_map=voice_map,
+        book_id=str(project_id) if project_id is not None else "",
+        chapter_index=chapter.index if chapter else 1,
+        paragraph_index=para.index if para else 0,
+        cumulative_cost_usd=0.0,
+        cost_limit_per_book=20.0,
+        cost_limit_per_chapter=5.0,
+        prefer_local=False,
+        # 人工终审覆盖 (Manual Review Gate)：getattr 容错 —— 测试替身/旧
+        # 段落对象无此属性时不覆盖，走自动决策。
+        manual_voice_id=(getattr(para, "manual_voice_id", None) if para else None),
+        manual_engine=(getattr(para, "manual_engine", None) if para else None),
+        contract_version=1,
+    )
 
 
 def synthesize_paragraphs(

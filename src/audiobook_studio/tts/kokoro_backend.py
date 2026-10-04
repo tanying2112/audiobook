@@ -309,10 +309,13 @@ class KokoroBackend(BaseTTSEngine):
             # Run synthesis via kokoro_onnx.Kokoro.create()
             # This handles tokenization, phonemization, and inference correctly
             try:
-                # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate)
+                # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate).
+                # Kokoro's context window is 510 phonemes — longer texts crash with
+                # "index 510 is out of bounds" — so long paragraphs are split into
+                # sentence-bounded chunks and the audio is concatenated.
                 audio, sample_rate = await asyncio.get_running_loop().run_in_executor(
                     None,
-                    lambda: self._kokoro.create(
+                    lambda: self._create_chunked(
                         text=text,
                         voice=voice_id,
                         speed=speed,
@@ -570,6 +573,84 @@ class KokoroBackend(BaseTTSEngine):
         self._loaded = False
         self._initialized = False
         logger.info("Kokoro backend cleaned up")
+
+    # Kokoro's hard context limit is 510 phonemes; a phoneme count is always
+    # ≤ the character count, so a conservative char budget keeps every chunk
+    # safely under the limit without needing to phonemize first.
+    _MAX_CHUNK_CHARS = 400
+
+    def _split_text_for_kokoro(self, text: str) -> List[str]:
+        """Split text into chunks of at most _MAX_CHUNK_CHARS characters,
+        breaking on sentence boundaries (then clause boundaries, then words)
+        so prosody is preserved as much as possible."""
+        import re
+
+        text = text.strip()
+        if len(text) <= self._MAX_CHUNK_CHARS:
+            return [text]
+
+        sentences = re.split(r"(?<=[.!?…])\s+", text)
+        chunks: List[str] = []
+        current = ""
+        for sent in sentences:
+            if len(sent) > self._MAX_CHUNK_CHARS:
+                # A single sentence longer than the budget: flush and split it
+                # further on clause punctuation, then on word boundaries.
+                if current:
+                    chunks.append(current)
+                    current = ""
+                clauses = re.split(r"(?<=[,;:—–-])\s*", sent)
+                piece = ""
+                for cl in clauses:
+                    if len(cl) > self._MAX_CHUNK_CHARS:
+                        if piece:
+                            chunks.append(piece)
+                            piece = ""
+                        words = cl.split()
+                        for w in words:
+                            cand = f"{piece} {w}".strip()
+                            if len(cand) > self._MAX_CHUNK_CHARS and piece:
+                                chunks.append(piece)
+                                piece = w
+                            else:
+                                piece = cand
+                    else:
+                        cand = f"{piece} {cl}".strip()
+                        if len(cand) > self._MAX_CHUNK_CHARS and piece:
+                            chunks.append(piece)
+                            piece = cl
+                        else:
+                            piece = cand
+                if piece:
+                    current = piece
+            else:
+                cand = f"{current} {sent}".strip()
+                if len(cand) > self._MAX_CHUNK_CHARS and current:
+                    chunks.append(current)
+                    current = sent
+                else:
+                    current = cand
+        if current:
+            chunks.append(current)
+        return [c for c in chunks if c]
+
+    def _create_chunked(self, text: str, voice: str, speed: float, lang: str):
+        """Synthesize text, chunking on sentence boundaries when it exceeds
+        Kokoro's 510-phoneme context window, and concatenate the audio with
+        a short inter-chunk pause."""
+        chunks = self._split_text_for_kokoro(text)
+        if len(chunks) == 1:
+            return self._kokoro.create(text=chunks[0], voice=voice, speed=speed, lang=lang)
+
+        logger.info(f"Kokoro: splitting {len(text)} chars into {len(chunks)} chunks (510-phoneme limit)")
+        audios = []
+        sample_rate = self.sample_rate
+        for i, chunk in enumerate(chunks):
+            audio, sample_rate = self._kokoro.create(text=chunk, voice=voice, speed=speed, lang=lang)
+            audios.append(audio)
+            if i < len(chunks) - 1:
+                audios.append(np.zeros(int(sample_rate * 0.2), dtype=audio.dtype))  # 200ms pause
+        return np.concatenate(audios), sample_rate
 
     def _phonemize(self, text: str, voice_id: str):
         """Phonemize text for given voice.

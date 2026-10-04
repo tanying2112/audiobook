@@ -155,6 +155,21 @@ class EditForTtsPipeline:
                 response_model=TtsEditOutput,
                 messages=messages,
             )
+            # Kill-Switch 兜底产物是占位文本（"这是模拟编辑后的文本，用于测试。"），
+            # 直接进 TTS 会被朗读出来。所有 provider 失败时应诚实回退为原文，
+            # 由下游按未编辑文本合成（2026-09-05 项目15 实测兜底文本写入库）。
+            if getattr(result, "model", "") == "heuristic_fallback":
+                logger.warning(
+                    "Edit stage used heuristic fallback; preserving original text for paragraph %s",
+                    input_data.paragraph_annotation.paragraph_index,
+                )
+                result.output = TtsEditOutput(
+                    edited_text=input_data.paragraph_text,
+                    changes_made=["heuristic_fallback_preserved_original"],
+                    forbidden_content_removed=[],
+                    confidence=0.0,
+                    rationale="All LLM providers unavailable; original text preserved",
+                )
             logger.info(
                 f"TTS edit completed: schema_compliance={result.schema_compliance}, "
                 f"model={result.model}, cost=${result.cost_usd:.6f}, latency={result.latency_ms}ms"

@@ -176,7 +176,7 @@ class QualityCheckPipeline:
 
         # Initialize hard quality check suite (DNSMOS + ASR WER + Speaker Sim)
         self._quality_suite = QualityCheckSuite(
-            config=dict(self.quality_thresholds),
+            config=self._build_suite_config(),
             hardware_profile=self.hardware_profile.active_profile,
         )
 
@@ -290,9 +290,24 @@ class QualityCheckPipeline:
         self._apply_hardware_profile_quality_config()
         if getattr(self._quality_suite, "hardware_profile", None) != current:
             self._quality_suite = QualityCheckSuite(
-                config=dict(self.quality_thresholds),
+                config=self._build_suite_config(),
                 hardware_profile=current,
             )
+
+    def _build_suite_config(self) -> Dict[str, Any]:
+        """Merge quality_thresholds.yaml with the ACTIVE hardware profile's
+        quality_check flags. The thresholds file has no ``quality_check``
+        section, so without this merge the suite's per-metric gates
+        (dnsmos_enabled/utmos_enabled/asr_enabled/…) all defaulted to True —
+        loading torch models that segfault the API process on torch 2.2.2.
+        """
+        config = dict(self.quality_thresholds)
+        qc_flags = getattr(self.hardware_profile, "quality_check", None)
+        if qc_flags is not None:
+            merged = dict(config.get("quality_check", {}) or {})
+            merged.update(qc_flags.model_dump())
+            config["quality_check"] = merged
+        return config
 
     def _reload_config_if_changed(self) -> None:
         """Hot-reload quality thresholds if config file changed."""

@@ -17,6 +17,7 @@ Usage:
 """
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
@@ -35,6 +36,8 @@ from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .quality_check import QualityCheckPipeline
 from .synthesize import SynthesizePipeline
+
+logger = logging.getLogger(__name__)
 
 
 class StageHandler(ABC):
@@ -939,7 +942,25 @@ class SynthesizeStage(StageHandler):
                 )
             ]
 
-        text = para.text if para else ""
+        # TTS 必须读 edit 阶段的产出：edited_text 非空 → 用编辑后文本；
+        # edited_text == "" → 编辑阶段有意清空（封面/扉页/插图说明等不可朗读
+        # 内容），传空串由 SynthesizePipeline 跳过该段；edited_text is NULL →
+        # 该段未经过编辑，回退原始文本。此前直接用 para.text 导致 OCR 噪声、
+        # 断词、插图 JSON 全部进了 TTS（2026-09-05 导出 SRT 实测）。
+        if para and para.edited_text is not None:
+            text = para.edited_text
+        else:
+            text = para.text if para else ""
+
+        # 编辑阶段有意清空（""）的段落（封面/插图说明/章节标题等不可朗读内容）
+        # 以及空白段，TtsRoutingInput 要求 text ≥1 字符，直接跳过不合成。
+        if not text or not text.strip():
+            logger.info(
+                "Synthesize skipped paragraph %s (empty/whitespace text, project=%s)",
+                para.index if para else "?",
+                kwargs.get("project_id"),
+            )
+            return []
 
         input_data = TtsRoutingInput(
             paragraph_annotation=paragraph_annotation,
@@ -1059,20 +1080,57 @@ class QualityStage(StageHandler):
 
         audio_path = ""
         if para and para.audio_segment_id:
+            from sqlalchemy import select as _select
+
             from ..models.audio_segment import AudioSegment
 
             db = kwargs.get("db")
-            if db:
+            if isinstance(db, AsyncSession):
+                # auto_run/orchestrator 传入的是 AsyncSession（此前 db.query
+                # 只对同步 Session 有效，导致音频路径恒为空、质检在无音频上
+                # 空跑）。异步分支正确取回 segment。
+                seg_res = await db.execute(
+                    _select(AudioSegment).filter(AudioSegment.id == para.audio_segment_id)
+                )
+                seg = seg_res.scalar_one_or_none()
+            elif db is not None:
                 seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
-                if seg:
-                    audio_path = seg.file_path
+            else:
+                seg = None
+            if seg:
+                audio_path = seg.file_path
+
+        # 无音频可检（编辑阶段有意清空的段落没有 segment）——诚实标记跳过，
+        # 不浪费 judge LLM 调用、也不产出伪 0 分判定。
+        if not audio_path:
+            from ..schemas.quality import QualityJudgment
+
+            logger.info(
+                "Quality skipped paragraph %s (no audio segment, project=%s)",
+                para.index if para else "?",
+                kwargs.get("project_id"),
+            )
+            return QualityJudgment(
+                segment_id=f"seg_{para.id if para else 'unknown'}",
+                speaker_clarity=0.0,
+                emotion_match=0.0,
+                prosody_naturalness=0.0,
+                text_audio_alignment=0.0,
+                overall_score=0.0,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
+                judge_model="skipped_no_audio",
+            )
 
         inputs = [
             (
                 audio_path,
                 annotation,
                 routing,
-                para.edited_text if para else "",
+                # edited_text 可能为 NULL（该段未经编辑）——judge 的
+                # reference_text[:500] 切片会在 None 上崩溃；回退原文。
+                (para.edited_text if para and para.edited_text is not None else (para.text if para else "")) or "",
             )
         ]
         pipeline = QualityCheckPipeline()

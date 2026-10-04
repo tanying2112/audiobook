@@ -36,6 +36,8 @@ export interface Chapter {
   synthesize_status?: string
   quality_status?: string
   chapter_number?: number
+  /** 人工终审门：null=未在审 | pending_review | approved */
+  review_status?: string | null
 }
 
 export interface Paragraph {
@@ -55,9 +57,20 @@ export interface Paragraph {
   pitch_shift_semitones?: number
   needs_sfx?: boolean
   sfx_tags?: string[]
+  pause_before_ms?: number
+  pause_after_ms?: number
+  notes?: string
   confidence?: number
   status?: string
   audio_segment_id?: number
+  /** 人工终审覆盖：客户在合成前逐段强制指定（null=自动决策） */
+  manual_voice_id?: string | null
+  manual_engine?: string | null
+  // Phase 5: Extended fields for detail view
+  tts_edit_history?: any[]
+  quality_records?: any[]
+  routing_decision?: any
+  annotations_full?: any
 }
 
 export interface AudioSegment {

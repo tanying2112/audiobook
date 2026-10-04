@@ -47,6 +47,10 @@ class Chapter(Base):
     route_status: Mapped[str] = mapped_column(String, default="pending")
     synthesize_status: Mapped[str] = mapped_column(String, default="pending")
     quality_status: Mapped[str] = mapped_column(String, default="pending")
+    # 人工终审门 (Manual Review Gate，位于 audio_postprocess 与 synthesize 之间)：
+    # NULL=未在审 | "pending_review"=待审 | "approved"=客户已确认。
+    # 注意与 StageRegistry 的 "review" 阶段（LLM 质检门）语义无关。
+    review_status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 成本追踪
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)

@@ -10,6 +10,7 @@ import importlib.abc
 import importlib.util
 import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 
@@ -27,7 +28,15 @@ from unittest.mock import MagicMock
 # module object so the two namespaces are a single object.
 # ═══════════════════════════════════════════════════════════════════════════
 class _CanonicalAliasLoader(importlib.abc.Loader):
-    """Loader that yields the already-loaded canonical ``src.`` module object."""
+    """Loader that yields the already-loaded canonical ``src.`` module object.
+
+    ``_AliasFinder.find_spec`` returns specs named after the *canonical* module
+    and pre-populates ``sys.modules[name]``, so ``_load``/``_init_module_attrs``
+    either never runs on the shared canonical object or, when it does, re-stamps
+    ``__spec__`` under the canonical name (so ``__spec__.name == __name__`` and
+    no ``cannot import name '__all__' from '<unknown module name>'`` mismatch
+    can arise). The stubs below are only a safe fallback.
+    """
 
     def __init__(self, canonical: str):
         self.canonical = canonical
@@ -47,18 +56,29 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
         canonical = "src." + name
         existing = sys.modules.get(canonical)
         if existing is not None:
-            # Canonical already imported: alias directly and reuse its spec.
+            # Canonical already imported: alias directly using the SAME loader that
+            # returns the already-executed module (NOT existing.__loader__, which is
+            # SourceFileLoader and would RE-EXECUTE the source into a second module
+            # object, recreating the bare/src identity split). Use _CanonicalAliasLoader
+            # consistently in both branches.
             sys.modules[name] = existing
             return importlib.util.spec_from_loader(
-                name, existing.__loader__, origin=getattr(existing, "__file__", None)
+                canonical,
+                _CanonicalAliasLoader(canonical),
+                origin=getattr(existing, "__file__", None),
             )
         try:
-            cspec = importlib.util.find_spec(canonical)
+            canonical_mod = importlib.import_module(canonical)
         except Exception:
             return None
-        if cspec is None or cspec.origin is None:
-            return None
-        return importlib.util.spec_from_loader(name, _CanonicalAliasLoader(canonical), origin=cspec.origin)
+        # Pre-populate the alias key; spec is named after the canonical module
+        # so its `__spec__` cannot disagree with `__name__` (see loader docstring).
+        sys.modules[name] = canonical_mod
+        return importlib.util.spec_from_loader(
+            canonical,
+            _CanonicalAliasLoader(canonical),
+            origin=getattr(canonical_mod, "__file__", None),
+        )
 
 
 sys.meta_path.insert(0, _AliasFinder())
@@ -356,13 +376,21 @@ for mod_name in [
     "passlib",
     "cryptography",
     # "email_validator",  # Do NOT mock - Pydantic's EmailStr depends on it
-    "python_multipart",
+    # "python_multipart",  # Do NOT mock - starlette's multipart/__init__.py
+    #   shim does `from python_multipart import __all__, __version__` at import
+    #   time (python-multipart >= 0.0.12 dual layout). A bare MagicMock lacks
+    #   the __all__ dunder, the from-import falls back to a submodule load whose
+    #   spec has no origin, and fastapi/starlette collection dies with
+    #   "cannot import name '__all__' from '<unknown module name>'".
     # "pydantic_settings",  # Do NOT mock - Settings class depends on it
     "python_dotenv",
     "uvicorn",
     "asyncpg",
     "psycopg2",
-    "httpx",
+    # "httpx",  # Do NOT mock - hard dependency of the ASGITransport-based API
+    #   tests (tests/unit/api/*.py import the REAL AsyncClient); also imported
+    #   by deepeval's pytest plugin, so in a healthy env it was pre-imported
+    #   anyway and this mock never fired. Shadowing it breaks every API test.
     "mako",
     "markdown_it",
     "mkdocs",
@@ -744,13 +772,15 @@ def reset_singletons():
 def mock_voice_mapping(tmp_path):
     """Create a temporary voice_mapping.yaml for tests."""
     voice_mapping = tmp_path / "voice_mapping.yaml"
-    voice_mapping.write_text("""
+    voice_mapping.write_text(
+        """
 voice_mapping:
   test_voice:
     voice_id: "test_voice_id"
     description: "Test voice"
     language: "zh-CN"
-""")
+"""
+    )
     with patch("pathlib.Path.exists", return_value=True):
         with patch("pathlib.Path.read_text", return_value=voice_mapping.read_text()):
             yield voice_mapping

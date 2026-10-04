@@ -234,6 +234,9 @@ class V1PipelineEvent(BaseModel):
         "error",
         "paused",
         "resumed",
+        "cancelled",
+        "awaiting_review",
+        "review_released",
         "completed",
     ]
     version: Literal["v1"]
@@ -280,6 +283,9 @@ WS_EVENT_SCHEMAS = {
         "paragraph_complete": V1PipelineEvent,
         "paused": V1PipelineEvent,
         "resumed": V1PipelineEvent,
+        "cancelled": V1PipelineEvent,
+        "awaiting_review": V1PipelineEvent,
+        "review_released": V1PipelineEvent,
         "completed": V1PipelineEvent,
     },
 }
@@ -315,6 +321,9 @@ def validate_ws_event(version: str, event_data: dict) -> Optional[BaseModel]:
             "error",
             "paused",
             "resumed",
+            "cancelled",
+            "awaiting_review",
+            "review_released",
             "completed",
         }:
             model = V1PipelineEvent
@@ -350,7 +359,11 @@ class PipelineEventType:
     ERROR = "error"
     PAUSED = "paused"
     RESUMED = "resumed"
+    CANCELLED = "cancelled"
     COMPLETED = "completed"
+    # 人工终审门 (Manual Review Gate)：进入待审 / 全部确认放行
+    AWAITING_REVIEW = "awaiting_review"
+    REVIEW_RELEASED = "review_released"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

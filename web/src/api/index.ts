@@ -276,6 +276,13 @@ export async function fetchParagraph(projectId: number, chapterId: number, parag
   return data
 }
 
+export async function fetchParagraphDetail(projectId: number, chapterId: number, paragraphId: number): Promise<Paragraph> {
+  const { data } = await api.get(
+    `/api/projects/${projectId}/chapters/${chapterId}/paragraphs/${paragraphId}/detail`,
+  )
+  return data
+}
+
 export async function updateParagraph(
   projectId: number,
   chapterId: number,
@@ -597,14 +604,21 @@ export interface AutoRunStatusResponse {
   can_pause: boolean
   can_resume: boolean
   can_cancel: boolean
+  /** review 模式：流水线在合成前暂停等待人工确认 */
+  can_review?: boolean
 }
+
+/** 运行模式：auto=全自动直通合成；review=人工终审（合成前暂停等确认） */
+export type AutoRunMode = 'auto' | 'review'
 
 export async function startAutoRun(
   projectId: number,
   config?: AutoRunConfig,
+  mode: AutoRunMode = 'auto',
 ): Promise<AutoRunStatusResponse> {
   const { data } = await api.post(`/api/projects/${projectId}/auto-run/start`, {
     config: config || {},
+    mode,
   })
   return data
 }
@@ -651,6 +665,164 @@ export async function startAutopilot(projectId: number): Promise<AutoRunStatusRe
 
 export async function previewAutopilotConfig(projectId: number): Promise<AutopilotConfig> {
   const { data } = await api.get(`/api/projects/${projectId}/auto-run/autopilot/preview`)
+  return data
+}
+
+// ── Manual Review Gate (人工终审门) ──────────────────────────────────────
+// review 模式下流水线在合成前暂停；本节端点供「人工终审」工作台
+// 编辑/确认合成前设置与标注文本（客户最终控制）。
+
+export interface ReviewGateChapterStatus {
+  chapter_id: number
+  index: number
+  title?: string | null
+  /** null=未在审 | pending_review | approved */
+  review_status: string | null
+  paragraph_count: number
+}
+
+export interface ReviewGateSummary {
+  project_id: number
+  /** auto-run 状态；awaiting_review=终审门激活中 */
+  run_status: string
+  chapters: ReviewGateChapterStatus[]
+  total_chapters: number
+  approved_chapters: number
+  pending_chapters: number
+  all_approved: boolean
+}
+
+export interface ParagraphRoutingPreview {
+  paragraph_id: number
+  paragraph_index: number
+  /** 合成将朗读的文本（edited_text 优先，插图块已剥离） */
+  effective_text: string
+  engine_choice?: string | null
+  voice_id?: string | null
+  prosody_overrides?: Record<string, unknown> | null
+  fallback_engine?: string | null
+  reasoning?: string | null
+  manual_voice_id?: string | null
+  manual_engine?: string | null
+  skipped: boolean
+  skip_reason?: string | null
+}
+
+export interface RoutingPreviewResponse {
+  chapter_id: number
+  previews: ParagraphRoutingPreview[]
+  synthesized_count: number
+  skipped_count: number
+}
+
+/** 人工终审编辑请求（None=不修改；clear_*=显式清除覆盖） */
+export interface ReviewParagraphEditPayload {
+  edited_text?: string
+  speaker_canonical_name?: string
+  is_dialogue?: boolean
+  emotion?: string
+  emotion_intensity?: number
+  speech_rate?: number
+  pitch_shift_semitones?: number
+  pause_before_ms?: number
+  pause_after_ms?: number
+  needs_sfx?: boolean
+  sfx_tags?: string[]
+  notes?: string
+  manual_voice_id?: string
+  clear_manual_voice_id?: boolean
+  manual_engine?: string
+  clear_manual_engine?: boolean
+  /** 编辑理由（写入 TTSEdit 审计 rationale） */
+  note?: string
+}
+
+export interface ReviewEditResponse {
+  paragraph: Paragraph
+  changes_made: string[]
+  /** True=该编辑把已确认章节打回待审 */
+  chapter_review_reset: boolean
+  tts_edit_version?: number | null
+}
+
+export async function fetchReviewGateSummary(projectId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.get(`/api/projects/${projectId}/review-gate`)
+  return data
+}
+
+export async function approveChapter(projectId: number, chapterId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/approve`)
+  return data
+}
+
+export async function resetChapterApproval(projectId: number, chapterId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/reset`)
+  return data
+}
+
+export async function approveAllChapters(projectId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/approve-all`)
+  return data
+}
+
+export async function fetchRoutingPreview(
+  projectId: number,
+  chapterId: number,
+): Promise<RoutingPreviewResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/routing-preview`)
+  return data
+}
+
+export async function reviewEditParagraph(
+  projectId: number,
+  chapterId: number,
+  paragraphId: number,
+  payload: ReviewParagraphEditPayload,
+): Promise<ReviewEditResponse> {
+  const { data } = await api.patch(
+    `/api/projects/${projectId}/review-gate/chapters/${chapterId}/paragraphs/${paragraphId}`,
+    payload,
+  )
+  return data
+}
+
+// ── Pipeline Manual Stage Run / Intermediate Product ────────────────────
+
+export interface StageRunRequestPayload {
+  stage: string
+  chapter_id?: number
+  paragraph_id?: number
+  target_difficulty?: string
+  target_language?: string
+  chapter_indices?: number[]
+  book_title?: string
+  author?: string
+}
+
+export interface StageRunResponse {
+  stage: string
+  status: string
+  message: string
+  progress: number
+  result?: Record<string, unknown> | null
+}
+
+export async function runPipelineStage(
+  projectId: number,
+  payload: StageRunRequestPayload,
+): Promise<StageRunResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/pipeline/run-stage`, payload)
+  return data
+}
+
+export async function fetchIntermediateProduct(
+  projectId: number,
+  stage: string,
+  chapterId?: number,
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/api/projects/${projectId}/auto-run/intermediate/${encodeURIComponent(stage)}`, {
+    params: chapterId ? { chapter_id: chapterId } : {},
+  })
   return data
 }
 
@@ -981,6 +1153,171 @@ export async function fetchAgentSessionHistory(projectId: number, sessionId: str
 
 export async function deleteAgentSession(projectId: number, sessionId: string): Promise<void> {
   await api.delete(`/api/agent/chat/${projectId}/sessions/${sessionId}`)
+}
+
+// ── Agent Pipeline FSM (Phase 2) ──────────────────────────────────────────
+
+export interface PipelineConfirmRequest {
+  project_id: number
+  chapter_id?: number
+  action: 'approve' | 'reject' | 'request_rerun' | 'edit'
+  edits?: Record<string, unknown>
+}
+
+export interface PipelineConfirmResponse {
+  project_id: number
+  mode: string
+  current_state: string
+  chapter_index: number
+  chapter_id: number | null
+  paused_at: string | null
+  user_confirmed: boolean
+  error: string | null
+  completed_stages: string[]
+  chapters?: Array<{
+    id: number
+    index: number
+    title: string
+    status: string
+    current_stage?: string
+    progress: number
+  }>
+}
+
+export interface PipelineStatusResponse {
+  project_id: number
+  mode: string
+  current_state: string
+  chapter_index: number
+  chapter_id: number | null
+  paused_at: string | null
+  user_confirmed: boolean
+  error: string | null
+  completed_stages: string[]
+  status: string
+  chapters?: Array<{
+    id: number
+    index: number
+    title: string
+    status: string
+    current_stage?: string
+    progress: number
+  }>
+}
+
+export async function confirmPipelineAction(
+  payload: PipelineConfirmRequest,
+): Promise<PipelineConfirmResponse> {
+  const { data } = await api.post('/api/agent/pipeline/confirm', payload)
+  return data
+}
+
+export async function fetchPipelineStatus(projectId: number): Promise<PipelineStatusResponse> {
+  const { data } = await api.get(`/api/agent/pipeline/status/${projectId}`)
+  return data
+}
+
+// ── Upload Extraction Result (Phase 3) ────────────────────────────────────
+
+export interface ParagraphPreview {
+  id: number
+  chapter_id: number
+  index: number
+  text: string
+  preview_text: string
+  character: string | null
+  emotion: string | null
+}
+
+export interface ChapterPreview {
+  id: number
+  index: number
+  title: string
+  raw_text: string
+  paragraph_count: number
+  status: string
+  selected: boolean
+}
+
+export interface ExtractionDetailResponse {
+  job_id: string
+  project_id: number
+  status: string
+  language: string
+  page_count: number
+  has_ocr: boolean
+  ocr_page_ratio: number
+  warnings: string[]
+  processing_time_seconds: number
+  chapters: ChapterPreview[]
+  total_chapters: number
+  total_paragraphs: number
+}
+
+export async function fetchExtractionResult(
+  projectId: number,
+  jobId: string,
+): Promise<ExtractionDetailResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/extraction-result/${jobId}`)
+  return data
+}
+
+export async function startPipelineWithChapters(
+  projectId: number,
+  chapterIds: number[],
+  config?: AutoRunConfig,
+): Promise<AutoRunStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/auto-run/start`, {
+    config: config || {},
+    chapter_ids: chapterIds,
+  })
+  return data
+}
+
+// ── Agent Knowledge Base ─────────────────────────────────────────────────
+
+export interface KnowledgeEntry {
+  id: string
+  topic: string
+  knowledge: Record<string, unknown>
+  source_agent?: string
+  confidence_score?: Record<string, unknown>
+  created_at?: string | null
+  last_accessed?: string | null
+}
+
+export interface KnowledgeListResponse {
+  project_id: number
+  knowledge: KnowledgeEntry[]
+}
+
+export async function listKnowledge(
+  projectId: number,
+  topic?: string,
+): Promise<KnowledgeListResponse> {
+  const { data } = await api.get(`/api/agent/knowledge/${projectId}`, {
+    params: topic ? { topic } : {},
+  })
+  return data
+}
+
+export async function addKnowledge(
+  projectId: number,
+  topic: string,
+  knowledge: Record<string, unknown>,
+  sourceAgent = 'user',
+  confidence = 1.0,
+): Promise<{ id: string; topic: string; message: string }> {
+  const { data } = await api.post('/api/agent/knowledge', null, {
+    params: {
+      project_id: projectId,
+      topic,
+      knowledge: JSON.stringify(knowledge),
+      source_agent: sourceAgent,
+      confidence,
+    },
+  })
+  return data
 }
 
 export default api

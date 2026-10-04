@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => {
       { id: 1, canonical_name: '林冲', suggested_voice_id: 'voice-A' },
     ]),
     fetchProject: vi.fn().mockResolvedValue({ id: 7, genre: '武侠小说' }),
+    // 音色 datalist 候选清单：返回空 engines（组件静默降级为自由输入）
+    fetchTTSVoices: vi.fn().mockResolvedValue({ engines: {} }),
     updateCharacter: vi.fn().mockImplementation(async (_pid: number, _id: number, payload: any) => ({
       id: 1,
       canonical_name: payload.canonical_name,
@@ -40,11 +42,13 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../api', () => ({
   fetchCharacters: mocks.fetchCharacters,
   fetchProject: mocks.fetchProject,
+  fetchTTSVoices: mocks.fetchTTSVoices,
   updateCharacter: mocks.updateCharacter,
   createCharacter: mocks.createCharacter,
   default: {
     fetchCharacters: mocks.fetchCharacters,
     fetchProject: mocks.fetchProject,
+    fetchTTSVoices: mocks.fetchTTSVoices,
     updateCharacter: mocks.updateCharacter,
     createCharacter: mocks.createCharacter,
   },

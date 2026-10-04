@@ -218,25 +218,33 @@ def _build_subtitle_entries(
 
         for para in paragraphs:
             seg = segments_map.get(para.id)
+
+            # 无音频段的段落（编辑阶段有意清空/合成被跳过）在 m4b 中没有对应
+            # 声音，字幕必须同步跳过——否则既浪费时间轴又会让插图说明等
+            # 被跳过的内容出现在字幕里。
+            if not seg:
+                continue
+
             duration = 3000  # fallback
-
-            if seg:
-                path = Path(seg.file_path)
-                if path.exists():
-                    try:
-                        duration = get_duration_sync(path)
-                    except Exception as e:
-                        logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
-                        duration = seg.duration_ms or 3000
-                else:
+            path = Path(seg.file_path)
+            if path.exists():
+                try:
+                    duration = get_duration_sync(path)
+                except Exception as e:
+                    logger.warning(f"Failed to probe duration for {path}: {e}, using fallback")
                     duration = seg.duration_ms or 3000
+            else:
+                duration = seg.duration_ms or 3000
 
+            # SRT 使用 edit 阶段产出：edited_text 非空 → 用编辑后文本；
+            # NULL → 该段未经过编辑，回退原始文本。
+            srt_text = para.edited_text if para.edited_text is not None else (para.text or "")
             entries.append(
                 SubtitleEntry(
                     index=len(entries) + 1,
                     start_ms=offset_ms,
                     end_ms=offset_ms + duration,
-                    text=para.text or "",
+                    text=srt_text,
                     speaker=para.speaker_canonical_name,
                 )
             )

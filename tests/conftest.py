@@ -79,7 +79,7 @@ import src.audiobook_studio  # noqa: F401
 
 
 class _AudiobookStudioAliasLoader:
-    """Loader that returns an already-imported canonical module unchanged."""
+    """Loader yielding the already-executed canonical ``src.`` module."""
 
     def __init__(self, module):
         self._module = module
@@ -88,6 +88,7 @@ class _AudiobookStudioAliasLoader:
         return self._module
 
     def exec_module(self, module):
+        # The canonical module is already fully executed; nothing to do.
         return None
 
 
@@ -102,15 +103,182 @@ class _AudiobookStudioAliasFinder:
             canonical = importlib.import_module(alt)
         except ImportError:
             return None
-        spec = importlib.util.find_spec(alt)
-        if spec is None:
-            return None
+        # Build the spec under the CANONICAL name (`alt`), not the alias, and
+        # pre-populate the alias key. Two reasons:
+        #
+        # 1. `_load` runs even after find_spec returns (CPython does not re-check
+        #    sys.modules), and `_init_module_attrs(override=True)` then stamps
+        #    `module.__spec__` onto whatever create_module returns — here the
+        #    canonical module. If spec.name is the alias ("audiobook_studio.X"),
+        #    that leaves `canonical.__name__` ("src.audiobook_studio.X")
+        #    disagreeing with `canonical.__spec__.name` — a half-aliased object
+        #    that intermittently surfaces as ``cannot import name '__all__' from
+        #    '<unknown module name>'`` under some collection orders. Naming the
+        #    spec with `alt` keeps `__spec__.name == __name__`, so the overwrite
+        #    is a harmless no-op re-stamp of an equivalent spec.
+        #
+        # 2. Pre-populating `sys.modules[name]` preserves the existing
+        #    behaviour where `sys.modules["audiobook_studio.X"]` resolves to the
+        #    canonical object (the spec's own `_load` writes `sys.modules[alt]`,
+        #    not the alias key, so without this line the alias key would go
+        #    missing).
+        sys.modules[name] = canonical
         from importlib.machinery import ModuleSpec
 
-        return ModuleSpec(name, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
+        return ModuleSpec(alt, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
 
 
 _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
+
+
+def _unify_audiobook_aliases() -> None:
+    """Rebind every ``audiobook_studio*`` sys.modules entry to its ``src.audiobook_studio*``
+    counterpart so the bare and ``src.`` names always yield ONE module object.
+
+    ``/repo/src`` is on sys.path and ``src`` is a plain namespace (no ``__init__.py``),
+    so ``audiobook_studio`` and ``src.audiobook_studio`` are two importable names for the
+    SAME directory. Imported independently they EXECUTE as separate module objects — and
+    every class defined in them (``CostTracker``, ``EngineRegistry``, ``LLMRouter``, ...)
+    exists TWICE, once per identity. The DI container registers the class object it saw
+    first; a code path that holds the other identity then fails with
+    ``KeyError: "No registration found for <class ...>"`` (or ``module ... has no attribute
+    ...``), all order-dependent on which identity was imported first.
+
+    The alias finder redirects new bare imports to ``src.`` lazily, but anything already
+    loaded (by conftest, a plugin, or collection) keeps its separate object. Sweeping the
+    keys after install (and again after collection) collapses each name-pair onto the
+    canonical ``src.`` object, so the two identities never diverge again. Future bare
+    imports then resolve through the finder to the same object. (TEST-ISOLATION ONLY — no
+    production code is modified.)
+    """
+    src_top = _sys.modules.get("src.audiobook_studio")
+    if src_top is None:
+        return
+    # Merge any submodule/attribute references that live on the BARE tree into the
+    # canonical ``src.`` package before aliasing. E.g. if ``audiobook_studio.tts.
+    # license_guard`` was imported (creating the bare ``tts`` package and setting its
+    # ``license_guard`` attr) while ``src.audiobook_studio.tts`` never imported it, then
+    # rebinding ``sys.modules["audiobook_studio.tts"] = src tts`` would DROP that attr and
+    # ``src.audiobook_studio.tts.license_guard`` would fail. Copy missing attrs bare->src
+    # so no public name is lost.
+    _merge_submodule_attrs(src_top, _sys.modules.get("audiobook_studio"))
+    _sys.modules["audiobook_studio"] = src_top
+    for key in list(_sys.modules):
+        if key.startswith("audiobook_studio."):
+            src_key = "src." + key
+            if src_key in _sys.modules:
+                bare_mod = _sys.modules.get(key)
+                src_mod = _sys.modules[src_key]
+                if bare_mod is not src_mod and bare_mod is not None:
+                    _merge_submodule_attrs(src_mod, bare_mod)
+                _sys.modules[key] = src_mod
+
+    # Rebind module-level class references that were captured by value BEFORE the
+    # unification. ``di.py`` does ``from .tts.engine import EngineRegistry`` (and
+    # ``.llm.quota_registry import QuotaRegistry``) at import time, so it holds the
+    # engine module object that existed when di was first imported — which can be the
+    # *orphaned* duplicate if the split formed before this sweep. Re-aliasing sys.modules
+    # does NOT update that already-bound reference, so ``get_app_container().get(
+    # EngineRegistry)`` still misses. Rebinding every attribute that points at a class
+    # defined in the audiobook_studio/src.audiobook_studio tree to the now-canonical
+    # unified class closes that gap generically (no need to enumerate di.py / router.py /
+    # port_factory.py names).
+    # Prefer the ``src.`` modules' classes as canonical.
+    src_classes = {}
+    # Also collect canonical FUNCTIONS (e.g. create_router) from the src. tree.
+    src_functions = {}
+    for modname, mod in list(_sys.modules.items()):
+        if modname.startswith("src.audiobook_studio."):
+            for _attr_name, obj in list(vars(mod).items()):
+                if (
+                    isinstance(obj, type)
+                    and getattr(obj, "__module__", None)
+                    and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio"))
+                ):
+                    src_classes[(obj.__qualname__, _strip_src(obj.__module__))] = obj
+                elif callable(obj) and not isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
+                    base = _strip_src(obj.__module__)
+                    if base.startswith("audiobook_studio"):
+                        src_functions[(obj.__qualname__, base)] = obj
+    # Rebind across EVERY loaded module (production + test files), not just the
+    # audiobook/src tree. Test modules also capture classes at collection time (e.g.
+    # ``from src.audiobook_studio.tts.engine import TTSTaskResult``), so an
+    # ``isinstance(result, TTSTaskResult)`` inside a test can compare the orphaned
+    # duplicate against the canonical object and return False. Pointing every attribute
+    # whose class ``__module__`` is in the tree at the canonical class closes that gap,
+    # and normalising ``__module__`` keeps repr/identity-driven lookups consistent.
+    for modname in list(_sys.modules):
+        mod = _sys.modules[modname]
+        try:
+            attrs = vars(mod)
+        except Exception:
+            continue
+        for attr_name in list(attrs):
+            obj = attrs.get(attr_name)
+            # Rebinding CLASSES defined in the audiobook_studio tree
+            if isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
+                base = _strip_src(obj.__module__)
+                if not base.startswith("audiobook_studio"):
+                    continue
+                canon = src_classes.get((obj.__qualname__, base))
+                if canon is None or canon is obj:
+                    continue
+                try:
+                    setattr(mod, attr_name, canon)
+                except Exception:
+                    pass
+                try:
+                    obj.__module__ = canon.__module__
+                except Exception:
+                    pass
+            # Also rebind FUNCTIONS (e.g. create_router) defined in the tree,
+            # so that modules holding a stale reference (e.g. pipeline.edit_for_tts
+            # holding a duplicate create_router from a prior bare import) get the canonical one.
+            elif callable(obj) and not isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
+                base = _strip_src(obj.__module__)
+                if not base.startswith("audiobook_studio"):
+                    continue
+                # Key by (qualname, base_module) for functions too
+                canon = src_functions.get((obj.__qualname__, base))
+                if canon is None or canon is obj:
+                    continue
+                try:
+                    setattr(mod, attr_name, canon)
+                except Exception:
+                    pass
+                try:
+                    obj.__module__ = canon.__module__
+                except Exception:
+                    pass
+
+
+def _strip_src(modname: str) -> str:
+    if isinstance(modname, str) and modname.startswith("src."):
+        return modname[len("src.") :]
+    return modname
+
+
+def _merge_submodule_attrs(target, source) -> None:
+    """Copy any public attributes ``target`` lacks from ``source`` (bare -> src merge)."""
+    if source is None or source is target:
+        return
+    try:
+        src_vars = vars(target)
+        for attr, val in list(vars(source).items()):
+            if attr.startswith("__") and attr.endswith("__"):
+                continue
+            if attr not in src_vars:
+                try:
+                    setattr(target, attr, val)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+# Unify immediately, before collection starts, so the canonical ``src.`` tree is the only
+# tree any test module (or production module imported during collection) can see.
+_unify_audiobook_aliases()
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Keep SQLite connections FK-OFF for the bulk/optimization DB tests.
@@ -317,6 +485,21 @@ def _reset_global_state():
         from src.audiobook_studio.di import reset_app_container
 
         reset_app_container()
+    except Exception:
+        pass
+
+    # Re-collapse any bare ``audiobook_studio*`` sys.modules entries that were created
+    # as SEPARATE objects during the just-finished test (the ``_AliasFinder``'s
+    # ``spec_from_loader`` path re-executes source into a second module object when the
+    # canonical module is already loaded, so a test that imports a bare name — e.g. the
+    # golden pipeline fixtures pulling in ``audiobook_studio.pipeline.edit_for_tts`` —
+    # re-splits the tree AFTER the collection-time sweep). Rebinding here (before the
+    # next test, and before that test's lazy ``get_app_container()``) guarantees the DI
+    # container registers the unified classes, closing the ``KeyError: No registration
+    # found for CostTracker`` that otherwise leaks into later tests.
+    # (TEST-ISOLATION ONLY — no production code is modified.)
+    try:
+        _unify_audiobook_aliases()
     except Exception:
         pass
 
@@ -594,6 +777,19 @@ def pytest_collection_modifyitems(config, items):
     # hosts are untouched. (TEST-ISOLATION ONLY — no production code is modified.)
     try:
         _install_canonical_torch_mock()
+    except Exception:
+        pass
+
+    # Collapse any bare ``audiobook_studio*`` sys.modules entries that were created as
+    # separate objects during collection (despite the early sweep) back onto the canonical
+    # ``src.audiobook_studio*`` objects. Double-executed modules (one object per identity)
+    # otherwise give the DI container two distinct class objects and cause the
+    # ``KeyError: No registration found`` / ``has no attribute`` failures. This runs after
+    # collection and before the first test, so the first ``get_app_container()`` (which
+    # lazily builds the container at runtime) registers the unified classes.
+    # (TEST-ISOLATION ONLY — no production code is modified.)
+    try:
+        _unify_audiobook_aliases()
     except Exception:
         pass
 
