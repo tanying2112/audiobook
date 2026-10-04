@@ -44,7 +44,6 @@ from .api.publish import router as publish_router
 from .api.publish_job import router as publish_job_router
 from .api.qualities import router as qualities_router
 from .api.review import router as review_router
-from .api.review_gate import router as review_gate_router
 from .api.routings import router as routings_router
 from .api.sop_reflection import router as sop_reflection_router
 from .api.templates import router as templates_router
@@ -217,8 +216,7 @@ app.include_router(templates_router, prefix="/api", dependencies=auth_dep)
 app.include_router(harness_router, prefix="/api", dependencies=auth_dep)
 app.include_router(golden_router, prefix="/api", dependencies=auth_dep)
 app.include_router(auto_run_router, prefix="/api", dependencies=auth_dep)
-app.include_router(review_router, prefix="/api", dependencies=auth_dep)
-app.include_router(review_gate_router, prefix="/api", dependencies=auth_dep)  # 人工终审门（合成前编辑与确认）
+app.include_router(review_router, prefix="/api", dependencies=auth_dep)  # 人工终审门（合成前编辑与确认）
 if settings.DEBUG or settings.ENVIRONMENT == "development":
     app.include_router(mock_router, prefix="/api", dependencies=auth_dep)
 app.include_router(tts_voices_router, prefix="/api", dependencies=auth_dep)

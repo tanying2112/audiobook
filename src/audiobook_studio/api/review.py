@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, get_args
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,7 @@ from ..pipeline.synthesize import (
     build_routing_input,
     make_tts_routing_decision,
 )
+from ..schemas.paragraph import EMOTION_TAGS
 from ..schemas.tts_routing import EngineChoice
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects/{project_id}/review-gate", tags=["review-gate"])
 
 _VALID_ENGINES = set(get_args(EngineChoice))
+_VALID_EMOTIONS = set(EMOTION_TAGS)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,7 +63,18 @@ class ReviewParagraphPatch(BaseModel):
     edited_text: Optional[str] = Field(default=None, description="润色后文本（\"\"=有意清空→跳过合成）")
     speaker_canonical_name: Optional[str] = None
     is_dialogue: Optional[bool] = None
+    # emotion 必须命中合成期 ParagraphAnnotation 的 14 枚举 —— 保存入口
+    # 同值域校验（422），否则坏值会在客户确认后、合成期炸掉（live E2E 实证）。
     emotion: Optional[str] = None
+
+    @field_validator("emotion")
+    @classmethod
+    def _emotion_in_canonical_enum(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_EMOTIONS:
+            raise ValueError(
+                f"emotion must be one of {sorted(_VALID_EMOTIONS)}; got {v!r}"
+            )
+        return v
     emotion_intensity: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     speech_rate: Optional[float] = Field(default=None, ge=0.7, le=1.3)
     pitch_shift_semitones: Optional[int] = Field(default=None, ge=-5, le=5)
